@@ -977,7 +977,14 @@ def download_backup(filename):
 @app.route("/delete_backup/<filename>", methods=["POST"])
 def delete_backup_route(filename):
     """Delete a backup file."""
+    device_ip = None
+
     try:
+        # Try to extract IP from filename (format: hostname_ip_type_timestamp.cfg)
+        parts = filename.rsplit('_', 3)
+        if len(parts) >= 4:
+            device_ip = parts[1]
+
         success = delete_backup(filename)
 
         if success:
@@ -989,7 +996,11 @@ def delete_backup_route(filename):
         app.logger.error(f"Delete backup failed: {str(e)}")
         flash(f"Delete failed: {str(e)}", "danger")
 
-    return redirect(request.referrer or url_for("index"))
+    # Redirect back to backups tab if we know the device IP
+    if device_ip:
+        return redirect(url_for("manage_device", ip=device_ip, active_tab="backups"))
+    else:
+        return redirect(request.referrer or url_for("index"))
 
 
 @app.route("/compare_backups", methods=["POST"])
