@@ -109,6 +109,11 @@ if not app.debug:
 # Flask Error Handlers
 # ---------------------------------------------------------------------------
 
+@app.route("/favicon.ico")
+def favicon():
+    """Return empty response for favicon to avoid 404 warnings."""
+    return "", 204
+
 @app.errorhandler(404)
 def not_found_error(error):
     """Handle 404 Not Found errors."""
@@ -874,7 +879,7 @@ def backup_config(ip):
 
         if not dev:
             flash("Device not found", "danger")
-            return redirect(url_for("manage_device", ip=ip))
+            return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
 
         app.logger.info(f"Backing up {config_type} config for device: {ip}")
 
@@ -897,7 +902,7 @@ def backup_config(ip):
         app.logger.error(f"Backup failed for {ip}: {str(e)}")
         flash(f"Backup failed: {str(e)}", "danger")
 
-    return redirect(url_for("manage_device", ip=ip))
+    return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
 
 
 @app.route("/device/<ip>/save_running_to_startup", methods=["POST"])
@@ -909,7 +914,7 @@ def save_to_startup(ip):
 
         if not dev:
             flash("Device not found", "danger")
-            return redirect(url_for("manage_device", ip=ip))
+            return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
 
         app.logger.info(f"Saving running-config to startup-config on: {ip}")
 
@@ -926,7 +931,7 @@ def save_to_startup(ip):
         app.logger.error(f"Failed to save config on {ip}: {str(e)}")
         flash(f"Failed to save configuration: {str(e)}", "danger")
 
-    return redirect(url_for("manage_device", ip=ip))
+    return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
 
 
 @app.route("/device/<ip>/backup_history")
