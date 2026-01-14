@@ -44,6 +44,17 @@ from modules.terminal import ensure_terminal_session, start_terminal_reader
 from modules.quick_actions import load_quick_actions, save_quick_actions
 from modules.utils import make_device_filename
 from modules.commands import run_device_command
+from modules.backups import (
+    save_running_to_startup,
+    get_running_config,
+    get_startup_config,
+    save_config_backup,
+    get_backup_history,
+    get_backup_content,
+    compare_configs,
+    delete_backup,
+    get_backup_stats
+)
 
 # Device status cache and ping worker setup
 #
@@ -845,6 +856,170 @@ def connection_status(ip):
         except Exception:
             status = "disconnected"
     return jsonify({"status": status})
+
+
+# ---------------------------------------------------------------------------
+# Configuration Backup Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/device/<ip>/backup_config", methods=["POST"])
+def backup_config(ip):
+    """Backup device configuration (running or startup)."""
+    try:
+        config_type = request.form.get("config_type", "running")
+
+        devices = load_saved_devices(DEVICES_FILE)
+        dev = next((d for d in devices if d["ip"] == ip), None)
+
+        if not dev:
+            flash("Device not found", "danger")
+            return redirect(url_for("manage_device", ip=ip))
+
+        app.logger.info(f"Backing up {config_type} config for device: {ip}")
+
+        # Get connection
+        conn = get_persistent_connection(dev, connections, lock)
+
+        # Get configuration
+        if config_type == "running":
+            config = get_running_config(conn)
+        else:
+            config = get_startup_config(conn)
+
+        # Save backup
+        backup_info = save_config_backup(ip, dev["hostname"], config, config_type)
+
+        flash(f"Configuration backed up successfully: {backup_info['filename']}", "success")
+        app.logger.info(f"Backup created: {backup_info['filename']}")
+
+    except Exception as e:
+        app.logger.error(f"Backup failed for {ip}: {str(e)}")
+        flash(f"Backup failed: {str(e)}", "danger")
+
+    return redirect(url_for("manage_device", ip=ip))
+
+
+@app.route("/device/<ip>/save_running_to_startup", methods=["POST"])
+def save_to_startup(ip):
+    """Save running-config to startup-config on device."""
+    try:
+        devices = load_saved_devices(DEVICES_FILE)
+        dev = next((d for d in devices if d["ip"] == ip), None)
+
+        if not dev:
+            flash("Device not found", "danger")
+            return redirect(url_for("manage_device", ip=ip))
+
+        app.logger.info(f"Saving running-config to startup-config on: {ip}")
+
+        # Get connection
+        conn = get_persistent_connection(dev, connections, lock)
+
+        # Save config
+        output = save_running_to_startup(conn)
+
+        flash("Running configuration saved to startup-config", "success")
+        app.logger.info(f"Config saved on {ip}: {output}")
+
+    except Exception as e:
+        app.logger.error(f"Failed to save config on {ip}: {str(e)}")
+        flash(f"Failed to save configuration: {str(e)}", "danger")
+
+    return redirect(url_for("manage_device", ip=ip))
+
+
+@app.route("/device/<ip>/backup_history")
+def backup_history_route(ip):
+    """Get backup history for a device."""
+    try:
+        backups = get_backup_history(ip=ip, limit=50)
+        return jsonify({"status": "success", "backups": backups})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/download_backup/<filename>")
+def download_backup(filename):
+    """Download a backup file."""
+    try:
+        content = get_backup_content(filename)
+
+        if content is None:
+            flash("Backup file not found", "danger")
+            return redirect(url_for("index"))
+
+        # Create in-memory file
+        file_obj = BytesIO(content.encode("utf-8"))
+        file_obj.seek(0)
+
+        return send_file(
+            file_obj,
+            mimetype="text/plain",
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        app.logger.error(f"Download backup failed: {str(e)}")
+        flash(f"Download failed: {str(e)}", "danger")
+        return redirect(url_for("index"))
+
+
+@app.route("/delete_backup/<filename>", methods=["POST"])
+def delete_backup_route(filename):
+    """Delete a backup file."""
+    try:
+        success = delete_backup(filename)
+
+        if success:
+            flash(f"Backup deleted: {filename}", "success")
+        else:
+            flash("Failed to delete backup", "danger")
+
+    except Exception as e:
+        app.logger.error(f"Delete backup failed: {str(e)}")
+        flash(f"Delete failed: {str(e)}", "danger")
+
+    return redirect(request.referrer or url_for("index"))
+
+
+@app.route("/compare_backups", methods=["POST"])
+def compare_backups_route():
+    """Compare two backup configurations."""
+    try:
+        file1 = request.form.get("file1")
+        file2 = request.form.get("file2")
+
+        if not file1 or not file2:
+            return jsonify({"status": "error", "message": "Two files required"}), 400
+
+        config1 = get_backup_content(file1)
+        config2 = get_backup_content(file2)
+
+        if config1 is None or config2 is None:
+            return jsonify({"status": "error", "message": "Backup file not found"}), 404
+
+        diff = compare_configs(config1, config2)
+
+        return jsonify({
+            "status": "success",
+            "diff": diff,
+            "file1": file1,
+            "file2": file2
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/backup_stats")
+def backup_stats_route():
+    """Get backup statistics."""
+    try:
+        stats = get_backup_stats()
+        return jsonify({"status": "success", "stats": stats})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 # Run the Flask app with Socket.IO
 if __name__ == "__main__":

@@ -72,6 +72,19 @@
       Terminal
     </button>
   </li>
+  <!-- Backups tab -->
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if tab == 'backups' %}active{% endif %}"
+            id="backups-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#backups"
+            type="button"
+            role="tab"
+            aria-controls="backups"
+            aria-selected="{{ 'true' if tab == 'backups' else 'false' }}">
+      Backups
+    </button>
+  </li>
 </ul>
 
 <div class="tab-content mt-3" id="deviceTabsContent">
@@ -420,6 +433,124 @@
     <p class="text-muted">Interactive SSH session with {{ device["hostname"] }}.</p>
     <div id="terminal-container" class="terminal-box"></div>
   </div>
+
+  <!-- Backups Tab -->
+  <div class="tab-pane fade {% if tab == 'backups' %}show active{% endif %}"
+       id="backups"
+       role="tabpanel"
+       aria-labelledby="backups-tab">
+    <hr>
+    <h4>💾 Configuration Backups</h4>
+    <p class="text-muted">Backup, restore, and compare device configurations.</p>
+
+    <!-- Backup Actions -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">📥 Backup Configuration</h5>
+            <p class="card-text">Download running or startup config to local storage.</p>
+            <form method="post" action="{{ url_for('backup_config', ip=device['ip']) }}">
+              <div class="mb-2">
+                <select name="config_type" class="form-select form-select-sm">
+                  <option value="running" selected>Running Config</option>
+                  <option value="startup">Startup Config</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm w-100">
+                Backup Config
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">💾 Save to Startup</h5>
+            <p class="card-text">Save running-config to startup-config on device.</p>
+            <form method="post" action="{{ url_for('save_to_startup', ip=device['ip']) }}"
+                  onsubmit="return confirm('Save running config to startup config?');">
+              <button type="submit" class="btn btn-success btn-sm w-100">
+                Write Memory
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">🔄 Compare Configs</h5>
+            <p class="card-text">View differences between two backup files.</p>
+            <button class="btn btn-info btn-sm w-100" onclick="showCompareModal()">
+              Compare Backups
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Backup History -->
+    <h5>Backup History</h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover" id="backupHistoryTable">
+        <thead class="table-dark">
+          <tr>
+            <th>Timestamp</th>
+            <th>Type</th>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="backupHistoryBody">
+          <tr>
+            <td colspan="5" class="text-center text-muted">
+              <div class="spinner-border spinner-border-sm" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              Loading backups...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Compare Backups Modal -->
+<div class="modal fade" id="compareModal" tabindex="-1" aria-labelledby="compareModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="compareModalLabel">Compare Configurations</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label for="compareFile1" class="form-label">First Config (Older)</label>
+            <select id="compareFile1" class="form-select form-select-sm">
+              <option value="">Select backup...</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label for="compareFile2" class="form-label">Second Config (Newer)</label>
+            <select id="compareFile2" class="form-select form-select-sm">
+              <option value="">Select backup...</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm mb-3" onclick="compareBackups()">Compare</button>
+        <div id="compareResult">
+          <p class="text-muted">Select two backups and click Compare.</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Styles for hover-delete on quick actions and terminal sizing -->
@@ -696,6 +827,162 @@ document.addEventListener("DOMContentLoaded", () => {
     cleanupTerminal();
     clearInterval(statusInterval);
   });
+
+  // ========================================================================
+  // Backups Tab Functionality
+  // ========================================================================
+
+  // Load backup history when backups tab is shown
+  const backupsTab = document.getElementById('backups-tab');
+  if (backupsTab) {
+    backupsTab.addEventListener('shown.bs.tab', function () {
+      loadBackupHistory();
+    });
+
+    // Also load if backups tab is initially active
+    if (backupsTab.classList.contains('active')) {
+      loadBackupHistory();
+    }
+  }
+
+  function loadBackupHistory() {
+    const deviceIp = '{{ device["ip"] }}';
+    fetch(`/device/${deviceIp}/backup_history`)
+      .then(resp => resp.json())
+      .then(data => {
+        if (data.status === 'success') {
+          renderBackupHistory(data.backups);
+        } else {
+          showBackupError('Failed to load backup history');
+        }
+      })
+      .catch(err => {
+        console.error('Load backup history failed:', err);
+        showBackupError('Error loading backup history');
+      });
+  }
+
+  function renderBackupHistory(backups) {
+    const tbody = document.getElementById('backupHistoryBody');
+
+    if (backups.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center text-muted">No backups found for this device.</td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = backups.map(backup => `
+      <tr>
+        <td>${backup.datetime}</td>
+        <td><span class="badge bg-${backup.config_type === 'running' ? 'primary' : 'secondary'}">${backup.config_type}</span></td>
+        <td><code>${backup.filename}</code></td>
+        <td>${formatBytes(backup.size)}</td>
+        <td>
+          <div class="btn-group btn-group-sm">
+            <a href="/download_backup/${backup.filename}" class="btn btn-outline-primary btn-sm" title="Download">
+              ⬇️
+            </a>
+            <form method="post" action="/delete_backup/${backup.filename}" style="display:inline;">
+              <button type="submit" class="btn btn-outline-danger btn-sm"
+                      onclick="return confirm('Delete this backup?');" title="Delete">
+                🗑️
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+
+    // Update compare modal dropdowns
+    updateCompareDropdowns(backups);
+  }
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function showBackupError(message) {
+    const tbody = document.getElementById('backupHistoryBody');
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center text-danger">${message}</td>
+      </tr>
+    `;
+  }
+
+  function updateCompareDropdowns(backups) {
+    const select1 = document.getElementById('compareFile1');
+    const select2 = document.getElementById('compareFile2');
+
+    const options = backups.map(b =>
+      `<option value="${b.filename}">${b.datetime} - ${b.config_type}</option>`
+    ).join('');
+
+    select1.innerHTML = '<option value="">Select backup...</option>' + options;
+    select2.innerHTML = '<option value="">Select backup...</option>' + options;
+  }
+
+  window.showCompareModal = function() {
+    const modal = new bootstrap.Modal(document.getElementById('compareModal'));
+    modal.show();
+  };
+
+  window.compareBackups = function() {
+    const file1 = document.getElementById('compareFile1').value;
+    const file2 = document.getElementById('compareFile2').value;
+    const resultDiv = document.getElementById('compareResult');
+
+    if (!file1 || !file2) {
+      resultDiv.innerHTML = '<p class="text-danger">Please select two backups to compare.</p>';
+      return;
+    }
+
+    if (file1 === file2) {
+      resultDiv.innerHTML = '<p class="text-warning">Please select two different backups.</p>';
+      return;
+    }
+
+    resultDiv.innerHTML = '<p class="text-muted"><div class="spinner-border spinner-border-sm"></div> Comparing...</p>';
+
+    const formData = new FormData();
+    formData.append('file1', file1);
+    formData.append('file2', file2);
+
+    fetch('/compare_backups', {
+      method: 'POST',
+      body: formData
+    })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        if (data.diff.trim() === '') {
+          resultDiv.innerHTML = '<p class="text-success">✓ The configurations are identical.</p>';
+        } else {
+          resultDiv.innerHTML = `
+            <h6>Differences:</h6>
+            <pre class="bg-body-secondary border p-3" style="max-height: 400px; overflow-y: auto;"><code>${escapeHtml(data.diff)}</code></pre>
+          `;
+        }
+      } else {
+        resultDiv.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
+      }
+    })
+    .catch(err => {
+      console.error('Compare failed:', err);
+      resultDiv.innerHTML = '<p class="text-danger">Comparison failed.</p>';
+    });
+  };
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 });
 </script>
 
