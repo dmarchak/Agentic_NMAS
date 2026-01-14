@@ -324,6 +324,9 @@ def manage_device(ip):
         flash("Device not found", "danger")
         return redirect(url_for("index"))
 
+    # Get active tab from query parameter
+    active_tab = request.args.get("active_tab", "utilities")
+
     try:
         filesystems, file_list, selected_fs = get_device_context(dev)
         return render_template(
@@ -333,6 +336,7 @@ def manage_device(ip):
             files=file_list,
             selected_fs=selected_fs,
             quick_actions=load_quick_actions().get("global", []),
+            active_tab=active_tab,
         )
     except Exception as e:
         flash(f"Failed to connect to {dev.get('hostname', ip)} ({ip}): {e}", "danger")
