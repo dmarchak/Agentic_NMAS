@@ -1,10 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl:*)",
-      "Bash(unzip:*)",
-      "Bash(git add:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\nFeature 2: Bulk Operations on Multiple Devices\n\nImplemented parallel command execution across multiple devices:\n\nBackend (modules/bulk_ops.py):\n- BulkOperationManager class for coordinating operations\n- execute_bulk_command(): Parallel execution with worker threads\n- get_operation_status(): Real-time progress tracking\n- clear_operation(): Cleanup completed operations\n- Thread-safe operation tracking with locks\n- Configurable worker pool (default: 5 parallel workers)\n\nRoutes (app.py):\n- POST /bulk_execute: Start bulk operation on selected devices\n- GET /bulk_status/<operation_id>: Poll operation progress\n- POST /bulk_clear/<operation_id>: Clear completed operation\n\nUI (templates/index.html):\n- Checkbox column for device selection\n- \"Select All\" checkbox in table header\n- Bulk Operations panel (hidden until devices selected)\n- Command input with Execute/Clear buttons\n- Real-time selected device counter\n- Results modal with:\n  - Live progress bar\n  - Success/failure counters\n  - Per-device results with collapsible output\n  - Auto-polling for updates (1s interval)\n  - Auto-stops when operation completes\n\nFeatures:\n✅ Select multiple online devices with checkboxes\n✅ Select all/clear all functionality\n✅ Parallel execution (up to 5 devices simultaneously)\n✅ Real-time progress tracking\n✅ Per-device success/failure status\n✅ Full command output for each device\n✅ Error messages for failed devices\n✅ Toast notifications for feedback\n✅ Confirmation prompt before execution\n✅ Only online devices can be selected\n\nUse Cases:\n- Update ACLs on all edge routers\n- Check versions across infrastructure\n- Apply configuration changes to groups\n- Gather information from multiple devices\n- Run show commands on entire fleet\n\nGenerated with Claude Code\nhttps://claude.com/claude-code\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
