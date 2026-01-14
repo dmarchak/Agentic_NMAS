@@ -1,0 +1,30 @@
+# Network Device Manager - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web Framework
+Flask==3.0.0
+Flask-SocketIO==5.3.5
+
+# Network Automation & SSH
+netmiko==4.3.0
+paramiko==3.4.0
+
+# Network Utilities
+ping3==4.0.8
+
+# Security & Encryption
+cryptography==41.0.7
+
+# Socket.IO
+python-socketio==5.10.0
+python-engineio==4.8.0
+
+# Additional Dependencies (pulled in automatically but listed for reference)
+# - Jinja2 (templating)
+# - Werkzeug (WSGI utilities)
+# - click (CLI)
+# - MarkupSafe (string escaping)
+
+# Development Dependencies
+pytest==7.4.3
+pytest-cov==4.1.0

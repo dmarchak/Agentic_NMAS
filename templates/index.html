@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- 🔷 Page header with search -->
+<div class="mb-4 d-flex justify-content-between align-items-center">
+  <h2 class="text-primary mb-0">Saved Devices</h2>
+  {% if devices %}
+  <div class="d-flex gap-2 align-items-center">
+    <span class="badge bg-secondary" id="deviceCount">{{ devices|length }} device(s)</span>
+    <input type="text"
+           class="form-control form-control-sm"
+           id="deviceSearch"
+           placeholder="🔍 Search devices..."
+           style="width: 250px;">
+  </div>
+  {% endif %}
+</div>
+
+{% if devices %}
+<!-- 🔷 Table of saved devices -->
+<table class="table table-bordered table-hover align-middle">
+  <thead class="table-dark">
+    <tr>
+      <th>Status</th>
+      <th>Hostname</th>
+      <th>IP Address</th>
+      <th>Actions</th>
+      <th>Delete</th>
+    </tr>
+  </thead>
+  <tbody id="deviceTableBody">
+    {% for d in devices %}
+    <tr data-ip="{{ d['ip'] }}" data-hostname="{{ d['hostname'] }}" class="device-row">
+      <td>
+        <span id="status-{{ d['ip'] }}"
+              class="btn btn-sm {% if d['online'] %}btn-success{% else %}btn-danger{% endif %}">
+          {% if d['online'] %}Online{% else %}Offline{% endif %}
+        </span>
+      </td>
+      <td class="device-hostname">{{ d["hostname"] }}</td>
+      <td class="device-ip">{{ d["ip"] }}</td>
+      <td>
+        {% if d["online"] %}
+          <a id="btn-{{ d['ip'] }}" href="{{ url_for('manage_device', ip=d['ip']) }}"
+             class="btn btn-sm btn-primary">Manage</a>
+        {% else %}
+          <button id="btn-{{ d['ip'] }}" class="btn btn-sm btn-secondary" disabled>Offline</button>
+        {% endif %}
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('delete_device', ip=d['ip']) }}">
+          <button class="btn btn-sm btn-danger"
+                  onclick="return confirm(`Are you sure you want to delete {{ d['hostname'] }} ({{ d['ip'] }})?`);">
+            Delete
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No devices saved yet. Add one below.</p>
+{% endif %}
+
+<!-- 🔷 Add Device Form -->
+<hr>
+<h3 class="mt-4">Add New Device</h3>
+<form method="post" action="{{ url_for('add_device') }}" class="row g-3" id="addDeviceForm">
+  <div class="col-md-3">
+    <input class="form-control" name="ip" placeholder="IP Address" required>
+  </div>
+  <div class="col-md-3">
+    <input class="form-control" name="username" placeholder="Username" required>
+  </div>
+  <div class="col-md-3">
+    <input class="form-control" type="password" name="password" placeholder="Password" required>
+  </div>
+  <div class="col-md-3">
+    <input class="form-control" type="password" name="secret" placeholder="Enable Secret" required>
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-success" id="addDeviceBtn">
+      <span class="btn-text">Add Device</span>
+      <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+    </button>
+  </div>
+</form>
+
+<!-- 🔷 Embed device IPs for polling -->
+<script id="device-data" type="application/json">
+  {{ devices | map(attribute='ip') | list | tojson | safe }}
+</script>
+
+<!-- 🔷 Add Device Loading Indicator & Search Filter -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Add loading indicator to add device form
+  const addDeviceForm = document.getElementById('addDeviceForm');
+  const addDeviceBtn = document.getElementById('addDeviceBtn');
+
+  if (addDeviceForm && addDeviceBtn) {
+    addDeviceForm.addEventListener('submit', function() {
+      const btnText = addDeviceBtn.querySelector('.btn-text');
+      const spinner = addDeviceBtn.querySelector('.spinner-border');
+
+      if (btnText && spinner) {
+        btnText.textContent = 'Connecting...';
+        spinner.classList.remove('d-none');
+        addDeviceBtn.disabled = true;
+      }
+    });
+  }
+
+  // Device search/filter functionality
+  const searchInput = document.getElementById('deviceSearch');
+  const deviceRows = document.querySelectorAll('.device-row');
+  const deviceCount = document.getElementById('deviceCount');
+
+  if (searchInput && deviceRows.length > 0) {
+    searchInput.addEventListener('input', function() {
+      const searchTerm = this.value.toLowerCase().trim();
+      let visibleCount = 0;
+
+      deviceRows.forEach(row => {
+        const hostname = row.querySelector('.device-hostname').textContent.toLowerCase();
+        const ip = row.querySelector('.device-ip').textContent.toLowerCase();
+
+        // Check if search term matches hostname or IP
+        const matches = hostname.includes(searchTerm) || ip.includes(searchTerm);
+
+        if (matches) {
+          row.style.display = '';
+          visibleCount++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+
+      // Update device count badge
+      if (deviceCount) {
+        if (searchTerm) {
+          deviceCount.textContent = `${visibleCount} of ${deviceRows.length} device(s)`;
+        } else {
+          deviceCount.textContent = `${deviceRows.length} device(s)`;
+        }
+      }
+    });
+
+    // Clear search on Escape key
+    searchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        this.value = '';
+        this.dispatchEvent(new Event('input'));
+        this.blur();
+      }
+    });
+  }
+});
+</script>
+
+<!-- 🔷 Polling script -->
+<script>
+const deviceIps = JSON.parse(document.getElementById("device-data").textContent);
+
+function updateStatus(ip) {
+  fetch(`/status/${ip}`)
+    .then(resp => resp.json())
+    .then(data => {
+      const statusEl = document.getElementById(`status-${data.ip}`);
+      if (statusEl) {
+        if (data.online) {
+          statusEl.className = "btn btn-sm btn-success";
+          statusEl.textContent = "Online";
+        } else {
+          statusEl.className = "btn btn-sm btn-danger";
+          statusEl.textContent = "Offline";
+        }
+      }
+      const btn = document.getElementById(`btn-${data.ip}`);
+      if (btn) {
+        if (data.online) {
+          btn.outerHTML = `<a id="btn-${data.ip}" href="/device/${data.ip}" class="btn btn-sm btn-primary">Manage</a>`;
+        } else {
+          btn.outerHTML = `<button id="btn-${data.ip}" class="btn btn-sm btn-secondary" disabled>Offline</button>`;
+        }
+      }
+    })
+    .catch(err => console.error("Status update failed:", err));
+}
+setInterval(() => {
+  deviceIps.forEach(ip => updateStatus(ip));
+}, 5000);
+</script>
+
+<!-- 🔷 SortableJS for drag & drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const tbody = document.getElementById("deviceTableBody");
+  Sortable.create(tbody, {
+    animation: 150,
+    onEnd: function () {
+      // Collect new order of IPs
+      const newOrder = Array.from(tbody.querySelectorAll("tr")).map(row => row.dataset.ip);
+      console.log("New device order:", newOrder);
+
+      // Send new order to backend
+      fetch("/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newOrder)
+      })
+      .then(resp => resp.json())
+      .then(data => {
+        if (data.status === "success") {
+          console.log("Order updated successfully");
+        } else {
+          console.error("Reorder failed:", data.message);
+        }
+      })
+      .catch(err => console.error("Error saving order:", err));
+    }
+  });
+});
+</script>
+
+{% endblock %}

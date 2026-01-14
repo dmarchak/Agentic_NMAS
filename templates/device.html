@@ -1,0 +1,702 @@
+{% extends "base.html" %}
+{% block content %}
+
+{# Determine active tab; default to utilities #}
+{% set tab = active_tab or 'utilities' %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="d-flex align-items-center gap-3">
+    <h2 class="mb-0">Manage {{ device["hostname"] }} ({{ device["ip"] }})</h2>
+    <!-- SSH Connection Status Badge -->
+    <span id="connectionStatus" class="badge bg-secondary">Checking...</span>
+  </div>
+  <div class="btn-group">
+    <!-- Save Device Config -->
+    <form method="post" action="{{ url_for('save_config', ip=device['ip']) }}" style="display:inline;">
+      <input type="hidden" name="active_tab" value="{{ tab }}">
+      <button type="submit" class="btn btn-outline-success">💾 Save Device Config</button>
+    </form>
+    <!-- Back to Devices -->
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅️ Back to Devices</a>
+  </div>
+</div>
+
+<!-- Tab navigation -->
+<ul class="nav nav-tabs" id="deviceTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if tab == 'utilities' %}active{% endif %}"
+            id="utilities-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#utilities"
+            type="button"
+            role="tab"
+            aria-controls="utilities"
+            aria-selected="{{ 'true' if tab == 'utilities' else 'false' }}">
+      Utilities
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if tab == 'files' %}active{% endif %}"
+            id="files-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#files"
+            type="button"
+            role="tab"
+            aria-controls="files"
+            aria-selected="{{ 'true' if tab == 'files' else 'false' }}">
+      File Management
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if tab == 'scripts' %}active{% endif %}"
+            id="scripts-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#scripts"
+            type="button"
+            role="tab"
+            aria-controls="scripts"
+            aria-selected="{{ 'true' if tab == 'scripts' else 'false' }}">
+      Scripts
+    </button>
+  </li>
+  <!-- Terminal tab -->
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if tab == 'terminal' %}active{% endif %}"
+            id="terminal-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#terminal"
+            type="button"
+            role="tab"
+            aria-controls="terminal"
+            aria-selected="{{ 'true' if tab == 'terminal' else 'false' }}">
+      Terminal
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content mt-3" id="deviceTabsContent">
+  <!-- Utilities Tab -->
+  <div class="tab-pane fade {% if tab == 'utilities' %}show active{% endif %}"
+       id="utilities"
+       role="tabpanel"
+       aria-labelledby="utilities-tab">
+
+    <!-- Quick actions -->
+    <hr>
+    <h4>Quick actions <small class="text-muted">(shared across all devices)</small></h4>
+    <div class="row row-cols-2 row-cols-md-3 g-3 mb-4" id="quickActionsContainer">
+      {% for action in quick_actions %}
+      <div class="col quick-action" data-command="{{ action.command }}" data-label="{{ action.label }}">
+        <div class="position-relative d-inline-block w-100">
+          <a href="{{ url_for('run_command', ip=device['ip'], command=action.command, filesystem=selected_fs) }}"
+             class="btn btn-outline-primary w-100 quick-action-btn">{{ action.label }}</a>
+          <span class="delete-action" title="Delete quick action" aria-label="Delete">&times;</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Custom Command -->
+    <hr>
+    <h4>Send a custom command</h4>
+    <p class="text-muted">Enter any IOS command to run directly on {{ device["hostname"] }}.</p>
+    <form method="get"
+          action="{{ url_for('run_command', ip=device['ip']) }}"
+          class="row g-3 mb-4"
+          id="customCommandForm">
+      <div class="col-md-8">
+        <input class="form-control"
+               id="customCommandInput"
+               name="command"
+               placeholder="e.g. show running-config"
+               required>
+        <input type="hidden" name="filesystem" value="{{ selected_fs }}">
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-outline-primary w-100" id="runCommandBtn">
+          <span class="btn-text">Run Command</span>
+          <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="col-md-2">
+        <button type="button"
+                id="saveQuickActionBtn"
+                class="btn btn-outline-success w-100">
+          Save as Quick Action
+        </button>
+      </div>
+    </form>
+
+    <!-- Command Output (Utilities) -->
+    {% if output and tab == 'utilities' %}
+    <div class="card mb-4" id="serverRenderedOutput">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Command output</span>
+        <button class="btn btn-sm btn-outline-secondary copy-btn" data-target="utilityOutput" title="Copy to clipboard">
+          📋 Copy
+        </button>
+      </div>
+      <div class="card-body">
+        {% if filename %}
+          <a href="{{ url_for('download_file') }}"
+             class="btn btn-outline-primary mb-3">⬇️ Download</a>
+        {% endif %}
+        <!-- Only Flask-rendered output; no Socket.IO wiring here -->
+        <pre class="bg-body-secondary border p-3" id="utilityOutput">{{ output }}</pre>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- File Management Tab -->
+  <div class="tab-pane fade {% if tab == 'files' %}show active{% endif %}"
+       id="files"
+       role="tabpanel"
+       aria-labelledby="files-tab">
+
+    <hr>
+    <h4>📁 File management</h4>
+    <p class="text-muted">Manage files on the selected device. Choose a file system to upload, delete, or refresh.</p>
+
+    <!-- Filesystem Dropdown -->
+    <div class="mb-3">
+      <label for="fsDropdown" class="form-label fw-bold">File system</label>
+      <select id="fsDropdown" class="form-select" name="filesystem" required>
+        {% for fs in filesystems %}
+          <option value="{{ fs }}" {% if fs == selected_fs %}selected{% endif %}>{{ fs }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Hidden refresh form -->
+    <form id="fsChangeForm" method="post" action="{{ url_for('refresh_files', ip=device['ip']) }}">
+      <input type="hidden" name="filesystem" id="fsChangeInput" value="{{ selected_fs }}">
+    </form>
+
+    <div class="row g-4 mb-4">
+      <!-- Upload -->
+      <div class="col-md-6">
+        <h5>⬆️ Upload file</h5>
+        <form method="post" action="{{ url_for('upload_file', ip=device['ip']) }}" enctype="multipart/form-data">
+          <input type="hidden" id="uploadFsInput" name="filesystem" value="{{ selected_fs }}">
+          <input type="file" class="form-control mb-2" name="file" required>
+          <button class="btn btn-outline-primary w-100">Upload</button>
+        </form>
+      </div>
+
+      <!-- Delete -->
+      <div class="col-md-6">
+        <h5>🗑️ Delete file</h5>
+        <form method="post" action="{{ url_for('delete_file', ip=device['ip']) }}">
+          <input type="hidden" id="deleteFsInput" name="filesystem" value="{{ selected_fs }}">
+          <select class="form-select mb-2" name="filename" required>
+            {% for f in files %}
+              <option value="{{ f }}">{{ f }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-outline-danger w-100">Delete</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Command Output (Files) -->
+    {% if output and tab == 'files' %}
+    <div class="card mb-4" id="serverRenderedOutput">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Command output</span>
+        <button class="btn btn-sm btn-outline-secondary copy-btn" data-target="filesOutput" title="Copy to clipboard">
+          📋 Copy
+        </button>
+      </div>
+      <div class="card-body">
+        {% if filename %}
+          <a href="{{ url_for('download_file') }}"
+             class="btn btn-outline-primary mb-3">⬇️ Download</a>
+        {% endif %}
+        <pre class="bg-body-secondary border p-3" id="filesOutput">{{ output }}</pre>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+  // Intercept quick-action button clicks and call /run_command via fetch
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.quick-action-btn');
+    if (!btn) return;
+    e.preventDefault();
+    const url = btn.getAttribute('href');
+    if (!url) return;
+
+    // Simple spinner state
+    const origText = btn.innerHTML;
+    btn.innerHTML = '⏳ Running...';
+    btn.disabled = true;
+
+    fetch(url, {
+      method: 'GET',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+    })
+      .then(async (resp) => {
+        if (!resp.ok) throw new Error('Network response not ok');
+        const data = await resp.json();
+        showQuickActionOutput(data.output, data.filename);
+      })
+      .catch((err) => {
+        showQuickActionOutput('ERROR: ' + String(err), null);
+      })
+      .finally(() => {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+      });
+  });
+
+  function showQuickActionOutput(output, filename) {
+    // Remove any previous output (server-rendered or previous AJAX)
+    const serverRendered = document.getElementById('serverRenderedOutput');
+    if (serverRendered) serverRendered.remove();
+    const prev = document.getElementById('quickActionOutputCard');
+    if (prev) prev.remove();
+
+    const customForm = document.getElementById('customCommandForm');
+    const container = document.getElementById('quickActionsContainer');
+    const card = document.createElement('div');
+    card.id = 'quickActionOutputCard';
+    card.className = 'card mb-4';
+    let downloadHtml = '';
+    if (filename) {
+      downloadHtml = `<a href="{{ url_for('download_file') }}" class="btn btn-outline-primary mb-3">⬇️ Download</a>`;
+    }
+    card.innerHTML = `
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Command output</span>
+        <button class="btn btn-sm btn-outline-secondary copy-btn" data-target="quickActionOutput" title="Copy to clipboard">
+          📋 Copy
+        </button>
+      </div>
+      <div class="card-body">
+        ${downloadHtml}
+        <pre class="bg-body-secondary border p-3" id="quickActionOutput">${escapeHtml(output)}</pre>
+      </div>
+    `;
+    // Insert after the custom command form so the form remains above output
+    if (customForm && customForm.parentNode) {
+      customForm.parentNode.insertBefore(card, customForm.nextSibling);
+    } else {
+      container.parentNode.insertBefore(card, container.nextSibling);
+    }
+
+    // Attach copy handler to the new button
+    attachCopyHandlers();
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // Copy to clipboard functionality
+  function attachCopyHandlers() {
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      // Remove old listeners to avoid duplicates
+      btn.replaceWith(btn.cloneNode(true));
+    });
+
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const targetId = this.getAttribute('data-target');
+        const targetElement = document.getElementById(targetId);
+
+        if (!targetElement) return;
+
+        const text = targetElement.textContent;
+        navigator.clipboard.writeText(text).then(() => {
+          // Visual feedback
+          const originalText = this.innerHTML;
+          this.innerHTML = '✓ Copied!';
+          this.classList.remove('btn-outline-secondary');
+          this.classList.add('btn-success');
+
+          // Use toast from base.html if available
+          if (typeof showToast === 'function') {
+            showToast('Output copied to clipboard', 'success');
+          }
+
+          // Reset button after 2 seconds
+          setTimeout(() => {
+            this.innerHTML = originalText;
+            this.classList.remove('btn-success');
+            this.classList.add('btn-outline-secondary');
+          }, 2000);
+        }).catch(err => {
+          console.error('Copy failed:', err);
+          if (typeof showToast === 'function') {
+            showToast('Failed to copy to clipboard', 'danger');
+          }
+        });
+      });
+    });
+  }
+
+  // Initialize copy handlers on page load
+  attachCopyHandlers();
+
+  // Add loading indicator to custom command form
+  const customCommandForm = document.getElementById('customCommandForm');
+  const runCommandBtn = document.getElementById('runCommandBtn');
+
+  if (customCommandForm && runCommandBtn) {
+    customCommandForm.addEventListener('submit', function() {
+      const btnText = runCommandBtn.querySelector('.btn-text');
+      const spinner = runCommandBtn.querySelector('.spinner-border');
+
+      if (btnText && spinner) {
+        btnText.textContent = 'Running...';
+        spinner.classList.remove('d-none');
+        runCommandBtn.disabled = true;
+      }
+    });
+  }
+  </script>
+
+  <!-- Scripts Tab -->
+  <div class="tab-pane fade {% if tab == 'scripts' %}show active{% endif %}"
+       id="scripts"
+       role="tabpanel"
+       aria-labelledby="scripts-tab">
+
+    <hr>
+    <h4>📜 Run a script</h4>
+    <p class="text-muted">
+      Paste multiple IOS commands below. They will be sent sequentially to {{ device["hostname"] }}.
+    </p>
+    <form method="post" action="{{ url_for('run_script', ip=device['ip']) }}" class="mb-4">
+      <input type="hidden" name="filesystem" value="{{ selected_fs }}">
+
+      <!-- Mode selector -->
+      <div class="mb-3">
+        <label for="scriptMode" class="form-label fw-bold">Execution mode</label>
+        <select id="scriptMode" class="form-select" name="mode" required>
+          <option value="enable" {% if request.form.get('mode') == 'enable' %}selected{% endif %}>Enable Mode</option>
+          <option value="config" {% if request.form.get('mode') == 'config' %}selected{% endif %}>Configure Terminal</option>
+        </select>
+      </div>
+
+      <textarea class="form-control mb-3" name="script" rows="10" placeholder="Enter one command per line..." required></textarea>
+      <button type="submit" class="btn btn-outline-primary w-100" id="runScriptBtn">
+        <span class="btn-text">Run Script</span>
+        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+      </button>
+    </form>
+
+    <!-- Command Output (Scripts) -->
+    {% if output and tab == 'scripts' %}
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Script output</span>
+        <button class="btn btn-sm btn-outline-secondary copy-btn" data-target="scriptsOutput" title="Copy to clipboard">
+          📋 Copy
+        </button>
+      </div>
+      <div class="card-body">
+        {% if filename %}
+          <a href="{{ url_for('download_file') }}"
+             class="btn btn-outline-primary mb-3">⬇️ Download</a>
+        {% endif %}
+        <pre class="bg-body-secondary border p-3" id="scriptsOutput">{{ output }}</pre>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Terminal Tab -->
+  <div class="tab-pane fade {% if tab == 'terminal' %}show active{% endif %}"
+       id="terminal"
+       role="tabpanel"
+       aria-labelledby="terminal-tab">
+    <hr>
+    <h4>🖥️ Live terminal</h4>
+    <p class="text-muted">Interactive SSH session with {{ device["hostname"] }}.</p>
+    <div id="terminal-container" class="terminal-box"></div>
+  </div>
+</div>
+
+<!-- Styles for hover-delete on quick actions and terminal sizing -->
+<style>
+.quick-action .delete-action {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.5rem;
+  color: #b00020;
+  font-weight: bold;
+  cursor: pointer;
+  display: none;
+  user-select: none;
+}
+.quick-action:hover .delete-action {
+  display: inline;
+}
+.quick-action .quick-action-btn {
+  padding-right: 2rem;
+}
+
+/* Terminal box: match tab pane visible area */
+.terminal-box {
+  height: 400px;
+  width: 100%;
+  background: black;
+  overflow: hidden;
+}
+</style>
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+
+<!-- xterm.js + socket.io for Terminal tab -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client/dist/socket.io.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  // --- Connection status badge ---
+  const statusEl = document.getElementById("connectionStatus");
+
+  async function updateStatus() {
+    try {
+      const resp = await fetch(`{{ url_for('connection_status', ip=device['ip']) }}`);
+      const data = await resp.json();
+      if (data.status === "connected") {
+        statusEl.textContent = "SSH Connected";
+        statusEl.className = "badge bg-success";
+      } else {
+        statusEl.textContent = "SSH Disconnected";
+        statusEl.className = "badge bg-danger";
+      }
+    } catch (err) {
+      statusEl.textContent = "Status Error";
+      statusEl.className = "badge bg-warning";
+    }
+  }
+  updateStatus();
+  const statusInterval = setInterval(updateStatus, 5000);
+
+  // --- File system sync for File Management tab ---
+  const fsDropdown = document.getElementById("fsDropdown");
+  const fsChangeInput = document.getElementById("fsChangeInput");
+  const fsChangeForm = document.getElementById("fsChangeForm");
+  const uploadFsInput = document.getElementById("uploadFsInput");
+  const deleteFsInput = document.getElementById("deleteFsInput");
+
+  function syncFsInputs() {
+    if (!fsDropdown) return;
+    const val = fsDropdown.value;
+    if (uploadFsInput) uploadFsInput.value = val;
+    if (deleteFsInput) deleteFsInput.value = val;
+    if (fsChangeInput) fsChangeInput.value = val;
+  }
+
+  if (fsDropdown) {
+    fsDropdown.addEventListener("change", () => {
+      syncFsInputs();
+      if (fsChangeForm) fsChangeForm.submit(); // posts to refresh_files route
+    });
+    syncFsInputs();
+  }
+
+  // --- Quick Actions: global persistence via backend routes (GLOBAL endpoints) ---
+  const saveBtn = document.getElementById("saveQuickActionBtn");
+  const input = document.getElementById("customCommandInput");
+  const container = document.getElementById("quickActionsContainer");
+  const selectedFs = "{{ selected_fs }}";
+
+  function attachDeleteHandler(colEl) {
+    const deleteBtn = colEl.querySelector(".delete-action");
+    if (!deleteBtn) return;
+    deleteBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const cmd = colEl.getAttribute("data-command");
+      const label = colEl.getAttribute("data-label");
+
+      if (!confirm(`Delete quick action "${label}"?`)) return;
+
+      try {
+        const resp = await fetch(`{{ url_for('delete_quick_action') }}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: cmd, label })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === "success") {
+          colEl.remove();
+        } else {
+          alert(data.message || "Failed to delete quick action.");
+        }
+      } catch (err) {
+        console.error("Delete quick action failed:", err);
+        alert("Network error while deleting quick action.");
+      }
+    });
+  }
+
+  document.querySelectorAll("#quickActionsContainer .quick-action").forEach(attachDeleteHandler);
+
+  if (saveBtn && input && container) {
+    saveBtn.addEventListener("click", async () => {
+      const cmd = (input.value || "").trim();
+      if (!cmd) {
+        alert("Please enter a command first.");
+        return;
+      }
+
+      const label = prompt("Enter a name for this quick action:");
+      if (!label) return;
+
+      try {
+        const resp = await fetch(`{{ url_for('add_quick_action') }}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            command: cmd,
+            label: label,
+            filesystem: selectedFs
+          })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === "success") {
+          const col = document.createElement("div");
+          col.className = "col quick-action";
+          col.setAttribute("data-command", cmd);
+          col.setAttribute("data-label", label);
+
+          const href = `${ "{{ url_for('run_command', ip=device['ip']) }}" }?command=${encodeURIComponent(cmd)}&filesystem=${encodeURIComponent(selectedFs)}`;
+
+          col.innerHTML = `
+            <div class="position-relative d-inline-block w-100">
+              <a href="${href}" class="btn btn-outline-primary w-100 quick-action-btn">${label}</a>
+              <span class="delete-action" title="Delete quick action" aria-label="Delete">&times;</span>
+            </div>
+          `;
+          container.appendChild(col);
+          attachDeleteHandler(col);
+        } else {
+          alert(data.message || "Failed to add quick action.");
+        }
+      } catch (err) {
+        console.error("Add quick action failed:", err);
+        alert("Network error while adding quick action.");
+      }
+    });
+  }
+
+  // --- Terminal tab: auto-reconnect and reliable cleanup to avoid duplicate outputs ---
+  const terminalTabEl = document.getElementById('terminal-tab');
+  const terminalPaneEl = document.getElementById('terminal');
+  const terminalContainer = document.getElementById('terminal-container');
+  let socket = null;
+  let term = null;
+
+  function cleanupTerminal() {
+    try { socket?.emit('disconnect_terminal', { ip: '{{ device["ip"] }}' }); } catch (e) {}
+    try { socket?.off('terminal_output'); } catch (e) {}
+    try { socket?.disconnect(); } catch (e) {}
+    socket = null;
+
+    try { term?.dispose(); } catch (e) {}
+    term = null;
+
+    // Clear container contents to avoid lingering DOM nodes
+    if (terminalContainer) {
+      terminalContainer.innerHTML = '';
+    }
+  }
+
+  function initTerminal() {
+    // Ensure previous instances are fully cleaned up
+    cleanupTerminal();
+
+    term = new Terminal({
+      cols: 80,
+      rows: 24,
+      cursorBlink: true,
+      fontFamily: 'monospace',
+      fontSize: 14
+    });
+    term.open(terminalContainer);
+
+    socket = io();
+    socket.emit('connect_terminal', { ip: '{{ device["ip"] }}' });
+
+    // Keystroke batching to preserve order
+    let keyBuffer = '';
+    let flushTimer = null;
+    const flushDelay = 15; // ms
+    function flushKeys() {
+      if (!keyBuffer) return;
+      socket.emit('terminal_input', { ip: '{{ device["ip"] }}', input: keyBuffer });
+      keyBuffer = '';
+      flushTimer = null;
+    }
+    term.onData(data => {
+      keyBuffer += data;
+      if (!flushTimer) flushTimer = setTimeout(flushKeys, flushDelay);
+    });
+
+    // Render incoming output
+    socket.on('terminal_output', msg => {
+      term.write(msg.output);
+    });
+  }
+
+  // Initialize terminal if terminal tab is active on load
+  if ("{{ tab }}" === "terminal") {
+    initTerminal();
+  }
+
+  // Auto-reconnect when Terminal tab is shown (use event on the tab button)
+  if (terminalTabEl) {
+    terminalTabEl.addEventListener('shown.bs.tab', () => {
+      initTerminal();
+    });
+    // Disconnect when Terminal tab is hidden
+    terminalTabEl.addEventListener('hidden.bs.tab', () => {
+      cleanupTerminal();
+    });
+  }
+
+  // Fallback: also listen on the pane in case of markup variations
+  if (terminalPaneEl) {
+    terminalPaneEl.addEventListener('hidden.bs.tab', () => {
+      cleanupTerminal();
+    });
+  }
+
+  // --- Loading indicators for script form ---
+  const scriptForm = document.querySelector('form[action*="run_script"]');
+  const runScriptBtn = document.getElementById('runScriptBtn');
+
+  if (scriptForm && runScriptBtn) {
+    scriptForm.addEventListener('submit', function() {
+      const btnText = runScriptBtn.querySelector('.btn-text');
+      const spinner = runScriptBtn.querySelector('.spinner-border');
+
+      if (btnText && spinner) {
+        btnText.textContent = 'Running Script...';
+        spinner.classList.remove('d-none');
+        runScriptBtn.disabled = true;
+      }
+    });
+  }
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    cleanupTerminal();
+    clearInterval(statusInterval);
+  });
+});
+</script>
+
+{% endblock %}

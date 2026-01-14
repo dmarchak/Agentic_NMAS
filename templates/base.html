@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Network Device Manager</title>
+  <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    /* Toast container positioning */
+    .toast-container {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      z-index: 1090;
+    }
+
+    /* Toast styling */
+    .toast {
+      min-width: 300px;
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+
+    /* Icon colors for different toast types */
+    .toast-success { border-left: 4px solid #198754; }
+    .toast-danger { border-left: 4px solid #dc3545; }
+    .toast-warning { border-left: 4px solid #ffc107; }
+    .toast-info { border-left: 4px solid #0dcaf0; }
+
+    /* Dark mode toggle button */
+    .theme-toggle {
+      position: fixed;
+      top: 70px;
+      right: 1rem;
+      z-index: 1050;
+    }
+
+    /* Smooth transitions */
+    * {
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+  <!-- Theme Toggle Button -->
+  <button class="btn btn-outline-secondary btn-sm theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+    <span id="themeIcon">🌙</span>
+  </button>
+
+  <nav class="navbar navbar-dark bg-dark mb-4">
+    <div class="container-fluid">
+      <span class="navbar-brand">🖧 Network Device Manager</span>
+    </div>
+  </nav>
+
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="toast toast-{{ category }}" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="5000">
+          <div class="toast-header">
+            <strong class="me-auto">
+              {% if category == 'success' %}✓ Success
+              {% elif category == 'danger' %}✗ Error
+              {% elif category == 'warning' %}⚠ Warning
+              {% else %}ℹ Info
+              {% endif %}
+            </strong>
+            <small>just now</small>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+          <div class="toast-body">
+            {{ message }}
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="/static/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Toast & Theme Scripts -->
+  <script>
+    // Initialize toasts
+    document.addEventListener('DOMContentLoaded', function() {
+      const toastElList = document.querySelectorAll('.toast');
+      toastElList.forEach(function(toastEl) {
+        const toast = new bootstrap.Toast(toastEl);
+        toast.show();
+      });
+
+      // Dark mode toggle
+      const themeToggle = document.getElementById('themeToggle');
+      const themeIcon = document.getElementById('themeIcon');
+      const htmlElement = document.documentElement;
+
+      // Load saved theme preference
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      htmlElement.setAttribute('data-bs-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+
+      // Toggle theme on click
+      themeToggle.addEventListener('click', function() {
+        const currentTheme = htmlElement.getAttribute('data-bs-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+        htmlElement.setAttribute('data-bs-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateThemeIcon(newTheme);
+      });
+
+      function updateThemeIcon(theme) {
+        themeIcon.textContent = theme === 'light' ? '🌙' : '☀️';
+        themeToggle.title = theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode';
+      }
+    });
+
+    // Function to show toast dynamically (can be called from other scripts)
+    function showToast(message, category = 'info') {
+      const container = document.getElementById('toastContainer');
+      const iconMap = {
+        success: '✓ Success',
+        danger: '✗ Error',
+        warning: '⚠ Warning',
+        info: 'ℹ Info'
+      };
+
+      const toastHtml = `
+        <div class="toast toast-${category}" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="5000">
+          <div class="toast-header">
+            <strong class="me-auto">${iconMap[category] || iconMap.info}</strong>
+            <small>just now</small>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+          <div class="toast-body">${message}</div>
+        </div>
+      `;
+
+      container.insertAdjacentHTML('beforeend', toastHtml);
+      const newToast = container.lastElementChild;
+      const toast = new bootstrap.Toast(newToast);
+      toast.show();
+
+      // Remove toast element after it's hidden
+      newToast.addEventListener('hidden.bs.toast', function() {
+        newToast.remove();
+      });
+    }
+  </script>
+</body>
+</html>
+
