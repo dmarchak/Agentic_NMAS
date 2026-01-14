@@ -55,6 +55,7 @@ from modules.backups import (
     delete_backup,
     get_backup_stats
 )
+from modules.bulk_ops import bulk_manager
 
 # Device status cache and ping worker setup
 #
@@ -1017,6 +1018,73 @@ def backup_stats_route():
     try:
         stats = get_backup_stats()
         return jsonify({"status": "success", "stats": stats})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Bulk Operations Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/bulk_execute", methods=["POST"])
+def bulk_execute():
+    """Execute a command on multiple devices."""
+    try:
+        device_ips = request.form.getlist("device_ips[]")
+        command = request.form.get("command", "").strip()
+
+        if not device_ips:
+            return jsonify({"status": "error", "message": "No devices selected"}), 400
+
+        if not command:
+            return jsonify({"status": "error", "message": "No command provided"}), 400
+
+        # Load devices
+        all_devices = load_saved_devices(DEVICES_FILE)
+        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
+
+        if not selected_devices:
+            return jsonify({"status": "error", "message": "No valid devices found"}), 400
+
+        app.logger.info(f"Bulk execute on {len(selected_devices)} devices: {command}")
+
+        # Start bulk operation
+        operation_id = bulk_manager.execute_bulk_command(
+            devices=selected_devices,
+            command=command,
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            max_workers=5
+        )
+
+        return jsonify({
+            "status": "success",
+            "operation_id": operation_id,
+            "message": f"Executing on {len(selected_devices)} device(s)"
+        })
+
+    except Exception as e:
+        app.logger.error(f"Bulk execute failed: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/bulk_status/<operation_id>")
+def bulk_status(operation_id):
+    """Get status of a bulk operation."""
+    try:
+        status = bulk_manager.get_operation_status(operation_id)
+        return jsonify({"status": "success", "operation": status})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/bulk_clear/<operation_id>", methods=["POST"])
+def bulk_clear(operation_id):
+    """Clear a completed bulk operation."""
+    try:
+        bulk_manager.clear_operation(operation_id)
+        return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

@@ -17,10 +17,26 @@
 </div>
 
 {% if devices %}
+<!-- 🔷 Bulk Operations Panel -->
+<div class="card mb-3" id="bulkOpsPanel" style="display: none;">
+  <div class="card-body">
+    <h5 class="card-title">📦 Bulk Operations</h5>
+    <p class="text-muted mb-2">Execute commands on <span id="selectedCount">0</span> selected device(s)</p>
+    <div class="input-group">
+      <input type="text" class="form-control" id="bulkCommand" placeholder="Enter command to execute on selected devices">
+      <button class="btn btn-primary" onclick="executeBulkCommand()">Execute</button>
+      <button class="btn btn-outline-secondary" onclick="clearSelection()">Clear Selection</button>
+    </div>
+  </div>
+</div>
+
 <!-- 🔷 Table of saved devices -->
 <table class="table table-bordered table-hover align-middle">
   <thead class="table-dark">
     <tr>
+      <th style="width: 40px;">
+        <input type="checkbox" id="selectAll" title="Select All">
+      </th>
       <th>Status</th>
       <th>Hostname</th>
       <th>IP Address</th>
@@ -31,6 +47,10 @@
   <tbody id="deviceTableBody">
     {% for d in devices %}
     <tr data-ip="{{ d['ip'] }}" data-hostname="{{ d['hostname'] }}" class="device-row">
+      <td>
+        <input type="checkbox" class="device-checkbox" value="{{ d['ip'] }}"
+               {% if not d['online'] %}disabled{% endif %}>
+      </td>
       <td>
         <span id="status-{{ d['ip'] }}"
               class="btn btn-sm {% if d['online'] %}btn-success{% else %}btn-danger{% endif %}">
@@ -62,6 +82,33 @@
 {% else %}
 <p class="text-muted">No devices saved yet. Add one below.</p>
 {% endif %}
+
+<!-- 🔷 Bulk Operation Results Modal -->
+<div class="modal fade" id="bulkResultsModal" tabindex="-1" aria-labelledby="bulkResultsLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bulkResultsLabel">Bulk Operation Results</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="bulkProgress" class="mb-3">
+          <div class="d-flex justify-content-between mb-2">
+            <span>Progress: <span id="bulkProgressText">0/0</span></span>
+            <span><span id="bulkSuccessCount" class="text-success">0 succeeded</span>, <span id="bulkFailCount" class="text-danger">0 failed</span></span>
+          </div>
+          <div class="progress">
+            <div id="bulkProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div id="bulkResults"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- 🔷 Add Device Form -->
 <hr>
@@ -155,6 +202,182 @@ document.addEventListener('DOMContentLoaded', () => {
         this.blur();
       }
     });
+  }
+
+  // ========================================================================
+  // Bulk Operations
+  // ========================================================================
+
+  const deviceCheckboxes = document.querySelectorAll('.device-checkbox');
+  const selectAll = document.getElementById('selectAll');
+  const bulkOpsPanel = document.getElementById('bulkOpsPanel');
+  const selectedCountSpan = document.getElementById('selectedCount');
+
+  // Update selection count and show/hide bulk panel
+  function updateSelection() {
+    const selected = Array.from(deviceCheckboxes).filter(cb => cb.checked && !cb.disabled);
+    const count = selected.length;
+
+    if (selectedCountSpan) {
+      selectedCountSpan.textContent = count;
+    }
+
+    if (bulkOpsPanel) {
+      bulkOpsPanel.style.display = count > 0 ? 'block' : 'none';
+    }
+
+    // Update select all checkbox
+    if (selectAll) {
+      const enabledCheckboxes = Array.from(deviceCheckboxes).filter(cb => !cb.disabled);
+      selectAll.checked = enabledCheckboxes.length > 0 && selected.length === enabledCheckboxes.length;
+    }
+  }
+
+  // Select all checkbox
+  if (selectAll) {
+    selectAll.addEventListener('change', function() {
+      deviceCheckboxes.forEach(cb => {
+        if (!cb.disabled) {
+          cb.checked = this.checked;
+        }
+      });
+      updateSelection();
+    });
+  }
+
+  // Individual checkboxes
+  deviceCheckboxes.forEach(cb => {
+    cb.addEventListener('change', updateSelection);
+  });
+
+  // Clear selection
+  window.clearSelection = function() {
+    deviceCheckboxes.forEach(cb => cb.checked = false);
+    if (selectAll) selectAll.checked = false;
+    updateSelection();
+  };
+
+  // Execute bulk command
+  window.executeBulkCommand = function() {
+    const command = document.getElementById('bulkCommand').value.trim();
+    if (!command) {
+      showToast('Please enter a command', 'warning');
+      return;
+    }
+
+    const selectedIps = Array.from(deviceCheckboxes)
+      .filter(cb => cb.checked && !cb.disabled)
+      .map(cb => cb.value);
+
+    if (selectedIps.length === 0) {
+      showToast('No devices selected', 'warning');
+      return;
+    }
+
+    if (!confirm(`Execute "${command}" on ${selectedIps.length} device(s)?`)) {
+      return;
+    }
+
+    // Prepare form data
+    const formData = new FormData();
+    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
+    formData.append('command', command);
+
+    // Show loading toast
+    showToast('Starting bulk operation...', 'info');
+
+    // Execute bulk command
+    fetch('/bulk_execute', {
+      method: 'POST',
+      body: formData
+    })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        // Show results modal and start polling
+        showBulkResults(data.operation_id);
+      } else {
+        showToast(data.message || 'Bulk operation failed', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Bulk execute failed:', err);
+      showToast('Failed to start bulk operation', 'danger');
+    });
+  };
+
+  // Show bulk results modal
+  function showBulkResults(operationId) {
+    const modal = new bootstrap.Modal(document.getElementById('bulkResultsModal'));
+    modal.show();
+
+    // Reset progress
+    document.getElementById('bulkProgressBar').style.width = '0%';
+    document.getElementById('bulkProgressText').textContent = '0/0';
+    document.getElementById('bulkSuccessCount').textContent = '0 succeeded';
+    document.getElementById('bulkFailCount').textContent = '0 failed';
+    document.getElementById('bulkResults').innerHTML = '<p class="text-muted">Executing...</p>';
+
+    // Poll for updates
+    const pollInterval = setInterval(() => {
+      fetch(`/bulk_status/${operationId}`)
+        .then(resp => resp.json())
+        .then(data => {
+          if (data.status === 'success') {
+            updateBulkProgress(data.operation);
+
+            if (data.operation.status === 'completed') {
+              clearInterval(pollInterval);
+              document.getElementById('bulkProgressBar').classList.remove('progress-bar-animated');
+              showToast('Bulk operation completed', 'success');
+            }
+          }
+        })
+        .catch(err => console.error('Poll failed:', err));
+    }, 1000);
+
+    // Clear interval when modal closes
+    document.getElementById('bulkResultsModal').addEventListener('hidden.bs.modal', () => {
+      clearInterval(pollInterval);
+    }, { once: true });
+  }
+
+  // Update bulk progress display
+  function updateBulkProgress(operation) {
+    const { total, completed, failed, results } = operation;
+    const progress = total > 0 ? ((completed + failed) / total * 100) : 0;
+
+    document.getElementById('bulkProgressBar').style.width = progress + '%';
+    document.getElementById('bulkProgressText').textContent = `${completed + failed}/${total}`;
+    document.getElementById('bulkSuccessCount').textContent = `${completed} succeeded`;
+    document.getElementById('bulkFailCount').textContent = `${failed} failed`;
+
+    // Render results
+    if (results.length > 0) {
+      const resultsHtml = results.map(result => `
+        <div class="card mb-2">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><strong>${result.hostname}</strong> (${result.ip})</span>
+            <span class="badge bg-${result.status === 'success' ? 'success' : 'danger'}">${result.status}</span>
+          </div>
+          <div class="card-body">
+            ${result.error
+              ? `<p class="text-danger mb-0">${escapeHtml(result.error)}</p>`
+              : `<pre class="bg-body-secondary border p-2 mb-0" style="max-height: 200px; overflow-y: auto;"><code>${escapeHtml(result.output)}</code></pre>`
+            }
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('bulkResults').innerHTML = resultsHtml;
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 });
 </script>
