@@ -18,7 +18,7 @@ pipeline {
         stage('Syntax: modules/*.py') {
             // id: syntax_modules  type: syntax_glob
             steps {
-                bat 'FOR %f IN (modules/*.py) DO python -m py_compile "%f"'
+                bat 'FOR %%f IN (modules/*.py) DO python -m py_compile "%%f"'
             }
         }
         stage('HTTP: / returns 200') {
@@ -45,10 +45,10 @@ pipeline {
                 bat 'curl -sf --max-time 10 http://localhost:5000/ci/jenkinsfile > NUL'
             }
         }
-        stage('Git: commit updated Jenkinsfile') {
-            // id: git_commit_jenkinsfile  type: script
+        stage('Regenerate and commit Jenkinsfile') {
+            // id: regen_jenkinsfile  type: script
             steps {
-                bat 'cd "C:/Users/dmarc/OneDrive/Desktop/School/Final Project - Dustin Marchak" && curl -sf http://localhost:5000/ci/jenkinsfile > Jenkinsfile && git add Jenkinsfile && git diff --cached --quiet || git commit -m "Fix: remove Unicode em-dashes from Jenkinsfile (Groovy parse fix)"'
+                bat 'curl -s http://localhost:5000/ci/jenkinsfile > Jenkinsfile && git add Jenkinsfile && git commit -m "Regenerate Jenkinsfile - fix syntax_glob %% loop var for Windows bat"'
             }
         }
     }
