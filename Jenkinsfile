@@ -12,43 +12,43 @@ pipeline {
         stage('Syntax: app.py') {
             // id: syntax_app  type: syntax
             steps {
-                bat 'python -m py_compile app.py'
+                bat "python -m py_compile app.py"
             }
         }
         stage('Syntax: modules/*.py') {
             // id: syntax_modules  type: syntax_glob
             steps {
-                bat 'FOR %%f IN (modules\*.py) DO python -m py_compile "%%f"'
+                bat "FOR %%f IN (modules\\*.py) DO python -m py_compile \"%%f\""
             }
         }
         stage('HTTP: / returns 200') {
             // id: http_root  type: http
             steps {
-                bat 'curl -sf --max-time 10 http://localhost:5000/ > NUL'
+                bat "curl -sf --max-time 10 http://localhost:5000/ > NUL"
             }
         }
         stage('HTTP: /devices returns 200') {
             // id: http_devices  type: http
             steps {
-                bat 'curl -sf --max-time 10 http://localhost:5000/devices > NUL'
+                bat "curl -sf --max-time 10 http://localhost:5000/devices > NUL"
             }
         }
         stage('HTTP: /ai/providers returns 200') {
             // id: http_ai_providers  type: http
             steps {
-                bat 'curl -sf --max-time 10 http://localhost:5000/ai/providers > NUL'
+                bat "curl -sf --max-time 10 http://localhost:5000/ai/providers > NUL"
             }
         }
         stage('HTTP: /ci/jenkinsfile returns 200') {
             // id: http_ci_jenkinsfile  type: http
             steps {
-                bat 'curl -sf --max-time 10 http://localhost:5000/ci/jenkinsfile > NUL'
+                bat "curl -sf --max-time 10 http://localhost:5000/ci/jenkinsfile > NUL"
             }
         }
-        stage('Regenerate and commit Jenkinsfile') {
-            // id: regen_jenkinsfile_v2  type: script
+        stage('Regen and commit Jenkinsfile') {
+            // id: regen_commit_jenkinsfile  type: script
             steps {
-                bat 'curl -s http://localhost:5000/ci/jenkinsfile > Jenkinsfile && git add Jenkinsfile && git commit -m "Regenerate Jenkinsfile - fix syntax_glob path prefix for Windows bat FOR loop"'
+                bat "curl -s http://localhost:5000/ci/jenkinsfile > Jenkinsfile && git add Jenkinsfile && git commit -m \"Fix: use double-quoted Groovy strings to allow backslashes in bat steps\""
             }
         }
     }
