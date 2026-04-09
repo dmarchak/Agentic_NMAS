@@ -18,7 +18,7 @@ pipeline {
         stage('Syntax: modules/*.py') {
             // id: syntax_modules  type: syntax_glob
             steps {
-                bat 'FOR %%f IN (modules/*.py) DO python -m py_compile "%%f"'
+                bat 'FOR %%f IN (modules\*.py) DO python -m py_compile "%%f"'
             }
         }
         stage('HTTP: / returns 200') {
@@ -46,9 +46,9 @@ pipeline {
             }
         }
         stage('Regenerate and commit Jenkinsfile') {
-            // id: regen_jenkinsfile  type: script
+            // id: regen_jenkinsfile_v2  type: script
             steps {
-                bat 'curl -s http://localhost:5000/ci/jenkinsfile > Jenkinsfile && git add Jenkinsfile && git commit -m "Regenerate Jenkinsfile - fix syntax_glob %% loop var for Windows bat"'
+                bat 'curl -s http://localhost:5000/ci/jenkinsfile > Jenkinsfile && git add Jenkinsfile && git commit -m "Regenerate Jenkinsfile - fix syntax_glob path prefix for Windows bat FOR loop"'
             }
         }
     }
