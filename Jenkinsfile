@@ -49,7 +49,7 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline finished: ${{currentBuild.currentResult}}"
+            echo "Pipeline finished: ${currentBuild.currentResult}"
         }
         success {
             echo 'All CI checks passed.'
