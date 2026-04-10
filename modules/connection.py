@@ -56,16 +56,28 @@ def is_device_online(ip: str) -> bool:
 
 
 def ping_worker(
-    device_status_cache: dict, filename: str = None, interval: int = 5
+    device_status_cache: dict, filename=None, interval: int = 5
 ) -> None:
     #Background thread: pings devices periodically and updates status cache.
+    #filename can be a string path or a callable that returns the current path.
 
     def worker():
         last_mtime = None
+        last_fn = None
         devices = []
         while True:
             try:
-                fn = filename or DEVICES_FILE
+                # Support callable for dynamic device list selection
+                if callable(filename):
+                    fn = filename()
+                else:
+                    fn = filename or DEVICES_FILE
+
+                # Reset mtime tracking if filename changed
+                if fn != last_fn:
+                    last_fn = fn
+                    last_mtime = None
+
                 if os.path.exists(fn):
                     mtime = os.path.getmtime(fn)
                     if mtime != last_mtime:

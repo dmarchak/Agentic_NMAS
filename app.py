@@ -2,6 +2,13 @@
 # CSCI 5020 - Final Project
 # Device Manager web application
 
+# Load .env file if present (sets ANTHROPIC_API_KEY etc. without needing system env vars)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; rely on system environment variables
+
 # import libraries
 from flask import (
     Flask, # core Flask class
@@ -18,6 +25,7 @@ from flask import (
 from flask_socketio import SocketIO, join_room, leave_room # for WebSocket support
 import threading # for thread-safe connection pool
 import os # for os operations
+import uuid # for generating unique operation IDs
 import time # for sleep
 import webbrowser # to open browser on start
 import ipaddress # for IP address validation
@@ -26,10 +34,20 @@ from logging.handlers import RotatingFileHandler # for log file rotation
 from io import BytesIO # for in-memory file downloads
 
 # Import Project modules
-from modules.device import load_saved_devices, save_device, write_devices_csv, get_device_context
+from modules.device import (
+    load_saved_devices,
+    save_device,
+    write_devices_csv,
+    get_device_context,
+    get_device_lists,
+    get_current_device_list,
+    set_current_device_list,
+    create_device_list,
+    delete_device_list as delete_device_list_func
+)
 import modules.device as device_module
 from modules.config import (
-    DEVICES_FILE,
+    BASE_DIR,
     PING_INTERVAL,
     SECRET_KEY_FILE,
     TFTP_ROOT,
@@ -37,7 +55,8 @@ from modules.config import (
     FILE_TRANSFER_METHOD,
     FLASK_HOST,
     FLASK_PORT,
-    FLASK_DEBUG
+    FLASK_DEBUG,
+    set_user_setting
 )
 from modules.connection import ping_worker, get_persistent_connection, close_persistent_connection, with_temp_connection
 from modules.terminal import ensure_terminal_session, start_terminal_reader
@@ -56,19 +75,36 @@ from modules.backups import (
     get_backup_stats
 )
 from modules.bulk_ops import bulk_manager
+from modules.topology import discover_topology
 
 # Device status cache and ping worker setup
 #
 # `device_status_cache` is a lightweight in-memory mapping kept up to
 # date by the background `ping_worker` thread. The web handlers read
 # this cache to show online/offline state without performing blocking
-# network I/O on each web request. `ping_worker` monitors the
-# `DEVICES_FILE` and re-reads the inventory when it changes.
+# network I/O on each web request. `ping_worker` monitors the current
+# device list file and re-reads the inventory when it changes.
 device_status_cache = {}
-ping_worker(device_status_cache, filename=DEVICES_FILE, interval=PING_INTERVAL)
+
+def _get_current_devices_file():
+    """Helper for ping_worker to get the current device list file."""
+    _, filepath = get_current_device_list()
+    return filepath
+
+ping_worker(device_status_cache, filename=_get_current_devices_file, interval=PING_INTERVAL)
 
 # Flask application and Socket.IO initialization
-app = Flask(__name__)
+# Handle paths for both normal Python and PyInstaller frozen executable
+import sys
+if getattr(sys, 'frozen', False):
+    # Running as compiled executable - use _MEIPASS for bundled resources
+    bundle_dir = sys._MEIPASS
+    template_folder = os.path.join(bundle_dir, 'templates')
+    static_folder = os.path.join(bundle_dir, 'static')
+    app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+else:
+    # Running as normal Python script
+    app = Flask(__name__)
 
 # Load or generate persistent secret key
 if os.path.exists(SECRET_KEY_FILE):
@@ -86,13 +122,14 @@ socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
 # Logging Configuration
 # ---------------------------------------------------------------------------
 if not app.debug:
-    # Create logs directory if it doesn't exist
-    if not os.path.exists('logs'):
-        os.mkdir('logs')
+    # Create logs directory if it doesn't exist (use BASE_DIR for frozen executable)
+    logs_dir = os.path.join(BASE_DIR, 'logs')
+    if not os.path.exists(logs_dir):
+        os.mkdir(logs_dir)
 
     # Configure rotating file handler (10MB per file, keep 10 backups)
     file_handler = RotatingFileHandler(
-        'logs/device_manager.log',
+        os.path.join(logs_dir, 'device_manager.log'),
         maxBytes=10240000,
         backupCount=10
     )
@@ -228,10 +265,21 @@ def socket_disconnect_terminal(data):
 @app.route("/")
 def index():
     # Home page: show all devices and their online status
-    devices = load_saved_devices(DEVICES_FILE)
+    current_list_name, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     for d in devices:
         d["online"] = device_status_cache.get(d["ip"], False)
-    return render_template("index.html", devices=devices)
+
+    # Get all device lists for the dropdown
+    device_lists = get_device_lists()
+
+    return render_template(
+        "index.html",
+        devices=devices,
+        device_lists=device_lists,
+        current_list=current_list_name,
+        tftp_server=TFTP_SERVER_IP
+    )
 
 
 # Add device
@@ -243,7 +291,10 @@ def add_device():
     password = request.form["password"]
     secret = request.form["secret"]
 
-    app.logger.info(f'Attempting to add device: {ip} with username: {username}')
+    # Get current device list
+    current_list_name, current_list_file = get_current_device_list()
+
+    app.logger.info(f'Attempting to add device: {ip} with username: {username} to list: {current_list_name}')
 
     # Validate IP address format
     try:
@@ -282,11 +333,11 @@ def add_device():
         flash("Password cannot be empty", "danger")
         return redirect(url_for("index"))
 
-    # Check for duplicate IP
-    devices = load_saved_devices(DEVICES_FILE)
+    # Check for duplicate IP in current list
+    devices = load_saved_devices(current_list_file)
     if any(d["ip"] == ip for d in devices):
         app.logger.warning(f'Duplicate device IP detected: {ip}')
-        flash(f"Device with IP {ip} already exists", "warning")
+        flash(f"Device with IP {ip} already exists in '{current_list_name}'", "warning")
         return redirect(url_for("index"))
 
     try:
@@ -304,7 +355,7 @@ def add_device():
                 "secret": secret,
                 "hostname": hostname,
             },
-            DEVICES_FILE,
+            current_list_file,
         )
         app.logger.info(f'Device added successfully: {hostname} ({ip})')
         flash(f"Device {hostname} ({ip}) added successfully!", "success")
@@ -318,7 +369,8 @@ def add_device():
 @app.route("/device/<ip>")
 def manage_device(ip):
     # Device management page: show filesystems, files, quick actions
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if not dev:
         flash("Device not found", "danger")
@@ -337,6 +389,7 @@ def manage_device(ip):
             selected_fs=selected_fs,
             quick_actions=load_quick_actions().get("global", []),
             active_tab=active_tab,
+            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         flash(f"Failed to connect to {dev.get('hostname', ip)} ({ip}): {e}", "danger")
@@ -350,7 +403,8 @@ def run_command(ip):
     command = request.args.get("command")
     filesystem = request.args.get("filesystem")
 
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if not dev:
         flash("Device not found", "danger")
@@ -393,6 +447,7 @@ def run_command(ip):
             filename=session["last_filename"],
             active_tab="utilities",
             quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         flash(
@@ -400,6 +455,51 @@ def run_command(ip):
             "danger",
         )
         return redirect(url_for("index"))
+
+
+# JSON API: execute a single command on a device (used by Jenkins pipelines)
+@app.route("/execute_command", methods=["POST"])
+def api_execute_command():
+    """Execute a single IOS command and return JSON output.
+
+    Expects JSON body: {"ip": "...", "command": "...", "mode": "enable|config"}
+    Returns: {"output": "...", "error": null} or {"output": null, "error": "..."}
+    """
+    data = request.get_json(silent=True) or {}
+    ip = data.get("ip")
+    command = data.get("command")
+    mode = data.get("mode", "enable")
+
+    if not ip or not command:
+        return jsonify({"output": None, "error": "ip and command are required"}), 400
+
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
+    dev = next((d for d in devices if d["ip"] == ip), None)
+    if not dev:
+        return jsonify({"output": None, "error": f"Device {ip} not found"}), 404
+
+    try:
+        if mode == "config":
+            def execute_config(conn):
+                conn.config_mode()
+                result = run_device_command(conn, command)
+                try:
+                    conn.exit_config_mode()
+                except Exception:
+                    pass
+                return result
+            output = with_temp_connection(dev, execute_config)
+        else:
+            try:
+                conn = get_persistent_connection(dev, connections, lock)
+                output = run_device_command(conn, command)
+            except Exception:
+                output = with_temp_connection(dev, lambda c: run_device_command(c, command))
+
+        return jsonify({"output": output, "error": None})
+    except Exception as e:
+        return jsonify({"output": None, "error": str(e)}), 500
 
 
 # Run script (temporary connection for each command or config mode block)
@@ -410,7 +510,8 @@ def run_script(ip):
     mode = request.form.get("mode")
     filesystem = request.form.get("filesystem")
 
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if not dev:
         flash("Device not found", "danger")
@@ -476,6 +577,7 @@ def run_script(ip):
             filename=session["last_filename"],
             active_tab="scripts",
             quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         flash(
@@ -508,7 +610,8 @@ def upload_file(ip):
     """Upload a file to the device via TFTP or SCP."""
     app.logger.info(f'File upload requested for device: {ip}')
 
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if not dev:
         flash("Device not found", "danger")
@@ -516,6 +619,7 @@ def upload_file(ip):
 
     file = request.files.get("file")
     filesystem = request.form.get("filesystem")
+    tftp_server = request.form.get("tftp_server", TFTP_SERVER_IP) or TFTP_SERVER_IP
 
     if not file:
         flash("No file selected", "danger")
@@ -571,7 +675,7 @@ def upload_file(ip):
             def execute_tftp(conn):
                 # IOS expects just the destination filesystem here; filenames are prompted interactively
                 output = conn.send_command_timing(f"copy tftp: {filesystem}")
-                output += conn.send_command_timing(TFTP_SERVER_IP)
+                output += conn.send_command_timing(tftp_server)
                 output += conn.send_command_timing(file.filename)
                 output += conn.send_command_timing(file.filename)
                 output += conn.send_command_timing("\n")
@@ -595,6 +699,7 @@ def upload_file(ip):
             filename=None,
             active_tab="files",
             quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         app.logger.error(f'File upload failed for {ip}: {e}', exc_info=True)
@@ -620,7 +725,8 @@ def delete_file(ip):
     filename = request.form.get("filename")
     filesystem = request.form.get("filesystem")
 
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if not dev:
         flash("Device not found", "danger")
@@ -656,9 +762,63 @@ def delete_file(ip):
             filename=None,
             active_tab="files",
             quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         flash(f"Delete failed: {e}", "danger")
+        return redirect(url_for("manage_device", ip=ip))
+
+
+# Download file to TFTP server (temporary connection)
+@app.route("/device/<ip>/download_file", methods=["POST"])
+def download_device_file(ip):
+    """Download a file from the device to TFTP server."""
+    filename = request.form.get("filename")
+    filesystem = request.form.get("filesystem")
+    tftp_server = request.form.get("tftp_server", TFTP_SERVER_IP) or TFTP_SERVER_IP
+
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
+    dev = next((d for d in devices if d["ip"] == ip), None)
+    if not dev:
+        flash("Device not found", "danger")
+        return redirect(url_for("index"))
+
+    if not filename:
+        flash("No filename provided", "warning")
+        return redirect(url_for("manage_device", ip=ip))
+
+    try:
+        hostname = dev.get("hostname", dev.get("ip", "device"))
+        remote_filename = f"{hostname}_{filename}"
+
+        def execute(conn):
+            # copy flash:filename tftp://server/remote_filename
+            output = conn.send_command_timing(f"copy {filesystem}{filename} tftp:")
+            output += conn.send_command_timing(tftp_server)
+            output += conn.send_command_timing(remote_filename)
+            output += conn.send_command_timing("\n")
+            return output
+
+        output = with_temp_connection(dev, execute)
+
+        filesystems, file_list, selected_fs = get_device_context(dev, filesystem)
+
+        flash(f"File {filename} downloaded to TFTP server as {remote_filename}", "success")
+        return render_template(
+            "device.html",
+            device=dev,
+            filesystems=filesystems,
+            files=file_list,
+            selected_fs=selected_fs,
+            output=output,
+            filename=None,
+            active_tab="files",
+            quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
+        )
+    except Exception as e:
+        flash(f"Download failed: {e}", "danger")
         return redirect(url_for("manage_device", ip=ip))
 
 
@@ -668,7 +828,8 @@ def refresh_files(ip):
     # Refresh the file list for the device filesystem
     filesystem = request.form.get("filesystem")
 
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if not dev:
         flash("Device not found", "danger")
@@ -687,6 +848,7 @@ def refresh_files(ip):
             filename=None,
             active_tab="files",
             quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         flash(f"Failed to refresh files: {e}", "danger")
@@ -697,9 +859,10 @@ def refresh_files(ip):
 @app.route("/device/<ip>/delete", methods=["POST"])
 def delete_device(ip):
     app.logger.info(f'Attempting to delete device: {ip}')
+    _, current_list_file = get_current_device_list()
     try:
         # Delete from CSV using the device module helper
-        device_module.delete_device(ip, DEVICES_FILE)
+        device_module.delete_device(ip, current_list_file)
         # Also close any persistent connection for this IP (status-only pool)
         close_persistent_connection(ip, connections, lock)
         # Close any live terminal session (Paramiko)
@@ -735,7 +898,8 @@ def save_config(ip):
     # Save the running config on the device
     active_tab = request.form.get("active_tab", "utilities")
 
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if not dev:
         flash("Device not found", "danger")
@@ -767,6 +931,7 @@ def save_config(ip):
             selected_fs=selected_fs,
             active_tab=active_tab,
             quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         flash(f"Error saving config: {e}", "danger")
@@ -776,17 +941,280 @@ def save_config(ip):
 # Reorder devices (CSV rewrite)
 @app.route("/reorder", methods=["POST"])
 def reorder_devices():
-    # Reorder devices in Devices.csv based on new order
+    # Reorder devices in current device list based on new order
     new_order = request.get_json()
     if not new_order:
         return {"status": "error", "message": "No order received"}, 400
 
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     ip_to_device = {d["ip"]: d for d in devices}
     reordered = [ip_to_device[ip] for ip in new_order if ip in ip_to_device]
 
-    write_devices_csv(reordered, DEVICES_FILE)
+    write_devices_csv(reordered, current_list_file)
     return {"status": "success"}
+
+
+# ---------------------------------------------------------------------------
+# Device List Management Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/device_lists", methods=["GET"])
+def get_device_lists_route():
+    """Get all device lists."""
+    try:
+        lists = get_device_lists()
+        current_name, _ = get_current_device_list()
+        return jsonify({
+            "status": "success",
+            "lists": lists,
+            "current": current_name
+        })
+    except Exception as e:
+        app.logger.error(f"Failed to get device lists: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/device_lists", methods=["POST"])
+def create_device_list_route():
+    """Create a new device list."""
+    try:
+        data = request.get_json()
+        list_name = data.get("name", "").strip() if data else ""
+
+        if not list_name:
+            return jsonify({"status": "error", "message": "List name is required"}), 400
+
+        success, message = create_device_list(list_name)
+
+        if success:
+            app.logger.info(f"Created device list: {list_name}")
+            return jsonify({"status": "success", "message": message})
+        else:
+            return jsonify({"status": "error", "message": message}), 400
+
+    except Exception as e:
+        app.logger.error(f"Failed to create device list: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/device_lists/<list_name>", methods=["DELETE"])
+def delete_device_list_route(list_name):
+    """Delete a device list."""
+    try:
+        success, message = delete_device_list_func(list_name)
+
+        if success:
+            app.logger.info(f"Deleted device list: {list_name}")
+            flash(message, "success")
+            return jsonify({"status": "success", "message": message})
+        else:
+            return jsonify({"status": "error", "message": message}), 400
+
+    except Exception as e:
+        app.logger.error(f"Failed to delete device list: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/select_device_list", methods=["POST"])
+def select_device_list_route():
+    """Select a device list as the current list."""
+    try:
+        data = request.get_json()
+        list_name = data.get("name", "").strip() if data else ""
+
+        if not list_name:
+            return jsonify({"status": "error", "message": "List name is required"}), 400
+
+        success = set_current_device_list(list_name)
+
+        if success:
+            app.logger.info(f"Selected device list: {list_name}")
+            return jsonify({"status": "success", "message": f"Switched to '{list_name}'"})
+        else:
+            return jsonify({"status": "error", "message": f"List '{list_name}' not found"}), 404
+
+    except Exception as e:
+        app.logger.error(f"Failed to select device list: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/save_tftp_server", methods=["POST"])
+def save_tftp_server():
+    """Save TFTP server address to user settings."""
+    global TFTP_SERVER_IP
+    try:
+        data = request.get_json()
+        tftp_server = data.get("tftp_server", "").strip() if data else ""
+
+        if not tftp_server:
+            return jsonify({"status": "error", "message": "TFTP server address is required"}), 400
+
+        # Validate IP address format (basic check)
+        try:
+            parts = tftp_server.split(".")
+            if len(parts) == 4 and all(0 <= int(p) <= 255 for p in parts):
+                pass  # Valid IPv4
+            else:
+                return jsonify({"status": "error", "message": "Invalid IP address format"}), 400
+        except (ValueError, AttributeError):
+            return jsonify({"status": "error", "message": "Invalid IP address format"}), 400
+
+        # Save to user settings
+        if set_user_setting("tftp_server_ip", tftp_server):
+            # Update the module-level variable for current session
+            import modules.config as config_module
+            config_module.TFTP_SERVER_IP = tftp_server
+            TFTP_SERVER_IP = tftp_server
+
+            app.logger.info(f"TFTP server address saved: {tftp_server}")
+            return jsonify({
+                "status": "success",
+                "message": f"TFTP server address saved: {tftp_server}"
+            })
+        else:
+            return jsonify({"status": "error", "message": "Failed to save settings"}), 500
+
+    except Exception as e:
+        app.logger.error(f"Failed to save TFTP server: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/device/<ip>/restore_golden_config", methods=["POST"])
+def restore_golden_config(ip):
+    """Restore golden config from flash:golden_config.txt to startup-config."""
+    try:
+        _, current_list_file = get_current_device_list()
+        devices = load_saved_devices(current_list_file)
+        dev = next((d for d in devices if d["ip"] == ip), None)
+
+        if not dev:
+            flash("Device not found", "danger")
+            return redirect(url_for("index"))
+
+        app.logger.info(f"Restoring golden config on device: {ip}")
+
+        def execute_restore(conn):
+            # Use copy command to restore golden config to startup
+            output = conn.send_command_timing("copy flash:golden_config.txt startup-config")
+            # Handle confirmation prompts
+            if "Destination filename" in output or "?" in output:
+                output += conn.send_command_timing("")  # Accept default filename
+            if "[confirm]" in output.lower() or "confirm" in output.lower():
+                output += conn.send_command_timing("")  # Confirm
+            return output
+
+        output = with_temp_connection(dev, execute_restore)
+
+        app.logger.info(f"Golden config restored on {ip}")
+        flash(f"Golden config restored to startup-config on {dev['hostname']}", "success")
+
+        # Get active tab from form
+        active_tab = request.form.get("active_tab", "utilities")
+
+        filesystems, file_list, selected_fs = get_device_context(dev)
+        return render_template(
+            "device.html",
+            device=dev,
+            filesystems=filesystems,
+            files=file_list,
+            selected_fs=selected_fs,
+            output=output,
+            filename=f"{dev['hostname']}_golden_restore.txt",
+            active_tab=active_tab,
+            quick_actions=load_quick_actions().get("global", []),
+            tftp_server=TFTP_SERVER_IP,
+        )
+
+    except Exception as e:
+        app.logger.error(f"Failed to restore golden config on {ip}: {e}")
+        flash(f"Failed to restore golden config: {e}", "danger")
+        return redirect(url_for("manage_device", ip=ip))
+
+
+@app.route("/refresh_hostnames", methods=["POST"])
+def refresh_hostnames():
+    """Refresh hostnames for all online devices by querying them."""
+    try:
+        _, current_list_file = get_current_device_list()
+        devices = load_saved_devices(current_list_file)
+
+        if not devices:
+            return jsonify({"status": "error", "message": "No devices in current list"}), 400
+
+        updated_count = 0
+        failed_count = 0
+        results = []
+
+        for dev in devices:
+            ip = dev.get("ip")
+            old_hostname = dev.get("hostname", "")
+
+            # Check if device is online
+            if not device_status_cache.get(ip, False):
+                results.append({
+                    "ip": ip,
+                    "old_hostname": old_hostname,
+                    "new_hostname": old_hostname,
+                    "status": "skipped",
+                    "message": "Device offline"
+                })
+                continue
+
+            try:
+                # Get current hostname from device
+                def get_hostname(conn):
+                    prompt = conn.find_prompt()
+                    return prompt.rstrip("#>").strip()
+
+                new_hostname = with_temp_connection(dev, get_hostname)
+
+                if new_hostname and new_hostname != old_hostname:
+                    dev["hostname"] = new_hostname
+                    updated_count += 1
+                    results.append({
+                        "ip": ip,
+                        "old_hostname": old_hostname,
+                        "new_hostname": new_hostname,
+                        "status": "updated",
+                        "message": f"Updated: {old_hostname} -> {new_hostname}"
+                    })
+                    app.logger.info(f"Hostname updated for {ip}: {old_hostname} -> {new_hostname}")
+                else:
+                    results.append({
+                        "ip": ip,
+                        "old_hostname": old_hostname,
+                        "new_hostname": new_hostname or old_hostname,
+                        "status": "unchanged",
+                        "message": "No change"
+                    })
+
+            except Exception as e:
+                failed_count += 1
+                results.append({
+                    "ip": ip,
+                    "old_hostname": old_hostname,
+                    "new_hostname": old_hostname,
+                    "status": "failed",
+                    "message": str(e)
+                })
+                app.logger.warning(f"Failed to refresh hostname for {ip}: {e}")
+
+        # Save updated devices back to CSV if any changes
+        if updated_count > 0:
+            write_devices_csv(devices, current_list_file)
+
+        return jsonify({
+            "status": "success",
+            "message": f"Refreshed {updated_count} hostname(s), {failed_count} failed",
+            "updated": updated_count,
+            "failed": failed_count,
+            "results": results
+        })
+
+    except Exception as e:
+        app.logger.error(f"Failed to refresh hostnames: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # Quick actions: add/delete (GLOBAL, no IP param)
@@ -856,7 +1284,8 @@ def connection_status(ip):
     # Return connection status for persistent Netmiko session
     status = "disconnected"
     # Use the persistent connection strictly for status checks
-    devices = load_saved_devices(DEVICES_FILE)
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
     dev = next((d for d in devices if d["ip"] == ip), None)
     if dev:
         try:
@@ -878,7 +1307,8 @@ def backup_config(ip):
     try:
         config_type = request.form.get("config_type", "running")
 
-        devices = load_saved_devices(DEVICES_FILE)
+        _, current_list_file = get_current_device_list()
+        devices = load_saved_devices(current_list_file)
         dev = next((d for d in devices if d["ip"] == ip), None)
 
         if not dev:
@@ -913,7 +1343,8 @@ def backup_config(ip):
 def save_to_startup(ip):
     """Save running-config to startup-config on device."""
     try:
-        devices = load_saved_devices(DEVICES_FILE)
+        _, current_list_file = get_current_device_list()
+        devices = load_saved_devices(current_list_file)
         dev = next((d for d in devices if d["ip"] == ip), None)
 
         if not dev:
@@ -1032,6 +1463,108 @@ def compare_backups_route():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/device/<ip>/restore_backup", methods=["POST"])
+def restore_backup(ip):
+    """Restore a device configuration from a backup file."""
+    try:
+        filename = request.form.get("filename")
+        save_to_startup = request.form.get("save_to_startup", "false") == "true"
+
+        if not filename:
+            return jsonify({"status": "error", "message": "No backup filename provided"}), 400
+
+        # Get backup content
+        config_content = get_backup_content(filename)
+        if config_content is None:
+            return jsonify({"status": "error", "message": "Backup file not found"}), 404
+
+        # Get device
+        _, current_list_file = get_current_device_list()
+        devices = load_saved_devices(current_list_file)
+        dev = next((d for d in devices if d["ip"] == ip), None)
+
+        if not dev:
+            return jsonify({"status": "error", "message": "Device not found"}), 404
+
+        app.logger.info(f"Restoring backup {filename} to device {ip}")
+
+        # Parse config lines - skip lines that shouldn't be sent
+        config_lines = []
+        skip_patterns = [
+            "Building configuration",
+            "Current configuration",
+            "Last configuration change",
+            "NVRAM config last updated",
+            "!",
+            "end",
+            "version ",
+        ]
+
+        for line in config_content.splitlines():
+            line_stripped = line.strip()
+            # Skip empty lines and comment lines
+            if not line_stripped:
+                continue
+            # Skip metadata/comment lines
+            if any(line_stripped.startswith(pattern) for pattern in skip_patterns):
+                continue
+            config_lines.append(line)
+
+        if not config_lines:
+            return jsonify({"status": "error", "message": "No valid configuration lines in backup"}), 400
+
+        def execute_restore(conn):
+            output_lines = []
+
+            # Enter config mode
+            conn.config_mode()
+            output_lines.append("Entered configuration mode")
+
+            # Send each config line
+            for line in config_lines:
+                try:
+                    result = conn.send_command_timing(line, strip_prompt=False, strip_command=False)
+                    # Check for common error patterns
+                    if "% Invalid" in result or "% Incomplete" in result:
+                        output_lines.append(f"WARNING: {line} -> {result.strip()}")
+                    else:
+                        output_lines.append(f"OK: {line}")
+                except Exception as e:
+                    output_lines.append(f"ERROR: {line} -> {str(e)}")
+
+            # Exit config mode
+            try:
+                conn.exit_config_mode()
+                output_lines.append("Exited configuration mode")
+            except Exception:
+                pass
+
+            # Optionally save to startup
+            if save_to_startup:
+                try:
+                    save_result = conn.send_command_timing("write memory")
+                    output_lines.append(f"Saved to startup-config: {save_result.strip()}")
+                except Exception as e:
+                    output_lines.append(f"WARNING: Failed to save to startup: {str(e)}")
+
+            return "\n".join(output_lines)
+
+        output = with_temp_connection(dev, execute_restore)
+
+        app.logger.info(f"Restore completed for {ip} from {filename}")
+
+        return jsonify({
+            "status": "success",
+            "message": f"Configuration restored from {filename}",
+            "output": output,
+            "lines_sent": len(config_lines)
+        })
+
+    except Exception as e:
+        app.logger.error(f"Restore backup failed for {ip}: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/backup_stats")
 def backup_stats_route():
     """Get backup statistics."""
@@ -1039,6 +1572,36 @@ def backup_stats_route():
         stats = get_backup_stats()
         return jsonify({"status": "success", "stats": stats})
     except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Topology Route
+# ---------------------------------------------------------------------------
+
+@app.route("/topology_data")
+def topology_data():
+    """Discover and return network topology as JSON."""
+    try:
+        _, current_list_file = get_current_device_list()
+        devices = load_saved_devices(current_list_file)
+
+        if not devices:
+            return jsonify({"status": "success", "topology": {"nodes": [], "edges": []}})
+
+        topology = discover_topology(
+            devices=devices,
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            status_cache=device_status_cache,
+            max_workers=5
+        )
+
+        return jsonify({"status": "success", "topology": topology})
+
+    except Exception as e:
+        app.logger.error(f"Topology discovery failed: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1052,6 +1615,7 @@ def bulk_execute():
     try:
         device_ips = request.form.getlist("device_ips[]")
         command = request.form.get("command", "").strip()
+        command_mode = request.form.get("command_mode", "enable").strip()
 
         if not device_ips:
             return jsonify({"status": "error", "message": "No devices selected"}), 400
@@ -1059,14 +1623,20 @@ def bulk_execute():
         if not command:
             return jsonify({"status": "error", "message": "No command provided"}), 400
 
-        # Load devices
-        all_devices = load_saved_devices(DEVICES_FILE)
+        # Validate command mode
+        if command_mode not in ("enable", "config"):
+            command_mode = "enable"
+
+        # Load devices from current list
+        _, current_list_file = get_current_device_list()
+        all_devices = load_saved_devices(current_list_file)
         selected_devices = [d for d in all_devices if d["ip"] in device_ips]
 
         if not selected_devices:
             return jsonify({"status": "error", "message": "No valid devices found"}), 400
 
-        app.logger.info(f"Bulk execute on {len(selected_devices)} devices: {command}")
+        mode_text = "config" if command_mode == "config" else "enable"
+        app.logger.info(f"Bulk execute ({mode_text} mode) on {len(selected_devices)} devices: {command}")
 
         # Start bulk operation
         operation_id = bulk_manager.execute_bulk_command(
@@ -1075,13 +1645,14 @@ def bulk_execute():
             connection_factory=get_persistent_connection,
             connections_pool=connections,
             pool_lock=lock,
-            max_workers=5
+            max_workers=5,
+            command_mode=command_mode
         )
 
         return jsonify({
             "status": "success",
             "operation_id": operation_id,
-            "message": f"Executing on {len(selected_devices)} device(s)"
+            "message": f"Executing ({mode_text} mode) on {len(selected_devices)} device(s)"
         })
 
     except Exception as e:
@@ -1109,7 +1680,776 @@ def bulk_clear(operation_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/bulk_tftp_upload", methods=["POST"])
+def bulk_tftp_upload():
+    """Upload a file to multiple devices via TFTP."""
+    try:
+        device_ips = request.form.getlist("device_ips[]")
+        file = request.files.get("file")
+        tftp_server = request.form.get("tftp_server", TFTP_SERVER_IP) or TFTP_SERVER_IP
+
+        if not device_ips:
+            return jsonify({"status": "error", "message": "No devices selected"}), 400
+
+        if not file or not file.filename:
+            return jsonify({"status": "error", "message": "No file selected"}), 400
+
+        # Save file to TFTP root
+        local_path = os.path.join(TFTP_ROOT, file.filename)
+        file.save(local_path)
+        app.logger.info(f"Saved {file.filename} to TFTP root for bulk upload")
+
+        # Load devices from current list
+        _, current_list_file = get_current_device_list()
+        all_devices = load_saved_devices(current_list_file)
+        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
+
+        if not selected_devices:
+            return jsonify({"status": "error", "message": "No valid devices found"}), 400
+
+        # Command format for tftp_upload mode: "tftp_server|filename"
+        tftp_command = f"{tftp_server}|{file.filename}"
+
+        app.logger.info(f"Bulk TFTP upload to {len(selected_devices)} devices: {file.filename}")
+
+        # Start bulk operation with the TFTP upload command mode
+        operation_id = bulk_manager.execute_bulk_command(
+            devices=selected_devices,
+            command=tftp_command,
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            max_workers=3,  # Limit concurrent TFTP transfers
+            command_mode="tftp_upload"
+        )
+
+        return jsonify({
+            "status": "success",
+            "operation_id": operation_id,
+            "message": f"Uploading {file.filename} to {len(selected_devices)} device(s)"
+        })
+
+    except Exception as e:
+        app.logger.error(f"Bulk TFTP upload failed: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/bulk_tftp_download", methods=["POST"])
+def bulk_tftp_download():
+    """Download a file from multiple devices via TFTP."""
+    try:
+        device_ips = request.form.getlist("device_ips[]")
+        filename = request.form.get("filename", "").strip()
+        tftp_server = request.form.get("tftp_server", TFTP_SERVER_IP) or TFTP_SERVER_IP
+
+        if not device_ips:
+            return jsonify({"status": "error", "message": "No devices selected"}), 400
+
+        if not filename:
+            return jsonify({"status": "error", "message": "No filename provided"}), 400
+
+        # Load devices from current list
+        _, current_list_file = get_current_device_list()
+        all_devices = load_saved_devices(current_list_file)
+        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
+
+        if not selected_devices:
+            return jsonify({"status": "error", "message": "No valid devices found"}), 400
+
+        # Command format for tftp_download mode: "tftp_server|filename|dest_filename"
+        tftp_command = f"{tftp_server}|{filename}|{filename}"
+
+        app.logger.info(f"Bulk TFTP download from {len(selected_devices)} devices: {filename}")
+
+        # Start bulk operation with the TFTP download command mode
+        operation_id = bulk_manager.execute_bulk_command(
+            devices=selected_devices,
+            command=tftp_command,
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            max_workers=3,  # Limit concurrent TFTP transfers
+            command_mode="tftp_download"
+        )
+
+        return jsonify({
+            "status": "success",
+            "operation_id": operation_id,
+            "message": f"Downloading {filename} from {len(selected_devices)} device(s)"
+        })
+
+    except Exception as e:
+        app.logger.error(f"Bulk TFTP download failed: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/bulk_download_config", methods=["POST"])
+def bulk_download_config():
+    """Download startup or running config from multiple devices via TFTP."""
+    try:
+        device_ips = request.form.getlist("device_ips[]")
+        config_type = request.form.get("config_type", "startup").strip()
+        tftp_server = request.form.get("tftp_server", TFTP_SERVER_IP) or TFTP_SERVER_IP
+
+        if not device_ips:
+            return jsonify({"status": "error", "message": "No devices selected"}), 400
+
+        if config_type not in ("startup", "running"):
+            config_type = "startup"
+
+        # Load devices from current list
+        _, current_list_file = get_current_device_list()
+        all_devices = load_saved_devices(current_list_file)
+        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
+
+        if not selected_devices:
+            return jsonify({"status": "error", "message": "No valid devices found"}), 400
+
+        # Command format for config download: "tftp_server|config_type"
+        tftp_command = f"{tftp_server}|{config_type}"
+        config_name = "startup-config" if config_type == "startup" else "running-config"
+
+        app.logger.info(f"Bulk {config_name} download from {len(selected_devices)} devices")
+
+        # Start bulk operation with config download mode
+        operation_id = bulk_manager.execute_bulk_command(
+            devices=selected_devices,
+            command=tftp_command,
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            max_workers=3,
+            command_mode="config_download"
+        )
+
+        return jsonify({
+            "status": "success",
+            "operation_id": operation_id,
+            "message": f"Downloading {config_name} from {len(selected_devices)} device(s)"
+        })
+
+    except Exception as e:
+        app.logger.error(f"Bulk config download failed: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/bulk_remove_static_routes", methods=["POST"])
+def bulk_remove_static_routes():
+    """Remove all non-VRF static routes from selected devices."""
+    try:
+        device_ips = request.form.getlist("device_ips[]")
+
+        if not device_ips:
+            return jsonify({"status": "error", "message": "No devices selected"}), 400
+
+        # Load devices from current list
+        _, current_list_file = get_current_device_list()
+        all_devices = load_saved_devices(current_list_file)
+        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
+
+        if not selected_devices:
+            return jsonify({"status": "error", "message": "No valid devices found"}), 400
+
+        app.logger.info(f"Bulk remove static routes from {len(selected_devices)} devices")
+
+        # Start bulk operation with remove_static_routes mode
+        operation_id = bulk_manager.execute_bulk_command(
+            devices=selected_devices,
+            command="",
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            max_workers=5,
+            command_mode="remove_static_routes"
+        )
+
+        return jsonify({
+            "status": "success",
+            "operation_id": operation_id,
+            "message": f"Removing static routes from {len(selected_devices)} device(s)"
+        })
+
+    except Exception as e:
+        app.logger.error(f"Bulk remove static routes failed: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/bulk_delete_file", methods=["POST"])
+def bulk_delete_file():
+    """Delete a file from flash: on multiple devices."""
+    try:
+        device_ips = request.form.getlist("device_ips[]")
+        filename = request.form.get("filename", "").strip()
+
+        if not device_ips:
+            return jsonify({"status": "error", "message": "No devices selected"}), 400
+
+        if not filename:
+            return jsonify({"status": "error", "message": "No filename provided"}), 400
+
+        # Load devices from current list
+        _, current_list_file = get_current_device_list()
+        all_devices = load_saved_devices(current_list_file)
+        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
+
+        if not selected_devices:
+            return jsonify({"status": "error", "message": "No valid devices found"}), 400
+
+        app.logger.info(f"Bulk delete {filename} from {len(selected_devices)} devices")
+
+        # Start bulk operation with delete mode
+        operation_id = bulk_manager.execute_bulk_command(
+            devices=selected_devices,
+            command=filename,
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            max_workers=5,
+            command_mode="delete_file"
+        )
+
+        return jsonify({
+            "status": "success",
+            "operation_id": operation_id,
+            "message": f"Deleting {filename} from {len(selected_devices)} device(s)"
+        })
+
+    except Exception as e:
+        app.logger.error(f"Bulk delete failed: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Subnet Discovery Routes
+# ---------------------------------------------------------------------------
+
+# In-memory store for running discovery operations  { op_id -> state dict }
+_discovery_ops: dict = {}
+
+
+def _run_subnet_discovery(op_id: str, hosts: list, username: str,
+                          password: str, secret: str, device_type: str,
+                          max_workers: int) -> None:
+    """Background thread: probe every IP in `hosts` via SSH and record results."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from modules.connection import verify_device_connection
+
+    op = _discovery_ops[op_id]
+
+    def probe(ip: str):
+        try:
+            hostname = verify_device_connection(ip, username, password, secret, device_type)
+            return {"ip": ip, "hostname": hostname, "success": True}
+        except Exception as exc:
+            return {"ip": ip, "success": False, "error": str(exc)}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(probe, ip): ip for ip in hosts}
+        for future in as_completed(futures):
+            result = future.result()
+            op["completed"] += 1
+            if result["success"]:
+                op["found"].append(result)
+
+    op["status"] = "done"
+
+
+@app.route("/discover_subnet", methods=["POST"])
+def discover_subnet():
+    """Start a threaded SSH probe across all hosts in a given subnet."""
+    try:
+        data = request.get_json(silent=True) or {}
+        network  = (data.get("network") or "").strip()
+        prefix   = data.get("prefix", 24)
+        username = (data.get("username") or "").strip()
+        password = data.get("password") or ""
+        secret   = data.get("secret") or ""
+        device_type = data.get("device_type") or "cisco_ios"
+        max_workers = max(1, min(int(data.get("max_workers", 30)), 100))
+
+        if not network or not username or not password:
+            return jsonify({"error": "network, username, and password are required"}), 400
+
+        try:
+            net = ipaddress.IPv4Network(f"{network}/{prefix}", strict=False)
+        except ValueError as exc:
+            return jsonify({"error": f"Invalid network: {exc}"}), 400
+
+        hosts = [str(h) for h in net.hosts()]
+        if not hosts:
+            return jsonify({"error": "Subnet contains no usable host addresses"}), 400
+
+        op_id = uuid.uuid4().hex[:10]
+        _discovery_ops[op_id] = {
+            "total":     len(hosts),
+            "completed": 0,
+            "found":     [],
+            "status":    "running",
+        }
+
+        t = threading.Thread(
+            target=_run_subnet_discovery,
+            args=(op_id, hosts, username, password, secret, device_type, max_workers),
+            daemon=True,
+        )
+        t.start()
+
+        return jsonify({"op_id": op_id, "total": len(hosts)})
+
+    except Exception as exc:
+        app.logger.error(f"discover_subnet error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/discover_status/<op_id>")
+def discover_status(op_id: str):
+    """Poll the progress and results of a running subnet discovery."""
+    op = _discovery_ops.get(op_id)
+    if not op:
+        return jsonify({"error": "Operation not found"}), 404
+    return jsonify(op)
+
+
+@app.route("/add_discovered_devices", methods=["POST"])
+def add_discovered_devices():
+    """Add a list of discovered devices (returned by /discover_subnet) to the inventory."""
+    try:
+        data       = request.get_json(silent=True) or {}
+        devices    = data.get("devices", [])
+        username   = data.get("username", "")
+        password   = data.get("password", "")
+        secret     = data.get("secret", "")
+        device_type = data.get("device_type", "cisco_ios")
+
+        _, current_list_file = get_current_device_list()
+
+        added = 0
+        for dev in devices:
+            try:
+                save_device({
+                    "hostname":    dev.get("hostname", dev["ip"]),
+                    "device_type": device_type,
+                    "ip":          dev["ip"],
+                    "username":    username,
+                    "password":    password,
+                    "secret":      secret,
+                }, current_list_file)
+                added += 1
+            except Exception as exc:
+                app.logger.warning(f"Could not add {dev.get('ip')}: {exc}")
+
+        return jsonify({"added": added})
+
+    except Exception as exc:
+        app.logger.error(f"add_discovered_devices error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
+# AI Assistant Routes
+# ---------------------------------------------------------------------------
+
+import json as _json
+from flask import Response, stream_with_context as _swc
+import modules.ai_assistant as _ai
+
+
+def _load_current_devices():
+    """Load devices from the currently active device list file."""
+    _, filepath = get_current_device_list()
+    return load_saved_devices(filepath)
+
+
+@app.route("/ai/providers")
+def ai_providers():
+    """Return all provider configs and which is active."""
+    return jsonify({"providers": _ai.list_providers()})
+
+
+@app.route("/ai/provider", methods=["POST"])
+def ai_set_provider():
+    """Switch the active AI provider."""
+    data     = request.get_json(silent=True) or {}
+    provider = data.get("provider", "").strip()
+    model    = data.get("model") or None
+    if not provider:
+        return jsonify({"error": "provider is required"}), 400
+    try:
+        _ai.set_active_provider(provider, model)
+        return jsonify({"status": "ok", "active": provider,
+                        "info": _ai.get_provider_info(provider)})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/ai/device_context")
+def ai_device_context():
+    """Return a lightweight device inventory + online status snapshot for browser caching.
+    Also pre-warms SSH connections for all currently online devices in the background
+    so the first AI tool call hits the persistent pool immediately.
+    """
+    devices = _load_current_devices()
+    online_devices = [
+        d for d in devices if device_status_cache.get(d.get("ip", ""), False)
+    ]
+    result = [
+        {
+            "hostname":    d.get("hostname", ""),
+            "ip":          d.get("ip", ""),
+            "device_type": d.get("device_type", "cisco_ios"),
+            "online":      bool(device_status_cache.get(d.get("ip", ""), False)),
+        }
+        for d in devices
+    ]
+
+    def _warm():
+        for dev in online_devices:
+            try:
+                get_persistent_connection(dev, connections, lock)
+            except Exception:
+                pass   # unreachable devices are skipped silently
+
+    threading.Thread(target=_warm, daemon=True).start()
+
+    return jsonify({"devices": result})
+
+
+@app.route("/ai/chat", methods=["POST"])
+def ai_chat():
+    """Stream an AI assistant response via Server-Sent Events."""
+    try:
+        data = request.get_json(silent=True) or {}
+        message           = (data.get("message") or "").strip()
+        context_ip        = data.get("context_ip") or None
+        session_id        = data.get("session_id") or "default"
+        device_context    = data.get("device_context") or None    # browser-cached snapshot
+        topology_context  = data.get("topology_context") or None  # browser-cached topology
+        run_playbook_id    = data.get("run_playbook_id") or None    # direct playbook execution
+        skip_playbook_match = bool(data.get("skip_playbook_match"))  # bypass matching (auto-fix path)
+
+        if not message and not run_playbook_id:
+            return jsonify({"error": "Message is required"}), 400
+
+        import queue as _queue
+
+        # Determine which playbook to run (if any).
+        # Priority: explicit run_playbook_id > keyword match on message.
+        # skip_playbook_match bypasses matching so auto-troubleshoot messages go to Claude,
+        # not back into the playbook runner (which would cause an infinite loop).
+        matched_playbook = None
+        if run_playbook_id:
+            idx = _ai._load_playbook_index()
+            matched_playbook = next((p for p in idx if p["id"] == run_playbook_id), None)
+        elif message and not skip_playbook_match:
+            matched_playbook = _ai.match_playbook(message)
+
+        # Run the agent (or playbook) in a background thread and drain events via a queue.
+        # This lets us send SSE keepalive pings while SSH tool calls block,
+        # preventing browsers from closing the connection on long-running tasks.
+        _SENTINEL = object()
+        event_queue = _queue.Queue()
+
+        def _agent_thread():
+            try:
+                if matched_playbook:
+                    # Direct playbook execution — no Claude API call needed.
+                    pb_msg = message or f"Run playbook: {matched_playbook.get('name', matched_playbook.get('id', ''))}"
+                    gen = _ai.run_ansible_direct(
+                        session_id=session_id,
+                        user_message=pb_msg,
+                        playbook=matched_playbook,
+                        devices_loader=_load_current_devices,
+                        status_cache=device_status_cache,
+                        connections_pool=connections,
+                        pool_lock=lock,
+                    )
+                else:
+                    gen = _ai.run_chat(
+                        session_id=session_id,
+                        user_message=message,
+                        devices_loader=_load_current_devices,
+                        status_cache=device_status_cache,
+                        connections_pool=connections,
+                        pool_lock=lock,
+                        context_ip=context_ip,
+                        device_context=device_context,
+                        topology_context=topology_context,
+                    )
+                for event in gen:
+                    event_queue.put(event)
+            except Exception as e:
+                app.logger.error(f"AI stream error: {e}", exc_info=True)
+                event_queue.put({"type": "error", "content": str(e)})
+                event_queue.put({"type": "done"})
+            finally:
+                event_queue.put(_SENTINEL)
+
+        t = threading.Thread(target=_agent_thread, daemon=True)
+        t.start()
+
+        def generate():
+            while True:
+                try:
+                    # Wait up to 15 s for the next event.  If nothing arrives,
+                    # send a keepalive comment so the browser stays connected.
+                    event = event_queue.get(timeout=15)
+                except _queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+
+                if event is _SENTINEL:
+                    break
+                yield f"data: {_json.dumps(event)}\n\n"
+
+        return Response(
+            _swc(generate()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    except Exception as e:
+        app.logger.error(f"AI chat route error: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/ai/topology_context")
+def ai_topology_context():
+    """Return a compact topology snapshot for browser caching.
+    Serves from the server-side topology cache when available so the browser
+    gets a response without triggering a full CDP discovery round.
+    """
+    # Try the on-disk topology cache first (avoids SSH round-trips).
+    topo = _ai._topology_cache_load()
+    if topo is None:
+        # Cache miss — run discovery now and store the result.
+        from modules.topology import discover_topology
+        from modules.connection import get_persistent_connection
+        devices = _load_current_devices()
+        topo = discover_topology(
+            devices=devices,
+            connection_factory=get_persistent_connection,
+            connections_pool=connections,
+            pool_lock=lock,
+            status_cache=device_status_cache,
+            max_workers=5,
+        )
+        _ai._topology_cache_save(topo)
+    return jsonify({"topology": topo})
+
+
+@app.route("/ai/stop", methods=["POST"])
+def ai_stop():
+    """Signal the AI agent loop for a session to stop after the current tool call."""
+    data = request.get_json(silent=True) or {}
+    session_id = data.get("session_id") or "default"
+    _ai.stop_session(session_id)
+    return jsonify({"status": "stopping"})
+
+
+@app.route("/ai/tool_cache_snapshot")
+def ai_tool_cache_snapshot():
+    """Return a snapshot of recently cached tool results for browser-side storage.
+    The browser caches these in localStorage so repeated questions about interface
+    status, routing tables, etc. can be answered without SSH round-trips."""
+    snapshot = {}
+    now = __import__("time").monotonic()
+    for key, (result, expires_at) in list(_ai._tool_cache.items()):
+        if expires_at > now:
+            snapshot[key] = {
+                "result":     result[:2000],   # cap per-entry size
+                "expires_in": int(expires_at - now),
+            }
+    return jsonify({"cache": snapshot, "count": len(snapshot)})
+
+
+@app.route("/ai/clear", methods=["POST"])
+def ai_clear():
+    """Clear the AI conversation history for a session."""
+    data = request.get_json(silent=True) or {}
+    session_id = data.get("session_id") or "default"
+    _ai.clear_history(session_id)
+    return jsonify({"status": "cleared"})
+
+
+@app.route("/ai/restart", methods=["POST"])
+def ai_restart():
+    """Restart the Flask server (used after patch_app_file to apply code changes)."""
+    import threading, sys
+    def _restart():
+        time.sleep(2)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    threading.Thread(target=_restart, daemon=True).start()
+    return jsonify({"status": "restarting", "message": "Server restarting in ~2 seconds"})
+
+
+@app.route("/jenkins/results")
+def jenkins_results():
+    """Return the latest local CI check results."""
+    from modules.jenkins_runner import load_results
+    results = load_results()
+    if results is None:
+        return jsonify({"ok": None, "message": "No checks have been run yet."})
+    return jsonify(results)
+
+
+@app.route("/session/pending-restart")
+def session_pending_restart():
+    """
+    Return pending restart info so the frontend can auto-resume the AI session.
+    The file is deleted after reading (one-shot) and expires after 120 seconds.
+    """
+    import time as _time
+    path = os.path.join(os.path.dirname(__file__), "data", "pending_restart.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        # Expire stale markers (> 120 s old)
+        if _time.time() - data.get("timestamp", 0) > 120:
+            os.remove(path)
+            return jsonify({})
+        os.remove(path)
+        return jsonify(data)
+    except (FileNotFoundError, Exception):
+        return jsonify({})
+
+
+@app.route("/server/restart", methods=["POST"])
+def server_restart():
+    """Signal the watchdog launcher to restart the server process."""
+    import threading, os as _os
+    def _do():
+        import time
+        time.sleep(1)
+        _os._exit(3)   # exit code 3 → launcher.py restarts the subprocess
+    threading.Thread(target=_do, daemon=True).start()
+    return jsonify({"status": "restarting", "message": "Server will restart in ~1 second."})
+
+
+@app.route("/jenkins/pipelines")
+def jenkins_pipelines():
+    """Return the pipelines registered to the current device list."""
+    from modules.jenkins_runner import load_list_pipelines
+    return jsonify({"pipelines": load_list_pipelines()})
+
+
+@app.route("/jenkins/history/<job_name>")
+def jenkins_job_history(job_name):
+    """Return recent build history for a specific Jenkins job."""
+    from modules.jenkins_runner import load_config, get_job_builds
+    try:
+        cfg    = load_config()
+        limit  = int(request.args.get("limit", 20))
+        builds = get_job_builds(cfg, job_name, limit=limit)
+        return jsonify({"job_name": job_name, "builds": builds})
+    except Exception as exc:
+        return jsonify({"error": str(exc), "builds": []}), 200
+
+
+@app.route("/jenkins/run", methods=["POST"])
+def jenkins_run():
+    """Trigger a Jenkins build — one specific job or all jobs for this list."""
+    data      = request.get_json(silent=True) or {}
+    delay     = float(data.get("startup_delay", 0))
+    job_name  = (data.get("job_name") or "").strip()
+    from modules.jenkins_runner import run_checks, load_config, _trigger_jenkins, load_results
+    if job_name:
+        # Trigger a single specific pipeline
+        try:
+            cfg = load_config()
+            _trigger_jenkins(cfg, job_name)
+            return jsonify({"triggered": True, "job": job_name})
+        except Exception as exc:
+            return jsonify({"triggered": False, "error": str(exc)}), 200
+    summary = run_checks(startup_delay=delay)
+    return jsonify(summary)
+
+
+@app.route("/jenkins/webhook", methods=["POST"])
+def jenkins_webhook():
+    """Receive a build result notification from a real Jenkins server."""
+    data = request.get_json(silent=True) or {}
+    # Merge Jenkins result with any local results on disk
+    from modules.jenkins_runner import load_results, _save_results, _recompute_summary
+    build  = data.get("build", {})
+    job    = data.get("name") or data.get("job") or "unknown"
+    result = build.get("status", "")
+    existing = load_results() or {}
+    existing.setdefault("pipelines", {})
+    existing["pipelines"][job] = {
+        "jenkins_build":   build.get("number"),
+        "jenkins_result":  result,
+        "jenkins_ok":      result == "SUCCESS",
+        "jenkins_pending": False,
+        "jenkins_url":     build.get("full_url"),
+        "jenkins_ran_at":  build.get("timestamp"),
+    }
+    _recompute_summary(existing)
+    _save_results(existing)
+    app.logger.info("Jenkins webhook received for '%s': %s", job, result)
+    return jsonify({"status": "received"})
+
+
+@app.route("/ai/playbooks")
+def ai_playbooks():
+    """Return the list of saved Ansible playbooks."""
+    return jsonify({"playbooks": _ai._load_playbook_index()})
+
+
+@app.route("/ai/playbooks/<playbook_id>", methods=["DELETE"])
+def ai_delete_playbook(playbook_id):
+    """Delete a saved playbook by id."""
+    idx = _ai._load_playbook_index()
+    pb  = next((p for p in idx if p["id"] == playbook_id), None)
+    if not pb:
+        return jsonify({"error": "not found"}), 404
+    # Remove YAML file
+    import os as _os
+    yml = _os.path.join(_ai._PLAYBOOKS_DIR, pb.get("file", ""))
+    try:
+        _os.remove(yml)
+    except FileNotFoundError:
+        pass
+    idx = [p for p in idx if p["id"] != playbook_id]
+    _ai._save_playbook_index(idx)
+    return jsonify({"status": "deleted", "id": playbook_id})
+
+
+@app.route("/ci/appdir")
+def ci_appdir():
+    """Return the Flask application's BASE_DIR so Jenkins can cd into it for syntax checks."""
+    return jsonify({"appdir": BASE_DIR})
+
+
+@app.route("/ai/debug_log")
+def ai_debug_log():
+    """Return the last N lines of data/ai_debug.log for in-browser diagnostics."""
+    log_path = os.path.join(os.path.dirname(__file__), "data", "ai_debug.log")
+    lines_param = request.args.get("lines", "200")
+    try:
+        n = min(int(lines_param), 2000)
+    except ValueError:
+        n = 200
+    try:
+        with open(log_path, encoding="utf-8") as fh:
+            all_lines = fh.readlines()
+        tail = "".join(all_lines[-n:])
+        return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
+    except FileNotFoundError:
+        return "ai_debug.log not yet created (no AI requests made yet).\n", 404, {
+            "Content-Type": "text/plain; charset=utf-8"
+        }
+
+
 # Run the Flask app with Socket.IO
 if __name__ == "__main__":
-    webbrowser.open(f"http://{FLASK_HOST}:{FLASK_PORT}")
-    socketio.run(app, host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG, use_reloader=False)
+    import sys
+    try:
+        socketio.run(app, host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG, use_reloader=False)
+    except Exception as e:
+        print(f"\n{'='*60}")
+        print(f"ERROR: {e}")
+        print(f"{'='*60}")
+        import traceback
+        traceback.print_exc()
+        if getattr(sys, 'frozen', False):
+            input("\nPress Enter to exit...")
+        sys.exit(1)

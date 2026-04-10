@@ -34,7 +34,7 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True) -> str:
     logger.debug(f'Executing command: {command}')
 
     # Execute the command
-    output = conn.send_command_timing(command, read_timeout=60)
+    output = conn.send_command_timing(command, read_timeout=120)
 
     # Remove leading control characters
     if output.startswith("^@"):

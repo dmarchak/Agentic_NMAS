@@ -6,57 +6,678 @@
   <title>Network Device Manager</title>
   <link href="/static/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    /* Toast container positioning */
+    /* ------------------------------------------------------------------ */
+    /* Toast                                                                */
+    /* ------------------------------------------------------------------ */
     .toast-container {
       position: fixed;
       bottom: 1rem;
       right: 1rem;
       z-index: 1090;
     }
-
-    /* Toast styling */
-    .toast {
-      min-width: 300px;
-      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-    }
-
-    /* Icon colors for different toast types */
+    .toast { min-width: 300px; box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15); }
     .toast-success { border-left: 4px solid #198754; }
-    .toast-danger { border-left: 4px solid #dc3545; }
+    .toast-danger  { border-left: 4px solid #dc3545; }
     .toast-warning { border-left: 4px solid #ffc107; }
-    .toast-info { border-left: 4px solid #0dcaf0; }
+    .toast-info    { border-left: 4px solid #0dcaf0; }
 
-    /* Dark mode toggle button */
+    /* ------------------------------------------------------------------ */
+    /* Theme toggle                                                         */
+    /* ------------------------------------------------------------------ */
     .theme-toggle {
       position: fixed;
       top: 70px;
       right: 1rem;
       z-index: 1050;
     }
+    * { transition: background-color .3s ease, color .3s ease; }
 
-    /* Smooth transitions */
-    * {
-      transition: background-color 0.3s ease, color 0.3s ease;
+    /* ------------------------------------------------------------------ */
+    /* AI Panel — slide-in drawer from the right                           */
+    /* ------------------------------------------------------------------ */
+    :root {
+      --ai-width: 440px;
+      --ai-min-width: 320px;
+      --ai-max-width: 95vw;
+      --ai-header-bg: #0f172a;
+      --ai-header-fg: #f1f5f9;
+      --ai-accent: #6366f1;   /* indigo */
+      --ai-accent2: #8b5cf6;  /* violet */
     }
+
+    /* Backdrop */
+    .ai-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.4);
+      z-index: 1059;
+      backdrop-filter: blur(2px);
+    }
+    .ai-backdrop.show { display: block; }
+
+    /* Panel */
+    .ai-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: var(--ai-width);
+      max-width: 100vw;
+      height: 100vh;
+      z-index: 1060;
+      display: flex;
+      flex-direction: column;
+      background: var(--bs-body-bg);
+      box-shadow: -4px 0 24px rgba(0,0,0,.25);
+      transform: translateX(100%);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+    }
+    .ai-panel.open { transform: translateX(0); }
+
+    /* Resize handle — left edge of the panel */
+    .ai-resize-handle {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 6px;
+      height: 100%;
+      cursor: ew-resize;
+      z-index: 10;
+      background: transparent;
+      transition: background .15s;
+    }
+    .ai-resize-handle:hover,
+    .ai-resize-handle.dragging {
+      background: var(--ai-accent);
+      opacity: .5;
+    }
+
+    /* Header */
+    .ai-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .85rem 1rem;
+      background: var(--ai-header-bg);
+      color: var(--ai-header-fg);
+      flex-shrink: 0;
+    }
+    .ai-brand {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      font-weight: 600;
+      font-size: .95rem;
+      letter-spacing: .01em;
+    }
+    .ai-brand-icon {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--ai-accent), var(--ai-accent2));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .ai-header-actions { display: flex; gap: .35rem; }
+    .ai-header-btn {
+      background: rgba(255,255,255,.1);
+      border: none;
+      color: var(--ai-header-fg);
+      border-radius: 6px;
+      padding: .3rem .5rem;
+      font-size: .8rem;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .ai-header-btn:hover { background: rgba(255,255,255,.2); }
+
+    /* Context bar */
+    .ai-context-bar {
+      padding: .4rem 1rem;
+      background: color-mix(in srgb, var(--ai-accent) 12%, transparent);
+      border-bottom: 1px solid color-mix(in srgb, var(--ai-accent) 25%, transparent);
+      font-size: .78rem;
+      color: var(--ai-accent);
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      flex-shrink: 0;
+    }
+    .ai-context-bar.hidden { display: none; }
+
+    /* Messages area */
+    .ai-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+      scroll-behavior: smooth;
+    }
+
+    /* Welcome / empty state */
+    .ai-welcome {
+      margin: auto;
+      text-align: center;
+      padding: 2rem 1.5rem;
+      max-width: 320px;
+    }
+    .ai-welcome-icon {
+      font-size: 2.5rem;
+      margin-bottom: .75rem;
+    }
+    .ai-welcome h6 {
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: .4rem;
+    }
+    .ai-welcome p {
+      font-size: .85rem;
+      color: var(--bs-secondary-color);
+      margin-bottom: 1rem;
+    }
+    .ai-suggestions {
+      display: flex;
+      flex-direction: column;
+      gap: .4rem;
+    }
+    .ai-suggestion {
+      background: var(--bs-body-bg);
+      border: 1px solid var(--bs-border-color);
+      border-radius: 8px;
+      padding: .5rem .75rem;
+      font-size: .8rem;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      color: var(--bs-body-color);
+    }
+    .ai-suggestion:hover {
+      border-color: var(--ai-accent);
+      background: color-mix(in srgb, var(--ai-accent) 8%, var(--bs-body-bg));
+    }
+
+    /* Message rows */
+    .ai-msg-row {
+      display: flex;
+      flex-direction: column;
+      max-width: 92%;
+    }
+    .ai-msg-row.user { align-self: flex-end; align-items: flex-end; }
+    .ai-msg-row.assistant { align-self: flex-start; align-items: flex-start; }
+
+    .ai-msg-label {
+      font-size: .7rem;
+      color: var(--bs-secondary-color);
+      margin-bottom: .2rem;
+      padding: 0 .25rem;
+    }
+
+    .ai-msg-bubble {
+      padding: .6rem .85rem;
+      border-radius: 12px;
+      font-size: .875rem;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+    .ai-msg-row.user .ai-msg-bubble {
+      background: var(--ai-accent);
+      color: #fff;
+      border-bottom-right-radius: 3px;
+    }
+    .ai-msg-row.assistant .ai-msg-bubble {
+      background: #1e293b;
+      color: #e2e8f0;
+      border-bottom-left-radius: 3px;
+    }
+
+    /* Streaming cursor */
+    .ai-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1em;
+      background: var(--ai-accent);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: ai-blink .7s step-end infinite;
+    }
+    @keyframes ai-blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* Tool cards — use panel-scoped colors, not Bootstrap page variables */
+    .ai-tool-card {
+      background: #1e293b;
+      border: 1px solid rgba(255,255,255,.1);
+      border-left: 3px solid var(--ai-accent);
+      border-radius: 8px;
+      font-size: .8rem;
+      overflow: hidden;
+      max-width: 98%;
+      align-self: flex-start;
+    }
+    .ai-tool-header {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .4rem .65rem;
+      cursor: pointer;
+      user-select: none;
+      background: rgba(99,102,241,.08);
+    }
+    .ai-tool-header:hover {
+      background: rgba(99,102,241,.15);
+    }
+    .ai-tool-spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--ai-accent);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    .ai-tool-check  { color: #22c55e; flex-shrink: 0; }
+    .ai-tool-label  { flex: 1; color: #cbd5e1; font-size: .8rem; }
+    .ai-tool-toggle { color: #94a3b8; margin-left: auto; font-size: .7rem; }
+    .ai-tool-body {
+      display: none;
+      padding: .5rem .65rem;
+      border-top: 1px solid rgba(255,255,255,.08);
+    }
+    .ai-tool-body.show { display: block; }
+    .ai-tool-output {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: .73rem;
+      max-height: 260px;
+      overflow-y: auto;
+      line-height: 1.5;
+      color: #e2e8f0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Markdown inside assistant bubbles — explicit colors, no Bootstrap vars */
+    .ai-msg-text {
+      color: #e2e8f0;
+    }
+    .ai-msg-text pre {
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 6px;
+      padding: .6rem .75rem;
+      font-size: .78rem;
+      overflow-x: auto;
+      white-space: pre;
+      margin: .5rem 0 .25rem;
+      color: #e2e8f0;
+    }
+    .ai-msg-text pre code {
+      color: #e2e8f0;
+      background: none;
+    }
+    .ai-msg-text code:not(pre code) {
+      background: rgba(255,255,255,.1);
+      color: #e2e8f0;
+      padding: .1em .35em;
+      border-radius: 4px;
+      font-size: .82em;
+    }
+    .ai-msg-text table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: .5rem 0;
+      font-size: .8rem;
+    }
+    .ai-msg-text th, .ai-msg-text td {
+      border: 1px solid rgba(255,255,255,.15);
+      padding: .3rem .5rem;
+      text-align: left;
+      color: #e2e8f0;
+    }
+    .ai-msg-text th {
+      background: rgba(99,102,241,.2);
+      color: #c7d2fe;
+    }
+    .ai-msg-text strong { color: #f1f5f9; }
+    .ai-msg-text a { color: #818cf8; }
+    .ai-msg-text p { margin: 0 0 .4rem; }
+    .ai-msg-text p:last-child { margin-bottom: 0; }
+    .ai-msg-text ul, .ai-msg-text ol { padding-left: 1.2rem; margin: .3rem 0; }
+
+    /* Thinking indicator */
+    .ai-thinking {
+      display: none;
+      align-self: flex-start;
+      padding: .5rem .85rem;
+      border-radius: 12px;
+      border-bottom-left-radius: 3px;
+      background: var(--bs-secondary-bg);
+      font-size: .875rem;
+    }
+    .ai-thinking.show { display: flex; gap: 4px; align-items: center; }
+    .ai-thinking span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--ai-accent);
+      animation: ai-bounce 1.2s ease-in-out infinite;
+    }
+    .ai-thinking span:nth-child(2) { animation-delay: .2s; }
+    .ai-thinking span:nth-child(3) { animation-delay: .4s; }
+    @keyframes ai-bounce {
+      0%,80%,100%{transform:scale(.6)} 40%{transform:scale(1)}
+    }
+
+    /* Input area */
+    .ai-input-area {
+      padding: .75rem;
+      border-top: 1px solid var(--bs-border-color);
+      flex-shrink: 0;
+    }
+    .ai-input-wrapper {
+      display: flex;
+      align-items: flex-end;
+      gap: .4rem;
+      background: var(--bs-secondary-bg);
+      border: 1px solid var(--bs-border-color);
+      border-radius: 12px;
+      padding: .4rem .55rem;
+      transition: border-color .2s;
+    }
+    .ai-input-wrapper:focus-within { border-color: var(--ai-accent); }
+    #ai-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: none;
+      font-size: .875rem;
+      color: var(--bs-body-color);
+      max-height: 120px;
+      line-height: 1.5;
+      padding: .1rem 0;
+    }
+    #ai-input::placeholder { color: var(--bs-secondary-color); }
+    #ai-send-btn {
+      background: var(--ai-accent);
+      border: none;
+      color: #fff;
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: opacity .2s, background .2s;
+    }
+    #ai-send-btn:hover { background: var(--ai-accent2); }
+    #ai-send-btn:disabled { opacity: .45; cursor: not-allowed; }
+    #ai-stop-btn {
+      background: #dc3545;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-left: .25rem;
+      transition: opacity .2s, background .2s;
+    }
+    #ai-stop-btn:hover { background: #b02a37; }
+    .ai-input-hint {
+      font-size: .7rem;
+      color: var(--bs-secondary-color);
+      margin-top: .3rem;
+      text-align: right;
+    }
+
+    /* Navbar AI button */
+    .ai-open-btn {
+      background: linear-gradient(135deg, var(--ai-accent), var(--ai-accent2));
+      border: none;
+      color: #fff;
+      border-radius: 8px;
+      padding: .35rem .75rem;
+      font-size: .8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+      transition: opacity .2s, transform .1s;
+    }
+    .ai-open-btn:hover { opacity: .92; transform: translateY(-1px); }
+    .ai-open-btn:active { transform: translateY(0); }
+
+    /* Error message */
+    .ai-error-bubble {
+      align-self: flex-start;
+      background: color-mix(in srgb, #dc3545 12%, var(--bs-body-bg));
+      border: 1px solid color-mix(in srgb, #dc3545 30%, transparent);
+      border-radius: 8px;
+      padding: .5rem .75rem;
+      font-size: .82rem;
+      color: #dc3545;
+      max-width: 96%;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Responsive                                                           */
+    /* ------------------------------------------------------------------ */
+    @media (max-width: 600px) {
+      .ai-panel { width: 100vw; }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Ansible progress modal                                               */
+    /* ------------------------------------------------------------------ */
+    .ansible-play-row {
+      background: #1e293b;
+      border-radius: 7px;
+      padding: .55rem .7rem;
+      border-left: 3px solid #334155;
+      transition: border-color .2s;
+    }
+    .ansible-play-row.running  { border-color: #60a5fa; }
+    .ansible-play-row.ok       { border-color: #34d399; }
+    .ansible-play-row.error    { border-color: #f87171; }
+
+    .ansible-play-header {
+      display: flex; align-items: center; gap: .55rem; cursor: pointer;
+    }
+    .ansible-play-icon { font-size: 1rem; flex-shrink: 0; width: 1.2rem; text-align: center; }
+    .ansible-spin {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(96,165,250,.3);
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: ansible-spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes ansible-spin { to { transform: rotate(360deg); } }
+
+    .ansible-play-hostname {
+      font-weight: 600; color: #e2e8f0; font-size: .85rem; flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ansible-play-meta { font-size: .72rem; color: #64748b; white-space: nowrap; flex-shrink: 0; }
+    .ansible-play-output {
+      margin-top: .45rem;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: .72rem;
+      color: #94a3b8;
+      background: #0f172a;
+      border-radius: 4px;
+      padding: .4rem .55rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 160px;
+      overflow-y: auto;
+      display: none;
+    }
+    .ansible-play-error-msg {
+      margin-top: .4rem;
+      font-size: .75rem;
+      color: #fca5a5;
+      background: rgba(239,68,68,.1);
+      border-radius: 4px;
+      padding: .3rem .5rem;
+    }
+    .ansible-play-toggle {
+      font-size: .68rem; color: #4f46e5; cursor: pointer;
+      margin-top: .3rem; display: none;
+    }
+    #ansibleModal[hidden] { display: none !important; }
   </style>
 </head>
 <body>
-  <!-- Theme Toggle Button -->
+
+  <!-- Theme Toggle -->
   <button class="btn btn-outline-secondary btn-sm theme-toggle" id="themeToggle" title="Toggle Dark Mode">
     <span id="themeIcon">🌙</span>
   </button>
 
+  <!-- Navbar -->
   <nav class="navbar navbar-dark bg-dark mb-4">
     <div class="container-fluid">
       <span class="navbar-brand">🖧 Network Device Manager</span>
+      <button class="ai-open-btn" id="aiOpenBtn" title="Open AI Network Assistant">
+        ✦ AI Assistant
+      </button>
     </div>
   </nav>
 
+  <!-- Main content -->
   <div class="container">
     {% block content %}{% endblock %}
   </div>
 
-  <!-- Toast Container -->
+  <!-- ------------------------------------------------------------------ -->
+  <!-- AI Panel                                                             -->
+  <!-- ------------------------------------------------------------------ -->
+  <div class="ai-backdrop" id="aiBackdrop"></div>
+
+  <div class="ai-panel" id="aiPanel" role="dialog" aria-label="AI Network Assistant">
+
+    <!-- Resize handle -->
+    <div class="ai-resize-handle" id="aiResizeHandle" title="Drag to resize"></div>
+
+    <!-- Header -->
+    <div class="ai-panel-header">
+      <div class="ai-brand">
+        <div class="ai-brand-icon">✦</div>
+        AI Network Assistant
+      </div>
+      <div style="display:flex;align-items:center;gap:.4rem;flex:1;justify-content:flex-end;margin-right:.5rem">
+        <div id="aiCostBadge" title="Estimated API cost this session" style="display:none;font-size:.7rem;color:rgba(255,255,255,.55);background:rgba(255,255,255,.08);border-radius:4px;padding:.15rem .4rem;white-space:nowrap;cursor:default"></div>
+        <div id="jenkinsBadge" title="CI check status — click to view" style="display:none;font-size:.7rem;font-weight:700;border-radius:4px;padding:.15rem .5rem;white-space:nowrap;cursor:pointer;letter-spacing:.04em"></div>
+        <select id="aiProviderSelect" title="AI Provider" style="font-size:.72rem;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:5px;padding:.2rem .35rem;cursor:pointer;max-width:160px">
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="ai-header-actions">
+        <button class="ai-header-btn" id="aiPlaybooksBtn" title="View saved Ansible playbooks">📋 Playbooks</button>
+        <button class="ai-header-btn" id="aiClearBtn" title="Clear conversation">🗑 Clear</button>
+        <button class="ai-header-btn" id="aiCloseBtn" title="Close">✕</button>
+      </div>
+    </div>
+
+    <!-- Playbook drawer (hidden by default) -->
+    <div id="aiPlaybookDrawer" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:#0f172a;z-index:10;overflow-y:auto;padding:1rem;color:#e2e8f0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+        <strong style="font-size:1rem;">📋 Saved Playbooks</strong>
+        <button id="aiPlaybooksClose" style="background:none;border:none;color:#94a3b8;font-size:1.1rem;cursor:pointer;">✕</button>
+      </div>
+      <div id="aiPlaybookList" style="font-size:.82rem;"></div>
+    </div>
+
+    <!-- Context bar (visible when on a device page) -->
+    <div class="ai-context-bar hidden" id="aiContextBar">
+      📡 Context: <strong id="aiContextLabel"></strong>
+    </div>
+
+    <!-- Messages -->
+    <div class="ai-messages" id="aiMessages">
+
+      <!-- Welcome / empty state -->
+      <div class="ai-welcome" id="aiWelcome">
+        <div class="ai-welcome-icon">✦</div>
+        <h6>AI Network Assistant</h6>
+        <p>Ask anything about your network. I can run commands, analyse topology, troubleshoot issues, and apply configuration changes.</p>
+        <div class="ai-suggestions" id="aiSuggestions">
+          <button class="ai-suggestion" data-prompt="What devices are currently online? Give me a summary.">📊 Device status summary</button>
+          <button class="ai-suggestion" data-prompt="Show me all interfaces and their IP addresses across all devices.">🔌 Interface IP overview</button>
+          <button class="ai-suggestion" data-prompt="Show the routing table on all devices and summarise the routes.">🗺️ Routing table overview</button>
+          <button class="ai-suggestion" data-prompt="Discover and describe the network topology using CDP.">🕸️ Discover topology</button>
+          <button class="ai-suggestion" data-prompt="Check CPU and memory utilisation on all devices.">📈 Resource utilisation</button>
+        </div>
+      </div>
+
+      <!-- Thinking dots (shown while waiting for first response) -->
+      <div class="ai-thinking" id="aiThinking">
+        <span></span><span></span><span></span>
+      </div>
+
+    </div><!-- /ai-messages -->
+
+    <!-- Input area -->
+    <div class="ai-input-area">
+      <div class="ai-input-wrapper">
+        <textarea id="ai-input" placeholder="Ask about your network…" rows="1" autocomplete="off"></textarea>
+        <button id="ai-send-btn" title="Send (Enter)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576zm6.787-8.201L1.591 6.602l4.339 2.76z"/>
+          </svg>
+        </button>
+        <button id="ai-stop-btn" title="Stop (Esc)" style="display:none">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+            <rect width="10" height="10" x="3" y="3" rx="1"/>
+          </svg>
+        </button>
+      </div>
+      <div class="ai-input-hint">Enter to send · Shift+Enter for new line</div>
+    </div>
+
+  </div><!-- /ai-panel -->
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Ansible Playbook Progress Modal                                      -->
+  <!-- ------------------------------------------------------------------ -->
+  <div id="ansibleModal" style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:1rem;" hidden>
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:10px;width:min(560px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+
+      <!-- Header -->
+      <div style="padding:.9rem 1.1rem;border-bottom:1px solid #1e293b;display:flex;align-items:flex-start;gap:.7rem;">
+        <div id="ansibleModalIcon" style="font-size:1.4rem;line-height:1;margin-top:.1rem">📋</div>
+        <div style="flex:1;min-width:0;">
+          <div id="ansibleModalTitle" style="font-weight:700;color:#e2e8f0;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Running playbook…</div>
+          <div id="ansibleModalDesc" style="color:#64748b;font-size:.78rem;margin-top:.15rem"></div>
+        </div>
+        <div id="ansibleModalStatus" style="font-size:.7rem;font-weight:700;letter-spacing:.05em;padding:.2rem .55rem;border-radius:20px;background:#1e3a5f;color:#60a5fa;white-space:nowrap;flex-shrink:0">RUNNING</div>
+      </div>
+
+      <!-- Play list -->
+      <div id="ansiblePlayList" style="overflow-y:auto;flex:1;padding:.75rem 1.1rem;display:flex;flex-direction:column;gap:.55rem;"></div>
+
+      <!-- Footer -->
+      <div style="padding:.75rem 1.1rem;border-top:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:.5rem;">
+        <div id="ansibleSummaryText" style="font-size:.8rem;color:#94a3b8;"></div>
+        <button id="ansibleModalClose" style="background:#4f46e5;color:#fff;border:none;border-radius:6px;padding:.35rem .9rem;font-size:.82rem;cursor:pointer;opacity:.5;pointer-events:none;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Toast Container                                                       -->
+  <!-- ------------------------------------------------------------------ -->
   <div class="toast-container" id="toastContainer">
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -73,9 +694,7 @@
             <small>just now</small>
             <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
           </div>
-          <div class="toast-body">
-            {{ message }}
-          </div>
+          <div class="toast-body">{{ message }}</div>
         </div>
       {% endfor %}
     {% endif %}
@@ -85,34 +704,29 @@
   <!-- Bootstrap JS -->
   <script src="/static/js/bootstrap.bundle.min.js"></script>
 
-  <!-- Toast & Theme Scripts -->
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Theme script                                                          -->
+  <!-- ------------------------------------------------------------------ -->
   <script>
-    // Initialize toasts
-    document.addEventListener('DOMContentLoaded', function() {
-      const toastElList = document.querySelectorAll('.toast');
-      toastElList.forEach(function(toastEl) {
-        const toast = new bootstrap.Toast(toastEl);
-        toast.show();
+    document.addEventListener('DOMContentLoaded', function () {
+      // Toasts
+      document.querySelectorAll('.toast').forEach(function (el) {
+        new bootstrap.Toast(el).show();
       });
 
-      // Dark mode toggle
+      // Dark-mode toggle
       const themeToggle = document.getElementById('themeToggle');
-      const themeIcon = document.getElementById('themeIcon');
-      const htmlElement = document.documentElement;
-
-      // Load saved theme preference
-      const savedTheme = localStorage.getItem('theme') || 'light';
-      htmlElement.setAttribute('data-bs-theme', savedTheme);
+      const themeIcon   = document.getElementById('themeIcon');
+      const html        = document.documentElement;
+      const savedTheme  = localStorage.getItem('theme') || 'light';
+      html.setAttribute('data-bs-theme', savedTheme);
       updateThemeIcon(savedTheme);
 
-      // Toggle theme on click
-      themeToggle.addEventListener('click', function() {
-        const currentTheme = htmlElement.getAttribute('data-bs-theme');
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-
-        htmlElement.setAttribute('data-bs-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-        updateThemeIcon(newTheme);
+      themeToggle.addEventListener('click', function () {
+        const next = html.getAttribute('data-bs-theme') === 'light' ? 'dark' : 'light';
+        html.setAttribute('data-bs-theme', next);
+        localStorage.setItem('theme', next);
+        updateThemeIcon(next);
       });
 
       function updateThemeIcon(theme) {
@@ -121,17 +735,10 @@
       }
     });
 
-    // Function to show toast dynamically (can be called from other scripts)
     function showToast(message, category = 'info') {
       const container = document.getElementById('toastContainer');
-      const iconMap = {
-        success: '✓ Success',
-        danger: '✗ Error',
-        warning: '⚠ Warning',
-        info: 'ℹ Info'
-      };
-
-      const toastHtml = `
+      const iconMap = { success: '✓ Success', danger: '✗ Error', warning: '⚠ Warning', info: 'ℹ Info' };
+      const html = `
         <div class="toast toast-${category}" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="5000">
           <div class="toast-header">
             <strong class="me-auto">${iconMap[category] || iconMap.info}</strong>
@@ -139,20 +746,1268 @@
             <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
           </div>
           <div class="toast-body">${message}</div>
-        </div>
-      `;
-
-      container.insertAdjacentHTML('beforeend', toastHtml);
-      const newToast = container.lastElementChild;
-      const toast = new bootstrap.Toast(newToast);
-      toast.show();
-
-      // Remove toast element after it's hidden
-      newToast.addEventListener('hidden.bs.toast', function() {
-        newToast.remove();
-      });
+        </div>`;
+      container.insertAdjacentHTML('beforeend', html);
+      const el = container.lastElementChild;
+      new bootstrap.Toast(el).show();
+      el.addEventListener('hidden.bs.toast', () => el.remove());
     }
   </script>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- AI Panel script                                                       -->
+  <!-- ------------------------------------------------------------------ -->
+  <script>
+  (function () {
+    'use strict';
+
+    /* ---- State --------------------------------------------------------- */
+    // Fixed session ID stored in localStorage so all tabs share one conversation.
+    const sessionId = 'main';
+
+    let busy = false;
+    let activeReader = null;          // ReadableStreamDefaultReader while streaming
+    let currentAssistantRow = null;   // active assistant message row
+    let currentTextBuffer   = '';     // accumulates text chunks during streaming
+    let currentToolCards    = {};     // tool name -> card element
+    let sessionCostUsd = 0;          // running cost total for this panel session
+
+    /* ---- DOM references ----------------------------------------------- */
+    const panel      = document.getElementById('aiPanel');
+    const backdrop   = document.getElementById('aiBackdrop');
+    const openBtn    = document.getElementById('aiOpenBtn');
+    const closeBtn   = document.getElementById('aiCloseBtn');
+    const clearBtn        = document.getElementById('aiClearBtn');
+    const providerSelect  = document.getElementById('aiProviderSelect');
+    const messages        = document.getElementById('aiMessages');
+    const welcome    = document.getElementById('aiWelcome');
+    const thinking   = document.getElementById('aiThinking');
+    const input      = document.getElementById('ai-input');
+    const sendBtn    = document.getElementById('ai-send-btn');
+    const stopBtn    = document.getElementById('ai-stop-btn');
+    const contextBar = document.getElementById('aiContextBar');
+    const ctxLabel   = document.getElementById('aiContextLabel');
+
+    /* ---- Context IP (set by device page) ------------------------------ */
+    const contextIp = (typeof window.AI_CONTEXT_IP !== 'undefined')
+      ? window.AI_CONTEXT_IP : null;
+
+    if (contextIp) {
+      const label = (typeof window.AI_CONTEXT_LABEL !== 'undefined')
+        ? window.AI_CONTEXT_LABEL : contextIp;
+      ctxLabel.textContent = label + ' (' + contextIp + ')';
+      contextBar.classList.remove('hidden');
+    }
+
+    /* ---- Panel resize -------------------------------------------------- */
+    (function () {
+      const handle   = document.getElementById('aiResizeHandle');
+      const MIN_W    = 320;
+      const MAX_W    = Math.round(window.innerWidth * 0.95);
+      const STORE_KEY = 'ndm_ai_panel_width';
+
+      // Restore saved width
+      const saved = parseInt(localStorage.getItem(STORE_KEY), 10);
+      if (saved && saved >= MIN_W && saved <= window.innerWidth) {
+        panel.style.width = saved + 'px';
+      }
+
+      let startX, startW;
+
+      handle.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        startX = e.clientX;
+        startW = panel.offsetWidth;
+        handle.classList.add('dragging');
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'ew-resize';
+
+        function onMove(e) {
+          const delta = startX - e.clientX;   // dragging left = wider
+          const newW  = Math.min(Math.max(startW + delta, MIN_W),
+                                 Math.round(window.innerWidth * 0.95));
+          panel.style.width = newW + 'px';
+        }
+
+        function onUp() {
+          handle.classList.remove('dragging');
+          document.body.style.userSelect = '';
+          document.body.style.cursor = '';
+          localStorage.setItem(STORE_KEY, panel.offsetWidth);
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    })();
+
+    /* ---- Open / close -------------------------------------------------- */
+    function openPanel() {
+      panel.classList.add('open');
+      backdrop.classList.add('show');
+      input.focus();
+    }
+    function closePanel() {
+      panel.classList.remove('open');
+      backdrop.classList.remove('show');
+    }
+
+    openBtn.addEventListener('click', openPanel);
+    closeBtn.addEventListener('click', closePanel);
+    backdrop.addEventListener('click', closePanel);
+
+    // Keyboard: Escape closes
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
+    });
+
+    /* ---- Provider selector -------------------------------------------- */
+    async function loadProviders() {
+      try {
+        const resp = await fetch('/ai/providers');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        providerSelect.innerHTML = '';
+        for (const p of data.providers) {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          const label = p.available ? p.name : p.name + ' ✗';
+          opt.textContent = label + ' — ' + p.model;
+          opt.disabled = !p.available;
+          if (p.active) opt.selected = true;
+          providerSelect.appendChild(opt);
+        }
+      } catch (e) { /* non-critical */ }
+    }
+    loadProviders();
+
+    providerSelect.addEventListener('change', async function () {
+      const provider = providerSelect.value;
+      try {
+        const resp = await fetch('/ai/provider', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider }),
+        });
+        if (resp.ok) {
+          // Reset session cost when switching providers
+          sessionCostUsd = 0;
+          const badge = document.getElementById('aiCostBadge');
+          if (badge) badge.style.display = 'none';
+        }
+      } catch (e) { /* non-critical */ }
+    });
+
+    /* ---- Jenkins CI badge ---------------------------------------------- */
+    (function () {
+      const badge = document.getElementById('jenkinsBadge');
+      if (!badge) return;
+
+      let _pollTimer   = null;
+      let _fastPolling = false;
+      let _lastData    = null;
+
+      function _setInterval(ms) {
+        if (_pollTimer) clearInterval(_pollTimer);
+        _pollTimer = setInterval(pollJenkins, ms);
+      }
+
+      function applyBadge(results) {
+        _lastData = results;
+        if (!results || results.ok === null || results.ok === undefined) {
+          badge.style.display = 'none';
+          return;
+        }
+
+        const jBuild   = results.jenkins_build;
+        const jPending = results.jenkins_pending;
+        const jUrl     = results.jenkins_url || '';
+        const buildTag = jBuild ? ` #${jBuild}` : '';
+
+        if (jPending) {
+          // Jenkins is actively building — show amber "BUILDING…" and poll fast
+          badge.textContent = `CI${buildTag} BUILDING\u2026`;
+          badge.style.background = 'rgba(251,191,36,.18)';
+          badge.style.color      = '#fbbf24';
+          badge.title = `Jenkins build${buildTag} in progress since ${results.jenkins_triggered_at || ''}`;
+          badge.style.display = '';
+          if (!_fastPolling) { _fastPolling = true; _setInterval(5000); }
+          return;
+        }
+
+        // Not building — slow poll
+        if (_fastPolling) { _fastPolling = false; _setInterval(30000); }
+
+        const passed = results.passed ?? 0;
+        const total  = results.total  ?? 0;
+        const failed = results.failed ?? 0;
+        // If Jenkins ran, prefer its result; else use local result
+        const ok = results.jenkins_ok !== undefined ? results.jenkins_ok : results.ok;
+
+        if (ok) {
+          badge.textContent = `CI${buildTag} ${passed}/${total} \u2713`;
+          badge.style.background = 'rgba(52,211,153,.2)';
+          badge.style.color      = '#34d399';
+          badge.title = `All ${total} checks passed${buildTag ? ' \u2014 Jenkins build' + buildTag : ''} \u2014 ${results.jenkins_ran_at || results.run_at || ''}`;
+        } else {
+          const jResult = results.jenkins_result;
+          const label   = jResult && jResult !== 'SUCCESS' ? jResult : `${failed} FAIL`;
+          badge.textContent = `CI${buildTag} ${label}`;
+          badge.style.background = 'rgba(248,113,113,.2)';
+          badge.style.color      = '#f87171';
+          const names  = (results.results || []).filter(r => !r.ok).map(r => r.name).join(', ');
+          const jLabel = jResult && jResult !== 'SUCCESS' ? `Jenkins: ${jResult}` : '';
+          badge.title  = [names, jLabel].filter(Boolean).join(' | ') || 'Check(s) failed';
+        }
+        badge.style.display = '';
+      }
+
+      async function pollJenkins() {
+        try {
+          const r = await fetch('/jenkins/results');
+          if (!r.ok) return;
+          applyBadge(await r.json());
+        } catch { /* non-critical */ }
+      }
+
+      // Click: open Jenkins build URL if available, else show local results
+      badge.addEventListener('click', async function () {
+        try {
+          const r = await fetch('/jenkins/results');
+          if (!r.ok) return;
+          const data = await r.json();
+          if (data.jenkins_url) {
+            window.open(data.jenkins_url, '_blank');
+            return;
+          }
+          let msg = `CI Results \u2014 ${data.run_at || ''}\n`;
+          (data.results || []).forEach(function (c) {
+            msg += `${c.ok ? '\u2713' : '\u2717'} ${c.name} (${c.duration_ms}ms)\n`;
+            if (!c.ok) msg += `  ${c.output}\n`;
+          });
+          alert(msg);
+        } catch { /* non-critical */ }
+      });
+
+      pollJenkins();
+      _pollTimer = setInterval(pollJenkins, 30000);
+    })();
+
+    /* ---- Playbooks drawer ---------------------------------------------- */
+    const playbooksBtn   = document.getElementById('aiPlaybooksBtn');
+    const playbooksClose = document.getElementById('aiPlaybooksClose');
+    const playbookDrawer = document.getElementById('aiPlaybookDrawer');
+    const playbookList   = document.getElementById('aiPlaybookList');
+
+    async function loadPlaybooks() {
+      playbookList.innerHTML = '<em style="color:#64748b">Loading…</em>';
+      try {
+        const r = await fetch('/ai/playbooks');
+        const d = await r.json();
+        const pbs = d.playbooks || [];
+        if (!pbs.length) {
+          playbookList.innerHTML = '<p style="color:#64748b">No playbooks saved yet.<br>Complete a configuration task and the AI will save it automatically.</p>';
+          return;
+        }
+        playbookList.innerHTML = '';
+        pbs.forEach(function (pb) {
+          const card = document.createElement('div');
+          card.style.cssText = 'background:#1e293b;border-radius:6px;padding:.65rem .8rem;margin-bottom:.6rem;';
+          const kws = (pb.keywords || []).map(k =>
+            `<span style="background:rgba(99,102,241,.25);color:#a5b4fc;border-radius:3px;padding:.05rem .3rem;margin-right:.25rem;font-size:.72rem">${k}</span>`
+          ).join('');
+          const devs = (pb.plays || []).map(p => p.hostname || p.device_ip).join(', ');
+
+          // Build card HTML — no inline onclick so names with quotes/special chars are safe
+          card.innerHTML = `
+            <div style="font-weight:600;margin-bottom:.25rem;color:#e2e8f0"></div>
+            <div style="color:#94a3b8;margin-bottom:.35rem;font-size:.8rem"></div>
+            <div style="margin-bottom:.3rem">${kws}</div>
+            <div style="color:#64748b;font-size:.75rem">Devices: ${devs} &nbsp;·&nbsp; Saved: ${pb.created_at || ''}</div>
+            <div style="margin-top:.5rem;display:flex;gap:.4rem">
+              <button class="pb-run-btn" style="font-size:.75rem;background:#4f46e5;color:#fff;border:none;border-radius:4px;padding:.25rem .6rem;cursor:pointer">&#9654; Run</button>
+              <button class="pb-del-btn" style="font-size:.75rem;background:#64748b;color:#fff;border:none;border-radius:4px;padding:.25rem .6rem;cursor:pointer">&#128465; Delete</button>
+            </div>`;
+
+          // Set text content safely (avoids XSS from playbook names)
+          card.querySelector('div').textContent = pb.name;
+          card.querySelectorAll('div')[1].textContent = pb.description || '';
+
+          // Attach event listeners with proper closure — no innerHTML injection
+          card.querySelector('.pb-run-btn').addEventListener('click', function () {
+            runPlaybook(pb.id, pb.name);
+          });
+          card.querySelector('.pb-del-btn').addEventListener('click', function () {
+            deletePlaybook(pb.id, this);
+          });
+
+          playbookList.appendChild(card);
+        });
+      } catch (e) {
+        playbookList.innerHTML = '<em style="color:#f87171">Failed to load playbooks.</em>';
+      }
+    }
+
+    playbooksBtn.addEventListener('click', function () {
+      playbookDrawer.style.display = 'block';
+      loadPlaybooks();
+    });
+    playbooksClose.addEventListener('click', function () {
+      playbookDrawer.style.display = 'none';
+    });
+
+    window.runPlaybook = function (pbId, pbName) {
+      playbookDrawer.style.display = 'none';
+      if (busy) { alert('AI is busy — please wait.'); return; }
+      // Directly trigger playbook execution via run_playbook_id param.
+      // This bypasses keyword matching and the Claude API entirely.
+      const displayMsg = pbName ? `▶ Run playbook: ${pbName}` : `▶ Run playbook: ${pbId}`;
+      busy = true;
+      setInputEnabled(false);
+      appendUserMessage(displayMsg);
+      currentAssistantRow = null; currentTextBuffer = ''; currentToolCards = {};
+      showThinking();
+      // Use fetch with run_playbook_id to directly execute the playbook
+      const body = JSON.stringify({ message: displayMsg, session_id: sessionId, run_playbook_id: pbId });
+      // Reuse the same SSE stream logic via a helper
+      (async function () {
+        try {
+          const resp = await fetch('/ai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+          });
+          if (!resp.ok || !resp.body) throw new Error('Stream failed');
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          activeReader = reader;
+          let buf = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n'); buf = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+              handleEvent(evt);
+            }
+          }
+        } catch (err) {
+          if (err.name !== 'AbortError') appendError('Playbook error: ' + err.message);
+          hideThinking();
+        } finally {
+          activeReader = null; setInputEnabled(true); busy = false;
+        }
+      })();
+    };
+
+    window.deletePlaybook = function (pbId, btn) {
+      if (!confirm('Delete this playbook?')) return;
+      fetch(`/ai/playbooks/${pbId}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(() => loadPlaybooks())
+        .catch(() => alert('Delete failed'));
+    };
+
+    /* ---- Clear history ------------------------------------------------- */
+    clearBtn.addEventListener('click', function () {
+      fetch('/ai/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      // Remove all message rows, show welcome again
+      Array.from(messages.children).forEach(function (el) {
+        if (el !== welcome && el !== thinking) el.remove();
+      });
+      welcome.style.display = '';
+      currentAssistantRow = null;
+      currentTextBuffer   = '';
+      currentToolCards    = {};
+      sessionCostUsd      = 0;
+      const badge = document.getElementById('aiCostBadge');
+      if (badge) badge.style.display = 'none';
+    });
+
+    /* ---- Suggestions --------------------------------------------------- */
+    document.querySelectorAll('.ai-suggestion').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const prompt = btn.getAttribute('data-prompt');
+        if (prompt) sendMessage(prompt);
+      });
+    });
+
+    /* ---- Input handling ------------------------------------------------ */
+    input.addEventListener('input', function () {
+      // Auto-resize textarea
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (!busy) doSend();
+      }
+    });
+
+    sendBtn.addEventListener('click', function () {
+      if (!busy) doSend();
+    });
+
+    stopBtn.addEventListener('click', function () {
+      if (!busy) return;
+      // Signal the server to stop after the current tool call completes.
+      fetch('/ai/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      // Cancel the local stream reader so the UI stops waiting immediately.
+      if (activeReader) {
+        activeReader.cancel();
+        activeReader = null;
+      }
+      hideThinking();
+      if (currentAssistantRow && currentTextBuffer) {
+        finaliseAssistantText();
+      }
+      setInputEnabled(true);
+      busy = false;
+      currentAssistantRow = null;
+      currentTextBuffer   = '';
+    });
+
+    /* Escape key stops a running generation */
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && busy) stopBtn.click();
+    });
+
+    function doSend() {
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      input.style.height = 'auto';
+      sendMessage(text);
+    }
+
+    /* ---- Markdown renderer (minimal, safe) ----------------------------- */
+    function escHtml(s) {
+      return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderMarkdown(text) {
+      // Fenced code blocks  ``` … ```
+      text = text.replace(/```(?:\w*)\n?([\s\S]*?)```/g, function (_, code) {
+        return '<pre><code>' + escHtml(code.trim()) + '</code></pre>';
+      });
+      // Inline code
+      text = text.replace(/`([^`\n]+)`/g, function (_, c) {
+        return '<code>' + escHtml(c) + '</code>';
+      });
+      // Bold
+      text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      // Italic
+      text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+      // Convert newlines to <br> (but not inside pre blocks)
+      const parts = text.split(/(<pre[\s\S]*?<\/pre>)/g);
+      return parts.map(function (p, i) {
+        return i % 2 === 1 ? p : p.replace(/\n/g, '<br>');
+      }).join('');
+    }
+
+    /* ---- Append helpers ----------------------------------------------- */
+    function hideWelcome() {
+      welcome.style.display = 'none';
+    }
+
+    function appendUserMessage(text) {
+      hideWelcome();
+      const row = document.createElement('div');
+      row.className = 'ai-msg-row user';
+      row.innerHTML =
+        '<div class="ai-msg-label">You</div>' +
+        '<div class="ai-msg-bubble">' + escHtml(text) + '</div>';
+      messages.insertBefore(row, thinking);
+      scrollBottom();
+    }
+
+    function createAssistantRow() {
+      const row = document.createElement('div');
+      row.className = 'ai-msg-row assistant';
+      row.innerHTML =
+        '<div class="ai-msg-label">AI Assistant</div>' +
+        '<div class="ai-msg-bubble"><div class="ai-msg-text"></div></div>';
+      messages.insertBefore(row, thinking);
+      return row;
+    }
+
+    function appendToolCard(toolId, label) {
+      const safeId = toolId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const card = document.createElement('div');
+      card.className = 'ai-tool-card';
+      card.innerHTML =
+        '<div class="ai-tool-header" onclick="this.nextSibling.classList.toggle(\'show\')">' +
+          '<div class="ai-tool-spinner" id="spin_' + safeId + '"></div>' +
+          '<span class="ai-tool-check" id="check_' + safeId + '" style="display:none">✓</span>' +
+          '<span class="ai-tool-label">' + escHtml(label) + '</span>' +
+          '<span class="ai-tool-toggle">▾</span>' +
+        '</div>' +
+        '<div class="ai-tool-body">' +
+          '<div class="ai-tool-output" id="out_' + safeId + '">Running…</div>' +
+        '</div>';
+      messages.insertBefore(card, thinking);
+      currentToolCards[toolId] = card;
+      scrollBottom();
+      return card;
+    }
+
+    function updateToolCard(toolId, content) {
+      const card = currentToolCards[toolId];
+      if (!card) return;
+      const safeId = toolId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const spin  = card.querySelector('#spin_'  + safeId);
+      const check = card.querySelector('#check_' + safeId);
+      const out   = card.querySelector('#out_'   + safeId);
+      if (spin)  spin.style.display  = 'none';
+      if (check) check.style.display = '';
+      if (out)   out.textContent = content;
+      scrollBottom();
+    }
+
+    function appendError(msg) {
+      const el = document.createElement('div');
+      el.className = 'ai-error-bubble';
+      el.textContent = '⚠ ' + msg;
+      messages.insertBefore(el, thinking);
+      scrollBottom();
+    }
+
+    function showThinking() {
+      thinking.classList.add('show');
+      scrollBottom();
+    }
+    function hideThinking() {
+      thinking.classList.remove('show');
+    }
+
+    function setInputEnabled(enabled) {
+      sendBtn.disabled        = !enabled;
+      sendBtn.style.display   = enabled ? '' : 'none';
+      stopBtn.style.display   = enabled ? 'none' : 'flex';
+      input.disabled          = !enabled;
+    }
+
+    function scrollBottom() {
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    /* ---- Local intent detection --------------------------------------- */
+    // Answer unambiguous status questions directly from localStorage so
+    // the API is never called for things we already know locally.
+
+    function tryAnswerLocally(text) {
+      const rawDev = localStorage.getItem('ndm_device_cache');
+      let devices = [];
+      try { devices = JSON.parse(rawDev).devices || []; } catch {}
+
+      const rawTopo = localStorage.getItem(TOPO_CACHE_KEY);
+      let topo = null;
+      try { const tc = JSON.parse(rawTopo); topo = tc.topology || null; } catch {}
+
+      const t = text.toLowerCase().trim();
+
+      /* ---- Device inventory questions ---- */
+      if (devices.length) {
+        if (/how many devices|device count|number of devices/.test(t)) {
+          const on = devices.filter(d => d.online).length;
+          return `**${devices.length} devices** managed — **${on} online**, **${devices.length - on} offline**.`;
+        }
+
+        if (/which.*(?:online|up|reachable)|(?:online|up) devices|who(?:'s| is) online|give me a summary|what devices are (currently )?online/.test(t)) {
+          const on = devices.filter(d => d.online);
+          const off = devices.filter(d => !d.online);
+          if (!on.length) return 'No devices are currently online.';
+          let ans = '**Online devices:**\n' + on.map(d => `- ${d.hostname} (${d.ip})`).join('\n');
+          if (off.length) ans += '\n\n**Offline:** ' + off.map(d => d.hostname).join(', ');
+          return ans;
+        }
+
+        if (/which.*(?:offline|down)|(?:offline|down) devices|who(?:'s| is) (offline|down)/.test(t)) {
+          const off = devices.filter(d => !d.online);
+          if (!off.length) return 'All devices are currently online.';
+          return '**Offline devices:**\n' + off.map(d => `- ${d.hostname} (${d.ip})`).join('\n');
+        }
+
+        if (/^(?:list|show)(?: all)? devices\.?$/.test(t) || /^what devices do (i|we) have/.test(t)) {
+          return '**All devices:**\n' + devices.map(d =>
+            `- ${d.hostname} (${d.ip}) — ${d.online ? '🟢 online' : '🔴 offline'}`
+          ).join('\n');
+        }
+
+        const singleCheck = t.match(/(?:is|are)\s+([\w.\-]+)\s+(?:online|up|reachable|alive|down|offline)/);
+        if (singleCheck) {
+          const q = singleCheck[1].toLowerCase();
+          const dev = devices.find(d => d.hostname.toLowerCase() === q || d.ip === q);
+          if (dev) return `**${dev.hostname}** (${dev.ip}) is currently **${dev.online ? '🟢 online' : '🔴 offline'}**.`;
+        }
+
+        const ipQuery = t.match(/(?:ip(?:\s+address)?|address) (?:of|for)\s+([\w.\-]+)/);
+        if (ipQuery) {
+          const q = ipQuery[1].toLowerCase();
+          const dev = devices.find(d => d.hostname.toLowerCase() === q);
+          if (dev) return `**${dev.hostname}** management IP: \`${dev.ip}\``;
+        }
+
+        const mgmtIpQuery = t.match(/(?:what(?:'s| is) the (?:ip|address|mgmt ip) (?:of|for)|mgmt ip of)\s+([\w.\-]+)/);
+        if (mgmtIpQuery) {
+          const q = mgmtIpQuery[1].toLowerCase();
+          const dev = devices.find(d => d.hostname.toLowerCase() === q);
+          if (dev) return `**${dev.hostname}** management IP: \`${dev.ip}\``;
+        }
+      }
+
+      /* ---- Topology questions (answered from cached topology) ---- */
+      if (topo) {
+        const nodes = topo.nodes || [];
+        const edges = topo.edges || [];
+        const ifaceMap = topo.interface_map || {};
+
+        // "list all interfaces on [device]" / "what interfaces does [device] have"
+        const ifaceListQ = t.match(/(?:interfaces?(?:\s+on)?|ports?(?:\s+on)?)\s+([\w\-]+)|what interfaces does\s+([\w\-]+)/);
+        if (ifaceListQ) {
+          const host = (ifaceListQ[1] || ifaceListQ[2]).toLowerCase();
+          const match = Object.keys(ifaceMap).find(h => h.toLowerCase() === host);
+          if (match) {
+            const ifaces = ifaceMap[match];
+            if (ifaces.length) {
+              return `**${match} interfaces:**\n` + ifaces.map(i => `- ${i.intf}: \`${i.ip}\``).join('\n');
+            }
+          }
+        }
+
+        // "what is the IP of [device] [interface]"
+        const ifaceIpQ = t.match(/ip (?:of|on|for)\s+([\w\-]+)\s+([\w\/\-]+)/);
+        if (ifaceIpQ) {
+          const host = ifaceIpQ[1].toLowerCase();
+          const intf = ifaceIpQ[2].toLowerCase();
+          const match = Object.keys(ifaceMap).find(h => h.toLowerCase() === host);
+          if (match) {
+            const iface = ifaceMap[match].find(i => i.intf.toLowerCase().includes(intf));
+            if (iface) return `**${match}** ${iface.intf}: \`${iface.ip}\``;
+          }
+        }
+
+        // "what is connected to [device]" / "neighbors of [device]"
+        const neighborQ = t.match(/(?:connected to|neighbors? of|links? (?:from|on))\s+([\w\-]+)/);
+        if (neighborQ) {
+          const host = neighborQ[1].toLowerCase();
+          const links = edges.filter(e => e.from === host || e.to === host);
+          if (links.length) {
+            const lines = links.map(e => {
+              if (e.from === host) return `- ${e.from} ${e.from_intf} (${e.local_ip}) → ${e.to} ${e.to_intf} (${e.remote_ip})`;
+              return `- ${e.to} ${e.to_intf} (${e.remote_ip}) → ${e.from} ${e.from_intf} (${e.local_ip})`;
+            });
+            return `**Links on ${host}:**\n` + lines.join('\n');
+          }
+        }
+
+        // "how many devices are in the topology" / "list all nodes"
+        if (/(?:list|show) (?:all )?nodes|how many (?:nodes|routers|switches)|topology.*devices/.test(t)) {
+          if (nodes.length) {
+            return `**Topology nodes (${nodes.length}):**\n` +
+              nodes.map(n => `- ${n.label}${n.type === 'discovered' ? ' *(discovered)*' : ''}`).join('\n');
+          }
+        }
+
+        // "show all links" / "list topology links"
+        if (/(?:list|show) (?:all )?links|topology links|all connections/.test(t)) {
+          if (edges.length) {
+            return `**Topology links (${edges.length}):**\n` +
+              edges.map(e => `- ${e.from} ${e.from_intf} (${e.local_ip}) ↔ ${e.to} ${e.to_intf} (${e.remote_ip})`).join('\n');
+          }
+        }
+      }
+
+      return null; // needs Claude
+    }
+
+    /* ---- Device context cache ----------------------------------------- */
+    const DEVICE_CACHE_KEY = 'ndm_device_cache';
+    const DEVICE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+    async function getDeviceContext() {
+      /* 1. Try localStorage — valid if seeded by the index page poller. */
+      try {
+        const raw = localStorage.getItem(DEVICE_CACHE_KEY);
+        if (raw) {
+          const cache = JSON.parse(raw);
+          if (Date.now() - cache.timestamp < DEVICE_CACHE_TTL && cache.devices?.length) {
+            return JSON.stringify(cache.devices);
+          }
+        }
+      } catch (e) { /* fall through to fetch */ }
+
+      /* 2. Cache missing or stale — fetch a fresh snapshot from the server. */
+      try {
+        const resp = await fetch('/ai/device_context');
+        if (resp.ok) {
+          const data = await resp.json();
+          localStorage.setItem(DEVICE_CACHE_KEY, JSON.stringify({
+            timestamp: Date.now(),
+            devices:   data.devices,
+          }));
+          return JSON.stringify(data.devices);
+        }
+      } catch (e) { /* non-critical — Claude will call the tool instead */ }
+
+      return null;
+    }
+
+    /* ---- Topology context cache --------------------------------------- */
+    const TOPO_CACHE_KEY = 'ndm_topology_cache_v2';
+    const TOPO_CACHE_TTL = 10 * 60 * 1000; // 10 minutes (matches server TTL)
+
+    async function getTopologyContext() {
+      /* 1. Try localStorage. */
+      try {
+        const raw = localStorage.getItem(TOPO_CACHE_KEY);
+        if (raw) {
+          const cache = JSON.parse(raw);
+          if (Date.now() - cache.timestamp < TOPO_CACHE_TTL && cache.topology) {
+            return JSON.stringify(cache.topology);
+          }
+        }
+      } catch (e) { /* fall through */ }
+
+      /* 2. Fetch from server (served from server-side cache, no SSH needed). */
+      try {
+        const resp = await fetch('/ai/topology_context');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.topology) {
+            localStorage.setItem(TOPO_CACHE_KEY, JSON.stringify({
+              timestamp: Date.now(),
+              topology:  data.topology,
+            }));
+            return JSON.stringify(data.topology);
+          }
+        }
+      } catch (e) { /* non-critical */ }
+
+      return null;
+    }
+
+    /* Invalidate topology cache after a config change that could affect topology */
+    function invalidateTopologyCache() {
+      localStorage.removeItem(TOPO_CACHE_KEY);
+    }
+
+    /* ---- Main send function ------------------------------------------- */
+    async function sendMessage(text, extraBody) {
+      if (busy) return;
+      busy = true;
+      setInputEnabled(false);
+
+      appendUserMessage(text);
+
+      currentAssistantRow = null;
+      currentTextBuffer   = '';
+      currentToolCards    = {};
+
+      /* Try to answer locally before touching the API. */
+      const localAnswer = tryAnswerLocally(text);
+      if (localAnswer !== null) {
+        currentAssistantRow = createAssistantRow();
+        currentAssistantRow.querySelector('.ai-msg-text').innerHTML =
+          renderMarkdown(localAnswer);
+        currentAssistantRow = null;
+        setInputEnabled(true);
+        busy = false;
+        return;
+      }
+
+      showThinking();
+
+      /* Attach cached context so Claude skips redundant tool calls. */
+      const [deviceContext, topologyContext] = await Promise.all([
+        getDeviceContext(),
+        getTopologyContext(),
+      ]);
+
+      try {
+        const resp = await fetch('/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({
+            message:           text,
+            session_id:        sessionId,
+            context_ip:        contextIp,
+            device_context:    deviceContext,
+            topology_context:  topologyContext,
+          }, extraBody || {})),
+        });
+
+        if (!resp.ok) {
+          if (resp.status === 400) {
+            // Corrupted conversation history (e.g. unmatched tool_use).
+            // Clear history server-side and retry once automatically.
+            appendError('Conversation history was corrupted — clearing and retrying…');
+            hideThinking();
+            await fetch('/ai/clear', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session_id: sessionId }),
+            });
+            setInputEnabled(true);
+            busy = false;
+            setTimeout(() => sendMessage(text, extraBody), 500);
+            return;
+          }
+          appendError('Server error: ' + resp.status);
+          hideThinking();
+          setInputEnabled(true);
+          busy = false;
+          return;
+        }
+
+        activeReader      = resp.body.getReader();
+        const reader      = activeReader;
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop(); // keep incomplete line
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let evt;
+            try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+            handleEvent(evt);
+          }
+        }
+
+      } catch (err) {
+        if (err.name !== 'AbortError' && err.message !== 'cancelled') {
+          // Network error — may be a server restart.  Poll until the server
+          // is back up, then check for a pending-restart auto-resume.
+          hideThinking();
+          setInputEnabled(true);
+          busy = false;
+          _handlePossibleRestart();
+        } else {
+          hideThinking();
+          setInputEnabled(true);
+          busy = false;
+        }
+      } finally {
+        activeReader = null;
+      }
+    }
+
+    /* ---- Server restart auto-resume ----------------------------------- */
+    async function _handlePossibleRestart() {
+      // Show a neutral banner while we figure out if this is a restart
+      const bannerId = 'restart-poll-banner';
+      if (!document.getElementById(bannerId)) {
+        const b = document.createElement('div');
+        b.id = bannerId;
+        b.className = 'alert alert-warning py-2 px-3 mb-0 d-flex align-items-center gap-2';
+        b.style.cssText = 'border-radius:0;position:sticky;top:0;z-index:10;font-size:.85rem';
+        b.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div>'
+                    + '<span>Connection lost &mdash; waiting for server&hellip;</span>';
+        document.getElementById('aiMessages').prepend(b);
+      }
+
+      // Poll GET / until the server responds
+      let up = false;
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const r = await fetch('/', { cache: 'no-store' });
+          if (r.ok) { up = true; break; }
+        } catch { /* still down */ }
+      }
+
+      const banner = document.getElementById(bannerId);
+      if (banner) banner.remove();
+
+      if (!up) {
+        appendError('Server did not come back within 2 minutes.');
+        return;
+      }
+
+      // Server is up — check for a pending resume
+      try {
+        const r    = await fetch('/session/pending-restart', { cache: 'no-store' });
+        const data = await r.json();
+        if (data && data.session_id) {
+          // Restore the session ID so the checkpoint is matched
+          sessionId = data.session_id;
+          const notice = document.createElement('div');
+          notice.className = 'alert alert-info py-2 px-3 mb-2';
+          notice.style.cssText = 'font-size:.85rem;transition:opacity 0.5s';
+          notice.innerHTML = '&#9654; Server restarted &mdash; resuming previous task&hellip;';
+          document.getElementById('aiMessages').appendChild(notice);
+          setTimeout(() => { notice.style.opacity = '0'; }, 4000);
+          setTimeout(() => { notice.remove(); }, 4500);
+          sendMessage('continue');
+          return;
+        }
+      } catch { /* no pending restart */ }
+
+      // Plain reconnect — briefly notify then fade out
+      const notice = document.createElement('div');
+      notice.className = 'alert alert-success py-2 px-3 mb-2';
+      notice.style.cssText = 'font-size:.85rem;transition:opacity 0.5s';
+      notice.innerHTML = '&#10003; Server is back online.';
+      document.getElementById('aiMessages').appendChild(notice);
+      setTimeout(() => { notice.style.opacity = '0'; }, 3000);
+      setTimeout(() => { notice.remove(); }, 3500);
+    }
+
+    /* ---- Ansible progress modal --------------------------------------- */
+    (function () {
+      const modal      = document.getElementById('ansibleModal');
+      const titleEl    = document.getElementById('ansibleModalTitle');
+      const descEl     = document.getElementById('ansibleModalDesc');
+      const statusEl   = document.getElementById('ansibleModalStatus');
+      const iconEl     = document.getElementById('ansibleModalIcon');
+      const playList   = document.getElementById('ansiblePlayList');
+      const summaryEl  = document.getElementById('ansibleSummaryText');
+      const closeBtn   = document.getElementById('ansibleModalClose');
+
+      let playRows = {};   // index -> DOM row element
+      let totalPlays = 0;
+
+      function openModal(name, desc, total) {
+        totalPlays = total;
+        titleEl.textContent  = name;
+        descEl.textContent   = desc || '';
+        statusEl.textContent = 'RUNNING';
+        statusEl.style.background = '#1e3a5f';
+        statusEl.style.color      = '#60a5fa';
+        iconEl.textContent   = '📋';
+        playList.innerHTML   = '';
+        summaryEl.textContent = `0 / ${total} play${total !== 1 ? 's' : ''} complete`;
+        closeBtn.style.opacity = '.5';
+        closeBtn.style.pointerEvents = 'none';
+        playRows = {};
+        modal.hidden = false;
+      }
+
+      function addPlayRow(index, hostname, deviceIp, cmdCount) {
+        const row = document.createElement('div');
+        row.className = 'ansible-play-row running';
+        row.innerHTML = `
+          <div class="ansible-play-header">
+            <span class="ansible-spin"></span>
+            <span class="ansible-play-hostname">${hostname} <span style="font-weight:400;color:#64748b;font-size:.78rem">(${deviceIp})</span></span>
+            <span class="ansible-play-meta">${cmdCount} cmd${cmdCount !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="ansible-play-output"></div>
+          <div class="ansible-play-toggle">Show output</div>`;
+        playList.appendChild(row);
+        playRows[index] = row;
+        // auto-scroll
+        playList.scrollTop = playList.scrollHeight;
+      }
+
+      function resolvePlayRow(index, ok, commands, error, cmdCount) {
+        const row = playRows[index];
+        if (!row) return;
+        row.className = 'ansible-play-row ' + (ok ? 'ok' : 'error');
+        const header = row.querySelector('.ansible-play-header');
+        const iconSpan = header.querySelector('.ansible-spin, .ansible-play-icon');
+
+        // Replace spinner with result icon
+        const newIcon = document.createElement('span');
+        newIcon.className = 'ansible-play-icon';
+        newIcon.textContent = ok ? '✓' : '✗';
+        newIcon.style.color = ok ? '#34d399' : '#f87171';
+        newIcon.style.fontWeight = '700';
+        if (iconSpan) header.replaceChild(newIcon, iconSpan);
+
+        // Update meta count
+        const meta = row.querySelector('.ansible-play-meta');
+        if (meta) {
+          const okCount = (commands || []).filter(c => c.ok).length;
+          const failCount = (commands || []).length - okCount;
+          if (ok) {
+            meta.textContent = `${cmdCount} applied`;
+            meta.style.color = '#34d399';
+          } else {
+            meta.textContent = failCount ? `${failCount} failed` : 'ERROR';
+            meta.style.color = '#f87171';
+          }
+        }
+
+        // Build per-command detail list
+        const outEl  = row.querySelector('.ansible-play-output');
+        const toggle = row.querySelector('.ansible-play-toggle');
+
+        if (commands && commands.length) {
+          // Remove old text content, build structured list
+          outEl.textContent = '';
+          commands.forEach(function (c) {
+            const item = document.createElement('div');
+            item.style.cssText = 'margin-bottom:.4rem;padding-bottom:.35rem;border-bottom:1px solid rgba(255,255,255,.05);';
+
+            // Command line with status dot
+            const cmdLine = document.createElement('div');
+            cmdLine.style.cssText = 'display:flex;align-items:baseline;gap:.4rem;margin-bottom:.2rem;';
+            const dot = document.createElement('span');
+            dot.textContent = c.ok ? '●' : '●';
+            dot.style.color = c.ok ? '#34d399' : '#f87171';
+            dot.style.fontSize = '.55rem';
+            dot.style.flexShrink = '0';
+            const cmdText = document.createElement('span');
+            cmdText.textContent = c.cmd;
+            cmdText.style.cssText = 'color:#e2e8f0;font-weight:500;word-break:break-all;';
+            cmdLine.appendChild(dot);
+            cmdLine.appendChild(cmdText);
+            item.appendChild(cmdLine);
+
+            // IOS error or output
+            if (!c.ok && c.ios_error) {
+              const errLine = document.createElement('div');
+              errLine.textContent = c.ios_error;
+              errLine.style.cssText = 'color:#fca5a5;padding-left:1rem;font-size:.7rem;';
+              item.appendChild(errLine);
+            } else if (c.output && c.output.trim()) {
+              const outLine = document.createElement('div');
+              outLine.textContent = c.output.trim();
+              outLine.style.cssText = 'color:#94a3b8;padding-left:1rem;font-size:.7rem;white-space:pre-wrap;';
+              item.appendChild(outLine);
+            }
+
+            outEl.appendChild(item);
+          });
+
+          toggle.style.display = 'block';
+          toggle.textContent = ok ? 'Show output' : 'Show details';
+          toggle.style.color = ok ? '#4f46e5' : '#f87171';
+          toggle.addEventListener('click', function () {
+            const isShown = outEl.style.display === 'block';
+            outEl.style.display = isShown ? 'none' : 'block';
+            toggle.textContent = isShown ? (ok ? 'Show output' : 'Show details') : 'Hide';
+          });
+
+          // Auto-expand errors so user sees them immediately
+          if (!ok) outEl.style.display = 'block';
+        }
+
+        // Top-level connection/exception error (no commands ran)
+        if (!ok && error && (!commands || !commands.length)) {
+          const errEl = document.createElement('div');
+          errEl.className = 'ansible-play-error-msg';
+          errEl.textContent = error;
+          row.appendChild(errEl);
+        }
+
+        // Update summary (totalPlays comes from closure)
+        const done = Object.values(playRows).filter(r => !r.classList.contains('running')).length;
+        summaryEl.textContent = `${done} / ${totalPlays} play${totalPlays !== 1 ? 's' : ''} complete`;
+        playList.scrollTop = playList.scrollHeight;
+      }
+
+      function finishModal(ok, name, fixing) {
+        if (ok) {
+          statusEl.textContent = 'COMPLETED';
+          statusEl.style.background = 'rgba(52,211,153,.15)';
+          statusEl.style.color      = '#34d399';
+          iconEl.textContent = '✅';
+          summaryEl.textContent = 'All plays succeeded.';
+        } else if (fixing) {
+          statusEl.textContent = 'AI FIXING…';
+          statusEl.style.background = 'rgba(99,102,241,.2)';
+          statusEl.style.color      = '#a5b4fc';
+          iconEl.textContent = '🔧';
+          summaryEl.innerHTML = '<span style="color:#a5b4fc">AI assistant is diagnosing and correcting the errors…</span>';
+        } else {
+          statusEl.textContent = 'ERRORS';
+          statusEl.style.background = 'rgba(248,113,113,.15)';
+          statusEl.style.color      = '#f87171';
+          iconEl.textContent = '⚠️';
+          summaryEl.textContent = 'Some plays failed. Review errors above.';
+        }
+        closeBtn.style.opacity = '1';
+        closeBtn.style.pointerEvents = 'auto';
+      }
+
+      closeBtn.addEventListener('click', function () { modal.hidden = true; });
+      modal.addEventListener('click', function (e) { if (e.target === modal) modal.hidden = true; });
+
+      // Expose handlers for handleEvent
+      window._ansibleModal = { openModal, addPlayRow, resolvePlayRow, finishModal };
+    })();
+
+    /* ---- SSE event handler -------------------------------------------- */
+    function handleEvent(evt) {
+      if (evt.type === 'provider') {
+        // Keep dropdown in sync with what the server actually used.
+        if (providerSelect.value !== evt.id) providerSelect.value = evt.id;
+
+      } else if (evt.type === 'text') {
+        hideThinking(); // first text arrives — hide dots
+        if (!currentAssistantRow) {
+          currentAssistantRow = createAssistantRow();
+        }
+        currentTextBuffer += evt.content;
+        const textEl = currentAssistantRow.querySelector('.ai-msg-text');
+        // Show raw (escaped) text while streaming, with blinking cursor
+        textEl.innerHTML = escHtml(currentTextBuffer) +
+          '<span class="ai-cursor"></span>';
+        scrollBottom();
+
+      } else if (evt.type === 'tool_start') {
+        hideThinking();
+        // Finish any pending streamed text first
+        if (currentAssistantRow && currentTextBuffer) {
+          finaliseAssistantText();
+        }
+        appendToolCard(evt.id || evt.tool, evt.label);
+
+      } else if (evt.type === 'tool_result') {
+        updateToolCard(evt.id || evt.tool, evt.content);
+
+      } else if (evt.type === 'rate_limit_wait') {
+        if (!currentAssistantRow) currentAssistantRow = createAssistantRow();
+        const textEl = currentAssistantRow.querySelector('.ai-msg-text');
+        textEl.innerHTML = '<em style="color:var(--bs-secondary-color)">⏳ ' + escHtml(evt.content) + '</em>';
+        scrollBottom();
+
+      } else if (evt.type === 'interrupted') {
+        if (currentAssistantRow && currentTextBuffer) {
+          finaliseAssistantText();
+        }
+        hideThinking();
+        setInputEnabled(true);
+        busy = false;
+        activeReader = null;
+        currentAssistantRow = null;
+        currentTextBuffer   = '';
+
+      } else if (evt.type === 'usage') {
+        sessionCostUsd += evt.cost_usd || 0;
+        const badge = document.getElementById('aiCostBadge');
+        if (badge) {
+          // Format cost: show µ¢ for tiny amounts, ¢ for cents, $ for dollars
+          let costStr;
+          if (sessionCostUsd < 0.001) {
+            costStr = (sessionCostUsd * 100000).toFixed(1) + 'µ¢';
+          } else if (sessionCostUsd < 0.01) {
+            costStr = (sessionCostUsd * 1000).toFixed(2) + 'm¢';
+          } else if (sessionCostUsd < 1) {
+            costStr = (sessionCostUsd * 100).toFixed(2) + '¢';
+          } else {
+            costStr = '$' + sessionCostUsd.toFixed(4);
+          }
+          const thisCost = evt.cost_usd < 0.001
+            ? (evt.cost_usd * 100000).toFixed(1) + 'µ¢'
+            : evt.cost_usd < 0.01
+              ? (evt.cost_usd * 1000).toFixed(2) + 'm¢'
+              : evt.cost_usd < 1
+                ? (evt.cost_usd * 100).toFixed(2) + '¢'
+                : '$' + evt.cost_usd.toFixed(4);
+          badge.textContent = costStr + ' session';
+          badge.title = `This response: ${thisCost} · Session total: ${costStr}\nTokens — in: ${evt.input}, out: ${evt.output}, cache-write: ${evt.cache_write}, cache-read: ${evt.cache_read}`;
+          badge.style.display = '';
+        }
+
+      } else if (evt.type === 'error') {
+        appendError(evt.content);
+
+      } else if (evt.type === 'ansible_start') {
+        hideThinking();
+        window._ansibleModal.openModal(evt.name, evt.description, evt.total_plays);
+
+      } else if (evt.type === 'ansible_play_start') {
+        window._ansibleModal.addPlayRow(evt.index, evt.hostname, evt.device_ip, evt.cmd_count);
+
+      } else if (evt.type === 'ansible_play_result') {
+        window._ansibleModal.resolvePlayRow(
+          evt.index, evt.ok, evt.commands, evt.error, evt.cmd_count
+        );
+
+      } else if (evt.type === 'ansible_done') {
+        const willFix = !evt.ok && evt.failed_plays && evt.failed_plays.length > 0;
+        window._ansibleModal.finishModal(evt.ok, evt.name, willFix);
+        if (willFix) {
+          // Stash failure details — the 'done' handler will fire the AI troubleshoot
+          window._pendingAnsibleFix = { name: evt.name, failed_plays: evt.failed_plays };
+        }
+
+      } else if (evt.type === 'done') {
+        // Finalise any pending streamed text
+        if (currentAssistantRow && currentTextBuffer) {
+          finaliseAssistantText();
+        }
+        hideThinking();
+        setInputEnabled(true);
+        busy = false;
+        currentAssistantRow = null;
+        currentTextBuffer   = '';
+
+        // Auto-troubleshoot if a playbook just failed
+        if (window._pendingAnsibleFix) {
+          const fix = window._pendingAnsibleFix;
+          window._pendingAnsibleFix = null;
+          // Build a concise diagnostic prompt with full failure context
+          const lines = [
+            `Playbook "${fix.name}" ran but encountered the following errors. Please diagnose each error, fix the root cause, correct the failing commands, and re-run them on the affected devices.\n`
+          ];
+          (fix.failed_plays || []).forEach(function (play) {
+            lines.push(`Device: ${play.hostname} (${play.device_ip})`);
+            (play.commands || []).forEach(function (c) {
+              lines.push(`  Command: ${c.cmd}`);
+              if (c.ios_error) lines.push(`  IOS error: ${c.ios_error}`);
+            });
+            lines.push('');
+          });
+          lines.push('After fixing, update the saved playbook with the corrected commands using save_ansible_playbook.');
+          setTimeout(function () {
+            openPanel();
+            sendMessage(lines.join('\n'), { skip_playbook_match: true });
+          }, 400);
+        }
+      }
+    }
+
+    function finaliseAssistantText() {
+      if (!currentAssistantRow) return;
+      const textEl = currentAssistantRow.querySelector('.ai-msg-text');
+      textEl.innerHTML = renderMarkdown(currentTextBuffer);
+      currentTextBuffer = '';
+      scrollBottom();
+    }
+
+    // Auto-troubleshoot Jenkins failures triggered from outside this closure
+    setInterval(function () {
+      if (!window._pendingJenkinsFix || busy) return;
+      const fix = window._pendingJenkinsFix;
+      window._pendingJenkinsFix = null;
+      const buildNum = fix.buildNum ? ` (#${fix.buildNum})` : '';
+      const msg = `The Jenkins pipeline "${fix.jobName}"${buildNum} just failed. Please retrieve the console log and troubleshoot why it failed.`;
+      openPanel();
+      sendMessage(msg);
+    }, 1000);
+
+  })();
+  </script>
+
+  {% block extra_scripts %}{% endblock %}
 </body>
 </html>
-

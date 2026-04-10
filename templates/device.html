@@ -1,4 +1,42 @@
 {% extends "base.html" %}
+
+{% block extra_scripts %}
+<script>
+  /* Tell the AI panel which device we're currently viewing */
+  window.AI_CONTEXT_IP    = '{{ device["ip"] }}';
+  window.AI_CONTEXT_LABEL = '{{ device["hostname"] }}';
+
+  /* Device-specific suggestion prompts */
+  document.addEventListener('DOMContentLoaded', function () {
+    const suggestions = document.getElementById('aiSuggestions');
+    if (!suggestions) return;
+    suggestions.innerHTML = '';
+    const prompts = [
+      ['🩺 Diagnose this device', 'Diagnose {{ device["hostname"] }} ({{ device["ip"] }}). Check interface status, errors, and any issues you can find.'],
+      ['🔌 Show interfaces', 'Show all interfaces on {{ device["hostname"] }} ({{ device["ip"] }}) with their status and IP addresses.'],
+      ['🗺️ Show routing table', 'Show the IP routing table on {{ device["hostname"] }} ({{ device["ip"] }}).'],
+      ['📋 Show running config', 'Show the running configuration of {{ device["hostname"] }} ({{ device["ip"] }}).'],
+      ['💾 Backup config', 'Back up the running configuration of {{ device["hostname"] }} ({{ device["ip"] }}).'],
+    ];
+    prompts.forEach(function ([label, prompt]) {
+      const btn = document.createElement('button');
+      btn.className = 'ai-suggestion';
+      btn.setAttribute('data-prompt', prompt);
+      btn.textContent = label;
+      btn.addEventListener('click', function () {
+        document.getElementById('aiOpenBtn').click();
+        setTimeout(function () {
+          const input = document.getElementById('ai-input');
+          input.value = prompt;
+          input.dispatchEvent(new Event('input'));
+        }, 350);
+      });
+      suggestions.appendChild(btn);
+    });
+  });
+</script>
+{% endblock %}
+
 {% block content %}
 
 {# Determine active tab; default to utilities #}
@@ -16,6 +54,20 @@
       <input type="hidden" name="active_tab" value="{{ tab }}">
       <button type="submit" class="btn btn-outline-success">💾 Save Device Config</button>
     </form>
+    <!-- Restore Golden Config -->
+    <form method="post" action="{{ url_for('restore_golden_config', ip=device['ip']) }}" style="display:inline;">
+      <input type="hidden" name="active_tab" value="{{ tab }}">
+      <button type="submit" class="btn btn-outline-warning"
+              onclick="return confirm('Restore golden_config.txt to startup-config?');">
+        ⭐ Restore Golden Config
+      </button>
+    </form>
+    <!-- Ask AI about this device -->
+    <button type="button" class="btn btn-outline-primary"
+            onclick="document.getElementById('aiOpenBtn').click();"
+            title="Open AI Assistant with context for this device">
+      ✦ Ask AI
+    </button>
     <!-- Back to Devices -->
     <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅️ Back to Devices</a>
   </div>
@@ -172,13 +224,24 @@
     <p class="text-muted">Manage files on the selected device. Choose a file system to upload, delete, or refresh.</p>
 
     <!-- Filesystem Dropdown -->
-    <div class="mb-3">
-      <label for="fsDropdown" class="form-label fw-bold">File system</label>
-      <select id="fsDropdown" class="form-select" name="filesystem" required>
-        {% for fs in filesystems %}
-          <option value="{{ fs }}" {% if fs == selected_fs %}selected{% endif %}>{{ fs }}</option>
-        {% endfor %}
-      </select>
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <label for="fsDropdown" class="form-label fw-bold">File system</label>
+        <select id="fsDropdown" class="form-select" name="filesystem" required>
+          {% for fs in filesystems %}
+            <option value="{{ fs }}" {% if fs == selected_fs %}selected{% endif %}>{{ fs }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label for="tftpServerInput" class="form-label fw-bold">TFTP Server Address</label>
+        <div class="input-group">
+          <input type="text" class="form-control" id="tftpServerInput" value="{{ tftp_server }}" placeholder="TFTP Server IP">
+          <button class="btn btn-outline-success" type="button" onclick="saveTftpServer()" title="Save as default">
+            💾 Save
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Hidden refresh form -->
@@ -188,17 +251,33 @@
 
     <div class="row g-4 mb-4">
       <!-- Upload -->
-      <div class="col-md-6">
+      <div class="col-md-4">
         <h5>⬆️ Upload file</h5>
         <form method="post" action="{{ url_for('upload_file', ip=device['ip']) }}" enctype="multipart/form-data">
           <input type="hidden" id="uploadFsInput" name="filesystem" value="{{ selected_fs }}">
+          <input type="hidden" id="uploadTftpInput" name="tftp_server" value="{{ tftp_server }}">
           <input type="file" class="form-control mb-2" name="file" required>
           <button class="btn btn-outline-primary w-100">Upload</button>
         </form>
       </div>
 
+      <!-- Download -->
+      <div class="col-md-4">
+        <h5>⬇️ Download file</h5>
+        <form method="post" action="{{ url_for('download_device_file', ip=device['ip']) }}">
+          <input type="hidden" id="downloadFsInput" name="filesystem" value="{{ selected_fs }}">
+          <input type="hidden" id="downloadTftpInput" name="tftp_server" value="{{ tftp_server }}">
+          <select class="form-select mb-2" name="filename" id="downloadFileSelect" required>
+            {% for f in files %}
+              <option value="{{ f }}">{{ f }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-outline-info w-100">Download to TFTP</button>
+        </form>
+      </div>
+
       <!-- Delete -->
-      <div class="col-md-6">
+      <div class="col-md-4">
         <h5>🗑️ Delete file</h5>
         <form method="post" action="{{ url_for('delete_file', ip=device['ip']) }}">
           <input type="hidden" id="deleteFsInput" name="filesystem" value="{{ selected_fs }}">
@@ -553,6 +632,46 @@
   </div>
 </div>
 
+<!-- Restore Backup Modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1" aria-labelledby="restoreModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title" id="restoreModalLabel">Restore Configuration</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <strong>Warning:</strong> This will send the backup configuration to the device. This may overwrite current settings.
+        </div>
+        <p><strong>Backup to restore:</strong></p>
+        <ul>
+          <li>Date: <span id="restoreBackupDate"></span></li>
+          <li>Type: <span id="restoreBackupType"></span></li>
+          <li>File: <code id="restoreBackupFile"></code></li>
+        </ul>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="saveAfterRestore">
+          <label class="form-check-label" for="saveAfterRestore">
+            Save to startup-config after restore (write memory)
+          </label>
+        </div>
+        <div id="restoreResult" style="display: none;">
+          <h6>Restore Output:</h6>
+          <pre class="bg-body-secondary border p-3" style="max-height: 300px; overflow-y: auto;"><code id="restoreOutput"></code></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="restoreBtn" onclick="executeRestore()">
+          <span class="btn-text">Restore Configuration</span>
+          <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Styles for hover-delete on quick actions and terminal sizing -->
 <style>
 .quick-action .delete-action {
@@ -618,14 +737,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const fsChangeInput = document.getElementById("fsChangeInput");
   const fsChangeForm = document.getElementById("fsChangeForm");
   const uploadFsInput = document.getElementById("uploadFsInput");
+  const downloadFsInput = document.getElementById("downloadFsInput");
   const deleteFsInput = document.getElementById("deleteFsInput");
+
+  // --- TFTP Server sync ---
+  const tftpServerInput = document.getElementById("tftpServerInput");
+  const uploadTftpInput = document.getElementById("uploadTftpInput");
+  const downloadTftpInput = document.getElementById("downloadTftpInput");
 
   function syncFsInputs() {
     if (!fsDropdown) return;
     const val = fsDropdown.value;
     if (uploadFsInput) uploadFsInput.value = val;
+    if (downloadFsInput) downloadFsInput.value = val;
     if (deleteFsInput) deleteFsInput.value = val;
     if (fsChangeInput) fsChangeInput.value = val;
+  }
+
+  function syncTftpInputs() {
+    if (!tftpServerInput) return;
+    const val = tftpServerInput.value.trim();
+    if (uploadTftpInput) uploadTftpInput.value = val;
+    if (downloadTftpInput) downloadTftpInput.value = val;
   }
 
   if (fsDropdown) {
@@ -635,6 +768,40 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     syncFsInputs();
   }
+
+  if (tftpServerInput) {
+    tftpServerInput.addEventListener("input", syncTftpInputs);
+    tftpServerInput.addEventListener("change", syncTftpInputs);
+    syncTftpInputs();
+  }
+
+  // Save TFTP server address to user settings
+  window.saveTftpServer = function() {
+    const tftpServer = document.getElementById('tftpServerInput').value.trim();
+
+    if (!tftpServer) {
+      showToast('Please enter a TFTP server address', 'warning');
+      return;
+    }
+
+    fetch('/save_tftp_server', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tftp_server: tftpServer })
+    })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+      } else {
+        showToast(data.message || 'Failed to save TFTP server', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Save TFTP server failed:', err);
+      showToast('Failed to save TFTP server address', 'danger');
+    });
+  };
 
   // --- Quick Actions: global persistence via backend routes (GLOBAL endpoints) ---
   const saveBtn = document.getElementById("saveQuickActionBtn");
@@ -882,6 +1049,11 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${formatBytes(backup.size)}</td>
         <td>
           <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-success btn-sm"
+                    onclick="showRestoreModal('${backup.filename}', '${backup.datetime}', '${backup.config_type}')"
+                    title="Restore this backup to device">
+              ↩️
+            </button>
             <a href="/download_backup/${backup.filename}" class="btn btn-outline-primary btn-sm" title="Download">
               ⬇️
             </a>
@@ -975,6 +1147,84 @@ document.addEventListener("DOMContentLoaded", () => {
     .catch(err => {
       console.error('Compare failed:', err);
       resultDiv.innerHTML = '<p class="text-danger">Comparison failed.</p>';
+    });
+  };
+
+  // Restore backup functionality
+  let currentRestoreFilename = null;
+
+  window.showRestoreModal = function(filename, datetime, configType) {
+    currentRestoreFilename = filename;
+    document.getElementById('restoreBackupDate').textContent = datetime;
+    document.getElementById('restoreBackupType').textContent = configType;
+    document.getElementById('restoreBackupFile').textContent = filename;
+    document.getElementById('saveAfterRestore').checked = false;
+    document.getElementById('restoreResult').style.display = 'none';
+    document.getElementById('restoreOutput').textContent = '';
+
+    // Reset button state
+    const restoreBtn = document.getElementById('restoreBtn');
+    restoreBtn.disabled = false;
+    restoreBtn.querySelector('.btn-text').textContent = 'Restore Configuration';
+    restoreBtn.querySelector('.spinner-border').classList.add('d-none');
+
+    const modal = new bootstrap.Modal(document.getElementById('restoreModal'));
+    modal.show();
+  };
+
+  window.executeRestore = function() {
+    if (!currentRestoreFilename) {
+      showToast('No backup selected', 'danger');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to restore this configuration to the device?\n\nThis will overwrite the current running configuration.')) {
+      return;
+    }
+
+    const saveToStartup = document.getElementById('saveAfterRestore').checked;
+    const restoreBtn = document.getElementById('restoreBtn');
+    const btnText = restoreBtn.querySelector('.btn-text');
+    const spinner = restoreBtn.querySelector('.spinner-border');
+
+    // Show loading state
+    btnText.textContent = 'Restoring...';
+    spinner.classList.remove('d-none');
+    restoreBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('filename', currentRestoreFilename);
+    formData.append('save_to_startup', saveToStartup ? 'true' : 'false');
+
+    fetch(`/device/${deviceIp}/restore_backup`, {
+      method: 'POST',
+      body: formData
+    })
+    .then(resp => resp.json())
+    .then(data => {
+      // Reset button state
+      btnText.textContent = 'Restore Configuration';
+      spinner.classList.add('d-none');
+      restoreBtn.disabled = false;
+
+      if (data.status === 'success') {
+        showToast(data.message + ` (${data.lines_sent} lines sent)`, 'success');
+
+        // Show restore output
+        document.getElementById('restoreResult').style.display = 'block';
+        document.getElementById('restoreOutput').textContent = data.output;
+      } else {
+        showToast(data.message || 'Restore failed', 'danger');
+      }
+    })
+    .catch(err => {
+      // Reset button state
+      btnText.textContent = 'Restore Configuration';
+      spinner.classList.add('d-none');
+      restoreBtn.disabled = false;
+
+      console.error('Restore failed:', err);
+      showToast('Failed to restore backup', 'danger');
     });
   };
 

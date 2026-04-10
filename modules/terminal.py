@@ -8,7 +8,8 @@ import threading
 import logging
 import paramiko
 from flask_socketio import SocketIO
-from modules.device import decrypt_field, load_saved_devices
+from modules.device import decrypt_field, load_saved_devices, get_current_device_list
+from modules.config import SSH_PORT, SSH_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -20,23 +21,60 @@ def ensure_terminal_session(ip: str, terminal_sessions: dict) -> paramiko.Channe
     # the `terminal_sessions` mapping for later reuse (and cleanup).
     sess = terminal_sessions.get(ip)
     if sess and sess.get("chan") and not sess["chan"].closed:
+        logger.debug(f"Reusing existing terminal session for {ip}")
         return sess["chan"]
+
+    # Clean up any stale session
     terminal_sessions.pop(ip, None)
-    dev = next((d for d in load_saved_devices() if d["ip"] == ip), None)
+
+    # Get the current device list file and load devices from it
+    _, current_list_file = get_current_device_list()
+    dev = next((d for d in load_saved_devices(current_list_file) if d["ip"] == ip), None)
     if not dev:
         raise RuntimeError(f"Device {ip} not found for terminal session")
-    username, password = dev["username"], decrypt_field(dev["password"])
+
+    username = dev["username"]
+    password = decrypt_field(dev["password"])
+    secret = decrypt_field(dev["secret"])
+
+    logger.info(f"Creating new terminal session for {ip} (user: {username})")
+
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(ip, username=username, password=password)
+
+    try:
+        ssh.connect(
+            ip,
+            port=SSH_PORT,
+            username=username,
+            password=password,
+            timeout=SSH_TIMEOUT,
+            look_for_keys=False,
+            allow_agent=False
+        )
+        logger.info(f"SSH connection established to {ip}")
+    except paramiko.AuthenticationException as e:
+        logger.error(f"Authentication failed for {ip}: {e}")
+        raise RuntimeError(f"Authentication failed for {ip}: {e}")
+    except paramiko.SSHException as e:
+        logger.error(f"SSH error connecting to {ip}: {e}")
+        raise RuntimeError(f"SSH connection error for {ip}: {e}")
+    except Exception as e:
+        logger.error(f"Connection failed for {ip}: {e}")
+        raise RuntimeError(f"Failed to connect to {ip}: {e}")
+
     chan = ssh.invoke_shell()
     chan.setblocking(0)
     terminal_sessions[ip] = {"ssh": ssh, "chan": chan, "reader_running": False}
+
+    # Send enable command and secret
     chan.send("enable\n")
-    time.sleep(0.2)
-    chan.send(decrypt_field(dev["secret"]) + "\n")
-    time.sleep(0.2)
+    time.sleep(0.3)
+    chan.send(secret + "\n")
+    time.sleep(0.3)
     chan.send("\n")
+
+    logger.info(f"Terminal session ready for {ip}")
     return chan
 
 

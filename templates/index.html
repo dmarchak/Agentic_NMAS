@@ -1,36 +1,219 @@
 {% extends "base.html" %}
 {% block content %}
 
-<!-- 🔷 Page header with search -->
+<!-- Device List Selector -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <label class="form-label mb-0 fw-bold">Device List:</label>
+        <select class="form-select form-select-sm" id="deviceListSelect" style="width: auto; min-width: 200px;">
+          {% for list in device_lists %}
+          <option value="{{ list.name }}" {% if list.is_current %}selected{% endif %}>
+            {{ list.name }} ({{ list.device_count }} devices)
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-primary btn-sm" onclick="showCreateListModal()">
+          + New List
+        </button>
+        <button class="btn btn-outline-danger btn-sm" onclick="deleteCurrentList()" id="deleteListBtn"
+                {% if device_lists|length <= 1 %}disabled{% endif %}>
+          Delete List
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Page Tabs -->
+<ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="devices-tab" data-bs-toggle="tab" data-bs-target="#devicesPane"
+            type="button" role="tab" aria-controls="devicesPane" aria-selected="true">
+      Devices
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="topology-tab" data-bs-toggle="tab" data-bs-target="#topologyPane"
+            type="button" role="tab" aria-controls="topologyPane" aria-selected="false">
+      Topology
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="ansible-tab" data-bs-toggle="tab" data-bs-target="#ansiblePane"
+            type="button" role="tab" aria-controls="ansiblePane" aria-selected="false">
+      Ansible
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="jenkins-tab" data-bs-toggle="tab" data-bs-target="#jenkinsPane"
+            type="button" role="tab" aria-controls="jenkinsPane" aria-selected="false">
+      Jenkins
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content" id="mainTabContent">
+
+<!-- ================================================================== -->
+<!-- DEVICES TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade show active" id="devicesPane" role="tabpanel" aria-labelledby="devices-tab">
+
+<!-- Page header with search -->
 <div class="mb-4 d-flex justify-content-between align-items-center">
   <h2 class="text-primary mb-0">Saved Devices</h2>
   {% if devices %}
   <div class="d-flex gap-2 align-items-center">
+    <button class="btn btn-success btn-sm" onclick="saveAllConfigs()" id="saveAllBtn">
+      <span class="btn-text">Save All Configs</span>
+      <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+    </button>
+    <button class="btn btn-info btn-sm" onclick="refreshHostnames()" id="refreshHostnamesBtn">
+      <span class="btn-text">Refresh Hostnames</span>
+      <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+    </button>
     <span class="badge bg-secondary" id="deviceCount">{{ devices|length }} device(s)</span>
     <input type="text"
            class="form-control form-control-sm"
            id="deviceSearch"
-           placeholder="🔍 Search devices..."
+           placeholder="Search devices..."
            style="width: 250px;">
   </div>
   {% endif %}
 </div>
 
 {% if devices %}
-<!-- 🔷 Bulk Operations Panel -->
+<!-- Bulk Operations Panel -->
 <div class="card mb-3" id="bulkOpsPanel" style="display: none;">
   <div class="card-body">
-    <h5 class="card-title">📦 Bulk Operations</h5>
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <h5 class="card-title mb-0">Bulk Operations</h5>
+      <button class="btn btn-sm btn-outline-primary" id="askAiAboutSelectionBtn"
+              onclick="askAiAboutSelection()" title="Open AI Assistant focused on selected devices">
+        ✦ Ask AI about selection
+      </button>
+    </div>
     <p class="text-muted mb-2">Execute commands on <span id="selectedCount">0</span> selected device(s)</p>
+    <div class="mb-3">
+      <div class="btn-group" role="group" aria-label="Command mode">
+        <input type="radio" class="btn-check" name="commandMode" id="modeEnable" value="enable" checked>
+        <label class="btn btn-outline-primary" for="modeEnable">Enable Mode</label>
+        <input type="radio" class="btn-check" name="commandMode" id="modeConfig" value="config">
+        <label class="btn btn-outline-primary" for="modeConfig">Config Mode</label>
+      </div>
+      <small class="text-muted ms-2" id="modeHint">Run show/exec commands (e.g., show ip int brief)</small>
+    </div>
     <div class="input-group">
       <input type="text" class="form-control" id="bulkCommand" placeholder="Enter command to execute on selected devices">
       <button class="btn btn-primary" onclick="executeBulkCommand()">Execute</button>
       <button class="btn btn-outline-secondary" onclick="clearSelection()">Clear Selection</button>
     </div>
+    <small class="text-muted mt-2 d-block" id="configHint" style="display: none;">For multiple config commands, separate with semicolons (e.g., hostname R1; interface gi0/0; description WAN)</small>
+
+    <!-- Bulk File Transfer Section -->
+    <hr class="my-3">
+    <h6 class="mb-2">File Transfer (TFTP)</h6>
+    <div class="row g-2 mb-3">
+      <div class="col-md-6">
+        <label class="form-label mb-1 small fw-bold">TFTP Server Address</label>
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control" id="bulkTftpServer" value="{{ tftp_server }}" placeholder="TFTP Server IP">
+          <button class="btn btn-outline-success" type="button" onclick="saveTftpServer()" title="Save as default">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="row g-2 mb-2">
+      <!-- Upload file to devices -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Upload file to selected devices</label>
+            <div class="input-group input-group-sm">
+              <input type="file" class="form-control" id="bulkUploadFile">
+              <button class="btn btn-success" onclick="bulkUploadFile()">Upload</button>
+            </div>
+            <small class="text-muted">Uploads to flash: on each device</small>
+          </div>
+        </div>
+      </div>
+      <!-- Download file from devices -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Download file from selected devices</label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="bulkDownloadFilename" placeholder="e.g., vlan.dat">
+              <button class="btn btn-info" onclick="bulkDownloadFile()">Download</button>
+            </div>
+            <small class="text-muted">Downloads from flash: to TFTP server</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-2 mb-2">
+      <!-- Quick config downloads -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Quick Config Download</label>
+            <div class="btn-group btn-group-sm w-100">
+              <button class="btn btn-outline-info" onclick="bulkDownloadConfig('startup')">Download Startup Configs</button>
+              <button class="btn btn-outline-info" onclick="bulkDownloadConfig('running')">Download Running Configs</button>
+            </div>
+            <small class="text-muted">Downloads configs to TFTP server with device hostname prefix</small>
+          </div>
+        </div>
+      </div>
+      <!-- Delete file from devices -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Delete file from selected devices</label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="bulkDeleteFilename" placeholder="e.g., old-config.bak">
+              <button class="btn btn-danger" onclick="bulkDeleteFile()">Delete</button>
+            </div>
+            <small class="text-muted">Deletes file from flash: on each device</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-2">
+      <!-- Restore Golden Config -->
+      <div class="col-md-6">
+        <div class="card border-warning">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Restore Golden Config</label>
+            <button class="btn btn-warning btn-sm w-100" onclick="bulkRestoreGoldenConfig()">
+              Restore golden_config.txt to Startup
+            </button>
+            <small class="text-muted">Copies flash:golden_config.txt to startup-config on selected devices</small>
+          </div>
+        </div>
+      </div>
+      <!-- Remove Static Routes -->
+      <div class="col-md-6">
+        <div class="card border-danger">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Remove Static Routes</label>
+            <button class="btn btn-outline-danger btn-sm w-100" onclick="bulkRemoveStaticRoutes()">
+              Remove All Static Routes
+            </button>
+            <small class="text-muted">Removes all "ip route" lines from running-config (VRF routes are preserved)</small>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- 🔷 Table of saved devices -->
+<!-- Table of saved devices -->
 <table class="table table-bordered table-hover align-middle">
   <thead class="table-dark">
     <tr>
@@ -83,7 +266,7 @@
 <p class="text-muted">No devices saved yet. Add one below.</p>
 {% endif %}
 
-<!-- 🔷 Bulk Operation Results Modal -->
+<!-- Bulk Operation Results Modal -->
 <div class="modal fade" id="bulkResultsModal" tabindex="-1" aria-labelledby="bulkResultsLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
@@ -110,9 +293,15 @@
   </div>
 </div>
 
-<!-- 🔷 Add Device Form -->
+<!-- Add Device Form -->
 <hr>
-<h3 class="mt-4">Add New Device</h3>
+<div class="d-flex align-items-center gap-3 mt-4 mb-0">
+  <h3 class="mb-0">Add New Device</h3>
+  <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#discoverSubnetModal">
+    🔍 Discover Subnet
+  </button>
+</div>
+<p class="text-muted mt-1">Adding to: <strong id="currentListName">{{ current_list }}</strong></p>
 <form method="post" action="{{ url_for('add_device') }}" class="row g-3" id="addDeviceForm">
   <div class="col-md-3">
     <input class="form-control" name="ip" placeholder="IP Address" required>
@@ -134,13 +323,253 @@
   </div>
 </form>
 
-<!-- 🔷 Embed device IPs for polling -->
+</div><!-- end Devices tab pane -->
+
+<!-- ================================================================== -->
+<!-- TOPOLOGY TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="topologyPane" role="tabpanel" aria-labelledby="topology-tab">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="text-primary mb-0">Network Topology</h2>
+  <div class="d-flex gap-2 align-items-center">
+    <button class="btn btn-primary btn-sm" id="topoDiscoverBtn" onclick="discoverTopology()">
+      <span class="btn-text">Discover Topology</span>
+      <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+    </button>
+    <button class="btn btn-outline-secondary btn-sm" onclick="resetTopologyView()" title="Reset zoom and position">
+      Reset View
+    </button>
+    <div class="form-check form-switch ms-2">
+      <input class="form-check-input" type="checkbox" id="topoPhysicsToggle" checked>
+      <label class="form-check-label" for="topoPhysicsToggle">Physics</label>
+    </div>
+  </div>
+</div>
+
+<!-- Topology legend -->
+<div class="mb-2">
+  <span class="badge bg-primary me-1">Managed Device</span>
+  <span class="badge bg-secondary me-1">Discovered Neighbor</span>
+  <small class="text-muted ms-2">Hover over nodes and links for details. Click and drag to rearrange.</small>
+</div>
+
+<!-- Topology canvas -->
+<div id="topologyContainer" class="border rounded" style="height: 650px; position: relative;">
+  <div id="topoPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+    <p class="mb-2" style="font-size: 1.2rem;">Click <strong>Discover Topology</strong> to scan your network</p>
+    <p class="small">Uses CDP neighbor data and interface IPs from all online devices</p>
+  </div>
+</div>
+
+<!-- Topology details panel (shown when a node is selected) -->
+<div id="topoDetailsPanel" class="card mt-3" style="display: none;">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <strong id="topoDetailTitle">Device Details</strong>
+    <button class="btn-close btn-sm" onclick="document.getElementById('topoDetailsPanel').style.display='none'"></button>
+  </div>
+  <div class="card-body" id="topoDetailBody"></div>
+</div>
+
+</div><!-- end Topology tab pane -->
+
+<!-- ================================================================== -->
+<!-- ANSIBLE TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="ansiblePane" role="tabpanel" aria-labelledby="ansible-tab">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="text-primary mb-0">Ansible Playbooks</h2>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadPlaybooks()">Refresh</button>
+</div>
+
+<div id="ansiblePlaybookList">
+  <div class="text-center text-muted py-5">
+    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+    Loading playbooks&hellip;
+  </div>
+</div>
+
+</div><!-- end Ansible tab pane -->
+
+<!-- ================================================================== -->
+<!-- JENKINS TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="jenkinsPane" role="tabpanel" aria-labelledby="jenkins-tab">
+
+<!-- Header row: title + pipeline selector + run button -->
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <h2 class="text-primary mb-0 me-auto">CI Pipeline</h2>
+  <select id="jenkinsPipelineSelect" class="form-select form-select-sm" style="width:auto;min-width:200px">
+    <option value="">All pipelines</option>
+  </select>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadJenkinsTab()">Refresh</button>
+  <button class="btn btn-primary btn-sm" id="runChecksBtn" onclick="runJenkinsChecks()" disabled>
+    <span class="btn-text">Run</span>
+    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+  </button>
+</div>
+
+<!-- Latest results for current list -->
+<div id="jenkinsResultsPanel">
+  <div class="text-center text-muted py-4">
+    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+    Loading&hellip;
+  </div>
+</div>
+
+<!-- Build history -->
+<div id="jenkinsBuildHistory" class="mt-4"></div>
+
+</div><!-- end Jenkins tab pane -->
+
+</div><!-- end tab-content -->
+
+<!-- Create Device List Modal -->
+<div class="modal fade" id="createListModal" tabindex="-1" aria-labelledby="createListModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="createListModalLabel">Create New Device List</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="newListName" class="form-label">List Name</label>
+          <input type="text" class="form-control" id="newListName" placeholder="e.g., Production Network"
+                 maxlength="50" required>
+          <div class="form-text">Use letters, numbers, spaces, hyphens, or underscores (max 50 characters)</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="createDeviceList()">Create List</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Embed full device data for polling and AI context caching -->
 <script id="device-data" type="application/json">
   {{ devices | map(attribute='ip') | list | tojson | safe }}
 </script>
+<script id="device-full-data" type="application/json">
+  {{ devices | tojson | safe }}
+</script>
 
-<!-- 🔷 Add Device Loading Indicator & Search Filter -->
+<!-- vis.js Network library for topology visualization -->
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+
+<!-- Device List Management & Bulk Ops Scripts -->
 <script>
+// ========================================================================
+// Device List Management
+// ========================================================================
+
+window.showCreateListModal = function() {
+  const modal = new bootstrap.Modal(document.getElementById('createListModal'));
+  document.getElementById('newListName').value = '';
+  modal.show();
+  document.getElementById('createListModal').addEventListener('shown.bs.modal', function() {
+    document.getElementById('newListName').focus();
+  }, { once: true });
+};
+
+window.createDeviceList = function() {
+  const nameInput = document.getElementById('newListName');
+  const name = nameInput.value.trim();
+
+  if (!name) {
+    showToast('Please enter a list name', 'warning');
+    nameInput.focus();
+    return;
+  }
+
+  fetch('/device_lists', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name })
+  })
+  .then(resp => resp.json())
+  .then(data => {
+    if (data.status === 'success') {
+      showToast(data.message, 'success');
+      fetch('/select_device_list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name })
+      })
+      .then(() => { window.location.reload(); });
+    } else {
+      showToast(data.message || 'Failed to create list', 'danger');
+    }
+  })
+  .catch(err => {
+    console.error('Create list failed:', err);
+    showToast('Failed to create device list', 'danger');
+  });
+};
+
+window.deleteCurrentList = function() {
+  const select = document.getElementById('deviceListSelect');
+  const currentList = select.value;
+
+  if (!confirm(`Are you sure you want to delete the device list "${currentList}"?\n\nThis will permanently delete all devices, backups, playbooks, and notes for this list.`)) {
+    return;
+  }
+
+  fetch(`/device_lists/${encodeURIComponent(currentList)}`, { method: 'DELETE' })
+  .then(resp => resp.json())
+  .then(data => {
+    if (data.status === 'success') {
+      showToast(data.message, 'success');
+      window.location.reload();
+    } else {
+      showToast(data.message || 'Failed to delete list', 'danger');
+    }
+  })
+  .catch(err => {
+    console.error('Delete list failed:', err);
+    showToast('Failed to delete device list', 'danger');
+  });
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  const deviceListSelect = document.getElementById('deviceListSelect');
+  if (deviceListSelect) {
+    deviceListSelect.addEventListener('change', function() {
+      const selectedList = this.value;
+      fetch('/select_device_list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: selectedList })
+      })
+      .then(resp => resp.json())
+      .then(data => {
+        if (data.status === 'success') {
+          window.location.reload();
+        } else {
+          showToast(data.message || 'Failed to switch list', 'danger');
+        }
+      })
+      .catch(err => {
+        console.error('Switch list failed:', err);
+        showToast('Failed to switch device list', 'danger');
+      });
+    });
+  }
+
+  const newListNameInput = document.getElementById('newListName');
+  if (newListNameInput) {
+    newListNameInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createDeviceList();
+      }
+    });
+  }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   // Add loading indicator to add device form
   const addDeviceForm = document.getElementById('addDeviceForm');
@@ -172,8 +601,6 @@ document.addEventListener('DOMContentLoaded', () => {
       deviceRows.forEach(row => {
         const hostname = row.querySelector('.device-hostname').textContent.toLowerCase();
         const ip = row.querySelector('.device-ip').textContent.toLowerCase();
-
-        // Check if search term matches hostname or IP
         const matches = hostname.includes(searchTerm) || ip.includes(searchTerm);
 
         if (matches) {
@@ -184,7 +611,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      // Update device count badge
       if (deviceCount) {
         if (searchTerm) {
           deviceCount.textContent = `${visibleCount} of ${deviceRows.length} device(s)`;
@@ -194,7 +620,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Clear search on Escape key
     searchInput.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         this.value = '';
@@ -213,7 +638,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const bulkOpsPanel = document.getElementById('bulkOpsPanel');
   const selectedCountSpan = document.getElementById('selectedCount');
 
-  // Update selection count and show/hide bulk panel
   function updateSelection() {
     const selected = Array.from(deviceCheckboxes).filter(cb => cb.checked && !cb.disabled);
     const count = selected.length;
@@ -226,14 +650,12 @@ document.addEventListener('DOMContentLoaded', () => {
       bulkOpsPanel.style.display = count > 0 ? 'block' : 'none';
     }
 
-    // Update select all checkbox
     if (selectAll) {
       const enabledCheckboxes = Array.from(deviceCheckboxes).filter(cb => !cb.disabled);
       selectAll.checked = enabledCheckboxes.length > 0 && selected.length === enabledCheckboxes.length;
     }
   }
 
-  // Select all checkbox
   if (selectAll) {
     selectAll.addEventListener('change', function() {
       deviceCheckboxes.forEach(cb => {
@@ -245,19 +667,394 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Individual checkboxes
   deviceCheckboxes.forEach(cb => {
     cb.addEventListener('change', updateSelection);
   });
 
-  // Clear selection
   window.clearSelection = function() {
     deviceCheckboxes.forEach(cb => cb.checked = false);
     if (selectAll) selectAll.checked = false;
     updateSelection();
   };
 
-  // Execute bulk command
+  window.saveAllConfigs = function() {
+    const onlineDeviceIps = Array.from(deviceCheckboxes)
+      .filter(cb => !cb.disabled)
+      .map(cb => cb.value);
+
+    if (onlineDeviceIps.length === 0) {
+      showToast('No online devices available', 'warning');
+      return;
+    }
+
+    if (!confirm(`Save running-config to startup-config on ${onlineDeviceIps.length} online device(s)?`)) {
+      return;
+    }
+
+    const saveBtn = document.getElementById('saveAllBtn');
+    const btnText = saveBtn.querySelector('.btn-text');
+    const spinner = saveBtn.querySelector('.spinner-border');
+    btnText.textContent = 'Saving...';
+    spinner.classList.remove('d-none');
+    saveBtn.disabled = true;
+
+    const formData = new FormData();
+    onlineDeviceIps.forEach(ip => formData.append('device_ips[]', ip));
+    formData.append('command', 'write memory');
+    formData.append('command_mode', 'enable');
+
+    fetch('/bulk_execute', { method: 'POST', body: formData })
+    .then(resp => resp.json())
+    .then(data => {
+      btnText.textContent = 'Save All Configs';
+      spinner.classList.add('d-none');
+      saveBtn.disabled = false;
+
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        showBulkResults(data.operation_id);
+      } else {
+        showToast(data.message || 'Save all configs failed', 'danger');
+      }
+    })
+    .catch(err => {
+      btnText.textContent = 'Save All Configs';
+      spinner.classList.add('d-none');
+      saveBtn.disabled = false;
+      console.error('Save all configs failed:', err);
+      showToast('Failed to save configs', 'danger');
+    });
+  };
+
+  window.refreshHostnames = function() {
+    if (!confirm('Query all online devices for their current hostnames?\n\nThis will update the device list if any hostnames have changed.')) {
+      return;
+    }
+
+    const refreshBtn = document.getElementById('refreshHostnamesBtn');
+    const btnText = refreshBtn.querySelector('.btn-text');
+    const spinner = refreshBtn.querySelector('.spinner-border');
+    btnText.textContent = 'Refreshing...';
+    spinner.classList.remove('d-none');
+    refreshBtn.disabled = true;
+
+    fetch('/refresh_hostnames', { method: 'POST' })
+    .then(resp => resp.json())
+    .then(data => {
+      btnText.textContent = 'Refresh Hostnames';
+      spinner.classList.add('d-none');
+      refreshBtn.disabled = false;
+
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        if (data.updated > 0) {
+          setTimeout(() => { window.location.reload(); }, 1500);
+        }
+      } else {
+        showToast(data.message || 'Refresh hostnames failed', 'danger');
+      }
+    })
+    .catch(err => {
+      btnText.textContent = 'Refresh Hostnames';
+      spinner.classList.add('d-none');
+      refreshBtn.disabled = false;
+      console.error('Refresh hostnames failed:', err);
+      showToast('Failed to refresh hostnames', 'danger');
+    });
+  };
+
+  window.saveTftpServer = function() {
+    const tftpServer = document.getElementById('bulkTftpServer').value.trim();
+
+    if (!tftpServer) {
+      showToast('Please enter a TFTP server address', 'warning');
+      return;
+    }
+
+    fetch('/save_tftp_server', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tftp_server: tftpServer })
+    })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+      } else {
+        showToast(data.message || 'Failed to save TFTP server', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Save TFTP server failed:', err);
+      showToast('Failed to save TFTP server address', 'danger');
+    });
+  };
+
+  window.bulkUploadFile = function() {
+    const fileInput = document.getElementById('bulkUploadFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+      showToast('Please select a file to upload', 'warning');
+      return;
+    }
+
+    const selectedIps = Array.from(deviceCheckboxes)
+      .filter(cb => cb.checked && !cb.disabled)
+      .map(cb => cb.value);
+
+    if (selectedIps.length === 0) {
+      showToast('No devices selected', 'warning');
+      return;
+    }
+
+    if (!confirm(`Upload "${file.name}" to flash: on ${selectedIps.length} device(s)?`)) {
+      return;
+    }
+
+    const formData = new FormData();
+    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
+    formData.append('file', file);
+    formData.append('tftp_server', document.getElementById('bulkTftpServer').value.trim());
+
+    showToast('Starting bulk upload...', 'info');
+
+    fetch('/bulk_tftp_upload', { method: 'POST', body: formData })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        showBulkResults(data.operation_id);
+        fileInput.value = '';
+      } else {
+        showToast(data.message || 'Bulk upload failed', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Bulk upload failed:', err);
+      showToast('Failed to start bulk upload', 'danger');
+    });
+  };
+
+  window.bulkDownloadFile = function() {
+    const filename = document.getElementById('bulkDownloadFilename').value.trim();
+
+    if (!filename) {
+      showToast('Please enter a filename to download', 'warning');
+      return;
+    }
+
+    const selectedIps = Array.from(deviceCheckboxes)
+      .filter(cb => cb.checked && !cb.disabled)
+      .map(cb => cb.value);
+
+    if (selectedIps.length === 0) {
+      showToast('No devices selected', 'warning');
+      return;
+    }
+
+    if (!confirm(`Download "${filename}" from flash: on ${selectedIps.length} device(s) to TFTP server?`)) {
+      return;
+    }
+
+    const formData = new FormData();
+    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
+    formData.append('filename', filename);
+    formData.append('tftp_server', document.getElementById('bulkTftpServer').value.trim());
+
+    showToast('Starting bulk download...', 'info');
+
+    fetch('/bulk_tftp_download', { method: 'POST', body: formData })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        showBulkResults(data.operation_id);
+        document.getElementById('bulkDownloadFilename').value = '';
+      } else {
+        showToast(data.message || 'Bulk download failed', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Bulk download failed:', err);
+      showToast('Failed to start bulk download', 'danger');
+    });
+  };
+
+  window.bulkDownloadConfig = function(configType) {
+    const selectedIps = Array.from(deviceCheckboxes)
+      .filter(cb => cb.checked && !cb.disabled)
+      .map(cb => cb.value);
+
+    if (selectedIps.length === 0) {
+      showToast('No devices selected', 'warning');
+      return;
+    }
+
+    const configName = configType === 'startup' ? 'startup-config' : 'running-config';
+
+    if (!confirm(`Download ${configName} from ${selectedIps.length} device(s) to TFTP server?`)) {
+      return;
+    }
+
+    const formData = new FormData();
+    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
+    formData.append('config_type', configType);
+    formData.append('tftp_server', document.getElementById('bulkTftpServer').value.trim());
+
+    showToast(`Starting ${configName} download...`, 'info');
+
+    fetch('/bulk_download_config', { method: 'POST', body: formData })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        showBulkResults(data.operation_id);
+      } else {
+        showToast(data.message || 'Config download failed', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Config download failed:', err);
+      showToast('Failed to start config download', 'danger');
+    });
+  };
+
+  window.bulkDeleteFile = function() {
+    const filename = document.getElementById('bulkDeleteFilename').value.trim();
+
+    if (!filename) {
+      showToast('Please enter a filename to delete', 'warning');
+      return;
+    }
+
+    const selectedIps = Array.from(deviceCheckboxes)
+      .filter(cb => cb.checked && !cb.disabled)
+      .map(cb => cb.value);
+
+    if (selectedIps.length === 0) {
+      showToast('No devices selected', 'warning');
+      return;
+    }
+
+    if (!confirm(`DELETE "${filename}" from flash: on ${selectedIps.length} device(s)?\n\nThis action cannot be undone!`)) {
+      return;
+    }
+
+    const formData = new FormData();
+    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
+    formData.append('filename', filename);
+
+    showToast('Starting bulk delete...', 'info');
+
+    fetch('/bulk_delete_file', { method: 'POST', body: formData })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        showBulkResults(data.operation_id);
+        document.getElementById('bulkDeleteFilename').value = '';
+      } else {
+        showToast(data.message || 'Bulk delete failed', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Bulk delete failed:', err);
+      showToast('Failed to start bulk delete', 'danger');
+    });
+  };
+
+  window.bulkRestoreGoldenConfig = function() {
+    const selectedIps = Array.from(deviceCheckboxes)
+      .filter(cb => cb.checked && !cb.disabled)
+      .map(cb => cb.value);
+
+    if (selectedIps.length === 0) {
+      showToast('No devices selected', 'warning');
+      return;
+    }
+
+    if (!confirm(`Restore golden_config.txt to startup-config on ${selectedIps.length} device(s)?\n\nThis will overwrite the startup configuration!`)) {
+      return;
+    }
+
+    const formData = new FormData();
+    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
+    formData.append('command', 'copy flash:golden_config.txt startup-config');
+    formData.append('command_mode', 'enable');
+
+    showToast('Starting golden config restore...', 'info');
+
+    fetch('/bulk_execute', { method: 'POST', body: formData })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        showBulkResults(data.operation_id);
+      } else {
+        showToast(data.message || 'Bulk restore failed', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Bulk restore failed:', err);
+      showToast('Failed to start bulk restore', 'danger');
+    });
+  };
+
+  window.bulkRemoveStaticRoutes = function() {
+    const selectedIps = Array.from(deviceCheckboxes)
+      .filter(cb => cb.checked && !cb.disabled)
+      .map(cb => cb.value);
+
+    if (selectedIps.length === 0) {
+      showToast('No devices selected', 'warning');
+      return;
+    }
+
+    if (!confirm(`Remove ALL static routes from ${selectedIps.length} device(s)?\n\nVRF routes will be preserved.\nThis action modifies the running configuration!`)) {
+      return;
+    }
+
+    const formData = new FormData();
+    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
+
+    showToast('Removing static routes...', 'info');
+
+    fetch('/bulk_remove_static_routes', { method: 'POST', body: formData })
+    .then(resp => resp.json())
+    .then(data => {
+      if (data.status === 'success') {
+        showToast(data.message, 'success');
+        showBulkResults(data.operation_id);
+      } else {
+        showToast(data.message || 'Remove static routes failed', 'danger');
+      }
+    })
+    .catch(err => {
+      console.error('Remove static routes failed:', err);
+      showToast('Failed to start static route removal', 'danger');
+    });
+  };
+
+  // Update hint when command mode changes
+  document.querySelectorAll('input[name="commandMode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+      const modeHint = document.getElementById('modeHint');
+      const configHint = document.getElementById('configHint');
+      const commandInput = document.getElementById('bulkCommand');
+
+      if (this.value === 'config') {
+        modeHint.textContent = 'Enter configuration commands (auto enters config mode)';
+        configHint.style.display = 'block';
+        commandInput.placeholder = 'Enter config command(s) - use semicolons for multiple';
+      } else {
+        modeHint.textContent = 'Run show/exec commands (e.g., show ip int brief)';
+        configHint.style.display = 'none';
+        commandInput.placeholder = 'Enter command to execute on selected devices';
+      }
+    });
+  });
+
   window.executeBulkCommand = function() {
     const command = document.getElementById('bulkCommand').value.trim();
     if (!command) {
@@ -274,28 +1071,25 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (!confirm(`Execute "${command}" on ${selectedIps.length} device(s)?`)) {
+    const commandMode = document.querySelector('input[name="commandMode"]:checked').value;
+    const modeText = commandMode === 'config' ? 'configuration' : 'enable';
+
+    if (!confirm(`Execute "${command}" in ${modeText} mode on ${selectedIps.length} device(s)?`)) {
       return;
     }
 
-    // Prepare form data
     const formData = new FormData();
     selectedIps.forEach(ip => formData.append('device_ips[]', ip));
     formData.append('command', command);
+    formData.append('command_mode', commandMode);
 
-    // Show loading toast
     showToast('Starting bulk operation...', 'info');
 
-    // Execute bulk command
-    fetch('/bulk_execute', {
-      method: 'POST',
-      body: formData
-    })
+    fetch('/bulk_execute', { method: 'POST', body: formData })
     .then(resp => resp.json())
     .then(data => {
       if (data.status === 'success') {
         showToast(data.message, 'success');
-        // Show results modal and start polling
         showBulkResults(data.operation_id);
       } else {
         showToast(data.message || 'Bulk operation failed', 'danger');
@@ -307,19 +1101,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  // Show bulk results modal
   function showBulkResults(operationId) {
     const modal = new bootstrap.Modal(document.getElementById('bulkResultsModal'));
     modal.show();
 
-    // Reset progress
     document.getElementById('bulkProgressBar').style.width = '0%';
     document.getElementById('bulkProgressText').textContent = '0/0';
     document.getElementById('bulkSuccessCount').textContent = '0 succeeded';
     document.getElementById('bulkFailCount').textContent = '0 failed';
     document.getElementById('bulkResults').innerHTML = '<p class="text-muted">Executing...</p>';
 
-    // Poll for updates
     const pollInterval = setInterval(() => {
       fetch(`/bulk_status/${operationId}`)
         .then(resp => resp.json())
@@ -337,13 +1128,11 @@ document.addEventListener('DOMContentLoaded', () => {
         .catch(err => console.error('Poll failed:', err));
     }, 1000);
 
-    // Clear interval when modal closes
     document.getElementById('bulkResultsModal').addEventListener('hidden.bs.modal', () => {
       clearInterval(pollInterval);
     }, { once: true });
   }
 
-  // Update bulk progress display
   function updateBulkProgress(operation) {
     const { total, completed, failed, results } = operation;
     const progress = total > 0 ? ((completed + failed) / total * 100) : 0;
@@ -353,7 +1142,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('bulkSuccessCount').textContent = `${completed} succeeded`;
     document.getElementById('bulkFailCount').textContent = `${failed} failed`;
 
-    // Render results
     if (results.length > 0) {
       const resultsHtml = results.map(result => `
         <div class="card mb-2">
@@ -382,14 +1170,45 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
-<!-- 🔷 Polling script -->
+<!-- Polling script -->
 <script>
 const deviceIps = JSON.parse(document.getElementById("device-data").textContent);
+
+/* Seed the AI device cache from server-rendered data on page load. */
+(function seedDeviceCache() {
+  try {
+    const full = JSON.parse(document.getElementById("device-full-data").textContent);
+    const cache = {
+      timestamp: Date.now(),
+      devices: full.map(d => ({
+        hostname:    d.hostname || '',
+        ip:          d.ip      || '',
+        device_type: d.device_type || 'cisco_ios',
+        online:      d.online !== undefined ? d.online : false,
+      }))
+    };
+    localStorage.setItem('ndm_device_cache', JSON.stringify(cache));
+  } catch (e) { /* non-critical */ }
+})();
 
 function updateStatus(ip) {
   fetch(`/status/${ip}`)
     .then(resp => resp.json())
     .then(data => {
+      /* Keep the AI cache in sync with every status poll result */
+      try {
+        const raw = localStorage.getItem('ndm_device_cache');
+        if (raw) {
+          const cache = JSON.parse(raw);
+          const dev = cache.devices.find(d => d.ip === data.ip);
+          if (dev) {
+            dev.online = data.online;
+            cache.timestamp = Date.now();
+            localStorage.setItem('ndm_device_cache', JSON.stringify(cache));
+          }
+        }
+      } catch (e) { /* non-critical */ }
+
       const statusEl = document.getElementById(`status-${data.ip}`);
       if (statusEl) {
         if (data.online) {
@@ -416,36 +1235,1011 @@ setInterval(() => {
 }, 5000);
 </script>
 
-<!-- 🔷 SortableJS for drag & drop -->
+<!-- SortableJS for drag & drop -->
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const tbody = document.getElementById("deviceTableBody");
-  Sortable.create(tbody, {
-    animation: 150,
-    onEnd: function () {
-      // Collect new order of IPs
-      const newOrder = Array.from(tbody.querySelectorAll("tr")).map(row => row.dataset.ip);
-      console.log("New device order:", newOrder);
-
-      // Send new order to backend
-      fetch("/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newOrder)
-      })
-      .then(resp => resp.json())
-      .then(data => {
-        if (data.status === "success") {
-          console.log("Order updated successfully");
-        } else {
-          console.error("Reorder failed:", data.message);
-        }
-      })
-      .catch(err => console.error("Error saving order:", err));
-    }
-  });
+  if (tbody) {
+    Sortable.create(tbody, {
+      animation: 150,
+      onEnd: function () {
+        const newOrder = Array.from(tbody.querySelectorAll("tr")).map(row => row.dataset.ip);
+        fetch("/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newOrder)
+        })
+        .then(resp => resp.json())
+        .then(data => {
+          if (data.status !== "success") {
+            console.error("Reorder failed:", data.message);
+          }
+        })
+        .catch(err => console.error("Error saving order:", err));
+      }
+    });
+  }
 });
 </script>
 
+<!-- ================================================================== -->
+<!-- Topology Visualization Script -->
+<!-- ================================================================== -->
+<script>
+let topoNetwork = null;  // vis.js Network instance
+let topoData = null;     // raw topology data from server
+
+// Discover topology from all online devices
+window.discoverTopology = function() {
+  const btn = document.getElementById('topoDiscoverBtn');
+  const btnText = btn.querySelector('.btn-text');
+  const spinner = btn.querySelector('.spinner-border');
+
+  btnText.textContent = 'Discovering...';
+  spinner.classList.remove('d-none');
+  btn.disabled = true;
+
+  fetch('/topology_data')
+    .then(resp => resp.json())
+    .then(data => {
+      btnText.textContent = 'Discover Topology';
+      spinner.classList.add('d-none');
+      btn.disabled = false;
+
+      if (data.status === 'success') {
+        topoData = data.topology;
+        renderTopology(data.topology);
+
+        const nodeCount = data.topology.nodes.length;
+        const edgeCount = data.topology.edges.length;
+        if (nodeCount === 0) {
+          showToast('No topology data found. Ensure devices are online and CDP is enabled.', 'warning');
+        } else {
+          showToast(`Topology discovered: ${nodeCount} node(s), ${edgeCount} link(s)`, 'success');
+        }
+      } else {
+        showToast(data.message || 'Topology discovery failed', 'danger');
+      }
+    })
+    .catch(err => {
+      btnText.textContent = 'Discover Topology';
+      spinner.classList.add('d-none');
+      btn.disabled = false;
+      console.error('Topology discovery failed:', err);
+      showToast('Failed to discover topology', 'danger');
+    });
+};
+
+// Render the topology graph using vis.js
+function renderTopology(topology) {
+  const container = document.getElementById('topologyContainer');
+  const placeholder = document.getElementById('topoPlaceholder');
+
+  // Hide placeholder
+  if (placeholder) placeholder.style.display = 'none';
+
+  // Determine if we are in dark mode
+  const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+  const fontColor = isDark ? '#dee2e6' : '#333333';
+  const edgeColor = isDark ? '#6c757d' : '#888888';
+  const edgeLabelColor = isDark ? '#adb5bd' : '#555555';
+
+  // Build vis.js nodes
+  const nodes = new vis.DataSet(topology.nodes.map(node => {
+    const isManaged = node.type === 'managed';
+    return {
+      id: node.id,
+      label: node.label,
+      title: node.title,
+      shape: 'image',
+      image: isManaged
+        ? 'https://img.icons8.com/color/48/router.png'
+        : 'https://img.icons8.com/color/48/switch.png',
+      size: isManaged ? 35 : 28,
+      font: {
+        size: 14,
+        color: fontColor,
+        bold: { color: fontColor }
+      },
+      borderWidth: isManaged ? 3 : 2,
+      color: {
+        border: isManaged ? '#0d6efd' : '#6c757d',
+        background: isManaged ? '#cfe2ff' : '#e2e3e5',
+        highlight: {
+          border: isManaged ? '#0a58ca' : '#495057',
+          background: isManaged ? '#9ec5fe' : '#c4c5c7'
+        }
+      },
+      shadow: true
+    };
+  }));
+
+  // Build vis.js edges
+  const edges = new vis.DataSet(topology.edges.map((edge, idx) => {
+    // Build a label showing interfaces on each end
+    let label = '';
+    if (edge.from_label && edge.to_label) {
+      label = edge.from_label + '  \u2194  ' + edge.to_label;
+    }
+
+    // Show IPs in the title tooltip
+    let title = edge.title || '';
+    if (edge.local_ip || edge.remote_ip) {
+      const parts = [];
+      if (edge.local_ip) parts.push(edge.local_ip);
+      if (edge.remote_ip) parts.push(edge.remote_ip);
+      if (!title) title = parts.join(' <-> ');
+    }
+
+    return {
+      id: idx,
+      from: edge.from,
+      to: edge.to,
+      label: label,
+      title: title,
+      font: {
+        size: 10,
+        color: edgeLabelColor,
+        strokeWidth: 3,
+        strokeColor: isDark ? '#212529' : '#ffffff',
+        align: 'middle',
+        multi: true
+      },
+      color: {
+        color: edgeColor,
+        highlight: '#0d6efd'
+      },
+      width: 2,
+      smooth: {
+        type: 'continuous'
+      },
+      shadow: false
+    };
+  }));
+
+  // vis.js options
+  const options = {
+    nodes: {
+      shapeProperties: {
+        useImageSize: false,
+        useBorderWithImage: true,
+        interpolation: false
+      }
+    },
+    edges: {
+      smooth: {
+        type: 'continuous'
+      }
+    },
+    physics: {
+      enabled: document.getElementById('topoPhysicsToggle').checked,
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: {
+        gravitationalConstant: -80,
+        centralGravity: 0.01,
+        springLength: 200,
+        springConstant: 0.08,
+        damping: 0.4
+      },
+      stabilization: {
+        enabled: true,
+        iterations: 200,
+        fit: true
+      }
+    },
+    interaction: {
+      hover: true,
+      tooltipDelay: 200,
+      navigationButtons: true,
+      keyboard: true,
+      zoomView: true
+    },
+    layout: {
+      improvedLayout: true
+    }
+  };
+
+  // Create or update the network
+  if (topoNetwork) {
+    topoNetwork.destroy();
+  }
+
+  topoNetwork = new vis.Network(container, { nodes, edges }, options);
+
+  // Click handler to show node details
+  topoNetwork.on('click', function(params) {
+    const panel = document.getElementById('topoDetailsPanel');
+    const titleEl = document.getElementById('topoDetailTitle');
+    const bodyEl = document.getElementById('topoDetailBody');
+
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const node = topology.nodes.find(n => n.id === nodeId);
+      if (node) {
+        titleEl.textContent = node.label;
+        bodyEl.innerHTML = node.title;
+
+        // Show connected links
+        const connEdges = topology.edges.filter(e => e.from === nodeId || e.to === nodeId);
+        if (connEdges.length > 0) {
+          let linksHtml = '<hr><strong>Connected Links:</strong><ul class="mb-0 mt-1">';
+          connEdges.forEach(e => {
+            const peerName = (e.from === nodeId)
+              ? topology.nodes.find(n => n.id === e.to)?.label || e.to
+              : topology.nodes.find(n => n.id === e.from)?.label || e.from;
+            const localIntf = (e.from === nodeId) ? e.from_label : e.to_label;
+            const remoteIntf = (e.from === nodeId) ? e.to_label : e.from_label;
+            linksHtml += `<li>${localIntf} &harr; ${peerName} (${remoteIntf})`;
+            if (e.local_ip || e.remote_ip) {
+              const ips = [e.local_ip, e.remote_ip].filter(Boolean).join(', ');
+              linksHtml += ` <span class="text-muted">[${ips}]</span>`;
+            }
+            linksHtml += '</li>';
+          });
+          linksHtml += '</ul>';
+          bodyEl.innerHTML += linksHtml;
+        }
+
+        panel.style.display = 'block';
+      }
+    } else {
+      panel.style.display = 'none';
+    }
+  });
+
+  // Stabilization done
+  topoNetwork.on('stabilizationIterationsDone', function() {
+    topoNetwork.setOptions({ physics: { stabilization: { enabled: false } } });
+  });
+}
+
+// Reset topology view (fit all nodes)
+window.resetTopologyView = function() {
+  if (topoNetwork) {
+    topoNetwork.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+  }
+};
+
+// Physics toggle
+document.addEventListener('DOMContentLoaded', () => {
+  const physicsToggle = document.getElementById('topoPhysicsToggle');
+  if (physicsToggle) {
+    physicsToggle.addEventListener('change', function() {
+      if (topoNetwork) {
+        topoNetwork.setOptions({ physics: { enabled: this.checked } });
+      }
+    });
+  }
+});
+</script>
+
+<!-- ================================================================== -->
+<!-- SUBNET DISCOVERY MODAL                                             -->
+<!-- ================================================================== -->
+<div class="modal fade" id="discoverSubnetModal" tabindex="-1" aria-labelledby="discoverSubnetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="discoverSubnetModalLabel">🔍 Discover Devices on Subnet</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Config form (hidden once scan starts) -->
+        <div id="discoverForm">
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label fw-semibold">Network Address</label>
+              <input type="text" class="form-control" id="discoverNetwork" placeholder="e.g. 192.168.1.0">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Prefix Length</label>
+              <select class="form-select" id="discoverPrefix">
+                <option value="24" selected>/24 — 254 hosts</option>
+                <option value="25">/25 — 126 hosts</option>
+                <option value="26">/26 — 62 hosts</option>
+                <option value="27">/27 — 30 hosts</option>
+                <option value="28">/28 — 14 hosts</option>
+                <option value="29">/29 — 6 hosts</option>
+                <option value="30">/30 — 2 hosts</option>
+                <option value="23">/23 — 510 hosts</option>
+                <option value="22">/22 — 1022 hosts</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Device Type</label>
+              <select class="form-select" id="discoverDeviceType">
+                <option value="cisco_ios" selected>Cisco IOS</option>
+                <option value="cisco_xe">Cisco IOS XE</option>
+                <option value="cisco_nxos">Cisco NX-OS</option>
+                <option value="cisco_asa">Cisco ASA</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Username</label>
+              <input type="text" class="form-control" id="discoverUsername" placeholder="SSH username">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Password</label>
+              <input type="password" class="form-control" id="discoverPassword" placeholder="SSH password">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Enable Secret <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="password" class="form-control" id="discoverSecret" placeholder="Enable secret">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">
+                Parallel Workers: <span id="workersLabel">30</span>
+                <small class="text-muted fw-normal ms-1">(higher = faster but more load)</small>
+              </label>
+              <input type="range" class="form-range" id="discoverWorkers" min="5" max="100" step="5" value="30"
+                     oninput="document.getElementById('workersLabel').textContent = this.value">
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress (shown during scan) -->
+        <div id="discoverProgress" style="display:none;">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-semibold">Scanning subnet…</span>
+            <span id="discoverProgressLabel" class="text-muted small">0 / 0</span>
+          </div>
+          <div class="progress mb-3" style="height:10px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                 id="discoverProgressBar" role="progressbar" style="width:0%"></div>
+          </div>
+          <p class="text-muted small mb-2">Attempting SSH on each host — this may take a minute depending on subnet size and worker count.</p>
+        </div>
+
+        <!-- Results (shown when scan finishes) -->
+        <div id="discoverResults" style="display:none;">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">
+              Discovered <span id="discoverFoundCount" class="text-success fw-bold">0</span> device(s)
+              <span class="text-muted fw-normal">out of <span id="discoverTotal">0</span> hosts probed</span>
+            </h6>
+            <div class="d-flex gap-2">
+              <button class="btn btn-outline-secondary btn-sm" onclick="discoverSelectAll()">Select All</button>
+              <button class="btn btn-outline-secondary btn-sm" onclick="discoverSelectNone()">None</button>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height: 300px; overflow-y:auto;">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th style="width:36px;"></th>
+                  <th>Hostname</th>
+                  <th>IP Address</th>
+                </tr>
+              </thead>
+              <tbody id="discoverResultsBody"></tbody>
+            </table>
+          </div>
+          <div id="discoverNoResults" class="text-center text-muted py-4" style="display:none;">
+            No devices responded to SSH on this subnet.
+          </div>
+        </div>
+
+      </div><!-- /modal-body -->
+
+      <div class="modal-footer">
+        <span id="discoverStatusText" class="text-muted small me-auto"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="discoverStartBtn" onclick="startSubnetDiscovery()">
+          Start Discovery
+        </button>
+        <button type="button" class="btn btn-success" id="discoverAddBtn" style="display:none;"
+                onclick="addDiscoveredDevices()">
+          ➕ Add Selected Devices
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* ------------------------------------------------------------------ */
+/* Subnet Discovery                                                     */
+/* ------------------------------------------------------------------ */
+
+let _discoverOpId     = null;
+let _discoverPollTimer = null;
+let _discoverCreds    = {};   // kept for the "add" step
+
+function startSubnetDiscovery() {
+  const network    = document.getElementById('discoverNetwork').value.trim();
+  const prefix     = document.getElementById('discoverPrefix').value;
+  const username   = document.getElementById('discoverUsername').value.trim();
+  const password   = document.getElementById('discoverPassword').value;
+  const secret     = document.getElementById('discoverSecret').value;
+  const deviceType = document.getElementById('discoverDeviceType').value;
+  const workers    = document.getElementById('discoverWorkers').value;
+
+  if (!network || !username || !password) {
+    alert('Network address, username, and password are required.');
+    return;
+  }
+
+  // Save creds for the add step
+  _discoverCreds = { username, password, secret, device_type: deviceType };
+
+  // Switch to progress view
+  document.getElementById('discoverForm').style.display     = 'none';
+  document.getElementById('discoverProgress').style.display = '';
+  document.getElementById('discoverResults').style.display  = 'none';
+  document.getElementById('discoverStartBtn').style.display = 'none';
+  document.getElementById('discoverAddBtn').style.display   = 'none';
+  document.getElementById('discoverStatusText').textContent = 'Starting scan…';
+
+  fetch('/discover_subnet', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ network, prefix: parseInt(prefix), username, password,
+                           secret, device_type: deviceType, max_workers: parseInt(workers) }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) { alert('Error: ' + data.error); resetDiscoverModal(); return; }
+    _discoverOpId = data.op_id;
+    document.getElementById('discoverTotal').textContent = data.total;
+    _discoverPollTimer = setInterval(pollDiscovery, 1500);
+  })
+  .catch(err => { alert('Request failed: ' + err); resetDiscoverModal(); });
+}
+
+function pollDiscovery() {
+  if (!_discoverOpId) return;
+  fetch('/discover_status/' + _discoverOpId)
+    .then(r => r.json())
+    .then(data => {
+      const pct = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+      document.getElementById('discoverProgressBar').style.width = pct + '%';
+      document.getElementById('discoverProgressLabel').textContent =
+        data.completed + ' / ' + data.total + ' (' + data.found.length + ' found)';
+      document.getElementById('discoverStatusText').textContent =
+        'Scanned ' + data.completed + ' of ' + data.total + ' hosts…';
+
+      if (data.status === 'done') {
+        clearInterval(_discoverPollTimer);
+        _discoverPollTimer = null;
+        showDiscoverResults(data);
+      }
+    })
+    .catch(() => { /* transient error — keep polling */ });
+}
+
+function showDiscoverResults(data) {
+  document.getElementById('discoverProgress').style.display = 'none';
+  document.getElementById('discoverResults').style.display  = '';
+
+  const found = data.found || [];
+  document.getElementById('discoverFoundCount').textContent = found.length;
+  document.getElementById('discoverStatusText').textContent =
+    'Scan complete — ' + found.length + ' device(s) found out of ' + data.total + ' hosts.';
+
+  const tbody = document.getElementById('discoverResultsBody');
+  tbody.innerHTML = '';
+
+  if (found.length === 0) {
+    document.getElementById('discoverNoResults').style.display = '';
+  } else {
+    document.getElementById('discoverNoResults').style.display = 'none';
+    found.forEach(dev => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="checkbox" class="discover-cb form-check-input" value="' + dev.ip +
+        '" data-hostname="' + (dev.hostname || dev.ip) + '" checked></td>' +
+        '<td><span class="badge bg-success me-1">●</span>' + (dev.hostname || '—') + '</td>' +
+        '<td><code>' + dev.ip + '</code></td>';
+      tbody.appendChild(tr);
+    });
+    document.getElementById('discoverAddBtn').style.display = '';
+  }
+}
+
+function discoverSelectAll() {
+  document.querySelectorAll('.discover-cb').forEach(cb => cb.checked = true);
+}
+function discoverSelectNone() {
+  document.querySelectorAll('.discover-cb').forEach(cb => cb.checked = false);
+}
+
+function addDiscoveredDevices() {
+  const selected = [];
+  document.querySelectorAll('.discover-cb:checked').forEach(cb => {
+    selected.push({ ip: cb.value, hostname: cb.dataset.hostname });
+  });
+  if (selected.length === 0) { alert('No devices selected.'); return; }
+
+  const btn = document.getElementById('discoverAddBtn');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  fetch('/add_discovered_devices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ devices: selected, ..._discoverCreds }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) { alert('Error: ' + data.error); btn.disabled = false; btn.textContent = '➕ Add Selected Devices'; return; }
+    bootstrap.Modal.getInstance(document.getElementById('discoverSubnetModal')).hide();
+    showToast(data.added + ' device(s) added successfully!', 'success');
+    setTimeout(() => location.reload(), 800);
+  })
+  .catch(err => { alert('Failed: ' + err); btn.disabled = false; btn.textContent = '➕ Add Selected Devices'; });
+}
+
+function resetDiscoverModal() {
+  if (_discoverPollTimer) { clearInterval(_discoverPollTimer); _discoverPollTimer = null; }
+  document.getElementById('discoverForm').style.display     = '';
+  document.getElementById('discoverProgress').style.display = 'none';
+  document.getElementById('discoverResults').style.display  = 'none';
+  document.getElementById('discoverStartBtn').style.display = '';
+  document.getElementById('discoverAddBtn').style.display   = 'none';
+}
+
+// Reset modal state when it's closed
+document.addEventListener('DOMContentLoaded', function () {
+  const modalEl = document.getElementById('discoverSubnetModal');
+  if (modalEl) {
+    modalEl.addEventListener('hidden.bs.modal', resetDiscoverModal);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* AI Assistant integration for the index page                          */
+/* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Shared helper                                                         */
+/* ------------------------------------------------------------------ */
+function _escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ------------------------------------------------------------------ */
+/* Ansible Tab                                                           */
+/* ------------------------------------------------------------------ */
+async function loadPlaybooks() {
+  const container = document.getElementById('ansiblePlaybookList');
+  if (!container) return;
+
+  container.innerHTML = '<div class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading&hellip;</div>';
+
+  try {
+    const r = await fetch('/ai/playbooks');
+    if (!r.ok) throw new Error('Request failed');
+    const data = await r.json();
+    const playbooks = data.playbooks || [];
+
+    if (playbooks.length === 0) {
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-body text-center text-muted py-5">
+            <p class="mb-1 fs-5">No playbooks saved yet.</p>
+            <p class="small mb-0">Ask the AI assistant to configure your devices and it will save the task as a reusable playbook.</p>
+          </div>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = playbooks.map(pb => `
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-3">
+            <div class="flex-grow-1 min-w-0">
+              <h5 class="card-title mb-1">${_escHtml(pb.name)}</h5>
+              ${pb.description ? `<p class="text-muted small mb-1">${_escHtml(pb.description)}</p>` : ''}
+              <div class="d-flex flex-wrap gap-3 text-muted small">
+                <span>${pb.play_count || 0} device(s)</span>
+                ${pb.saved_at ? `<span>Saved ${_escHtml(pb.saved_at)}</span>` : ''}
+              </div>
+            </div>
+            <div class="d-flex gap-2 flex-shrink-0">
+              <button class="btn btn-primary btn-sm pb-run-btn"
+                      data-id="${_escHtml(pb.id)}" data-name="${_escHtml(pb.name)}">
+                &#9654; Run
+              </button>
+              <button class="btn btn-outline-danger btn-sm pb-del-btn"
+                      data-id="${_escHtml(pb.id)}" data-name="${_escHtml(pb.name)}">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`).join('');
+
+    container.querySelectorAll('.pb-run-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        _runPlaybookFromTab(this.dataset.id, this.dataset.name);
+      });
+    });
+    container.querySelectorAll('.pb-del-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        _deletePlaybookFromTab(this.dataset.id, this.dataset.name);
+      });
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="alert alert-danger">Failed to load playbooks: ${_escHtml(err.message)}</div>`;
+  }
+}
+
+function _runPlaybookFromTab(pbId, pbName) {
+  // Delegate to the runPlaybook function defined in base.html
+  if (typeof window.runPlaybook === 'function') {
+    window.runPlaybook(pbId, pbName);
+  } else {
+    // Fallback: open AI panel with a pre-filled message
+    const openBtn = document.getElementById('aiOpenBtn');
+    if (openBtn) openBtn.click();
+    setTimeout(() => {
+      const input = document.getElementById('ai-input');
+      if (input) { input.value = `Run playbook: ${pbName}`; input.dispatchEvent(new Event('input')); input.focus(); }
+    }, 400);
+  }
+}
+
+async function _deletePlaybookFromTab(pbId, pbName) {
+  if (!confirm(`Delete playbook "${pbName}"?`)) return;
+  try {
+    const r = await fetch(`/ai/playbooks/${encodeURIComponent(pbId)}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Delete failed');
+    showToast(`Deleted "${pbName}"`, 'success');
+    loadPlaybooks();
+  } catch {
+    showToast('Failed to delete playbook', 'danger');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Jenkins Tab                                                           */
+/* ------------------------------------------------------------------ */
+
+function _updateRunBtnState() {
+  const sel = document.getElementById('jenkinsPipelineSelect');
+  const btn = document.getElementById('runChecksBtn');
+  if (!sel || !btn) return;
+  btn.disabled = (sel.value === '');
+}
+
+// Populate the pipeline dropdown from /jenkins/pipelines
+async function _loadJenkinsPipelineSelect() {
+  const sel = document.getElementById('jenkinsPipelineSelect');
+  if (!sel) return;
+  try {
+    const r    = await fetch('/jenkins/pipelines');
+    const data = await r.json();
+    const jobs = data.pipelines || [];
+    // Rebuild options, keeping current selection if still valid
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All pipelines</option>';
+    jobs.forEach(j => {
+      const opt = document.createElement('option');
+      opt.value       = j;
+      opt.textContent = j;
+      if (j === cur) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (jobs.length === 0) {
+      sel.innerHTML = '<option value="">No pipelines registered</option>';
+    }
+  } catch { /* ignore */ }
+  _updateRunBtnState();
+}
+
+function _renderJenkinsPipelineCard(jobName, p) {
+  const pending   = p.jenkins_pending;
+  const result    = p.jenkins_result || (pending ? 'BUILDING' : null);
+  let badgeClass, badgeText;
+  if (pending) {
+    badgeClass = 'warning text-dark'; badgeText = 'BUILDING';
+  } else if (result === 'SUCCESS') {
+    badgeClass = 'success'; badgeText = 'SUCCESS';
+  } else if (result) {
+    badgeClass = 'danger'; badgeText = result;
+  } else {
+    badgeClass = 'secondary'; badgeText = 'NO DATA';
+  }
+  const buildInfo = p.jenkins_build ? `<span class="text-muted fw-normal ms-1">#${p.jenkins_build}</span>` : '';
+  const ranAt     = p.jenkins_ran_at || p.jenkins_triggered_at || '';
+  const dur       = p.jenkins_duration ? ` &middot; ${Math.round(p.jenkins_duration / 1000)}s` : '';
+  return `
+    <div class="card mb-2">
+      <div class="card-body py-2 px-3 d-flex align-items-center gap-3 flex-wrap">
+        <span class="badge bg-${badgeClass}" style="min-width:5.5rem;text-align:center;font-size:.8rem">
+          ${pending ? '<span class="spinner-border spinner-border-sm me-1" role="status" style="width:.7rem;height:.7rem;border-width:2px"></span>' : ''}${_escHtml(badgeText)}
+        </span>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">${_escHtml(jobName)}${buildInfo}</div>
+          ${ranAt ? `<div class="small text-muted">${_escHtml(ranAt)}${dur}</div>` : ''}
+        </div>
+        ${p.jenkins_url ? `<a href="${_escHtml(p.jenkins_url)}" target="_blank" class="btn btn-outline-secondary btn-sm">View &rarr;</a>` : ''}
+      </div>
+    </div>`;
+}
+
+function _renderJenkinsResults(data) {
+  const container = document.getElementById('jenkinsResultsPanel');
+  if (!container) return;
+
+  const selJob = (document.getElementById('jenkinsPipelineSelect') || {}).value || '';
+  const pipes  = data && data.pipelines ? data.pipelines : null;
+
+  // Filter to selected pipeline if one is chosen
+  const visible = pipes
+    ? (selJob ? Object.fromEntries(Object.entries(pipes).filter(([k]) => k === selJob)) : pipes)
+    : null;
+  const hasPipes = visible && Object.keys(visible).length > 0;
+
+  if (!hasPipes) {
+    container.innerHTML = `
+      <div class="text-center text-muted py-4">
+        <p class="mb-1">No results yet for ${selJob ? `<strong>${_escHtml(selJob)}</strong>` : 'this list'}.</p>
+        <p class="small mb-0">Click <strong>Run</strong> to trigger the pipeline.</p>
+      </div>`;
+    return;
+  }
+
+  const anyPending = Object.values(visible).some(p => p.jenkins_pending);
+  const done       = Object.values(visible).filter(p => p.jenkins_result);
+  const allOk      = done.length > 0 && done.every(p => p.jenkins_ok);
+  const anyFail    = done.some(p => !p.jenkins_ok);
+  const sumClass   = anyPending ? 'warning text-dark' : (allOk ? 'success' : (anyFail ? 'danger' : 'secondary'));
+  const sumText    = anyPending ? 'Building\u2026'
+                   : allOk     ? `${done.length} pipeline${done.length > 1 ? 's' : ''} passed`
+                   : anyFail   ? `${done.filter(p => !p.jenkins_ok).length} failed`
+                   : 'No results yet';
+
+  const summaryHtml = `
+    <div class="alert alert-${sumClass} py-2 mb-3 d-flex align-items-center gap-2">
+      ${anyPending ? '<div class="spinner-border spinner-border-sm" role="status"></div>' : ''}
+      <strong>${sumText}</strong>
+      <span class="ms-auto small text-muted">${Object.keys(visible).length} pipeline(s)</span>
+    </div>`;
+
+  const cards = Object.entries(visible).map(([name, p]) => _renderJenkinsPipelineCard(name, p)).join('');
+  container.innerHTML = summaryHtml + cards;
+}
+
+async function _renderBuildHistory(jobs) {
+  const panel = document.getElementById('jenkinsBuildHistory');
+  if (!panel || !jobs || jobs.length === 0) { if (panel) panel.innerHTML = ''; return; }
+
+  const selJob = (document.getElementById('jenkinsPipelineSelect') || {}).value || '';
+  const targets = selJob ? [selJob] : jobs;
+
+  let html = `<h5 class="text-secondary mb-3">Build History</h5>`;
+
+  for (const job of targets) {
+    let builds = [];
+    try {
+      const r = await fetch(`/jenkins/history/${encodeURIComponent(job)}?limit=15`);
+      const d = await r.json();
+      builds = d.builds || [];
+    } catch { /* ignore */ }
+
+    html += `<div class="mb-4">`;
+    if (targets.length > 1) html += `<div class="fw-semibold mb-2">${_escHtml(job)}</div>`;
+
+    if (builds.length === 0) {
+      html += `<div class="text-muted small">No builds found.</div>`;
+    } else {
+      html += `<div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.85rem">
+        <thead><tr><th>#</th><th>Result</th><th>Started</th><th>Duration</th><th></th></tr></thead><tbody>`;
+      builds.forEach(b => {
+        const res  = b.result || 'IN PROGRESS';
+        const cls  = res === 'SUCCESS' ? 'success' : res === 'FAILURE' ? 'danger' : res === 'ABORTED' ? 'secondary' : 'warning text-dark';
+        const ts   = b.timestamp ? new Date(b.timestamp).toLocaleString() : '—';
+        const dur  = b.duration  ? `${Math.round(b.duration / 1000)}s` : '—';
+        const link = b.url ? `<a href="${_escHtml(b.url)}" target="_blank" class="small">Console &rarr;</a>` : '';
+        html += `<tr>
+          <td>#${b.number}</td>
+          <td><span class="badge bg-${cls}">${_escHtml(res)}</span></td>
+          <td>${ts}</td>
+          <td>${dur}</td>
+          <td>${link}</td>
+        </tr>`;
+      });
+      html += `</tbody></table></div>`;
+    }
+    html += `</div>`;
+  }
+
+  panel.innerHTML = html;
+}
+
+async function loadJenkinsResults() {
+  try {
+    const r = await fetch('/jenkins/results');
+    if (!r.ok) throw new Error('Request failed');
+    _renderJenkinsResults(await r.json());
+  } catch (err) {
+    const c = document.getElementById('jenkinsResultsPanel');
+    if (c) c.innerHTML = `<div class="alert alert-danger">Failed to load CI results: ${_escHtml(err.message)}</div>`;
+  }
+}
+
+async function loadJenkinsTab() {
+  await _loadJenkinsPipelineSelect();
+  const pipelinesReq = fetch('/jenkins/pipelines').then(r => r.json()).catch(() => ({ pipelines: [] }));
+  const resultsReq   = fetch('/jenkins/results').then(r => r.json()).catch(() => null);
+  const [pData, rData] = await Promise.all([pipelinesReq, resultsReq]);
+  _renderJenkinsResults(rData || {});
+  await _renderBuildHistory(pData.pipelines || []);
+}
+
+// Re-render when dropdown changes
+document.addEventListener('DOMContentLoaded', function () {
+  const sel = document.getElementById('jenkinsPipelineSelect');
+  if (sel) {
+    sel.addEventListener('change', async function () {
+      _updateRunBtnState();
+      const r = await fetch('/jenkins/results').catch(() => null);
+      const data = r ? await r.json() : {};
+      _renderJenkinsResults(data);
+      const pr = await fetch('/jenkins/pipelines').then(x => x.json()).catch(() => ({ pipelines: [] }));
+      await _renderBuildHistory(pr.pipelines || []);
+    });
+  }
+});
+
+async function runJenkinsChecks() {
+  const btn     = document.getElementById('runChecksBtn');
+  const btnText = btn.querySelector('.btn-text');
+  const spinner = btn.querySelector('.spinner-border');
+  const selJob  = (document.getElementById('jenkinsPipelineSelect') || {}).value || '';
+
+  btnText.textContent = '\u2026';
+  spinner.classList.remove('d-none');
+  btn.disabled = true;
+
+  try {
+    const body = selJob ? { job_name: selJob } : { startup_delay: 0 };
+    const r = await fetch('/jenkins/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error('Run failed');
+    const data = await r.json();
+    showToast(data.triggered ? `Triggered ${selJob || 'all pipelines'}` : (data.error || 'Triggered'), 'success');
+
+    // Poll for build completion then auto-troubleshoot failures
+    if (selJob) {
+      _pollJenkinsJobUntilDone(selJob);
+    } else {
+      setTimeout(() => loadJenkinsTab(), 3000);
+    }
+  } catch (err) {
+    showToast('Failed to trigger pipeline', 'danger');
+    btn.disabled = (selJob === '');
+  } finally {
+    btnText.textContent = 'Run';
+    spinner.classList.add('d-none');
+    // Keep button disabled while polling (re-enabled inside _pollJenkinsJobUntilDone)
+    if (!selJob) btn.disabled = false;
+  }
+}
+
+// Poll /jenkins/results every 4s until selJob is no longer pending.
+// If it failed, auto-send an AI troubleshoot request.
+async function _pollJenkinsJobUntilDone(jobName, maxWaitMs = 300000) {
+  const started = Date.now();
+  const interval = 4000;
+
+  async function poll() {
+    if (Date.now() - started > maxWaitMs) {
+      // Timed out — just reload
+      loadJenkinsTab();
+      _enableRunBtn();
+      return;
+    }
+    try {
+      const r = await fetch('/jenkins/results');
+      const data = await r.json();
+      const pipelines = data.pipelines || {};
+      const entry = pipelines[jobName];
+
+      // Still pending — keep polling
+      if (!entry || entry.jenkins_pending) {
+        setTimeout(poll, interval);
+        return;
+      }
+
+      // Build finished — reload tab
+      loadJenkinsTab();
+      _enableRunBtn();
+
+      if (!entry.jenkins_ok) {
+        // Set a pending fix that base.html's interval will pick up and send to the AI
+        window._pendingJenkinsFix = {
+          jobName: jobName,
+          buildNum: entry.jenkins_build || null,
+        };
+      }
+    } catch {
+      setTimeout(poll, interval);
+    }
+  }
+
+  // Start first poll after a short delay to let Jenkins queue the build
+  setTimeout(poll, 5000);
+}
+
+function _enableRunBtn() {
+  const btn = document.getElementById('runChecksBtn');
+  const sel = document.getElementById('jenkinsPipelineSelect');
+  if (btn && sel) btn.disabled = (sel.value === '');
+}
+
+// Load tab data when tab becomes active for the first time
+document.addEventListener('DOMContentLoaded', function () {
+  const ansibleTabBtn = document.getElementById('ansible-tab');
+  const jenkinsTabBtn = document.getElementById('jenkins-tab');
+
+  let ansibleLoaded = false;
+  let jenkinsLoaded = false;
+
+  if (ansibleTabBtn) {
+    ansibleTabBtn.addEventListener('shown.bs.tab', function () {
+      if (!ansibleLoaded) { ansibleLoaded = true; }
+      loadPlaybooks();
+    });
+  }
+  if (jenkinsTabBtn) {
+    jenkinsTabBtn.addEventListener('shown.bs.tab', function () {
+      if (!jenkinsLoaded) { jenkinsLoaded = true; }
+      loadJenkinsTab();
+    });
+  }
+
+  // Auto-refresh Jenkins panel every 30s while tab is visible
+  setInterval(function () {
+    if (jenkinsTabBtn && jenkinsTabBtn.classList.contains('active')) {
+      loadJenkinsTab();
+    }
+  }, 30000);
+});
+
+/* Ask AI about currently selected devices */
+function askAiAboutSelection() {
+  const checkboxes = document.querySelectorAll('.device-checkbox:checked');
+  const hostnames  = [];
+  checkboxes.forEach(function (cb) {
+    const row      = cb.closest('tr');
+    const hostname = row ? (row.querySelector('.device-hostname')  || {}).textContent : '';
+    const ip       = cb.value;
+    if (ip) hostnames.push((hostname ? hostname.trim() + ' (' + ip + ')' : ip));
+  });
+
+  let prompt;
+  if (hostnames.length === 0) {
+    prompt = 'Show me the status of all devices in the network.';
+  } else if (hostnames.length === 1) {
+    prompt = 'Diagnose and summarise the status of ' + hostnames[0] + '.';
+  } else {
+    prompt = 'Show the interface and routing status of these devices: ' + hostnames.join(', ') + '.';
+  }
+
+  /* Open panel then pre-fill the input */
+  document.getElementById('aiOpenBtn').click();
+  setTimeout(function () {
+    const input = document.getElementById('ai-input');
+    if (input) {
+      input.value = prompt;
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+    }
+  }, 350);
+}
+</script>
 {% endblock %}

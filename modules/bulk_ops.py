@@ -24,7 +24,8 @@ class BulkOperationManager:
         connection_factory: Callable,
         connections_pool: Dict,
         pool_lock: threading.Lock,
-        max_workers: int = 5
+        max_workers: int = 5,
+        command_mode: str = "enable"
     ) -> str:
         """
         Execute a command on multiple devices in parallel.
@@ -36,6 +37,7 @@ class BulkOperationManager:
             connections_pool: Shared connections pool
             pool_lock: Lock for connections pool
             max_workers: Maximum parallel workers
+            command_mode: "enable" for exec commands, "config" for configuration commands
 
         Returns:
             str: Operation ID for tracking progress
@@ -56,7 +58,7 @@ class BulkOperationManager:
         thread = threading.Thread(
             target=self._execute_worker,
             args=(operation_id, devices, command, connection_factory,
-                  connections_pool, pool_lock, max_workers),
+                  connections_pool, pool_lock, max_workers, command_mode),
             daemon=True
         )
         thread.start()
@@ -71,7 +73,8 @@ class BulkOperationManager:
         connection_factory: Callable,
         connections_pool: Dict,
         pool_lock: threading.Lock,
-        max_workers: int
+        max_workers: int,
+        command_mode: str = "enable"
     ):
         """Background worker to execute commands on devices."""
         from modules.commands import run_device_command
@@ -101,8 +104,43 @@ class BulkOperationManager:
                     # Get connection
                     conn = connection_factory(device, connections_pool, pool_lock)
 
-                    # Execute command
-                    output = run_device_command(conn, command)
+                    # Execute command based on mode
+                    if command_mode == "config":
+                        # Parse commands - split by semicolon for multiple commands
+                        config_commands = [cmd.strip() for cmd in command.split(';') if cmd.strip()]
+                        output = conn.send_config_set(config_commands)
+                    elif command_mode == "tftp_upload":
+                        # TFTP upload - handle interactive prompts
+                        # command format: "tftp_server|filename"
+                        parts = command.split("|")
+                        tftp_server = parts[0]
+                        filename = parts[1]
+                        output = self._execute_tftp_upload(conn, tftp_server, filename)
+                    elif command_mode == "tftp_download":
+                        # TFTP download - handle interactive prompts
+                        # command format: "tftp_server|filename|dest_filename"
+                        parts = command.split("|")
+                        tftp_server = parts[0]
+                        filename = parts[1]
+                        dest_filename = parts[2] if len(parts) > 2 else filename
+                        output = self._execute_tftp_download(conn, tftp_server, filename, dest_filename, device)
+                    elif command_mode == "config_download":
+                        # Config download - download startup or running config
+                        # command format: "tftp_server|config_type"
+                        parts = command.split("|")
+                        tftp_server = parts[0]
+                        config_type = parts[1]
+                        output = self._execute_config_download(conn, tftp_server, config_type, device)
+                    elif command_mode == "delete_file":
+                        # Delete file from flash:
+                        # command is just the filename
+                        output = self._execute_delete_file(conn, command)
+                    elif command_mode == "remove_static_routes":
+                        # Remove all non-VRF static routes
+                        output = self._execute_remove_static_routes(conn)
+                    else:
+                        # Enable mode - use regular command execution
+                        output = run_device_command(conn, command)
 
                     result["status"] = "success"
                     result["output"] = output
@@ -138,6 +176,83 @@ class BulkOperationManager:
         # Mark operation as complete
         with self.lock:
             self.active_operations[operation_id]["status"] = "completed"
+
+    def _execute_tftp_upload(self, conn, tftp_server: str, filename: str) -> str:
+        """Execute TFTP upload with interactive prompt handling."""
+        # Match the working device page logic exactly
+        output = conn.send_command_timing("copy tftp: flash:")
+        output += conn.send_command_timing(tftp_server)
+        output += conn.send_command_timing(filename)
+        output += conn.send_command_timing(filename)
+        output += conn.send_command_timing("\n")
+        return output
+
+    def _execute_tftp_download(self, conn, tftp_server: str, filename: str, dest_filename: str, device: Dict) -> str:
+        """Execute TFTP download with interactive prompt handling."""
+        # Use device hostname to create unique filename on TFTP server
+        hostname = device.get("hostname", device.get("ip", "device"))
+        remote_filename = f"{hostname}_{dest_filename}"
+
+        output = conn.send_command_timing("copy flash: tftp:")
+        output += conn.send_command_timing(filename)
+        output += conn.send_command_timing(tftp_server)
+        output += conn.send_command_timing(remote_filename)
+        output += conn.send_command_timing("\n")
+        return output
+
+    def _execute_config_download(self, conn, tftp_server: str, config_type: str, device: Dict) -> str:
+        """Execute config download (startup or running) to TFTP server."""
+        hostname = device.get("hostname", device.get("ip", "device"))
+
+        if config_type == "running":
+            # copy running-config tftp:
+            remote_filename = f"{hostname}_running-config"
+            output = conn.send_command_timing("copy running-config tftp:", delay_factor=2)
+        else:
+            # copy startup-config tftp:
+            remote_filename = f"{hostname}_startup-config"
+            output = conn.send_command_timing("copy startup-config tftp:", delay_factor=2)
+
+        # Respond to "Address or name of remote host" prompt
+        output += conn.send_command_timing(tftp_server, delay_factor=2)
+        # Respond to "Destination filename" prompt
+        output += conn.send_command_timing(remote_filename, delay_factor=2)
+        # Confirm any additional prompts
+        output += conn.send_command_timing("\n", delay_factor=2)
+        return output
+
+    def _execute_delete_file(self, conn, filename: str) -> str:
+        """Execute delete file from flash: with confirmation handling."""
+        # delete flash:filename
+        output = conn.send_command_timing(f"delete flash:{filename}")
+        # Confirm the filename prompt
+        output += conn.send_command_timing("\n")
+        # Confirm the delete prompt [confirm]
+        output += conn.send_command_timing("\n")
+        return output
+
+    def _execute_remove_static_routes(self, conn) -> str:
+        """Remove all static routes from device config, preserving VRF routes."""
+        # Get running config to find static routes
+        running_config = conn.send_command("show running-config | include ^ip route")
+
+        # Parse out lines that start with "ip route" but do NOT contain "vrf"
+        routes_to_remove = []
+        for line in running_config.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("ip route") and "vrf" not in stripped:
+                routes_to_remove.append(stripped)
+
+        if not routes_to_remove:
+            return "No static routes found to remove (VRF routes preserved)."
+
+        # Build negation commands
+        negate_commands = [f"no {route}" for route in routes_to_remove]
+
+        # Send config commands to remove the routes
+        output = conn.send_config_set(negate_commands)
+        output += f"\n\nRemoved {len(routes_to_remove)} static route(s)."
+        return output
 
     def get_operation_status(self, operation_id: str) -> Dict:
         """
