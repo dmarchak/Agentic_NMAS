@@ -118,6 +118,9 @@ else:
 
 socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
 
+# Background daemons are started after all routes/functions are defined.
+# See _start_background_daemons() called at the bottom of this file.
+
 # ---------------------------------------------------------------------------
 # Logging Configuration
 # ---------------------------------------------------------------------------
@@ -2130,6 +2133,13 @@ def ai_chat():
         if not message and not run_playbook_id:
             return jsonify({"error": "Message is required"}), 400
 
+        # Tell the background agent the user is active so it defers tasks
+        try:
+            from modules.agent_runner import notify_user_active
+            notify_user_active()
+        except Exception:
+            pass
+
         import queue as _queue
 
         # Determine which playbook to run (if any).
@@ -2363,6 +2373,121 @@ def jenkins_run():
     return jsonify(summary)
 
 
+@app.route("/jenkins/schedules")
+def jenkins_schedules_get():
+    """
+    Return the current cron schedule for every pipeline registered to this list.
+    Merges the locally stored schedules with live data from Jenkins when available.
+    Response: {"schedules": {"job_name": {"cron": "H 6 * * *", "description": "Daily at ~6am"}}}
+    """
+    from modules.jenkins_runner import (
+        load_list_pipelines, load_pipeline_schedules,
+        load_config as _jcfg, get_job_config, extract_schedule_from_xml,
+        save_pipeline_schedule,
+    )
+    jobs      = load_list_pipelines()
+    local_sch = load_pipeline_schedules()
+    result    = {}
+
+    # Try to enrich with live Jenkins data; fall back to local cache on error
+    try:
+        cfg = _jcfg()
+        for job in jobs:
+            try:
+                xml    = get_job_config(cfg, job)
+                cron   = extract_schedule_from_xml(xml)
+                # Sync live value back to local cache
+                save_pipeline_schedule(job, cron)
+                local_sch[job] = cron
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    for job in jobs:
+        cron = local_sch.get(job, "")
+        result[job] = {
+            "cron":        cron,
+            "description": _describe_cron(cron),
+        }
+
+    return jsonify({"schedules": result})
+
+
+@app.route("/jenkins/schedules/<path:job_name>", methods=["POST"])
+def jenkins_schedule_set(job_name: str):
+    """
+    Set or clear the cron schedule for a pipeline.
+    Body: {"cron": "H/30 * * * *"}   — set schedule
+    Body: {"cron": ""}                — remove schedule
+    """
+    from modules.jenkins_runner import (
+        load_config as _jcfg, get_job_config, update_jenkins_job,
+        save_pipeline_schedule, extract_schedule_from_xml,
+    )
+    import re as _re
+    data = request.get_json(silent=True) or {}
+    cron = data.get("cron", "").strip()
+
+    try:
+        cfg     = _jcfg()
+        xml_str = get_job_config(cfg, job_name)
+    except Exception as exc:
+        return jsonify({"error": f"Could not fetch job config: {exc}"}), 500
+
+    if cron:
+        new_triggers = (
+            "<triggers>\n"
+            "  <hudson.triggers.TimerTrigger>\n"
+            f"    <spec>{cron}</spec>\n"
+            "  </hudson.triggers.TimerTrigger>\n"
+            "</triggers>"
+        )
+    else:
+        new_triggers = "<triggers/>"
+
+    xml_updated = _re.sub(
+        r"<triggers\s*/>|<triggers>.*?</triggers>",
+        new_triggers, xml_str, flags=_re.DOTALL,
+    )
+    if xml_updated == xml_str:
+        xml_updated = xml_str.replace("</flow-definition>", new_triggers + "\n</flow-definition>")
+
+    try:
+        update_jenkins_job(cfg, job_name, xml_updated)
+        save_pipeline_schedule(job_name, cron)
+    except Exception as exc:
+        return jsonify({"error": f"Could not update job: {exc}"}), 500
+
+    return jsonify({
+        "ok":          True,
+        "job":         job_name,
+        "cron":        cron,
+        "description": _describe_cron(cron),
+    })
+
+
+def _describe_cron(cron: str) -> str:
+    """Return a human-readable description of a Jenkins cron expression."""
+    if not cron:
+        return "Not scheduled (manual only)"
+    presets = {
+        "H/5 * * * *":   "Every 5 minutes",
+        "H/15 * * * *":  "Every 15 minutes",
+        "H/30 * * * *":  "Every 30 minutes",
+        "H * * * *":     "Hourly",
+        "H H/4 * * *":   "Every 4 hours",
+        "H H/6 * * *":   "Every 6 hours",
+        "H H/12 * * *":  "Every 12 hours",
+        "H 0 * * *":     "Daily at midnight",
+        "H 6 * * *":     "Daily at ~6am",
+        "H 8 * * *":     "Daily at ~8am",
+        "H 0 * * 1":     "Weekly on Monday",
+        "H 0 * * 0":     "Weekly on Sunday",
+    }
+    return presets.get(cron, f"Custom: {cron}")
+
+
 @app.route("/jenkins/webhook", methods=["POST"])
 def jenkins_webhook():
     """Receive a build result notification from a real Jenkins server."""
@@ -2419,6 +2544,283 @@ def ci_appdir():
     return jsonify({"appdir": BASE_DIR})
 
 
+# ---------------------------------------------------------------------------
+# Change audit log
+# ---------------------------------------------------------------------------
+
+@app.route("/list/change_log")
+def list_change_log():
+    limit = min(int(request.args.get("limit", 50)), 200)
+    log   = _ai._load_change_log()
+    return jsonify({"changes": list(reversed(log[-limit:]))})
+
+
+# ---------------------------------------------------------------------------
+# Compliance policy
+# ---------------------------------------------------------------------------
+
+@app.route("/list/compliance_policy")
+def list_compliance_policy():
+    return jsonify(_ai._load_compliance_policy())
+
+
+@app.route("/list/compliance_policy", methods=["POST"])
+def list_compliance_policy_update():
+    data   = request.get_json(silent=True) or {}
+    action = data.get("action", "upsert")
+    rule   = data.get("rule", {})
+    policy = _ai._load_compliance_policy()
+    rules  = policy.setdefault("rules", [])
+    rid    = (rule.get("id") or "").strip()
+    if action == "delete":
+        policy["rules"] = [r for r in rules if r.get("id") != rid]
+        _ai._save_compliance_policy(policy)
+        return jsonify({"status": "deleted", "id": rid})
+    if not rid:
+        return jsonify({"error": "rule.id required"}), 400
+    idx = next((i for i, r in enumerate(rules) if r.get("id") == rid), None)
+    if idx is not None:
+        rules[idx] = rule
+    else:
+        rules.append(rule)
+    _ai._save_compliance_policy(policy)
+    return jsonify({"status": "ok", "rule_count": len(rules)})
+
+
+# ---------------------------------------------------------------------------
+# Variable store
+# ---------------------------------------------------------------------------
+
+@app.route("/list/variables")
+def list_variables():
+    return jsonify(_ai._load_variables())
+
+
+@app.route("/list/variables", methods=["POST"])
+def list_variables_set():
+    data = request.get_json(silent=True) or {}
+    key  = (data.get("key") or "").strip()
+    if not key:
+        return jsonify({"error": "key required"}), 400
+    variables = _ai._load_variables()
+    variables[key] = {
+        "value":       data.get("value", ""),
+        "description": data.get("description", ""),
+        "updated":     __import__("time").strftime("%Y-%m-%d %H:%M"),
+    }
+    _ai._save_variables(variables)
+    return jsonify({"status": "ok", "key": key})
+
+
+@app.route("/list/variables/<key>", methods=["DELETE"])
+def list_variables_delete(key):
+    variables = _ai._load_variables()
+    if key not in variables:
+        return jsonify({"error": "not found"}), 404
+    del variables[key]
+    _ai._save_variables(variables)
+    return jsonify({"status": "deleted", "key": key})
+
+
+# ---------------------------------------------------------------------------
+# Golden configs
+# ---------------------------------------------------------------------------
+
+@app.route("/list/golden_configs")
+def list_golden_configs_route():
+    return jsonify({"golden_configs": _ai._list_golden_configs()})
+
+
+# ---------------------------------------------------------------------------
+# Drift detection (quick endpoint for UI)
+# ---------------------------------------------------------------------------
+
+@app.route("/list/drift_status")
+def list_drift_status():
+    """Return a quick drift status (has_golden, drift) per device without full diff."""
+    import difflib as _dl
+    devices = _load_current_devices()
+    result  = []
+    for dev in devices:
+        dip  = dev.get("ip", "")
+        host = dev.get("hostname") or dip
+        golden = _ai._load_golden_config_file(dip)
+        result.append({
+            "device_ip":  dip,
+            "hostname":   host,
+            "has_golden": golden is not None,
+        })
+    return jsonify({"devices": result})
+
+
+@app.route("/ai/events")
+def ai_events():
+    """Return pending agent events from the background event monitor.
+
+    Query params:
+      ack=id1,id2,...  — acknowledge (hide) specific event IDs before returning
+    """
+    from modules.event_monitor import get_pending_events
+    ack_param = request.args.get("ack", "")
+    ack_ids   = [x.strip() for x in ack_param.split(",") if x.strip()]
+    events    = get_pending_events(ack_ids or None)
+    return jsonify({"events": events})
+
+
+@app.route("/ai/events/clear", methods=["POST"])
+def ai_events_clear():
+    """Clear all pending agent events (e.g. on list switch)."""
+    from modules.event_monitor import clear_events
+    clear_events()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Background agent routes
+# ---------------------------------------------------------------------------
+
+@app.route("/ai/agent_log")
+def ai_agent_log():
+    """Return the background agent's activity log (newest first)."""
+    from modules.agent_runner import get_activity_log, get_status
+    limit = min(int(request.args.get("limit", 50)), 200)
+    return jsonify({
+        "status": get_status(),
+        "entries": get_activity_log()[:limit],
+    })
+
+
+@app.route("/ai/agent_run", methods=["POST"])
+def ai_agent_run():
+    """Manually trigger a background agent task."""
+    from modules.agent_runner import trigger_task
+    data = request.get_json(silent=True) or {}
+    task = (data.get("task") or "").strip()
+    if not task:
+        return jsonify({"error": "task is required"}), 400
+    return jsonify(trigger_task(task))
+
+
+@app.route("/ai/agent_pause", methods=["POST"])
+def ai_agent_pause():
+    """Pause autonomous background processing."""
+    from modules.agent_runner import pause_agent
+    pause_agent()
+    return jsonify({"ok": True, "paused": True})
+
+
+@app.route("/ai/agent_resume", methods=["POST"])
+def ai_agent_resume():
+    """Resume autonomous background processing."""
+    from modules.agent_runner import resume_agent
+    resume_agent()
+    return jsonify({"ok": True, "paused": False})
+
+
+# ---------------------------------------------------------------------------
+# Approval queue routes
+# ---------------------------------------------------------------------------
+
+@app.route("/ai/approvals")
+def ai_approvals_list():
+    """Return pending approval requests (or all if ?all=1)."""
+    from modules.approval_queue import get_pending, get_all, get_pending_count
+    show_all = request.args.get("all") == "1"
+    limit    = min(int(request.args.get("limit", 50)), 200)
+    entries  = get_all(limit) if show_all else get_pending()
+    return jsonify({
+        "pending_count": get_pending_count(),
+        "entries":       entries,
+    })
+
+
+@app.route("/ai/approvals/<entry_id>/approve", methods=["POST"])
+def ai_approval_approve(entry_id: str):
+    """Approve a queued action and execute it immediately."""
+    from modules.approval_queue import resolve
+    result = resolve(entry_id, "approve")
+    if not result.get("ok"):
+        return jsonify(result), 404
+    return jsonify(result)
+
+
+@app.route("/ai/approvals/<entry_id>/reject", methods=["POST"])
+def ai_approval_reject(entry_id: str):
+    """Reject a queued action without executing it."""
+    from modules.approval_queue import resolve
+    result = resolve(entry_id, "reject")
+    if not result.get("ok"):
+        return jsonify(result), 404
+    return jsonify(result)
+
+
+@app.route("/monitoring/config", methods=["GET", "POST"])
+def monitoring_config():
+    """GET: return collector config. POST: update one or more fields."""
+    from modules.collector_config import (
+        get_full_config, set_collector_ip, set_snmp_community,
+        set_netflow_port, set_snmp_trap_port,
+    )
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        if "collector_ip" in data:
+            set_collector_ip(data["collector_ip"])
+        if "snmp_community_ro" in data:
+            set_snmp_community(data["snmp_community_ro"], "ro")
+        if "snmp_community_rw" in data:
+            set_snmp_community(data["snmp_community_rw"], "rw")
+        if "netflow_port" in data:
+            set_netflow_port(int(data["netflow_port"]))
+        if "snmp_trap_port" in data:
+            set_snmp_trap_port(int(data["snmp_trap_port"]))
+        return jsonify({"ok": True, "config": get_full_config()})
+    return jsonify(get_full_config())
+
+
+@app.route("/monitoring/interfaces")
+def monitoring_interfaces():
+    """Return local network interfaces (to help user choose collector IP)."""
+    from modules.collector_config import list_local_interfaces
+    return jsonify(list_local_interfaces())
+
+
+@app.route("/monitoring/snmp/poll", methods=["POST"])
+def monitoring_snmp_poll():
+    """Poll a device OID via SNMP."""
+    from modules.snmp_collector import snmp_get
+    from modules.collector_config import get_snmp_community
+    data      = request.get_json(silent=True) or {}
+    device_ip = data.get("device_ip", "").strip()
+    oids      = data.get("oids", ["sysDescr", "sysName", "sysUpTime"])
+    community = data.get("community") or get_snmp_community("ro")
+    version   = int(data.get("version", 2))
+    if not device_ip:
+        return jsonify({"error": "device_ip required"}), 400
+    try:
+        rows = snmp_get(device_ip, oids, community, version)
+        return jsonify({"device_ip": device_ip, "results": [{"oid": o, "value": v} for o, v in rows]})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/monitoring/snmp/traps")
+def monitoring_snmp_traps():
+    from modules.snmp_collector import get_recent_traps
+    limit = int(request.args.get("limit", 50))
+    return jsonify({"traps": get_recent_traps(limit)})
+
+
+@app.route("/monitoring/netflow")
+def monitoring_netflow():
+    from modules.netflow_collector import get_flow_stats, get_recent_flows
+    include_flows = int(request.args.get("flows", 0))
+    stats = get_flow_stats()
+    result = {"stats": stats}
+    if include_flows:
+        result["recent_flows"] = get_recent_flows(include_flows)
+    return jsonify(result)
+
+
 @app.route("/ai/debug_log")
 def ai_debug_log():
     """Return the last N lines of data/ai_debug.log for in-browser diagnostics."""
@@ -2437,6 +2839,34 @@ def ai_debug_log():
         return "ai_debug.log not yet created (no AI requests made yet).\n", 404, {
             "Content-Type": "text/plain; charset=utf-8"
         }
+
+
+# ---------------------------------------------------------------------------
+# Start background daemons — must be here so _load_current_devices is defined
+# ---------------------------------------------------------------------------
+def _start_background_daemons():
+    from modules.event_monitor import start_monitor as _start_event_monitor
+    _start_event_monitor()
+
+    from modules.agent_runner import start_agent_loop as _start_agent_loop
+    _start_agent_loop(
+        devices_loader   = _load_current_devices,
+        status_cache     = device_status_cache,
+        connections_pool = {},
+        pool_lock        = threading.Lock(),
+    )
+
+    # Start SNMP trap receiver and NetFlow collector using per-list config
+    try:
+        from modules.collector_config import get_snmp_trap_port, get_netflow_port
+        from modules.snmp_collector import start_trap_receiver
+        from modules.netflow_collector import start_netflow_receiver
+        start_trap_receiver(port=get_snmp_trap_port())
+        start_netflow_receiver(port=get_netflow_port())
+    except Exception as _e:
+        app.logger.warning("Monitoring daemons: %s", _e)
+
+_start_background_daemons()
 
 
 # Run the Flask app with Socket.IO

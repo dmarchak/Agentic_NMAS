@@ -54,6 +54,42 @@
       Jenkins
     </button>
   </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="compliance-tab" data-bs-toggle="tab" data-bs-target="#compliancePane"
+            type="button" role="tab" aria-controls="compliancePane" aria-selected="false">
+      Compliance
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#historyPane"
+            type="button" role="tab" aria-controls="historyPane" aria-selected="false">
+      History
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="variables-tab" data-bs-toggle="tab" data-bs-target="#variablesPane"
+            type="button" role="tab" aria-controls="variablesPane" aria-selected="false">
+      Variables
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="agent-tab" data-bs-toggle="tab" data-bs-target="#agentPane"
+            type="button" role="tab" aria-controls="agentPane" aria-selected="false">
+      Agent <span id="agentBadge" class="badge bg-danger ms-1" style="display:none">!</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="approvals-tab" data-bs-toggle="tab" data-bs-target="#approvalsPane"
+            type="button" role="tab" aria-controls="approvalsPane" aria-selected="false">
+      Approvals <span id="approvalsBadge" class="badge bg-warning text-dark ms-1" style="display:none">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="monitoring-tab" data-bs-toggle="tab" data-bs-target="#monitoringPane"
+            type="button" role="tab" aria-controls="monitoringPane" aria-selected="false">
+      Monitoring
+    </button>
+  </li>
 </ul>
 
 <div class="tab-content" id="mainTabContent">
@@ -421,7 +457,259 @@
 <!-- Build history -->
 <div id="jenkinsBuildHistory" class="mt-4"></div>
 
+<!-- ── Pipeline Schedules ──────────────────────────────────────────── -->
+<div class="mt-4">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <h5 class="text-primary mb-0 me-auto">Pipeline Schedules</h5>
+    <button class="btn btn-outline-secondary btn-sm" onclick="loadJenkinsSchedules()">Refresh</button>
+  </div>
+  <p class="text-muted small mb-2">
+    Schedules run pipelines automatically — no browser needed. The agent monitors results and
+    auto-diagnoses failures. Use <strong>H</strong> instead of a fixed minute to stagger builds.
+  </p>
+  <div id="jenkinsSchedulesPanel">
+    <div class="text-muted small py-2">Loading schedules…</div>
+  </div>
+</div>
+
 </div><!-- end Jenkins tab pane -->
+
+<!-- ================================================================== -->
+<!-- COMPLIANCE TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="compliancePane" role="tabpanel" aria-labelledby="compliance-tab">
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <h2 class="text-primary mb-0 me-auto">Compliance</h2>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadComplianceTab()">Refresh</button>
+  <button class="btn btn-primary btn-sm" id="runComplianceBtn" onclick="runComplianceCheck()">
+    <span class="btn-text">Run Check</span>
+    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+  </button>
+</div>
+
+<div id="compliancePolicyPanel" class="mb-3"></div>
+<div id="complianceResultsPanel"></div>
+
+</div><!-- end Compliance tab pane -->
+
+<!-- ================================================================== -->
+<!-- HISTORY TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="historyPane" role="tabpanel" aria-labelledby="history-tab">
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h2 class="text-primary mb-0 me-auto">Change History</h2>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadHistoryTab()">Refresh</button>
+</div>
+
+<div id="changeLogPanel">
+  <div class="text-center text-muted py-5">
+    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+    Loading change history&hellip;
+  </div>
+</div>
+
+</div><!-- end History tab pane -->
+
+<!-- ================================================================== -->
+<!-- VARIABLES TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="variablesPane" role="tabpanel" aria-labelledby="variables-tab">
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h2 class="text-primary mb-0 me-auto">Variables</h2>
+  <button class="btn btn-outline-info btn-sm" onclick="discoverNetworkFacts()" id="discoverFactsBtn">
+    <span id="discoverFactsSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
+    Discover Network Facts
+  </button>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadVariablesTab()">Refresh</button>
+</div>
+
+<p class="text-muted small mb-3">Network facts shared across configs, playbooks, and pipelines for this list. The AI reads these before hardcoding any value.</p>
+
+<div id="variablesPanel"></div>
+
+<!-- Add variable form -->
+<div class="card mt-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body">
+    <h6 class="text-primary mb-3">Add / Update Variable</h6>
+    <div class="row g-2">
+      <div class="col-sm-3">
+        <input id="varKey" type="text" class="form-control form-control-sm" placeholder="key (e.g. ospf_process_id)">
+      </div>
+      <div class="col-sm-3">
+        <input id="varValue" type="text" class="form-control form-control-sm" placeholder="value">
+      </div>
+      <div class="col-sm-4">
+        <input id="varDesc" type="text" class="form-control form-control-sm" placeholder="description (optional)">
+      </div>
+      <div class="col-sm-2">
+        <button class="btn btn-primary btn-sm w-100" onclick="saveVariable()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end Variables tab pane -->
+
+<!-- ================================================================== -->
+<!-- AGENT TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="agentPane" role="tabpanel" aria-labelledby="agent-tab">
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h2 class="text-primary mb-0 me-auto">Agent Activity</h2>
+  <span id="agentStatusBadge" class="badge bg-secondary">Loading…</span>
+  <button id="agentPauseBtn" class="btn btn-warning btn-sm" onclick="toggleAgentPause()">Pause</button>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadAgentTab()">Refresh</button>
+</div>
+
+<p class="text-muted small mb-3">
+  Tasks the AI agent has executed autonomously in the background — without any browser interaction.
+  Jenkins failures, missing golden configs, and config drift are handled automatically.
+</p>
+
+<!-- Manual task trigger -->
+<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body">
+    <h6 class="text-primary mb-2">Trigger Background Task</h6>
+    <div class="d-flex gap-2">
+      <input id="agentTaskInput" type="text" class="form-control form-control-sm"
+             placeholder="Describe a task for the agent to run in the background…">
+      <button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="triggerAgentTask()">Run</button>
+    </div>
+  </div>
+</div>
+
+<div id="agentActivityLog"></div>
+
+</div><!-- end Agent tab pane -->
+
+<!-- ================================================================== -->
+<!-- APPROVALS TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="approvalsPane" role="tabpanel" aria-labelledby="approvals-tab">
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h2 class="text-primary mb-0 me-auto">Pending Approvals</h2>
+  <label class="form-check-label text-muted small me-1" for="approvalsShowAll">Show resolved</label>
+  <input class="form-check-input me-2" type="checkbox" id="approvalsShowAll" onchange="loadApprovalsTab()">
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadApprovalsTab()">Refresh</button>
+</div>
+
+<p class="text-muted small mb-3">
+  Actions queued by the agent that require your review before executing.
+  Approvals expire after <strong>48 hours</strong> if not acted on.
+</p>
+
+<div id="approvalsPanel">
+  <div class="text-muted small py-4 text-center">Loading…</div>
+</div>
+
+</div><!-- end Approvals tab pane -->
+
+<!-- ================================================================== -->
+<!-- MONITORING TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="monitoringPane" role="tabpanel" aria-labelledby="monitoring-tab">
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h2 class="text-primary mb-0 me-auto">Monitoring</h2>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadMonitoringTab()">Refresh</button>
+</div>
+
+<p class="text-muted small mb-3">SNMP polling, trap collection, and NetFlow analysis for this list. The AI uses the collector IP when generating device configurations.</p>
+
+<!-- Collector IP card -->
+<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body">
+    <div class="d-flex align-items-center mb-3">
+      <h6 class="text-primary mb-0 me-auto">OOB Collector IP</h6>
+      <button class="btn btn-outline-info btn-sm" onclick="detectCollectorIp()">Auto-detect</button>
+    </div>
+    <p class="text-muted small mb-3">This server's IP address on the OOB management network. Devices send SNMP traps and NetFlow exports here.</p>
+    <div class="row g-2 align-items-end">
+      <div class="col-sm-4">
+        <label class="form-label text-muted small mb-1">Collector IP</label>
+        <input id="collectorIpInput" type="text" class="form-control form-control-sm" placeholder="e.g. 192.168.0.1">
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label text-muted small mb-1">SNMP Community (RO)</label>
+        <input id="snmpCommunityRo" type="text" class="form-control form-control-sm" placeholder="public">
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label text-muted small mb-1">Trap Port</label>
+        <input id="snmpTrapPort" type="number" class="form-control form-control-sm" value="1162">
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label text-muted small mb-1">NetFlow Port</label>
+        <input id="netflowPort" type="number" class="form-control form-control-sm" value="9996">
+      </div>
+      <div class="col-sm-1">
+        <button class="btn btn-primary btn-sm w-100" onclick="saveMonitoringConfig()">Save</button>
+      </div>
+    </div>
+    <div id="collectorIpSource" class="text-muted small mt-2"></div>
+
+    <!-- Available interfaces -->
+    <div id="localInterfacesPanel" class="mt-3" style="display:none">
+      <p class="text-muted small mb-1">Available local interfaces:</p>
+      <div id="localInterfacesList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Device config snippets -->
+<div id="deviceConfigSnippets" class="card mb-3" style="background:#1e293b;border:1px solid #334155;display:none">
+  <div class="card-body">
+    <h6 class="text-primary mb-2">Device Configuration Snippets</h6>
+    <p class="text-muted small mb-2">Apply these to each device (or ask the AI to configure them):</p>
+    <div id="snippetsContent"></div>
+  </div>
+</div>
+
+<!-- SNMP section -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100" style="background:#1e293b;border:1px solid #334155">
+      <div class="card-body">
+        <h6 class="text-primary mb-2">SNMP Quick Poll</h6>
+        <div class="row g-2 mb-2">
+          <div class="col-sm-6">
+            <input id="snmpPollIp" type="text" class="form-control form-control-sm" placeholder="Device IP">
+          </div>
+          <div class="col-sm-6">
+            <button class="btn btn-outline-primary btn-sm w-100" onclick="snmpPollDevice()">Poll Device</button>
+          </div>
+        </div>
+        <div id="snmpPollResult" class="font-monospace small" style="white-space:pre-wrap;max-height:200px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100" style="background:#1e293b;border:1px solid #334155">
+      <div class="card-body">
+        <h6 class="text-primary mb-2">SNMP Traps <span id="trapCountBadge" class="badge bg-secondary ms-1">0</span></h6>
+        <div id="snmpTrapsPanel" style="max-height:200px;overflow-y:auto">
+          <div class="text-muted small text-center py-3">No traps received yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NetFlow section -->
+<div class="card" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body">
+    <h6 class="text-primary mb-2">NetFlow Summary</h6>
+    <div id="netflowPanel">
+      <div class="text-muted small text-center py-3">No flow data received yet</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end Monitoring tab pane -->
 
 </div><!-- end tab-content -->
 
@@ -2075,6 +2363,112 @@ async function loadJenkinsTab() {
   const [pData, rData] = await Promise.all([pipelinesReq, resultsReq]);
   _renderJenkinsResults(rData || {});
   await _renderBuildHistory(pData.pipelines || []);
+  loadJenkinsSchedules();
+}
+
+// ── Schedule presets shown in the editor dropdown ──
+const CRON_PRESETS = [
+  { label: 'Not scheduled (manual only)', value: '' },
+  { label: 'Every 5 minutes',   value: 'H/5 * * * *' },
+  { label: 'Every 15 minutes',  value: 'H/15 * * * *' },
+  { label: 'Every 30 minutes',  value: 'H/30 * * * *' },
+  { label: 'Hourly',            value: 'H * * * *' },
+  { label: 'Every 4 hours',     value: 'H H/4 * * *' },
+  { label: 'Every 6 hours',     value: 'H H/6 * * *' },
+  { label: 'Every 12 hours',    value: 'H H/12 * * *' },
+  { label: 'Daily at midnight', value: 'H 0 * * *' },
+  { label: 'Daily at ~6am',     value: 'H 6 * * *' },
+  { label: 'Daily at ~8am',     value: 'H 8 * * *' },
+  { label: 'Weekly (Monday)',   value: 'H 0 * * 1' },
+  { label: 'Custom…',           value: '__custom__' },
+];
+
+async function loadJenkinsSchedules() {
+  const el = document.getElementById('jenkinsSchedulesPanel');
+  if (!el) return;
+  try {
+    const r    = await fetch('/jenkins/schedules');
+    const data = await r.json();
+    const schedules = data.schedules || {};
+    const jobs = Object.keys(schedules);
+
+    if (jobs.length === 0) {
+      el.innerHTML = `<div class="text-muted small py-2">No pipelines registered to this list yet.</div>`;
+      return;
+    }
+
+    const rows = jobs.map(job => {
+      const info  = schedules[job];
+      const cron  = info.cron || '';
+      const desc  = info.description || (cron ? cron : 'Not scheduled');
+      const opts  = CRON_PRESETS.map(p => {
+        const sel = (p.value === cron || (p.value === '__custom__' && cron && !CRON_PRESETS.find(x => x.value === cron && x.value !== '__custom__'))) ? 'selected' : '';
+        return `<option value="${_esc(p.value)}" ${sel}>${_esc(p.label)}</option>`;
+      }).join('');
+
+      return `
+        <div class="card mb-2" style="background:#1e293b;border:1px solid #334155" id="sched-card-${_esc(job)}">
+          <div class="card-body p-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <strong class="text-light me-auto" style="font-size:.9rem">${_esc(job)}</strong>
+              <span class="badge ${cron ? 'bg-success' : 'bg-secondary'} me-1">${_esc(desc)}</span>
+              <select class="form-select form-select-sm" style="width:auto;min-width:200px"
+                      id="sched-select-${_esc(job)}"
+                      onchange="onSchedulePresetChange('${_esc(job)}')">
+                ${opts}
+              </select>
+              <input id="sched-custom-${_esc(job)}" type="text" class="form-control form-control-sm"
+                     placeholder="cron expression" style="width:160px;${cron && !CRON_PRESETS.slice(0,-1).find(p=>p.value===cron) ? '' : 'display:none'}"
+                     value="${_esc(cron)}">
+              <button class="btn btn-primary btn-sm" onclick="saveSchedule('${_esc(job)}')">Save</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = rows;
+  } catch (err) {
+    el.innerHTML = `<div class="text-danger small">Could not load schedules: ${_esc(String(err))}</div>`;
+  }
+}
+
+function onSchedulePresetChange(job) {
+  const sel    = document.getElementById(`sched-select-${job}`);
+  const custom = document.getElementById(`sched-custom-${job}`);
+  if (!sel || !custom) return;
+  if (sel.value === '__custom__') {
+    custom.style.display = '';
+    custom.focus();
+  } else {
+    custom.style.display = 'none';
+  }
+}
+
+async function saveSchedule(job) {
+  const sel    = document.getElementById(`sched-select-${job}`);
+  const custom = document.getElementById(`sched-custom-${job}`);
+  if (!sel) return;
+
+  let cron = sel.value === '__custom__' ? (custom ? custom.value.trim() : '') : sel.value;
+
+  const btn = document.querySelector(`#sched-card-${CSS.escape(job)} .btn-primary`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  try {
+    const r = await fetch(`/jenkins/schedules/${encodeURIComponent(job)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cron }),
+    });
+    const data = await r.json();
+    if (data.error) { showToast(data.error, 'danger'); return; }
+    showToast(`Schedule saved: ${data.description}`, 'success');
+    loadJenkinsSchedules();
+  } catch (err) {
+    showToast('Failed to save schedule', 'danger');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+  }
 }
 
 // Re-render when dropdown changes
@@ -2183,32 +2577,778 @@ function _enableRunBtn() {
 
 // Load tab data when tab becomes active for the first time
 document.addEventListener('DOMContentLoaded', function () {
-  const ansibleTabBtn = document.getElementById('ansible-tab');
-  const jenkinsTabBtn = document.getElementById('jenkins-tab');
+  const ansibleTabBtn    = document.getElementById('ansible-tab');
+  const jenkinsTabBtn    = document.getElementById('jenkins-tab');
+  const complianceTabBtn = document.getElementById('compliance-tab');
+  const historyTabBtn    = document.getElementById('history-tab');
+  const variablesTabBtn  = document.getElementById('variables-tab');
+  const agentTabBtn      = document.getElementById('agent-tab');
+  const approvalsTabBtn  = document.getElementById('approvals-tab');
+  const monitoringTabBtn = document.getElementById('monitoring-tab');
 
-  let ansibleLoaded = false;
-  let jenkinsLoaded = false;
-
-  if (ansibleTabBtn) {
-    ansibleTabBtn.addEventListener('shown.bs.tab', function () {
-      if (!ansibleLoaded) { ansibleLoaded = true; }
-      loadPlaybooks();
-    });
-  }
-  if (jenkinsTabBtn) {
-    jenkinsTabBtn.addEventListener('shown.bs.tab', function () {
-      if (!jenkinsLoaded) { jenkinsLoaded = true; }
-      loadJenkinsTab();
-    });
-  }
+  if (ansibleTabBtn)    ansibleTabBtn.addEventListener('shown.bs.tab', loadPlaybooks);
+  if (jenkinsTabBtn)    jenkinsTabBtn.addEventListener('shown.bs.tab', loadJenkinsTab);
+  if (complianceTabBtn) complianceTabBtn.addEventListener('shown.bs.tab', loadComplianceTab);
+  if (historyTabBtn)    historyTabBtn.addEventListener('shown.bs.tab', loadHistoryTab);
+  if (variablesTabBtn)  variablesTabBtn.addEventListener('shown.bs.tab', loadVariablesTab);
+  if (agentTabBtn)      agentTabBtn.addEventListener('shown.bs.tab', loadAgentTab);
+  if (approvalsTabBtn)  approvalsTabBtn.addEventListener('shown.bs.tab', loadApprovalsTab);
+  if (monitoringTabBtn) monitoringTabBtn.addEventListener('shown.bs.tab', loadMonitoringTab);
 
   // Auto-refresh Jenkins panel every 30s while tab is visible
   setInterval(function () {
-    if (jenkinsTabBtn && jenkinsTabBtn.classList.contains('active')) {
-      loadJenkinsTab();
-    }
+    if (jenkinsTabBtn && jenkinsTabBtn.classList.contains('active')) loadJenkinsTab();
   }, 30000);
+
+  // Refresh Agent tab — 3s while a task is running, 15s otherwise
+  let _agentRefreshTimer = null;
+  function _scheduleAgentRefresh() {
+    if (_agentRefreshTimer) clearTimeout(_agentRefreshTimer);
+    const liveRunning = !!document.getElementById('agentLiveTask');
+    const interval = liveRunning ? 3000 : 15000;
+    _agentRefreshTimer = setTimeout(async function () {
+      if (agentTabBtn && agentTabBtn.classList.contains('active')) {
+        await loadAgentTab();
+      } else {
+        // Keep failure badge current even when tab is not open
+        fetch('/ai/agent_log?limit=5').then(r => r.json()).then(data => {
+          const agentBadgeEl = document.getElementById('agentBadge');
+          if (agentBadgeEl) {
+            const failed = (data.entries || []).some(e => !e.success);
+            agentBadgeEl.style.display = failed ? 'inline' : 'none';
+          }
+        }).catch(() => {});
+      }
+      _scheduleAgentRefresh();
+    }, interval);
+  }
+  _scheduleAgentRefresh();
+
+  // Poll approval count every 30s — keep badge updated regardless of which tab is open
+  // If approvals tab is open, refresh the full list too
+  function _pollApprovals() {
+    fetch('/ai/approvals').then(r => r.json()).then(data => {
+      _updateApprovalsBadge(data.pending_count || 0);
+      if (approvalsTabBtn && approvalsTabBtn.classList.contains('active')) {
+        loadApprovalsTab();
+      }
+    }).catch(() => {});
+  }
+  _pollApprovals();                        // run once at page load
+  setInterval(_pollApprovals, 30000);     // then every 30s
 });
+
+// ========================================================================
+// COMPLIANCE TAB
+// ========================================================================
+
+async function loadComplianceTab() {
+  const policyEl  = document.getElementById('compliancePolicyPanel');
+  const resultsEl = document.getElementById('complianceResultsPanel');
+  if (!policyEl) return;
+  try {
+    const r    = await fetch('/list/compliance_policy');
+    const data = await r.json();
+    const rules = data.rules || [];
+    if (rules.length === 0) {
+      policyEl.innerHTML = `<div class="text-muted small py-3">No compliance rules defined. Ask the AI to add rules with <code>update_compliance_policy</code>.</div>`;
+    } else {
+      policyEl.innerHTML = `
+        <h6 class="text-secondary mb-2">${rules.length} Rule${rules.length !== 1 ? 's' : ''}</h6>
+        <div class="list-group">
+          ${rules.map(r => `
+            <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-start"
+                 style="background:#1e293b;border-color:#334155;color:#e2e8f0">
+              <div>
+                <div class="fw-semibold">${_esc(r.description || r.id)}</div>
+                <div class="text-muted small mt-1">
+                  <code>${_esc(r.command || '')}</code> &middot;
+                  assert: <code>${_esc(r.assertion || '')}</code> &middot;
+                  devices: ${(r.device_ips || []).join(', ')}
+                </div>
+              </div>
+              <button class="btn btn-outline-danger btn-sm ms-2"
+                      onclick="deleteComplianceRule('${_esc(r.id)}')">&#x2715;</button>
+            </div>`).join('')}
+        </div>`;
+    }
+    resultsEl.innerHTML = '';
+  } catch { policyEl.innerHTML = '<div class="text-danger small">Failed to load compliance policy.</div>'; }
+}
+
+async function runComplianceCheck() {
+  const btn     = document.getElementById('runComplianceBtn');
+  const btnText = btn.querySelector('.btn-text');
+  const spinner = btn.querySelector('.spinner-border');
+  btnText.textContent = '…'; spinner.classList.remove('d-none'); btn.disabled = true;
+  const resultsEl = document.getElementById('complianceResultsPanel');
+  resultsEl.innerHTML = '<div class="text-muted small py-2"><div class="spinner-border spinner-border-sm me-2"></div>Running compliance checks…</div>';
+  try {
+    // Delegate to AI which runs the check via tool
+    if (typeof sendMessage === 'function' || typeof window.sendMessage === 'function') {
+      const fn = window.sendMessage || sendMessage;
+      const aiTab = document.getElementById('ai-tab') || document.querySelector('[data-bs-target="#ai"]');
+      if (aiTab) aiTab.click();
+      fn('Run the compliance check for this list and report the results.');
+    } else {
+      showToast('Ask the AI to run the compliance check.', 'info');
+    }
+    resultsEl.innerHTML = '<div class="text-muted small py-2">Compliance check sent to AI — see AI panel for results.</div>';
+  } finally {
+    btnText.textContent = 'Run Check'; spinner.classList.add('d-none'); btn.disabled = false;
+  }
+}
+
+async function deleteComplianceRule(id) {
+  if (!confirm(`Delete compliance rule "${id}"?`)) return;
+  await fetch('/list/compliance_policy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'delete', rule: { id } }),
+  });
+  loadComplianceTab();
+}
+
+// ========================================================================
+// HISTORY TAB
+// ========================================================================
+
+async function loadHistoryTab() {
+  const panel = document.getElementById('changeLogPanel');
+  if (!panel) return;
+  panel.innerHTML = '<div class="text-muted small py-2"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div>';
+  try {
+    const r    = await fetch('/list/change_log?limit=50');
+    const data = await r.json();
+    const changes = data.changes || [];
+    if (changes.length === 0) {
+      panel.innerHTML = '<div class="text-muted small py-4 text-center">No changes logged yet. Changes are recorded after every AI config push.</div>';
+      return;
+    }
+    const badge = r => ({ SUCCESS:'success', FAILURE:'danger', SKIPPED:'secondary', '':'secondary' }[r] || 'secondary');
+    const icon  = r => ({ SUCCESS:'✓', FAILURE:'✗', SKIPPED:'~', '':'—' }[r] || '?');
+    const typeColor = t => ({ config_push:'primary', rollback:'warning', restore:'warning', playbook:'info', compliance_fix:'success' }[t] || 'secondary');
+    panel.innerHTML = `
+      <div class="list-group">
+        ${changes.map(c => `
+          <div class="list-group-item" style="background:#1e293b;border-color:#334155;color:#e2e8f0">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="badge bg-${badge(c.jenkins_result)} me-2">${icon(c.jenkins_result)} ${c.jenkins_result || 'NO CI'}</span>
+              <span class="badge bg-${typeColor(c.change_type)} me-auto">${c.change_type || ''}</span>
+              ${c.golden_config_saved ? '<span class="badge bg-success ms-1">golden saved</span>' : ''}
+              <small class="text-muted ms-2">${c.timestamp || ''}</small>
+            </div>
+            <div class="fw-semibold">${_esc(c.description || '')}</div>
+            <div class="text-muted small mt-1">
+              Devices: ${(c.devices || []).join(', ') || 'none'}
+              ${c.jenkins_pipeline ? ' &middot; Pipeline: ' + _esc(c.jenkins_pipeline) : ''}
+              ${c.playbook_id      ? ' &middot; Playbook: ' + _esc(c.playbook_id) : ''}
+            </div>
+          </div>`).join('')}
+      </div>`;
+  } catch { panel.innerHTML = '<div class="text-danger small">Failed to load change history.</div>'; }
+}
+
+// ========================================================================
+// VARIABLES TAB
+// ========================================================================
+
+async function loadVariablesTab() {
+  const panel = document.getElementById('variablesPanel');
+  if (!panel) return;
+  try {
+    const r    = await fetch('/list/variables');
+    const data = await r.json();
+    const keys = Object.keys(data);
+    if (keys.length === 0) {
+      panel.innerHTML = '<div class="text-muted small py-3 text-center">No variables set. Add one below or ask the AI to discover network facts.</div>';
+      return;
+    }
+    panel.innerHTML = `
+      <table class="table table-sm" style="color:#e2e8f0">
+        <thead><tr>
+          <th style="color:#94a3b8">Key</th>
+          <th style="color:#94a3b8">Value</th>
+          <th style="color:#94a3b8">Description</th>
+          <th style="color:#94a3b8">Updated</th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+          ${keys.sort().map(k => {
+            const v = data[k];
+            const val  = typeof v === 'object' ? v.value || '' : v;
+            const desc = typeof v === 'object' ? v.description || '' : '';
+            const upd  = typeof v === 'object' ? v.updated || '' : '';
+            return `<tr>
+              <td><code>${_esc(k)}</code></td>
+              <td>${_esc(val)}</td>
+              <td class="text-muted small">${_esc(desc)}</td>
+              <td class="text-muted small">${_esc(upd)}</td>
+              <td><button class="btn btn-outline-danger btn-sm py-0" onclick="deleteVariable('${_esc(k)}')">&#x2715;</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  } catch { panel.innerHTML = '<div class="text-danger small">Failed to load variables.</div>'; }
+}
+
+async function saveVariable() {
+  const key   = (document.getElementById('varKey')?.value || '').trim();
+  const value = (document.getElementById('varValue')?.value || '').trim();
+  const desc  = (document.getElementById('varDesc')?.value || '').trim();
+  if (!key || !value) { showToast('Key and value are required', 'danger'); return; }
+  const r = await fetch('/list/variables', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value, description: desc }),
+  });
+  if (r.ok) {
+    showToast(`Variable "${key}" saved`, 'success');
+    document.getElementById('varKey').value = '';
+    document.getElementById('varValue').value = '';
+    document.getElementById('varDesc').value = '';
+    loadVariablesTab();
+  } else {
+    showToast('Failed to save variable', 'danger');
+  }
+}
+
+async function deleteVariable(key) {
+  if (!confirm(`Delete variable "${key}"?`)) return;
+  await fetch(`/list/variables/${encodeURIComponent(key)}`, { method: 'DELETE' });
+  loadVariablesTab();
+}
+
+async function discoverNetworkFacts() {
+  const btn = document.getElementById('discoverFactsBtn');
+  const spinner = document.getElementById('discoverFactsSpinner');
+  if (btn) btn.disabled = true;
+  if (spinner) spinner.classList.remove('d-none');
+  try {
+    const r = await fetch('/ai/agent_run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task: '[AUTONOMOUS TASK] Survey the network and populate the variable store. ' +
+              'For each device, discover and store: hostname, device role (P/PE/CE/access/etc), ' +
+              'loopback0 IP address, routing protocol(s) in use (OSPF/BGP/EIGRP/static), ' +
+              'OSPF process ID and area (if applicable), BGP AS number (if applicable), ' +
+              'and any MPLS/VRF configuration. ' +
+              'Use execute_command_on_multiple_devices with commands like ' +
+              "'show version', 'show ip interface brief', 'show ip ospf', 'show ip bgp summary'. " +
+              "Store each fact with a descriptive key like 'P1_role', 'P1_loopback0', 'P1_ospf_pid'. " +
+              'After storing facts, call read_variables to confirm they were saved and log a summary with log_change.'
+      })
+    });
+    if (r.ok) {
+      showToast('Network fact discovery task queued — check the Agent tab for progress', 'success');
+    } else {
+      showToast('Failed to queue discovery task', 'danger');
+    }
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (spinner) spinner.classList.add('d-none');
+  }
+}
+
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ========================================================================
+// MONITORING TAB
+// ========================================================================
+
+async function loadMonitoringTab() {
+  try {
+    const r    = await fetch('/monitoring/config');
+    const cfg  = await r.json();
+    const ip   = cfg.collector_ip || '';
+    const src  = cfg.collector_ip_source || 'none';
+
+    const ipInput = document.getElementById('collectorIpInput');
+    const roInput = document.getElementById('snmpCommunityRo');
+    const trapPort = document.getElementById('snmpTrapPort');
+    const nfPort   = document.getElementById('netflowPort');
+    const srcLabel = document.getElementById('collectorIpSource');
+
+    if (ipInput)  ipInput.value  = ip;
+    if (roInput)  roInput.value  = cfg.snmp_community_ro || 'public';
+    if (trapPort) trapPort.value = cfg.snmp_trap_port || 1162;
+    if (nfPort)   nfPort.value   = cfg.netflow_port   || 9996;
+    if (srcLabel) srcLabel.textContent = ip
+      ? `Detected source: ${src}  — devices should send to ${ip}`
+      : 'Not configured. Click Auto-detect or enter manually.';
+
+    // Device config snippets
+    if (ip) {
+      const snip = document.getElementById('deviceConfigSnippets');
+      const cont = document.getElementById('snippetsContent');
+      if (snip) snip.style.display = '';
+      if (cont) cont.innerHTML = `
+        <div class="mb-2">
+          <span class="text-muted small">SNMP traps (IOS):</span>
+          <pre class="mb-0" style="background:#0f172a;padding:8px;border-radius:4px;font-size:12px">snmp-server host ${_esc(ip)} traps version 2c ${_esc(cfg.snmp_community_ro || 'public')}
+snmp-server enable traps</pre>
+        </div>
+        <div class="mb-2">
+          <span class="text-muted small">NetFlow export (IOS):</span>
+          <pre class="mb-0" style="background:#0f172a;padding:8px;border-radius:4px;font-size:12px">ip flow-export destination ${_esc(ip)} ${cfg.netflow_port || 9996}
+ip flow-export version 9
+ip flow-export source Loopback0
+!  -- on each interface:
+interface &lt;name&gt;
+ ip flow ingress
+ ip flow egress</pre>
+        </div>`;
+    }
+  } catch (e) {
+    console.error('loadMonitoringTab:', e);
+  }
+
+  // Load traps and NetFlow
+  _loadSnmpTraps();
+  _loadNetflowSummary();
+}
+
+async function detectCollectorIp() {
+  try {
+    const r    = await fetch('/monitoring/interfaces');
+    const list = await r.json();
+    const panel = document.getElementById('localInterfacesPanel');
+    const items = document.getElementById('localInterfacesList');
+    if (!panel || !items) return;
+    if (!list.length) {
+      items.innerHTML = '<span class="text-muted small">No interfaces found</span>';
+    } else {
+      items.innerHTML = list.map(i =>
+        `<button class="btn btn-outline-secondary btn-sm me-1 mb-1"
+                 onclick="document.getElementById('collectorIpInput').value='${_esc(i.ip)}'">
+           ${_esc(i.name)}: ${_esc(i.ip)}
+         </button>`
+      ).join('');
+    }
+    panel.style.display = '';
+  } catch (e) {
+    showToast('Error detecting interfaces: ' + e.message, 'danger');
+  }
+}
+
+async function saveMonitoringConfig() {
+  const ip  = (document.getElementById('collectorIpInput')?.value || '').trim();
+  const ro  = (document.getElementById('snmpCommunityRo')?.value  || 'public').trim();
+  const trap = parseInt(document.getElementById('snmpTrapPort')?.value || '1162');
+  const nf   = parseInt(document.getElementById('netflowPort')?.value  || '9996');
+  try {
+    const r = await fetch('/monitoring/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ collector_ip: ip, snmp_community_ro: ro,
+                             snmp_trap_port: trap, netflow_port: nf })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast('Monitoring config saved', 'success');
+      loadMonitoringTab();
+    } else {
+      showToast('Save failed', 'danger');
+    }
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  }
+}
+
+async function snmpPollDevice() {
+  const ip  = (document.getElementById('snmpPollIp')?.value || '').trim();
+  const res = document.getElementById('snmpPollResult');
+  if (!ip) { showToast('Enter a device IP', 'warning'); return; }
+  if (res) res.textContent = 'Polling…';
+  try {
+    const community = document.getElementById('snmpCommunityRo')?.value || 'public';
+    const r = await fetch('/monitoring/snmp/poll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ip: ip, community,
+        oids: ['sysName', 'sysDescr', 'sysUpTime', 'sysLocation'] })
+    });
+    const data = await r.json();
+    if (data.error) {
+      if (res) res.textContent = 'Error: ' + data.error;
+    } else {
+      if (res) res.textContent = data.results.map(x => `${x.oid}\n  = ${x.value}`).join('\n\n');
+    }
+  } catch (e) {
+    if (res) res.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function _loadSnmpTraps() {
+  try {
+    const r    = await fetch('/monitoring/snmp/traps?limit=20');
+    const data = await r.json();
+    const traps = data.traps || [];
+    const panel = document.getElementById('snmpTrapsPanel');
+    const badge = document.getElementById('trapCountBadge');
+    if (badge) badge.textContent = traps.length;
+    if (!panel) return;
+    if (!traps.length) {
+      panel.innerHTML = '<div class="text-muted small text-center py-3">No traps received yet</div>';
+      return;
+    }
+    panel.innerHTML = traps.map(t => `
+      <div class="border-bottom border-secondary py-1 small">
+        <span class="text-muted">${_esc(t.received_at || '')}</span>
+        <span class="text-warning ms-2">${_esc(t.source_ip || '')}</span>
+        <span class="ms-2">${_esc(t.summary || t.community || '')}</span>
+      </div>`).join('');
+  } catch (e) { /* silent */ }
+}
+
+async function _loadNetflowSummary() {
+  try {
+    const r    = await fetch('/monitoring/netflow');
+    const data = await r.json();
+    const stats = data.stats || {};
+    const panel = document.getElementById('netflowPanel');
+    if (!panel) return;
+    if (!stats.total_flows) {
+      panel.innerHTML = '<div class="text-muted small text-center py-3">No flow data received yet. Configure devices to export NetFlow to the collector IP.</div>';
+      return;
+    }
+    const topSrc = (stats.top_sources || []).slice(0, 5)
+      .map(s => `<tr><td class="text-light">${_esc(s.ip)}</td><td class="text-end text-info">${_fmtBytes(s.bytes)}</td></tr>`).join('');
+    const topDst = (stats.top_destinations || []).slice(0, 5)
+      .map(d => `<tr><td class="text-light">${_esc(d.ip)}</td><td class="text-end text-info">${_fmtBytes(d.bytes)}</td></tr>`).join('');
+    const protos = (stats.by_protocol || [])
+      .map(p => `<span class="badge bg-secondary me-1">${_esc(p.proto)}: ${_fmtBytes(p.bytes)}</span>`).join('');
+    panel.innerHTML = `
+      <div class="text-muted small mb-2">Total flows in buffer: <strong class="text-light">${stats.total_flows}</strong></div>
+      <div class="row g-2">
+        <div class="col-md-6">
+          <div class="text-muted small mb-1">Top Sources</div>
+          <table class="table table-sm table-dark mb-0 small"><tbody>${topSrc}</tbody></table>
+        </div>
+        <div class="col-md-6">
+          <div class="text-muted small mb-1">Top Destinations</div>
+          <table class="table table-sm table-dark mb-0 small"><tbody>${topDst}</tbody></table>
+        </div>
+      </div>
+      <div class="mt-2">${protos}</div>`;
+  } catch (e) { /* silent */ }
+}
+
+function _fmtBytes(n) {
+  if (!n) return '0 B';
+  const units = ['B','KB','MB','GB','TB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return n.toFixed(1) + ' ' + units[i];
+}
+
+// ========================================================================
+// AGENT ACTIVITY TAB
+// ========================================================================
+
+let _agentPaused = false;
+
+async function loadAgentTab() {
+  const logEl    = document.getElementById('agentActivityLog');
+  const badgeEl  = document.getElementById('agentStatusBadge');
+  const pauseBtn = document.getElementById('agentPauseBtn');
+  if (!logEl) return;
+
+  try {
+    const r    = await fetch('/ai/agent_log?limit=50');
+    const data = await r.json();
+    const status  = data.status  || {};
+    const entries = data.entries || [];
+
+    // Update status badge and live task panel
+    const ct = status.current_task;
+    if (badgeEl) {
+      if (ct) {
+        badgeEl.className = 'badge bg-warning text-dark';
+        badgeEl.textContent = 'Running…';
+      } else if (status.paused) {
+        badgeEl.className = 'badge bg-secondary';
+        badgeEl.textContent = 'Paused';
+      } else if (status.user_active) {
+        badgeEl.className = 'badge bg-info text-dark';
+        badgeEl.textContent = 'Idle (user active)';
+      } else {
+        badgeEl.className = 'badge bg-success';
+        badgeEl.textContent = 'Active';
+      }
+    }
+    _agentPaused = !!status.paused;
+    if (pauseBtn) pauseBtn.textContent = _agentPaused ? 'Resume' : 'Pause';
+
+    // Live task detail panel — shown only while a task is running
+    let livePanel = document.getElementById('agentLiveTask');
+    if (ct) {
+      const triggerLabels = {
+        jenkins_failure: '⚡ Jenkins failure', missing_golden_configs: '📁 Missing golden configs',
+        config_drift: '🔄 Drift check', scheduled_drift_check: '🕐 Scheduled drift check',
+        manual: '👤 Manual trigger',
+      };
+      const triggerLabel = triggerLabels[ct.trigger] || ct.trigger || 'Running';
+      const elapsed = ct.elapsed_s != null ? `${ct.elapsed_s}s elapsed` : '';
+      const toolBadges = (ct.tools_called || [])
+        .map(t => `<span class="badge bg-secondary me-1" style="font-size:0.7rem">${_esc(t)}</span>`)
+        .join('');
+      const currentToolHtml = ct.current_tool
+        ? `<span class="badge bg-warning text-dark me-1" style="font-size:0.7rem">
+             <span class="spinner-grow spinner-grow-sm me-1" style="width:.5rem;height:.5rem"></span>
+             ${_esc(ct.current_tool)}
+           </span>` : '';
+      const lastTextHtml = ct.last_text
+        ? `<div class="text-muted mt-2" style="font-size:0.75rem;font-style:italic;max-height:60px;overflow:hidden">
+             "${_esc(ct.last_text.slice(-180))}"
+           </div>` : '';
+
+      const html = `
+        <div class="card mb-3" style="background:#1e293b;border:1px solid #f59e0b55" id="agentLiveTask">
+          <div class="card-body p-3">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <div class="spinner-border spinner-border-sm text-warning me-1" role="status"></div>
+              <strong class="text-warning">Task in progress</strong>
+              <span class="text-muted small ms-auto">${_esc(elapsed)}</span>
+            </div>
+            <div class="small text-muted mb-1">${_esc(triggerLabel)}</div>
+            <div class="text-light small mb-2" style="line-height:1.4">${_esc(ct.task || '')}</div>
+            <div class="mb-1">
+              ${currentToolHtml}${toolBadges}
+            </div>
+            <div class="text-muted" style="font-size:0.72rem">
+              ${ct.tool_call_count || 0} tool call${ct.tool_call_count !== 1 ? 's' : ''}
+              ${ct.cost_usd ? ` · $${(ct.cost_usd).toFixed(4)}` : ''}
+            </div>
+            ${lastTextHtml}
+          </div>
+        </div>`;
+
+      if (livePanel) {
+        livePanel.outerHTML = html;
+      } else {
+        logEl.insertAdjacentHTML('beforebegin', html);
+      }
+    } else {
+      if (livePanel) livePanel.remove();
+    }
+
+    // Update badge on tab button (show ! if there are failed tasks in last 5 entries)
+    const agentBadgeEl = document.getElementById('agentBadge');
+    if (agentBadgeEl) {
+      const recentFailed = entries.slice(0, 5).some(e => !e.success);
+      agentBadgeEl.style.display = recentFailed ? 'inline' : 'none';
+    }
+
+    if (entries.length === 0) {
+      logEl.innerHTML = `<div class="text-muted small py-4 text-center">No background tasks have run yet.</div>`;
+      return;
+    }
+
+    const rows = entries.map(e => {
+      const toolList = (e.tools_used || []).map(t => `<span class="badge bg-secondary me-1">${_esc(t)}</span>`).join('');
+      const errHtml  = (e.errors || []).length
+        ? `<div class="text-danger small mt-1">${e.errors.map(_esc).join('<br>')}</div>` : '';
+      const triggerLabel = { jenkins_failure: '⚡ Jenkins failure', missing_golden_configs: '📁 Missing golden configs',
+                             config_drift: '🔄 Drift detected', manual: '👤 Manual trigger' }[e.trigger] || e.trigger;
+      const summary = e.summary
+        ? `<div class="text-muted small mt-2" style="max-height:120px;overflow:auto;white-space:pre-wrap;font-size:0.75rem">${_esc(e.summary.slice(0, 800))}</div>` : '';
+
+      return `
+        <div class="card mb-2" style="background:#1e293b;border:1px solid ${e.success ? '#22c55e44' : '#ef444444'}">
+          <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+              <span class="badge ${e.success ? 'bg-success' : 'bg-danger'}">${e.success ? 'SUCCESS' : 'FAILED'}</span>
+              <span class="text-muted small">${_esc(e.started_at)}</span>
+            </div>
+            <div class="small mb-1"><strong>Trigger:</strong> ${_esc(triggerLabel)}</div>
+            <div class="small text-light mb-1"><strong>Task:</strong> ${_esc((e.task || '').slice(0, 200))}</div>
+            <div class="small mb-1">
+              <strong>${e.tool_call_count || 0} tool calls:</strong> ${toolList || '<span class="text-muted">none</span>'}
+            </div>
+            ${e.cost_usd ? `<div class="text-muted small">Cost: $${(e.cost_usd || 0).toFixed(4)}</div>` : ''}
+            ${errHtml}
+            ${summary}
+          </div>
+        </div>`;
+    }).join('');
+
+    logEl.innerHTML = rows;
+  } catch (err) {
+    if (logEl) logEl.innerHTML = `<div class="text-danger small">Failed to load agent log: ${_esc(String(err))}</div>`;
+  }
+}
+
+async function toggleAgentPause() {
+  const endpoint = _agentPaused ? '/ai/agent_resume' : '/ai/agent_pause';
+  await fetch(endpoint, { method: 'POST' });
+  loadAgentTab();
+}
+
+async function triggerAgentTask() {
+  const input = document.getElementById('agentTaskInput');
+  const task  = (input ? input.value : '').trim();
+  if (!task) return;
+  const btn = document.querySelector('[onclick="triggerAgentTask()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Queuing…'; }
+  try {
+    await fetch('/ai/agent_run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task }),
+    });
+    if (input) input.value = '';
+    setTimeout(loadAgentTab, 1500);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run'; }
+  }
+}
+
+// ========================================================================
+// APPROVALS TAB
+// ========================================================================
+
+async function loadApprovalsTab() {
+  const el      = document.getElementById('approvalsPanel');
+  const showAll = document.getElementById('approvalsShowAll');
+  if (!el) return;
+
+  const url = '/ai/approvals' + (showAll && showAll.checked ? '?all=1' : '');
+  try {
+    const r    = await fetch(url);
+    const data = await r.json();
+    const entries = data.entries || [];
+
+    _updateApprovalsBadge(data.pending_count || 0);
+
+    if (entries.length === 0) {
+      el.innerHTML = `<div class="text-muted small py-4 text-center">
+        ${showAll && showAll.checked ? 'No approvals found.' : 'No pending approvals — the agent is up to date.'}
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = entries.map(e => _renderApprovalCard(e)).join('');
+  } catch (err) {
+    el.innerHTML = `<div class="text-danger small">Failed to load approvals: ${_esc(String(err))}</div>`;
+  }
+}
+
+function _renderApprovalCard(e) {
+  const statusColors = { pending: 'warning', approved: 'success', rejected: 'secondary', expired: 'dark' };
+  const statusColor  = statusColors[e.status] || 'secondary';
+  const isPending    = e.status === 'pending';
+
+  const typeLabels = {
+    update_golden_config: '📁 Update Golden Config',
+    revert_to_golden:     '↩ Revert to Golden',
+  };
+  const typeLabel = typeLabels[e.action_type] || _esc(e.action_type);
+
+  const diffHtml = e.diff
+    ? `<details class="mt-2">
+        <summary class="text-muted small" style="cursor:pointer">View diff</summary>
+        <pre class="mt-1 p-2 rounded small" style="background:#0f172a;color:#94a3b8;max-height:300px;overflow:auto;font-size:0.72rem;white-space:pre">${_esc(e.diff.slice(0, 8000))}</pre>
+      </details>` : '';
+
+  const contextHtml = e.context
+    ? `<div class="text-muted small mt-1"><em>${_esc(e.context.slice(0, 300))}</em></div>` : '';
+
+  const actionBtns = isPending
+    ? `<div class="d-flex gap-2 mt-3">
+        <button class="btn btn-success btn-sm px-3" onclick="resolveApproval('${e.id}','approve')">
+          Approve
+        </button>
+        <button class="btn btn-outline-danger btn-sm px-3" onclick="resolveApproval('${e.id}','reject')">
+          Reject
+        </button>
+      </div>`
+    : `<div class="text-muted small mt-2">
+        ${e.status.charAt(0).toUpperCase() + e.status.slice(1)}
+        ${e.resolved_at ? ' at ' + _esc(e.resolved_at) : ''}
+      </div>`;
+
+  return `
+    <div class="card mb-3" id="approval-card-${e.id}"
+         style="background:#1e293b;border:1px solid ${isPending ? '#f59e0b55' : '#33415588'}">
+      <div class="card-body p-3">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <div>
+            <span class="badge bg-${statusColor} me-2">${e.status.toUpperCase()}</span>
+            <strong class="text-light">${typeLabel}</strong>
+          </div>
+          <span class="text-muted small">${_esc(e.created_at)}</span>
+        </div>
+
+        <div class="text-light mb-1">${_esc(e.device_hostname || e.device_ip)}
+          <span class="text-muted small ms-1">(${_esc(e.device_ip)})</span>
+        </div>
+        <div class="small text-muted mb-1">${_esc(e.description)}</div>
+        ${contextHtml}
+        ${diffHtml}
+
+        ${isPending
+          ? `<div class="text-muted" style="font-size:0.72rem;margin-top:6px">
+              Expires: ${_esc(e.expires_at)}
+            </div>` : ''}
+
+        ${actionBtns}
+      </div>
+    </div>`;
+}
+
+async function resolveApproval(id, action) {
+  const card = document.getElementById(`approval-card-${id}`);
+  if (card) {
+    const btns = card.querySelectorAll('button');
+    btns.forEach(b => { b.disabled = true; });
+    btns[0] && (btns[0].textContent = action === 'approve' ? 'Approving…' : 'Rejecting…');
+  }
+
+  try {
+    const r    = await fetch(`/ai/approvals/${id}/${action}`, { method: 'POST' });
+    const data = await r.json();
+
+    if (!data.ok) {
+      showToast(data.error || 'Failed', 'danger');
+      return;
+    }
+
+    const exec = data.execution || {};
+    if (action === 'approve') {
+      if (exec.error) {
+        showToast(`Approved but execution failed: ${exec.error}`, 'warning');
+      } else if (exec.note) {
+        showToast(exec.note, 'info');
+      } else {
+        showToast(`Approved and executed for ${exec.hostname || exec.device || id}`, 'success');
+      }
+    } else {
+      showToast('Rejected — no action taken.', 'secondary');
+    }
+
+    loadApprovalsTab();
+  } catch (err) {
+    showToast('Request failed', 'danger');
+    if (card) card.querySelectorAll('button').forEach(b => b.disabled = false);
+  }
+}
+
+function _updateApprovalsBadge(count) {
+  const badge = document.getElementById('approvalsBadge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
 
 /* Ask AI about currently selected devices */
 function askAiAboutSelection() {

@@ -82,8 +82,62 @@ def load_list_pipelines() -> list[str]:
 def _save_list_pipelines(jobs: list[str]) -> None:
     path = _pipelines_file()
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Preserve any existing schedules block when re-saving
+    existing = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            existing = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    existing["pipelines"] = jobs
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump({"pipelines": jobs}, fh, indent=2)
+        json.dump(existing, fh, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Per-pipeline schedule registry
+# ---------------------------------------------------------------------------
+
+def load_pipeline_schedules() -> dict:
+    """Return {job_name: cron_expression} for all scheduled pipelines in this list."""
+    try:
+        with open(_pipelines_file(), encoding="utf-8") as fh:
+            return json.load(fh).get("schedules", {})
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_pipeline_schedule(job_name: str, cron_expression: str) -> None:
+    """
+    Persist the cron schedule for a pipeline locally (alongside the pipeline registry).
+    Pass an empty string to clear the schedule entry.
+    """
+    path = _pipelines_file()
+    data: dict = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    schedules = data.get("schedules", {})
+    if cron_expression:
+        schedules[job_name] = cron_expression
+    else:
+        schedules.pop(job_name, None)
+    data["schedules"] = schedules
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+
+
+def extract_schedule_from_xml(xml: str) -> str:
+    """
+    Parse a Jenkins config.xml and return the TimerTrigger cron expression,
+    or an empty string if no schedule is set.
+    """
+    import re
+    m = re.search(r"<hudson\.triggers\.TimerTrigger>\s*<spec>(.*?)</spec>", xml, re.DOTALL)
+    return m.group(1).strip() if m else ""
 
 
 # ---------------------------------------------------------------------------
@@ -592,6 +646,88 @@ def get_current_list_pipeline_status(config: dict) -> dict:
     return {"list_name": list_name, "registered": rows}
 
 
+def sync_scheduled_build_results() -> int:
+    """
+    Poll Jenkins for the latest build result of every pipeline registered to
+    the current list and update jenkins_results.json.
+
+    Called by the event monitor so that scheduled (cron-triggered) Jenkins
+    builds are visible to the app even when no manual trigger was issued.
+
+    Returns the number of jobs updated.
+    """
+    config     = load_config()
+    base_url   = config.get("jenkins_url", "").rstrip("/")
+    if not base_url:
+        return 0
+
+    registered = load_list_pipelines()
+    if not registered:
+        return 0
+
+    try:
+        st, body, _ = _jenkins_request(
+            config,
+            "/api/json?tree=jobs[name,lastBuild[number,result,timestamp,duration]]",
+        )
+        if st != 200:
+            return 0
+        server_jobs = {j["name"]: j for j in json.loads(body).get("jobs", [])}
+    except Exception as exc:
+        logger.debug("sync_scheduled_build_results: API error: %s", exc)
+        return 0
+
+    # Load existing results so we only overwrite jobs in this list
+    try:
+        path = _results_file()
+        with open(path, encoding="utf-8") as fh:
+            existing: dict = json.load(fh)
+    except Exception:
+        existing = {}
+
+    updated = 0
+    for job_name in registered:
+        sj = server_jobs.get(job_name)
+        if not sj:
+            continue
+        lb = sj.get("lastBuild") or {}
+        if not lb:
+            continue
+
+        build_num = lb.get("number")
+        result    = lb.get("result")        # "SUCCESS" | "FAILURE" | None (running)
+        if result is None:
+            result = "RUNNING"
+
+        prev = existing.get(job_name, {})
+        if prev.get("build_number") == build_num and prev.get("result") == result:
+            continue   # nothing changed
+
+        ran_at = ""
+        if lb.get("timestamp"):
+            ran_at = time.strftime(
+                "%Y-%m-%d %H:%M:%S",
+                time.localtime(lb["timestamp"] / 1000),
+            )
+
+        existing[job_name] = {
+            "build_number":    build_num,
+            "result":          result,
+            "jenkins_ok":      result == "SUCCESS",
+            "jenkins_result":  result,
+            "jenkins_pending": result == "RUNNING",
+            "jenkins_ran_at":  ran_at,
+        }
+        updated += 1
+        logger.debug("sync_scheduled_build_results: %s build #%s → %s", job_name, build_num, result)
+
+    if updated:
+        _save_results(existing)
+        logger.info("sync_scheduled_build_results: updated %d job(s)", updated)
+
+    return updated
+
+
 def list_jenkins_jobs(config: dict) -> list[dict]:
     """Return a list of all jobs on the server: [{name, url, color, buildable}]."""
     status, body, _ = _jenkins_request(config, "/api/json?tree=jobs[name,url,color,buildable]")
@@ -705,7 +841,8 @@ def get_build_console(config: dict, job_name: str,
     return body.decode("utf-8", errors="replace")
 
 
-def wait_for_build_results(config: dict, timeout: int = 600) -> dict:
+def wait_for_build_results(config: dict, timeout: int = 600,
+                           stop_check=None) -> dict:
     """
     Block until all pending pipelines for the current list finish building,
     then return per-job results.  Console output is fetched automatically for
@@ -746,7 +883,15 @@ def wait_for_build_results(config: dict, timeout: int = 600) -> dict:
         if time.time() >= deadline:
             timed_out = True
             break
-        time.sleep(5)
+        if stop_check and stop_check():
+            timed_out = True
+            break
+        # Sleep in short increments so stop_check is checked frequently
+        for _ in range(5):
+            time.sleep(1)
+            if stop_check and stop_check():
+                timed_out = True
+                break
 
     # Collect final results
     data  = load_results() or {}

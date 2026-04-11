@@ -152,6 +152,10 @@ os.makedirs(_HISTORIES_DIR, exist_ok=True)
 # Use _get_lab_notes_file() / _get_network_kb_file() at call time —
 # never cache these paths at import time so list-switching works correctly.
 
+# Global KB is stored once at the data root — it is shared across all lists.
+_GLOBAL_KB_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "global_kb.json")
+
+
 def _get_lab_notes_file() -> str:
     from modules.config import get_current_list_data_dir
     return os.path.join(get_current_list_data_dir(), "lab_notes.md")
@@ -162,8 +166,10 @@ def _get_network_kb_file() -> str:
     return os.path.join(get_current_list_data_dir(), "network_kb.json")
 
 
+# ---- List-specific KB -------------------------------------------------------
+
 def _load_network_kb() -> dict:
-    """Return the full knowledge base dict, or {} if none exists."""
+    """Return the list-specific knowledge base dict, or {} if none exists."""
     try:
         with open(_get_network_kb_file(), encoding="utf-8") as fh:
             return json.load(fh)
@@ -178,6 +184,27 @@ def _save_network_kb(kb: dict) -> None:
     except Exception as exc:
         logger.warning("Could not save network KB: %s", exc)
 
+
+# ---- Global KB --------------------------------------------------------------
+
+def _load_global_kb() -> dict:
+    """Return the global knowledge base dict, or {} if none exists."""
+    try:
+        with open(_GLOBAL_KB_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_global_kb(kb: dict) -> None:
+    try:
+        with open(_GLOBAL_KB_FILE, "w", encoding="utf-8") as fh:
+            json.dump(kb, fh, indent=2)
+    except Exception as exc:
+        logger.warning("Could not save global KB: %s", exc)
+
+
+# ---- Shared formatter -------------------------------------------------------
 
 def _format_network_kb(kb: dict) -> str:
     """Render the KB as a compact readable block for context injection."""
@@ -200,6 +227,299 @@ def _format_network_kb(kb: dict) -> str:
         else:
             lines.append(f"  {entries}")
     return "\n".join(lines)
+
+
+# ---- Golden config store ---------------------------------------------------
+# One file per device per list — latest known-good startup-config snapshot.
+
+def _get_golden_configs_dir() -> str:
+    from modules.config import get_current_list_data_dir
+    path = os.path.join(get_current_list_data_dir(), "golden_configs")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _safe_device_name(hostname: str) -> str:
+    """Sanitise a hostname into a safe filename component (no dots, slashes, spaces)."""
+    import re as _re2
+    name = hostname.strip()
+    # Replace anything that isn't alphanumeric, dash, or underscore
+    name = _re2.sub(r"[^\w\-]", "_", name)
+    return name or "unknown"
+
+
+def _migrate_golden_configs() -> None:
+    """
+    One-time migration: rename legacy IP-based golden config files
+    (e.g. 192_168_0_4.cfg) to hostname-based names (e.g. P1.cfg).
+    Reads the hostname from the file header and renames in place.
+    Safe to call repeatedly — already-migrated files are ignored.
+    """
+    import re as _re3
+    gdir = _get_golden_configs_dir()
+    ip_pattern = _re3.compile(r"^\d+_\d+_\d+_\d+\.cfg$")
+    for fname in list(os.listdir(gdir)):
+        if not ip_pattern.match(fname):
+            continue
+        fpath = os.path.join(gdir, fname)
+        try:
+            with open(fpath, encoding="utf-8") as fh:
+                first = fh.readline()
+            m = _re3.search(r"—\s*(.+?)\s*\((\d[\d.]+)\)", first)
+            if not m:
+                continue
+            hostname = m.group(1).strip()
+            safe     = _safe_device_name(hostname)
+            new_path = os.path.join(gdir, f"{safe}.cfg")
+            if not os.path.exists(new_path):
+                os.rename(fpath, new_path)
+                logger.info("golden config migrated: %s → %s", fname, f"{safe}.cfg")
+        except Exception as exc:
+            logger.warning("golden config migration skip %s: %s", fname, exc)
+
+
+def _find_golden_config_file(device_ip: str) -> Optional[str]:
+    """
+    Find the golden config file for a device by scanning headers for the IP.
+    Returns the full file path or None if not found.
+    """
+    import re as _re4
+    gdir = _get_golden_configs_dir()
+    for fname in os.listdir(gdir):
+        if not fname.endswith(".cfg"):
+            continue
+        fpath = os.path.join(gdir, fname)
+        try:
+            with open(fpath, encoding="utf-8") as fh:
+                header = fh.readline()
+            if f"({device_ip})" in header:
+                return fpath
+        except Exception:
+            pass
+    return None
+
+
+def _golden_config_path(device_ip: str, hostname: str = "") -> str:
+    """
+    Return the path for a device's golden config file.
+    If hostname is provided, use it for the filename.
+    Otherwise fall back to scanning existing files by IP, then IP-based name.
+    """
+    gdir = _get_golden_configs_dir()
+    if hostname:
+        return os.path.join(gdir, f"{_safe_device_name(hostname)}.cfg")
+    existing = _find_golden_config_file(device_ip)
+    if existing:
+        return existing
+    # Fallback: IP-based name (legacy or first-save with no hostname)
+    safe = device_ip.replace(".", "_").replace(":", "_")
+    return os.path.join(gdir, f"{safe}.cfg")
+
+
+def _save_golden_config_file(device_ip: str, hostname: str, config_text: str) -> None:
+    """Write (overwrite) the golden config for one device. Filename = hostname."""
+    _migrate_golden_configs()   # ensure no legacy IP-named files exist
+    # Remove any old file for this IP (handles hostname changes)
+    old = _find_golden_config_file(device_ip)
+    if old:
+        safe_new = os.path.join(_get_golden_configs_dir(), f"{_safe_device_name(hostname)}.cfg")
+        if os.path.abspath(old) != os.path.abspath(safe_new):
+            try:
+                os.remove(old)
+            except Exception:
+                pass
+    path   = _golden_config_path(device_ip, hostname)
+    header = (
+        f"! Golden config — {hostname} ({device_ip})\n"
+        f"! Saved: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"! Source: show startup-config\n"
+        "!\n"
+    )
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(header + config_text.strip() + "\n")
+
+
+def _load_golden_config_file(device_ip: str) -> Optional[str]:
+    """Load the golden config for a device by IP (scans headers)."""
+    _migrate_golden_configs()
+    fpath = _find_golden_config_file(device_ip)
+    if fpath is None:
+        return None
+    try:
+        with open(fpath, encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
+
+
+def _list_golden_configs() -> list:
+    """Return metadata for every saved golden config in the current list."""
+    import re as _re5
+    _migrate_golden_configs()
+    gdir = _get_golden_configs_dir()
+    results = []
+    for fname in sorted(os.listdir(gdir)):
+        if not fname.endswith(".cfg"):
+            continue
+        fpath = os.path.join(gdir, fname)
+        stat  = os.stat(fpath)
+        # Parse hostname and IP from the header line
+        hostname  = fname[:-4]   # filename without .cfg is the hostname
+        device_ip = hostname     # fallback if header can't be parsed
+        try:
+            with open(fpath, encoding="utf-8") as fh:
+                first = fh.readline()
+            m = _re5.search(r"—\s*(.+?)\s*\((\d[\d.]+)\)", first)
+            if m:
+                hostname  = m.group(1).strip()
+                device_ip = m.group(2).strip()
+        except Exception:
+            pass
+        results.append({
+            "device_ip": device_ip,
+            "hostname":  hostname,
+            "file":      fname,
+            "saved_at":  time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
+            "size_bytes": stat.st_size,
+        })
+    return results
+
+
+def _get_running_config_for_golden(device_ip: str, hostname: str = "") -> Optional[str]:
+    """
+    Fetch the current running-config from a device via SSH for golden config storage.
+    Returns the config text or None on failure.
+    Called by the approval queue executor when a drift update is approved.
+    """
+    try:
+        from modules.backups import get_running_config as _get_rc
+        result = _get_rc(device_ip, hostname or device_ip)
+        if isinstance(result, dict):
+            return result.get("config") or result.get("output")
+        return str(result) if result else None
+    except Exception as exc:
+        logger.warning("_get_running_config_for_golden(%s): %s", device_ip, exc)
+        return None
+
+
+# ---- Pre-change snapshot store ---------------------------------------------
+# Temporary per-device snapshot of running-config taken BEFORE a config push.
+# Stored separately from golden configs — not a verified baseline.
+
+def _get_pre_change_dir() -> str:
+    from modules.config import get_current_list_data_dir
+    path = os.path.join(get_current_list_data_dir(), "pre_change")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _pre_change_path(device_ip: str, hostname: str = "") -> str:
+    """Return path for a pre-change snapshot. Uses hostname for filename when available."""
+    pdir = _get_pre_change_dir()
+    if hostname:
+        return os.path.join(pdir, f"{_safe_device_name(hostname)}.cfg")
+    # Scan for existing file by IP header
+    import re as _re6
+    for fname in os.listdir(pdir):
+        if not fname.endswith(".cfg"):
+            continue
+        fpath = os.path.join(pdir, fname)
+        try:
+            with open(fpath, encoding="utf-8") as fh:
+                if f"({device_ip})" in fh.readline():
+                    return fpath
+        except Exception:
+            pass
+    safe = device_ip.replace(".", "_").replace(":", "_")
+    return os.path.join(pdir, f"{safe}.cfg")
+
+
+def _save_pre_change_file(device_ip: str, hostname: str, config_text: str) -> None:
+    path = _pre_change_path(device_ip, hostname)
+    header = (
+        f"! Pre-change snapshot — {hostname} ({device_ip})\n"
+        f"! Captured: {time.strftime('%Y-%m-%d %H:%M:%S')}\n!\n"
+    )
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(header + config_text.strip() + "\n")
+
+
+def _load_pre_change_file(device_ip: str) -> Optional[str]:
+    try:
+        with open(_pre_change_path(device_ip), encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
+
+
+# ---- Change audit log ------------------------------------------------------
+# Append-only structured log of every AI-initiated config change.
+
+def _get_change_log_path() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "change_log.json")
+
+
+def _load_change_log() -> list:
+    try:
+        with open(_get_change_log_path(), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _append_change_log(entry: dict) -> None:
+    log = _load_change_log()
+    entry.setdefault("id", f"{int(time.time() * 1000)}")
+    entry.setdefault("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
+    log.append(entry)
+    # Keep last 500 entries
+    if len(log) > 500:
+        log = log[-500:]
+    with open(_get_change_log_path(), "w", encoding="utf-8") as fh:
+        json.dump(log, fh, indent=2)
+
+
+# ---- Compliance policy store -----------------------------------------------
+# Per-list rules that define what "correct" looks like for this network.
+
+def _get_compliance_policy_path() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "compliance_policy.json")
+
+
+def _load_compliance_policy() -> dict:
+    try:
+        with open(_get_compliance_policy_path(), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"rules": []}
+
+
+def _save_compliance_policy(policy: dict) -> None:
+    with open(_get_compliance_policy_path(), "w", encoding="utf-8") as fh:
+        json.dump(policy, fh, indent=2)
+
+
+# ---- Variable store --------------------------------------------------------
+# Per-list structured key-value store for network facts used in config templates.
+
+def _get_variables_path() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "variables.json")
+
+
+def _load_variables() -> dict:
+    try:
+        with open(_get_variables_path(), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_variables(variables: dict) -> None:
+    with open(_get_variables_path(), "w", encoding="utf-8") as fh:
+        json.dump(variables, fh, indent=2)
 
 
 # Per-session progress checkpoints — the last meaningful text Claude produced
@@ -530,6 +850,14 @@ _TOOL_TTL: dict = {
     "jenkins_disable_job":               None,
     "jenkins_link_pipeline":             None,
     "jenkins_unlink_pipeline":           None,
+    # Monitoring
+    "get_collector_ip":                  60,
+    "set_collector_ip":                  None,
+    "snmp_poll":                         30,
+    "snmp_get_device_summary":           60,
+    "get_snmp_traps":                    15,
+    "get_netflow_summary":               15,
+    "get_monitoring_config":             60,
 }
 
 
@@ -815,10 +1143,122 @@ def _clear_stop(session_id: str) -> None:
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """[v3] You are an expert network automation assistant embedded in a \
+SYSTEM_PROMPT = """[v4] You are an autonomous network automation agent embedded in a \
 Cisco IOS device management platform. You have direct SSH access to managed network \
 devices through a Python intermediary layer — you never connect to devices yourself, \
 but you call tools that execute commands on your behalf.
+
+You are NOT a chatbot. You are an agent. You observe state, infer what needs to be
+done, and act — without waiting for explicit step-by-step instructions. When you
+see a problem, fix it. When you see a gap, fill it. When you complete a workflow
+step, move to the next one automatically.
+
+═══════════════════════════════════════════════════════════════════
+AUTONOMOUS TRIGGER RULES — act on these WITHOUT being asked
+═══════════════════════════════════════════════════════════════════
+
+CONFIG PUSH triggers (fire every time you push config to any device —
+  NEVER fire these during drift checks, compliance checks, or read-only tasks):
+  IF you apply any config change to a device:
+    → ALWAYS capture_pre_change_snapshot BEFORE pushing (no exceptions)
+    → ALWAYS run jenkins_wait_for_result after run_jenkins_checks (never skip the wait)
+    → IF pipeline PASSES  → save_golden_config + log_change(result=SUCCESS) automatically
+    → IF pipeline FAILS   → diagnose from console, attempt fix, re-run CI — do NOT ask the
+                            user what to do; only report when you cannot auto-fix it
+    → Do NOT ask "should I save the golden config?" — save it automatically on CI pass
+
+GOLDEN CONFIG triggers:
+  IF [PROACTIVE CONTEXT] shows a device has no golden config:
+    → At the end of the next successful CI run for that device, save one automatically
+    → If no CI has run for that device this session, note it to the user proactively
+  IF detect_config_drift output shows any device has drifted:
+    → Do NOT call save_golden_config directly
+    → Do NOT run Jenkins — drift detection is read-only, no CI is needed
+    → Call request_approval with action_type='update_golden_config' and the full unified diff
+    → The user will review and approve/reject from the UI
+    → Only call save_golden_config if the user explicitly says "save it" / "update it" in chat
+
+PLAYBOOK triggers:
+  IF you apply the same category of config commands to devices more than once in a
+  session (same protocol, same purpose):
+    → Create a playbook automatically — do not wait to be asked
+    → Name it clearly and log the id in your response
+  IF the user asks you to do something that matches an existing playbook:
+    → Use the playbook (run_ansible_playbook) instead of manual SSH commands
+    → Only fall back to SSH if the playbook is missing required commands for this case
+
+PIPELINE triggers:
+  IF you make a network change that has no matching Jenkins pipeline:
+    → Create one automatically with parallel{} stages for the affected protocols
+    → Immediately call jenkins_set_schedule to set a default recurring schedule
+  IF you create ANY new Jenkins pipeline:
+    → ALWAYS call jenkins_set_schedule immediately after creation
+    → Default schedules by pipeline type:
+        Network verification (OSPF, MPLS, BGP, routing) → 'H/30 * * * *'  (every 30 min)
+        Compliance / health check                        → 'H * * * *'     (hourly)
+        App syntax / smoke test                          → 'H H/6 * * *'   (every 6 hours)
+        Golden config drift check                        → 'H H/4 * * *'   (every 4 hours)
+        General / unknown purpose                        → 'H H/2 * * *'   (every 2 hours)
+  IF an existing pipeline does NOT cover a protocol you just configured:
+    → Update the pipeline to add the missing stage, THEN run it
+  IF Jenkins fails on ANY build (not just ones you triggered):
+    → Read the console, diagnose the root cause, and fix it immediately
+    → Do NOT wait for the user to ask "why did it fail?"
+  IF the user says a schedule is too frequent or not frequent enough:
+    → Call jenkins_set_schedule with the adjusted cron expression immediately
+
+COMPLIANCE triggers:
+  IF the user asks you to "verify", "confirm", or "check" any network property:
+    → After verifying it manually, also add a compliance rule for it so it is
+      checked automatically on every future CI run
+  IF run_compliance_check shows any FAIL:
+    → Treat it as a task to fix, not just a report to show
+
+MONITORING triggers (SNMP / NetFlow):
+  BEFORE generating any SNMP trap destination or NetFlow export config for devices:
+    → ALWAYS call get_collector_ip first — never hardcode or guess the collector IP
+    → If get_collector_ip returns "not set", call set_collector_ip with the correct OOB IP
+    → The collector IP is THIS server's IP on the OOB management subnet
+  IF the user asks to configure SNMP or NetFlow on devices:
+    → Call get_monitoring_config to get collector IP, community strings, and ports
+    → Generate the device-specific IOS commands using those values (see snippets in get_monitoring_config output)
+    → After applying config, use snmp_get_device_summary to verify SNMP is reachable
+  WHEN writing SNMP configs, use the RO community for reads and traps unless the user specifies otherwise
+
+VARIABLE STORE triggers:
+  IF you discover or confirm any network fact (OSPF process ID, loopback prefix,
+  tunnel endpoint, BGP AS number, VLAN ID, etc.):
+    → set_variable immediately — do not hardcode values into configs or playbooks
+  IF read_variables() returns a value you are about to use → use that value exactly
+
+KNOWLEDGE BASE triggers:
+  IF you fix a Jenkins pipeline bug or discover a pipeline pattern that works:
+    → update_network_kb category="jenkins" immediately
+  IF you fix an Ansible playbook or discover a device quirk:
+    → update_network_kb category="ansible" immediately
+  IF you discover a network fact that contradicts the KB:
+    → Update the KB entry — do not leave stale data
+
+PROACTIVE OBSERVATION (do this at the start of any session or when context arrives):
+  - Scan [PROACTIVE CONTEXT] for: devices missing golden configs, recent CI failures,
+    detected drift, pending compliance failures
+  - For each item found: either act on it immediately or surface it to the user with
+    a concrete recommended action — never silently ignore pending issues
+
+═══════════════════════════════════════════════════════════════════
+TASK COMPLETION — execute, don't narrate
+═══════════════════════════════════════════════════════════════════
+When the user gives you a task (verify, configure, troubleshoot, fix), COMPLETE IT.
+Do not stop after gathering information and summarising the topology.  That is not
+completing the task — it is only the discovery phase.  After gathering what you need,
+immediately proceed to the actual work: run the relevant verification commands,
+apply the configuration, test connectivity, or produce a pass/fail verdict.
+
+- "Verify X"      → run the exact show commands that prove X, report PASS/FAIL with evidence
+- "Configure X"   → apply config, verify it took effect, then run the full CI workflow
+- "Troubleshoot X"→ run diagnostics, identify root cause, fix it — do not stop at "here's why"
+- NEVER end a response with "What would you like me to do?" or "Let me know how to
+  proceed" when the user has already told you what to do.  Execute the task.
 
 Capabilities
 - Query device status, interfaces, routing tables, ACLs, and full configurations
@@ -827,22 +1267,6 @@ Capabilities
 - Analyse network topology discovered via CDP
 - Back up device configurations before making changes
 - Troubleshoot connectivity, routing, and interface issues
-
-TASK COMPLETION — most important rule
-When the user gives you a task (verify, configure, troubleshoot, fix), COMPLETE IT.
-Do not stop after gathering information and summarising the topology.  That is not
-completing the task — it is only the discovery phase.  After gathering what you need,
-immediately proceed to the actual work: run the relevant verification commands,
-apply the configuration, test connectivity, or produce a pass/fail verdict.
-
-Specifically:
-- "Verify X" → run the exact show commands that prove X is present and working.
-  Report PASS or FAIL for each requirement, with evidence from the command output.
-  Do not stop at "here is the topology" — that is not a verification.
-- "Configure X" → apply the configuration change, then verify it took effect.
-- "Troubleshoot X" → run diagnostics, identify the root cause, fix it or report it.
-- NEVER end a response with "What would you like me to do?" or "Let me know how to
-  proceed" when the user has already told you what to do.  Execute the task.
 
 Efficiency rules  ← follow these strictly
 1. Device inventory is pre-loaded in [BACKGROUND — managed device inventory…] — do NOT
@@ -1053,6 +1477,47 @@ Key XML rules:
 - To read the Jenkinsfile from the repo instead of inline: use CpsScmFlowDefinition.
   For inline Groovy (most common), use CpsFlowDefinition with <script> as shown above.
 
+Pipeline efficiency — IMPORTANT:
+Run independent checks in parallel using Groovy's parallel{} block. This dramatically
+reduces build time (e.g. 8 sequential 60s checks → ~60s total instead of 8 minutes).
+
+Pattern — wrap independent stages in a parallel stage:
+    stage('Network Checks') {
+        parallel {
+            stage('OSPF') {
+                steps {
+                    script {
+                        // OSPF check logic here
+                    }
+                }
+            }
+            stage('MPLS LFIB') {
+                steps {
+                    script {
+                        // MPLS check logic here
+                    }
+                }
+            }
+            stage('GRE Tunnels') {
+                steps {
+                    script {
+                        // GRE check logic here
+                    }
+                }
+            }
+        }
+    }
+
+Rules for parallel stages:
+- Group INDEPENDENT checks in parallel{} — checks that do NOT depend on each other's results.
+- Keep checks that MUST run in sequence (e.g. device reachability before OSPF) in separate
+  sequential stages BEFORE the parallel block.
+- Each parallel branch should error() on failure — Jenkins collects all failures, not just the first.
+- File collisions: parallel branches MUST use unique temp file names per branch
+  (e.g. _ospf_q.json, _mpls_q.json) — shared names will corrupt each other's data.
+- Always group by logical dependency, not by device. Checking all protocols on all devices
+  in one parallel block is fine as long as temp files are uniquely named.
+
 Modifying an existing pipeline:
 1. jenkins_get_pipeline_script to read the current Groovy stages (easier than parsing XML)
 2. Edit the Groovy script as needed
@@ -1102,6 +1567,13 @@ Rules for save_ansible_playbook:
 - plays: one entry per device with the EXACT commands you applied (config-mode lines).
 - Do NOT save playbooks for show/read-only tasks — only for configuration changes.
 
+Playbook efficiency — IMPORTANT:
+- All plays in a playbook run in PARALLEL (one SSH thread per device).
+  There is NO benefit to combining devices into fewer plays — one play per device is correct.
+- Keep plays independent: do NOT order them assuming sequential execution.
+- If a task requires sequencing (e.g. configure core before edge), split into separate playbooks
+  and run them one after the other explicitly.
+
 Fixing / updating an existing playbook:
 1. Call list_ansible_playbooks to get the exact playbook_id of the playbook to fix.
 2. Call save_ansible_playbook with playbook_id set to that id AND the corrected plays/commands.
@@ -1119,10 +1591,86 @@ Rules for using saved playbooks:
   manually running SSH commands. This is faster and guaranteed to be correct.
 - Only fall through to manual SSH commands if no playbook matches.
 
+Complete config-push workflow — follow this EVERY time you push config to devices
+This is the full mandatory lifecycle for any configuration change:
+
+STEP 0 — Read context (before starting)
+  - read_variables()            → check for stored network facts (OSPF IDs, prefixes, etc.)
+  - list_golden_configs()       → confirm a baseline exists to roll back to
+  - read_compliance_policy()    → know what the network must satisfy after your change
+
+STEP 1 — Pre-change snapshot (safety net)
+  - capture_pre_change_snapshot(device_ips=[...affected IPs...])
+  This saves the current running-config so you can restore it exactly if Jenkins fails.
+
+STEP 2 — Push the config change
+  - Use run_ansible_playbook (preferred) or execute_commands_on_device
+  - After config is applied: run `write memory` on each modified device
+
+STEP 3 — Select or create a Jenkins pipeline
+  - jenkins_get_current_pipelines → see what pipelines exist for this list
+  - Pick the pipeline that validates the type of change:
+      Network protocol change  → network verification pipeline
+      App code change          → app health/syntax pipeline
+      Tunnel/VPN change        → GRE/IPsec verification pipeline
+  - If no match: jenkins_create_job with parallel{} stages for the affected protocols
+  - If existing pipeline needs to cover the new check: jenkins_update_job
+
+STEP 4 — Run CI and wait
+  - run_jenkins_checks → jenkins_wait_for_result (NEVER skip the wait)
+
+STEP 5a — Pipeline PASSES
+  - save_golden_config(device_ips=[...modified IPs...])
+  - set_variable for any newly discovered facts (OSPF process ID, prefix, etc.)
+  - log_change(description, devices, change_type, jenkins_pipeline, jenkins_result=SUCCESS, golden_config_saved=True)
+
+STEP 5b — Pipeline FAILS
+  - Read the console (auto-included) and diagnose
+  - Option A: Fix the config issue → re-push → go back to Step 4
+  - Option B: Revert → restore_pre_change_snapshot(device_ips) → run CI → confirm clean
+  - Do NOT save golden config or log a success until CI passes
+  - log_change(... jenkins_result=FAILURE, golden_config_saved=False)
+
+Rollback tools:
+  restore_pre_change_snapshot(device_ips, reason) — exact pre-change state
+  restore_golden_config(device_ips, reason)       — last verified baseline (older but validated)
+
+Variable store — use it for consistency:
+  read_variables()       — check before hardcoding any value in configs or playbooks
+  set_variable(k, v)     — store any discovered or confirmed network fact
+
+Compliance — run after significant changes:
+  run_compliance_check() — validates all policy rules against live devices
+  update_compliance_policy(action, rule) — add/update/delete rules
+  Rules assert things like: OSPF neighbor count, interface descriptions, MPLS labels present
+
+Change audit log — mandatory at end of every workflow:
+  log_change(...)        — records what changed, which devices, CI result, whether golden saved
+  read_change_log()      — review history of changes for this list
+
+Config drift detection — use proactively:
+  detect_config_drift(device_ips) — diffs running-config vs golden config per device
+  Run this when investigating unexpected network behaviour or before a major change.
+
+Jenkins scheduling — ALWAYS schedule new pipelines (never leave them manual-only):
+  jenkins_set_schedule(job_name, cron_expression) — add cron trigger to any pipeline
+  This is MANDATORY after every jenkins_create_job call.
+
+  Cron reference:
+    'H/5 * * * *'   every 5 min      'H * * * *'     hourly
+    'H/15 * * * *'  every 15 min     'H H/4 * * *'   every 4 hours
+    'H/30 * * * *'  every 30 min     'H H/6 * * *'   every 6 hours
+    'H 6 * * *'     daily ~6am       'H 0 * * 1'     weekly Monday
+    '' (empty)      remove schedule
+
+  H randomises the exact minute — always prefer H over a fixed minute to
+  avoid all pipelines firing simultaneously.
+
 Safety
 - You have real SSH access to real routers and switches.
 - Avoid commands that could disrupt connectivity without explicit user request.
 - Do not shut interfaces or wipe configs without clear user intent.
+- Always capture a pre-change snapshot before pushing config — never skip Step 1.
 """
 
 # ---------------------------------------------------------------------------
@@ -1267,13 +1815,15 @@ TOOLS = [
     {
         "name": "update_network_kb",
         "description": (
-            "Persist a confirmed fact or lesson to the knowledge base for this device list. "
-            "Use this for network facts AND for Jenkins/Ansible lessons learned. "
+            "Persist a confirmed fact specific to THIS device list's network, pipelines, or playbooks. "
+            "Use for facts that only apply to this list — device IPs, OSPF neighbor counts, "
+            "pipeline thresholds, playbook quirks for specific routers. "
+            "For lessons that apply to ALL lists (Jenkins XML patterns, Ansible connection modes, etc.) "
+            "use update_global_kb instead."
             "\n\nNetwork categories: 'interfaces', 'routing', 'tunnels', 'devices', 'mpls_te', 'rsvp'"
-            "\nJenkins categories: 'jenkins' — pipeline quirks, CSRF fixes, agent issues, job configs"
-            "\nAnsible categories: 'ansible' — playbook fixes, command ordering, device-specific quirks"
+            "\nList CI/CD categories: 'jenkins' (this list's pipeline specifics), 'ansible' (this list's playbook quirks)"
             "\n\nExamples:"
-            "\n  category='jenkins', key='csrf_fix', value='Jenkins requires X-Crumb header on all POSTs — fetch from /crumbIssuer/api/json'"
+            "\n  category='jenkins', key='ospf_min_neighbors', value='PE-1 and PE-2 only have 2 OSPF neighbors in this topology — use min:2'"
             "\n  category='ansible', key='PE1_ospf_commit_order', value='Must send commit before exit or OSPF config is lost on PE-1'"
             "\n  category='interfaces', key='PE-1_Gi1/0', value='10.0.0.9/30 — connects to P2'"
             "\nExisting keys are overwritten so the KB always reflects current state."
@@ -1285,19 +1835,481 @@ TOOLS = [
                     "type": "string",
                     "description": (
                         "Top-level grouping. Network: 'interfaces', 'routing', 'tunnels', 'devices'. "
-                        "CI/CD: 'jenkins', 'ansible'."
+                        "List CI/CD: 'jenkins', 'ansible'."
                     ),
                 },
                 "key": {
                     "type": "string",
-                    "description": "Unique identifier within the category — descriptive, e.g. 'csrf_fix' or 'PE-1_Gi1/0'",
+                    "description": "Unique identifier within the category — descriptive, e.g. 'ospf_min_neighbors' or 'PE-1_Gi1/0'",
                 },
                 "value": {
                     "type": "string",
-                    "description": "The confirmed fact, lesson, or state",
+                    "description": "The confirmed fact or list-specific lesson",
                 },
             },
             "required": ["category", "key", "value"],
+        },
+    },
+    {
+        "name": "read_global_kb",
+        "description": (
+            "Read the global knowledge base — lessons and patterns that apply across ALL device lists. "
+            "This includes Jenkins Pipeline best practices, Ansible connection patterns, XML templates, "
+            "and any other lessons learned that are not specific to one network. "
+            "Check this BEFORE attempting Jenkins or Ansible operations to avoid known pitfalls."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": (
+                        "Optional category to retrieve. Examples: 'jenkins_patterns', 'ansible_patterns', "
+                        "'tools', 'general'. Omit to get the entire global KB."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "update_global_kb",
+        "description": (
+            "Persist a reusable lesson or pattern to the global knowledge base. "
+            "Use this for lessons that will apply to ALL device lists, not just the current one. "
+            "For list-specific facts use update_network_kb instead."
+            "\n\nCategories:"
+            "\n  'jenkins_patterns' — Pipeline XML format rules, CSRF handling, agent config, bat vs sh, Groovy syntax"
+            "\n  'ansible_patterns' — Connection modes, command patterns, privilege escalation, IOS quirks"
+            "\n  'tools'           — Lessons about using AI tools (file reading strategy, KB update rules, etc.)"
+            "\n  'general'         — Any other cross-list lesson"
+            "\n\nExamples:"
+            "\n  category='jenkins_patterns', key='xml_root', value='Jenkins Pipeline XML root must be <flow-definition plugin=\"workflow-job\">'"
+            "\n  category='jenkins_patterns', key='bat_syntax', value='Use bat() for Windows agents; cmd /c not needed, just the command directly'"
+            "\n  category='ansible_patterns', key='ios_enable_mode', value='Cisco IOS commands require mode: enable in the execute_command payload'"
+            "\nExisting keys are overwritten so the global KB always reflects best current knowledge."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "Top-level grouping: 'jenkins_patterns', 'ansible_patterns', 'tools', or 'general'",
+                },
+                "key": {
+                    "type": "string",
+                    "description": "Unique identifier — descriptive, e.g. 'xml_root' or 'bat_syntax'",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "The reusable lesson or pattern",
+                },
+            },
+            "required": ["category", "key", "value"],
+        },
+    },
+    {
+        "name": "save_golden_config",
+        "description": (
+            "SSH to one or more devices, capture their current startup-config, and save it as "
+            "the golden (known-good) config for this list. Call this ONLY after a Jenkins "
+            "pipeline has passed — it represents the verified baseline for that device.\n\n"
+            "One file per device is kept (overwritten on each call). The saved config can be "
+            "used to restore a device or diff against a future broken state.\n\n"
+            "Call with device_ips=['all'] to snapshot every device in this list, or pass "
+            "specific IPs to snapshot only the devices that were modified."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ips": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "List of device IP addresses to snapshot, or ['all'] for every device "
+                        "in this list."
+                    ),
+                },
+            },
+            "required": ["device_ips"],
+        },
+    },
+    {
+        "name": "read_golden_config",
+        "description": (
+            "Read the saved golden (known-good) startup-config for a specific device. "
+            "Use this to compare against the current running-config to find what changed, "
+            "or to restore a device to its last verified state."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ip": {
+                    "type": "string",
+                    "description": "IP address of the device whose golden config to read.",
+                },
+            },
+            "required": ["device_ip"],
+        },
+    },
+    {
+        "name": "list_golden_configs",
+        "description": (
+            "List all saved golden configs for the current device list — shows device IP, "
+            "hostname, save date, and file size. Use this to check which devices have a "
+            "verified baseline saved."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    # ---- Rollback / restore -------------------------------------------------
+    {
+        "name": "restore_golden_config",
+        "description": (
+            "Restore one or more devices to their last verified golden config by pushing "
+            "the saved startup-config lines back via SSH in config mode. "
+            "Use this when a device is broken and you need to return it to a known-good state, "
+            "or when a Jenkins pipeline fails after a config change and rollback is needed.\n\n"
+            "After restoring, always run Jenkins to confirm the restored state is valid, "
+            "then log the rollback with log_change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ips": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Device IPs to restore. Use ['all'] for every device with a saved golden config.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Brief reason for the rollback (logged in audit trail).",
+                },
+            },
+            "required": ["device_ips", "reason"],
+        },
+    },
+    # ---- Pre-change snapshot ------------------------------------------------
+    {
+        "name": "capture_pre_change_snapshot",
+        "description": (
+            "Capture the current running-config of one or more devices BEFORE making any "
+            "configuration changes. Call this as the FIRST step of any config push workflow.\n\n"
+            "The snapshot is stored separately from golden configs — it is a temporary safety net "
+            "that enables rollback if Jenkins fails after the change. "
+            "Use restore_pre_change_snapshot to revert if needed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ips": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Device IPs to snapshot before making changes.",
+                },
+            },
+            "required": ["device_ips"],
+        },
+    },
+    {
+        "name": "restore_pre_change_snapshot",
+        "description": (
+            "Restore devices to the state captured by capture_pre_change_snapshot. "
+            "Use this when Jenkins fails after a config push and you want to revert to "
+            "the exact pre-change state rather than the golden config baseline."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ips": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Device IPs to restore from their pre-change snapshot.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Reason for reverting (logged in audit trail).",
+                },
+            },
+            "required": ["device_ips", "reason"],
+        },
+    },
+    # ---- Config drift detection ---------------------------------------------
+    {
+        "name": "detect_config_drift",
+        "description": (
+            "Compare each device's current running-config against its saved golden config "
+            "and report what has changed. Returns a unified diff per device.\n\n"
+            "Use this to:\n"
+            "- Identify unauthorised or accidental changes since the last verified baseline\n"
+            "- Verify that a config push actually applied correctly\n"
+            "- Debug unexpected network behaviour\n\n"
+            "Devices with no golden config are reported as 'no baseline saved'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ips": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Device IPs to check. Use ['all'] for every device in this list.",
+                },
+            },
+            "required": ["device_ips"],
+        },
+    },
+    # ---- Change audit log ---------------------------------------------------
+    {
+        "name": "log_change",
+        "description": (
+            "Record a completed configuration change in the audit log for this list. "
+            "Call this at the END of every successful config push workflow — after Jenkins passes "
+            "and golden config is saved.\n\n"
+            "Also call for rollbacks and restores so the full change history is preserved."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable summary of what was changed and why.",
+                },
+                "devices": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Device IPs that were modified.",
+                },
+                "change_type": {
+                    "type": "string",
+                    "enum": ["config_push", "rollback", "restore", "playbook", "compliance_fix"],
+                    "description": "Type of change made.",
+                },
+                "jenkins_pipeline": {
+                    "type": "string",
+                    "description": "Name of the Jenkins pipeline used to validate (if any).",
+                },
+                "jenkins_result": {
+                    "type": "string",
+                    "enum": ["SUCCESS", "FAILURE", "SKIPPED", ""],
+                    "description": "Result of the Jenkins validation run.",
+                },
+                "golden_config_saved": {
+                    "type": "boolean",
+                    "description": "Whether golden configs were saved after this change.",
+                },
+                "playbook_id": {
+                    "type": "string",
+                    "description": "ID of the Ansible playbook used (if any).",
+                },
+            },
+            "required": ["description", "devices", "change_type", "jenkins_result", "golden_config_saved"],
+        },
+    },
+    {
+        "name": "read_change_log",
+        "description": (
+            "Read recent entries from the change audit log for this list. "
+            "Use this to understand what changes have been made, when, and with what result."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of most recent entries to return (default 20, max 100).",
+                },
+            },
+            "required": [],
+        },
+    },
+    # ---- Compliance policy --------------------------------------------------
+    {
+        "name": "read_compliance_policy",
+        "description": (
+            "Read the compliance policy rules defined for this device list. "
+            "Each rule defines a check that the network must pass (e.g. OSPF neighbor count, "
+            "interface descriptions, MPLS labels present). "
+            "Use this before running run_compliance_check to understand what will be evaluated."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "update_compliance_policy",
+        "description": (
+            "Add, update, or remove a compliance rule for this device list.\n\n"
+            "Each rule has:\n"
+            "  id          — unique slug, e.g. 'ospf_neighbors_pe'\n"
+            "  description — human-readable description\n"
+            "  device_ips  — list of IPs to check, or ['all']\n"
+            "  command     — IOS command to run (enable mode)\n"
+            "  assertion   — how to evaluate output:\n"
+            "      'contains:TEXT'          — output must contain TEXT\n"
+            "      'not_contains:TEXT'      — output must NOT contain TEXT\n"
+            "      'line_count_gte:N'       — output must have >= N lines with content\n"
+            "      'line_count_lte:N'       — output must have <= N lines with content\n"
+            "      'not_empty'              — output must be non-empty\n\n"
+            "Set action='delete' to remove a rule by id."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["upsert", "delete"],
+                    "description": "'upsert' to add/update, 'delete' to remove by id.",
+                },
+                "rule": {
+                    "type": "object",
+                    "description": "Rule definition (required for upsert).",
+                    "properties": {
+                        "id":          {"type": "string"},
+                        "description": {"type": "string"},
+                        "device_ips":  {"type": "array", "items": {"type": "string"}},
+                        "command":     {"type": "string"},
+                        "assertion":   {"type": "string"},
+                    },
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "run_compliance_check",
+        "description": (
+            "Run all compliance policy rules for this list against the live devices and "
+            "report which pass and which fail. Runs device checks in parallel.\n\n"
+            "For each failing rule, the output shows the exact command output so you can "
+            "immediately diagnose and fix the non-compliant device."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    # ---- Variable store -----------------------------------------------------
+    {
+        "name": "read_variables",
+        "description": (
+            "Read the variable store for this device list — structured key-value pairs "
+            "for network facts used consistently across configs and playbooks.\n\n"
+            "Examples: ospf_process_id, loopback_prefix, mpls_ldp_router_id, as_number, "
+            "gre_tunnel_subnet, te_bandwidth_kbps.\n\n"
+            "Always check variables before hardcoding values in configs or playbooks."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Specific variable to read. Omit to get all variables.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "set_variable",
+        "description": (
+            "Store a network variable for this list. Use this whenever you discover or confirm "
+            "a value that will be reused across configs, playbooks, or Jenkins pipelines.\n\n"
+            "Examples:\n"
+            "  key='ospf_process_id', value='1'\n"
+            "  key='mpls_ldp_router_id', value='10.0.0.1'\n"
+            "  key='gre_tunnel_subnet', value='172.16.0.0/30'\n"
+            "  key='as_number', value='65001'"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key":         {"type": "string", "description": "Variable name (snake_case)"},
+                "value":       {"type": "string", "description": "Variable value"},
+                "description": {"type": "string", "description": "Optional human-readable description"},
+            },
+            "required": ["key", "value"],
+        },
+    },
+    {
+        "name": "delete_variable",
+        "description": "Remove a variable from this list's variable store.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Variable name to delete"},
+            },
+            "required": ["key"],
+        },
+    },
+    # ---- Jenkins schedule ---------------------------------------------------
+    {
+        "name": "jenkins_set_schedule",
+        "description": (
+            "Add or remove a cron-based schedule trigger on a Jenkins pipeline. "
+            "Use this to make compliance checks, drift detection, or health checks run automatically.\n\n"
+            "cron_expression uses Jenkins cron syntax:\n"
+            "  'H 6 * * *'   — once daily at ~6am\n"
+            "  'H/30 * * * *' — every 30 minutes\n"
+            "  'H 0 * * 1'  — weekly on Monday at midnight\n"
+            "  ''            — remove all schedules (empty string disables)\n\n"
+            "The 'H' symbol randomises the exact minute to avoid thundering herd."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_name": {
+                    "type": "string",
+                    "description": "Jenkins job name to schedule.",
+                },
+                "cron_expression": {
+                    "type": "string",
+                    "description": "Jenkins cron expression, or empty string to remove schedule.",
+                },
+            },
+            "required": ["job_name", "cron_expression"],
+        },
+    },
+    {
+        "name": "request_approval",
+        "description": (
+            "Queue an action for human approval instead of executing it immediately. "
+            "Use this when you detect config drift and want to update the golden config — "
+            "do NOT save the golden config directly; request approval first so the user "
+            "can review the diff and decide.\n\n"
+            "action_type values:\n"
+            "  'update_golden_config' — update the golden baseline to match current running config\n"
+            "  'revert_to_golden'     — restore the golden config to the device (marks for manual review)\n\n"
+            "Always include the full unified diff in the 'diff' field so the user can see "
+            "exactly what changed before approving."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string",
+                    "enum": ["update_golden_config", "revert_to_golden"],
+                    "description": "The type of action to queue for approval.",
+                },
+                "device_ip": {
+                    "type": "string",
+                    "description": "IP address of the affected device.",
+                },
+                "device_hostname": {
+                    "type": "string",
+                    "description": "Hostname of the affected device (for display).",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of what will happen if approved.",
+                },
+                "diff": {
+                    "type": "string",
+                    "description": "Unified diff showing what changed (golden vs running config).",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Additional context about why this change was detected.",
+                },
+            },
+            "required": ["action_type", "device_ip", "description"],
         },
     },
     {
@@ -1762,6 +2774,123 @@ TOOLS = [
             "required": ["playbook_id"],
         },
     },
+    # ── Monitoring: Collector IP ──────────────────────────────────────────
+    {
+        "name": "get_collector_ip",
+        "description": (
+            "Return the local server's IP address on the OOB management network for this device list. "
+            "This is the IP that network devices should be configured to send SNMP traps, "
+            "NetFlow exports, and syslog messages to. "
+            "Auto-detects by finding the server interface that shares a subnet with the list's devices. "
+            "Call this before configuring SNMP or NetFlow on any device."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "set_collector_ip",
+        "description": (
+            "Manually set the collector IP for this list (overrides auto-detection). "
+            "Use when the auto-detected IP is wrong or when the server has multiple OOB interfaces."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ip": {"type": "string", "description": "IPv4 address of this server on the OOB management network"},
+            },
+            "required": ["ip"],
+        },
+    },
+    # ── Monitoring: SNMP ─────────────────────────────────────────────────
+    {
+        "name": "snmp_poll",
+        "description": (
+            "Poll a network device via SNMP GET for one or more OIDs. "
+            "Returns the current value of each OID. "
+            "Accepts numeric OIDs (1.3.6.1.2.1.1.1.0) or friendly names: "
+            "sysDescr, sysUpTime, sysName, sysLocation, sysContact, ifNumber, "
+            "ifDescr, ifOperStatus, ifInOctets, ifOutOctets, ifInErrors, ifOutErrors, ifSpeed, "
+            "cpmCPUTotal5min, ciscoMemFreePool, ciscoMemUsedPool. "
+            "Use snmp_get_device_summary for a comprehensive device overview."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ip":  {"type": "string", "description": "Device management IP"},
+                "oids":       {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "OIDs or friendly names to fetch",
+                },
+                "community":  {"type": "string", "description": "SNMP community string (default: from list config or 'public')"},
+                "version":    {"type": "integer", "enum": [1, 2], "description": "SNMP version (default: 2)"},
+            },
+            "required": ["device_ip", "oids"],
+        },
+    },
+    {
+        "name": "snmp_get_device_summary",
+        "description": (
+            "Poll a device via SNMP and return a full summary: system info (name, description, uptime), "
+            "interface table (name, status, in/out bytes, speed). "
+            "Much more efficient than polling individual OIDs when you want a device health snapshot. "
+            "Requires SNMP to be configured on the device with a matching community string."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ip": {"type": "string"},
+                "community": {"type": "string", "description": "SNMP community string (default: from list config or 'public')"},
+                "version":   {"type": "integer", "enum": [1, 2], "description": "SNMP version (default: 2)"},
+            },
+            "required": ["device_ip"],
+        },
+    },
+    {
+        "name": "get_snmp_traps",
+        "description": (
+            "Return the most recent SNMP traps received by the trap receiver daemon. "
+            "Traps are sent by devices when link state changes, authentication failures, "
+            "or other events occur. The trap receiver listens on the collector IP."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Number of recent traps to return (default: 20)"},
+            },
+        },
+    },
+    # ── Monitoring: NetFlow ───────────────────────────────────────────────
+    {
+        "name": "get_netflow_summary",
+        "description": (
+            "Return a summary of recent NetFlow data: top talkers (source IPs by bytes), "
+            "top destinations, and protocol breakdown. "
+            "NetFlow data is collected from devices that have been configured to export to this server."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "recent_flows": {
+                    "type": "integer",
+                    "description": "Number of recent individual flows to include (default: 0, summary only)",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_monitoring_config",
+        "description": (
+            "Return the current monitoring configuration for this list: collector IP, "
+            "SNMP community strings, trap receiver port, NetFlow port. "
+            "Use this to understand what's configured before generating device configs."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
 
 
@@ -1839,6 +2968,20 @@ def _tool_label(name: str, args: dict) -> str:
         return "Listing saved Ansible playbooks..."
     if name == "run_ansible_playbook":
         return f"Running playbook: {args.get('playbook_id', '')}..."
+    if name == "get_collector_ip":
+        return "Detecting OOB management collector IP..."
+    if name == "set_collector_ip":
+        return f"Setting collector IP to {args.get('ip', '')}..."
+    if name == "snmp_poll":
+        return f"SNMP polling {args.get('device_ip', '')}..."
+    if name == "snmp_get_device_summary":
+        return f"SNMP device summary for {args.get('device_ip', '')}..."
+    if name == "get_snmp_traps":
+        return "Fetching recent SNMP traps..."
+    if name == "get_netflow_summary":
+        return "Fetching NetFlow summary..."
+    if name == "get_monitoring_config":
+        return "Reading monitoring configuration..."
     return f"Executing {name}..."
 
 
@@ -1919,31 +3062,132 @@ def run_chat(
             + _lab_notes
         )
 
-    # Inject the network knowledge base — confirmed facts about this network.
-    # This is the primary mechanism for avoiding redundant show commands.
+    # Inject the global KB — reusable lessons that apply across all lists.
+    _gkb = _load_global_kb()
+    if _gkb:
+        prefix_parts.append(
+            "[GLOBAL KB — lessons that apply to every network/list, treat as standing rules]\n"
+            + _format_network_kb(_gkb)
+            + "\nRULE: always apply global KB entries before attempting any tool call. "
+            "Update the global KB when you discover a lesson that will apply to future lists too."
+        )
+
+    # Inject the list-specific KB — confirmed facts about THIS network.
     _kb = _load_network_kb()
     if _kb:
-        # Split KB into network facts vs CI/CD lessons for clearer presentation
-        _ci_cats      = {"jenkins", "ansible"}
-        _net_kb       = {k: v for k, v in _kb.items() if k not in _ci_cats}
-        _cicd_kb      = {k: v for k, v in _kb.items() if k in _ci_cats}
-        _kb_blocks    = []
+        # Split into network facts vs CI/CD lessons for clearer presentation
+        _ci_cats   = {"jenkins", "ansible"}
+        _net_kb    = {k: v for k, v in _kb.items() if k not in _ci_cats}
+        _cicd_kb   = {k: v for k, v in _kb.items() if k in _ci_cats}
+        _kb_blocks = []
         if _net_kb:
             _kb_blocks.append(
-                "[NETWORK KB — confirmed network facts, treat as ground truth]\n"
+                "[NETWORK KB — confirmed facts about this specific list/network]\n"
                 + _format_network_kb(_net_kb)
             )
         if _cicd_kb:
             _kb_blocks.append(
-                "[CI/CD KB — learned Jenkins & Ansible lessons, apply before retrying]\n"
+                "[CI/CD KB — pipeline & playbook details specific to this list]\n"
                 + _format_network_kb(_cicd_kb)
             )
         prefix_parts.append(
             "\n\n".join(_kb_blocks)
-            + "\nRULE: treat every entry above as ground truth. Do NOT re-query or "
+            + "\nRULE: treat every entry above as ground truth for this list. Do NOT re-query or "
             "re-diagnose anything already recorded here. Only go to the live source "
             "when a fact is absent or a live result directly contradicts an entry "
             "(then update the KB). After fixing anything, call update_network_kb."
+        )
+
+    # Inject variable store if any variables are set
+    _vars = _load_variables()
+    if _vars:
+        _var_lines = ["[VARIABLES — use these values when building configs, playbooks, or pipelines]"]
+        for k, v in sorted(_vars.items()):
+            val  = v.get("value", "") if isinstance(v, dict) else v
+            desc = v.get("description", "") if isinstance(v, dict) else ""
+            _var_lines.append(f"  {k} = {val}" + (f"  ({desc})" if desc else ""))
+        _var_lines.append("RULE: always use these variables instead of hardcoding values.")
+        prefix_parts.append("\n".join(_var_lines))
+    else:
+        # No variables stored yet — remind the agent to populate them from running configs
+        prefix_parts.append(
+            "[VARIABLES — none stored yet]\n"
+            "No network facts have been stored for this list. "
+            "As you encounter or verify facts during your work, call set_variable to record them.\n"
+            "Do NOT proactively run a discovery sweep — the background agent handles that separately."
+        )
+
+    # ── Proactive context: surface pending issues the agent should act on ──
+    _proactive_items = []
+
+    # 1. Devices missing a golden config
+    try:
+        _all_devices = devices_loader()
+        _golden_ips  = {e["device_ip"] for e in _list_golden_configs()}
+        _missing_gc  = [
+            d for d in _all_devices
+            if d.get("ip") and d["ip"] not in _golden_ips
+        ]
+        if _missing_gc:
+            _missing_strs = [
+                f"  - {d.get('hostname', d['ip'])} ({d['ip']})"
+                for d in _missing_gc
+            ]
+            _proactive_items.append(
+                "MISSING GOLDEN CONFIGS — these devices have no verified baseline:\n"
+                + "\n".join(_missing_strs)
+                + "\nACTION: after the next successful CI run that covers these devices, "
+                "call save_golden_config for each one automatically."
+            )
+    except Exception:
+        pass
+
+    # 2. Recent Jenkins failures for this list
+    try:
+        from modules.jenkins_runner import _results_file as _jr_results_file
+        _jrf = _jr_results_file()
+        with open(_jrf, encoding="utf-8") as _fh:
+            _jresults = json.load(_fh)
+        _failed_jobs = [
+            f"  - {job}: build #{info.get('build_number','?')} FAILED "
+            f"(triggered {info.get('timestamp','?')})"
+            for job, info in _jresults.items()
+            if isinstance(info, dict) and info.get("result") == "FAILURE"
+        ]
+        if _failed_jobs:
+            _proactive_items.append(
+                "JENKINS FAILURES — these pipelines last ended in FAILURE:\n"
+                + "\n".join(_failed_jobs)
+                + "\nACTION: diagnose the console for each failed job and fix the root "
+                "cause without waiting to be asked."
+            )
+    except Exception:
+        pass
+
+    # 3. Cached drift status
+    try:
+        from modules.config import get_current_list_data_dir as _gcld
+        _drift_path = os.path.join(_gcld(), "drift_cache.json")
+        with open(_drift_path, encoding="utf-8") as _fh:
+            _drift_data = json.load(_fh)
+        _drifted = [
+            f"  - {ip}: {info.get('summary', 'changes detected')}"
+            for ip, info in _drift_data.items()
+            if isinstance(info, dict) and info.get("drifted")
+        ]
+        if _drifted:
+            _proactive_items.append(
+                "CONFIG DRIFT DETECTED — running config differs from golden for:\n"
+                + "\n".join(_drifted)
+                + "\nACTION: report diffs to user and recommend: update golden OR revert device."
+            )
+    except Exception:
+        pass
+
+    if _proactive_items:
+        prefix_parts.append(
+            "[PROACTIVE CONTEXT — act on these items, do not ignore them]\n"
+            + "\n\n".join(_proactive_items)
         )
 
     # Detect continuation requests and inject the saved checkpoint so Claude
@@ -2080,6 +3324,13 @@ def run_chat(
     def _conn(device):
         return get_persistent_connection(device, connections_pool, pool_lock)
 
+    def _fresh_conn(device):
+        """Evict any stale/dead connection for this device and reconnect."""
+        ip = device["ip"]
+        with pool_lock:
+            connections_pool.pop(ip, None)
+        return get_persistent_connection(device, connections_pool, pool_lock)
+
     def _find_device(ip, devices):
         return next((d for d in devices if d.get("ip") == ip), None)
 
@@ -2109,15 +3360,27 @@ def run_chat(
                 device  = _find_device(ip, devices_loader())
                 if not device:
                     return f"Error: device {ip} not found"
-                conn = _conn(device)
-                if mode == "config":
+                _attempts = 0
+                while True:
+                    conn = _conn(device) if _attempts == 0 else _fresh_conn(device)
                     try:
-                        conn.config_mode()
-                        out = run_device_command(conn, command)
-                    finally:
-                        conn.exit_config_mode()
-                else:
-                    out = run_device_command(conn, command)
+                        if mode == "config":
+                            try:
+                                conn.config_mode()
+                                out = run_device_command(conn, command)
+                            finally:
+                                try:
+                                    conn.exit_config_mode()
+                                except Exception:
+                                    pass
+                        else:
+                            out = run_device_command(conn, command)
+                        break
+                    except OSError as _e:
+                        if _attempts == 0 and "Socket is closed" in str(_e):
+                            _attempts += 1
+                            continue
+                        raise
                 return out or "(no output)"
 
             elif name == "execute_commands_on_device":
@@ -2127,18 +3390,30 @@ def run_chat(
                 device   = _find_device(ip, devices_loader())
                 if not device:
                     return f"Error: device {ip} not found"
-                conn    = _conn(device)
-                outputs = []
-                if mode == "config":
+                _attempts = 0
+                while True:
+                    conn    = _conn(device) if _attempts == 0 else _fresh_conn(device)
+                    outputs = []
                     try:
-                        conn.config_mode()
-                        for cmd in commands:
-                            outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
-                    finally:
-                        conn.exit_config_mode()
-                else:
-                    for cmd in commands:
-                        outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
+                        if mode == "config":
+                            try:
+                                conn.config_mode()
+                                for cmd in commands:
+                                    outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
+                            finally:
+                                try:
+                                    conn.exit_config_mode()
+                                except Exception:
+                                    pass
+                        else:
+                            for cmd in commands:
+                                outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
+                        break
+                    except OSError as _e:
+                        if _attempts == 0 and "Socket is closed" in str(_e):
+                            _attempts += 1
+                            continue
+                        raise
                 return "\n\n".join(outputs)
 
             elif name == "execute_command_on_multiple_devices":
@@ -2171,7 +3446,8 @@ def run_chat(
                         return hostname, dev["ip"], None, str(exc)
 
                 results = {}
-                with ThreadPoolExecutor(max_workers=5) as ex:
+                from concurrent.futures import ThreadPoolExecutor as _TPEX_multi
+                with _TPEX_multi(max_workers=5) as ex:
                     for h, ip, out, err in ex.map(run_one, targets):
                         results[f"{h} ({ip})"] = f"ERROR: {err}" if err else (out or "")
 
@@ -2455,7 +3731,7 @@ def run_chat(
                         return f"No entries found in category '{cat}'. KB categories: {list(kb.keys())}"
                     return f"[{cat}]\n" + _format_network_kb({cat: subset})
                 if not kb:
-                    return "KB is empty — no facts or lessons recorded yet."
+                    return "List KB is empty — no facts recorded for this list yet."
                 return _format_network_kb(kb)
 
             elif name == "update_network_kb":
@@ -2470,7 +3746,465 @@ def run_chat(
                     "updated": time.strftime("%Y-%m-%d %H:%M"),
                 }
                 _save_network_kb(kb)
-                return f"KB updated: [{category}] {key} = {value}"
+                return f"List KB updated: [{category}] {key} = {value}"
+
+            elif name == "read_global_kb":
+                gkb = _load_global_kb()
+                cat = args.get("category", "").strip()
+                if cat:
+                    subset = gkb.get(cat, {})
+                    if not subset:
+                        return f"No entries in global KB category '{cat}'. Categories: {list(gkb.keys())}"
+                    return f"[{cat}]\n" + _format_network_kb({cat: subset})
+                if not gkb:
+                    return "Global KB is empty — no cross-list lessons recorded yet."
+                return _format_network_kb(gkb)
+
+            elif name == "update_global_kb":
+                category = args.get("category", "general").strip()
+                key      = args.get("key", "").strip()
+                value    = args.get("value", "").strip()
+                if not key:
+                    return "Error: key is required"
+                gkb = _load_global_kb()
+                gkb.setdefault(category, {})[key] = {
+                    "value":   value,
+                    "updated": time.strftime("%Y-%m-%d %H:%M"),
+                }
+                _save_global_kb(gkb)
+                return f"Global KB updated: [{category}] {key} = {value}"
+
+            elif name == "save_golden_config":
+                from modules.commands import run_device_command as _rdc
+                from modules.connection import get_persistent_connection as _gpc
+                req_ips  = args.get("device_ips", [])
+                all_devs = devices_loader()
+                if req_ips == ["all"]:
+                    targets = [d for d in all_devs if status_cache.get(d.get("ip", ""), False)]
+                else:
+                    targets = [d for d in all_devs if d.get("ip") in req_ips]
+                if not targets:
+                    return f"No reachable devices found for IPs: {req_ips}"
+
+                from concurrent.futures import ThreadPoolExecutor as _TPEX, as_completed as _acx
+                results = []
+
+                def _snap(dev):
+                    dip  = dev.get("ip", "")
+                    host = dev.get("hostname") or dip
+                    try:
+                        conn   = _gpc(dev, connections_pool, pool_lock)
+                        config = _rdc(conn, "show startup-config")
+                        _save_golden_config_file(dip, host, config)
+                        return f"  SAVED  {host} ({dip}) — {len(config)} chars"
+                    except Exception as exc:
+                        return f"  ERROR  {host} ({dip}): {exc}"
+
+                with _TPEX(max_workers=min(len(targets), 8)) as _px:
+                    futs = [_px.submit(_snap, d) for d in targets]
+                    for fut in _acx(futs):
+                        results.append(fut.result())
+
+                return f"Golden configs saved ({len(targets)} device(s)):\n" + "\n".join(results)
+
+            elif name == "read_golden_config":
+                dip  = args.get("device_ip", "").strip()
+                cfg  = _load_golden_config_file(dip)
+                if cfg is None:
+                    saved = [f"{e['hostname']} ({e['device_ip']})" for e in _list_golden_configs()]
+                    return (
+                        f"No golden config saved for {dip}.\n"
+                        f"Devices with golden configs: {saved or 'none'}"
+                    )
+                return cfg
+
+            elif name == "list_golden_configs":
+                entries = _list_golden_configs()
+                if not entries:
+                    return "No golden configs saved for this list yet."
+                lines = ["Saved golden configs for this list:"]
+                for e in entries:
+                    lines.append(
+                        f"  {e['hostname']} ({e['device_ip']})  "
+                        f"saved {e['saved_at']}  {e['size_bytes']} bytes"
+                    )
+                return "\n".join(lines)
+
+            elif name == "restore_golden_config":
+                from modules.commands import run_device_command as _rdc
+                from modules.connection import get_persistent_connection as _gpc
+                req_ips = args.get("device_ips", [])
+                reason  = args.get("reason", "manual rollback")
+                entries = _list_golden_configs()
+                if req_ips == ["all"]:
+                    targets = [(e["device_ip"], e["hostname"]) for e in entries]
+                else:
+                    targets = [(e["device_ip"], e["hostname"]) for e in entries if e["device_ip"] in req_ips]
+                if not targets:
+                    return f"No golden configs found for: {req_ips}"
+                all_devs = devices_loader()
+                results  = []
+                for dip, host in targets:
+                    cfg = _load_golden_config_file(dip)
+                    if not cfg:
+                        results.append(f"  SKIP   {host} ({dip}) — no golden config saved"); continue
+                    # Strip comment header lines
+                    config_lines = [l for l in cfg.splitlines() if not l.startswith("!") and l.strip()]
+                    device = next((d for d in all_devs if d.get("ip") == dip), None)
+                    if not device:
+                        results.append(f"  ERROR  {host} ({dip}) — not in device inventory"); continue
+                    try:
+                        conn = _gpc(device, connections_pool, pool_lock)
+                        conn.config_mode()
+                        try:
+                            for line in config_lines:
+                                run_device_command(conn, line)
+                        finally:
+                            conn.exit_config_mode()
+                        results.append(f"  RESTORED {host} ({dip}) — {len(config_lines)} lines applied")
+                    except Exception as exc:
+                        results.append(f"  ERROR  {host} ({dip}): {exc}")
+                return f"Rollback complete (reason: {reason}):\n" + "\n".join(results)
+
+            elif name == "capture_pre_change_snapshot":
+                from modules.commands import run_device_command as _rdc
+                from modules.connection import get_persistent_connection as _gpc
+                req_ips  = args.get("device_ips", [])
+                all_devs = devices_loader()
+                targets  = [d for d in all_devs if d.get("ip") in req_ips]
+                if not targets:
+                    return f"No devices found for IPs: {req_ips}"
+                from concurrent.futures import ThreadPoolExecutor as _TPEX2, as_completed as _acx2
+                results = []
+                def _snap_pre(dev):
+                    dip  = dev.get("ip", ""); host = dev.get("hostname") or dip
+                    try:
+                        conn = _gpc(dev, connections_pool, pool_lock)
+                        cfg  = run_device_command(conn, "show running-config")
+                        _save_pre_change_file(dip, host, cfg)
+                        return f"  CAPTURED {host} ({dip})"
+                    except Exception as exc:
+                        return f"  ERROR    {host} ({dip}): {exc}"
+                with _TPEX2(max_workers=min(len(targets), 8)) as _px2:
+                    for fut in _acx2([_px2.submit(_snap_pre, d) for d in targets]):
+                        results.append(fut.result())
+                return f"Pre-change snapshots captured ({len(targets)} device(s)):\n" + "\n".join(results)
+
+            elif name == "restore_pre_change_snapshot":
+                from modules.commands import run_device_command as _rdc
+                from modules.connection import get_persistent_connection as _gpc
+                req_ips = args.get("device_ips", [])
+                reason  = args.get("reason", "revert after failed change")
+                all_devs = devices_loader()
+                results  = []
+                for dip in req_ips:
+                    cfg = _load_pre_change_file(dip)
+                    if not cfg:
+                        results.append(f"  SKIP {dip} — no pre-change snapshot found"); continue
+                    config_lines = [l for l in cfg.splitlines() if not l.startswith("!") and l.strip()]
+                    device = next((d for d in all_devs if d.get("ip") == dip), None)
+                    if not device:
+                        results.append(f"  ERROR {dip} — not in inventory"); continue
+                    try:
+                        conn = _gpc(device, connections_pool, pool_lock)
+                        conn.config_mode()
+                        try:
+                            for line in config_lines:
+                                run_device_command(conn, line)
+                        finally:
+                            conn.exit_config_mode()
+                        results.append(f"  RESTORED {device.get('hostname') or dip} ({dip})")
+                    except Exception as exc:
+                        results.append(f"  ERROR {dip}: {exc}")
+                return f"Pre-change restore complete (reason: {reason}):\n" + "\n".join(results)
+
+            elif name == "detect_config_drift":
+                import difflib as _dl
+                from modules.commands import run_device_command as _rdc
+                from modules.connection import get_persistent_connection as _gpc
+                req_ips  = args.get("device_ips", [])
+                all_devs = devices_loader()
+                if req_ips == ["all"]:
+                    targets = [d for d in all_devs if status_cache.get(d.get("ip",""), False)]
+                else:
+                    targets = [d for d in all_devs if d.get("ip") in req_ips]
+                if not targets:
+                    return "No reachable devices found."
+                from concurrent.futures import ThreadPoolExecutor as _TPEX3, as_completed as _acx3
+                report = []
+                def _drift_check(dev):
+                    dip  = dev.get("ip", ""); host = dev.get("hostname") or dip
+                    golden = _load_golden_config_file(dip)
+                    if golden is None:
+                        return dip, host, None, "no_baseline"
+                    try:
+                        conn    = _gpc(dev, connections_pool, pool_lock)
+                        current = run_device_command(conn, "show running-config")
+                        # Strip timestamps/uptime lines that always differ
+                        def _clean(text):
+                            skip = ("! Last configuration", "ntp clock-period", "! NVRAM")
+                            return [l for l in text.splitlines()
+                                    if not any(l.startswith(s) for s in skip) and l.strip()]
+                        golden_lines  = _clean(golden)
+                        current_lines = _clean(current)
+                        diff = list(_dl.unified_diff(
+                            golden_lines, current_lines,
+                            fromfile=f"{host} — golden config",
+                            tofile=f"{host} — running config",
+                            lineterm="",
+                        ))
+                        return dip, host, diff, "ok"
+                    except Exception as exc:
+                        return dip, host, None, str(exc)
+                with _TPEX3(max_workers=min(len(targets), 8)) as _px3:
+                    for fut in _acx3([_px3.submit(_drift_check, d) for d in targets]):
+                        dip, host, diff, status = fut.result()
+                        if status == "no_baseline":
+                            report.append(f"=== {host} ({dip}) ===\n  [no golden config — run save_golden_config first]\n")
+                        elif status == "ok":
+                            if not diff:
+                                report.append(f"=== {host} ({dip}) ===\n  CLEAN — no drift detected\n")
+                            else:
+                                report.append(f"=== {host} ({dip}) === DRIFT DETECTED ===\n" + "\n".join(diff[:80]) + ("\n  [...truncated]" if len(diff) > 80 else "") + "\n")
+                        else:
+                            report.append(f"=== {host} ({dip}) ===\n  ERROR: {status}\n")
+                return "\n".join(report) or "No results."
+
+            elif name == "log_change":
+                entry = {
+                    "description":       args.get("description", ""),
+                    "devices":           args.get("devices", []),
+                    "change_type":       args.get("change_type", "config_push"),
+                    "jenkins_pipeline":  args.get("jenkins_pipeline", ""),
+                    "jenkins_result":    args.get("jenkins_result", ""),
+                    "golden_config_saved": args.get("golden_config_saved", False),
+                    "playbook_id":       args.get("playbook_id", ""),
+                }
+                _append_change_log(entry)
+                return f"Change logged: {entry['description']} [{entry['change_type']}] — {entry['jenkins_result'] or 'no CI run'}"
+
+            elif name == "read_change_log":
+                limit = min(int(args.get("limit", 20)), 100)
+                log   = _load_change_log()
+                recent = log[-limit:][::-1]  # newest first
+                if not recent:
+                    return "No changes logged for this list yet."
+                lines = [f"Change log — {len(recent)} most recent (newest first):"]
+                for e in recent:
+                    badge = {"SUCCESS": "✓", "FAILURE": "✗", "": "—", "SKIPPED": "~"}.get(e.get("jenkins_result",""), "?")
+                    gc    = " [golden saved]" if e.get("golden_config_saved") else ""
+                    lines.append(
+                        f"\n[{e.get('timestamp','')}] {badge} {e.get('description','')}{gc}"
+                        f"\n  type={e.get('change_type','')}  devices={e.get('devices',[])}  pipeline={e.get('jenkins_pipeline','none')}"
+                    )
+                return "\n".join(lines)
+
+            elif name == "read_compliance_policy":
+                policy = _load_compliance_policy()
+                rules  = policy.get("rules", [])
+                if not rules:
+                    return "No compliance rules defined. Use update_compliance_policy to add rules."
+                lines = [f"Compliance policy — {len(rules)} rule(s):"]
+                for r in rules:
+                    lines.append(f"\n  [{r.get('id','')}] {r.get('description','')}")
+                    lines.append(f"    devices:   {r.get('device_ips', [])}")
+                    lines.append(f"    command:   {r.get('command','')}")
+                    lines.append(f"    assertion: {r.get('assertion','')}")
+                return "\n".join(lines)
+
+            elif name == "update_compliance_policy":
+                action = args.get("action", "upsert")
+                policy = _load_compliance_policy()
+                rules  = policy.setdefault("rules", [])
+                rule   = args.get("rule") or {}
+                rid    = rule.get("id", "").strip()
+                if action == "delete":
+                    before = len(rules)
+                    policy["rules"] = [r for r in rules if r.get("id") != rid]
+                    _save_compliance_policy(policy)
+                    removed = before - len(policy["rules"])
+                    return f"Deleted {removed} rule(s) with id='{rid}'" if removed else f"No rule found with id='{rid}'"
+                if not rid:
+                    return "Error: rule.id is required for upsert"
+                idx = next((i for i, r in enumerate(rules) if r.get("id") == rid), None)
+                if idx is not None:
+                    rules[idx] = rule
+                    _save_compliance_policy(policy)
+                    return f"Rule '{rid}' updated."
+                rules.append(rule)
+                _save_compliance_policy(policy)
+                return f"Rule '{rid}' added."
+
+            elif name == "run_compliance_check":
+                from modules.commands import run_device_command as _rdc
+                from modules.connection import get_persistent_connection as _gpc
+                policy = _load_compliance_policy()
+                rules  = policy.get("rules", [])
+                if not rules:
+                    return "No compliance rules defined. Use update_compliance_policy to add rules."
+                all_devs = devices_loader()
+                def _resolve_ips(rule_ips):
+                    if rule_ips == ["all"]:
+                        return [d for d in all_devs if status_cache.get(d.get("ip",""), False)]
+                    return [d for d in all_devs if d.get("ip") in rule_ips]
+                def _assert(output, assertion):
+                    if assertion.startswith("contains:"):
+                        return assertion[9:] in output, f"must contain '{assertion[9:]}'"
+                    if assertion.startswith("not_contains:"):
+                        return assertion[13:] not in output, f"must NOT contain '{assertion[13:]}'"
+                    if assertion.startswith("line_count_gte:"):
+                        n = int(assertion[15:]); cnt = len([l for l in output.splitlines() if l.strip()])
+                        return cnt >= n, f"line count {cnt} must be >= {n}"
+                    if assertion.startswith("line_count_lte:"):
+                        n = int(assertion[15:]); cnt = len([l for l in output.splitlines() if l.strip()])
+                        return cnt <= n, f"line count {cnt} must be <= {n}"
+                    if assertion == "not_empty":
+                        return bool(output.strip()), "output must be non-empty"
+                    return False, f"unknown assertion: {assertion}"
+                report_lines = []
+                pass_count = fail_count = 0
+                from concurrent.futures import ThreadPoolExecutor as _TPEX4, as_completed as _acx4
+                def _check_rule_device(rule, dev):
+                    dip  = dev.get("ip",""); host = dev.get("hostname") or dip
+                    try:
+                        conn = _gpc(dev, connections_pool, pool_lock)
+                        out  = run_device_command(conn, rule["command"])
+                        ok, msg = _assert(out, rule.get("assertion","not_empty"))
+                        return rule["id"], dip, host, ok, msg, out[:300]
+                    except Exception as exc:
+                        return rule["id"], dip, host, False, str(exc), ""
+                tasks = []
+                with _TPEX4(max_workers=8) as _px4:
+                    for rule in rules:
+                        for dev in _resolve_ips(rule.get("device_ips", [])):
+                            tasks.append(_px4.submit(_check_rule_device, rule, dev))
+                    rule_results: dict = {}
+                    for fut in _acx4(tasks):
+                        rid2, dip, host, ok, msg, out = fut.result()
+                        rule_results.setdefault(rid2, []).append((dip, host, ok, msg, out))
+                for rule in rules:
+                    rid2  = rule["id"]
+                    items = rule_results.get(rid2, [])
+                    fails = [(d,h,m,o) for d,h,ok,m,o in items if not ok]
+                    passes= [(d,h) for d,h,ok,m,o in items if ok]
+                    pass_count += len(passes); fail_count += len(fails)
+                    status_sym = "✓" if not fails else "✗"
+                    report_lines.append(f"\n[{status_sym}] {rule.get('description',rid2)}")
+                    for dip,host in passes:
+                        report_lines.append(f"    PASS  {host} ({dip})")
+                    for dip,host,msg,out in fails:
+                        report_lines.append(f"    FAIL  {host} ({dip}) — {msg}")
+                        if out: report_lines.append(f"          Output: {out[:200]}")
+                summary = f"Compliance check complete: {pass_count} passed, {fail_count} failed"
+                return summary + "\n" + "\n".join(report_lines)
+
+            elif name == "read_variables":
+                variables = _load_variables()
+                key = args.get("key","").strip()
+                if key:
+                    if key not in variables:
+                        return f"Variable '{key}' not set. All variables: {list(variables.keys())}"
+                    v = variables[key]
+                    desc = f" — {v['description']}" if isinstance(v, dict) and v.get("description") else ""
+                    val  = v["value"] if isinstance(v, dict) else v
+                    return f"{key} = {val}{desc}"
+                if not variables:
+                    return "No variables set for this list. Use set_variable to add some."
+                lines = ["Variables for this list:"]
+                for k, v in sorted(variables.items()):
+                    if isinstance(v, dict):
+                        lines.append(f"  {k} = {v.get('value','')}  {('— ' + v['description']) if v.get('description') else ''}")
+                    else:
+                        lines.append(f"  {k} = {v}")
+                return "\n".join(lines)
+
+            elif name == "set_variable":
+                key   = args.get("key","").strip()
+                value = args.get("value","")
+                desc  = args.get("description","")
+                if not key:
+                    return "Error: key is required"
+                variables = _load_variables()
+                variables[key] = {"value": value, "description": desc, "updated": time.strftime("%Y-%m-%d %H:%M")}
+                _save_variables(variables)
+                return f"Variable set: {key} = {value}"
+
+            elif name == "delete_variable":
+                key = args.get("key","").strip()
+                variables = _load_variables()
+                if key not in variables:
+                    return f"Variable '{key}' not found."
+                del variables[key]
+                _save_variables(variables)
+                return f"Variable '{key}' deleted."
+
+            elif name == "jenkins_set_schedule":
+                from modules.jenkins_runner import (
+                    load_config as _jlcfg, get_job_config as _jgcfg,
+                    update_jenkins_job as _jujob, save_pipeline_schedule as _jsched,
+                )
+                job_name = args.get("job_name","").strip()
+                cron_expr = args.get("cron_expression","").strip()
+                if not job_name:
+                    return "Error: job_name is required"
+                try:
+                    cfg_j   = _jlcfg()
+                    xml_str = _jgcfg(cfg_j, job_name)
+                except Exception as exc:
+                    return f"Error fetching job config: {exc}"
+                import re as _re
+                # Build the new triggers block
+                if cron_expr:
+                    new_triggers = (
+                        "<triggers>\n"
+                        "  <hudson.triggers.TimerTrigger>\n"
+                        f"    <spec>{cron_expr}</spec>\n"
+                        "  </hudson.triggers.TimerTrigger>\n"
+                        "</triggers>"
+                    )
+                    verb = f"set to '{cron_expr}'"
+                else:
+                    new_triggers = "<triggers/>"
+                    verb = "removed"
+                # Replace existing triggers block (handles both <triggers/> and <triggers>...</triggers>)
+                xml_updated = _re.sub(
+                    r"<triggers\s*/>|<triggers>.*?</triggers>",
+                    new_triggers, xml_str, flags=_re.DOTALL,
+                )
+                if xml_updated == xml_str:
+                    # No triggers element found — insert before </flow-definition>
+                    xml_updated = xml_str.replace("</flow-definition>", new_triggers + "\n</flow-definition>")
+                try:
+                    _jujob(cfg_j, job_name, xml_updated)
+                    _jsched(job_name, cron_expr)   # persist locally for UI display
+                    return f"Schedule {verb} for '{job_name}'."
+                except Exception as exc:
+                    return f"Error updating job schedule: {exc}"
+
+            elif name == "request_approval":
+                from modules.approval_queue import add_approval as _add_appr
+                action_type     = args.get("action_type", "").strip()
+                device_ip       = args.get("device_ip", "").strip()
+                device_hostname = args.get("device_hostname", device_ip).strip()
+                description     = args.get("description", "").strip()
+                diff            = args.get("diff", "").strip()
+                context_note    = args.get("context", "").strip()
+                if not action_type or not device_ip:
+                    return "Error: action_type and device_ip are required"
+                entry_id = _add_appr(
+                    action_type      = action_type,
+                    description      = description,
+                    device_ip        = device_ip,
+                    device_hostname  = device_hostname,
+                    diff             = diff,
+                    action_params    = {"device_ip": device_ip, "hostname": device_hostname},
+                    context          = context_note,
+                )
+                return (
+                    f"Approval request queued (id={entry_id}). "
+                    f"The user will be notified and can approve or reject from the UI. "
+                    f"Do NOT proceed with the action until it is approved."
+                )
 
             elif name == "save_lab_note":
                 return _append_lab_note(args.get("note", ""))
@@ -2707,7 +4441,10 @@ def run_chat(
                 timeout = int(args.get("timeout", 600))
                 try:
                     cfg    = _jload()
-                    result = wait_for_build_results(cfg, timeout=timeout)
+                    result = wait_for_build_results(
+                        cfg, timeout=timeout,
+                        stop_check=lambda: _is_stopped(session_id),
+                    )
                 except Exception as exc:
                     return f"Error waiting for build results: {exc}"
 
@@ -2835,22 +4572,21 @@ def run_chat(
                             return ln.strip()
                     return ""
 
-                output_parts = [
-                    f"Running playbook: {pb['name']}",
-                    f"Description: {pb.get('description','')}",
-                    f"Plays: {len(pb.get('plays',[]))} device(s)\n",
-                ]
-                all_ok = True
-                for play in pb.get("plays", []):
+                plays    = pb.get("plays", [])
+                devs_inv = devices_loader()
+
+                # Run one play against one device, return (index, lines, ok)
+                def _run_play(idx_play):
+                    idx, play = idx_play
                     device_ip = play.get("device_ip", "")
                     hostname  = play.get("hostname") or device_ip
                     commands  = play.get("commands", [])
-                    output_parts.append(f"--- {hostname} ({device_ip}) ---")
-                    device = _find_device(device_ip, devices_loader())
+                    lines     = [f"--- {hostname} ({device_ip}) ---"]
+                    ok        = True
+                    device    = _find_device(device_ip, devs_inv)
                     if not device:
-                        output_parts.append(f"  ERROR: device {device_ip} not found in inventory")
-                        all_ok = False
-                        continue
+                        lines.append(f"  ERROR: device {device_ip} not found in inventory")
+                        return idx, lines, False
                     play_mode = play.get("mode", "config")
                     try:
                         conn = _conn(device)
@@ -2861,20 +4597,214 @@ def run_chat(
                                 out = run_device_command(conn, cmd)
                                 err = _ios_err(out)
                                 if err:
-                                    output_parts.append(f"  [FAIL] {cmd}")
-                                    output_parts.append(f"         {err}")
-                                    all_ok = False
+                                    lines.append(f"  [FAIL] {cmd}")
+                                    lines.append(f"         {err}")
+                                    ok = False
                                 else:
-                                    output_parts.append(f"  [OK]   {cmd}")
+                                    lines.append(f"  [OK]   {cmd}")
                         finally:
                             if play_mode == "config":
                                 conn.exit_config_mode()
                     except Exception as exc:
-                        output_parts.append(f"  ERROR: {exc}")
-                        all_ok = False
+                        lines.append(f"  ERROR: {exc}")
+                        ok = False
+                    return idx, lines, ok
+
+                from concurrent.futures import ThreadPoolExecutor, as_completed as _acf
+                header = [
+                    f"Running playbook: {pb['name']}",
+                    f"Description: {pb.get('description','')}",
+                    f"Plays: {len(plays)} device(s) — running in parallel\n",
+                ]
+                results  = {}   # idx -> (lines, ok)
+                all_ok   = True
+                max_workers = min(len(plays), 8) if plays else 1
+                with ThreadPoolExecutor(max_workers=max_workers) as _pool:
+                    futs = {_pool.submit(_run_play, (i, p)): i for i, p in enumerate(plays)}
+                    for fut in _acf(futs):
+                        idx, lines, ok = fut.result()
+                        results[idx] = (lines, ok)
+                        if not ok:
+                            all_ok = False
+
+                # Reassemble in original play order
+                body = []
+                for i in range(len(plays)):
+                    lines, _ = results[i]
+                    body.extend(lines)
+
                 status = "COMPLETED SUCCESSFULLY" if all_ok else "COMPLETED WITH ERRORS"
-                output_parts.append(f"\nPlaybook {status}")
-                return "\n".join(output_parts)
+                return "\n".join(header + body + [f"\nPlaybook {status}"])
+
+            # ── Monitoring: Collector IP ──────────────────────────────────
+            elif name == "get_collector_ip":
+                from modules.collector_config import (
+                    get_or_detect_collector_ip, list_local_interfaces,
+                )
+                result_data = get_or_detect_collector_ip()
+                collector_ip = result_data.get("collector_ip")
+                source       = result_data.get("collector_ip_source", "none")
+                if not collector_ip:
+                    interfaces = list_local_interfaces()
+                    iface_list = "\n".join(
+                        f"  {i['name']}: {i['ip']}" for i in interfaces
+                    ) or "  (none detected)"
+                    return (
+                        "Could not auto-detect the OOB management IP. "
+                        "No interface shares a subnet with the registered devices.\n\n"
+                        f"Available local interfaces:\n{iface_list}\n\n"
+                        "Use set_collector_ip to manually specify the correct IP."
+                    )
+                interfaces = list_local_interfaces()
+                iface_info = next(
+                    (f"{i['name']} ({i['ip']}/{i['netmask']})" for i in interfaces if i["ip"] == collector_ip),
+                    collector_ip,
+                )
+                return (
+                    f"Collector IP: {collector_ip}  [source: {source}]\n"
+                    f"Interface:    {iface_info}\n\n"
+                    f"Configure devices to send SNMP traps and NetFlow exports to: {collector_ip}"
+                )
+
+            elif name == "set_collector_ip":
+                from modules.collector_config import set_collector_ip as _set_cip
+                ip = args.get("ip", "").strip()
+                if not ip:
+                    return "Error: ip is required"
+                _set_cip(ip)
+                return f"Collector IP set to {ip} for this list."
+
+            # ── Monitoring: SNMP ─────────────────────────────────────────
+            elif name == "snmp_poll":
+                from modules.snmp_collector import snmp_get
+                from modules.collector_config import get_snmp_community
+                device_ip = args.get("device_ip", "").strip()
+                oids      = args.get("oids", [])
+                community = args.get("community") or get_snmp_community("ro")
+                version   = int(args.get("version", 2))
+                if not device_ip or not oids:
+                    return "Error: device_ip and oids are required"
+                try:
+                    rows = snmp_get(device_ip, oids, community, version)
+                    lines = [f"SNMP GET {device_ip} (community={community}, v{version}c):"]
+                    for oid_str, val in rows:
+                        lines.append(f"  {oid_str} = {val}")
+                    return "\n".join(lines)
+                except Exception as exc:
+                    return f"SNMP poll error: {exc}"
+
+            elif name == "snmp_get_device_summary":
+                from modules.snmp_collector import get_device_summary
+                from modules.collector_config import get_snmp_community
+                device_ip = args.get("device_ip", "").strip()
+                community = args.get("community") or get_snmp_community("ro")
+                version   = int(args.get("version", 2))
+                if not device_ip:
+                    return "Error: device_ip is required"
+                try:
+                    summary = get_device_summary(device_ip, community, version)
+                    if "system_error" in summary:
+                        return (
+                            f"SNMP unreachable for {device_ip}: {summary['system_error']}\n"
+                            "Check: (1) SNMP is enabled on the device, "
+                            "(2) community string matches, "
+                            "(3) ACL permits the collector IP."
+                        )
+                    sys   = summary.get("system", {})
+                    ifaces = summary.get("interfaces", [])
+                    lines  = [
+                        f"SNMP summary — {device_ip}  (polled {summary.get('polled_at', '')})",
+                        f"  Hostname:    {sys.get('name', '?')}",
+                        f"  Description: {sys.get('description', '?')[:80]}",
+                        f"  Uptime:      {sys.get('uptime', '?')}",
+                        f"  Location:    {sys.get('location', '?')}",
+                        f"  Contact:     {sys.get('contact', '?')}",
+                        "",
+                        f"  Interfaces ({len(ifaces)}):",
+                    ]
+                    for iface in ifaces:
+                        spd = iface.get("speed_bps", 0)
+                        spd_label = f"{int(spd)//1000000}M" if spd and str(spd).isdigit() else str(spd)
+                        lines.append(
+                            f"    [{iface['status']:4}] {iface['name']:20} "
+                            f"in={iface['in_octets']} out={iface['out_octets']} "
+                            f"spd={spd_label}"
+                        )
+                    return "\n".join(lines)
+                except Exception as exc:
+                    return f"SNMP device summary error: {exc}"
+
+            elif name == "get_snmp_traps":
+                from modules.snmp_collector import get_recent_traps
+                limit = int(args.get("limit", 20))
+                traps = get_recent_traps(limit)
+                if not traps:
+                    return (
+                        "No SNMP traps received yet. "
+                        "Ensure devices are configured to send traps to the collector IP "
+                        "and the trap receiver daemon is running (port from get_monitoring_config)."
+                    )
+                lines = [f"Recent SNMP traps ({len(traps)}):"]
+                for t in traps:
+                    lines.append(
+                        f"  [{t.get('received_at', '?')}] {t.get('source_ip', '?')} — "
+                        f"{t.get('summary', t.get('community', ''))}"
+                    )
+                return "\n".join(lines)
+
+            # ── Monitoring: NetFlow ───────────────────────────────────────
+            elif name == "get_netflow_summary":
+                from modules.netflow_collector import get_flow_stats, get_recent_flows
+                include_flows = int(args.get("recent_flows", 0))
+                stats = get_flow_stats()
+                if stats["total_flows"] == 0:
+                    return (
+                        "No NetFlow data received yet. "
+                        "Ensure devices are configured to export flows to the collector IP. "
+                        "Use get_monitoring_config to get the NetFlow port."
+                    )
+                lines = [
+                    f"NetFlow summary ({stats['total_flows']} flows in buffer):",
+                    "",
+                    "Top sources (by bytes):",
+                ]
+                for s in stats["top_sources"][:5]:
+                    lines.append(f"  {s['ip']:20} {s['bytes']:>12} bytes")
+                lines += ["", "Top destinations:"]
+                for d in stats["top_destinations"][:5]:
+                    lines.append(f"  {d['ip']:20} {d['bytes']:>12} bytes")
+                lines += ["", "By protocol:"]
+                for p in stats["by_protocol"]:
+                    lines.append(f"  {p['proto']:6} {p['bytes']:>12} bytes")
+                if include_flows > 0:
+                    recent = get_recent_flows(include_flows)
+                    lines += ["", f"Recent {len(recent)} flows:"]
+                    for f in recent:
+                        lines.append(
+                            f"  {f.get('received_at','?'):19} "
+                            f"{f.get('src_ip','?'):16} → {f.get('dst_ip','?'):16} "
+                            f"{f.get('protocol_name','?'):6} "
+                            f"{f.get('packets',0):6}pk {f.get('octets',0):8}B"
+                        )
+                return "\n".join(lines)
+
+            elif name == "get_monitoring_config":
+                from modules.collector_config import get_full_config
+                cfg = get_full_config()
+                collector_ip = cfg.get("collector_ip", "not set")
+                source       = cfg.get("collector_ip_source", "none")
+                return (
+                    f"Monitoring configuration for this list:\n"
+                    f"  Collector IP:         {collector_ip}  [{source}]\n"
+                    f"  SNMP community (RO):  {cfg.get('snmp_community_ro', 'public')}\n"
+                    f"  SNMP community (RW):  {cfg.get('snmp_community_rw', 'private')}\n"
+                    f"  SNMP trap port:       {cfg.get('snmp_trap_port', 1162)}\n"
+                    f"  NetFlow port:         {cfg.get('netflow_port', 9996)}\n\n"
+                    f"Device config snippets:\n"
+                    f"  SNMP traps (IOS):   snmp-server host {collector_ip} traps version 2c <community>\n"
+                    f"  NetFlow export:     ip flow-export destination {collector_ip} {cfg.get('netflow_port', 9996)}\n"
+                    f"                      ip flow-export version 9"
+                )
 
             else:
                 return f"Unknown tool: {name}"
@@ -2915,7 +4845,26 @@ def run_chat(
         "backup_device_config":                  2000,
         "save_lab_note":                          500,
         "read_network_kb":                       10000,
-        "update_network_kb":                       300,
+        "update_network_kb":                         300,
+        "read_global_kb":                          10000,
+        "update_global_kb":                            300,
+        "save_golden_config":                         2000,
+        "read_golden_config":                        50000,
+        "list_golden_configs":                        1000,
+        "restore_golden_config":                      3000,
+        "capture_pre_change_snapshot":                2000,
+        "restore_pre_change_snapshot":                3000,
+        "detect_config_drift":                       20000,
+        "log_change":                                  200,
+        "read_change_log":                           10000,
+        "read_compliance_policy":                     5000,
+        "update_compliance_policy":                    300,
+        "run_compliance_check":                      20000,
+        "read_variables":                             2000,
+        "set_variable":                                200,
+        "delete_variable":                             200,
+        "jenkins_set_schedule":                        500,
+        "request_approval":                            300,
         "read_app_file":                        100000,
         "patch_app_file":                          500,
         "restart_server":                          200,
@@ -3296,26 +5245,35 @@ def run_ansible_direct(
     def _conn(device):
         return get_persistent_connection(device, connections_pool, pool_lock)
 
-    all_ok = True
-    failed_plays = []   # collected for ansible_done so the UI can auto-troubleshoot
+    import queue as _q
+    from concurrent.futures import ThreadPoolExecutor as _TPE
 
+    devices_inv = devices_loader()
+
+    # Emit play_start for every play immediately so the UI shows all devices as pending
     for idx, play in enumerate(plays):
-        device_ip = play.get("device_ip", "")
-        hostname  = play.get("hostname") or device_ip
-        commands  = play.get("commands", [])
-
         yield {
             "type":      "ansible_play_start",
             "index":     idx,
-            "hostname":  hostname,
-            "device_ip": device_ip,
-            "cmd_count": len(commands),
+            "hostname":  play.get("hostname") or play.get("device_ip", ""),
+            "device_ip": play.get("device_ip", ""),
+            "cmd_count": len(play.get("commands", [])),
         }
 
-        device = _find_device(device_ip, devices_loader())
+    # Worker: run one play, return a result dict (never raises)
+    def _run_play(idx_play):
+        idx, play    = idx_play
+        device_ip    = play.get("device_ip", "")
+        hostname     = play.get("hostname") or device_ip
+        commands     = play.get("commands", [])
+        play_mode    = play.get("mode", "config")
+        cmd_results  = []
+        play_exception       = None
+        play_has_ios_error   = False
+
+        device = _find_device(device_ip, devices_inv)
         if not device:
-            all_ok = False
-            yield {
+            return {
                 "type":      "ansible_play_result",
                 "index":     idx,
                 "hostname":  hostname,
@@ -3325,12 +5283,6 @@ def run_ansible_direct(
                 "error":     f"Device {device_ip} not found in inventory",
                 "cmd_count": len(commands),
             }
-            continue
-
-        cmd_results = []   # list of {cmd, output, ok, ios_error}
-        play_exception = None
-        play_has_ios_error = False
-        play_mode = play.get("mode", "config")
 
         try:
             conn = _conn(device)
@@ -3356,10 +5308,6 @@ def run_ansible_direct(
             play_exception = str(exc)
 
         play_ok = (play_exception is None) and (not play_has_ios_error)
-        if not play_ok:
-            all_ok = False
-
-        # Build a top-level error summary for failed plays
         if play_exception:
             top_error = play_exception
         elif play_has_ios_error:
@@ -3368,7 +5316,7 @@ def run_ansible_direct(
         else:
             top_error = None
 
-        yield {
+        return {
             "type":      "ansible_play_result",
             "index":     idx,
             "hostname":  hostname,
@@ -3379,14 +5327,27 @@ def run_ansible_direct(
             "cmd_count": len(commands),
         }
 
-        if not play_ok:
-            failed_plays.append({
-                "hostname":  hostname,
-                "device_ip": device_ip,
-                "error":     top_error,
-                # Only include failed commands to keep the payload concise
-                "commands":  [c for c in cmd_results if not c["ok"]],
-            })
+    # Run all plays in parallel; yield result events as they complete
+    all_ok       = True
+    failed_plays = []
+    result_buf   = {}   # idx -> event (to emit in order at the end if needed)
+
+    max_w = min(len(plays), 8) if plays else 1
+    with _TPE(max_workers=max_w) as pool:
+        futs = {pool.submit(_run_play, (i, p)): i for i, p in enumerate(plays)}
+        from concurrent.futures import as_completed as _ac
+        for fut in _ac(futs):
+            ev = fut.result()
+            yield ev                        # stream immediately as each device finishes
+            if not ev.get("ok", True):
+                all_ok = False
+                if ev.get("error") or any(not c["ok"] for c in ev.get("commands", [])):
+                    failed_plays.append({
+                        "hostname":  ev["hostname"],
+                        "device_ip": ev["device_ip"],
+                        "error":     ev.get("error"),
+                        "commands":  [c for c in ev.get("commands", []) if not c["ok"]],
+                    })
 
     yield {
         "type":        "ansible_done",

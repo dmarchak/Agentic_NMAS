@@ -2005,6 +2005,11 @@
       sendMessage(msg);
     }, 1000);
 
+    // Agent events are handled exclusively by the background agent runner.
+    // The chat AI does NOT receive event injections — that was causing the chat
+    // to duplicate work the background agent was already doing and left it
+    // stuck waiting on Jenkins builds.
+
   })();
   </script>
 
