@@ -2546,6 +2546,30 @@ TOOLS = [
         },
     },
     {
+        "name": "jenkins_delete_failed_builds",
+        "description": (
+            "Delete one or more specific builds from a Jenkins job by build number. "
+            "Use this to clean up a job's build history — e.g. remove old FAILURE or ABORTED "
+            "builds so only the current passing builds are visible. "
+            "Call jenkins_get_builds first to get the build numbers to delete."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_name": {
+                    "type": "string",
+                    "description": "Exact Jenkins job name",
+                },
+                "build_numbers": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "List of build numbers to delete (e.g. [1, 2, 3])",
+                },
+            },
+            "required": ["job_name", "build_numbers"],
+        },
+    },
+    {
         "name": "jenkins_get_console",
         "description": (
             "Fetch the full console log for a Jenkins build. "
@@ -4389,6 +4413,29 @@ def run_chat(
                     return "\n".join(lines)
                 except Exception as exc:
                     return f"Error getting builds for '{job}': {exc}"
+
+            elif name == "jenkins_delete_failed_builds":
+                from modules.jenkins_runner import load_config as _jlcfg, delete_build as _del_build_fn, get_job_builds as _gjb_fail
+                _dfb_job = args.get("job_name", "").strip()
+                _dfb_nums = args.get("build_numbers", [])
+                if not _dfb_job:
+                    return "Error: job_name is required"
+                if not _dfb_nums:
+                    return "Error: build_numbers list is required"
+                _dfb_cfg = _jlcfg()
+                _dfb_ok, _dfb_err = [], []
+                for _dfb_n in _dfb_nums:
+                    try:
+                        _del_build_fn(_dfb_cfg, _dfb_job, int(_dfb_n))
+                        _dfb_ok.append(int(_dfb_n))
+                    except Exception as _dfb_e:
+                        _dfb_err.append(f"#{_dfb_n}: {_dfb_e}")
+                _dfb_out = [f"Deleted {len(_dfb_ok)} failed build(s) from '{_dfb_job}':"]
+                _dfb_out += [f"  OK  #{n}" for n in sorted(_dfb_ok)]
+                if _dfb_err:
+                    _dfb_out.append(f"  Errors ({len(_dfb_err)}):")
+                    _dfb_out += [f"    {f}" for f in _dfb_err]
+                return "\n".join(_dfb_out)
 
             elif name == "jenkins_get_console":
                 from modules.jenkins_runner import load_config as _jload, get_build_console

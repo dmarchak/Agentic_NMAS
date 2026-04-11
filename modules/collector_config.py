@@ -175,6 +175,11 @@ def detect_collector_ip(device_ips: list) -> str | None:
     return None
 
 
+def get_or_detect_collector_ip() -> dict:
+    """Alias for get_full_config — returns dict with collector_ip and collector_ip_source."""
+    return get_full_config()
+
+
 def detect_and_store() -> str | None:
     """Detect the collector IP and store it.  Returns the IP or None."""
     ips = _get_device_ips()

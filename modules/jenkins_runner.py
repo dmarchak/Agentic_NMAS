@@ -811,6 +811,21 @@ def get_job_builds(config: dict, job_name: str, limit: int = 10) -> list[dict]:
     return json.loads(body).get("builds", [])
 
 
+def delete_build(config: dict, job_name: str, build_number: int) -> None:
+    """Delete a specific build from a Jenkins job by build number."""
+    from urllib.parse import quote
+    status, body, _ = _jenkins_request(
+        config,
+        f"/job/{quote(job_name)}/{build_number}/doDelete",
+        method="POST",
+    )
+    if status not in (200, 201, 302, 404):
+        raise RuntimeError(
+            f"Delete build #{build_number} failed (HTTP {status}): "
+            f"{body.decode('utf-8', errors='replace')[:300]}"
+        )
+
+
 def get_build_console(config: dict, job_name: str,
                       build_number: int | str | None = None) -> str:
     """
