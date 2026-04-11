@@ -474,6 +474,37 @@ def parse_tunnel_config(output):
     return tunnels
 
 
+def _extract_tunnel_sections(running_config):
+    """Extract all 'interface Tunnel*' blocks from a full running-config.
+
+    Returns a string that looks exactly like the output of
+    'show running-config | section ^interface Tunnel' — one or more
+    interface blocks concatenated, each starting with 'interface TunnelX'
+    and ending when the next top-level command (line starting with a
+    non-space character that isn't 'interface Tunnel') is encountered.
+    """
+    lines = running_config.splitlines()
+    result_lines = []
+    in_tunnel = False
+    for line in lines:
+        # Detect start of a tunnel interface block
+        if re.match(r'^interface Tunnel\S*', line):
+            in_tunnel = True
+            result_lines.append(line)
+            continue
+        if in_tunnel:
+            # Still inside the block if line starts with whitespace (or is blank)
+            if line.startswith(' ') or line.startswith('\t') or line.strip() == '':
+                result_lines.append(line)
+            else:
+                # End of tunnel block — check if it's another tunnel
+                if re.match(r'^interface Tunnel\S*', line):
+                    result_lines.append(line)
+                else:
+                    in_tunnel = False
+    return '\n'.join(result_lines)
+
+
 def gather_protocol_topology(conn, hostname):
     """
     Gather OSPF, BGP, and tunnel data from a single device.
@@ -504,8 +535,12 @@ def gather_protocol_topology(conn, hostname):
     except Exception as e:
         logger.warning("Protocol topo: BGP query failed on %s: %s", hostname, e)
     try:
-        out = run_device_command(conn, 'show running-config | section ^interface Tunnel')
-        result['tunnels'] = parse_tunnel_config(out)
+        # NOTE: IOS pipe filters (| section, | include) are unreliable on this
+        # platform — they return corrupted/empty output.  Fetch the full
+        # running-config and extract 'interface Tunnel' blocks in Python.
+        out = run_device_command(conn, 'show running-config')
+        tunnel_section = _extract_tunnel_sections(out)
+        result['tunnels'] = parse_tunnel_config(tunnel_section)
     except Exception as e:
         logger.warning("Protocol topo: tunnel query failed on %s: %s", hostname, e)
     return result
@@ -724,13 +759,8 @@ def build_tunnel_topology(devices_data):
             for nbma in tun.get('nhrp_maps', []):
                 peer_nbma_ips.add(nbma)
 
-            # NHRP NHS entries may be tunnel IPs — resolve to NBMA via map
-            # entries, or via the tunnel_ip_map → ip_map chain.
-            nhrp_map_lookup = {}  # tunnel-ip -> nbma-ip from map lines
-            for line_nbma in tun.get('nhrp_maps', []):
-                # We stored NBMA IPs; re-scan is needed for tunnel→NBMA.
-                pass  # Already added above as NBMA IPs.
-
+            # NHRP NHS entries may be tunnel IPs — resolve to NBMA via
+            # the tunnel_ip_map → ip_map chain.
             for nhs_entry in tun.get('nhrp_nhs', []):
                 # nhs_entry could be a tunnel IP (e.g. 10.100.0.1) or NBMA IP
                 # First check if it's an NBMA IP we already know
