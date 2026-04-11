@@ -157,6 +157,18 @@ def resolve(entry_id: str, action: str) -> dict:
     execution = {}
     if action == "approve":
         execution = _execute(entry)
+        # If execution failed, revert the entry to pending so it can be retried.
+        # A silent "approved" with a failed execution would let the drift check
+        # generate the same approval again on the next restart.
+        if execution.get("error"):
+            entry["status"]      = "pending"
+            entry["resolved_at"] = None
+            entry["context"]     = f"Last attempt failed: {execution['error']}"
+            _save_queue(entries)
+            log.warning(
+                "approval_queue: execution failed for %s — reverted to pending: %s",
+                entry.get("device_hostname", entry["id"]), execution["error"],
+            )
 
     return {"ok": True, "entry": entry, "execution": execution}
 

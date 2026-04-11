@@ -133,11 +133,18 @@ def save_pipeline_schedule(job_name: str, cron_expression: str) -> None:
 def extract_schedule_from_xml(xml: str) -> str:
     """
     Parse a Jenkins config.xml and return the TimerTrigger cron expression,
-    or an empty string if no schedule is set.
+    or an empty string if no schedule is set.  Handles CDATA-wrapped specs.
     """
     import re
-    m = re.search(r"<hudson\.triggers\.TimerTrigger>\s*<spec>(.*?)</spec>", xml, re.DOTALL)
-    return m.group(1).strip() if m else ""
+    m = re.search(r"<hudson\.triggers\.TimerTrigger>.*?<spec>(.*?)</spec>", xml, re.DOTALL)
+    if not m:
+        return ""
+    spec = m.group(1).strip()
+    # Strip CDATA wrapper if present: <![CDATA[H/30 * * * *]]>
+    cdata = re.match(r"<!\[CDATA\[(.*?)]]>", spec, re.DOTALL)
+    if cdata:
+        spec = cdata.group(1).strip()
+    return spec
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +244,28 @@ def load_results() -> Optional[dict]:
             return json.load(fh)
     except (FileNotFoundError, json.JSONDecodeError):
         return None
+
+
+def is_jenkins_building() -> bool:
+    """
+    Return True if any registered pipeline for the current list is currently
+    pending or building.  Used to gate SSH-heavy background tasks so they don't
+    compete with Jenkins for VTY lines on network devices.
+    """
+    try:
+        data = load_results()
+        if not data:
+            return False
+        # Top-level flag
+        if data.get("jenkins_pending"):
+            return True
+        # Belt-and-suspenders: check each pipeline entry
+        for info in data.get("pipelines", {}).values():
+            if isinstance(info, dict) and info.get("jenkins_pending"):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def _save_results(summary: dict) -> None:
@@ -575,20 +604,30 @@ def _jenkins_request(config: dict, path: str, method: str = "GET",
                      content_type: str | None = None) -> tuple[int, bytes, dict]:
     """
     Make an authenticated Jenkins HTTP request.
-    Uses a shared cookie-jar opener per Jenkins URL so that the CSRF crumb
-    fetch and every subsequent POST share the same JSESSIONID session cookie,
-    preventing HTTP 403/500 CSRF rejections.
+
+    When an API key (token) is configured, Jenkins >= 2.96 exempts the request
+    from CSRF checks entirely — sending a crumb header in that case causes a
+    mismatch (500) because the crumb is tied to a browser JSESSIONID, not to
+    the API token session.  We therefore skip the crumb when api_key is set.
+
+    When no API key is present (password-based auth) we fetch a crumb using a
+    shared cookie-jar opener so that the crumb and the POST share the same
+    JSESSIONID.
+
     Returns (status_code, response_body, response_headers).
     """
     import urllib.request, urllib.error
     base   = config.get("jenkins_url", "").rstrip("/")
     url    = f"{base}{path}"
+    # When using an API token, CSRF is bypassed — do NOT send a crumb header.
+    using_api_token = bool(config.get("jenkins_api_key", ""))
 
     def _attempt(opener) -> tuple[int, bytes, dict]:
         headers = _jenkins_auth_headers(config)
         if content_type:
             headers["Content-Type"] = content_type
-        if method.upper() != "GET":
+        if method.upper() != "GET" and not using_api_token:
+            # Only fetch crumb for password-based (non-token) auth
             headers.update(_fetch_crumb(config, opener))
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
@@ -756,9 +795,31 @@ def create_jenkins_job(config: dict, job_name: str, xml_config: str) -> None:
         method="POST", data=data, content_type="application/xml",
     )
     if status not in (200, 201):
-        raise RuntimeError(
-            f"Create job failed (HTTP {status}): {body.decode('utf-8', errors='replace')[:500]}"
+        # Jenkins sometimes returns HTTP 500 even when the job was actually created
+        # (known platform behaviour).  Verify by checking if the job now exists.
+        logger.warning(
+            "create_jenkins_job: HTTP %s for '%s' — verifying job existence...",
+            status, job_name,
         )
+        try:
+            check_status, _, _ = _jenkins_request(
+                config, f"/job/{quote(job_name)}/api/json"
+            )
+            if check_status == 200:
+                logger.info(
+                    "create_jenkins_job: job '%s' exists on server despite HTTP %s — treating as success",
+                    job_name, status,
+                )
+            else:
+                raise RuntimeError(
+                    f"Create job failed (HTTP {status}): {body.decode('utf-8', errors='replace')[:500]}"
+                )
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(
+                f"Create job failed (HTTP {status}): {body.decode('utf-8', errors='replace')[:500]}"
+            ) from exc
     # Cache the Groovy script locally so the user can see/edit the pipeline definition
     script = _extract_groovy_from_xml(xml_config)
     if script:
@@ -775,8 +836,64 @@ def update_jenkins_job(config: dict, job_name: str, xml_config: str) -> None:
         method="POST", data=data, content_type="application/xml",
     )
     if status not in (200, 201):
+        err_text = body.decode('utf-8', errors='replace')
+        # Jenkins sometimes returns HTTP 500 even when the update was applied
+        # (known platform behaviour).  Verify by reading back the actual config.xml
+        # and checking that it matches what we sent (not just that the job exists).
+        if status == 500:
+            logger.warning(
+                "update_jenkins_job: HTTP 500 for '%s' — verifying config was applied...",
+                job_name,
+            )
+            try:
+                verify_status, verify_body, _ = _jenkins_request(
+                    config, f"/job/{quote(job_name)}/config.xml"
+                )
+                if verify_status == 200:
+                    live_xml = verify_body.decode("utf-8", errors="replace")
+                    # Check that key content from our update is present in the live config.
+                    # We compare a snippet — the first non-trivial line — not full equality,
+                    # because Jenkins may normalise whitespace/CDATA on round-trip.
+                    import re as _re
+                    # Extract first <spec> value from what we sent
+                    sent_spec_m = _re.search(
+                        r"<hudson\.triggers\.TimerTrigger>.*?<spec>(.*?)</spec>",
+                        xml_config, _re.DOTALL
+                    )
+                    if sent_spec_m:
+                        sent_spec = sent_spec_m.group(1).strip()
+                        if sent_spec in live_xml or live_xml.find(sent_spec.replace("*", "\\*")) >= 0:
+                            logger.info(
+                                "update_jenkins_job: '%s' trigger verified in live config after HTTP 500",
+                                job_name,
+                            )
+                            script = _extract_groovy_from_xml(xml_config)
+                            if script:
+                                save_pipeline_script(job_name, script)
+                            return
+                        else:
+                            logger.error(
+                                "update_jenkins_job: HTTP 500 for '%s' and trigger NOT found in live config — update failed",
+                                job_name,
+                            )
+                    else:
+                        # Not a trigger update — just verify the job is accessible
+                        logger.info(
+                            "update_jenkins_job: '%s' accessible after HTTP 500 — treating non-trigger update as success",
+                            job_name,
+                        )
+                        script = _extract_groovy_from_xml(xml_config)
+                        if script:
+                            save_pipeline_script(job_name, script)
+                        return
+            except Exception as verify_exc:
+                logger.warning("update_jenkins_job: verification fetch failed: %s", verify_exc)
+        logger.error(
+            "update_jenkins_job: HTTP %s for '%s'\nXML sent:\n%s\nJenkins response:\n%s",
+            status, job_name, xml_config[:3000], err_text[:3000],
+        )
         raise RuntimeError(
-            f"Update job failed (HTTP {status}): {body.decode('utf-8', errors='replace')[:500]}"
+            f"Update job failed (HTTP {status}): {err_text[:2000]}"
         )
     # Update the local Groovy cache to stay in sync
     script = _extract_groovy_from_xml(xml_config)

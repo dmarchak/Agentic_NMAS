@@ -59,6 +59,16 @@ _trap_lock = threading.Lock()
 _trap_thread: Optional[threading.Thread] = None
 _trap_stop   = threading.Event()
 
+# Optional callback invoked (in a daemon thread) immediately after each trap is saved.
+# Set via set_trap_callback() — used by agent_runner for real-time alerting.
+_trap_callback = None
+
+
+def set_trap_callback(fn) -> None:
+    """Register a function to be called whenever a new trap is received."""
+    global _trap_callback
+    _trap_callback = fn
+
 def _trap_file() -> str:
     try:
         from modules.config import get_current_list_data_dir
@@ -328,7 +338,13 @@ def _trap_loop(port: int) -> None:
             trap = _parse_trap(data, addr[0])
             if trap:
                 _save_trap(trap)
-                log.info("snmp_collector: trap from %s — %s", addr[0], trap.get("enterprise", ""))
+                log.info("snmp_collector: trap from %s — %s", addr[0], trap.get("trap_type") or trap.get("enterprise", ""))
+                cb = _trap_callback
+                if cb:
+                    threading.Thread(
+                        target=cb, args=(trap,), daemon=True,
+                        name="trap-cb"
+                    ).start()
         except socket.timeout:
             continue
         except Exception as exc:
@@ -340,42 +356,241 @@ def _trap_loop(port: int) -> None:
 
 def _parse_trap(data: bytes, src_ip: str) -> Optional[dict]:
     """
-    Minimal ASN.1/BER trap parser.
-    Returns a dict with: source_ip, timestamp, community, enterprise, varbinds_raw.
-    Falls back to raw hex if parsing fails.
+    BER trap parser — decodes SNMPv1 (RFC 1157) and SNMPv2c (RFC 1905) trap PDUs.
+    Returns a rich dict with enterprise OID, generic/specific trap type, and varbinds.
     """
     trap: dict = {
-        "id":         _short_id(),
+        "id":          _short_id(),
         "received_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "source_ip":  src_ip,
+        "source_ip":   src_ip,
+        "community":   "",
+        "version":     2,
+        "trap_type":   "",
+        "trap_oid":    "",
+        "enterprise":  "",
+        "varbinds":    [],
+        "summary":     "",
     }
     try:
-        # Try pysnmp full decode first
-        from pysnmp.carrier.asyncore.dgram import udp
-        from pysnmp.entity import engine, config
-        # Full decode is complex; use simpler heuristic approach
-        raise ImportError("use fallback")
-    except Exception:
-        pass
-
-    # Heuristic: extract community string and OIDs from raw BER
-    try:
-        trap["raw_hex"] = data.hex()
-        # Community string is typically the second OCTET STRING in SNMPv1/v2c
         pos = 0
-        # Skip outer SEQUENCE tag + length
+        # Outer SEQUENCE
         pos = _ber_skip_tl(data, pos)
-        # Version INTEGER
+        # Version INTEGER (0=v1, 1=v2c)
         pos, version_val = _ber_read_int(data, pos)
-        trap["version"] = version_val
+        trap["version"] = version_val + 1
         # Community OCTET STRING
-        pos, community = _ber_read_octet(data, pos)
-        trap["community"] = community.decode("ascii", errors="replace")
-        trap["summary"] = f"SNMP trap from {src_ip} (v{version_val + 1}, community={trap['community']})"
+        pos, community_b = _ber_read_octet(data, pos)
+        trap["community"] = community_b.decode("ascii", errors="replace")
+
+        pdu_tag = data[pos]
+
+        if pdu_tag == 0xA4:
+            # SNMPv1 Trap-PDU
+            pos = _ber_skip_tl(data, pos)
+            # Enterprise OID
+            pos, enterprise = _ber_read_oid(data, pos)
+            trap["enterprise"] = enterprise
+            # Agent address (4-byte OCTET STRING or IpAddress)
+            pos, _ = _ber_read_raw(data, pos)
+            # Generic trap type
+            pos, generic = _ber_read_int(data, pos)
+            # Specific trap type
+            pos, specific = _ber_read_int(data, pos)
+            # Time stamp (TimeTicks)
+            pos, _ = _ber_read_raw(data, pos)
+            # Varbinds
+            trap["varbinds"] = _ber_read_varbinds(data, pos)
+            trap["trap_type"] = _generic_trap_name(generic, specific, enterprise)
+            trap["varbind_labels"] = [s for s in (
+                _humanize_varbind(n, v) for n, v in trap["varbinds"]
+            ) if s]
+            trap["summary"]   = _build_summary_v1(trap)
+
+        elif pdu_tag == 0xA7:
+            # SNMPv2c/v3 SNMPv2-Trap-PDU
+            pos = _ber_skip_tl(data, pos)
+            pos, _ = _ber_read_int(data, pos)   # request-id
+            pos, _ = _ber_read_int(data, pos)   # error-status
+            pos, _ = _ber_read_int(data, pos)   # error-index
+            trap["varbinds"] = _ber_read_varbinds(data, pos)
+            # snmpTrapOID.0 is the second varbind
+            trap_oid = ""
+            for name, val in trap["varbinds"]:
+                if "1.3.6.1.6.3.1.1.4.1" in name:
+                    trap_oid = val
+                    break
+            trap["trap_oid"]  = trap_oid
+            trap["trap_type"] = _lookup_trap_oid(trap_oid)
+            trap["varbind_labels"] = [s for s in (
+                _humanize_varbind(n, v) for n, v in trap["varbinds"]
+            ) if s]
+            trap["summary"]   = _build_summary_v2(trap)
+
+        else:
+            trap["summary"] = f"SNMP trap from {src_ip} (unknown PDU tag 0x{pdu_tag:02x})"
+
     except Exception as exc:
-        trap["summary"] = f"SNMP trap from {src_ip} (raw, parse error: {exc})"
+        trap["summary"] = f"SNMP trap from {src_ip} (parse error: {exc})"
 
     return trap
+
+
+# ---------------------------------------------------------------------------
+# OID lookups and summary builders
+# ---------------------------------------------------------------------------
+
+# Generic v1 trap type names (RFC 1157)
+_GENERIC_TRAP = {
+    0: "coldStart",
+    1: "warmStart",
+    2: "linkDown",
+    3: "linkUp",
+    4: "authenticationFailure",
+    5: "egpNeighborLoss",
+    6: "enterpriseSpecific",
+}
+
+# Well-known trap OIDs (SNMPv2c snmpTrapOID values)
+_TRAP_OID_NAMES = {
+    "1.3.6.1.6.3.1.1.5.1": "coldStart",
+    "1.3.6.1.6.3.1.1.5.2": "warmStart",
+    "1.3.6.1.6.3.1.1.5.3": "linkDown",
+    "1.3.6.1.6.3.1.1.5.4": "linkUp",
+    "1.3.6.1.6.3.1.1.5.5": "authenticationFailure",
+    "1.3.6.1.6.3.1.1.5.6": "egpNeighborLoss",
+    # Cisco OSPF traps
+    "1.3.6.1.4.1.9.10.99.1.1": "ciscoOspfNbrStateChange",
+    "1.3.6.1.2.1.14.16.2.2":   "ospfNbrStateChange",
+    "1.3.6.1.2.1.14.16.2.1":   "ospfVirtNbrStateChange",
+    # BGP
+    "1.3.6.1.2.1.15.7":        "bgpEstablished",
+    "1.3.6.1.2.1.15.8":        "bgpBackwardTransition",
+    # Cisco env / chassis
+    "1.3.6.1.4.1.9.9.13.3.0.1": "ciscoPowerSupplyFailed",
+    "1.3.6.1.4.1.9.9.13.3.0.2": "ciscoPowerSupplyOk",
+    "1.3.6.1.4.1.9.9.13.3.0.3": "ciscoFanFailed",
+    "1.3.6.1.4.1.9.9.43.2.0.1": "ciscoConfigChangeTrap",
+    "1.3.6.1.4.1.9.9.43.2.0.2": "ciscoConfigSaveTrap",
+    "1.3.6.1.4.1.9.9.41.2.0.1": "clogMessageGenerated",
+    # Cisco enterprise-specific link traps (SNMPv2c format wrapping SNMPv1 generic traps)
+    "1.3.6.1.4.1.9.0.1": "ciscoLinkDown",
+    "1.3.6.1.4.1.9.0.2": "ciscoLinkUp",
+    # Cisco IOS interface-related
+    "1.3.6.1.4.1.9.2.2.1.0.1": "ciscoLinkDown",
+    "1.3.6.1.4.1.9.2.2.1.0.2": "ciscoLinkUp",
+}
+
+# OID prefix → friendly label for varbind display
+_OID_LABELS = {
+    "1.3.6.1.2.1.1.3.0":     "sysUpTime",
+    "1.3.6.1.6.3.1.1.4.1.0": "trapOID",
+    # Interface table
+    "1.3.6.1.2.1.2.2.1.1":   "ifIndex",
+    "1.3.6.1.2.1.2.2.1.2":   "ifDescr",
+    "1.3.6.1.2.1.2.2.1.3":   "ifType",
+    "1.3.6.1.2.1.2.2.1.4":   "ifMtu",
+    "1.3.6.1.2.1.2.2.1.5":   "ifSpeed",
+    "1.3.6.1.2.1.2.2.1.7":   "ifAdminStatus",
+    "1.3.6.1.2.1.2.2.1.8":   "ifOperStatus",
+    # OSPF
+    "1.3.6.1.2.1.14.1.1":    "ospfRouterId",
+    "1.3.6.1.2.1.14.10.1.3": "ospfNbrIpAddr",
+    "1.3.6.1.2.1.14.10.1.6": "ospfNbrState",
+    # BGP
+    "1.3.6.1.2.1.15.3.1.1":  "bgpPeerRemoteAddr",
+    "1.3.6.1.2.1.15.3.1.2":  "bgpPeerState",
+    # Cisco config change
+    "1.3.6.1.4.1.9.9.43.1.1.6.1.2": "ccmHistEventCommandSource",
+    # Cisco interface extended varbinds (sent alongside linkDown/Up)
+    "1.3.6.1.4.1.9.2.2.1.1.20": "locIfReason",
+}
+
+_IF_STATUS = {"1": "up", "2": "down", "3": "testing"}
+_IF_TYPE   = {
+    "1": "other", "6": "ethernetCsmacd", "24": "softwareLoopback",
+    "53": "propVirtual", "131": "tunnel", "161": "ieee8023adLag",
+    "166": "mpls",
+}
+_OSPF_STATES = {"1":"down","2":"attempt","3":"init","4":"twoWay","5":"exchangeStart",
+                "6":"exchange","7":"loading","8":"full"}
+_BGP_STATES  = {"1":"idle","2":"connect","3":"active","4":"openSent","5":"openConfirm","6":"established"}
+
+
+def _generic_trap_name(generic: int, specific: int, enterprise: str) -> str:
+    if generic == 6:
+        # Look up enterprise-specific
+        key = f"{enterprise}.0.{specific}"
+        return _TRAP_OID_NAMES.get(key, f"enterpriseSpecific({specific})")
+    return _GENERIC_TRAP.get(generic, f"generic({generic})")
+
+
+def _lookup_trap_oid(oid: str) -> str:
+    # Exact match
+    name = _TRAP_OID_NAMES.get(oid)
+    if name:
+        return name
+    # Prefix match (e.g. OID ends in .0 variant)
+    for prefix, name in _TRAP_OID_NAMES.items():
+        if oid.startswith(prefix):
+            return name
+    return oid or "unknown"
+
+
+def _label_oid(oid: str) -> str:
+    """Return a short human label for a varbind OID."""
+    # Exact match
+    lbl = _OID_LABELS.get(oid)
+    if lbl:
+        return lbl
+    # Prefix match — strip trailing index digits
+    for prefix, label in _OID_LABELS.items():
+        if oid.startswith(prefix):
+            suffix = oid[len(prefix):]
+            return f"{label}{suffix}"
+    return oid
+
+
+def _humanize_varbind(name: str, val: str) -> str:
+    """Convert raw OID name+value into a readable 'key=value' string."""
+    label = _label_oid(name)
+    # Decode status/type integers
+    if "ifOperStatus" in label or "ifAdminStatus" in label:
+        val = _IF_STATUS.get(val, val)
+    elif "ifType" in label:
+        val = _IF_TYPE.get(val, val)
+    elif "ospfNbrState" in label:
+        val = _OSPF_STATES.get(val, val)
+    elif "bgpPeerState" in label:
+        val = _BGP_STATES.get(val, val)
+    elif label == "trapOID":
+        val = _lookup_trap_oid(val)
+    # Skip sysUpTime and trapOID from inline display (already in header)
+    if label in ("sysUpTime", "trapOID"):
+        return ""
+    # Skip raw OIDs that weren't resolved (avoid noise from unknown enterprise varbinds)
+    if label == name and name.startswith("1.3.6.1.4.1."):
+        return ""
+    return f"{label}={val}"
+
+
+def _build_summary_v1(trap: dict) -> str:
+    trap_type = trap["trap_type"]
+    parts = [trap_type]
+    vb_parts = [_humanize_varbind(n, v) for n, v in trap["varbinds"]]
+    vb_parts = [p for p in vb_parts if p]
+    if vb_parts:
+        parts.append(" | ".join(vb_parts))
+    return " — ".join(parts) if parts else f"v1 trap from {trap['source_ip']}"
+
+
+def _build_summary_v2(trap: dict) -> str:
+    trap_type = trap["trap_type"]
+    parts = [trap_type]
+    vb_parts = [_humanize_varbind(n, v) for n, v in trap["varbinds"]]
+    vb_parts = [p for p in vb_parts if p]
+    if vb_parts:
+        parts.append(" | ".join(vb_parts))
+    return " — ".join(parts) if parts else f"v2c trap from {trap['source_ip']}"
 
 
 def _short_id() -> str:
@@ -383,33 +598,151 @@ def _short_id() -> str:
     return str(uuid.uuid4())[:8]
 
 
+def _ber_length(data: bytes, pos: int) -> tuple:
+    """Read BER length at pos, return (new_pos, length)."""
+    b = data[pos]; pos += 1
+    if b & 0x80:
+        n = b & 0x7f
+        length = int.from_bytes(data[pos:pos + n], "big")
+        pos += n
+    else:
+        length = b
+    return pos, length
+
+
 def _ber_skip_tl(data: bytes, pos: int) -> int:
     """Skip a BER tag+length, return position of value."""
     pos += 1   # tag
-    length = data[pos]; pos += 1
-    if length & 0x80:
-        n = length & 0x7f
-        pos += n
+    pos, _ = _ber_length(data, pos)
     return pos
 
 
 def _ber_read_int(data: bytes, pos: int) -> tuple:
-    """Read a BER INTEGER, return (new_pos, value)."""
-    assert data[pos] == 0x02, f"Expected INTEGER at {pos}, got {data[pos]:02x}"
+    """Read a BER INTEGER (tag 0x02), return (new_pos, value)."""
+    assert data[pos] == 0x02, f"Expected INTEGER at {pos}, got 0x{data[pos]:02x}"
     pos += 1
-    length = data[pos]; pos += 1
+    pos, length = _ber_length(data, pos)
     val = int.from_bytes(data[pos:pos + length], "big", signed=True)
     return pos + length, val
 
 
 def _ber_read_octet(data: bytes, pos: int) -> tuple:
-    """Read a BER OCTET STRING, return (new_pos, bytes)."""
-    assert data[pos] == 0x04, f"Expected OCTET STRING at {pos}, got {data[pos]:02x}"
+    """Read a BER OCTET STRING (tag 0x04), return (new_pos, bytes)."""
+    assert data[pos] == 0x04, f"Expected OCTET STRING at {pos}, got 0x{data[pos]:02x}"
     pos += 1
-    length = data[pos]; pos += 1
-    if length & 0x80:
-        n = length & 0x7f
-        length = int.from_bytes(data[pos:pos + n], "big")
-        pos += n
+    pos, length = _ber_length(data, pos)
     val = data[pos:pos + length]
     return pos + length, val
+
+
+def _ber_read_raw(data: bytes, pos: int) -> tuple:
+    """Read any BER TLV, return (new_pos, raw_value_bytes)."""
+    pos += 1  # tag
+    pos, length = _ber_length(data, pos)
+    val = data[pos:pos + length]
+    return pos + length, val
+
+
+def _ber_read_oid(data: bytes, pos: int) -> tuple:
+    """Read a BER OID (tag 0x06), return (new_pos, dotted-string)."""
+    assert data[pos] == 0x06, f"Expected OID at {pos}, got 0x{data[pos]:02x}"
+    pos += 1
+    pos, length = _ber_length(data, pos)
+    raw = data[pos:pos + length]
+    # Decode OID
+    if not raw:
+        return pos + length, ""
+    components = []
+    first = raw[0]
+    components.append(str(first // 40))
+    components.append(str(first % 40))
+    val = 0
+    for b in raw[1:]:
+        if b & 0x80:
+            val = (val << 7) | (b & 0x7f)
+        else:
+            val = (val << 7) | b
+            components.append(str(val))
+            val = 0
+    return pos + length, ".".join(components)
+
+
+def _ber_read_varbinds(data: bytes, pos: int) -> list:
+    """
+    Read the VarBindList SEQUENCE-OF VarBind from pos.
+    Returns list of (oid_string, value_string) tuples.
+    """
+    result = []
+    try:
+        # Skip outer VarBindList SEQUENCE
+        pos = _ber_skip_tl(data, pos)
+        while pos < len(data):
+            # Each VarBind is a SEQUENCE { OID, value }
+            if data[pos] != 0x30:
+                break
+            vb_start = pos
+            pos += 1
+            pos, vb_len = _ber_length(data, pos)
+            vb_end = pos + vb_len
+            # Read OID
+            oid_pos, oid = _ber_read_oid(data, pos)
+            # Read value (any type)
+            val_tag = data[oid_pos]
+            val_str = _ber_read_value(data, oid_pos, val_tag)
+            result.append((oid, val_str))
+            pos = vb_end
+    except Exception:
+        pass
+    return result
+
+
+def _ber_read_value(data: bytes, pos: int, tag: int) -> str:
+    """Decode a BER value at pos to a readable string."""
+    try:
+        if tag == 0x02:  # INTEGER
+            _, val = _ber_read_int(data, pos)
+            return str(val)
+        if tag == 0x04:  # OCTET STRING
+            _, raw = _ber_read_octet(data, pos)
+            try:
+                return raw.decode("ascii", errors="replace")
+            except Exception:
+                return raw.hex()
+        if tag == 0x06:  # OID
+            _, oid = _ber_read_oid(data, pos)
+            return oid
+        if tag == 0x40:  # IpAddress
+            pos += 1  # skip tag
+            pos, length = _ber_length(data, pos)
+            raw = data[pos:pos + length]
+            if len(raw) == 4:
+                return ".".join(str(b) for b in raw)
+            return raw.hex()
+        if tag == 0x41:  # Counter32
+            pos += 1
+            pos, length = _ber_length(data, pos)
+            return str(int.from_bytes(data[pos:pos + length], "big"))
+        if tag == 0x42:  # Gauge32
+            pos += 1
+            pos, length = _ber_length(data, pos)
+            return str(int.from_bytes(data[pos:pos + length], "big"))
+        if tag == 0x43:  # TimeTicks
+            pos += 1
+            pos, length = _ber_length(data, pos)
+            ticks = int.from_bytes(data[pos:pos + length], "big")
+            secs = ticks // 100
+            h, r = divmod(secs, 3600)
+            m, s = divmod(r, 60)
+            return f"{h:02}:{m:02}:{s:02}"
+        if tag == 0x44:  # Opaque
+            _, raw = _ber_read_raw(data, pos)
+            return raw.hex()
+        if tag == 0x46:  # Counter64
+            pos += 1
+            pos, length = _ber_length(data, pos)
+            return str(int.from_bytes(data[pos:pos + length], "big"))
+        # Unknown — return hex
+        _, raw = _ber_read_raw(data, pos)
+        return raw.hex()
+    except Exception:
+        return "?"

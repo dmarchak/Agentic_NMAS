@@ -50,6 +50,23 @@ def _flow_file() -> str:
         return os.path.join(os.path.dirname(__file__), "..", "data", "netflow_flows.json")
 
 
+def _load_flows() -> None:
+    """Restore persisted flows from disk into the in-memory ring buffer."""
+    global _flows
+    try:
+        path = _flow_file()
+        if not os.path.exists(path):
+            return
+        with open(path, encoding="utf-8") as fh:
+            stored = json.load(fh)
+        if isinstance(stored, list):
+            with _flow_lock:
+                _flows = stored[-_MAX_FLOWS:]
+            log.info("netflow_collector: loaded %d persisted flows", len(_flows))
+    except Exception as exc:
+        log.warning("netflow_collector: could not load persisted flows: %s", exc)
+
+
 def _save_flows(new_flows: list) -> None:
     with _flow_lock:
         _flows.extend(new_flows)
@@ -58,9 +75,11 @@ def _save_flows(new_flows: list) -> None:
         data = list(_flows)
     try:
         path = _flow_file()
+        tmp  = path + ".tmp"
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as fh:
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
+        os.replace(tmp, path)
     except Exception:
         pass
 
@@ -109,6 +128,7 @@ def start_netflow_receiver(port: int = 9996) -> None:
     global _netflow_thread
     if _netflow_thread and _netflow_thread.is_alive():
         return
+    _load_flows()  # restore persisted flows before starting the receiver
     _netflow_stop.clear()
     _netflow_thread = threading.Thread(
         target=_netflow_loop, args=(port,), daemon=True, name="netflow-receiver"

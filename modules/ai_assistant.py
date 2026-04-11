@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from typing import Iterator, Optional
 
@@ -37,6 +38,33 @@ def _dbg(*args) -> None:
             _f.write(line + "\n")
     except Exception:
         pass
+
+# ---------------------------------------------------------------------------
+# Auto-continue detection
+# When Claude ends a turn with end_turn but the last thing it said is a
+# confirmation-seeking phrase ("Should I continue?", "Shall I proceed?", etc.),
+# we inject a brief affirmative and re-enter the loop instead of waiting for
+# the user to type "yes".  A cap prevents infinite loops.
+# ---------------------------------------------------------------------------
+_AUTO_CONTINUE_RE = re.compile(
+    r"(?i)"                                    # case-insensitive
+    r"("
+    r"should\s+i\s+(continue|proceed|go ahead)"
+    r"|shall\s+i\s+(continue|proceed|go ahead)"
+    r"|would\s+you\s+like\s+me\s+to\s+(continue|proceed)"
+    r"|do\s+you\s+want\s+me\s+to\s+(continue|proceed)"
+    r"|let\s+me\s+know\s+(if\s+you('d|\s+would)\s+like|when\s+to\s+proceed)"
+    r"|please\s+(confirm|let\s+me\s+know)\s+(?:if|when|before)"
+    r"|ready\s+to\s+(continue|proceed|apply)"
+    r"|waiting\s+for\s+your\s+(confirmation|approval|go-?ahead)"
+    r"|would\s+you\s+like\s+(to\s+)?(proceed|continue|apply)"
+    r"|do\s+you\s+want\s+(to\s+)?(proceed|continue|apply)"
+    r"|may\s+i\s+(continue|proceed|apply)"
+    r"|type\s+['\"]?(yes|continue|proceed|go ahead)['\"]?\s+to"
+    r")",
+    re.DOTALL,
+)
+_MAX_AUTO_CONTINUES = 10   # cap per run_chat call
 
 # ---------------------------------------------------------------------------
 # Provider configuration
@@ -389,14 +417,27 @@ def _get_running_config_for_golden(device_ip: str, hostname: str = "") -> Option
     """
     Fetch the current running-config from a device via SSH for golden config storage.
     Returns the config text or None on failure.
-    Called by the approval queue executor when a drift update is approved.
+    Called by the approval queue executor which runs outside run_chat and has no
+    access to the shared connection pool, so we open a fresh connection here.
     """
+    import threading as _threading
     try:
-        from modules.backups import get_running_config as _get_rc
-        result = _get_rc(device_ip, hostname or device_ip)
-        if isinstance(result, dict):
-            return result.get("config") or result.get("output")
-        return str(result) if result else None
+        from modules.device import load_saved_devices, get_current_device_list
+        from modules.connection import get_persistent_connection
+        from modules.commands import run_device_command
+
+        _, list_file = get_current_device_list()
+        devices = load_saved_devices(list_file)
+        device  = next((d for d in devices if d.get("ip") == device_ip), None)
+        if not device:
+            logger.warning("_get_running_config_for_golden: device %s not in inventory", device_ip)
+            return None
+
+        pool = {}
+        lock = _threading.Lock()
+        conn   = get_persistent_connection(device, pool, lock)
+        config = run_device_command(conn, "show running-config")
+        return config if config else None
     except Exception as exc:
         logger.warning("_get_running_config_for_golden(%s): %s", device_ip, exc)
         return None
@@ -503,6 +544,10 @@ def _save_compliance_policy(policy: dict) -> None:
 
 # ---- Variable store --------------------------------------------------------
 # Per-list structured key-value store for network facts used in config templates.
+# A module-level lock prevents concurrent writers from corrupting the JSON file.
+import threading as _threading
+_variables_lock = _threading.Lock()
+
 
 def _get_variables_path() -> str:
     from modules.config import get_current_list_data_dir
@@ -510,16 +555,27 @@ def _get_variables_path() -> str:
 
 
 def _load_variables() -> dict:
-    try:
-        with open(_get_variables_path(), encoding="utf-8") as fh:
-            return json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    path = _get_variables_path()
+    with _variables_lock:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return json.load(fh)
+        except FileNotFoundError:
+            return {}
+        except json.JSONDecodeError as exc:
+            logger.warning("variables.json is corrupt (%s) — returning empty dict", exc)
+            return {}
 
 
 def _save_variables(variables: dict) -> None:
-    with open(_get_variables_path(), "w", encoding="utf-8") as fh:
-        json.dump(variables, fh, indent=2)
+    """Atomically write variables to disk — write to a temp file then rename."""
+    path = _get_variables_path()
+    tmp  = path + ".tmp"
+    with _variables_lock:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(variables, fh, indent=2)
+        os.replace(tmp, path)   # atomic on all POSIX systems and Windows Vista+
 
 
 # Per-session progress checkpoints — the last meaningful text Claude produced
@@ -722,8 +778,13 @@ def _deduplicate_playbook_index() -> int:
 def match_playbook(user_message: str) -> Optional[dict]:
     """
     Return the best-matching playbook for user_message, or None if no good match.
-    Scoring: count how many keywords appear in the lowercased user message.
-    Threshold: at least 2 keyword matches AND >= 40% keyword coverage.
+
+    Scoring: keyword overlap (at least 2 matches AND >= 40% coverage).
+
+    Device guard: if a playbook targets specific devices (has plays with hostnames),
+    at least one of those hostnames must appear in the user message as an apparent
+    target.  This prevents an old PE-1/PE-2 playbook from matching a request that
+    only mentions PE-1 as a reference point while targeting PE-3/PE-4.
     """
     index = _load_playbook_index()
     if not index:
@@ -737,9 +798,58 @@ def match_playbook(user_message: str) -> Optional[dict]:
             continue
         matches = sum(1 for kw in keywords if kw in msg_lower)
         score = matches / max(len(keywords), 1)
-        if matches >= 2 and score >= 0.4 and score > best_score:
-            best_score = score
-            best_pb = pb
+        if matches < 2 or score < 0.4 or score <= best_score:
+            continue
+
+        # Device guard: collect the hostnames this playbook actually targets
+        target_hosts = {
+            play.get("hostname", "").lower()
+            for play in pb.get("plays", [])
+            if play.get("hostname")
+        }
+        if target_hosts:
+            import re as _re
+            # Extract all device-like tokens from the message (e.g. "pe-3", "t3-isp")
+            msg_tokens = set(_re.split(r"[\s,.()\[\]/\\\"']+", msg_lower))
+            # Remove empty tokens
+            msg_tokens.discard("")
+
+            # If the message contains device-like tokens that look like hostnames but
+            # are NOT in the playbook's target list, that means the user is asking
+            # about different devices → disqualify this playbook.
+            # A token is "device-like" if it looks like a router/switch name
+            # (e.g. pe-3, t3-isp, core-1) — contains a digit and a letter/dash.
+            device_pattern = _re.compile(r'^[a-z][a-z0-9]*[-][a-z0-9]+$')
+            new_devices = {
+                tok for tok in msg_tokens
+                if device_pattern.match(tok) and tok not in target_hosts
+            }
+            # If new device names appear AND none of the playbook's targets appear
+            # as clear action targets, skip this match.
+            # Heuristic: check if any target host appears BEFORE a verb/preposition
+            # that signals it's the subject of the action (e.g. "configure pe-1",
+            # "on pe-1") vs a reference ("same as pe-1").
+            # Only true action verbs — avoids false positives from "as", "to", "for"
+            action_words = {"configure", "setup", "set", "apply", "enable",
+                            "add", "remove", "update", "push", "run", "deploy"}
+            target_is_subject = False
+            for host in target_hosts:
+                # Find the host in the message, check surrounding context
+                for m in _re.finditer(_re.escape(host), msg_lower):
+                    start = m.start()
+                    # Grab the 3 words immediately before this host mention
+                    before = msg_lower[:start].split()[-3:]
+                    if any(w in action_words for w in before):
+                        target_is_subject = True
+                        break
+                if target_is_subject:
+                    break
+
+            if new_devices and not target_is_subject:
+                continue  # User is talking about different devices
+
+        best_score = score
+        best_pb = pb
     return best_pb
 
 
@@ -950,6 +1060,19 @@ def _topology_cache_load() -> Optional[dict]:
             entry = json.load(fh)
         if time.time() - entry.get("fetched_at", 0) < _TOPOLOGY_TTL:
             return entry["topology"]
+    except Exception:
+        pass
+    return None
+
+
+def _topology_cache_load_raw() -> Optional[dict]:
+    """Load topology from disk regardless of TTL — for persistence across restarts."""
+    if not os.path.exists(_TOPOLOGY_CACHE_FILE):
+        return None
+    try:
+        with open(_TOPOLOGY_CACHE_FILE, "r", encoding="utf-8") as fh:
+            entry = json.load(fh)
+        return entry.get("topology")
     except Exception:
         pass
     return None
@@ -1183,9 +1306,13 @@ PLAYBOOK triggers:
   session (same protocol, same purpose):
     → Create a playbook automatically — do not wait to be asked
     → Name it clearly and log the id in your response
-  IF the user asks you to do something that matches an existing playbook:
+  IF the user asks you to do something that matches an existing playbook
+  (same protocol, same purpose, AND the same target devices):
     → Use the playbook (run_ansible_playbook) instead of manual SSH commands
     → Only fall back to SSH if the playbook is missing required commands for this case
+  IF the user asks to do "something similar" to a previous task but on DIFFERENT devices:
+    → Create a NEW playbook for the new devices — do NOT run the old one
+    → "Mimic", "similar to", "like the last one" means copy the structure, not reuse the same playbook
 
 PIPELINE triggers:
   IF you make a network change that has no matching Jenkins pipeline:
@@ -1216,13 +1343,16 @@ COMPLIANCE triggers:
 
 MONITORING triggers (SNMP / NetFlow):
   BEFORE generating any SNMP trap destination or NetFlow export config for devices:
-    → ALWAYS call get_collector_ip first — never hardcode or guess the collector IP
-    → If get_collector_ip returns "not set", call set_collector_ip with the correct OOB IP
+    → ALWAYS call get_monitoring_config first — never hardcode or guess the collector IP or ports
+    → If collector IP is "not set", call set_collector_ip with the correct OOB IP
     → The collector IP is THIS server's IP on the OOB management subnet
-  IF the user asks to configure SNMP or NetFlow on devices:
-    → Call get_monitoring_config to get collector IP, community strings, and ports
-    → Generate the device-specific IOS commands using those values (see snippets in get_monitoring_config output)
-    → After applying config, use snmp_get_device_summary to verify SNMP is reachable
+  IF the user asks to configure SNMP traps on devices:
+    → Call get_monitoring_config and use EXACTLY the command snippets it returns — do not modify them
+    → The trap receiver does NOT listen on default port 162 — it uses a custom udp-port; the snippet includes it
+    → CRITICAL: Always include the "snmp-server host <ip> version 2c <community> udp-port <port>" line
+    → After applying config, verify with get_snmp_traps that a trap was received
+  IF the user asks to configure NetFlow on devices:
+    → Call get_monitoring_config and use the NetFlow snippet exactly as returned
   WHEN writing SNMP configs, use the RO community for reads and traps unless the user specifies otherwise
 
 VARIABLE STORE triggers:
@@ -3966,9 +4096,22 @@ def run_chat(
                         current = run_device_command(conn, "show running-config")
                         # Strip timestamps/uptime lines that always differ
                         def _clean(text):
-                            skip = ("! Last configuration", "ntp clock-period", "! NVRAM")
+                            skip = (
+                                "! Last configuration",
+                                "! NVRAM config",
+                                "! No configuration",
+                                "! Golden config",
+                                "! Saved:",
+                                "! Source:",
+                                "Building configuration",
+                                "Current configuration",
+                                "ntp clock-period",
+                                "upgrade fpd",
+                                "version ",
+                            )
                             return [l for l in text.splitlines()
-                                    if not any(l.startswith(s) for s in skip) and l.strip()]
+                                    if l.strip() and l.strip() != "!"
+                                    and not any(l.startswith(s) for s in skip)]
                         golden_lines  = _clean(golden)
                         current_lines = _clean(current)
                         diff = list(_dl.unified_diff(
@@ -4847,10 +4990,15 @@ def run_chat(
                     f"  SNMP community (RW):  {cfg.get('snmp_community_rw', 'private')}\n"
                     f"  SNMP trap port:       {cfg.get('snmp_trap_port', 1162)}\n"
                     f"  NetFlow port:         {cfg.get('netflow_port', 9996)}\n\n"
-                    f"Device config snippets:\n"
-                    f"  SNMP traps (IOS):   snmp-server host {collector_ip} traps version 2c <community>\n"
-                    f"  NetFlow export:     ip flow-export destination {collector_ip} {cfg.get('netflow_port', 9996)}\n"
-                    f"                      ip flow-export version 9"
+                    f"Device config snippets (use EXACTLY these commands):\n"
+                    f"  SNMP traps (IOS):\n"
+                    f"    snmp-server host {collector_ip} traps version 2c {cfg.get('snmp_community_ro', 'public')}\n"
+                    f"    snmp-server enable traps\n"
+                    f"    snmp-server host {collector_ip} version 2c {cfg.get('snmp_community_ro', 'public')} udp-port {cfg.get('snmp_trap_port', 1162)}\n"
+                    f"  NOTE: The 'udp-port {cfg.get('snmp_trap_port', 1162)}' line is REQUIRED — the trap receiver does NOT listen on the default port 162.\n"
+                    f"  NetFlow export:\n"
+                    f"    ip flow-export destination {collector_ip} {cfg.get('netflow_port', 9996)}\n"
+                    f"    ip flow-export version 9"
                 )
 
             else:
@@ -4943,9 +5091,10 @@ def run_chat(
     price      = provider_info.get("price", {})
     usage_total = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
 
-    api_messages  = list(history)
-    max_iterations = 50
-    iteration      = 0
+    api_messages    = list(history)
+    max_iterations  = 50
+    iteration       = 0
+    auto_continues  = 0   # how many times we've auto-injected a "yes, continue"
 
     # Index of the current user turn in api_messages.  This message must
     # always appear in the trimmed window — otherwise Claude loses the task
@@ -4982,6 +5131,9 @@ def run_chat(
             # No global _compress_history on trimmed — current-session results
             # are kept intact. Only prior context is compressed (done above).
             trimmed = _sanitize_for_api(trimmed)
+            # Ensure no tool_use block is ever sent without a matching tool_result
+            # (can happen after trimming or if max_tokens truncated a prior turn).
+            trimmed = _sanitize_trailing_tool_use(trimmed)
 
             # Re-inject device/topology context prefix into the current user
             # turn (always session_msgs[0] = api_messages[_session_start_idx]).
@@ -5122,11 +5274,32 @@ def run_chat(
                 )
 
             if stop_reason == "max_tokens":
-                # Claude hit the output token limit mid-response.  The tool
-                # calls it intended to make were truncated.  Inject a short
-                # user nudge so the next iteration continues the task rather
-                # than starting fresh or treating this as done.
+                # Claude hit the output token limit mid-response.
+                # If the truncated response contains tool_use blocks they can
+                # never receive matching tool_result blocks, which causes a 400
+                # from the API on the next call.  Strip those tool_use blocks
+                # from the assistant message before injecting the continuation
+                # nudge, so the conversation remains structurally valid.
                 _dbg("  !! max_tokens hit — injecting continuation nudge")
+                last_msg = api_messages[-1] if api_messages else {}
+                if (
+                    last_msg.get("role") == "assistant"
+                    and isinstance(last_msg.get("content"), list)
+                    and any(
+                        isinstance(b, dict) and b.get("type") == "tool_use"
+                        for b in last_msg["content"]
+                    )
+                ):
+                    # Remove the assistant message and re-add it without tool_use blocks
+                    api_messages.pop()
+                    clean_blocks = [
+                        b for b in last_msg["content"]
+                        if not (isinstance(b, dict) and b.get("type") == "tool_use")
+                    ]
+                    if not clean_blocks:
+                        clean_blocks = [{"type": "text", "text": "[Response truncated by token limit]"}]
+                    api_messages.append({"role": "assistant", "content": clean_blocks})
+                    _dbg("  !! stripped tool_use blocks from truncated assistant message")
                 api_messages.append({
                     "role":    "user",
                     "content": "Your previous response was cut off by the token limit. "
@@ -5136,6 +5309,22 @@ def run_chat(
                 continue   # next iteration, Claude will proceed from here
 
             if stop_reason not in ("tool_use", "tool_calls"):
+                # If Claude ended the turn by asking a confirmation question
+                # ("Should I continue?", "Shall I proceed?", etc.), automatically
+                # inject an affirmative and re-enter the loop so the user never
+                # has to type "yes" / "continue" manually.
+                if (
+                    auto_continues < _MAX_AUTO_CONTINUES
+                    and _full_text
+                    and _AUTO_CONTINUE_RE.search(_full_text[-500:])
+                ):
+                    auto_continues += 1
+                    _dbg(f"  AUTO-CONTINUE #{auto_continues} — detected confirmation-seeking phrase")
+                    api_messages.append({
+                        "role":    "user",
+                        "content": "Yes, please continue.",
+                    })
+                    continue
                 break
 
             # ---- Shared: announce + run tools ---------------------------
@@ -5224,6 +5413,14 @@ def run_chat(
 
     except Exception as exc:
         logger.error("AI agent error: %s", exc, exc_info=True)
+        # Repair the session history before saving so a future continuation
+        # doesn't send orphaned tool_use blocks to the API.
+        try:
+            repaired = _sanitize_trailing_tool_use(api_messages)
+            _chat_histories[session_id] = _compress_history(repaired)
+            _save_history_to_disk(session_id, _compress_for_disk(repaired))
+        except Exception:
+            pass
         yield {"type": "error", "content": str(exc)}
         yield {"type": "done"}
 

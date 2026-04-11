@@ -261,32 +261,34 @@
     .ai-tool-header {
       display: flex;
       align-items: center;
-      gap: .4rem;
-      padding: .4rem .65rem;
+      gap: .5rem;
+      padding: .5rem .75rem;
       cursor: pointer;
       user-select: none;
-      background: rgba(99,102,241,.08);
+      background: rgba(99,102,241,.12);
+      min-height: 2rem;
     }
     .ai-tool-header:hover {
-      background: rgba(99,102,241,.15);
+      background: rgba(99,102,241,.22);
     }
     .ai-tool-spinner {
-      width: 12px; height: 12px;
+      width: 13px; height: 13px;
       border: 2px solid var(--ai-accent);
       border-top-color: transparent;
       border-radius: 50%;
       animation: spin .7s linear infinite;
       flex-shrink: 0;
     }
-    .ai-tool-check  { color: #22c55e; flex-shrink: 0; }
-    .ai-tool-label  { flex: 1; color: #cbd5e1; font-size: .8rem; }
-    .ai-tool-toggle { color: #94a3b8; margin-left: auto; font-size: .7rem; }
+    .ai-tool-check  { color: #22c55e; flex-shrink: 0; font-size: .9rem; }
+    .ai-tool-label  { flex: 1; color: #e2e8f0; font-size: .82rem; font-weight: 500; }
+    .ai-tool-toggle { color: #94a3b8; margin-left: auto; font-size: .75rem; transition: transform .15s; }
     .ai-tool-body {
-      display: none;
-      padding: .5rem .65rem;
+      display: block;
+      padding: .5rem .75rem;
       border-top: 1px solid rgba(255,255,255,.08);
     }
-    .ai-tool-body.show { display: block; }
+    .ai-tool-body.collapsed { display: none; }
+    .ai-tool-header.collapsed-hdr .ai-tool-toggle { transform: rotate(-90deg); }
     .ai-tool-output {
       white-space: pre-wrap;
       word-break: break-word;
@@ -1112,6 +1114,65 @@
         .catch(() => alert('Delete failed'));
     };
 
+    // confirmRunPlaybook / confirmSkipPlaybook are now wired via addEventListener
+    // (data-action="run-pb" / "skip-pb") to avoid double-quote issues in onclick attributes.
+
+    // Like sendMessage but doesn't add another user bubble (used for re-sends)
+    async function _sendRaw(text, extraBody) {
+      if (busy) return;
+      busy = true;
+      setInputEnabled(false);
+      currentAssistantRow = null;
+      currentTextBuffer   = '';
+      currentToolCards    = {};
+      showThinking();
+      const [deviceContext, topologyContext] = await Promise.all([
+        getDeviceContext(),
+        getTopologyContext(),
+      ]);
+      try {
+        const resp = await fetch('/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({
+            message:          text,
+            session_id:       sessionId,
+            context_ip:       contextIp,
+            device_context:   deviceContext,
+            topology_context: topologyContext,
+          }, extraBody || {})),
+        });
+        if (!resp.ok || !resp.body) {
+          appendError('Server error: ' + resp.status);
+          hideThinking(); setInputEnabled(true); busy = false;
+          return;
+        }
+        activeReader = resp.body.getReader();
+        const reader = activeReader;
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n'); buf = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+            handleEvent(evt);
+          }
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError' && err.message !== 'cancelled') {
+          hideThinking(); setInputEnabled(true); busy = false;
+        } else {
+          hideThinking(); setInputEnabled(true); busy = false;
+        }
+      } finally {
+        activeReader = null;
+      }
+    }
+
     /* ---- Clear history ------------------------------------------------- */
     clearBtn.addEventListener('click', function () {
       fetch('/ai/clear', {
@@ -1254,15 +1315,23 @@
       const card = document.createElement('div');
       card.className = 'ai-tool-card';
       card.innerHTML =
-        '<div class="ai-tool-header" onclick="this.nextSibling.classList.toggle(\'show\')">' +
+        '<div class="ai-tool-header" id="hdr_' + safeId + '">' +
           '<div class="ai-tool-spinner" id="spin_' + safeId + '"></div>' +
           '<span class="ai-tool-check" id="check_' + safeId + '" style="display:none">✓</span>' +
           '<span class="ai-tool-label">' + escHtml(label) + '</span>' +
           '<span class="ai-tool-toggle">▾</span>' +
         '</div>' +
-        '<div class="ai-tool-body">' +
+        '<div class="ai-tool-body" id="body_' + safeId + '">' +
           '<div class="ai-tool-output" id="out_' + safeId + '">Running…</div>' +
         '</div>';
+      // Toggle open/collapsed by ID — avoids nextSibling text-node pitfall
+      const hdr = card.querySelector('#hdr_' + safeId);
+      hdr.addEventListener('click', function () {
+        const body = document.getElementById('body_' + safeId);
+        if (!body) return;
+        const isCollapsed = body.classList.toggle('collapsed');
+        hdr.classList.toggle('collapsed-hdr', isCollapsed);
+      });
       messages.insertBefore(card, thinking);
       currentToolCards[toolId] = card;
       scrollBottom();
@@ -1949,6 +2018,47 @@
           // Stash failure details — the 'done' handler will fire the AI troubleshoot
           window._pendingAnsibleFix = { name: evt.name, failed_plays: evt.failed_plays };
         }
+
+      } else if (evt.type === 'playbook_confirm') {
+        // Server found a matching playbook — ask the user before running it.
+        hideThinking();
+        const confirmCard = document.createElement('div');
+        confirmCard.className = 'ai-tool-card';
+        confirmCard.style.cssText = 'border-left-color:#f59e0b;max-width:98%';
+        // Store message/id on data attributes to avoid double-quote conflicts inside onclick
+        confirmCard.dataset.pbId      = evt.id      || '';
+        confirmCard.dataset.pbMessage = evt.message || '';
+        confirmCard.innerHTML =
+          '<div class="ai-tool-header" style="background:rgba(245,158,11,.1);cursor:default">' +
+            '<span style="font-size:.9rem">📋</span>' +
+            '<span class="ai-tool-label" style="color:#fde68a">Matching playbook found</span>' +
+          '</div>' +
+          '<div class="ai-tool-body" style="display:block">' +
+            '<div style="color:#e2e8f0;font-size:.85rem;margin-bottom:.4rem"><strong>' + escHtml(evt.name) + '</strong></div>' +
+            (evt.description ? '<div style="color:#94a3b8;font-size:.78rem;margin-bottom:.75rem">' + escHtml(evt.description) + '</div>' : '') +
+            '<div style="color:#cbd5e1;font-size:.82rem;margin-bottom:.75rem">Do you want to run this playbook, or should I proceed with your request from scratch?</div>' +
+            '<div class="d-flex gap-2">' +
+              '<button class="btn btn-warning btn-sm" data-action="run-pb">Run playbook</button>' +
+              '<button class="btn btn-outline-secondary btn-sm" data-action="skip-pb">No, continue without it</button>' +
+            '</div>' +
+          '</div>';
+        confirmCard.querySelector('[data-action="run-pb"]').addEventListener('click', function () {
+          confirmCard.querySelectorAll('button').forEach(b => b.disabled = true);
+          window.runPlaybook(confirmCard.dataset.pbId, null);
+        });
+        confirmCard.querySelector('[data-action="skip-pb"]').addEventListener('click', function () {
+          confirmCard.querySelectorAll('button').forEach(b => b.disabled = true);
+          const note = document.createElement('div');
+          note.className = 'ai-msg-row user';
+          note.innerHTML = '<div class="ai-msg-label">You</div>'
+            + '<div class="ai-msg-bubble text-muted" style="opacity:.7;font-style:italic">Skipped playbook — continuing from scratch</div>';
+          confirmCard.replaceWith(note);
+          _sendRaw(confirmCard.dataset.pbMessage, { skip_playbook_match: true });
+        });
+        messages.insertBefore(confirmCard, thinking);
+        setInputEnabled(true);
+        busy = false;
+        scrollBottom();
 
       } else if (evt.type === 'done') {
         // Finalise any pending streamed text

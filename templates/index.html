@@ -55,12 +55,6 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="compliance-tab" data-bs-toggle="tab" data-bs-target="#compliancePane"
-            type="button" role="tab" aria-controls="compliancePane" aria-selected="false">
-      Compliance
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
     <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#historyPane"
             type="button" role="tab" aria-controls="historyPane" aria-selected="false">
       History
@@ -368,44 +362,159 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="text-primary mb-0">Network Topology</h2>
-  <div class="d-flex gap-2 align-items-center">
-    <button class="btn btn-primary btn-sm" id="topoDiscoverBtn" onclick="discoverTopology()">
-      <span class="btn-text">Discover Topology</span>
-      <span class="spinner-border spinner-border-sm d-none" role="status"></span>
-    </button>
-    <button class="btn btn-outline-secondary btn-sm" onclick="resetTopologyView()" title="Reset zoom and position">
-      Reset View
-    </button>
-    <div class="form-check form-switch ms-2">
-      <input class="form-check-input" type="checkbox" id="topoPhysicsToggle" checked>
-      <label class="form-check-label" for="topoPhysicsToggle">Physics</label>
+</div>
+
+<!-- Sub-view tabs -->
+<ul class="nav nav-tabs" id="topoViewTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="topo-cdp-tab" data-bs-toggle="tab"
+            data-bs-target="#topoCdpView" type="button" role="tab">Physical (CDP)</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="topo-ospf-tab" data-bs-toggle="tab"
+            data-bs-target="#topoOspfView" type="button" role="tab">OSPF Neighbors</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="topo-bgp-tab" data-bs-toggle="tab"
+            data-bs-target="#topoBgpView" type="button" role="tab">BGP Adjacencies</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="topo-tunnel-tab" data-bs-toggle="tab"
+            data-bs-target="#topoTunnelView" type="button" role="tab">Tunnels</button>
+  </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom p-3" id="topoViewContent">
+
+  <!-- ── Physical (CDP) ─────────────────────────────────────────────────── -->
+  <div class="tab-pane fade show active" id="topoCdpView" role="tabpanel">
+    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+      <button class="btn btn-primary btn-sm" id="topoDiscoverBtn" onclick="discoverTopology()">
+        <span class="btn-text">Discover Topology</span>
+        <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('cdp')">Reset View</button>
+      <div class="dropdown" id="topoHiddenDropdown" style="display:none;">
+        <button class="btn btn-outline-warning btn-sm dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" id="topoHiddenBtn">
+          Hidden: <span id="topoHiddenCount">0</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" id="topoHiddenList" style="min-width:220px;">
+          <li><h6 class="dropdown-header">Hidden devices — click to restore</h6></li>
+        </ul>
+      </div>
+    </div>
+    <div class="mb-2">
+      <span class="badge bg-primary me-1">Managed Device</span>
+      <span class="badge bg-secondary me-1">Discovered Neighbor</span>
+      <small class="text-muted ms-2">Hover for details. Drag to rearrange. Click a node to select/hide it.</small>
+    </div>
+    <div id="topoCdpContainer" class="border rounded" style="height:620px; position:relative;">
+      <div id="topoCdpPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+        <p class="mb-2" style="font-size:1.1rem;">Click <strong>Discover Topology</strong> to scan your network</p>
+        <p class="small">Uses CDP neighbor data and interface IPs from all online devices</p>
+      </div>
+    </div>
+    <div id="topoDetailsPanel" class="card mt-3" style="display:none;">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong id="topoDetailTitle">Device Details</strong>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-warning btn-sm" onclick="hideSelectedNode()">Hide Device</button>
+          <button class="btn-close btn-sm" onclick="document.getElementById('topoDetailsPanel').style.display='none'"></button>
+        </div>
+      </div>
+      <div class="card-body" id="topoDetailBody"></div>
     </div>
   </div>
-</div>
 
-<!-- Topology legend -->
-<div class="mb-2">
-  <span class="badge bg-primary me-1">Managed Device</span>
-  <span class="badge bg-secondary me-1">Discovered Neighbor</span>
-  <small class="text-muted ms-2">Hover over nodes and links for details. Click and drag to rearrange.</small>
-</div>
-
-<!-- Topology canvas -->
-<div id="topologyContainer" class="border rounded" style="height: 650px; position: relative;">
-  <div id="topoPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
-    <p class="mb-2" style="font-size: 1.2rem;">Click <strong>Discover Topology</strong> to scan your network</p>
-    <p class="small">Uses CDP neighbor data and interface IPs from all online devices</p>
+  <!-- ── OSPF Neighbors ─────────────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="topoOspfView" role="tabpanel">
+    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+      <button class="btn btn-primary btn-sm" id="topoOspfBtn" onclick="discoverProtoTopology('ospf', this)">
+        <span class="btn-text">Discover OSPF</span>
+        <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('ospf')">Reset View</button>
+    </div>
+    <div class="mb-2">
+      <span class="badge me-1" style="background:#198754;color:#fff">FULL</span>
+      <span class="badge me-1" style="background:#dc3545;color:#fff">Not FULL</span>
+      <span class="badge bg-secondary me-1">Unknown Router-ID</span>
+      <small class="text-muted ms-2">Runs <code>show ip ospf neighbor</code> on all online devices.</small>
+    </div>
+    <div id="topoOspfContainer" class="border rounded" style="height:620px; position:relative;">
+      <div id="topoOspfPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+        <p class="mb-2" style="font-size:1.1rem;">Click <strong>Discover OSPF</strong> to map adjacencies</p>
+      </div>
+    </div>
+    <div id="topoOspfDetails" class="card mt-3" style="display:none;">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong id="topoOspfDetailTitle">OSPF Router</strong>
+        <button class="btn-close btn-sm" onclick="document.getElementById('topoOspfDetails').style.display='none'"></button>
+      </div>
+      <div class="card-body" id="topoOspfDetailBody"></div>
+    </div>
   </div>
-</div>
 
-<!-- Topology details panel (shown when a node is selected) -->
-<div id="topoDetailsPanel" class="card mt-3" style="display: none;">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <strong id="topoDetailTitle">Device Details</strong>
-    <button class="btn-close btn-sm" onclick="document.getElementById('topoDetailsPanel').style.display='none'"></button>
+  <!-- ── BGP Adjacencies ────────────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="topoBgpView" role="tabpanel">
+    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+      <button class="btn btn-primary btn-sm" id="topoBgpBtn" onclick="discoverProtoTopology('bgp', this)">
+        <span class="btn-text">Discover BGP</span>
+        <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('bgp')">Reset View</button>
+    </div>
+    <div class="mb-2">
+      <span class="badge bg-primary me-1">Managed Router</span>
+      <span class="badge me-1" style="background:#6f42c1;color:#fff">External AS</span>
+      <span class="badge me-1" style="background:#198754;color:#fff">Established</span>
+      <span class="badge me-1" style="background:#dc3545;color:#fff">Not Established</span>
+      <small class="text-muted ms-2">Runs <code>show ip bgp summary</code> on all online devices.</small>
+    </div>
+    <div id="topoBgpContainer" class="border rounded" style="height:620px; position:relative;">
+      <div id="topoBgpPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+        <p class="mb-2" style="font-size:1.1rem;">Click <strong>Discover BGP</strong> to map BGP sessions</p>
+      </div>
+    </div>
+    <div id="topoBgpDetails" class="card mt-3" style="display:none;">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong id="topoBgpDetailTitle">BGP Peer</strong>
+        <button class="btn-close btn-sm" onclick="document.getElementById('topoBgpDetails').style.display='none'"></button>
+      </div>
+      <div class="card-body" id="topoBgpDetailBody"></div>
+    </div>
   </div>
-  <div class="card-body" id="topoDetailBody"></div>
-</div>
+
+  <!-- ── Tunnels ────────────────────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="topoTunnelView" role="tabpanel">
+    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+      <button class="btn btn-primary btn-sm" id="topoTunnelBtn" onclick="discoverProtoTopology('tunnel', this)">
+        <span class="btn-text">Discover Tunnels</span>
+        <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('tunnel')">Reset View</button>
+    </div>
+    <div class="mb-2">
+      <span class="badge bg-primary me-1">Managed Router</span>
+      <span class="badge bg-secondary me-1">Unknown Endpoint</span>
+      <small class="text-muted ms-2">Reads tunnel interface config from all online devices (GRE / IPSEC / DMVPN).</small>
+    </div>
+    <div id="topoTunnelContainer" class="border rounded" style="height:620px; position:relative;">
+      <div id="topoTunnelPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+        <p class="mb-2" style="font-size:1.1rem;">Click <strong>Discover Tunnels</strong> to map tunnel connections</p>
+      </div>
+    </div>
+    <div id="topoTunnelDetails" class="card mt-3" style="display:none;">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong id="topoTunnelDetailTitle">Tunnel Endpoint</strong>
+        <button class="btn-close btn-sm" onclick="document.getElementById('topoTunnelDetails').style.display='none'"></button>
+      </div>
+      <div class="card-body" id="topoTunnelDetailBody"></div>
+    </div>
+  </div>
+
+</div><!-- end topoViewContent -->
 
 </div><!-- end Topology tab pane -->
 
@@ -475,23 +584,6 @@
 </div><!-- end Jenkins tab pane -->
 
 <!-- ================================================================== -->
-<!-- COMPLIANCE TAB -->
-<!-- ================================================================== -->
-<div class="tab-pane fade" id="compliancePane" role="tabpanel" aria-labelledby="compliance-tab">
-
-<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-  <h2 class="text-primary mb-0 me-auto">Compliance</h2>
-  <button class="btn btn-outline-secondary btn-sm" onclick="loadComplianceTab()">Refresh</button>
-  <button class="btn btn-primary btn-sm" id="runComplianceBtn" onclick="runComplianceCheck()">
-    <span class="btn-text">Run Check</span>
-    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
-  </button>
-</div>
-
-<div id="compliancePolicyPanel" class="mb-3"></div>
-<div id="complianceResultsPanel"></div>
-
-</div><!-- end Compliance tab pane -->
 
 <!-- ================================================================== -->
 <!-- HISTORY TAB -->
@@ -570,6 +662,27 @@
   Jenkins failures, missing golden configs, and config drift are handled automatically.
 </p>
 
+<!-- Agent Timer Configuration -->
+<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body">
+    <div class="d-flex align-items-center mb-3">
+      <h6 class="text-primary mb-0 me-auto">Automation Timing</h6>
+      <button class="btn btn-outline-secondary btn-sm" onclick="loadAgentTimers()">Reset</button>
+    </div>
+    <p class="text-muted small mb-3">
+      Adjust how often the background agent performs each automated check.
+      Changes take effect immediately without restarting the server.
+    </p>
+    <div id="agentTimersPanel">
+      <div class="text-muted small">Loading…</div>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+      <button class="btn btn-primary btn-sm" onclick="saveAgentTimers()">Save Timers</button>
+      <span id="agentTimersSaveStatus" class="text-muted small align-self-center"></span>
+    </div>
+  </div>
+</div>
+
 <!-- Manual task trigger -->
 <div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
   <div class="card-body">
@@ -595,6 +708,7 @@
   <h2 class="text-primary mb-0 me-auto">Pending Approvals</h2>
   <label class="form-check-label text-muted small me-1" for="approvalsShowAll">Show resolved</label>
   <input class="form-check-input me-2" type="checkbox" id="approvalsShowAll" onchange="loadApprovalsTab()">
+  <button id="approveAllBtn" class="btn btn-success btn-sm" onclick="approveAll()" style="display:none">Approve All</button>
   <button class="btn btn-outline-secondary btn-sm" onclick="loadApprovalsTab()">Refresh</button>
 </div>
 
@@ -1555,250 +1669,445 @@ document.addEventListener("DOMContentLoaded", () => {
 <!-- Topology Visualization Script -->
 <!-- ================================================================== -->
 <script>
-let topoNetwork = null;  // vis.js Network instance
-let topoData = null;     // raw topology data from server
+// ── State per view ────────────────────────────────────────────────────────
+const _topoNetworks   = { cdp: null, ospf: null, bgp: null, tunnel: null };
+const _topoData       = { cdp: null, ospf: null, bgp: null, tunnel: null };
+const _topoPositions  = { cdp: {},   ospf: {},   bgp: {},   tunnel: {} };
+let   _topoHidden     = new Set();   // CDP only — hidden node set
+let   _selectedNodeId = null;
+let   _topoSaveTimer  = null;
+let   _protoLoaded    = false;       // have we fetched protocol state this session?
 
-// Discover topology from all online devices
+// ── Helpers ───────────────────────────────────────────────────────────────
+const _isDark = () => document.documentElement.getAttribute('data-bs-theme') === 'dark';
+
+function _fontColor()      { return _isDark() ? '#dee2e6' : '#333333'; }
+function _edgeColor()      { return _isDark() ? '#6c757d' : '#888888'; }
+function _edgeLabelColor() { return _isDark() ? '#adb5bd' : '#555555'; }
+function _strokeColor()    { return _isDark() ? '#212529' : '#ffffff'; }
+
+function _containerFor(view) { return document.getElementById(`topo${_cap(view)}Container`); }
+function _placeholderFor(v)  { return document.getElementById(`topo${_cap(v)}Placeholder`); }
+function _cap(s)             { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// ── CDP position persistence ──────────────────────────────────────────────
+function saveTopoPositions() {
+  clearTimeout(_topoSaveTimer);
+  _topoSaveTimer = setTimeout(() => {
+    const net = _topoNetworks.cdp;
+    if (!net) return;
+    const pos = net.getPositions();
+    fetch('/topology/positions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ positions: pos })
+    }).catch(() => {});
+    _topoPositions.cdp = pos;
+  }, 800);
+}
+
+function saveProtoPositions(view) {
+  const net = _topoNetworks[view];
+  if (!net) return;
+  const pos = net.getPositions();
+  fetch('/topology/proto_positions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ view, positions: pos })
+  }).catch(() => {});
+  _topoPositions[view] = pos;
+}
+
+function saveHiddenNodes() {
+  fetch('/topology/hidden', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hidden: Array.from(_topoHidden) })
+  }).catch(() => {});
+}
+
+// ── Hidden-node UI (CDP only) ─────────────────────────────────────────────
+function updateHiddenUI() {
+  const dropdown = document.getElementById('topoHiddenDropdown');
+  const countEl  = document.getElementById('topoHiddenCount');
+  const listEl   = document.getElementById('topoHiddenList');
+  if (!dropdown) return;
+  countEl.textContent = _topoHidden.size;
+  dropdown.style.display = _topoHidden.size > 0 ? '' : 'none';
+  listEl.innerHTML = '<li><h6 class="dropdown-header">Hidden devices — click to restore</h6></li>';
+  _topoHidden.forEach(id => {
+    const label = _topoData.cdp ? (_topoData.cdp.nodes.find(n => n.id === id)?.label || id) : id;
+    const li = document.createElement('li');
+    li.innerHTML = `<button class="dropdown-item" onclick="restoreNode('${id}')">&#8635; ${label}</button>`;
+    listEl.appendChild(li);
+  });
+}
+
+window.hideSelectedNode = function() {
+  if (!_selectedNodeId || !_topoData.cdp) return;
+  _topoHidden.add(_selectedNodeId);
+  saveHiddenNodes();
+  document.getElementById('topoDetailsPanel').style.display = 'none';
+  renderCdpTopology(_topoData.cdp, _topoPositions.cdp);
+};
+
+window.restoreNode = function(id) {
+  _topoHidden.delete(id);
+  saveHiddenNodes();
+  if (_topoData.cdp) renderCdpTopology(_topoData.cdp, _topoPositions.cdp);
+  updateHiddenUI();
+};
+
+// ── Load saved state on tab open ──────────────────────────────────────────
+function loadSavedTopology() {
+  if (_topoNetworks.cdp) return;
+  fetch('/topology/state')
+    .then(r => r.json())
+    .then(data => {
+      if (data.topology && data.topology.nodes && data.topology.nodes.length > 0) {
+        _topoData.cdp = data.topology;
+        _topoPositions.cdp = data.positions || {};
+        _topoHidden = new Set(data.hidden || []);
+        renderCdpTopology(data.topology, _topoPositions.cdp);
+      } else {
+        // No saved topology — auto-discover immediately
+        discoverTopology();
+      }
+    }).catch(() => {
+      // On error also try to discover
+      discoverTopology();
+    });
+}
+
+function loadSavedProtoTopology() {
+  if (_protoLoaded) return;
+  _protoLoaded = true;
+  fetch('/topology/protocol_state')
+    .then(r => r.json())
+    .then(data => {
+      const positions = data.positions || {};
+      ['ospf', 'bgp', 'tunnel'].forEach(v => {
+        const topo = data[v];
+        if (topo && topo.nodes && topo.nodes.length > 0) {
+          _topoData[v]      = topo;
+          _topoPositions[v] = positions[v] || {};
+        }
+      });
+    }).catch(() => {});
+}
+
+// ── CDP Discovery ─────────────────────────────────────────────────────────
 window.discoverTopology = function() {
   const btn = document.getElementById('topoDiscoverBtn');
   const btnText = btn.querySelector('.btn-text');
   const spinner = btn.querySelector('.spinner-border');
-
   btnText.textContent = 'Discovering...';
   spinner.classList.remove('d-none');
   btn.disabled = true;
 
   fetch('/topology_data')
-    .then(resp => resp.json())
+    .then(r => r.json())
     .then(data => {
       btnText.textContent = 'Discover Topology';
       spinner.classList.add('d-none');
       btn.disabled = false;
-
       if (data.status === 'success') {
-        topoData = data.topology;
-        renderTopology(data.topology);
-
-        const nodeCount = data.topology.nodes.length;
-        const edgeCount = data.topology.edges.length;
-        if (nodeCount === 0) {
+        _topoData.cdp = data.topology;
+        _topoPositions.cdp = {};   // fresh layout
+        renderCdpTopology(data.topology, {});
+        const n = data.topology.nodes.length, e = data.topology.edges.length;
+        if (n === 0)
           showToast('No topology data found. Ensure devices are online and CDP is enabled.', 'warning');
-        } else {
-          showToast(`Topology discovered: ${nodeCount} node(s), ${edgeCount} link(s)`, 'success');
-        }
+        else
+          showToast(`Topology discovered: ${n} node(s), ${e} link(s)`, 'success');
       } else {
         showToast(data.message || 'Topology discovery failed', 'danger');
       }
     })
-    .catch(err => {
+    .catch(() => {
       btnText.textContent = 'Discover Topology';
       spinner.classList.add('d-none');
       btn.disabled = false;
-      console.error('Topology discovery failed:', err);
       showToast('Failed to discover topology', 'danger');
     });
 };
 
-// Render the topology graph using vis.js
-function renderTopology(topology) {
-  const container = document.getElementById('topologyContainer');
-  const placeholder = document.getElementById('topoPlaceholder');
+// ── Protocol Discovery (OSPF / BGP / Tunnel) ──────────────────────────────
+window.discoverProtoTopology = function(view, btn) {
+  const btnText = btn.querySelector('.btn-text');
+  const spinner = btn.querySelector('.spinner-border');
+  btnText.textContent = 'Discovering...';
+  spinner.classList.remove('d-none');
+  btn.disabled = true;
 
-  // Hide placeholder
+  fetch('/topology/protocol_data')
+    .then(r => r.json())
+    .then(data => {
+      btnText.textContent = `Discover ${_cap(view)}`;
+      spinner.classList.add('d-none');
+      btn.disabled = false;
+      if (data.status !== 'success') {
+        showToast(data.message || 'Discovery failed', 'danger');
+        return;
+      }
+      ['ospf', 'bgp', 'tunnel'].forEach(v => {
+        if (data[v]) {
+          _topoData[v]      = data[v];
+          _topoPositions[v] = {};
+        }
+      });
+      renderProtoTopology(view, _topoData[view], _topoPositions[view]);
+      const n = data[view]?.nodes?.length ?? 0;
+      const e = data[view]?.edges?.length ?? 0;
+      showToast(`${_cap(view)} topology: ${n} node(s), ${e} link(s)`, n > 0 ? 'success' : 'warning');
+    })
+    .catch(() => {
+      btnText.textContent = `Discover ${_cap(view)}`;
+      spinner.classList.add('d-none');
+      btn.disabled = false;
+      showToast('Discovery failed', 'danger');
+    });
+};
+
+// ── Reset view ────────────────────────────────────────────────────────────
+window.resetTopoView = function(view) {
+  const net = _topoNetworks[view];
+  if (net) net.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+};
+
+// ── Shared vis.js helpers ─────────────────────────────────────────────────
+function _makeVisNode(node, savedPos, opts = {}) {
+  const pos = savedPos[node.id];
+  const obj = {
+    id:    node.id,
+    label: node.label,
+    title: node.title,
+    shape: 'image',
+    image: opts.image || 'https://img.icons8.com/color/48/router.png',
+    size:  opts.size  || 30,
+    font:  { size: 13, color: _fontColor(), bold: { color: _fontColor() } },
+    borderWidth: opts.borderWidth || 2,
+    color: opts.color || {
+      border:    '#0d6efd',
+      background:'#cfe2ff',
+      highlight: { border: '#0a58ca', background: '#9ec5fe' }
+    },
+    shadow: true,
+  };
+  if (pos) { obj.x = pos.x; obj.y = pos.y; obj.fixed = false; }
+  return obj;
+}
+
+function _makeVisNetwork(container, nodes, edges) {
+  return new vis.Network(container, { nodes, edges }, {
+    nodes:  { shapeProperties: { useImageSize: false, useBorderWithImage: true, interpolation: false } },
+    edges:  { smooth: { type: 'continuous' } },
+    physics: { enabled: false },
+    interaction: { hover: true, tooltipDelay: 200, navigationButtons: true, keyboard: true, zoomView: true },
+    layout:  { improvedLayout: true }
+  });
+}
+
+// ── CDP Render ────────────────────────────────────────────────────────────
+function renderCdpTopology(topology, savedPositions) {
+  savedPositions = savedPositions || {};
+  const container   = document.getElementById('topoCdpContainer');
+  const placeholder = document.getElementById('topoCdpPlaceholder');
   if (placeholder) placeholder.style.display = 'none';
 
-  // Determine if we are in dark mode
-  const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-  const fontColor = isDark ? '#dee2e6' : '#333333';
-  const edgeColor = isDark ? '#6c757d' : '#888888';
-  const edgeLabelColor = isDark ? '#adb5bd' : '#555555';
+  const visibleNodes   = topology.nodes.filter(n => !_topoHidden.has(n.id));
+  const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+  const visibleEdges   = topology.edges.filter(e => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
+  updateHiddenUI();
 
-  // Build vis.js nodes
-  const nodes = new vis.DataSet(topology.nodes.map(node => {
+  const nodes = new vis.DataSet(visibleNodes.map(node => {
     const isManaged = node.type === 'managed';
-    return {
-      id: node.id,
-      label: node.label,
-      title: node.title,
-      shape: 'image',
-      image: isManaged
-        ? 'https://img.icons8.com/color/48/router.png'
-        : 'https://img.icons8.com/color/48/switch.png',
-      size: isManaged ? 35 : 28,
-      font: {
-        size: 14,
-        color: fontColor,
-        bold: { color: fontColor }
-      },
+    return _makeVisNode(node, savedPositions, {
+      image:       isManaged ? 'https://img.icons8.com/color/48/router.png' : 'https://img.icons8.com/color/48/switch.png',
+      size:        isManaged ? 35 : 28,
       borderWidth: isManaged ? 3 : 2,
       color: {
-        border: isManaged ? '#0d6efd' : '#6c757d',
-        background: isManaged ? '#cfe2ff' : '#e2e3e5',
-        highlight: {
-          border: isManaged ? '#0a58ca' : '#495057',
-          background: isManaged ? '#9ec5fe' : '#c4c5c7'
-        }
-      },
-      shadow: true
-    };
+        border:    isManaged ? '#0d6efd' : '#6c757d',
+        background:isManaged ? '#cfe2ff' : '#e2e3e5',
+        highlight: { border: isManaged ? '#0a58ca' : '#495057', background: isManaged ? '#9ec5fe' : '#c4c5c7' }
+      }
+    });
   }));
 
-  // Build vis.js edges
-  const edges = new vis.DataSet(topology.edges.map((edge, idx) => {
-    // Build a label showing interfaces on each end
-    let label = '';
-    if (edge.from_label && edge.to_label) {
-      label = edge.from_label + '  \u2194  ' + edge.to_label;
-    }
+  const edges = new vis.DataSet(visibleEdges.map((edge, idx) => ({
+    id:    idx,
+    from:  edge.from,
+    to:    edge.to,
+    label: (edge.from_label && edge.to_label) ? `${edge.from_label}  \u2194  ${edge.to_label}` : '',
+    title: edge.title || '',
+    font:  { size: 10, color: _edgeLabelColor(), strokeWidth: 3, strokeColor: _strokeColor(), align: 'middle', multi: true },
+    color: { color: _edgeColor(), highlight: '#0d6efd' },
+    width: 2,
+    smooth: { type: 'continuous' },
+  })));
 
-    // Show IPs in the title tooltip
-    let title = edge.title || '';
-    if (edge.local_ip || edge.remote_ip) {
-      const parts = [];
-      if (edge.local_ip) parts.push(edge.local_ip);
-      if (edge.remote_ip) parts.push(edge.remote_ip);
-      if (!title) title = parts.join(' <-> ');
-    }
+  if (_topoNetworks.cdp) _topoNetworks.cdp.destroy();
+  const net = _makeVisNetwork(container, nodes, edges);
+  _topoNetworks.cdp = net;
 
-    return {
-      id: idx,
-      from: edge.from,
-      to: edge.to,
-      label: label,
-      title: title,
-      font: {
-        size: 10,
-        color: edgeLabelColor,
-        strokeWidth: 3,
-        strokeColor: isDark ? '#212529' : '#ffffff',
-        align: 'middle',
-        multi: true
-      },
-      color: {
-        color: edgeColor,
-        highlight: '#0d6efd'
-      },
-      width: 2,
-      smooth: {
-        type: 'continuous'
-      },
-      shadow: false
-    };
-  }));
-
-  // vis.js options
-  const options = {
-    nodes: {
-      shapeProperties: {
-        useImageSize: false,
-        useBorderWithImage: true,
-        interpolation: false
-      }
-    },
-    edges: {
-      smooth: {
-        type: 'continuous'
-      }
-    },
-    physics: {
-      enabled: document.getElementById('topoPhysicsToggle').checked,
-      solver: 'forceAtlas2Based',
-      forceAtlas2Based: {
-        gravitationalConstant: -80,
-        centralGravity: 0.01,
-        springLength: 200,
-        springConstant: 0.08,
-        damping: 0.4
-      },
-      stabilization: {
-        enabled: true,
-        iterations: 200,
-        fit: true
-      }
-    },
-    interaction: {
-      hover: true,
-      tooltipDelay: 200,
-      navigationButtons: true,
-      keyboard: true,
-      zoomView: true
-    },
-    layout: {
-      improvedLayout: true
-    }
-  };
-
-  // Create or update the network
-  if (topoNetwork) {
-    topoNetwork.destroy();
-  }
-
-  topoNetwork = new vis.Network(container, { nodes, edges }, options);
-
-  // Click handler to show node details
-  topoNetwork.on('click', function(params) {
+  net.on('click', params => {
     const panel = document.getElementById('topoDetailsPanel');
     const titleEl = document.getElementById('topoDetailTitle');
-    const bodyEl = document.getElementById('topoDetailBody');
-
+    const bodyEl  = document.getElementById('topoDetailBody');
     if (params.nodes.length > 0) {
       const nodeId = params.nodes[0];
+      _selectedNodeId = nodeId;
       const node = topology.nodes.find(n => n.id === nodeId);
       if (node) {
         titleEl.textContent = node.label;
-        bodyEl.innerHTML = node.title;
-
-        // Show connected links
+        bodyEl.innerHTML    = node.title;
         const connEdges = topology.edges.filter(e => e.from === nodeId || e.to === nodeId);
-        if (connEdges.length > 0) {
-          let linksHtml = '<hr><strong>Connected Links:</strong><ul class="mb-0 mt-1">';
+        if (connEdges.length) {
+          let html = '<hr><strong>Connected Links:</strong><ul class="mb-0 mt-1">';
           connEdges.forEach(e => {
-            const peerName = (e.from === nodeId)
-              ? topology.nodes.find(n => n.id === e.to)?.label || e.to
-              : topology.nodes.find(n => n.id === e.from)?.label || e.from;
-            const localIntf = (e.from === nodeId) ? e.from_label : e.to_label;
-            const remoteIntf = (e.from === nodeId) ? e.to_label : e.from_label;
-            linksHtml += `<li>${localIntf} &harr; ${peerName} (${remoteIntf})`;
-            if (e.local_ip || e.remote_ip) {
-              const ips = [e.local_ip, e.remote_ip].filter(Boolean).join(', ');
-              linksHtml += ` <span class="text-muted">[${ips}]</span>`;
-            }
-            linksHtml += '</li>';
+            const peer      = e.from === nodeId ? topology.nodes.find(n => n.id === e.to)?.label || e.to : topology.nodes.find(n => n.id === e.from)?.label || e.from;
+            const localIntf = e.from === nodeId ? e.from_label : e.to_label;
+            const remIntf   = e.from === nodeId ? e.to_label   : e.from_label;
+            html += `<li>${localIntf} &harr; ${peer} (${remIntf})`;
+            const ips = [e.local_ip, e.remote_ip].filter(Boolean).join(', ');
+            if (ips) html += ` <span class="text-muted">[${ips}]</span>`;
+            html += '</li>';
           });
-          linksHtml += '</ul>';
-          bodyEl.innerHTML += linksHtml;
+          html += '</ul>';
+          bodyEl.innerHTML += html;
         }
-
         panel.style.display = 'block';
       }
+    } else {
+      _selectedNodeId = null;
+      panel.style.display = 'none';
+    }
+  });
+  net.on('dragEnd', p => { if (p.nodes?.length) saveTopoPositions(); });
+  setTimeout(() => net.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } }), 150);
+}
+
+// ── Protocol Render (OSPF / BGP / Tunnel) ─────────────────────────────────
+function renderProtoTopology(view, topology, savedPositions) {
+  if (!topology || !topology.nodes) return;
+  savedPositions = savedPositions || {};
+  const container   = _containerFor(view);
+  const placeholder = _placeholderFor(view);
+  if (placeholder) placeholder.style.display = 'none';
+
+  // Build nodes
+  const nodes = new vis.DataSet(topology.nodes.map(node => {
+    const isManaged  = node.type === 'managed';
+    const isExternal = node.type === 'external';
+    let color;
+    if (view === 'bgp' && isExternal)
+      color = { border: '#6f42c1', background: '#e2d9f3', highlight: { border: '#59359a', background: '#cdb8f5' } };
+    else if (isManaged)
+      color = { border: '#0d6efd', background: '#cfe2ff', highlight: { border: '#0a58ca', background: '#9ec5fe' } };
+    else
+      color = { border: '#6c757d', background: '#e2e3e5', highlight: { border: '#495057', background: '#c4c5c7' } };
+    return _makeVisNode(node, savedPositions, {
+      image: isManaged ? 'https://img.icons8.com/color/48/router.png' : 'https://img.icons8.com/color/48/switch.png',
+      size:  isManaged ? 35 : 28,
+      borderWidth: isManaged ? 3 : 2,
+      color,
+    });
+  }));
+
+  // Build edges with color by state
+  const edges = new vis.DataSet(topology.edges.map((edge, idx) => {
+    let edgeColor = _edgeColor();
+    let label = '';
+    if (view === 'ospf') {
+      edgeColor = edge.established ? '#198754' : '#dc3545';
+      // Show area on the line; state in tooltip
+      const area = edge.area !== '' && edge.area !== undefined ? `Area ${edge.area}` : '';
+      const state = edge.state || '';
+      label = [area, state].filter(Boolean).join('\n');
+    } else if (view === 'bgp') {
+      edgeColor = edge.established ? '#198754' : '#dc3545';
+      // Always show both AS numbers; show state underneath when not established
+      const asLabel = `AS${edge.local_as} ↔ AS${edge.remote_as}`;
+      label = edge.established ? asLabel : `${asLabel}\n${edge.state}`;
+    } else if (view === 'tunnel') {
+      edgeColor = '#fd7e14';
+      label     = edge.tunnel || '';
+    }
+    return {
+      id:    idx,
+      from:  edge.from,
+      to:    edge.to,
+      label,
+      title: edge.title || '',
+      font:  { size: 10, color: _edgeLabelColor(), strokeWidth: 3, strokeColor: _strokeColor(), align: 'middle', multi: true },
+      color: { color: edgeColor, highlight: '#0d6efd' },
+      width: 2,
+      smooth: { type: 'continuous' },
+    };
+  }));
+
+  if (_topoNetworks[view]) _topoNetworks[view].destroy();
+  const net = _makeVisNetwork(container, nodes, edges);
+  _topoNetworks[view] = net;
+
+  // Details panels per view
+  const detailPanelId = `topo${_cap(view)}Details`;
+  const detailTitleId = `topo${_cap(view)}DetailTitle`;
+  const detailBodyId  = `topo${_cap(view)}DetailBody`;
+
+  net.on('click', params => {
+    const panel  = document.getElementById(detailPanelId);
+    const titleEl= document.getElementById(detailTitleId);
+    const bodyEl = document.getElementById(detailBodyId);
+    if (!panel) return;
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const node   = topology.nodes.find(n => n.id === nodeId);
+      if (!node) return;
+      titleEl.textContent = node.label;
+      bodyEl.innerHTML    = node.title || `<b>${node.label}</b>`;
+      // Connected edges
+      const connEdges = topology.edges.filter(e => e.from === nodeId || e.to === nodeId);
+      if (connEdges.length) {
+        let html = '<hr><strong>Connections:</strong><ul class="mb-0 mt-1">';
+        connEdges.forEach(e => {
+          const peer = e.from === nodeId
+            ? topology.nodes.find(n => n.id === e.to)?.label  || e.to
+            : topology.nodes.find(n => n.id === e.from)?.label || e.from;
+          html += `<li>${e.title || peer}</li>`;
+        });
+        html += '</ul>';
+        bodyEl.innerHTML += html;
+      }
+      panel.style.display = 'block';
     } else {
       panel.style.display = 'none';
     }
   });
 
-  // Stabilization done
-  topoNetwork.on('stabilizationIterationsDone', function() {
-    topoNetwork.setOptions({ physics: { stabilization: { enabled: false } } });
-  });
+  net.on('dragEnd', p => { if (p.nodes?.length) saveProtoPositions(view); });
+  setTimeout(() => net.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } }), 150);
 }
 
-// Reset topology view (fit all nodes)
-window.resetTopologyView = function() {
-  if (topoNetwork) {
-    topoNetwork.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
-  }
-};
-
-// Physics toggle
+// ── Init ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const physicsToggle = document.getElementById('topoPhysicsToggle');
-  if (physicsToggle) {
-    physicsToggle.addEventListener('change', function() {
-      if (topoNetwork) {
-        topoNetwork.setOptions({ physics: { enabled: this.checked } });
-      }
+  // Load CDP topology when the main Topology tab first opens
+  const topoTab = document.getElementById('topology-tab');
+  if (topoTab) {
+    topoTab.addEventListener('shown.bs.tab', () => {
+      loadSavedTopology();
+      loadSavedProtoTopology();
     });
   }
+
+  // When switching to a protocol sub-tab, render cached data if available
+  ['ospf', 'bgp', 'tunnel'].forEach(view => {
+    const tab = document.getElementById(`topo-${view}-tab`);
+    if (tab) {
+      tab.addEventListener('shown.bs.tab', () => {
+        if (_topoData[view] && !_topoNetworks[view]) {
+          renderProtoTopology(view, _topoData[view], _topoPositions[view]);
+        }
+      });
+    }
+  });
 });
 </script>
 
@@ -2462,7 +2771,11 @@ async function saveSchedule(job) {
     });
     const data = await r.json();
     if (data.error) { showToast(data.error, 'danger'); return; }
-    showToast(`Schedule saved: ${data.description}`, 'success');
+    if (data.warning) {
+      showToast(`⚠️ ${data.warning}`, 'warning');
+    } else {
+      showToast(`Schedule saved: ${data.description}`, 'success');
+    }
     loadJenkinsSchedules();
   } catch (err) {
     showToast('Failed to save schedule', 'danger');
@@ -2579,7 +2892,6 @@ function _enableRunBtn() {
 document.addEventListener('DOMContentLoaded', function () {
   const ansibleTabBtn    = document.getElementById('ansible-tab');
   const jenkinsTabBtn    = document.getElementById('jenkins-tab');
-  const complianceTabBtn = document.getElementById('compliance-tab');
   const historyTabBtn    = document.getElementById('history-tab');
   const variablesTabBtn  = document.getElementById('variables-tab');
   const agentTabBtn      = document.getElementById('agent-tab');
@@ -2588,7 +2900,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (ansibleTabBtn)    ansibleTabBtn.addEventListener('shown.bs.tab', loadPlaybooks);
   if (jenkinsTabBtn)    jenkinsTabBtn.addEventListener('shown.bs.tab', loadJenkinsTab);
-  if (complianceTabBtn) complianceTabBtn.addEventListener('shown.bs.tab', loadComplianceTab);
   if (historyTabBtn)    historyTabBtn.addEventListener('shown.bs.tab', loadHistoryTab);
   if (variablesTabBtn)  variablesTabBtn.addEventListener('shown.bs.tab', loadVariablesTab);
   if (agentTabBtn)      agentTabBtn.addEventListener('shown.bs.tab', loadAgentTab);
@@ -2642,72 +2953,6 @@ document.addEventListener('DOMContentLoaded', function () {
 // COMPLIANCE TAB
 // ========================================================================
 
-async function loadComplianceTab() {
-  const policyEl  = document.getElementById('compliancePolicyPanel');
-  const resultsEl = document.getElementById('complianceResultsPanel');
-  if (!policyEl) return;
-  try {
-    const r    = await fetch('/list/compliance_policy');
-    const data = await r.json();
-    const rules = data.rules || [];
-    if (rules.length === 0) {
-      policyEl.innerHTML = `<div class="text-muted small py-3">No compliance rules defined. Ask the AI to add rules with <code>update_compliance_policy</code>.</div>`;
-    } else {
-      policyEl.innerHTML = `
-        <h6 class="text-secondary mb-2">${rules.length} Rule${rules.length !== 1 ? 's' : ''}</h6>
-        <div class="list-group">
-          ${rules.map(r => `
-            <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-start"
-                 style="background:#1e293b;border-color:#334155;color:#e2e8f0">
-              <div>
-                <div class="fw-semibold">${_esc(r.description || r.id)}</div>
-                <div class="text-muted small mt-1">
-                  <code>${_esc(r.command || '')}</code> &middot;
-                  assert: <code>${_esc(r.assertion || '')}</code> &middot;
-                  devices: ${(r.device_ips || []).join(', ')}
-                </div>
-              </div>
-              <button class="btn btn-outline-danger btn-sm ms-2"
-                      onclick="deleteComplianceRule('${_esc(r.id)}')">&#x2715;</button>
-            </div>`).join('')}
-        </div>`;
-    }
-    resultsEl.innerHTML = '';
-  } catch { policyEl.innerHTML = '<div class="text-danger small">Failed to load compliance policy.</div>'; }
-}
-
-async function runComplianceCheck() {
-  const btn     = document.getElementById('runComplianceBtn');
-  const btnText = btn.querySelector('.btn-text');
-  const spinner = btn.querySelector('.spinner-border');
-  btnText.textContent = '…'; spinner.classList.remove('d-none'); btn.disabled = true;
-  const resultsEl = document.getElementById('complianceResultsPanel');
-  resultsEl.innerHTML = '<div class="text-muted small py-2"><div class="spinner-border spinner-border-sm me-2"></div>Running compliance checks…</div>';
-  try {
-    // Delegate to AI which runs the check via tool
-    if (typeof sendMessage === 'function' || typeof window.sendMessage === 'function') {
-      const fn = window.sendMessage || sendMessage;
-      const aiTab = document.getElementById('ai-tab') || document.querySelector('[data-bs-target="#ai"]');
-      if (aiTab) aiTab.click();
-      fn('Run the compliance check for this list and report the results.');
-    } else {
-      showToast('Ask the AI to run the compliance check.', 'info');
-    }
-    resultsEl.innerHTML = '<div class="text-muted small py-2">Compliance check sent to AI — see AI panel for results.</div>';
-  } finally {
-    btnText.textContent = 'Run Check'; spinner.classList.add('d-none'); btn.disabled = false;
-  }
-}
-
-async function deleteComplianceRule(id) {
-  if (!confirm(`Delete compliance rule "${id}"?`)) return;
-  await fetch('/list/compliance_policy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'delete', rule: { id } }),
-  });
-  loadComplianceTab();
-}
 
 // ========================================================================
 // HISTORY TAB
@@ -2825,25 +3070,14 @@ async function discoverNetworkFacts() {
   if (btn) btn.disabled = true;
   if (spinner) spinner.classList.remove('d-none');
   try {
-    const r = await fetch('/ai/agent_run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        task: '[AUTONOMOUS TASK] Survey the network and populate the variable store. ' +
-              'For each device, discover and store: hostname, device role (P/PE/CE/access/etc), ' +
-              'loopback0 IP address, routing protocol(s) in use (OSPF/BGP/EIGRP/static), ' +
-              'OSPF process ID and area (if applicable), BGP AS number (if applicable), ' +
-              'and any MPLS/VRF configuration. ' +
-              'Use execute_command_on_multiple_devices with commands like ' +
-              "'show version', 'show ip interface brief', 'show ip ospf', 'show ip bgp summary'. " +
-              "Store each fact with a descriptive key like 'P1_role', 'P1_loopback0', 'P1_ospf_pid'. " +
-              'After storing facts, call read_variables to confirm they were saved and log a summary with log_change.'
-      })
-    });
+    const r = await fetch('/list/variables/discover', { method: 'POST' });
+    const data = await r.json();
     if (r.ok) {
-      showToast('Network fact discovery task queued — check the Agent tab for progress', 'success');
+      showToast(data.message || 'Discovery started — refresh in ~30s', 'success');
+      // Auto-refresh the variables panel after 35 seconds
+      setTimeout(() => loadVariablesTab(), 35000);
     } else {
-      showToast('Failed to queue discovery task', 'danger');
+      showToast('Failed to start discovery', 'danger');
     }
   } catch (e) {
     showToast('Error: ' + e.message, 'danger');
@@ -2891,7 +3125,8 @@ async function loadMonitoringTab() {
         <div class="mb-2">
           <span class="text-muted small">SNMP traps (IOS):</span>
           <pre class="mb-0" style="background:#0f172a;padding:8px;border-radius:4px;font-size:12px">snmp-server host ${_esc(ip)} traps version 2c ${_esc(cfg.snmp_community_ro || 'public')}
-snmp-server enable traps</pre>
+snmp-server enable traps
+snmp-server host ${_esc(ip)} version 2c ${_esc(cfg.snmp_community_ro || 'public')} udp-port ${cfg.snmp_trap_port || 1162}</pre>
         </div>
         <div class="mb-2">
           <span class="text-muted small">NetFlow export (IOS):</span>
@@ -2984,6 +3219,94 @@ async function snmpPollDevice() {
   }
 }
 
+// Map OID prefix to short label for varbind chips
+const _OID_LABELS_JS = {
+  '1.3.6.1.2.1.2.2.1.1':   'ifIndex',
+  '1.3.6.1.2.1.2.2.1.2':   'ifDescr',
+  '1.3.6.1.2.1.2.2.1.7':   'ifAdminStatus',
+  '1.3.6.1.2.1.2.2.1.8':   'ifOperStatus',
+  '1.3.6.1.2.1.14.10.1.3': 'ospfNbrIpAddr',
+  '1.3.6.1.2.1.14.10.1.6': 'ospfNbrState',
+  '1.3.6.1.2.1.15.3.1.1':  'bgpPeerAddr',
+  '1.3.6.1.2.1.15.3.1.2':  'bgpPeerState',
+  '1.3.6.1.4.1.9.9.43.1.1.6.1.2': 'configSource',
+};
+function _shortOidLabel(oid) {
+  for (const [prefix, label] of Object.entries(_OID_LABELS_JS)) {
+    if (oid.startsWith(prefix)) {
+      const suffix = oid.slice(prefix.length);
+      return suffix ? `${label}${suffix}` : label;
+    }
+  }
+  // Fall back: last 2 components
+  const parts = oid.split('.');
+  return parts.slice(-2).join('.');
+}
+
+const _TRAP_DESCRIPTIONS = {
+  // Standard SNMPv1/v2c
+  'coldStart':                  'Device Rebooted (Cold)',
+  'warmStart':                  'Device Restarted (Warm)',
+  'linkDown':                   'Interface Down',
+  'linkUp':                     'Interface Up',
+  'authenticationFailure':      'Auth Failure',
+  'egpNeighborLoss':            'EGP Neighbor Lost',
+  // OSPF
+  'ospfNbrStateChange':         'OSPF Neighbor State Changed',
+  'ospfVirtNbrStateChange':     'OSPF Virtual Neighbor Changed',
+  'ciscoOspfNbrStateChange':    'OSPF Neighbor State Changed',
+  // BGP
+  'bgpEstablished':             'BGP Session Established',
+  'bgpBackwardTransition':      'BGP Session Down',
+  // Cisco config
+  'ciscoConfigChangeTrap':      'Config Changed',
+  'ciscoConfigSaveTrap':        'Config Saved',
+  // Cisco environment
+  'ciscoPowerSupplyFailed':     'Power Supply Failed',
+  'ciscoPowerSupplyOk':         'Power Supply Restored',
+  'ciscoFanFailed':             'Fan Failed',
+  // Cisco syslog
+  'clogMessageGenerated':       'Syslog Message',
+  // Cisco enterprise link traps
+  'ciscoLinkDown':              'Interface Down',
+  'ciscoLinkUp':                'Interface Up',
+  // Enterprise-specific fallbacks (when raw OID not looked up)
+  'enterpriseSpecific':         'Enterprise Trap',
+};
+
+function _trapDescription(trapType) {
+  if (!trapType) return 'Unknown';
+  const known = _TRAP_DESCRIPTIONS[trapType];
+  if (known) return known;
+  // Raw OID — try to identify by suffix or show shortened OID
+  if (/^[\d.]+$/.test(trapType)) {
+    // Check for known OID suffix patterns
+    if (trapType.endsWith('.3') && trapType.includes('1.1.5')) return 'Interface Down';
+    if (trapType.endsWith('.4') && trapType.includes('1.1.5')) return 'Interface Up';
+    if (trapType.endsWith('.1') && trapType.includes('1.1.5')) return 'Cold Start';
+    if (trapType.endsWith('.2') && trapType.includes('1.1.5')) return 'Warm Start';
+    // Show last 3 OID components as a short identifier
+    const parts = trapType.split('.');
+    return 'Trap …' + parts.slice(-3).join('.');
+  }
+  // Strip camelCase into words: "ospfNbrStateChange" → "Ospf Nbr State Change"
+  return trapType
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/^./, s => s.toUpperCase());
+}
+
+function _trapSeverity(trapType) {
+  const t = (trapType || '').toLowerCase();
+  if (t.includes('down') || t.includes('fail') || t.includes('cold') || t.includes('backward'))
+    return { cls: 'bg-danger' };
+  if (t.includes('up') || t.includes('established') || t.includes('ok') || t.includes('restored'))
+    return { cls: 'bg-success' };
+  if (t.includes('warm') || t.includes('auth') || t.includes('change') || t.includes('save') || t.includes('syslog'))
+    return { cls: 'bg-warning text-dark' };
+  return { cls: 'bg-secondary' };
+}
+
 async function _loadSnmpTraps() {
   try {
     const r    = await fetch('/monitoring/snmp/traps?limit=20');
@@ -2997,12 +3320,33 @@ async function _loadSnmpTraps() {
       panel.innerHTML = '<div class="text-muted small text-center py-3">No traps received yet</div>';
       return;
     }
-    panel.innerHTML = traps.map(t => `
-      <div class="border-bottom border-secondary py-1 small">
-        <span class="text-muted">${_esc(t.received_at || '')}</span>
-        <span class="text-warning ms-2">${_esc(t.source_ip || '')}</span>
-        <span class="ms-2">${_esc(t.summary || t.community || '')}</span>
-      </div>`).join('');
+    panel.innerHTML = traps.map(t => {
+      const trapType = t.trap_type || '';
+      const severity = _trapSeverity(trapType);
+      // Varbinds: prefer Python pre-humanized labels, fall back to raw OID parsing
+      let vbChips = '';
+      if (t.varbind_labels && t.varbind_labels.length) {
+        vbChips = t.varbind_labels.map(s => {
+          const eq = s.indexOf('=');
+          const lbl = eq >= 0 ? s.slice(0, eq) : s;
+          const val = eq >= 0 ? s.slice(eq + 1) : '';
+          return `<span class="badge bg-secondary me-1" style="font-weight:normal">${_esc(lbl)}=<strong>${_esc(val)}</strong></span>`;
+        }).join('');
+      } else {
+        vbChips = (t.varbinds || [])
+          .filter(([n]) => !n.includes('1.3.6.1.2.1.1.3') && !n.includes('1.3.6.1.6.3.1.1.4.1'))
+          .map(([n, v]) => `<span class="badge bg-secondary me-1" style="font-weight:normal">${_esc(_shortOidLabel(n))}=<strong>${_esc(v)}</strong></span>`)
+          .join('');
+      }
+      return `<div class="border-bottom border-secondary py-1 px-1 small">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="text-muted" style="white-space:nowrap;min-width:135px">${_esc(t.received_at || '')}</span>
+          <span class="text-warning fw-semibold" style="min-width:100px">${_esc(t.source_ip || '')}</span>
+          <span class="badge ${severity.cls}" style="min-width:110px;text-align:center">${_esc(_trapDescription(trapType))}</span>
+          ${vbChips}
+        </div>
+      </div>`;
+    }).join('');
   } catch (e) { /* silent */ }
 }
 
@@ -3092,6 +3436,7 @@ async function loadAgentTab() {
         jenkins_failure: '⚡ Jenkins failure', missing_golden_configs: '📁 Missing golden configs',
         config_drift: '🔄 Drift check', scheduled_drift_check: '🕐 Scheduled drift check',
         manual: '👤 Manual trigger',
+        snmp_trap_alert: '🚨 SNMP Trap Alert', snmp_trap: '📡 SNMP Trap',
       };
       const triggerLabel = triggerLabels[ct.trigger] || ct.trigger || 'Running';
       const elapsed = ct.elapsed_s != null ? `${ct.elapsed_s}s elapsed` : '';
@@ -3154,8 +3499,12 @@ async function loadAgentTab() {
       const toolList = (e.tools_used || []).map(t => `<span class="badge bg-secondary me-1">${_esc(t)}</span>`).join('');
       const errHtml  = (e.errors || []).length
         ? `<div class="text-danger small mt-1">${e.errors.map(_esc).join('<br>')}</div>` : '';
-      const triggerLabel = { jenkins_failure: '⚡ Jenkins failure', missing_golden_configs: '📁 Missing golden configs',
-                             config_drift: '🔄 Drift detected', manual: '👤 Manual trigger' }[e.trigger] || e.trigger;
+      const triggerLabel = {
+        jenkins_failure: '⚡ Jenkins failure', missing_golden_configs: '📁 Missing golden configs',
+        config_drift: '🔄 Drift detected', manual: '👤 Manual trigger',
+        snmp_trap_alert: '🚨 SNMP Trap Alert', snmp_trap: '📡 SNMP Trap',
+        scheduled: '🕐 Scheduled',
+      }[e.trigger] || e.trigger;
       const summary = e.summary
         ? `<div class="text-muted small mt-2" style="max-height:120px;overflow:auto;white-space:pre-wrap;font-size:0.75rem">${_esc(e.summary.slice(0, 800))}</div>` : '';
 
@@ -3182,6 +3531,8 @@ async function loadAgentTab() {
   } catch (err) {
     if (logEl) logEl.innerHTML = `<div class="text-danger small">Failed to load agent log: ${_esc(String(err))}</div>`;
   }
+  // Load timer config alongside the activity log
+  loadAgentTimers();
 }
 
 async function toggleAgentPause() {
@@ -3209,6 +3560,64 @@ async function triggerAgentTask() {
   }
 }
 
+// -----------------------------------------------------------------------
+// Agent Timer Configuration
+// -----------------------------------------------------------------------
+
+let _agentTimersData = [];
+
+async function loadAgentTimers() {
+  const panel = document.getElementById('agentTimersPanel');
+  if (!panel) return;
+  try {
+    const r = await fetch('/ai/agent_timers');
+    const j = await r.json();
+    _agentTimersData = j.timers || [];
+    panel.innerHTML = _agentTimersData.map(t => `
+      <div class="row g-2 align-items-center mb-2">
+        <div class="col-sm-3">
+          <label class="form-label text-white small mb-0" for="timer_${t.key}">${t.label}</label>
+          <div class="text-muted" style="font-size:0.72rem">${t.description}</div>
+        </div>
+        <div class="col-sm-2">
+          <div class="input-group input-group-sm">
+            <input id="timer_${t.key}" type="number" class="form-control"
+                   value="${t.value}" min="${t.min}" max="${t.max}" step="1">
+            <span class="input-group-text text-muted">${t.unit}</span>
+          </div>
+          <div class="text-muted" style="font-size:0.7rem">default: ${t.default} · range: ${t.min}–${t.max}</div>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    panel.innerHTML = `<div class="text-danger small">Failed to load timers.</div>`;
+  }
+}
+
+async function saveAgentTimers() {
+  const status = document.getElementById('agentTimersSaveStatus');
+  const payload = {};
+  for (const t of _agentTimersData) {
+    const el = document.getElementById('timer_' + t.key);
+    if (el) payload[t.key] = parseInt(el.value, 10);
+  }
+  try {
+    const r = await fetch('/ai/agent_timers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      if (status) { status.textContent = 'Saved.'; setTimeout(() => { if(status) status.textContent = ''; }, 3000); }
+      await loadAgentTimers();
+    } else {
+      if (status) status.textContent = 'Save failed.';
+    }
+  } catch(e) {
+    if (status) status.textContent = 'Error saving.';
+  }
+}
+
 // ========================================================================
 // APPROVALS TAB
 // ========================================================================
@@ -3226,6 +3635,11 @@ async function loadApprovalsTab() {
 
     _updateApprovalsBadge(data.pending_count || 0);
 
+    // Show/hide the Approve All button based on whether there are pending items
+    const approveAllBtn = document.getElementById('approveAllBtn');
+    const pendingEntries = entries.filter(e => e.status === 'pending');
+    if (approveAllBtn) approveAllBtn.style.display = pendingEntries.length > 1 ? '' : 'none';
+
     if (entries.length === 0) {
       el.innerHTML = `<div class="text-muted small py-4 text-center">
         ${showAll && showAll.checked ? 'No approvals found.' : 'No pending approvals — the agent is up to date.'}
@@ -3236,6 +3650,25 @@ async function loadApprovalsTab() {
     el.innerHTML = entries.map(e => _renderApprovalCard(e)).join('');
   } catch (err) {
     el.innerHTML = `<div class="text-danger small">Failed to load approvals: ${_esc(String(err))}</div>`;
+  }
+}
+
+async function approveAll() {
+  const btn = document.getElementById('approveAllBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+  try {
+    const r = await fetch('/ai/approvals/approve_all', { method: 'POST' });
+    const j = await r.json();
+    if (j.failed > 0) {
+      showToast(`Approved ${j.approved} — ${j.failed} failed`, 'warning');
+    } else {
+      showToast(`Approved all ${j.approved} pending action${j.approved !== 1 ? 's' : ''}`, 'success');
+    }
+    await loadApprovalsTab();
+  } catch (err) {
+    showToast('Approve all failed: ' + err, 'danger');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Approve All'; }
   }
 }
 

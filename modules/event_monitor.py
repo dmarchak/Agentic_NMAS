@@ -273,17 +273,27 @@ def _check_empty_variables() -> None:
 
 
 def _monitor_loop() -> None:
-    """Main daemon loop — polls Jenkins and checks golden configs on a schedule."""
+    """Main daemon loop — polls Jenkins and checks golden configs on a schedule.
+    Timer intervals are read from agent_timers each cycle so changes take effect
+    without restarting the server."""
     last_periodic_check = 0.0
 
     while not _stop_event.is_set():
+        try:
+            from modules.agent_timers import get as _get_timer
+            poll_interval  = _get_timer("jenkins_poll_interval")
+            event_interval = _get_timer("event_check_interval")
+        except Exception:
+            poll_interval  = _POLL_INTERVAL
+            event_interval = _DRIFT_INTERVAL
+
         try:
             _check_jenkins_results()
         except Exception as exc:
             log.debug("event_monitor: jenkins check error: %s", exc)
 
         now = time.time()
-        if now - last_periodic_check >= _DRIFT_INTERVAL:
+        if now - last_periodic_check >= event_interval:
             try:
                 _check_missing_golden_configs()
             except Exception as exc:
@@ -294,6 +304,6 @@ def _monitor_loop() -> None:
                 log.debug("event_monitor: empty variables check error: %s", exc)
             last_periodic_check = now
 
-        _stop_event.wait(timeout=_POLL_INTERVAL)
+        _stop_event.wait(timeout=poll_interval)
 
     log.info("event_monitor: stopped")

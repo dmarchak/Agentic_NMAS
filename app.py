@@ -25,6 +25,7 @@ from flask import (
 from flask_socketio import SocketIO, join_room, leave_room # for WebSocket support
 import threading # for thread-safe connection pool
 import os # for os operations
+import json # for JSON serialization
 import uuid # for generating unique operation IDs
 import time # for sleep
 import webbrowser # to open browser on start
@@ -1601,11 +1602,184 @@ def topology_data():
             max_workers=5
         )
 
+        # Persist so the diagram survives server restarts
+        _ai._topology_cache_save(topology)
+
         return jsonify({"status": "success", "topology": topology})
 
     except Exception as e:
         app.logger.error(f"Topology discovery failed: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+_TOPOLOGY_POSITIONS_FILE = os.path.join(
+    os.path.dirname(__file__), "data", "topology_positions.json"
+)
+
+
+def _load_topo_layout() -> dict:
+    """Load persisted topology layout (positions + hidden list)."""
+    try:
+        if os.path.exists(_TOPOLOGY_POSITIONS_FILE):
+            with open(_TOPOLOGY_POSITIONS_FILE, encoding="utf-8") as fh:
+                return json.load(fh)
+    except Exception:
+        pass
+    return {"positions": {}, "hidden": []}
+
+
+def _save_topo_layout(layout: dict) -> None:
+    """Atomically persist topology layout."""
+    os.makedirs(os.path.dirname(_TOPOLOGY_POSITIONS_FILE), exist_ok=True)
+    tmp = _TOPOLOGY_POSITIONS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(layout, fh)
+    os.replace(tmp, _TOPOLOGY_POSITIONS_FILE)
+
+
+@app.route("/topology/state")
+def topology_state():
+    """Return the last-saved topology + user layout (positions + hidden nodes).
+    Uses raw cache load (ignores TTL) so topology persists across restarts."""
+    topology = _ai._topology_cache_load_raw()
+    layout   = _load_topo_layout()
+    return jsonify({
+        "topology":  topology,
+        "positions": layout.get("positions", {}),
+        "hidden":    layout.get("hidden", []),
+    })
+
+
+@app.route("/topology/positions", methods=["POST"])
+def topology_save_positions():
+    """Persist node positions (x/y) so user layout survives server restarts."""
+    data = request.get_json(silent=True) or {}
+    positions = data.get("positions", {})
+    try:
+        layout = _load_topo_layout()
+        layout["positions"] = positions
+        _save_topo_layout(layout)
+    except Exception as exc:
+        app.logger.warning("topology_save_positions: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "saved": len(positions)})
+
+
+@app.route("/topology/hidden", methods=["POST"])
+def topology_save_hidden():
+    """Persist the list of node IDs hidden from the topology diagram."""
+    data = request.get_json(silent=True) or {}
+    hidden = data.get("hidden", [])
+    try:
+        layout = _load_topo_layout()
+        layout["hidden"] = hidden
+        _save_topo_layout(layout)
+    except Exception as exc:
+        app.logger.warning("topology_save_hidden: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "hidden": hidden})
+
+
+# Protocol topology (OSPF / BGP / Tunnels) -----------------------------------
+
+_PROTO_CACHE_FILE = os.path.join(os.path.dirname(__file__), "data", "proto_topology_cache.json")
+_PROTO_POS_FILE   = os.path.join(os.path.dirname(__file__), "data", "proto_topology_positions.json")
+
+
+def _load_proto_cache():
+    try:
+        if os.path.exists(_PROTO_CACHE_FILE):
+            with open(_PROTO_CACHE_FILE, encoding="utf-8") as fh:
+                return json.load(fh)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_proto_cache(data: dict) -> None:
+    os.makedirs(os.path.dirname(_PROTO_CACHE_FILE), exist_ok=True)
+    tmp = _PROTO_CACHE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, _PROTO_CACHE_FILE)
+
+
+def _load_proto_positions() -> dict:
+    try:
+        if os.path.exists(_PROTO_POS_FILE):
+            with open(_PROTO_POS_FILE, encoding="utf-8") as fh:
+                return json.load(fh)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_proto_positions(data: dict) -> None:
+    os.makedirs(os.path.dirname(_PROTO_POS_FILE), exist_ok=True)
+    tmp = _PROTO_POS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, _PROTO_POS_FILE)
+
+
+@app.route("/topology/protocol_data")
+def topology_protocol_data():
+    """Discover and return OSPF, BGP, and tunnel topology graphs."""
+    try:
+        from modules.topology import discover_protocol_topologies
+        _, current_list_file = get_current_device_list()
+        devices = load_saved_devices(current_list_file)
+        if not devices:
+            empty = {"nodes": [], "edges": []}
+            return jsonify({"status": "success",
+                            "ospf": empty, "bgp": empty, "tunnel": empty})
+
+        result = discover_protocol_topologies(
+            devices           = devices,
+            connection_factory= get_persistent_connection,
+            connections_pool  = connections,
+            pool_lock         = lock,
+            status_cache      = device_status_cache,
+            max_workers       = 5,
+        )
+        _save_proto_cache(result)
+        return jsonify({"status": "success", **result})
+    except Exception as e:
+        app.logger.error("Protocol topology discovery failed: %s", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/topology/protocol_state")
+def topology_protocol_state():
+    """Return cached protocol topologies + persisted positions."""
+    cache = _load_proto_cache()
+    positions = _load_proto_positions()
+    return jsonify({
+        "ospf":   cache.get("ospf",   {"nodes": [], "edges": []}),
+        "bgp":    cache.get("bgp",    {"nodes": [], "edges": []}),
+        "tunnel": cache.get("tunnel", {"nodes": [], "edges": []}),
+        "positions": positions,
+    })
+
+
+@app.route("/topology/proto_positions", methods=["POST"])
+def topology_save_proto_positions():
+    """Persist per-view node positions for OSPF/BGP/Tunnel views.
+    Body: {view: "ospf"|"bgp"|"tunnel", positions: {id: {x, y}}}
+    """
+    data = request.get_json(silent=True) or {}
+    view = data.get("view", "")
+    positions = data.get("positions", {})
+    if view not in ("ospf", "bgp", "tunnel"):
+        return jsonify({"ok": False, "error": "invalid view"}), 400
+    try:
+        all_pos = _load_proto_positions()
+        all_pos[view] = positions
+        _save_proto_positions(all_pos)
+    except Exception as exc:
+        app.logger.warning("topology_save_proto_positions: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------
@@ -2147,11 +2321,15 @@ def ai_chat():
         # skip_playbook_match bypasses matching so auto-troubleshoot messages go to Claude,
         # not back into the playbook runner (which would cause an infinite loop).
         matched_playbook = None
+        confirm_playbook = False   # True when match came from keyword heuristic (needs user OK)
         if run_playbook_id:
             idx = _ai._load_playbook_index()
             matched_playbook = next((p for p in idx if p["id"] == run_playbook_id), None)
         elif message and not skip_playbook_match:
-            matched_playbook = _ai.match_playbook(message)
+            kw_match = _ai.match_playbook(message)
+            if kw_match:
+                matched_playbook = kw_match
+                confirm_playbook = True   # Ask before running
 
         # Run the agent (or playbook) in a background thread and drain events via a queue.
         # This lets us send SSE keepalive pings while SSH tool calls block,
@@ -2161,6 +2339,17 @@ def ai_chat():
 
         def _agent_thread():
             try:
+                if matched_playbook and confirm_playbook:
+                    # Emit a confirmation prompt — let the user decide before we run anything.
+                    event_queue.put({
+                        "type":        "playbook_confirm",
+                        "id":          matched_playbook.get("id", ""),
+                        "name":        matched_playbook.get("name", ""),
+                        "description": matched_playbook.get("description", ""),
+                        "message":     message,
+                    })
+                    event_queue.put(_SENTINEL)
+                    return
                 if matched_playbook:
                     # Direct playbook execution — no Claude API call needed.
                     pb_msg = message or f"Run playbook: {matched_playbook.get('name', matched_playbook.get('id', ''))}"
@@ -2389,16 +2578,22 @@ def jenkins_schedules_get():
     local_sch = load_pipeline_schedules()
     result    = {}
 
-    # Try to enrich with live Jenkins data; fall back to local cache on error
+    # Try to enrich with live Jenkins data; fall back to local cache on error.
+    # IMPORTANT: only overwrite local cache when Jenkins returns a non-empty schedule.
+    # An empty live result (e.g. trigger not yet applied, or a new job) must never
+    # wipe a schedule that was just saved locally — that would cause the UI to show
+    # "Not scheduled" immediately after a successful save.
     try:
         cfg = _jcfg()
         for job in jobs:
             try:
-                xml    = get_job_config(cfg, job)
-                cron   = extract_schedule_from_xml(xml)
-                # Sync live value back to local cache
-                save_pipeline_schedule(job, cron)
-                local_sch[job] = cron
+                xml  = get_job_config(cfg, job)
+                cron = extract_schedule_from_xml(xml)
+                if cron:
+                    # Jenkins has an authoritative schedule — sync it locally
+                    save_pipeline_schedule(job, cron)
+                    local_sch[job] = cron
+                # If cron is empty, keep whatever is in local_sch (user's last save)
             except Exception:
                 pass
     except Exception:
@@ -2447,17 +2642,52 @@ def jenkins_schedule_set(job_name: str):
         new_triggers = "<triggers/>"
 
     xml_updated = _re.sub(
-        r"<triggers\s*/>|<triggers>.*?</triggers>",
-        new_triggers, xml_str, flags=_re.DOTALL,
+        r"<triggers\s*/>|<triggers>[\s\S]*?</triggers>",
+        new_triggers, xml_str,
     )
     if xml_updated == xml_str:
-        xml_updated = xml_str.replace("</flow-definition>", new_triggers + "\n</flow-definition>")
+        # No existing <triggers> element — insert before the closing root tag
+        root_close = _re.search(r"</[a-zA-Z][\w.-]*>\s*$", xml_str)
+        if root_close:
+            xml_updated = xml_str[:root_close.start()] + new_triggers + "\n" + xml_str[root_close.start():]
+        else:
+            # Last resort: append before the very end
+            xml_updated = xml_str.rstrip() + "\n" + new_triggers
 
     try:
         update_jenkins_job(cfg, job_name, xml_updated)
-        save_pipeline_schedule(job_name, cron)
     except Exception as exc:
-        return jsonify({"error": f"Could not update job: {exc}"}), 500
+        app.logger.error("jenkins_schedule_set: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+
+    # Verify the schedule is actually present in Jenkins now
+    verified = False
+    try:
+        live_xml  = get_job_config(cfg, job_name)
+        live_cron = extract_schedule_from_xml(live_xml)
+        # Jenkins may wrap cron in CDATA; strip it for comparison
+        import re as _re
+        live_cron = _re.sub(r"<!\[CDATA\[(.*?)]]>", r"\1", live_cron).strip()
+        verified = (live_cron == cron) or (not cron and not live_cron)
+    except Exception:
+        pass  # Verification is best-effort; don't block the response
+
+    # Persist locally regardless — the schedule was accepted by Jenkins even if
+    # the round-trip parse is ambiguous (CDATA, whitespace, etc.)
+    save_pipeline_schedule(job_name, cron)
+
+    if not verified and cron:
+        app.logger.warning(
+            "jenkins_schedule_set: schedule '%s' saved for '%s' but could not verify "
+            "it is live in Jenkins (live_cron=%r)", cron, job_name, live_cron if 'live_cron' in dir() else '?'
+        )
+        return jsonify({
+            "ok":          True,
+            "job":         job_name,
+            "cron":        cron,
+            "description": _describe_cron(cron),
+            "warning":     "Schedule saved but could not confirm Jenkins applied it. Try saving again.",
+        })
 
     return jsonify({
         "ok":          True,
@@ -2622,6 +2852,19 @@ def list_variables_delete(key):
     return jsonify({"status": "deleted", "key": key})
 
 
+@app.route("/list/variables/discover", methods=["POST"])
+def list_variables_discover():
+    """Trigger direct variable discovery from running configs (no AI, no token cost)."""
+    def _run():
+        from modules.variable_discovery import discover_variables_for_list
+        devices = _load_current_devices()
+        discover_variables_for_list(devices, status_cache=device_status_cache)
+
+    t = threading.Thread(target=_run, daemon=True, name="var-discovery-manual")
+    t.start()
+    return jsonify({"status": "started", "message": "Variable discovery running in background — refresh the Variables tab in ~30 seconds."})
+
+
 # ---------------------------------------------------------------------------
 # Golden configs
 # ---------------------------------------------------------------------------
@@ -2717,6 +2960,22 @@ def ai_agent_resume():
     return jsonify({"ok": True, "paused": False})
 
 
+@app.route("/ai/agent_timers", methods=["GET"])
+def ai_agent_timers_get():
+    """Return current timer configuration for the UI."""
+    from modules.agent_timers import get_ui_config
+    return jsonify({"ok": True, "timers": get_ui_config()})
+
+
+@app.route("/ai/agent_timers", methods=["POST"])
+def ai_agent_timers_post():
+    """Save updated timer values. Accepts {key: value, ...}."""
+    from modules.agent_timers import save as save_timers
+    data = request.get_json(force=True) or {}
+    saved = save_timers(data)
+    return jsonify({"ok": True, "timers": saved})
+
+
 # ---------------------------------------------------------------------------
 # Approval queue routes
 # ---------------------------------------------------------------------------
@@ -2752,6 +3011,19 @@ def ai_approval_reject(entry_id: str):
     if not result.get("ok"):
         return jsonify(result), 404
     return jsonify(result)
+
+
+@app.route("/ai/approvals/approve_all", methods=["POST"])
+def ai_approval_approve_all():
+    """Approve and execute every currently pending approval."""
+    from modules.approval_queue import get_pending, resolve
+    pending = get_pending()
+    results = []
+    for entry in pending:
+        results.append(resolve(entry["id"], "approve"))
+    ok_count   = sum(1 for r in results if r.get("ok"))
+    fail_count = len(results) - ok_count
+    return jsonify({"ok": True, "approved": ok_count, "failed": fail_count, "results": results})
 
 
 @app.route("/monitoring/config", methods=["GET", "POST"])
@@ -2845,6 +3117,27 @@ def ai_debug_log():
 # Start background daemons — must be here so _load_current_devices is defined
 # ---------------------------------------------------------------------------
 def _start_background_daemons():
+    # Repair any corrupted chat histories on startup (orphaned tool_use blocks
+    # left by interrupted or max_tokens-truncated sessions cause 400 errors).
+    try:
+        from modules.ai_assistant import (
+            _HISTORIES_DIR, _sanitize_trailing_tool_use, _compress_for_disk,
+        )
+        import glob, json as _json
+        for _path in glob.glob(os.path.join(_HISTORIES_DIR, "*.json")):
+            try:
+                with open(_path, encoding="utf-8") as _fh:
+                    _hist = _json.load(_fh)
+                _repaired = _sanitize_trailing_tool_use(_hist)
+                if len(_repaired) != len(_hist):
+                    with open(_path, "w", encoding="utf-8") as _fh:
+                        _json.dump(_repaired, _fh, ensure_ascii=False)
+                    app.logger.info("Repaired chat history: %s", os.path.basename(_path))
+            except Exception:
+                pass
+    except Exception as _repair_exc:
+        app.logger.debug("History repair skipped: %s", _repair_exc)
+
     from modules.event_monitor import start_monitor as _start_event_monitor
     _start_event_monitor()
 
