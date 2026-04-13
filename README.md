@@ -1,4 +1,4 @@
-# Network Device Manager
+# Agentic Network Management and Automation
 
 A Flask-based web application for managing, automating, and monitoring Cisco IOS network devices. It provides a unified interface for device inventory, remote SSH command execution, multi-device parallel operations, live terminal access, an AI-powered autonomous network agent (Claude), Jenkins CI/CD integration, topology visualization, SNMP/NetFlow/syslog monitoring, and config backup and drift detection.
 
@@ -174,4 +174,4 @@ Potentially destructive actions (updating a golden config, reverting a device) a
 
 ## Author
 
-Dustin Marchak — Final Project for CSCI 5020
+Dustin Marchak
