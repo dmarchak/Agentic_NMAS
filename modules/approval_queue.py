@@ -1,14 +1,13 @@
-"""
-approval_queue.py — Persistent human-approval queue
+"""approval_queue.py
 
-The agent adds entries here instead of acting autonomously on actions that
-are reversible but potentially destructive (updating a golden config,
-reverting a device, etc.).  The user approves or rejects from the UI.
+Human-in-the-loop approval queue for AI-proposed network changes.
 
-When approved, the action is executed immediately by the backend.
-
-Storage: data/lists/{slug}/approval_queue.json  (per-list, like other list data)
-Entries expire after EXPIRY_HOURS if not acted on.
+When the AI agent wants to perform a potentially destructive action (e.g.,
+updating a golden config baseline or reverting a device), it submits an entry
+here instead of acting immediately.  The user reviews and approves or rejects
+from the UI; approved entries are executed at that point by the backend.
+Entries auto-expire after 48 hours and are stored per device-list at
+data/lists/{slug}/approval_queue.json.
 """
 
 import json

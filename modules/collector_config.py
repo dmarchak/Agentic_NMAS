@@ -1,13 +1,12 @@
-"""
-collector_config.py — OOB management collector IP for each device list
+"""collector_config.py
 
-When configuring SNMP trap destinations, NetFlow export targets, syslog
-receivers, etc. on network devices, the device needs the IP address of
-THIS server on the OOB management network — not 127.0.0.1 or any other
-interface.
+Monitoring collector configuration (SNMP, NetFlow, syslog) per device list.
 
-This module stores and auto-detects the correct local IP by finding the
-server interface that shares a subnet with the list's devices.
+Stores and auto-detects the local server IP that network devices should use as
+the trap/flow/syslog destination — specifically the interface that shares a
+subnet with the list's devices, not the loopback.  Also persists per-list
+settings for SNMP community, trap port, NetFlow port, and syslog port.
+Configuration is saved at data/lists/{slug}/collector_config.json.
 """
 
 import ipaddress

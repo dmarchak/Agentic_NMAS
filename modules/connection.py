@@ -1,3 +1,19 @@
+"""connection.py
+
+SSH connection management via Netmiko for the Network Device Manager.
+
+Provides three connection patterns:
+  - `with_temp_connection`: open a connection, run a callable, then close.
+  - `get_persistent_connection` / `close_persistent_connection`: maintain a
+    per-IP connection pool for repeated operations (status checks, etc.).
+  - `ping_worker`: background daemon thread that pings all devices on a
+    configurable interval and updates a shared status cache.
+
+Device credentials are decrypted on the fly using the Fernet key managed by
+modules.device; they are never stored in the connection pool in plaintext
+beyond the lifetime of each ConnectHandler object.
+"""
+
 from netmiko import ConnectHandler
 import threading
 import logging

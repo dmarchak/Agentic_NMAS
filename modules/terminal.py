@@ -1,6 +1,12 @@
-"""
-terminal.py
-Live terminal and session management for DeviceManager.
+"""terminal.py
+
+Live interactive SSH terminal sessions via Paramiko and Flask-SocketIO.
+
+`ensure_terminal_session` opens (or reuses) a Paramiko shell channel to a
+device, enters enable mode, and stores the session in a caller-managed dict.
+`start_terminal_reader` spawns a daemon thread that continuously reads from
+the channel and emits data to the SocketIO room for that device IP, feeding the
+xterm.js terminal in the browser in real time.
 """
 
 import time

@@ -1,8 +1,11 @@
 """utils.py
 
-Small helper utilities used by the web app. Keep this module tiny so
-that common helpers (like filename generation) are easy to locate and
-unit-test.
+Shared utility helpers for the Network Device Manager.
+
+Currently provides `make_device_filename`, which generates a compact
+timestamped filename (e.g. "R1_12153012APR26.txt") used for device
+output downloads.  Additional stateless helpers that don't belong in
+any specific feature module should go here.
 """
 
 import time

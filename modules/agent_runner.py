@@ -1,20 +1,24 @@
-"""
-agent_runner.py — Background agent task executor
+"""agent_runner.py
 
-Runs a daemon thread that drains the event monitor queue and executes each
-event as a full AI agent task — no browser or SSE required.  The AI uses the
-same run_chat() generator as the normal chat flow, so it has access to every
-tool (SSH, Jenkins, Ansible, golden configs, compliance, etc.).
+Background autonomous AI agent runner.
 
-Each background task gets its own fresh session so it never pollutes the
-user's chat history.  Results are stored in a ring-buffer and persisted to
-data/agent_activity.json so they survive server restarts.
+Runs a daemon thread that periodically drains the event monitor queue and
+dispatches each event as a full AI agent task using the same tool-enabled
+`run_chat()` pipeline as the normal chat flow (SSH, Jenkins, golden configs,
+compliance, variable store, etc.).  Also performs scheduled config-drift
+detection and SNMP trap analysis with flap-suppression timers.
+
+Each background task runs in an isolated session to avoid polluting chat
+history.  Results are kept in a 100-entry ring-buffer persisted to
+data/agent_activity.json.  Background processing is automatically paused
+while the user is active in the chat UI and resumes after a configurable
+idle timeout.
 
 Flask exposes:
-  GET  /ai/agent_log           — return recent activity entries
-  POST /ai/agent_run           — manually trigger a background task (body: {"task": "..."})
-  POST /ai/agent_pause         — pause autonomous processing (events still queue)
-  POST /ai/agent_resume        — resume autonomous processing
+  GET  /ai/agent_log    — recent activity entries
+  POST /ai/agent_run    — manually trigger a task  {"task": "..."}
+  POST /ai/agent_pause  — pause autonomous processing
+  POST /ai/agent_resume — resume autonomous processing
 """
 
 import json

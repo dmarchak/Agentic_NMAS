@@ -1,17 +1,11 @@
-"""
-agent_timers.py — Persistent configuration for background agent timing intervals
+"""agent_timers.py
 
-All timers are stored in data/agent_timers.json and hot-reloaded at each
-poll cycle, so changes take effect without restarting the server.
+Persistent configuration for background agent timing intervals.
 
-Timers:
-  jenkins_poll_interval     — how often to sync Jenkins build results (seconds)
-  event_check_interval      — how often to check for missing golden configs / empty variables (seconds)
-  event_drain_interval      — how often the agent runner drains the event queue (seconds)
-  drift_check_interval      — how often to run scheduled config drift detection (seconds)
-  trap_flap_window          — seconds to wait after a down trap before dispatching AI task;
-                              if a recovery trap arrives in this window the task is cancelled (flap)
-  user_idle_seconds         — how long after user activity before background tasks resume (seconds)
+All intervals are stored in data/agent_timers.json and hot-reloaded on each
+poll cycle so changes take effect without a server restart.  Provides load/save
+helpers, per-key min/max bounds to prevent misconfiguration, and human-readable
+labels used by the settings UI.  Defaults are applied for any missing key.
 """
 
 import json

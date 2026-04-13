@@ -29,3 +29,33 @@ Thumbs.db
 static/css_backup/
 static/js_backup/
 *.backup
+
+# Background agent checkpoints and histories
+data/checkpoints/__bg_*.json
+data/chat_histories/__bg_*.json
+
+# AI debug log
+data/ai_debug.log
+
+# Compiled Python
+*.pyc
+
+
+# Environment variables
+.env
+
+# Installer / packaging artifacts
+python_embed/
+python-*.zip
+*.iss
+*.spec
+build_installer.bat
+installer_output/
+launcher.py
+
+# Stale planning docs
+BACKUP_RESTORE_INSTRUCTIONS.md
+FEATURES_PHASE4.md
+IMPROVEMENTS.md
+SHORT_TERM_IMPROVEMENTS.md
+UI_IMPROVEMENTS.md

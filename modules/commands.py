@@ -1,10 +1,14 @@
 """commands.py
 
-Command execution utilities for Cisco IOS devices.
+Shared SSH command execution logic for Cisco IOS devices.
 
-This module provides shared command execution logic to avoid code duplication
-across the application. It handles common patterns like adaptive output reading,
-prompt detection, and output cleanup.
+`run_device_command` is the single entry point used by every part of the app
+that needs to send a command to a device.  It routes each command to either
+Netmiko's prompt-based `send_command` (which handles --More-- pagination
+automatically) or timing-based `send_command_timing` (used for slow or
+output-heavy commands such as `show crypto`, `show ip bgp`, etc. that confuse
+Netmiko's prompt-detection regex).  Falls back to timing on any prompt-based
+timeout, then cleans up duplicate trailing prompts and null bytes in the output.
 """
 
 import re

@@ -1,3 +1,14 @@
+"""config.py
+
+Central configuration for the Network Device Manager.
+
+Defines all runtime file paths (data dir, device lists, encryption key, quick actions),
+per-list data directory helpers, user settings load/save helpers, and application
+constants (Flask host/port, SSH timeout, TFTP settings, connection flags).
+Handles both normal Python execution and PyInstaller frozen executables by resolving
+BASE_DIR at import time.
+"""
+
 import os
 import sys
 import json

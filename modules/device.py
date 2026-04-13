@@ -1,3 +1,14 @@
+"""device.py
+
+Device CRUD, credential encryption, and multi-list management.
+
+Stores the device inventory as per-list CSV files under data/lists/{slug}/devices.csv.
+Credentials (password, enable secret) are encrypted with a Fernet key stored at
+data/key.key; the key is auto-generated on first run.  Provides add/update/delete
+operations, list create/rename/delete/switch, and a one-time migration that moves
+pre-folder-structure data into the correct per-list directories.
+"""
+
 import csv
 import os
 import json

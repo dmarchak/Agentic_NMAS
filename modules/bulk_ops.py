@@ -1,7 +1,13 @@
-"""
-Bulk Operations Module
+"""bulk_ops.py
 
-Execute commands on multiple devices simultaneously with progress tracking.
+Multi-device parallel command and file-transfer operations.
+
+`BulkOperationManager` fans a single operation out to all selected devices
+using a thread-pool worker queue.  Supported modes: enable-mode commands,
+config-mode command sets, TFTP upload/download, config download to TFTP,
+flash file deletion, and static-route removal.  Each operation is tracked
+by a unique ID so the UI can poll for per-device progress and results.
+A module-level singleton `bulk_manager` is imported by app.py.
 """
 
 import threading

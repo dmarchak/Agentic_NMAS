@@ -1,16 +1,14 @@
-"""
-snmp_collector.py — SNMP polling and trap receiver
+"""snmp_collector.py
 
-Provides:
-  - snmp_get(host, oids, community, version)  — fetch one or more OIDs
-  - snmp_walk(host, oid, community, version)  — walk a subtree
-  - get_device_summary(host, community)       — uptime, hostname, interfaces
-  - start_trap_receiver(port)                 — daemon UDP trap listener
-  - get_recent_traps(n)                       — return last N traps
+SNMP trap collection and basic polling for network devices.
 
-SNMP version support: v1, v2c  (v3 via USM is outside scope here)
-Trap receiver listens on UDP port 1162 by default (no root required).
-Configure devices to send traps to: <collector_ip>:<trap_port>
+Provides OID-level GET and WALK (pure-Python BER decoder, no net-snmp dependency),
+a `get_device_summary` helper that pulls uptime/hostname/interface status, and a
+UDP trap receiver daemon that decodes incoming v1/v2c trap PDUs and stores them in
+a per-list ring buffer.  The agent_runner consumes the trap buffer to trigger AI
+investigation of actionable events (link-down, BGP state change, etc.).
+
+Listens on UDP port 1162 by default (no root required).
 """
 
 import json

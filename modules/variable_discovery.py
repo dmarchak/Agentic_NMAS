@@ -1,11 +1,13 @@
-"""
-variable_discovery.py — Direct variable extraction from device running configs
+"""variable_discovery.py
 
-Bypasses the AI for fact collection: SSHes to each device in parallel,
-runs 'show running-config', and extracts facts with regex.
-Results are written directly to the list's variables.json.
+Regex-based network variable extraction from device running configurations.
 
-Called by the background agent runner when the variable store is empty.
+SSHes to all devices in the current list in parallel, runs `show running-config`,
+and extracts facts (hostname, loopback0 IP, OSPF process/area, BGP AS, MPLS,
+VRFs, EIGRP, ISIS, router-id, BGP neighbors, etc.) using compiled regex patterns.
+Results are merged into the list's variables.json store.  Called by the background
+agent runner when the variable store is empty, avoiding unnecessary AI token usage
+for straightforward fact collection.
 """
 
 import logging

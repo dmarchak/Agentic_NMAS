@@ -47,20 +47,41 @@ def _dbg(*args) -> None:
 # the user to type "yes".  A cap prevents infinite loops.
 # ---------------------------------------------------------------------------
 _AUTO_CONTINUE_RE = re.compile(
-    r"(?i)"                                    # case-insensitive
+    r"(?i)"
     r"("
-    r"should\s+i\s+(continue|proceed|go ahead)"
-    r"|shall\s+i\s+(continue|proceed|go ahead)"
-    r"|would\s+you\s+like\s+me\s+to\s+(continue|proceed)"
-    r"|do\s+you\s+want\s+me\s+to\s+(continue|proceed)"
-    r"|let\s+me\s+know\s+(if\s+you('d|\s+would)\s+like|when\s+to\s+proceed)"
-    r"|please\s+(confirm|let\s+me\s+know)\s+(?:if|when|before)"
-    r"|ready\s+to\s+(continue|proceed|apply)"
-    r"|waiting\s+for\s+your\s+(confirmation|approval|go-?ahead)"
-    r"|would\s+you\s+like\s+(to\s+)?(proceed|continue|apply)"
-    r"|do\s+you\s+want\s+(to\s+)?(proceed|continue|apply)"
-    r"|may\s+i\s+(continue|proceed|apply)"
-    r"|type\s+['\"]?(yes|continue|proceed|go ahead)['\"]?\s+to"
+    # explicit "should/shall/may/can I ..."
+    r"should\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute|run|do\s+that)"
+    r"|shall\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute|run|do\s+that)"
+    r"|may\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute)"
+    r"|can\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute)"
+    # "would/do you want/like me to ..."
+    r"|would\s+you\s+like\s+me\s+to\s+\w+"
+    r"|do\s+you\s+want\s+me\s+to\s+\w+"
+    r"|want\s+me\s+to\s+\w+"
+    # "would you like to ..."
+    r"|would\s+you\s+like\s+(to\s+)?(proceed|continue|apply|go\s+ahead|push|make|execute|run)"
+    r"|do\s+you\s+want\s+(to\s+)?(proceed|continue|apply|go\s+ahead|push|make|execute|run)"
+    # "let me know ..."
+    r"|let\s+me\s+know\s+(if|when|how|whether|before)"
+    r"|just\s+let\s+me\s+know"
+    # "ready / waiting / waiting for ..."
+    r"|ready\s+to\s+(continue|proceed|apply|go|push)"
+    r"|waiting\s+for\s+your\s+(confirmation|approval|go-?ahead|ok|input|direction|instruction)"
+    r"|awaiting\s+your\s+(confirmation|approval|go-?ahead|ok|input|direction)"
+    # "before I proceed/continue/apply"
+    r"|before\s+i\s+(proceed|continue|apply|push|make|execute|do)"
+    # "if you're ready / when you're ready"
+    r"|if\s+you.{0,10}re\s+ready"
+    r"|when\s+you.{0,10}re\s+ready"
+    # "please confirm/advise"
+    r"|please\s+(confirm|advise|let\s+me\s+know|indicate|specify)"
+    # "go ahead?" as a standalone
+    r"|go\s+ahead\?"
+    r"|ok\s+to\s+(proceed|continue|apply|go|push)"
+    r"|okay\s+to\s+(proceed|continue|apply|go|push)"
+    # "type/say 'continue' to ..."
+    r"|type\s+['\"]?(yes|continue|proceed|go\s+ahead)['\"]?\s+to"
+    r"|say\s+['\"]?(yes|continue|proceed|go\s+ahead)['\"]?\s+to"
     r")",
     re.DOTALL,
 )
@@ -1282,13 +1303,22 @@ AUTONOMOUS TRIGGER RULES — act on these WITHOUT being asked
 
 CONFIG PUSH triggers (fire every time you push config to any device —
   NEVER fire these during drift checks, compliance checks, or read-only tasks):
-  IF you apply any config change to a device:
-    → ALWAYS capture_pre_change_snapshot BEFORE pushing (no exceptions)
-    → ALWAYS run jenkins_wait_for_result after run_jenkins_checks (never skip the wait)
-    → IF pipeline PASSES  → save_golden_config + log_change(result=SUCCESS) automatically
-    → IF pipeline FAILS   → diagnose from console, attempt fix, re-run CI — do NOT ask the
-                            user what to do; only report when you cannot auto-fix it
-    → Do NOT ask "should I save the golden config?" — save it automatically on CI pass
+  IF you apply any config change to a device, follow this order WITHOUT stopping for human approval:
+    1. capture_pre_change_snapshot(device_ips)    — safety net before any change
+    2. Push config (run_ansible_playbook or execute_commands_on_device) + write memory
+    3. run_jenkins_checks → jenkins_wait_for_result (NEVER skip the wait)
+    4. IF pipeline PASSES:
+         → save_golden_config(device_ips)          — update golden baseline
+         → read_golden_config for each device      — parse the freshly saved config
+         → set_variable for EVERY value present in the new golden config (IPs, IDs, AS, etc.)
+         → log_change(result=SUCCESS, golden_config_saved=True)
+         NO human approval is required — CI pass is sufficient authorisation to proceed.
+    5. IF pipeline FAILS:
+         → diagnose from console, attempt fix, re-run CI (go back to step 3)
+         → if auto-fix is not possible: restore_pre_change_snapshot, then report to user
+         → Do NOT save golden config or update variables until CI passes
+         → log_change(result=FAILURE, golden_config_saved=False)
+    → Do NOT ask "should I save the golden config?" or "shall I update variables?" — do it automatically
 
 GOLDEN CONFIG triggers:
   IF [PROACTIVE CONTEXT] shows a device has no golden config:
@@ -1356,10 +1386,23 @@ MONITORING triggers (SNMP / NetFlow):
   WHEN writing SNMP configs, use the RO community for reads and traps unless the user specifies otherwise
 
 VARIABLE STORE triggers:
-  IF you discover or confirm any network fact (OSPF process ID, loopback prefix,
-  tunnel endpoint, BGP AS number, VLAN ID, etc.):
+  AFTER every config push (execute_commands_on_device / execute_command / run_ansible_playbook
+  that changes device configuration), call set_variable for EVERY new value you just configured.
+  Do this as the very next step after the push, before verification or CI.
+  Examples of what to capture — call set_variable for each one individually:
+    • IP addresses / subnets configured on interfaces  (key: "<device>_<intf>_ip")
+    • Loopback IPs                                    (key: "<device>_loopback<N>_ip")
+    • OSPF process ID, router-id, area assignments    (key: "<device>_ospf_process", etc.)
+    • BGP AS numbers, neighbor IPs                    (key: "<device>_bgp_as", "<device>_bgp_peer_<n>")
+    • Tunnel source/destination IPs, mode             (key: "<device>_tunnel<N>_src", etc.)
+    • VLAN IDs, VRF names, route-map names            (key: "<device>_vlan_<id>", etc.)
+    • Usernames, ACL names, NTP servers               (key: "<device>_ntp", etc.)
+    • Any value the user or task explicitly named
+  IF you discover or confirm any network fact during read-only checks:
     → set_variable immediately — do not hardcode values into configs or playbooks
   IF read_variables() returns a value you are about to use → use that value exactly
+  NEVER skip set_variable because a fact "seems obvious" — the Variables tab is the
+  single source of truth for re-using values in future configs, playbooks, and pipelines.
 
 KNOWLEDGE BASE triggers:
   IF you fix a Jenkins pipeline bug or discover a pipeline pattern that works:
@@ -1407,6 +1450,17 @@ Efficiency rules  ← follow these strictly
    table directly to plan configurations.  The IPs in [Topology] are authoritative.
    Only call get_network_topology if you observe a discrepancy between [Topology] and
    live device output — in that case refresh it, then update the network KB.
+2a. GOLDEN CONFIG + VARIABLES are the primary source for ALL device information lookups.
+   BEFORE running any live show command, check these first:
+     • read_variables()          — stored IPs, IDs, AS numbers, prefixes, etc.
+     • read_golden_config(ip)    — full last-known-good config for a device
+   Only run live SSH commands (execute_command / execute_commands_on_device) when:
+     a) You are MAKING a new configuration change (push, then verify it applied), OR
+     b) The golden config and variables do not contain the specific fact needed, OR
+     c) The user explicitly asks for live/current data.
+   "What IP is on Gi0/0?" → read_golden_config, not show interfaces.
+   "Is OSPF up right now?" → this is a live-state question, so execute_command is correct.
+   This rule avoids unnecessary SSH sessions and keeps the interaction fast.
 3. Knowledge base (KB) is the authoritative source of truth for this list.
    The KB covers network facts AND Jenkins/Ansible lessons — use the same tools for all of them.
    THE RULE: if a fact is in [NETWORK KB], use it as-is without re-querying or re-diagnosing.
@@ -1722,16 +1776,20 @@ Rules for using saved playbooks:
 - Only fall through to manual SSH commands if no playbook matches.
 
 Complete config-push workflow — follow this EVERY time you push config to devices
-This is the full mandatory lifecycle for any configuration change:
+This is the full mandatory lifecycle for any configuration change.
+Human approval is NOT required at any step — Jenkins CI pass is the gate.
 
 STEP 0 — Read context (before starting)
-  - read_variables()            → check for stored network facts (OSPF IDs, prefixes, etc.)
+  - read_variables()            → use stored facts instead of running live show commands
+  - read_golden_config(ip)      → use golden config as reference for current device state
   - list_golden_configs()       → confirm a baseline exists to roll back to
   - read_compliance_policy()    → know what the network must satisfy after your change
+  Do NOT SSH to devices for information that golden configs or variables already contain.
 
-STEP 1 — Pre-change snapshot (safety net)
+STEP 1 — Pre-change backup (safety net)
   - capture_pre_change_snapshot(device_ips=[...affected IPs...])
   This saves the current running-config so you can restore it exactly if Jenkins fails.
+  NEVER skip this step.
 
 STEP 2 — Push the config change
   - Use run_ansible_playbook (preferred) or execute_commands_on_device
@@ -1749,16 +1807,18 @@ STEP 3 — Select or create a Jenkins pipeline
 STEP 4 — Run CI and wait
   - run_jenkins_checks → jenkins_wait_for_result (NEVER skip the wait)
 
-STEP 5a — Pipeline PASSES
+STEP 5a — Pipeline PASSES (no human approval needed — proceed automatically)
   - save_golden_config(device_ips=[...modified IPs...])
-  - set_variable for any newly discovered facts (OSPF process ID, prefix, etc.)
+  - read_golden_config for each modified device → extract ALL configured values →
+    call set_variable for each one (IPs, loopbacks, OSPF IDs, BGP AS, tunnel endpoints,
+    VLANs, ACLs, NTP, etc.)  — use the golden config as the source of truth, not memory
   - log_change(description, devices, change_type, jenkins_pipeline, jenkins_result=SUCCESS, golden_config_saved=True)
 
 STEP 5b — Pipeline FAILS
   - Read the console (auto-included) and diagnose
   - Option A: Fix the config issue → re-push → go back to Step 4
   - Option B: Revert → restore_pre_change_snapshot(device_ips) → run CI → confirm clean
-  - Do NOT save golden config or log a success until CI passes
+  - Do NOT save golden config or update variables until CI passes
   - log_change(... jenkins_result=FAILURE, golden_config_saved=False)
 
 Rollback tools:
@@ -1801,6 +1861,10 @@ Safety
 - Avoid commands that could disrupt connectivity without explicit user request.
 - Do not shut interfaces or wipe configs without clear user intent.
 - Always capture a pre-change snapshot before pushing config — never skip Step 1.
+- For READ-ONLY information requests, use golden configs and variables — do NOT open an
+  SSH session just to run a show command when the answer is already stored locally.
+- Jenkins CI pass = authorisation to complete the full workflow (golden save + variable
+  update + log).  Do NOT pause and ask for human approval after CI passes.
 """
 
 # ---------------------------------------------------------------------------
@@ -3152,6 +3216,7 @@ def run_chat(
     context_ip: Optional[str] = None,
     device_context: Optional[str] = None,
     topology_context: Optional[str] = None,
+    attached_files: Optional[list] = None,
 ) -> Iterator[dict]:
     """
     Run one chat turn with the active AI provider.
@@ -3420,6 +3485,28 @@ def run_chat(
             prefix_parts.append(topo_text)
         except Exception:
             pass
+
+    if attached_files:
+        _MAX_FILE_CHARS = 400_000  # ~100k tokens total across all files
+        _total_chars = 0
+        _file_blocks = []
+        for _af in attached_files:
+            _fname   = str(_af.get("name", "file"))[:200]
+            _content = str(_af.get("content", ""))
+            if _total_chars + len(_content) > _MAX_FILE_CHARS:
+                _content = _content[:_MAX_FILE_CHARS - _total_chars]
+                _file_blocks.append(
+                    f"[ATTACHED FILE: {_fname}]\n```\n{_content}\n```\n(truncated — file exceeded size limit)"
+                )
+                _total_chars = _MAX_FILE_CHARS
+                break
+            _file_blocks.append(f"[ATTACHED FILE: {_fname}]\n```\n{_content}\n```")
+            _total_chars += len(_content)
+        if _file_blocks:
+            prefix_parts.append(
+                "[USER-UPLOADED FILES — read these carefully before responding]\n"
+                + "\n\n".join(_file_blocks)
+            )
 
     if context_ip:
         devices = devices_loader()
@@ -5095,6 +5182,7 @@ def run_chat(
     max_iterations  = 50
     iteration       = 0
     auto_continues  = 0   # how many times we've auto-injected a "yes, continue"
+    total_tools_used = 0  # total tool calls across all iterations this session
 
     # Index of the current user turn in api_messages.  This message must
     # always appear in the trimmed window — otherwise Claude loses the task
@@ -5309,25 +5397,34 @@ def run_chat(
                 continue   # next iteration, Claude will proceed from here
 
             if stop_reason not in ("tool_use", "tool_calls"):
-                # If Claude ended the turn by asking a confirmation question
-                # ("Should I continue?", "Shall I proceed?", etc.), automatically
-                # inject an affirmative and re-enter the loop so the user never
-                # has to type "yes" / "continue" manually.
-                if (
-                    auto_continues < _MAX_AUTO_CONTINUES
-                    and _full_text
-                    and _AUTO_CONTINUE_RE.search(_full_text[-500:])
-                ):
-                    auto_continues += 1
-                    _dbg(f"  AUTO-CONTINUE #{auto_continues} — detected confirmation-seeking phrase")
-                    api_messages.append({
-                        "role":    "user",
-                        "content": "Yes, please continue.",
-                    })
-                    continue
+                # Auto-continue if Claude paused mid-task asking for confirmation.
+                # Two independent signals trigger this:
+                #   1. Response ends with '?' — Claude asked a question.
+                #   2. Regex matches a known confirmation-seeking phrase.
+                # Additionally, if tools were used earlier this session and
+                # Claude's last response is very short (< 80 chars), it's almost
+                # certainly a mid-task pause rather than a final answer.
+                if auto_continues < _MAX_AUTO_CONTINUES and _full_text:
+                    _last_char         = _full_text.rstrip()[-1:] if _full_text.rstrip() else ''
+                    _ends_with_q       = _last_char == '?'
+                    _regex_match       = bool(_AUTO_CONTINUE_RE.search(_full_text[-800:]))
+                    _short_mid_task    = total_tools_used > 0 and len(_full_text.strip()) < 80
+
+                    if _ends_with_q or _regex_match or _short_mid_task:
+                        auto_continues += 1
+                        _reason = ("ends-with-?" if _ends_with_q
+                                   else "regex-match" if _regex_match
+                                   else "short-mid-task")
+                        _dbg(f"  AUTO-CONTINUE #{auto_continues} [{_reason}] tools_so_far={total_tools_used}")
+                        api_messages.append({
+                            "role":    "user",
+                            "content": "Yes, please continue.",
+                        })
+                        continue
                 break
 
             # ---- Shared: announce + run tools ---------------------------
+            total_tools_used += len(tool_calls)
             for tc in tool_calls:
                 yield {
                     "type":  "tool_start",

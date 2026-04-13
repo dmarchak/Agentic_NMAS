@@ -23,6 +23,13 @@
                 {% if device_lists|length <= 1 %}disabled{% endif %}>
           Delete List
         </button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="openSettingsModal()" title="Settings">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/>
+            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.474l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"/>
+          </svg>
+          Settings
+        </button>
       </div>
     </div>
   </div>
@@ -435,6 +442,14 @@
         <span class="spinner-border spinner-border-sm d-none" role="status"></span>
       </button>
       <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('ospf')">Reset View</button>
+      <div class="dropdown" id="topoOspfHiddenDropdown" style="display:none;">
+        <button class="btn btn-outline-warning btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          Hidden: <span id="topoOspfHiddenCount">0</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" id="topoOspfHiddenList" style="min-width:220px;">
+          <li><h6 class="dropdown-header">Hidden devices — click to restore</h6></li>
+        </ul>
+      </div>
     </div>
     <div class="mb-2">
       <span class="badge me-1" style="background:#198754;color:#fff">FULL</span>
@@ -450,7 +465,10 @@
     <div id="topoOspfDetails" class="card mt-3" style="display:none;">
       <div class="card-header d-flex justify-content-between align-items-center">
         <strong id="topoOspfDetailTitle">OSPF Router</strong>
-        <button class="btn-close btn-sm" onclick="document.getElementById('topoOspfDetails').style.display='none'"></button>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-warning btn-sm" onclick="hideProtoNode('ospf')">Hide Device</button>
+          <button class="btn-close btn-sm" onclick="document.getElementById('topoOspfDetails').style.display='none'"></button>
+        </div>
       </div>
       <div class="card-body" id="topoOspfDetailBody"></div>
     </div>
@@ -464,6 +482,14 @@
         <span class="spinner-border spinner-border-sm d-none" role="status"></span>
       </button>
       <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('bgp')">Reset View</button>
+      <div class="dropdown" id="topoBgpHiddenDropdown" style="display:none;">
+        <button class="btn btn-outline-warning btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          Hidden: <span id="topoBgpHiddenCount">0</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" id="topoBgpHiddenList" style="min-width:220px;">
+          <li><h6 class="dropdown-header">Hidden devices — click to restore</h6></li>
+        </ul>
+      </div>
     </div>
     <div class="mb-2">
       <span class="badge bg-primary me-1">Managed Router</span>
@@ -480,7 +506,10 @@
     <div id="topoBgpDetails" class="card mt-3" style="display:none;">
       <div class="card-header d-flex justify-content-between align-items-center">
         <strong id="topoBgpDetailTitle">BGP Peer</strong>
-        <button class="btn-close btn-sm" onclick="document.getElementById('topoBgpDetails').style.display='none'"></button>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-warning btn-sm" onclick="hideProtoNode('bgp')">Hide Device</button>
+          <button class="btn-close btn-sm" onclick="document.getElementById('topoBgpDetails').style.display='none'"></button>
+        </div>
       </div>
       <div class="card-body" id="topoBgpDetailBody"></div>
     </div>
@@ -494,6 +523,14 @@
         <span class="spinner-border spinner-border-sm d-none" role="status"></span>
       </button>
       <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('tunnel')">Reset View</button>
+      <div class="dropdown" id="topoTunnelHiddenDropdown" style="display:none;">
+        <button class="btn btn-outline-warning btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          Hidden: <span id="topoTunnelHiddenCount">0</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" id="topoTunnelHiddenList" style="min-width:220px;">
+          <li><h6 class="dropdown-header">Hidden devices — click to restore</h6></li>
+        </ul>
+      </div>
     </div>
     <div class="mb-2">
       <span class="badge bg-primary me-1">Managed Router</span>
@@ -508,7 +545,10 @@
     <div id="topoTunnelDetails" class="card mt-3" style="display:none;">
       <div class="card-header d-flex justify-content-between align-items-center">
         <strong id="topoTunnelDetailTitle">Tunnel Endpoint</strong>
-        <button class="btn-close btn-sm" onclick="document.getElementById('topoTunnelDetails').style.display='none'"></button>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-warning btn-sm" onclick="hideProtoNode('tunnel')">Hide Device</button>
+          <button class="btn-close btn-sm" onclick="document.getElementById('topoTunnelDetails').style.display='none'"></button>
+        </div>
       </div>
       <div class="card-body" id="topoTunnelDetailBody"></div>
     </div>
@@ -1673,8 +1713,8 @@ document.addEventListener("DOMContentLoaded", () => {
 const _topoNetworks   = { cdp: null, ospf: null, bgp: null, tunnel: null };
 const _topoData       = { cdp: null, ospf: null, bgp: null, tunnel: null };
 const _topoPositions  = { cdp: {},   ospf: {},   bgp: {},   tunnel: {} };
-let   _topoHidden     = new Set();   // CDP only — hidden node set
-let   _selectedNodeId = null;
+const _topoHidden     = { cdp: new Set(), ospf: new Set(), bgp: new Set(), tunnel: new Set() };
+let   _selectedNodeId = { cdp: null, ospf: null, bgp: null, tunnel: null };
 let   _topoSaveTimer  = null;
 let   _protoLoaded    = false;       // have we fetched protocol state this session?
 
@@ -1719,40 +1759,68 @@ function saveProtoPositions(view) {
 function saveHiddenNodes() {
   fetch('/topology/hidden', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hidden: Array.from(_topoHidden) })
+    body: JSON.stringify({ hidden: Array.from(_topoHidden.cdp) })
   }).catch(() => {});
 }
 
-// ── Hidden-node UI (CDP only) ─────────────────────────────────────────────
-function updateHiddenUI() {
-  const dropdown = document.getElementById('topoHiddenDropdown');
-  const countEl  = document.getElementById('topoHiddenCount');
-  const listEl   = document.getElementById('topoHiddenList');
+function saveProtoHidden(view) {
+  fetch('/topology/proto_hidden', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ view, hidden: Array.from(_topoHidden[view]) })
+  }).catch(() => {});
+}
+
+// ── Hidden-node UI (all views) ────────────────────────────────────────────
+function updateHiddenUI(view) {
+  const cap      = _cap(view);
+  const dropId   = view === 'cdp' ? 'topoHiddenDropdown'  : `topo${cap}HiddenDropdown`;
+  const countId  = view === 'cdp' ? 'topoHiddenCount'     : `topo${cap}HiddenCount`;
+  const listId   = view === 'cdp' ? 'topoHiddenList'      : `topo${cap}HiddenList`;
+  const dropdown = document.getElementById(dropId);
+  const countEl  = document.getElementById(countId);
+  const listEl   = document.getElementById(listId);
   if (!dropdown) return;
-  countEl.textContent = _topoHidden.size;
-  dropdown.style.display = _topoHidden.size > 0 ? '' : 'none';
+  const hidden = _topoHidden[view];
+  countEl.textContent = hidden.size;
+  dropdown.style.display = hidden.size > 0 ? '' : 'none';
   listEl.innerHTML = '<li><h6 class="dropdown-header">Hidden devices — click to restore</h6></li>';
-  _topoHidden.forEach(id => {
-    const label = _topoData.cdp ? (_topoData.cdp.nodes.find(n => n.id === id)?.label || id) : id;
+  hidden.forEach(id => {
+    const topo  = _topoData[view];
+    const label = topo ? (topo.nodes.find(n => n.id === id)?.label || id) : id;
     const li = document.createElement('li');
-    li.innerHTML = `<button class="dropdown-item" onclick="restoreNode('${id}')">&#8635; ${label}</button>`;
+    const escapedId = id.replace(/'/g, "\\'");
+    li.innerHTML = `<button class="dropdown-item" onclick="restoreNode('${view}','${escapedId}')">&#8635; ${label}</button>`;
     listEl.appendChild(li);
   });
 }
 
 window.hideSelectedNode = function() {
-  if (!_selectedNodeId || !_topoData.cdp) return;
-  _topoHidden.add(_selectedNodeId);
+  if (!_selectedNodeId.cdp || !_topoData.cdp) return;
+  _topoHidden.cdp.add(_selectedNodeId.cdp);
   saveHiddenNodes();
   document.getElementById('topoDetailsPanel').style.display = 'none';
   renderCdpTopology(_topoData.cdp, _topoPositions.cdp);
 };
 
-window.restoreNode = function(id) {
-  _topoHidden.delete(id);
-  saveHiddenNodes();
-  if (_topoData.cdp) renderCdpTopology(_topoData.cdp, _topoPositions.cdp);
-  updateHiddenUI();
+window.hideProtoNode = function(view) {
+  const nodeId = _selectedNodeId[view];
+  if (!nodeId || !_topoData[view]) return;
+  _topoHidden[view].add(nodeId);
+  saveProtoHidden(view);
+  document.getElementById(`topo${_cap(view)}Details`).style.display = 'none';
+  renderProtoTopology(view, _topoData[view], _topoPositions[view]);
+};
+
+window.restoreNode = function(view, id) {
+  _topoHidden[view].delete(id);
+  if (view === 'cdp') {
+    saveHiddenNodes();
+    if (_topoData.cdp) renderCdpTopology(_topoData.cdp, _topoPositions.cdp);
+  } else {
+    saveProtoHidden(view);
+    if (_topoData[view]) renderProtoTopology(view, _topoData[view], _topoPositions[view]);
+  }
+  updateHiddenUI(view);
 };
 
 // ── Load saved state on tab open ──────────────────────────────────────────
@@ -1764,7 +1832,7 @@ function loadSavedTopology() {
       if (data.topology && data.topology.nodes && data.topology.nodes.length > 0) {
         _topoData.cdp = data.topology;
         _topoPositions.cdp = data.positions || {};
-        _topoHidden = new Set(data.hidden || []);
+        _topoHidden.cdp = new Set(data.hidden || []);
         renderCdpTopology(data.topology, _topoPositions.cdp);
       } else {
         // No saved topology — auto-discover immediately
@@ -1783,11 +1851,13 @@ function loadSavedProtoTopology() {
     .then(r => r.json())
     .then(data => {
       const positions = data.positions || {};
+      const hidden    = data.hidden    || {};
       ['ospf', 'bgp', 'tunnel'].forEach(v => {
         const topo = data[v];
         if (topo && topo.nodes && topo.nodes.length > 0) {
           _topoData[v]      = topo;
           _topoPositions[v] = positions[v] || {};
+          _topoHidden[v]    = new Set(hidden[v] || []);
         }
       });
     }).catch(() => {});
@@ -1912,10 +1982,10 @@ function renderCdpTopology(topology, savedPositions) {
   const placeholder = document.getElementById('topoCdpPlaceholder');
   if (placeholder) placeholder.style.display = 'none';
 
-  const visibleNodes   = topology.nodes.filter(n => !_topoHidden.has(n.id));
+  const visibleNodes   = topology.nodes.filter(n => !_topoHidden.cdp.has(n.id));
   const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
   const visibleEdges   = topology.edges.filter(e => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
-  updateHiddenUI();
+  updateHiddenUI('cdp');
 
   const nodes = new vis.DataSet(visibleNodes.map(node => {
     const isManaged = node.type === 'managed';
@@ -1953,7 +2023,7 @@ function renderCdpTopology(topology, savedPositions) {
     const bodyEl  = document.getElementById('topoDetailBody');
     if (params.nodes.length > 0) {
       const nodeId = params.nodes[0];
-      _selectedNodeId = nodeId;
+      _selectedNodeId.cdp = nodeId;
       const node = topology.nodes.find(n => n.id === nodeId);
       if (node) {
         titleEl.textContent = node.label;
@@ -1976,7 +2046,7 @@ function renderCdpTopology(topology, savedPositions) {
         panel.style.display = 'block';
       }
     } else {
-      _selectedNodeId = null;
+      _selectedNodeId.cdp = null;
       panel.style.display = 'none';
     }
   });
@@ -1992,8 +2062,14 @@ function renderProtoTopology(view, topology, savedPositions) {
   const placeholder = _placeholderFor(view);
   if (placeholder) placeholder.style.display = 'none';
 
+  const hiddenSet    = _topoHidden[view];
+  const visibleNodes = topology.nodes.filter(n => !hiddenSet.has(n.id));
+  const visibleIds   = new Set(visibleNodes.map(n => n.id));
+  const visibleEdges = topology.edges.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
+  updateHiddenUI(view);
+
   // Build nodes
-  const nodes = new vis.DataSet(topology.nodes.map(node => {
+  const nodes = new vis.DataSet(visibleNodes.map(node => {
     const isManaged  = node.type === 'managed';
     const isExternal = node.type === 'external';
     let color;
@@ -2012,7 +2088,7 @@ function renderProtoTopology(view, topology, savedPositions) {
   }));
 
   // Build edges with color by state
-  const edges = new vis.DataSet(topology.edges.map((edge, idx) => {
+  const edges = new vis.DataSet(visibleEdges.map((edge, idx) => {
     let edgeColor = _edgeColor();
     let label = '';
     if (view === 'ospf') {
@@ -2059,6 +2135,7 @@ function renderProtoTopology(view, topology, savedPositions) {
     if (!panel) return;
     if (params.nodes.length > 0) {
       const nodeId = params.nodes[0];
+      _selectedNodeId[view] = nodeId;
       const node   = topology.nodes.find(n => n.id === nodeId);
       if (!node) return;
       titleEl.textContent = node.label;
@@ -2078,6 +2155,7 @@ function renderProtoTopology(view, topology, savedPositions) {
       }
       panel.style.display = 'block';
     } else {
+      _selectedNodeId[view] = null;
       panel.style.display = 'none';
     }
   });
@@ -3815,4 +3893,209 @@ function askAiAboutSelection() {
   }, 350);
 }
 </script>
+
+<!-- ================================================================== -->
+<!-- SETTINGS MODAL                                                       -->
+<!-- ================================================================== -->
+<div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="settingsModalLabel">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-2" viewBox="0 0 16 16">
+            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/>
+            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.474l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"/>
+          </svg>
+          Settings
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- AI / Anthropic -->
+        <h6 class="text-primary fw-semibold mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1m0 1a6 6 0 1 1 0 12A6 6 0 0 1 8 2"/><path d="M8 4a.5.5 0 0 1 .5.5v3.793l2.146 2.147a.5.5 0 0 1-.708.707l-2.292-2.293A.5.5 0 0 1 7.5 8.5v-4A.5.5 0 0 1 8 4"/></svg>
+          AI Provider
+        </h6>
+        <div class="row g-3 mb-4">
+          <div class="col-12">
+            <label class="form-label fw-semibold">Anthropic API Key
+              <span class="text-muted fw-normal small ms-1">(saved to .env — survives restarts)</span>
+            </label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="settingsAnthropicKey"
+                     placeholder="sk-ant-api03-…" autocomplete="off">
+              <button class="btn btn-outline-secondary" type="button" id="settingsToggleKey"
+                      onclick="toggleKeyVisibility()" title="Show/hide">
+                <svg id="settingsEyeIcon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
+                  <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
+                </svg>
+              </button>
+            </div>
+            <div class="form-text" id="settingsKeyStatus"></div>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Jenkins -->
+        <h6 class="text-primary fw-semibold mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/><path d="M6.854 4.646a.5.5 0 0 1 0 .708L4.207 8l2.647 2.646a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 0 1 .708 0m2.292 0a.5.5 0 0 0 0 .708L11.793 8l-2.647 2.646a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708 0"/></svg>
+          Jenkins CI
+        </h6>
+        <div class="row g-3 mb-4">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">Jenkins URL</label>
+            <input type="url" class="form-control" id="settingsJenkinsUrl"
+                   placeholder="http://localhost:8080">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Username</label>
+            <input type="text" class="form-control" id="settingsJenkinsUser"
+                   placeholder="admin" autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">API Key
+              <span class="text-muted fw-normal small ms-1">(for build triggers)</span>
+            </label>
+            <input type="password" class="form-control" id="settingsJenkinsApiKey"
+                   placeholder="11ee08ae…" autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Webhook Token
+              <span class="text-muted fw-normal small ms-1">(optional)</span>
+            </label>
+            <input type="password" class="form-control" id="settingsJenkinsToken"
+                   placeholder="token" autocomplete="off">
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Network -->
+        <h6 class="text-primary fw-semibold mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M14.763.075A.5.5 0 0 1 15 .5v15a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5V14h-1v1.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V10a.5.5 0 0 1 .342-.474L6 7.64V4.5a.5.5 0 0 1 .276-.447l8-4a.5.5 0 0 1 .487.022M6 8.694 1 10.36V15h5zM7 15h2v-1.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5V15h1V1.309z"/></svg>
+          Network
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label class="form-label fw-semibold">TFTP Server IP</label>
+            <input type="text" class="form-control" id="settingsTftpIp"
+                   placeholder="192.168.0.1">
+            <div class="form-text">Used for bulk file transfer operations.</div>
+          </div>
+        </div>
+
+      </div><!-- /modal-body -->
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="settingsSaveBtn" onclick="saveSettings()">
+          <span class="btn-text">Save Settings</span>
+          <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Settings modal ──────────────────────────────────────────────────────────
+const _settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+
+window.openSettingsModal = function() {
+  // Load current values from server
+  fetch('/settings')
+    .then(r => r.json())
+    .then(s => {
+      // API key: show placeholder if already set, leave blank otherwise
+      const keyInput = document.getElementById('settingsAnthropicKey');
+      keyInput.value = '';
+      keyInput.placeholder = s.anthropic_api_key ? '••••••••  (already set — enter new key to change)' : 'sk-ant-api03-…';
+      document.getElementById('settingsKeyStatus').textContent =
+        s.anthropic_api_key ? '✓ API key is configured' : '⚠ No API key set — AI features will not work';
+      document.getElementById('settingsKeyStatus').className =
+        'form-text ' + (s.anthropic_api_key ? 'text-success' : 'text-warning');
+
+      document.getElementById('settingsJenkinsUrl').value     = s.jenkins_url     || '';
+      document.getElementById('settingsJenkinsUser').value    = s.jenkins_user    || '';
+      document.getElementById('settingsJenkinsApiKey').value  = s.jenkins_api_key || '';
+      document.getElementById('settingsJenkinsToken').value   = s.jenkins_token   || '';
+      document.getElementById('settingsTftpIp').value         = s.tftp_server_ip  || '';
+    })
+    .catch(() => showToast('Could not load settings', 'danger'));
+  _settingsModal.show();
+};
+
+window.toggleKeyVisibility = function() {
+  const inp  = document.getElementById('settingsAnthropicKey');
+  const icon = document.getElementById('settingsEyeIcon');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    icon.innerHTML = '<path d="m10.79 12.912-1.614-1.615a3.5 3.5 0 0 1-4.474-4.474l-2.06-2.06C.938 6.278 0 8 0 8s3 5.5 8 5.5a7 7 0 0 0 2.79-.588M5.21 3.088A7 7 0 0 1 8 2.5c5 0 8 5.5 8 5.5s-.939 1.721-2.641 3.238l-2.062-2.062a3.5 3.5 0 0 0-4.474-4.474z"/><path d="M5.525 7.646a2.5 2.5 0 0 0 2.829 2.829zm4.95.708-2.829-2.83a2.5 2.5 0 0 1 2.829 2.829zm3.171 6-12-12 .708-.708 12 12z"/>';
+  } else {
+    inp.type = 'password';
+    icon.innerHTML = '<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>';
+  }
+};
+
+window.saveSettings = function() {
+  const btn     = document.getElementById('settingsSaveBtn');
+  const btnText = btn.querySelector('.btn-text');
+  const spinner = btn.querySelector('.spinner-border');
+  btnText.textContent = 'Saving…';
+  spinner.classList.remove('d-none');
+  btn.disabled = true;
+
+  const payload = {
+    jenkins_url:      document.getElementById('settingsJenkinsUrl').value.trim(),
+    jenkins_user:     document.getElementById('settingsJenkinsUser').value.trim(),
+    jenkins_api_key:  document.getElementById('settingsJenkinsApiKey').value.trim(),
+    jenkins_token:    document.getElementById('settingsJenkinsToken').value.trim(),
+    tftp_server_ip:   document.getElementById('settingsTftpIp').value.trim(),
+  };
+
+  // Only send the API key if the user actually typed something
+  const apiKeyVal = document.getElementById('settingsAnthropicKey').value.trim();
+  if (apiKeyVal) payload.anthropic_api_key = apiKeyVal;
+
+  fetch('/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+    .then(r => r.json())
+    .then(data => {
+      btnText.textContent = 'Save Settings';
+      spinner.classList.add('d-none');
+      btn.disabled = false;
+      if (data.status === 'ok' || data.status === 'partial') {
+        _settingsModal.hide();
+        if (data.errors && data.errors.length) {
+          showToast('Settings saved with warnings: ' + data.errors.join('; '), 'warning');
+        } else {
+          showToast('Settings saved', 'success');
+        }
+      } else {
+        showToast('Failed to save settings', 'danger');
+      }
+    })
+    .catch(() => {
+      btnText.textContent = 'Save Settings';
+      spinner.classList.add('d-none');
+      btn.disabled = false;
+      showToast('Failed to save settings', 'danger');
+    });
+};
+
+// Auto-open Settings modal when redirected from another page via ?open_settings=1
+if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
+  document.addEventListener('DOMContentLoaded', () => openSettingsModal());
+}
+</script>
+
 {% endblock %}

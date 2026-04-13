@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(dir:*)",
+      "Bash(pip install:*)",
+      "Bash(pip search:*)",
+      "Bash(pip index:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python -c \"import app\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('c:/Users/dmarc/OneDrive/Desktop/School/Final Project - Dustin Marchak/data/lists/wdtc_denver/playbooks/index.json'\\)\\); print\\(len\\(d\\), 'entries'\\); [print\\(p.get\\('name','?'\\)\\) for p in d]\")"
     ],
     "deny": [],
     "ask": []

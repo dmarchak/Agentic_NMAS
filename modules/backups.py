@@ -1,13 +1,12 @@
-"""
-Configuration Backup and Restore Module
+"""backups.py
 
-Handles backup operations for device configurations:
-- Save running-config to startup-config
-- Download configs to local machine
-- View backup history
-- Compare configurations (diff view)
+Configuration backup retrieval and local storage for network devices.
 
-Backups are stored per device-list under data/lists/{slug}/backups/.
+Fetches running-config and startup-config via SSH (Netmiko), saves them as
+timestamped .cfg files under data/lists/{slug}/backups/, and maintains a
+backup_index.json for history and stats.  Provides unified-diff comparison
+between any two stored configs.  All paths are scoped to the currently active
+device list so switching lists gives each list its own backup history.
 """
 
 import os

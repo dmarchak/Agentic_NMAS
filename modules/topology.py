@@ -1,8 +1,13 @@
-"""
-Topology Discovery Module
+"""topology.py
 
-Gathers CDP neighbor data and interface IP information from devices
-to build a network topology map.
+Network topology discovery and graph construction.
+
+Discovers the network topology by querying devices in parallel via SSH.
+Builds a graph from CDP neighbor relationships (physical links), OSPF
+adjacencies, BGP peer sessions, and DMVPN/mGRE tunnel interfaces (with
+hub/spoke role detection).  Returns a unified node/edge structure consumed
+by the browser's vis.js topology visualizer, including interface labels,
+platform info, IP addresses, and protocol-specific metadata.
 """
 
 import re

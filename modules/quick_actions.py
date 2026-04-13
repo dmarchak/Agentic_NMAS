@@ -1,12 +1,11 @@
 """quick_actions.py
 
-Small persistence helpers for the user-configurable "quick actions"
-feature. Quick actions are simple named command/label pairs stored in
-a JSON file; the web UI reads this file to populate dropdowns and the
-API writes it when the user updates the global quick action list.
+Persistence helpers for user-defined quick actions (command shortcuts).
 
-This module intentionally stays tiny: load and save operations are
-plain JSON reads/writes to keep the format simple and human-editable.
+Quick actions are name/command pairs stored in data/quick_actions.json.
+The web UI reads the file to populate command shortcut dropdowns; the API
+writes it when the user saves an updated list.  The format is intentionally
+plain JSON so it can be hand-edited if needed.
 """
 
 import os

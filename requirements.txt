@@ -1,5 +1,13 @@
 # Network Device Manager - Python Dependencies
 # Install with: pip install -r requirements.txt
+#
+# Note: For Python 3.13+, a telnetlib compatibility shim (telnetlib.py) is included
+# in the project since telnetlib was removed from the standard library.
+
+# AI Integration
+anthropic>=0.40.0
+openai>=1.30.0      # Used for Groq and Ollama (OpenAI-compatible API)
+groq>=0.9.0         # Optional: Groq SDK (or use openai client with GROQ_API_KEY)
 
 # Web Framework
 Flask==3.0.0
@@ -11,6 +19,10 @@ paramiko==3.4.0
 
 # Network Utilities
 ping3==4.0.8
+psutil>=5.9.0           # Interface enumeration for OOB collector IP detection
+
+# SNMP & NetFlow
+pysnmp>=6.2.0           # SNMP v1/v2c polling (pure Python, async API in v6+)
 
 # Security & Encryption
 cryptography==41.0.7

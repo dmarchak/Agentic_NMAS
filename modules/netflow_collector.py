@@ -1,21 +1,13 @@
-"""
-netflow_collector.py — NetFlow v5/v9 UDP receiver and summarizer
+"""netflow_collector.py
 
-Listens on a UDP port for NetFlow exports from network devices.
-Parses v5 (fixed 48-byte records) and v9 (template-based) packets.
-Stores recent flows in a per-list ring buffer.
+NetFlow v5/v9 UDP collector and flow summarizer.
 
-Configure devices to export flows to: <collector_ip>:<netflow_port>
-
-Typical Cisco IOS config (the AI generates this):
-  ip flow-export destination <collector_ip> <port>
-  ip flow-export version 9
-  ip flow-export source Loopback0
-  interface <if>
-    ip flow ingress
-    ip flow egress
-
-Default port: 9996  (configurable per list in collector_config)
+Listens for NetFlow export packets from Cisco IOS devices, decodes v5
+(fixed 48-byte records) and v9 (template-based) formats, and stores recent
+flows in a 500-entry ring buffer along with per-source traffic aggregates.
+The AI assistant can query flow data to identify top talkers and bandwidth
+consumers.  Default listen port is 9996, configurable per list via
+collector_config.  Runs as a daemon thread started on server startup.
 """
 
 import json

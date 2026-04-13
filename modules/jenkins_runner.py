@@ -1,14 +1,16 @@
 """jenkins_runner.py
 
-Jenkins CI integration — triggers a real Jenkins server build and polls
-for the result.  All check logic lives in the Jenkinsfile on the server;
-this module only manages the connection config and result persistence.
+Jenkins CI pipeline integration for network compliance and verification.
 
-Per-list isolation
-------------------
-- data/jenkins_checks.json   — server connection settings (URL, user, api_key, token)
-- data/lists/{slug}/jenkins_pipelines.json — job names registered to that list
-- data/lists/{slug}/jenkins_results.json   — build results for that list's jobs
+Triggers Jenkins builds via the Jenkins REST API, polls for results, stores
+build history, and provides helpers for creating/scheduling/deleting pipeline
+jobs.  All check logic lives in Jenkinsfile(s) on the Jenkins server; this
+module manages only the connection config and result persistence.
+
+Storage layout:
+  data/jenkins_checks.json                   — global server settings (URL, credentials)
+  data/lists/{slug}/jenkins_pipelines.json   — pipeline jobs registered to this list
+  data/lists/{slug}/jenkins_results.json     — build results for this list's jobs
 """
 
 import json

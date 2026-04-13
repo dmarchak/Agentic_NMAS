@@ -1,14 +1,13 @@
-"""
-event_monitor.py — Background agent event monitor
+"""event_monitor.py
 
-Runs a daemon thread that watches for events the agent should act on:
-  - Jenkins build completions (pass or fail) across all registered pipelines
-  - Config drift (periodically diff running vs golden — only when devices are reachable)
-  - Compliance failures (re-run compliance after any CI cycle)
+Background event monitor for the autonomous AI agent.
 
-Events are written to a shared ring-buffer (MAX_EVENTS=50).  The Flask app
-exposes GET /ai/events to poll them; the frontend asks the AI to act on any
-unacknowledged events when the user is idle.
+Runs a daemon thread that polls for actionable events on a configurable
+interval: Jenkins build completions across all registered pipelines, passive
+config-drift checks (running vs golden), and compliance failures post-CI.
+Events are written to a 50-entry in-memory ring buffer; the Flask API exposes
+GET /ai/events so the frontend can acknowledge events and prompt the AI to
+investigate when the user is idle.
 """
 
 import os

@@ -277,12 +277,15 @@ def index():
     # Get all device lists for the dropdown
     device_lists = get_device_lists()
 
+    no_api_key = not bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+
     return render_template(
         "index.html",
         devices=devices,
         device_lists=device_lists,
         current_list=current_list_name,
-        tftp_server=TFTP_SERVER_IP
+        tftp_server=TFTP_SERVER_IP,
+        no_api_key=no_api_key
     )
 
 
@@ -394,6 +397,7 @@ def manage_device(ip):
             quick_actions=load_quick_actions().get("global", []),
             active_tab=active_tab,
             tftp_server=TFTP_SERVER_IP,
+            no_api_key=not bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
         )
     except Exception as e:
         flash(f"Failed to connect to {dev.get('hostname', ip)} ({ip}): {e}", "danger")
@@ -1084,6 +1088,88 @@ def save_tftp_server():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/settings", methods=["GET"])
+def get_settings():
+    """Return all configurable global settings in one payload."""
+    import modules.jenkins_runner as _jr
+    jcfg = _jr.load_config()
+    return jsonify({
+        "anthropic_api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
+        "jenkins_url":       jcfg.get("jenkins_url", ""),
+        "jenkins_user":      jcfg.get("jenkins_user", ""),
+        "jenkins_api_key":   jcfg.get("jenkins_api_key", ""),
+        "jenkins_token":     jcfg.get("jenkins_token", ""),
+        "tftp_server_ip":    TFTP_SERVER_IP,
+    })
+
+
+@app.route("/settings", methods=["POST"])
+def save_settings():
+    """Save all global settings submitted from the Settings modal."""
+    global TFTP_SERVER_IP
+    import modules.config as config_module
+    import modules.jenkins_runner as _jr
+
+    data = request.get_json(silent=True) or {}
+    errors = []
+
+    # ── Anthropic API key ─────────────────────────────────────────────────
+    api_key = data.get("anthropic_api_key", "").strip()
+    if api_key:
+        os.environ["ANTHROPIC_API_KEY"] = api_key
+        # Persist to .env so it survives restarts
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        try:
+            lines = []
+            replaced = False
+            if os.path.exists(env_path):
+                with open(env_path, "r", encoding="utf-8") as fh:
+                    lines = fh.readlines()
+                for i, line in enumerate(lines):
+                    if line.startswith("ANTHROPIC_API_KEY="):
+                        lines[i] = f"ANTHROPIC_API_KEY={api_key}\n"
+                        replaced = True
+            if not replaced:
+                lines.append(f"ANTHROPIC_API_KEY={api_key}\n")
+            with open(env_path, "w", encoding="utf-8") as fh:
+                fh.writelines(lines)
+            # Reset cached Anthropic client so it picks up the new key
+            import modules.ai_assistant as _ai_mod
+            _ai_mod._anthropic_client = None
+        except Exception as exc:
+            errors.append(f"API key saved to env but .env write failed: {exc}")
+
+    # ── Jenkins settings ──────────────────────────────────────────────────
+    jenkins_fields = ("jenkins_url", "jenkins_user", "jenkins_api_key", "jenkins_token")
+    if any(k in data for k in jenkins_fields):
+        try:
+            jcfg = _jr.load_config()
+            for field in jenkins_fields:
+                if field in data:
+                    jcfg[field] = data[field].strip()
+            _jr.save_config(jcfg)
+        except Exception as exc:
+            errors.append(f"Jenkins settings failed: {exc}")
+
+    # ── TFTP server IP ────────────────────────────────────────────────────
+    tftp = data.get("tftp_server_ip", "").strip()
+    if tftp:
+        try:
+            parts = tftp.split(".")
+            if not (len(parts) == 4 and all(0 <= int(p) <= 255 for p in parts)):
+                errors.append("Invalid TFTP server IP address format.")
+            else:
+                set_user_setting("tftp_server_ip", tftp)
+                config_module.TFTP_SERVER_IP = tftp
+                TFTP_SERVER_IP = tftp
+        except Exception as exc:
+            errors.append(f"TFTP setting failed: {exc}")
+
+    if errors:
+        return jsonify({"status": "partial", "errors": errors}), 207
+    return jsonify({"status": "ok"})
+
+
 @app.route("/device/<ip>/restore_golden_config", methods=["POST"])
 def restore_golden_config(ip):
     """Restore golden config from flash:golden_config.txt to startup-config."""
@@ -1682,8 +1768,9 @@ def topology_save_hidden():
 
 # Protocol topology (OSPF / BGP / Tunnels) -----------------------------------
 
-_PROTO_CACHE_FILE = os.path.join(os.path.dirname(__file__), "data", "proto_topology_cache.json")
-_PROTO_POS_FILE   = os.path.join(os.path.dirname(__file__), "data", "proto_topology_positions.json")
+_PROTO_CACHE_FILE  = os.path.join(os.path.dirname(__file__), "data", "proto_topology_cache.json")
+_PROTO_POS_FILE    = os.path.join(os.path.dirname(__file__), "data", "proto_topology_positions.json")
+_PROTO_HIDDEN_FILE = os.path.join(os.path.dirname(__file__), "data", "proto_topology_hidden.json")
 
 
 def _load_proto_cache():
@@ -1722,6 +1809,24 @@ def _save_proto_positions(data: dict) -> None:
     os.replace(tmp, _PROTO_POS_FILE)
 
 
+def _load_proto_hidden() -> dict:
+    try:
+        if os.path.exists(_PROTO_HIDDEN_FILE):
+            with open(_PROTO_HIDDEN_FILE, encoding="utf-8") as fh:
+                return json.load(fh)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_proto_hidden(data: dict) -> None:
+    os.makedirs(os.path.dirname(_PROTO_HIDDEN_FILE), exist_ok=True)
+    tmp = _PROTO_HIDDEN_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, _PROTO_HIDDEN_FILE)
+
+
 @app.route("/topology/protocol_data")
 def topology_protocol_data():
     """Discover and return OSPF, BGP, and tunnel topology graphs."""
@@ -1751,15 +1856,37 @@ def topology_protocol_data():
 
 @app.route("/topology/protocol_state")
 def topology_protocol_state():
-    """Return cached protocol topologies + persisted positions."""
-    cache = _load_proto_cache()
+    """Return cached protocol topologies + persisted positions + hidden sets."""
+    cache     = _load_proto_cache()
     positions = _load_proto_positions()
+    hidden    = _load_proto_hidden()
     return jsonify({
-        "ospf":   cache.get("ospf",   {"nodes": [], "edges": []}),
-        "bgp":    cache.get("bgp",    {"nodes": [], "edges": []}),
-        "tunnel": cache.get("tunnel", {"nodes": [], "edges": []}),
+        "ospf":      cache.get("ospf",   {"nodes": [], "edges": []}),
+        "bgp":       cache.get("bgp",    {"nodes": [], "edges": []}),
+        "tunnel":    cache.get("tunnel", {"nodes": [], "edges": []}),
         "positions": positions,
+        "hidden":    hidden,
     })
+
+
+@app.route("/topology/proto_hidden", methods=["POST"])
+def topology_save_proto_hidden():
+    """Persist per-view hidden node list for OSPF/BGP/Tunnel views.
+    Body: {view: "ospf"|"bgp"|"tunnel", hidden: [id, ...]}
+    """
+    data = request.get_json(silent=True) or {}
+    view = data.get("view", "")
+    hidden = data.get("hidden", [])
+    if view not in ("ospf", "bgp", "tunnel"):
+        return jsonify({"ok": False, "error": "invalid view"}), 400
+    try:
+        all_hidden = _load_proto_hidden()
+        all_hidden[view] = hidden
+        _save_proto_hidden(all_hidden)
+    except Exception as exc:
+        app.logger.warning("topology_save_proto_hidden: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True})
 
 
 @app.route("/topology/proto_positions", methods=["POST"])
@@ -2301,6 +2428,7 @@ def ai_chat():
         session_id        = data.get("session_id") or "default"
         device_context    = data.get("device_context") or None    # browser-cached snapshot
         topology_context  = data.get("topology_context") or None  # browser-cached topology
+        attached_files    = data.get("attached_files") or []       # [{name, content}] uploaded by user
         run_playbook_id    = data.get("run_playbook_id") or None    # direct playbook execution
         skip_playbook_match = bool(data.get("skip_playbook_match"))  # bypass matching (auto-fix path)
 
@@ -2373,6 +2501,7 @@ def ai_chat():
                         context_ip=context_ip,
                         device_context=device_context,
                         topology_context=topology_context,
+                        attached_files=attached_files if attached_files else None,
                     )
                 for event in gen:
                     event_queue.put(event)
