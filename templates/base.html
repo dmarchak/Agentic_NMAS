@@ -672,6 +672,14 @@
       📡 Context: <strong id="aiContextLabel"></strong>
     </div>
 
+    <!-- Disabled overlay (shown when AI is turned off in Settings) -->
+    <div id="aiDisabledOverlay" style="display:none;position:absolute;inset:0;z-index:20;background:rgba(15,23,42,.92);display:none;flex-direction:column;align-items:center;justify-content:center;gap:1rem;text-align:center;padding:2rem;">
+      <div style="font-size:2rem">🚫</div>
+      <div style="font-size:1rem;font-weight:600;color:#e2e8f0;">AI Assistant Disabled</div>
+      <div style="font-size:.82rem;color:#94a3b8;max-width:260px;">The AI assistant has been turned off. Re-enable it in Settings to resume.</div>
+      <button onclick="openSettingsModal()" style="margin-top:.5rem;padding:.45rem 1.2rem;background:#6366f1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.82rem;">Open Settings</button>
+    </div>
+
     <!-- Messages -->
     <div class="ai-messages" id="aiMessages">
 
@@ -928,6 +936,23 @@
       ctxLabel.textContent = label + ' (' + contextIp + ')';
       contextBar.classList.remove('hidden');
     }
+
+    /* ---- AI enable/disable -------------------------------------------- */
+    const aiDisabledOverlay = document.getElementById('aiDisabledOverlay');
+
+    window.applyAiEnabled = function(enabled) {
+      window._aiEnabled = !!enabled;
+      if (!aiDisabledOverlay) return;
+      aiDisabledOverlay.style.display = enabled ? 'none' : 'flex';
+      // Also dim the input area so it's clear interaction is blocked
+      const inputArea = document.querySelector('.ai-input-area');
+      if (inputArea) inputArea.style.opacity = enabled ? '' : '0.35';
+      if (input)  input.disabled  = !enabled;
+      if (sendBtn) sendBtn.disabled = !enabled;
+    };
+
+    // Apply persisted state synchronously — value is server-rendered, no fetch needed.
+    window.applyAiEnabled({{ ai_enabled | tojson }});
 
     /* ---- Panel resize -------------------------------------------------- */
     (function () {
@@ -2204,6 +2229,24 @@
         busy = false;
         scrollBottom();
 
+      } else if (evt.type === 'report_saved') {
+        // AI finished writing a network report — show a download card.
+        const reportCard = document.createElement('div');
+        reportCard.className = 'ai-tool-card';
+        reportCard.style.cssText = 'border-left-color:#10b981;max-width:98%';
+        reportCard.innerHTML =
+          '<div class="ai-tool-header" style="background:rgba(16,185,129,.1);cursor:default">' +
+            '<span style="font-size:.9rem">📄</span>' +
+            '<span class="ai-tool-label" style="color:#6ee7b7">Report ready</span>' +
+          '</div>' +
+          '<div class="ai-tool-body" style="display:block">' +
+            '<div style="color:#e2e8f0;font-size:.85rem;margin-bottom:.4rem"><strong>' + escHtml(evt.title || 'Network Report') + '</strong></div>' +
+            '<div style="color:#94a3b8;font-size:.78rem;margin-bottom:.75rem">' + escHtml(evt.filename || '') + '</div>' +
+            '<a href="' + escHtml(evt.download_url || '#') + '" download class="btn btn-success btn-sm">Download Report</a>' +
+          '</div>';
+        messages.insertBefore(reportCard, thinking);
+        scrollBottom();
+
       } else if (evt.type === 'done') {
         // Finalise any pending streamed text
         if (currentAssistantRow && currentTextBuffer) {
@@ -2251,6 +2294,7 @@
     // Auto-troubleshoot Jenkins failures triggered from outside this closure
     setInterval(function () {
       if (!window._pendingJenkinsFix || busy) return;
+      if (window._aiEnabled === false) return;  // AI disabled — skip auto-troubleshoot
       const fix = window._pendingJenkinsFix;
       window._pendingJenkinsFix = null;
       const buildNum = fix.buildNum ? ` (#${fix.buildNum})` : '';

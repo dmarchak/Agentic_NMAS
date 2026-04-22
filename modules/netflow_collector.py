@@ -76,38 +76,59 @@ def _save_flows(new_flows: list) -> None:
         pass
 
 
-def get_recent_flows(n: int = 100) -> list:
+def get_recent_flows(n: int = 100, device_ips: set | None = None) -> list:
     with _flow_lock:
-        return list(reversed(_flows))[:n]
+        flows = list(reversed(_flows))
+    if device_ips is not None:
+        flows = [f for f in flows if f.get("exporter_ip") in device_ips]
+    return flows[:n]
 
 
-def get_flow_stats() -> dict:
-    """Aggregated stats: top talkers, protocol breakdown."""
+def clear_flows() -> None:
+    """Clear the in-memory flow buffer and remove the persisted file."""
+    global _flows, _flow_stats
+    with _flow_lock:
+        _flows.clear()
+        _flow_stats.clear()
+    try:
+        path = _flow_file()
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+    log.info("netflow_collector: flow buffer cleared")
+
+
+def get_flow_stats(device_ips: set | None = None) -> dict:
+    """Aggregated stats: top talkers, protocol breakdown, filtered to device_ips if given."""
     with _flow_lock:
         flows_copy = list(_flows)
+
+    if device_ips is not None:
+        flows_copy = [f for f in flows_copy if f.get("exporter_ip") in device_ips]
 
     top_src: dict  = {}
     top_dst: dict  = {}
     by_proto: dict = {}
 
     for f in flows_copy:
-        src = f.get("src_ip", "?")
-        dst = f.get("dst_ip", "?")
+        src   = f.get("src_ip", "?")
+        dst   = f.get("dst_ip", "?")
         proto = _proto_name(f.get("protocol", 0))
         octets = f.get("octets", 0)
 
-        top_src[src]   = top_src.get(src, 0) + octets
-        top_dst[dst]   = top_dst.get(dst, 0) + octets
+        top_src[src]    = top_src.get(src, 0) + octets
+        top_dst[dst]    = top_dst.get(dst, 0) + octets
         by_proto[proto] = by_proto.get(proto, 0) + octets
 
     def _top(d, n=10):
         return sorted(d.items(), key=lambda x: x[1], reverse=True)[:n]
 
     return {
-        "total_flows":   len(flows_copy),
-        "top_sources":   [{"ip": k, "bytes": v} for k, v in _top(top_src)],
+        "total_flows":      len(flows_copy),
+        "top_sources":      [{"ip": k, "bytes": v} for k, v in _top(top_src)],
         "top_destinations": [{"ip": k, "bytes": v} for k, v in _top(top_dst)],
-        "by_protocol":   [{"proto": k, "bytes": v} for k, v in _top(by_proto)],
+        "by_protocol":      [{"proto": k, "bytes": v} for k, v in _top(by_proto)],
     }
 
 

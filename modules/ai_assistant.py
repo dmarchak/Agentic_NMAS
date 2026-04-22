@@ -99,7 +99,7 @@ PROVIDER_DEFAULTS = {
     "anthropic": {
         "name":              "Claude Sonnet",
         "model":             "claude-sonnet-4-6",
-        "max_tokens_per_req": 8192,
+        "max_tokens_per_req": 16000,
         "max_history":        20,
         "inject_topo":        "always",
         "price": {
@@ -110,7 +110,7 @@ PROVIDER_DEFAULTS = {
     "anthropic_opus": {
         "name":              "Claude Opus",
         "model":             "claude-opus-4-6",
-        "max_tokens_per_req": 8192,
+        "max_tokens_per_req": 16000,
         "max_history":        20,
         "inject_topo":        "always",
         "price": {
@@ -643,6 +643,17 @@ def _clear_checkpoint(session_id: str) -> None:
         pass
 
 # ---------------------------------------------------------------------------
+# Side-channel SSE events from tool handlers.
+# Tool handlers store extra events here (keyed by session_id); the agentic
+# loop drains them after each tool_result yield.
+# ---------------------------------------------------------------------------
+_pending_tool_events: dict = {}   # session_id -> [event_dict, ...]
+
+# In-progress report state — keyed by session_id so concurrent sessions don't clash.
+# Each entry: {title, filename, path, sections: [str], started_at}
+_report_in_progress: dict = {}
+
+# ---------------------------------------------------------------------------
 # Ansible playbook store — paths are resolved at call time, not import time,
 # so switching device lists automatically scopes playbooks correctly.
 # ---------------------------------------------------------------------------
@@ -650,6 +661,13 @@ def _clear_checkpoint(session_id: str) -> None:
 def _get_playbooks_dir() -> str:
     from modules.config import get_current_list_data_dir
     path = os.path.join(get_current_list_data_dir(), "playbooks")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _get_reports_dir() -> str:
+    from modules.config import get_current_list_data_dir
+    path = os.path.join(get_current_list_data_dir(), "reports")
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -1065,19 +1083,22 @@ def invalidate_config_cache(ip: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Topology cache (5-min TTL, persisted to disk)
+# Topology cache (per-list, persisted to disk)
 # ---------------------------------------------------------------------------
-_TOPOLOGY_CACHE_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "data", "topology_cache.json"
-)
 _TOPOLOGY_TTL = 3600  # 1 hour — topology rarely changes; Claude triggers refresh when needed
 
 
+def _topology_cache_file() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "topology_cache.json")
+
+
 def _topology_cache_load() -> Optional[dict]:
-    if not os.path.exists(_TOPOLOGY_CACHE_FILE):
+    path = _topology_cache_file()
+    if not os.path.exists(path):
         return None
     try:
-        with open(_TOPOLOGY_CACHE_FILE, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             entry = json.load(fh)
         if time.time() - entry.get("fetched_at", 0) < _TOPOLOGY_TTL:
             return entry["topology"]
@@ -1088,10 +1109,11 @@ def _topology_cache_load() -> Optional[dict]:
 
 def _topology_cache_load_raw() -> Optional[dict]:
     """Load topology from disk regardless of TTL — for persistence across restarts."""
-    if not os.path.exists(_TOPOLOGY_CACHE_FILE):
+    path = _topology_cache_file()
+    if not os.path.exists(path):
         return None
     try:
-        with open(_TOPOLOGY_CACHE_FILE, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             entry = json.load(fh)
         return entry.get("topology")
     except Exception:
@@ -1100,17 +1122,20 @@ def _topology_cache_load_raw() -> Optional[dict]:
 
 
 def _topology_cache_save(topology: dict) -> None:
+    path = _topology_cache_file()
     try:
-        with open(_TOPOLOGY_CACHE_FILE, "w", encoding="utf-8") as fh:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
             json.dump({"fetched_at": time.time(), "topology": topology}, fh)
     except Exception:
         pass
 
 
 def invalidate_topology_cache() -> None:
-    if os.path.exists(_TOPOLOGY_CACHE_FILE):
+    path = _topology_cache_file()
+    if os.path.exists(path):
         try:
-            os.remove(_TOPOLOGY_CACHE_FILE)
+            os.remove(path)
         except Exception:
             pass
 
@@ -1336,13 +1361,10 @@ PLAYBOOK triggers:
   session (same protocol, same purpose):
     → Create a playbook automatically — do not wait to be asked
     → Name it clearly and log the id in your response
-  IF the user asks you to do something that matches an existing playbook
-  (same protocol, same purpose, AND the same target devices):
-    → Use the playbook (run_ansible_playbook) instead of manual SSH commands
-    → Only fall back to SSH if the playbook is missing required commands for this case
   IF the user asks to do "something similar" to a previous task but on DIFFERENT devices:
     → Create a NEW playbook for the new devices — do NOT run the old one
     → "Mimic", "similar to", "like the last one" means copy the structure, not reuse the same playbook
+  Do NOT suggest running existing playbooks — playbooks are run manually by the user.
 
 PIPELINE triggers:
   IF you make a network change that has no matching Jenkins pipeline:
@@ -1588,12 +1610,14 @@ Tool reference:
   jenkins_link_pipeline         — associate an EXISTING server job to this list (no server changes)
   jenkins_unlink_pipeline       — remove a job from this list's set (job stays on server)
   run_jenkins_checks            — trigger ALL pipelines registered to the current list
+  run_jenkins_job               — trigger ONE specific pipeline by name (use this when re-running after a single failure)
 
 Per-list rules (critical):
 - jenkins_get_current_pipelines is the FIRST tool to call when asked about CI for this list.
 - jenkins_create_job auto-registers the new job to the current list.
 - jenkins_delete_job removes from server AND from this list's registry.
 - run_jenkins_checks triggers ONLY the pipelines registered to the current list.
+- run_jenkins_job triggers a single named pipeline — use this instead of run_jenkins_checks when only one job needs re-running.
 - Results in the Jenkins tab are specific to the current list.
 
 Workflow — setting up CI for a list:
@@ -1724,7 +1748,9 @@ If jenkins_wait_for_result shows a failure (console is included automatically):
 2. Fix the root cause:
    - Application bug  → patch_app_file + restart_server
    - Pipeline/XML bug → jenkins_update_job with corrected Groovy
-3. Repeat: run_jenkins_checks → jenkins_wait_for_result until all pipelines pass.
+3. Re-run: if only ONE pipeline failed → use run_jenkins_job (NOT run_jenkins_checks).
+   If multiple pipelines failed → use run_jenkins_checks.
+   Then call jenkins_wait_for_result again.
 4. update_network_kb — record what failed and what fixed it:
    category="jenkins", key="<job>_last_fix",
    value="<stage that failed> — <root cause> — fixed by <what you changed>"
@@ -1744,7 +1770,6 @@ ALWAYS call save_ansible_playbook to record what you did as a reusable playbook.
 This lets future requests be handled without AI reasoning or SSH commands.
 
 Rules for save_ansible_playbook:
-- Call it at the very end of a task, after verifying the config took effect.
 - name: short and descriptive, e.g. "Enable MPLS TE on PE-1 and P4"
 - keywords: include device hostnames, protocol names, action verbs, interface names.
   Good keywords: ['mpls', 'traffic-eng', 'enable', 'pe-1', 'p4', 'interface', 'rsvp']
@@ -1855,6 +1880,33 @@ Jenkins scheduling — ALWAYS schedule new pipelines (never leave them manual-on
 
   H randomises the exact minute — always prefer H over a fixed minute to
   avoid all pipelines firing simultaneously.
+
+Network report generation
+When the user asks for a network report, explanation, or documentation of the network:
+1. Gather all needed data FIRST using read-only tools (NO live SSH):
+   - get_all_devices()                      → inventory and roles
+   - list_golden_configs()                  → see which devices have a saved baseline
+   - read_golden_config(ip) for EACH device → full last-known-good configs (NO SSH)
+   - get_network_topology()                 → physical/logical links, CDP neighbours
+   - read_variables()                       → stored IP addressing facts
+   - read_network_kb()                      → any recorded knowledge base entries
+   If a device has no golden config, note it as "no baseline saved" in the report
+   rather than falling back to a live SSH call.
+2. Build a comprehensive Markdown report covering:
+   - Executive summary (what this network does, its purpose/design)
+   - Network topology (sites, device roles — core/PE/P/CE, physical links)
+   - IP addressing scheme (loopbacks, management, transit subnets — grouped by purpose)
+   - Protocol configuration (OSPF areas, MPLS/LDP, BGP — what is configured and WHY)
+   - Interface configuration summary per device
+   - Design rationale (why each protocol/addressing choice was made)
+   - Any anomalies or observations (missing neighbours, stale config, etc.)
+3. Write the report using the chunked tool sequence — never try to fit everything in one call:
+     a. report_begin(title)          — once, to open the file
+     b. report_append(content)       — once per section (executive summary, topology,
+                                        IP addressing, per-device, observations, etc.)
+     c. report_finish()              — once, to finalize and create the download link
+   Use write_report only for very short single-device reports (< 500 words).
+4. The user will receive a download link automatically — no need to paste the report in chat.
 
 Safety
 - You have real SSH access to real routers and switches.
@@ -2131,8 +2183,10 @@ TOOLS = [
     {
         "name": "read_golden_config",
         "description": (
-            "Read the saved golden (known-good) startup-config for a specific device. "
-            "Use this to compare against the current running-config to find what changed, "
+            "Read the saved golden (known-good) config for a specific device. "
+            "Use this as the primary config source for network reports, documentation, "
+            "and any read-only analysis — no SSH session is opened. "
+            "Also use to compare against a running-config to find what changed, "
             "or to restore a device to its last verified state."
         ),
         "input_schema": {
@@ -2867,11 +2921,35 @@ TOOLS = [
         },
     },
     {
+        "name": "run_jenkins_job",
+        "description": (
+            "Trigger exactly ONE named Jenkins pipeline and return immediately. "
+            "Use this instead of run_jenkins_checks when you only want to re-run a single "
+            "specific pipeline (e.g. after fixing only one job's failure). "
+            "ALWAYS follow with jenkins_wait_for_result. "
+            "The job must already be registered to the current device list."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_name": {
+                    "type": "string",
+                    "description": "The exact Jenkins job name to trigger (case-sensitive).",
+                },
+                "startup_delay": {
+                    "type": "number",
+                    "description": "Seconds to wait before triggering (use 8 after restart_server).",
+                },
+            },
+            "required": ["job_name"],
+        },
+    },
+    {
         "name": "jenkins_wait_for_result",
         "description": (
             "Wait for all running Jenkins pipelines for this list to finish, "
             "then return the result of each job. "
-            "ALWAYS call this after run_jenkins_checks — never leave a build unobserved. "
+            "ALWAYS call this after run_jenkins_checks or run_jenkins_job — never leave a build unobserved. "
             "If any pipeline failed, the console log is fetched and included automatically "
             "so you can diagnose and fix the issue immediately without a separate tool call. "
             "Blocks until all builds complete or timeout is reached."
@@ -3109,6 +3187,84 @@ TOOLS = [
             "properties": {},
         },
     },
+    {
+        "name": "write_report",
+        "description": (
+            "Save a network report as a Markdown file and make it available for download. "
+            "Call this ONCE after gathering all data and composing the full report. "
+            "The user receives a download link in the UI — do NOT paste the full content in chat."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Short descriptive title, e.g. 'MPLS Core Network Report'",
+                },
+                "content": {
+                    "type": "string",
+                    "description": (
+                        "Full Markdown content of the report. "
+                        "Use ## headers, tables, and fenced code blocks for configs. "
+                        "Include: executive summary, topology, IP addressing, "
+                        "protocol config, design rationale, and observations."
+                    ),
+                },
+            },
+            "required": ["title", "content"],
+        },
+    },
+    {
+        "name": "report_begin",
+        "description": (
+            "Start a new chunked network report. Call this ONCE before any report_append calls. "
+            "Use this instead of write_report when the report will be long (more than 2 devices "
+            "or more than a few sections). Followed by one or more report_append calls, "
+            "then a single report_finish call."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Short descriptive title, e.g. 'MPLS Core Network Report'",
+                },
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "report_append",
+        "description": (
+            "Append a section to the in-progress report started with report_begin. "
+            "Call multiple times — once per section (executive summary, topology, "
+            "IP addressing, per-device config, etc.). Each call should contain one "
+            "logical section in Markdown. Never put the entire report in one call."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "Markdown content for this section (one logical section per call).",
+                },
+            },
+            "required": ["content"],
+        },
+    },
+    {
+        "name": "report_finish",
+        "description": (
+            "Finalize the in-progress report and make it available for download. "
+            "Call this ONCE after all report_append calls are complete. "
+            "The user receives a download link in the UI."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -3200,6 +3356,8 @@ def _tool_label(name: str, args: dict) -> str:
         return "Fetching NetFlow summary..."
     if name == "get_monitoring_config":
         return "Reading monitoring configuration..."
+    if name == "write_report":
+        return f"Writing network report: {args.get('title', '')}..."
     return f"Executing {name}..."
 
 
@@ -3217,6 +3375,7 @@ def run_chat(
     device_context: Optional[str] = None,
     topology_context: Optional[str] = None,
     attached_files: Optional[list] = None,
+    workflow_flags: Optional[dict] = None,
 ) -> Iterator[dict]:
     """
     Run one chat turn with the active AI provider.
@@ -3540,6 +3699,51 @@ def run_chat(
             "Do NOT ask 'what would you like me to do?' when the user has already "
             "given you a task."
         )
+
+    # ── Workflow flag overrides ───────────────────────────────────────────
+    # Build an explicit OVERRIDES block so the AI knows which steps are
+    # enabled or disabled regardless of its default system-prompt rules.
+    _wf = {
+        "wf_read_first":       True,
+        "wf_auto_backup":      True,
+        "wf_run_jenkins":      True,
+        "wf_save_golden":      True,
+        "wf_update_vars":      True,
+        "wf_require_approval": False,
+        **(workflow_flags or {}),
+    }
+    _wf_lines = ["[WORKFLOW OVERRIDES — these take precedence over your default rules]"]
+    _wf_lines.append(
+        f"  Read-first (check golden config + variables before live SSH): "
+        f"{'ENABLED' if _wf['wf_read_first'] else 'DISABLED — you MAY run live show commands without checking golden/variables first'}"
+    )
+    _wf_lines.append(
+        f"  Auto-backup before config push: "
+        f"{'ENABLED' if _wf['wf_auto_backup'] else 'DISABLED — skip the pre-change backup step'}"
+    )
+    _wf_lines.append(
+        f"  Run Jenkins CI after config push: "
+        f"{'ENABLED' if _wf['wf_run_jenkins'] else 'DISABLED — do NOT trigger Jenkins after pushing config'}"
+    )
+    _wf_lines.append(
+        f"  Save golden config after CI pass: "
+        f"{'ENABLED' if _wf['wf_save_golden'] else 'DISABLED — do NOT save a new golden config after CI'}"
+    )
+    _wf_lines.append(
+        f"  Update variables from new golden config: "
+        f"{'ENABLED' if _wf['wf_update_vars'] else 'DISABLED — do NOT update variables after saving golden config'}"
+    )
+    if _wf["wf_require_approval"]:
+        _wf_lines.append(
+            "  Human approval: ALWAYS REQUIRED for config changes — route every "
+            "config push through the approval queue regardless of CI result."
+        )
+    else:
+        _wf_lines.append(
+            "  Human approval: CI pass is sufficient — no approval queue needed "
+            "when Jenkins CI passes."
+        )
+    prefix_parts.append("\n".join(_wf_lines))
 
     # Separate context prefix (re-injected every API call) from the user message
     # stored in history.  History only stores the clean user question so it
@@ -4713,6 +4917,14 @@ def run_chat(
                 summary = run_checks(startup_delay=delay)
                 return format_summary(summary)
 
+            elif name == "run_jenkins_job":
+                from modules.jenkins_runner import run_single_job
+                job_name = args.get("job_name", "").strip()
+                if not job_name:
+                    return "Error: job_name is required."
+                delay = float(args.get("startup_delay", 0))
+                return run_single_job(job_name, startup_delay=delay)
+
             elif name == "jenkins_wait_for_result":
                 from modules.jenkins_runner import load_config as _jload, wait_for_build_results
                 timeout = int(args.get("timeout", 600))
@@ -5088,6 +5300,87 @@ def run_chat(
                     f"    ip flow-export version 9"
                 )
 
+            elif name == "write_report":
+                rpt_title   = args.get("title", "Network Report").strip()
+                rpt_content = args.get("content", "").strip()
+                if not rpt_content:
+                    return "Error: content is required and must not be empty"
+                slug        = re.sub(r'[^\w]+', '_', rpt_title.lower()).strip('_') or "report"
+                timestamp   = time.strftime("%Y%m%d_%H%M%S")
+                filename    = f"{timestamp}_{slug}.md"
+                rpt_dir     = _get_reports_dir()
+                rpt_path    = os.path.join(rpt_dir, filename)
+                header = f"# {rpt_title}\n\n_Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}_\n\n---\n\n"
+                with open(rpt_path, "w", encoding="utf-8") as fh:
+                    fh.write(header + rpt_content)
+                download_url = f"/ai/report/{filename}"
+                _pending_tool_events.setdefault(session_id, []).append({
+                    "type":         "report_saved",
+                    "title":        rpt_title,
+                    "filename":     filename,
+                    "download_url": download_url,
+                })
+                _dbg(f"write_report: saved '{rpt_title}' → {filename}")
+                return (
+                    f"Report saved: '{rpt_title}'\n"
+                    f"File: {filename}\n"
+                    f"Download: {download_url}\n"
+                    f"Size: {len(rpt_content)} characters\n"
+                    "The user will see a download link in the UI."
+                )
+
+            elif name == "report_begin":
+                rpt_title  = args.get("title", "Network Report").strip()
+                slug       = re.sub(r'[^\w]+', '_', rpt_title.lower()).strip('_') or "report"
+                timestamp  = time.strftime("%Y%m%d_%H%M%S")
+                filename   = f"{timestamp}_{slug}.md"
+                rpt_dir    = _get_reports_dir()
+                rpt_path   = os.path.join(rpt_dir, filename)
+                header     = f"# {rpt_title}\n\n_Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}_\n\n---\n\n"
+                with open(rpt_path, "w", encoding="utf-8") as fh:
+                    fh.write(header)
+                _report_in_progress[session_id] = {
+                    "title":      rpt_title,
+                    "filename":   filename,
+                    "path":       rpt_path,
+                    "char_count": len(header),
+                }
+                _dbg(f"report_begin: '{rpt_title}' → {filename}")
+                return f"Report started: '{rpt_title}'. Now call report_append for each section."
+
+            elif name == "report_append":
+                rpt = _report_in_progress.get(session_id)
+                if not rpt:
+                    return "Error: no report in progress. Call report_begin first."
+                section = args.get("content", "").strip()
+                if not section:
+                    return "Error: content is required."
+                with open(rpt["path"], "a", encoding="utf-8") as fh:
+                    fh.write(section + "\n\n")
+                rpt["char_count"] = rpt.get("char_count", 0) + len(section)
+                _dbg(f"report_append: +{len(section)} chars to '{rpt['filename']}'")
+                return f"Section appended ({len(section)} chars). Total so far: {rpt['char_count']} chars."
+
+            elif name == "report_finish":
+                rpt = _report_in_progress.pop(session_id, None)
+                if not rpt:
+                    return "Error: no report in progress. Call report_begin first."
+                download_url = f"/ai/report/{rpt['filename']}"
+                _pending_tool_events.setdefault(session_id, []).append({
+                    "type":         "report_saved",
+                    "title":        rpt["title"],
+                    "filename":     rpt["filename"],
+                    "download_url": download_url,
+                })
+                _dbg(f"report_finish: '{rpt['title']}' saved ({rpt['char_count']} chars)")
+                return (
+                    f"Report finalized: '{rpt['title']}'\n"
+                    f"File: {rpt['filename']}\n"
+                    f"Download: {download_url}\n"
+                    f"Total size: {rpt['char_count']} characters\n"
+                    "The user will see a download link in the UI."
+                )
+
             else:
                 return f"Unknown tool: {name}"
 
@@ -5154,7 +5447,12 @@ def run_chat(
         "save_ansible_playbook":                  1000,
         "list_ansible_playbooks":                 8000,
         "run_ansible_playbook":                  50000,
+        "write_report":                           2000,
+        "report_begin":                            500,
+        "report_append":                           200,
+        "report_finish":                           500,
         "run_jenkins_checks":                    10000,
+        "run_jenkins_job":                       10000,
         "jenkins_get_current_pipelines":           1000,
         "jenkins_list_jobs":                      2000,
         "jenkins_get_pipeline_script":           10000,
@@ -5275,6 +5573,17 @@ def run_chat(
                          f"  FIRST_MSG_CONTENT=<list of {len(_first_content)} blocks>")
 
             # ---- Call the Anthropic API ---------------------------------
+            # Final gate — checked on every iteration so a mid-flight toggle
+            # stops spending money on the very next API call.
+            try:
+                from modules.config import get_user_setting as _gus
+                if not _gus("ai_enabled", True):
+                    raise RuntimeError("AI disabled — aborting API call")
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
+
             import anthropic as _anthropic
             _resp = None
             for _attempt in range(3):
@@ -5464,6 +5773,9 @@ def run_chat(
                     "tool":    tc["name"],
                     "content": truncated,
                 }
+                # Drain any SSE side-channel events queued by this tool handler
+                for _extra_evt in _pending_tool_events.pop(session_id, []):
+                    yield _extra_evt
                 tool_results_anthropic.append({
                     "type":        "tool_result",
                     "tool_use_id": tc["id"],
@@ -5523,6 +5835,72 @@ def run_chat(
 
 
 # ---------------------------------------------------------------------------
+# YAML → plays parser (fallback when index entry has no plays field)
+# ---------------------------------------------------------------------------
+
+def _load_plays_from_yaml(yml_path: str) -> list:
+    """Parse a saved Ansible YAML file back into the internal plays format.
+
+    Handles the output of _playbook_to_yaml():
+      cisco.ios.ios_config  → mode "config",  keys  lines / commands
+      cisco.ios.ios_command → mode "enable",  key   commands
+    """
+    try:
+        import yaml as _yaml
+    except ImportError:
+        return []
+    try:
+        with open(yml_path, encoding="utf-8") as fh:
+            raw = fh.read()
+    except OSError:
+        return []
+    try:
+        docs = _yaml.safe_load(raw)
+    except Exception:
+        return []
+    if not isinstance(docs, list):
+        return []
+
+    plays = []
+    for play in docs:
+        if not isinstance(play, dict):
+            continue
+        device_ip = str(play.get("hosts", "")).strip()
+        play_name = play.get("name", "")
+        # Extract hostname from generated play name prefix
+        hostname = device_ip
+        for prefix in ("Apply configuration to ", "Execute on "):
+            if play_name.startswith(prefix):
+                hostname = play_name[len(prefix):].strip()
+                break
+
+        commands: list = []
+        mode = "config"
+        for task in (play.get("tasks") or []):
+            if not isinstance(task, dict):
+                continue
+            if "cisco.ios.ios_config" in task:
+                mode = "config"
+                cfg = task["cisco.ios.ios_config"] or {}
+                lines = cfg.get("lines") or cfg.get("commands") or []
+                commands.extend(str(l) for l in lines)
+            elif "cisco.ios.ios_command" in task:
+                mode = "enable"
+                cfg = task["cisco.ios.ios_command"] or {}
+                cmds = cfg.get("commands") or []
+                commands.extend(str(c) for c in cmds)
+
+        if device_ip and commands:
+            plays.append({
+                "device_ip": device_ip,
+                "hostname":  hostname,
+                "commands":  commands,
+                "mode":      mode,
+            })
+    return plays
+
+
+# ---------------------------------------------------------------------------
 # Direct playbook execution (bypasses Claude API entirely)
 # ---------------------------------------------------------------------------
 def run_ansible_direct(
@@ -5550,7 +5928,16 @@ def run_ansible_direct(
 
     pb_name  = playbook.get("name", playbook.get("id", "playbook"))
     pb_desc  = playbook.get("description", "")
-    plays    = playbook.get("plays", [])
+    plays    = playbook.get("plays") or []
+
+    # Index entries saved by older AI runs may only carry a "file" reference
+    # and no in-memory plays list.  Parse the YAML on demand as a fallback.
+    if not plays and playbook.get("file"):
+        yml_path = os.path.join(_get_playbooks_dir(), playbook["file"])
+        plays = _load_plays_from_yaml(yml_path)
+        if plays:
+            logger.info("run_ansible_direct: loaded %d play(s) from YAML for '%s'",
+                        len(plays), pb_name)
 
     yield {"type": "provider", "id": "ansible", "name": "Ansible Playbook", "model": "local"}
     yield {

@@ -381,6 +381,39 @@ def format_summary(summary: dict) -> str:
     return "Jenkins status unknown."
 
 
+def run_single_job(job_name: str, startup_delay: float = 0.0) -> str:
+    """
+    Trigger exactly ONE named Jenkins pipeline and return a status string.
+    The job must be registered to the current device list.
+    Use this instead of run_checks when you only want to re-run a single pipeline.
+    """
+    if startup_delay > 0:
+        time.sleep(startup_delay)
+
+    config = load_config()
+    jenkins_url = config.get("jenkins_url", "").strip()
+    if not jenkins_url:
+        return "Jenkins not configured — set jenkins_url in Settings."
+
+    registered = load_list_pipelines()
+    if job_name not in registered:
+        return (
+            f"Pipeline '{job_name}' is not registered to the current device list. "
+            f"Registered pipelines: {', '.join(registered) or '(none)'}. "
+            f"Use jenkins_link_pipeline to associate it first."
+        )
+
+    try:
+        _trigger_jenkins(config, job_name)
+        return (
+            f"Pipeline '{job_name}' triggered on {jenkins_url} at "
+            f"{time.strftime('%Y-%m-%d %H:%M:%S')}. "
+            f"Call jenkins_wait_for_result to watch the build outcome."
+        )
+    except Exception as exc:
+        return f"Failed to trigger '{job_name}': {exc}"
+
+
 # ---------------------------------------------------------------------------
 # Real Jenkins trigger + result polling
 # ---------------------------------------------------------------------------
@@ -726,6 +759,9 @@ def sync_scheduled_build_results() -> int:
     except Exception:
         existing = {}
 
+    # Ensure the pipelines sub-dict exists
+    existing.setdefault("pipelines", {})
+
     updated = 0
     for job_name in registered:
         sj = server_jobs.get(job_name)
@@ -740,8 +776,8 @@ def sync_scheduled_build_results() -> int:
         if result is None:
             result = "RUNNING"
 
-        prev = existing.get(job_name, {})
-        if prev.get("build_number") == build_num and prev.get("result") == result:
+        prev = existing["pipelines"].get(job_name, {})
+        if prev.get("jenkins_build") == build_num and prev.get("jenkins_result") == result:
             continue   # nothing changed
 
         ran_at = ""
@@ -751,22 +787,65 @@ def sync_scheduled_build_results() -> int:
                 time.localtime(lb["timestamp"] / 1000),
             )
 
-        existing[job_name] = {
-            "build_number":    build_num,
-            "result":          result,
-            "jenkins_ok":      result == "SUCCESS",
+        existing["pipelines"][job_name] = {
+            "jenkins_build":   build_num,
             "jenkins_result":  result,
+            "jenkins_ok":      result == "SUCCESS",
             "jenkins_pending": result == "RUNNING",
             "jenkins_ran_at":  ran_at,
+            "jenkins_url":     f"{base_url}/job/{job_name}/{build_num}/",
         }
         updated += 1
         logger.debug("sync_scheduled_build_results: %s build #%s → %s", job_name, build_num, result)
 
     if updated:
+        _recompute_summary(existing)
         _save_results(existing)
         logger.info("sync_scheduled_build_results: updated %d job(s)", updated)
 
     return updated
+
+
+def prune_deleted_pipelines() -> list[str]:
+    """
+    Query Jenkins for all jobs that currently exist and remove any locally-registered
+    pipelines that are no longer present on the server.
+
+    Returns the list of job names that were pruned.
+    """
+    config   = load_config()
+    base_url = config.get("jenkins_url", "").rstrip("/")
+    if not base_url:
+        return []
+
+    registered = load_list_pipelines()
+    if not registered:
+        return []
+
+    try:
+        st, body, _ = _jenkins_request(config, "/api/json?tree=jobs[name]")
+        if st != 200:
+            return []
+        server_names = {j["name"] for j in json.loads(body).get("jobs", [])}
+    except Exception as exc:
+        logger.debug("prune_deleted_pipelines: API error: %s", exc)
+        return []
+
+    pruned = [j for j in registered if j not in server_names]
+    if pruned:
+        for job in pruned:
+            unregister_pipeline(job)
+            # Also clean up any stale result entry for the removed job
+            try:
+                data = load_results() or {}
+                data.get("pipelines", {}).pop(job, None)
+                _recompute_summary(data)
+                _save_results(data)
+            except Exception:
+                pass
+        logger.info("prune_deleted_pipelines: removed %s", pruned)
+
+    return pruned
 
 
 def list_jenkins_jobs(config: dict) -> list[dict]:

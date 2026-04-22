@@ -76,7 +76,7 @@ def parse_ip_interfaces(output):
 
     Returns list of dicts with keys:
         - interface: interface name
-        - ip_address: IP address assigned
+        - ip_address: IP address assigned (empty string for unassigned)
         - status: interface status
         - protocol: protocol status
     """
@@ -84,20 +84,25 @@ def parse_ip_interfaces(output):
     for line in output.splitlines():
         # Match lines like: GigabitEthernet0/0   10.0.0.1   YES manual up   up
         parts = line.split()
-        if len(parts) >= 6 and parts[1] != 'Interface':
-            # Skip unassigned interfaces
-            ip = parts[1]
-            if ip == 'unassigned':
-                continue
-            # Validate it looks like an IP
-            if not re.match(r'\d+\.\d+\.\d+\.\d+', ip):
-                continue
-            interfaces.append({
-                'interface': parts[0],
-                'ip_address': ip,
-                'status': parts[4] if len(parts) > 4 else '',
-                'protocol': parts[5] if len(parts) > 5 else ''
-            })
+        if len(parts) < 6:
+            continue
+        # Skip the header row
+        if parts[0] == 'Interface':
+            continue
+        ip = parts[1]
+        # Validate the second column is an IP or "unassigned"; skip anything else
+        # (handles malformed or continuation lines)
+        if ip != 'unassigned' and not re.match(r'\d+\.\d+\.\d+\.\d+', ip):
+            continue
+        # Protocol is the rightmost token; use parts[-1] so "administratively down"
+        # (which shifts all subsequent columns) doesn't land on the wrong index.
+        protocol = parts[-1].lower().rstrip('*')
+        interfaces.append({
+            'interface': parts[0],
+            'ip_address': '' if ip == 'unassigned' else ip,
+            'status':   parts[4] if len(parts) > 4 else '',
+            'protocol': protocol,
+        })
     return interfaces
 
 
@@ -115,6 +120,25 @@ def shorten_interface(name):
     for pattern, replacement in replacements:
         name = re.sub(pattern, replacement, name)
     return name
+
+
+_SWITCH_PATTERNS = re.compile(
+    r'(^|[^a-z])(sw|switch|cat|ws-c|nexus|nxos|csw|dsw|asw|access|dist|core)([^a-z]|$)',
+    re.IGNORECASE,
+)
+_FIREWALL_PATTERNS = re.compile(
+    r'(^|[^a-z])(fw|asa|firewall|ftd|pix|fortigate|palo)([^a-z]|$)',
+    re.IGNORECASE,
+)
+
+
+def _infer_role(hostname: str) -> str:
+    """Guess device role from hostname when no explicit role is stored."""
+    if _FIREWALL_PATTERNS.search(hostname):
+        return 'firewall'
+    if _SWITCH_PATTERNS.search(hostname):
+        return 'switch'
+    return 'router'
 
 
 def gather_device_topology(conn, hostname):
@@ -207,6 +231,7 @@ def build_topology(devices_data):
             'title':      title,
             'interfaces': iface_list,
             'type':       'managed',
+            'role':       dev_data.get('role') or _infer_role(hostname),
         })
 
     # Build edges — resolve remote interface IP from the remote device's own data.
@@ -229,6 +254,7 @@ def build_topology(devices_data):
                     'title':      f"<b>{neighbor_hostname}</b><br>{neighbor.get('ip_address', '')}",
                     'interfaces': [],
                     'type':       'discovered',
+                    'role':       _infer_role(neighbor_hostname),
                 })
 
             local_intf  = neighbor.get('local_interface', '')
@@ -346,7 +372,9 @@ def parse_ospf_neighbors(output):
     if not neighbors:
         for line in output.splitlines():
             m = re.match(
-                r'\s*(\d+\.\d+\.\d+\.\d+)\s+(\d+)\s+(\S+)\s+\S+\s+'
+                r'\s*(\d+\.\d+\.\d+\.\d+)\s+(\d+)\s+'
+                r'(\w+/\S*(?:\s+-)?)\s+'
+                r'\d+:\d+:\d+\s+'
                 r'(\d+\.\d+\.\d+\.\d+)\s+(\S+)',
                 line
             )
@@ -518,11 +546,13 @@ def gather_protocol_topology(conn, hostname):
     """
     from modules.commands import run_device_command
     result = {
-        'hostname':   hostname,
-        'interfaces': [],
-        'ospf':       [],
-        'bgp':        {'local_as': '', 'peers': []},
-        'tunnels':    [],
+        'hostname':        hostname,
+        'interfaces':      [],
+        'ospf':            [],
+        'ospf_router_id':  '',
+        'bgp':             {'local_as': '', 'peers': []},
+        'tunnels':         [],
+        'mgmt_ip':         '',   # filled in by discover_protocol_topologies
     }
     try:
         out = run_device_command(conn, 'show ip interface brief')
@@ -535,6 +565,18 @@ def gather_protocol_topology(conn, hostname):
     except Exception as e:
         logger.warning("Protocol topo: OSPF query failed on %s: %s", hostname, e)
     try:
+        out = run_device_command(conn, 'show ip ospf')
+        m = re.search(r'Routing Process.*?with ID\s+([\d.]+)', out)
+        if not m:
+            m = re.search(r'\bwith\s+ID\s+([\d.]+)', out)
+        if m:
+            result['ospf_router_id'] = m.group(1)
+        else:
+            logger.warning("Protocol topo: OSPF router-id regex no match on %s; output=%s",
+                           hostname, out[:200])
+    except Exception as e:
+        logger.warning("Protocol topo: OSPF router-id query failed on %s: %s", hostname, e)
+    try:
         out = run_device_command(conn, 'show ip bgp summary')
         result['bgp'] = parse_bgp_summary(out)
     except Exception as e:
@@ -546,15 +588,65 @@ def gather_protocol_topology(conn, hostname):
         out = run_device_command(conn, 'show running-config')
         tunnel_section = _extract_tunnel_sections(out)
         result['tunnels'] = parse_tunnel_config(tunnel_section)
+        # Fallback: extract OSPF router-id from running-config if show ip ospf
+        # didn't produce one (e.g. IOS format mismatch or command timeout).
+        if not result['ospf_router_id']:
+            m = re.search(r'^\s*router-id\s+([\d.]+)', out, re.MULTILINE)
+            if m:
+                result['ospf_router_id'] = m.group(1)
+                logger.warning("Protocol topo: got router-id %s from running-config for %s",
+                               m.group(1), hostname)
+        # Fallback: extract interface IPs from running-config if show ip interface
+        # brief timed out.  Loopback IPs used as OSPF router-ids must be in ip_map
+        # so that ghost nodes are not created for reachable managed devices.
+        if not result['interfaces']:
+            result['interfaces'] = _parse_ips_from_running_config(out)
+            if result['interfaces']:
+                logger.warning("Protocol topo: used running-config IPs for %s "
+                               "(%d interfaces)", hostname, len(result['interfaces']))
     except Exception as e:
         logger.warning("Protocol topo: tunnel query failed on %s: %s", hostname, e)
     return result
 
 
+def _parse_ips_from_running_config(config: str) -> list:
+    """Extract interface IPs from a running-config string.
+
+    Used as a fallback when 'show ip interface brief' times out so that
+    loopback IPs (used as OSPF router-ids) still make it into ip_map.
+    """
+    interfaces = []
+    current_intf = None
+    for line in config.splitlines():
+        m = re.match(r'^interface\s+(\S+)', line)
+        if m:
+            current_intf = m.group(1)
+            continue
+        if current_intf:
+            m = re.match(r'\s+ip address\s+(\d+\.\d+\.\d+\.\d+)\s+', line)
+            if m:
+                interfaces.append({
+                    'interface': current_intf,
+                    'ip_address': m.group(1),
+                    'status': 'up',
+                    'protocol': 'up',
+                })
+    return interfaces
+
+
 def _build_ip_map(devices_data):
-    """Build {ip: hostname} map from all gathered interface data."""
+    """Build {ip: hostname} map from all gathered interface data.
+
+    Management IPs are added first as a baseline; interface IPs (more
+    specific) overwrite them so the correct hostname always wins.
+    """
     ip_map = {}
     for dev in devices_data:
+        # Seed with management IP so devices with failed SSH commands still
+        # appear in the map (loopback IPs will overwrite this below).
+        mgmt = dev.get('mgmt_ip', '')
+        if mgmt:
+            ip_map[mgmt] = dev['hostname']
         for iface in dev.get('interfaces', []):
             ip = iface.get('ip_address', '')
             if ip:
@@ -564,7 +656,14 @@ def _build_ip_map(devices_data):
 
 def build_ospf_topology(devices_data):
     """Build OSPF neighbor graph from gathered device data."""
-    ip_map = _build_ip_map(devices_data)
+    ip_map        = _build_ip_map(devices_data)
+    # router-id → hostname map: lets us resolve neighbors whose interface IP
+    # isn't in ip_map (e.g. device timed out on show ip interface brief).
+    router_id_map = {
+        dev['ospf_router_id']: dev['hostname']
+        for dev in devices_data
+        if dev.get('ospf_router_id')
+    }
     nodes  = {}
     edges  = []
     seen   = set()
@@ -578,13 +677,26 @@ def build_ospf_topology(devices_data):
             'type':  'managed',
         }
 
+    # First pass: collect all neighbor claims and candidate edges.
+    # Key: (src, dst) — directed claim that src sees dst as a neighbor.
+    claims          = set()
+    candidate_edges = {}  # edge_key → edge dict (first reporter wins for metadata)
+    managed_ids     = {dev['hostname'].lower() for dev in devices_data}
+
     for dev in devices_data:
         src = dev['hostname'].lower()
         for nbr in dev.get('ospf', []):
             state_full = 'FULL' in nbr['state'].upper()
             peer_ip    = nbr['address']
-            peer_host  = ip_map.get(peer_ip, '')
             nbr_id     = nbr['neighbor_id']
+            # Prefer nbr_id (OSPF router-id) as the primary lookup key.
+            # Router-IDs are loopback IPs in well-designed networks and are
+            # unique within a single OSPF domain.  The interface address
+            # (peer_ip) is a last resort because shared subnets can map to
+            # the wrong device when multiple managed hosts have the same IP.
+            peer_host  = (ip_map.get(nbr_id, '')
+                          or router_id_map.get(nbr_id, '')
+                          or ip_map.get(peer_ip, ''))
 
             if peer_host:
                 dst = peer_host.lower()
@@ -594,21 +706,30 @@ def build_ospf_topology(devices_data):
                     nodes[dst] = {
                         'id':    dst,
                         'label': nbr_id,
-                        'title': f"<b>OSPF Router</b><br>{nbr_id}",
+                        'title': f"<b>OSPF Router</b><br>{nbr_id}<br><em>Unknown Router-ID</em>",
                         'type':  'discovered',
                     }
 
+            claims.add((src, dst))
+            # If dst resolved to an ospf-X placeholder, also record a claim
+            # against the real managed hostname (if we can derive it via
+            # router_id_map or ip_map).  This prevents the bidirectional check
+            # from falsely suppressing a valid edge when one side couldn't
+            # resolve the peer's IP but the peer's router-id IS known.
+            if dst.startswith('ospf-'):
+                alt = router_id_map.get(nbr_id, '') or ip_map.get(nbr_id, '')
+                if alt:
+                    claims.add((src, alt.lower()))
             area     = nbr.get('area', '')
             edge_key = tuple(sorted([src, dst]))
-            if edge_key in seen:
+            if edge_key in candidate_edges:
                 continue
-            seen.add(edge_key)
             area_label = f"Area {area}" if area else ''
             title_parts = [f"OSPF: {src} {shorten_interface(nbr['interface'])} ↔ {dst}",
                            f"State: {nbr['state']}"]
             if area_label:
                 title_parts.append(area_label)
-            edges.append({
+            candidate_edges[edge_key] = {
                 'from':        edge_key[0],
                 'to':          edge_key[1],
                 'state':       nbr['state'],
@@ -616,7 +737,77 @@ def build_ospf_topology(devices_data):
                 'interface':   nbr['interface'],
                 'area':        area,
                 'title':       ' | '.join(title_parts),
-            })
+            }
+
+    # Post-process: merge any ospf-{X} ghost nodes into managed nodes.
+    # Covers the case where resolution failed during the first pass because
+    # ospf_router_id was empty (show ip ospf timed out) but we can match the
+    # ghost ID to a managed device via its ospf_router_id, interface IPs, or
+    # by matching the ghost ID against a device whose interface has that address.
+    ospf_ghost_to_real: dict = {}
+    for ghost_id in list(nodes.keys()):
+        if not ghost_id.startswith('ospf-'):
+            continue
+        ghost_addr = ghost_id[5:]  # strip 'ospf-' prefix
+        real_h = (router_id_map.get(ghost_addr, '')
+                  or ip_map.get(ghost_addr, ''))
+        if not real_h:
+            # Last resort: check every device's interface list
+            for dev in devices_data:
+                for iface in dev.get('interfaces', []):
+                    if iface.get('ip_address') == ghost_addr:
+                        real_h = dev['hostname']
+                        break
+                if real_h:
+                    break
+        if real_h:
+            real_id = real_h.lower()
+            if real_id in nodes:
+                logger.warning("OSPF build: merging ghost %s → %s", ghost_id, real_id)
+                ospf_ghost_to_real[ghost_id] = real_id
+                del nodes[ghost_id]
+
+    if ospf_ghost_to_real:
+        new_candidates: dict = {}
+        for key, edge in candidate_edges.items():
+            a, b = key
+            a = ospf_ghost_to_real.get(a, a)
+            b = ospf_ghost_to_real.get(b, b)
+            if a == b:
+                continue
+            new_key = tuple(sorted([a, b]))
+            edge = dict(edge)
+            edge['from'] = new_key[0]
+            edge['to']   = new_key[1]
+            if new_key not in new_candidates:
+                new_candidates[new_key] = edge
+        candidate_edges = new_candidates
+        claims = {
+            (ospf_ghost_to_real.get(s, s), ospf_ghost_to_real.get(d, d))
+            for s, d in claims
+        }
+
+    # Build a set of managed devices that returned at least one OSPF neighbor.
+    # A device with an empty OSPF list may have simply failed to respond — that is
+    # not evidence against an adjacency.  Only treat it as a contradiction when the
+    # device was successfully queried AND returned neighbors but didn't include us.
+    devices_with_ospf = {
+        dev['hostname'].lower()
+        for dev in devices_data
+        if dev.get('ospf')
+    }
+
+    # Second pass: suppress an edge only when we have positive evidence of asymmetry:
+    # both endpoints returned OSPF data, but one of them didn't list the other.
+    for edge_key, edge in candidate_edges.items():
+        a, b = edge_key
+        if (a in managed_ids and b in managed_ids
+                and a in devices_with_ospf and b in devices_with_ospf):
+            if (a, b) not in claims or (b, a) not in claims:
+                logger.debug("OSPF build: suppressing edge %s — missing claim(s): fwd=%s rev=%s",
+                             edge_key, (a,b) in claims, (b,a) in claims)
+                continue  # confirmed contradiction — stale/ghost adjacency
+        edges.append(edge)
 
     return {'nodes': list(nodes.values()), 'edges': edges}
 
@@ -847,15 +1038,19 @@ def discover_protocol_topologies(devices, connection_factory, connections_pool, 
     def query_device(dev):
         try:
             conn = connection_factory(dev, connections_pool, pool_lock)
-            return gather_protocol_topology(conn, dev['hostname'])
+            result = gather_protocol_topology(conn, dev['hostname'])
+            result['mgmt_ip'] = dev.get('ip', '')
+            return result
         except Exception as e:
             logger.warning("Protocol topo query failed for %s: %s", dev['hostname'], e)
             return {
-                'hostname':   dev['hostname'],
-                'interfaces': [],
-                'ospf':       [],
-                'bgp':        {'local_as': '', 'peers': []},
-                'tunnels':    [],
+                'hostname':       dev['hostname'],
+                'interfaces':     [],
+                'ospf':           [],
+                'ospf_router_id': '',
+                'bgp':            {'local_as': '', 'peers': []},
+                'tunnels':        [],
+                'mgmt_ip':        dev.get('ip', ''),
             }
 
     with ThreadPoolExecutor(max_workers=min(max_workers, len(target))) as executor:
@@ -906,13 +1101,16 @@ def discover_topology(devices, connection_factory, connections_pool, pool_lock,
     def query_device(dev):
         try:
             conn = connection_factory(dev, connections_pool, pool_lock)
-            return gather_device_topology(conn, dev['hostname'])
+            result = gather_device_topology(conn, dev['hostname'])
+            result['role'] = dev.get('role') or _infer_role(dev['hostname'])
+            return result
         except Exception as e:
             logger.warning(f"Topology query failed for {dev['hostname']} ({dev['ip']}): {e}")
             return {
                 'hostname': dev['hostname'],
                 'neighbors': [],
-                'interfaces': []
+                'interfaces': [],
+                'role': dev.get('role') or _infer_role(dev['hostname']),
             }
 
     # Query devices in parallel

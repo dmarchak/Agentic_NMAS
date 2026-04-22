@@ -1,5 +1,5 @@
 # Dustin Marchak
-# CSCI 5020 - Final Project
+# Agentic Network Management
 # Device Manager web application
 
 # Load .env file if present (sets ANTHROPIC_API_KEY etc. without needing system env vars)
@@ -57,9 +57,12 @@ from modules.config import (
     FLASK_HOST,
     FLASK_PORT,
     FLASK_DEBUG,
-    set_user_setting
+    set_user_setting,
+    get_user_setting,
+    load_user_settings,
+    save_user_settings,
 )
-from modules.connection import ping_worker, get_persistent_connection, close_persistent_connection, with_temp_connection
+from modules.connection import ping_worker, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
 from modules.terminal import ensure_terminal_session, start_terminal_reader
 from modules.quick_actions import load_quick_actions, save_quick_actions
 from modules.utils import make_device_filename
@@ -76,7 +79,7 @@ from modules.backups import (
     get_backup_stats
 )
 from modules.bulk_ops import bulk_manager
-from modules.topology import discover_topology
+from modules.topology import discover_topology, shorten_interface
 
 # Device status cache and ping worker setup
 #
@@ -182,6 +185,7 @@ def handle_exception(error):
 connections = {}  # ip -> Netmiko connection (status-only)
 terminal_sessions = {}
 lock = threading.Lock()
+_device_lock = get_device_send_lock  # serialises SSH commands per device
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +357,9 @@ def add_device():
         app.logger.info(f'Verifying connection to device: {ip}')
         hostname = verify_device_connection(ip, username, password, secret)
 
+        role = request.form.get("role", "router").strip() or "router"
+        if role not in ("router", "switch", "firewall"):
+            role = "router"
         save_device(
             {
                 "device_type": "cisco_ios",
@@ -361,6 +368,7 @@ def add_device():
                 "password": password,
                 "secret": secret,
                 "hostname": hostname,
+                "role": role,
             },
             current_list_file,
         )
@@ -884,6 +892,18 @@ def delete_device(ip):
             except Exception as e:
                 app.logger.warning(f'Error closing terminal session for {ip}: {e}')
             terminal_sessions.pop(ip, None)
+        # Purge the deleted device from the cached topologies so it stops
+        # appearing in the topology map without needing a full rediscovery.
+        try:
+            _ai.invalidate_topology_cache()
+        except Exception:
+            pass
+        for _cache_file in (_proto_cache_file(), _proto_pos_file(), _proto_hidden_file()):
+            try:
+                if os.path.exists(_cache_file):
+                    os.remove(_cache_file)
+            except Exception:
+                pass
         app.logger.info(f'Device deleted successfully: {ip}')
         flash(f"Device {ip} deleted successfully.", "success")
     except Exception as e:
@@ -1008,19 +1028,75 @@ def create_device_list_route():
 
 @app.route("/device_lists/<list_name>", methods=["DELETE"])
 def delete_device_list_route(list_name):
-    """Delete a device list."""
+    """Delete a device list and all associated external data."""
+    cleanup_log = []
+
+    # ── 1. Delete Jenkins pipelines ────────────────────────────────────────
+    try:
+        from modules.config import get_list_data_dir
+        from modules.jenkins_runner import load_config as _jcfg, delete_jenkins_job
+
+        list_dir       = get_list_data_dir(list_name)
+        pipelines_path = os.path.join(list_dir, "jenkins_pipelines.json")
+        job_names: list = []
+        if os.path.exists(pipelines_path):
+            with open(pipelines_path, encoding="utf-8") as _fh:
+                job_names = json.load(_fh).get("pipelines", [])
+
+        if job_names:
+            jcfg = _jcfg()
+            deleted_jobs, failed_jobs = [], []
+            for job in job_names:
+                try:
+                    delete_jenkins_job(jcfg, job)
+                    deleted_jobs.append(job)
+                    app.logger.info("list delete: removed Jenkins job '%s'", job)
+                except Exception as exc:
+                    failed_jobs.append(job)
+                    app.logger.warning("list delete: could not remove Jenkins job '%s': %s", job, exc)
+            msg = f"Jenkins: deleted {len(deleted_jobs)} job(s)"
+            if failed_jobs:
+                msg += f", {len(failed_jobs)} could not be reached ({', '.join(failed_jobs)})"
+            cleanup_log.append(msg)
+    except Exception as exc:
+        app.logger.warning("list delete: Jenkins cleanup failed: %s", exc)
+        cleanup_log.append(f"Jenkins cleanup skipped: {exc}")
+
+    # ── 2. Remove from NetBox ──────────────────────────────────────────────
+    try:
+        from modules.netbox_client import remove_list_from_netbox, get_netbox_config
+        nbcfg = get_netbox_config()
+        if nbcfg.get("url") and nbcfg.get("token"):
+            nb_result = remove_list_from_netbox(list_name)
+            if nb_result.get("ok"):
+                cleanup_log.append(
+                    f"NetBox: removed {nb_result.get('deleted_devices', 0)} device(s), "
+                    f"site={nb_result.get('deleted_site')}, region={nb_result.get('deleted_region')}"
+                )
+            else:
+                cleanup_log.append(f"NetBox removal partial: {nb_result.get('error', 'unknown')}")
+        else:
+            cleanup_log.append("NetBox: not configured — skipped")
+    except Exception as exc:
+        app.logger.warning("list delete: NetBox cleanup failed: %s", exc)
+        cleanup_log.append(f"NetBox cleanup skipped: {exc}")
+
+    # ── 3. Delete the list directory and config entry ──────────────────────
     try:
         success, message = delete_device_list_func(list_name)
-
         if success:
-            app.logger.info(f"Deleted device list: {list_name}")
+            app.logger.info("Deleted device list '%s'. Cleanup: %s", list_name,
+                            " | ".join(cleanup_log))
             flash(message, "success")
-            return jsonify({"status": "success", "message": message})
+            return jsonify({
+                "status":  "success",
+                "message": message,
+                "cleanup": cleanup_log,
+            })
         else:
             return jsonify({"status": "error", "message": message}), 400
-
     except Exception as e:
-        app.logger.error(f"Failed to delete device list: {e}")
+        app.logger.error("Failed to delete device list '%s': %s", list_name, e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1038,6 +1114,23 @@ def select_device_list_route():
 
         if success:
             app.logger.info(f"Selected device list: {list_name}")
+            # Reset the event monitor's build-state cache so the new list
+            # starts fresh and doesn't inherit stale Jenkins state from the
+            # previous list.
+            from modules.event_monitor import clear_events
+            clear_events()
+            # Reload per-list collector buffers so the monitoring tab shows
+            # only traps and flows belonging to the newly selected list.
+            try:
+                from modules.snmp_collector import switch_list as snmp_switch
+                snmp_switch()
+            except Exception as _e:
+                app.logger.debug("snmp switch_list: %s", _e)
+            try:
+                from modules.netflow_collector import switch_list as nf_switch
+                nf_switch()
+            except Exception as _e:
+                app.logger.debug("netflow switch_list: %s", _e)
             return jsonify({"status": "success", "message": f"Switched to '{list_name}'"})
         else:
             return jsonify({"status": "error", "message": f"List '{list_name}' not found"}), 404
@@ -1088,19 +1181,56 @@ def save_tftp_server():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# Default values for all workflow flags (all on, except require_approval)
+_WF_DEFAULTS = {
+    "wf_read_first":       True,
+    "wf_auto_backup":      True,
+    "wf_run_jenkins":      True,
+    "wf_save_golden":      True,
+    "wf_update_vars":      True,
+    "wf_require_approval": False,
+}
+
+def _load_workflow_flags() -> dict:
+    """Return workflow flags from user settings, falling back to defaults."""
+    s = load_user_settings()
+    return {k: s.get(k, v) for k, v in _WF_DEFAULTS.items()}
+
+
+def _ai_enabled() -> bool:
+    """Master switch for AI — when False, chat and agent endpoints are blocked."""
+    return bool(load_user_settings().get("ai_enabled", True))
+
+
+@app.context_processor
+def _inject_ai_enabled():
+    """Inject ai_enabled into every template so it can be server-rendered."""
+    return {"ai_enabled": _ai_enabled()}
+
+
 @app.route("/settings", methods=["GET"])
 def get_settings():
     """Return all configurable global settings in one payload."""
     import modules.jenkins_runner as _jr
-    jcfg = _jr.load_config()
-    return jsonify({
+    from modules.netbox_client import get_netbox_config as _get_nb_cfg
+    jcfg  = _jr.load_config()
+    nbcfg = _get_nb_cfg()
+    payload = {
         "anthropic_api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
         "jenkins_url":       jcfg.get("jenkins_url", ""),
         "jenkins_user":      jcfg.get("jenkins_user", ""),
         "jenkins_api_key":   jcfg.get("jenkins_api_key", ""),
         "jenkins_token":     jcfg.get("jenkins_token", ""),
         "tftp_server_ip":    TFTP_SERVER_IP,
-    })
+        # NetBox — token never returned in cleartext; UI uses token_set flag.
+        "netbox_url":         nbcfg.get("url", ""),
+        "netbox_token_set":   bool(nbcfg.get("token")),
+        "netbox_verify_tls":  bool(nbcfg.get("verify_tls", True)),
+        "netbox_auth_scheme": nbcfg.get("auth_scheme", "Bearer"),
+        "ai_enabled":         _ai_enabled(),
+    }
+    payload.update(_load_workflow_flags())
+    return jsonify(payload)
 
 
 @app.route("/settings", methods=["POST"])
@@ -1165,6 +1295,36 @@ def save_settings():
         except Exception as exc:
             errors.append(f"TFTP setting failed: {exc}")
 
+    # ── NetBox ────────────────────────────────────────────────────────────
+    if any(k in data for k in ("netbox_url", "netbox_token", "netbox_verify_tls")):
+        try:
+            from modules.netbox_client import save_netbox_config, get_netbox_config
+            existing = get_netbox_config()
+            url   = (data.get("netbox_url",   existing.get("url",   "")) or "").strip()
+            token = (data.get("netbox_token", "") or "").strip()
+            # Blank token = keep the one on file (matches other secret fields).
+            if not token:
+                token = existing.get("token", "")
+            verify_tls = data.get("netbox_verify_tls", existing.get("verify_tls", True))
+            if url and not token:
+                errors.append("NetBox token is required the first time you save a URL.")
+            else:
+                save_netbox_config(url, token, bool(verify_tls))
+        except Exception as exc:
+            errors.append(f"NetBox settings failed: {exc}")
+
+    # ── AI master switch + workflow flags ─────────────────────────────────
+    try:
+        s = load_user_settings()
+        if "ai_enabled" in data:
+            s["ai_enabled"] = bool(data["ai_enabled"])
+        for flag in _WF_DEFAULTS:
+            if flag in data:
+                s[flag] = bool(data[flag])
+        save_user_settings(s)
+    except Exception as exc:
+        errors.append(f"Workflow flags failed: {exc}")
+
     if errors:
         return jsonify({"status": "partial", "errors": errors}), 207
     return jsonify({"status": "ok"})
@@ -1172,7 +1332,7 @@ def save_settings():
 
 @app.route("/device/<ip>/restore_golden_config", methods=["POST"])
 def restore_golden_config(ip):
-    """Restore golden config from flash:golden_config.txt to startup-config."""
+    """Restore the AI's stored golden config for this device by pushing it line-by-line via SSH."""
     try:
         _, current_list_file = get_current_device_list()
         devices = load_saved_devices(current_list_file)
@@ -1182,26 +1342,34 @@ def restore_golden_config(ip):
             flash("Device not found", "danger")
             return redirect(url_for("index"))
 
-        app.logger.info(f"Restoring golden config on device: {ip}")
+        # Load the golden config from the app's file store (same source the AI uses)
+        cfg_text = _ai._load_golden_config_file(ip)
+        if not cfg_text:
+            flash(f"No golden config saved for {dev.get('hostname', ip)} — save one via the AI first.", "warning")
+            return redirect(url_for("manage_device", ip=ip))
 
+        # Strip comment header lines the app adds (lines starting with !)
+        config_lines = [l for l in cfg_text.splitlines() if not l.startswith("!") and l.strip()]
+
+        app.logger.info(f"Restoring golden config on {ip} ({len(config_lines)} lines)")
+
+        lines_applied = []
         def execute_restore(conn):
-            # Use copy command to restore golden config to startup
-            output = conn.send_command_timing("copy flash:golden_config.txt startup-config")
-            # Handle confirmation prompts
-            if "Destination filename" in output or "?" in output:
-                output += conn.send_command_timing("")  # Accept default filename
-            if "[confirm]" in output.lower() or "confirm" in output.lower():
-                output += conn.send_command_timing("")  # Confirm
-            return output
+            conn.config_mode()
+            try:
+                for line in config_lines:
+                    run_device_command(conn, line)
+                    lines_applied.append(line)
+            finally:
+                conn.exit_config_mode()
+            return f"Applied {len(lines_applied)} configuration lines from stored golden config."
 
         output = with_temp_connection(dev, execute_restore)
 
         app.logger.info(f"Golden config restored on {ip}")
-        flash(f"Golden config restored to startup-config on {dev['hostname']}", "success")
+        flash(f"Golden config restored on {dev['hostname']} ({len(lines_applied)} lines applied)", "success")
 
-        # Get active tab from form
         active_tab = request.form.get("active_tab", "utilities")
-
         filesystems, file_list, selected_fs = get_device_context(dev)
         return render_template(
             "device.html",
@@ -1698,16 +1866,17 @@ def topology_data():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-_TOPOLOGY_POSITIONS_FILE = os.path.join(
-    os.path.dirname(__file__), "data", "topology_positions.json"
-)
+def _topo_positions_file() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "topology_positions.json")
 
 
 def _load_topo_layout() -> dict:
     """Load persisted topology layout (positions + hidden list)."""
     try:
-        if os.path.exists(_TOPOLOGY_POSITIONS_FILE):
-            with open(_TOPOLOGY_POSITIONS_FILE, encoding="utf-8") as fh:
+        path = _topo_positions_file()
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
                 return json.load(fh)
     except Exception:
         pass
@@ -1716,23 +1885,37 @@ def _load_topo_layout() -> dict:
 
 def _save_topo_layout(layout: dict) -> None:
     """Atomically persist topology layout."""
-    os.makedirs(os.path.dirname(_TOPOLOGY_POSITIONS_FILE), exist_ok=True)
-    tmp = _TOPOLOGY_POSITIONS_FILE + ".tmp"
+    path = _topo_positions_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(layout, fh)
-    os.replace(tmp, _TOPOLOGY_POSITIONS_FILE)
+    os.replace(tmp, path)
 
 
 @app.route("/topology/state")
 def topology_state():
     """Return the last-saved topology + user layout (positions + hidden nodes).
-    Uses raw cache load (ignores TTL) so topology persists across restarts."""
+    Uses raw cache load (ignores TTL) so topology persists across restarts.
+    Managed nodes that no longer exist in the device list are stripped so
+    deleted devices don't keep appearing on the map."""
     topology = _ai._topology_cache_load_raw()
     layout   = _load_topo_layout()
+
+    # Build the set of node IDs that actually exist in the current topology.
+    # We do NOT filter topology nodes here — CDP neighbors that were once managed
+    # should still appear on the map after deletion (they'll be re-typed on next
+    # discovery).  The cache is invalidated on delete so fresh discovery fixes types.
+    existing_ids: set = {n["id"] for n in (topology or {}).get("nodes", [])}
+
+    # Strip hidden/position entries for nodes that no longer exist in the topology.
+    raw_hidden    = [h for h in layout.get("hidden", [])    if h in existing_ids]
+    raw_positions = {k: v for k, v in layout.get("positions", {}).items() if k in existing_ids}
+
     return jsonify({
         "topology":  topology,
-        "positions": layout.get("positions", {}),
-        "hidden":    layout.get("hidden", []),
+        "positions": raw_positions,
+        "hidden":    raw_hidden,
     })
 
 
@@ -1766,17 +1949,225 @@ def topology_save_hidden():
     return jsonify({"ok": True, "hidden": hidden})
 
 
+@app.route("/topology/link_status")
+def topology_link_status():
+    """Return up/down status for each link in the cached CDP topology.
+
+    Queries 'show ip interface brief' on all online managed devices that
+    appear in the cached topology, then maps each edge to 'up', 'down',
+    or 'unknown'.  Uses the same persistent connections pool as normal
+    device queries so this doesn't open extra SSH sessions.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    topology = _ai._topology_cache_load_raw()
+    if not topology or not topology.get("edges"):
+        return jsonify({"status": "ok", "links": {}})
+
+    edges = topology["edges"]
+
+    edge_device_ids = set()
+    for edge in edges:
+        edge_device_ids.add(edge["from"])
+        edge_device_ids.add(edge["to"])
+
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
+    device_map = {d.get("hostname", "").lower(): d for d in devices}
+
+    intf_status: dict = {}
+
+    def _check_device(device_id):
+        device = device_map.get(device_id)
+        if not device:
+            return device_id, None
+        ip = device.get("ip", "")
+        if not device_status_cache.get(ip, False):
+            return device_id, None
+        try:
+            conn = get_persistent_connection(device, connections, lock)
+            # Must use run_device_command — 'show ip interface' is in _TIMING_PREFIXES
+            # and will timeout/return bad output with send_command directly.
+            output = run_device_command(conn, "show ip interface brief")
+            statuses: dict = {}
+            # Parse ALL interfaces (including unassigned) since CDP links may use
+            # interfaces that carry no IP address.
+            for line in output.splitlines():
+                parts = line.split()
+                # Need at least: Interface  IP  OK?  Method  Status  Protocol
+                if len(parts) < 6 or parts[0] in ("Interface", ""):
+                    continue
+                name  = parts[0]
+                # Protocol is the last column; handle "administratively down" (7+ cols)
+                protocol = parts[-1].lower().rstrip("*")
+                short    = shorten_interface(name)
+                is_up    = protocol == "up"
+                statuses[name]  = is_up
+                statuses[short] = is_up
+            return device_id, statuses
+        except Exception:
+            return device_id, None
+
+    devices_to_query = [d for d in edge_device_ids if d in device_map]
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for device_id, statuses in ex.map(_check_device, devices_to_query):
+            if statuses is not None:
+                intf_status[device_id] = statuses
+
+    links: dict = {}
+    for edge in edges:
+        key = f"{edge['from']}|{edge.get('from_intf', '')}|{edge['to']}|{edge.get('to_intf', '')}"
+        from_up = intf_status.get(edge["from"], {}).get(edge.get("from_intf", ""))
+        to_up   = intf_status.get(edge["to"],   {}).get(edge.get("to_intf",   ""))
+        if from_up is None and to_up is None:
+            status = "unknown"
+        elif from_up is False or to_up is False:
+            status = "down"
+        else:
+            status = "up"
+        links[key] = status
+
+    return jsonify({"status": "ok", "links": links})
+
+
+@app.route("/topology/proto_link_status")
+def topology_proto_link_status():
+    """Return live up/down status for OSPF adjacencies, BGP sessions, or tunnel interfaces.
+
+    Runs a single targeted command per device (ospf neighbor detail / bgp summary /
+    interface brief) and compares against the cached proto topology edges.
+    Query param: ?view=ospf|bgp|tunnel
+    """
+    from modules.topology import (
+        parse_ospf_neighbors, parse_bgp_summary, parse_ip_interfaces,
+        build_ospf_topology, build_bgp_topology,
+    )
+    from concurrent.futures import ThreadPoolExecutor
+
+    view = request.args.get("view", "")
+    if view not in ("ospf", "bgp", "tunnel"):
+        return jsonify({"status": "error", "message": "invalid view"}), 400
+
+    cached = _load_proto_cache()
+    topology = cached.get(view)
+    if not topology or not topology.get("edges"):
+        return jsonify({"status": "ok", "links": {}})
+
+    managed_node_ids = {
+        n["id"] for n in topology.get("nodes", []) if n.get("type") == "managed"
+    }
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
+    device_map = {d.get("hostname", "").lower(): d for d in devices}
+    devices_to_check = [device_map[did] for did in managed_node_ids if did in device_map]
+
+    def _collect(device):
+        ip = device.get("ip", "")
+        if not device_status_cache.get(ip, False):
+            return None
+        try:
+            conn = get_persistent_connection(device, connections, lock)
+            result = {
+                "hostname":   device["hostname"],
+                "interfaces": [],
+                "ospf":       [],
+                "bgp":        {"local_as": "", "peers": []},
+                "tunnels":    [],
+            }
+            with _device_lock(device["ip"]):
+                # All these commands are in _TIMING_PREFIXES — must use run_device_command.
+                out = run_device_command(conn, "show ip interface brief")
+                result["interfaces"] = parse_ip_interfaces(out)
+
+                if view == "ospf":
+                    out = run_device_command(conn, "show ip ospf neighbor detail")
+                    result["ospf"] = parse_ospf_neighbors(out)
+                elif view == "bgp":
+                    out = run_device_command(conn, "show ip bgp summary")
+                    result["bgp"] = parse_bgp_summary(out)
+            # For "tunnel" interface brief is sufficient to check Tunnel interface state.
+            return result
+        except Exception:
+            return None
+
+    devices_data: list = []
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for r in ex.map(_collect, devices_to_check):
+            if r:
+                devices_data.append(r)
+
+    links: dict = {}
+
+    if view in ("ospf", "bgp"):
+        if not devices_data:
+            for edge in topology["edges"]:
+                links[f"{edge['from']}|{edge['to']}"] = "unknown"
+            return jsonify({"status": "ok", "links": links})
+
+        build_fn = build_ospf_topology if view == "ospf" else build_bgp_topology
+        fresh = build_fn(devices_data)
+        # Index fresh edges by both orderings of from/to so cache ordering doesn't matter
+        fresh_map: dict = {}
+        for e in fresh["edges"]:
+            est = e.get("established", False)
+            fresh_map[f"{e['from']}|{e['to']}"] = est
+            fresh_map[f"{e['to']}|{e['from']}"] = est
+
+        for edge in topology["edges"]:
+            key = f"{edge['from']}|{edge['to']}"
+            est = fresh_map.get(key, fresh_map.get(f"{edge['to']}|{edge['from']}"))
+            if est is None:
+                links[key] = "unknown"
+            else:
+                links[key] = "up" if est else "down"
+
+    else:  # tunnel — check Tunnel interface protocol status on 'from' device
+        tun_up: dict = {}  # device_id → {intf_name: bool}
+        for dev in devices_data:
+            did = dev["hostname"].lower()
+            tun_up[did] = {}
+            for iface in dev.get("interfaces", []):
+                name = iface.get("interface", "")
+                if name.lower().startswith("tunnel"):
+                    is_up = iface.get("protocol", "").lower() == "up"
+                    tun_up[did][name]                    = is_up
+                    tun_up[did][shorten_interface(name)] = is_up
+
+        for edge in topology["edges"]:
+            tun_name = edge.get("tunnel", "")
+            key = f"{edge['from']}|{tun_name}|{edge['to']}"
+            dev_statuses = tun_up.get(edge["from"], {})
+            is_up = dev_statuses.get(tun_name)
+            if is_up is None:
+                links[key] = "unknown"
+            elif is_up:
+                links[key] = "up"
+            else:
+                links[key] = "down"
+
+    return jsonify({"status": "ok", "links": links})
+
+
 # Protocol topology (OSPF / BGP / Tunnels) -----------------------------------
 
-_PROTO_CACHE_FILE  = os.path.join(os.path.dirname(__file__), "data", "proto_topology_cache.json")
-_PROTO_POS_FILE    = os.path.join(os.path.dirname(__file__), "data", "proto_topology_positions.json")
-_PROTO_HIDDEN_FILE = os.path.join(os.path.dirname(__file__), "data", "proto_topology_hidden.json")
+def _proto_cache_file() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "proto_topology_cache.json")
+
+def _proto_pos_file() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "proto_topology_positions.json")
+
+def _proto_hidden_file() -> str:
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "proto_topology_hidden.json")
 
 
 def _load_proto_cache():
     try:
-        if os.path.exists(_PROTO_CACHE_FILE):
-            with open(_PROTO_CACHE_FILE, encoding="utf-8") as fh:
+        path = _proto_cache_file()
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
                 return json.load(fh)
     except Exception:
         pass
@@ -1784,17 +2175,19 @@ def _load_proto_cache():
 
 
 def _save_proto_cache(data: dict) -> None:
-    os.makedirs(os.path.dirname(_PROTO_CACHE_FILE), exist_ok=True)
-    tmp = _PROTO_CACHE_FILE + ".tmp"
+    path = _proto_cache_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh)
-    os.replace(tmp, _PROTO_CACHE_FILE)
+    os.replace(tmp, path)
 
 
 def _load_proto_positions() -> dict:
     try:
-        if os.path.exists(_PROTO_POS_FILE):
-            with open(_PROTO_POS_FILE, encoding="utf-8") as fh:
+        path = _proto_pos_file()
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
                 return json.load(fh)
     except Exception:
         pass
@@ -1802,17 +2195,19 @@ def _load_proto_positions() -> dict:
 
 
 def _save_proto_positions(data: dict) -> None:
-    os.makedirs(os.path.dirname(_PROTO_POS_FILE), exist_ok=True)
-    tmp = _PROTO_POS_FILE + ".tmp"
+    path = _proto_pos_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh)
-    os.replace(tmp, _PROTO_POS_FILE)
+    os.replace(tmp, path)
 
 
 def _load_proto_hidden() -> dict:
     try:
-        if os.path.exists(_PROTO_HIDDEN_FILE):
-            with open(_PROTO_HIDDEN_FILE, encoding="utf-8") as fh:
+        path = _proto_hidden_file()
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
                 return json.load(fh)
     except Exception:
         pass
@@ -1820,11 +2215,12 @@ def _load_proto_hidden() -> dict:
 
 
 def _save_proto_hidden(data: dict) -> None:
-    os.makedirs(os.path.dirname(_PROTO_HIDDEN_FILE), exist_ok=True)
-    tmp = _PROTO_HIDDEN_FILE + ".tmp"
+    path = _proto_hidden_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh)
-    os.replace(tmp, _PROTO_HIDDEN_FILE)
+    os.replace(tmp, path)
 
 
 @app.route("/topology/protocol_data")
@@ -1860,12 +2256,27 @@ def topology_protocol_state():
     cache     = _load_proto_cache()
     positions = _load_proto_positions()
     hidden    = _load_proto_hidden()
+
+    # Strip position/hidden entries for nodes that no longer exist.
+    # positions is {view: {node_id: {x,y}}} — filter per-view, not at the top level.
+    clean_positions: dict = {}
+    clean_hidden:    dict = {}
+    for view in ("ospf", "bgp", "tunnel"):
+        view_ids = {n["id"] for n in cache.get(view, {}).get("nodes", [])}
+        clean_positions[view] = {
+            nid: pos for nid, pos in positions.get(view, {}).items()
+            if nid in view_ids
+        }
+        clean_hidden[view] = [
+            h for h in hidden.get(view, []) if h in view_ids
+        ]
+
     return jsonify({
         "ospf":      cache.get("ospf",   {"nodes": [], "edges": []}),
         "bgp":       cache.get("bgp",    {"nodes": [], "edges": []}),
         "tunnel":    cache.get("tunnel", {"nodes": [], "edges": []}),
-        "positions": positions,
-        "hidden":    hidden,
+        "positions": clean_positions,
+        "hidden":    clean_hidden,
     })
 
 
@@ -1982,6 +2393,95 @@ def bulk_clear(operation_id):
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/bulk_reload", methods=["POST"])
+def bulk_reload():
+    """Send reload to multiple devices.  Fire-and-forget per device — the SSH
+    session is closed immediately after confirming so the reboot doesn't hang
+    the worker."""
+    import threading as _t
+
+    try:
+        device_ips = request.form.getlist("device_ips[]")
+        if not device_ips:
+            return jsonify({"status": "error", "message": "No devices selected"}), 400
+
+        _, current_list_file = get_current_device_list()
+        all_devices = load_saved_devices(current_list_file)
+        selected = [d for d in all_devices if d["ip"] in device_ips]
+        if not selected:
+            return jsonify({"status": "error", "message": "No valid devices found"}), 400
+
+        operation_id = f"reload_{int(__import__('time').time()*1000)}"
+        with lock:
+            pass  # just ensure lock is available
+
+        from modules.bulk_ops import bulk_manager as _bm
+        import time as _time
+
+        # Seed the tracking entry so the UI can poll immediately
+        _bm.active_operations[operation_id] = {
+            "status": "running",
+            "total": len(selected),
+            "completed": 0,
+            "failed": 0,
+            "results": [],
+        }
+
+        def _reload_worker():
+            for dev in selected:
+                result = {
+                    "ip": dev["ip"],
+                    "hostname": dev["hostname"],
+                    "status": "pending",
+                    "output": "",
+                    "error": None,
+                }
+                try:
+                    conn = get_persistent_connection(dev, connections, lock)
+                    if conn is None:
+                        raise RuntimeError("Could not open SSH connection")
+                    # Hold the device lock for the full reload+confirm sequence so no
+                    # other thread injects a command between the two sends.
+                    with _device_lock(dev["ip"]):
+                        conn.send_command_timing("reload", delay_factor=2)
+                        conn.send_command_timing("\n", delay_factor=1)
+                    # Drop the connection immediately — device is rebooting
+                    try:
+                        conn.disconnect()
+                    except Exception:
+                        pass
+                    with lock:
+                        if dev["ip"] in connections:
+                            del connections[dev["ip"]]
+                    result["status"] = "success"
+                    result["output"] = "Reload command sent — device is rebooting."
+                    with _bm.lock:
+                        _bm.active_operations[operation_id]["completed"] += 1
+                except Exception as exc:
+                    result["status"] = "failed"
+                    result["error"] = str(exc)
+                    with _bm.lock:
+                        _bm.active_operations[operation_id]["failed"] += 1
+                finally:
+                    with _bm.lock:
+                        _bm.active_operations[operation_id]["results"].append(result)
+
+            with _bm.lock:
+                _bm.active_operations[operation_id]["status"] = "completed"
+
+        _t.Thread(target=_reload_worker, daemon=True).start()
+
+        return jsonify({
+            "status": "success",
+            "operation_id": operation_id,
+            "message": f"Reload sent to {len(selected)} device(s)",
+        })
+
+    except Exception as exc:
+        app.logger.error("bulk_reload: %s", exc)
+        return jsonify({"status": "error", "message": str(exc)}), 500
 
 
 @app.route("/bulk_tftp_upload", methods=["POST"])
@@ -2231,15 +2731,49 @@ def bulk_delete_file():
 _discovery_ops: dict = {}
 
 
+def _ping_host(ip: str) -> bool:
+    """Return True if `ip` responds to a single ICMP ping within ~500 ms."""
+    import subprocess, sys
+    if sys.platform.startswith("win"):
+        cmd = ["ping", "-n", "1", "-w", "500", ip]
+    else:
+        cmd = ["ping", "-c", "1", "-W", "1", ip]
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=3)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def _run_subnet_discovery(op_id: str, hosts: list, username: str,
                           password: str, secret: str, device_type: str,
                           max_workers: int) -> None:
-    """Background thread: probe every IP in `hosts` via SSH and record results."""
+    """Background thread: ping sweep first, then SSH only reachable hosts."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from modules.connection import verify_device_connection
 
     op = _discovery_ops[op_id]
 
+    # ── Phase 1: ping sweep ───────────────────────────────────────────────
+    op["phase"] = "ping"
+    reachable: list[str] = []
+
+    # Use more workers for ICMP — it's fast and cheap
+    ping_workers = min(len(hosts), max(max_workers * 2, 50))
+    with ThreadPoolExecutor(max_workers=ping_workers) as executor:
+        futures = {executor.submit(_ping_host, ip): ip for ip in hosts}
+        for future in as_completed(futures):
+            ip = futures[future]
+            op["ping_completed"] += 1
+            if future.result():
+                reachable.append(ip)
+                op["ping_reachable"] += 1
+
+    op["phase"] = "ssh"
+    op["ssh_total"] = len(reachable)
+
+    # ── Phase 2: SSH only reachable hosts ────────────────────────────────
     def probe(ip: str):
         try:
             hostname = verify_device_connection(ip, username, password, secret, device_type)
@@ -2247,13 +2781,14 @@ def _run_subnet_discovery(op_id: str, hosts: list, username: str,
         except Exception as exc:
             return {"ip": ip, "success": False, "error": str(exc)}
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(probe, ip): ip for ip in hosts}
-        for future in as_completed(futures):
-            result = future.result()
-            op["completed"] += 1
-            if result["success"]:
-                op["found"].append(result)
+    if reachable:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(probe, ip): ip for ip in reachable}
+            for future in as_completed(futures):
+                result = future.result()
+                op["completed"] += 1
+                if result["success"]:
+                    op["found"].append(result)
 
     op["status"] = "done"
 
@@ -2285,10 +2820,14 @@ def discover_subnet():
 
         op_id = uuid.uuid4().hex[:10]
         _discovery_ops[op_id] = {
-            "total":     len(hosts),
-            "completed": 0,
-            "found":     [],
-            "status":    "running",
+            "total":          len(hosts),
+            "phase":          "ping",
+            "ping_completed": 0,
+            "ping_reachable": 0,
+            "ssh_total":      0,
+            "completed":      0,
+            "found":          [],
+            "status":         "running",
         }
 
         t = threading.Thread(
@@ -2430,7 +2969,10 @@ def ai_chat():
         topology_context  = data.get("topology_context") or None  # browser-cached topology
         attached_files    = data.get("attached_files") or []       # [{name, content}] uploaded by user
         run_playbook_id    = data.get("run_playbook_id") or None    # direct playbook execution
-        skip_playbook_match = bool(data.get("skip_playbook_match"))  # bypass matching (auto-fix path)
+        # Block AI chat when disabled — but allow direct playbook execution through
+        # since run_ansible_direct makes no Claude API calls.
+        if not _ai_enabled() and not run_playbook_id:
+            return jsonify({"error": "AI is disabled. Re-enable it in Settings."}), 503
 
         if not message and not run_playbook_id:
             return jsonify({"error": "Message is required"}), 400
@@ -2445,19 +2987,13 @@ def ai_chat():
         import queue as _queue
 
         # Determine which playbook to run (if any).
-        # Priority: explicit run_playbook_id > keyword match on message.
-        # skip_playbook_match bypasses matching so auto-troubleshoot messages go to Claude,
-        # not back into the playbook runner (which would cause an infinite loop).
+        # Only explicit run_playbook_id triggers playbook execution; keyword matching is disabled.
         matched_playbook = None
         confirm_playbook = False   # True when match came from keyword heuristic (needs user OK)
         if run_playbook_id:
             idx = _ai._load_playbook_index()
             matched_playbook = next((p for p in idx if p["id"] == run_playbook_id), None)
-        elif message and not skip_playbook_match:
-            kw_match = _ai.match_playbook(message)
-            if kw_match:
-                matched_playbook = kw_match
-                confirm_playbook = True   # Ask before running
+        # Keyword-based auto-suggest disabled: playbooks are run manually only.
 
         # Run the agent (or playbook) in a background thread and drain events via a queue.
         # This lets us send SSE keepalive pings while SSH tool calls block,
@@ -2467,6 +3003,13 @@ def ai_chat():
 
         def _agent_thread():
             try:
+                # Re-check AI gate — but allow direct playbook runs since they
+                # call run_ansible_direct which makes no Claude API calls.
+                if not _ai_enabled() and not (matched_playbook and not confirm_playbook):
+                    event_queue.put({"type": "error",
+                                     "content": "AI disabled — re-enable in Settings."})
+                    event_queue.put(_SENTINEL)
+                    return
                 if matched_playbook and confirm_playbook:
                     # Emit a confirmation prompt — let the user decide before we run anything.
                     event_queue.put({
@@ -2502,6 +3045,7 @@ def ai_chat():
                         device_context=device_context,
                         topology_context=topology_context,
                         attached_files=attached_files if attached_files else None,
+                        workflow_flags=_load_workflow_flags(),
                     )
                 for event in gen:
                     event_queue.put(event)
@@ -2609,6 +3153,86 @@ def ai_restart():
     return jsonify({"status": "restarting", "message": "Server restarting in ~2 seconds"})
 
 
+# ---------------------------------------------------------------------------
+# Drift check routes — pure Python, no AI required
+# ---------------------------------------------------------------------------
+
+@app.route("/drift/status")
+def drift_status():
+    """Return drift checker status and last-run result."""
+    from modules.drift_check import get_checker
+    from modules.approval_queue import get_pending_count
+    status = get_checker().status()
+    status["pending_approvals"] = get_pending_count()
+    return jsonify(status)
+
+
+@app.route("/drift/check", methods=["POST"])
+def drift_check_trigger():
+    """Trigger an immediate drift check.  Returns immediately; check runs async."""
+    from modules.drift_check import get_checker
+    checker = get_checker()
+    if checker._running:
+        return jsonify({"ok": False, "message": "Drift check already in progress"}), 409
+    checker.trigger()
+    return jsonify({"ok": True, "message": "Drift check triggered"})
+
+
+@app.route("/drift/check/sync", methods=["POST"])
+def drift_check_sync():
+    """Run a drift check synchronously and return the result.
+    Suitable for manual 'Check Now' button clicks where the user wants to see results."""
+    from modules.drift_check import run_drift_check, get_checker
+    checker = get_checker()
+    if checker._running:
+        return jsonify({"ok": False, "message": "Drift check already in progress"}), 409
+    try:
+        result = run_drift_check(triggered_by="manual")
+        # Update checker state so /drift/status reflects the fresh result
+        checker._last_result = result
+        checker._last_ts     = __import__("time").time()
+        return jsonify(result)
+    except Exception as exc:
+        app.logger.error("drift check sync error: %s", exc, exc_info=True)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/drift/settings", methods=["GET"])
+def drift_settings_get():
+    """Return current drift check interval and disabled flag."""
+    from modules.drift_check import _is_disabled, _get_interval
+    return jsonify({
+        "ok":        True,
+        "interval_s": int(_get_interval()),
+        "disabled":  _is_disabled(),
+    })
+
+
+@app.route("/drift/settings", methods=["POST"])
+def drift_settings_post():
+    """Update drift check interval and/or disabled flag."""
+    from modules.drift_check import get_checker
+    from modules.agent_timers import save as save_timers
+    data     = request.get_json(silent=True) or {}
+    checker  = get_checker()
+    saved    = {}
+
+    if "interval_s" in data:
+        interval_s = int(data["interval_s"])
+        save_timers({"drift_check_interval": interval_s})
+        saved["interval_s"] = interval_s
+        # Re-arm the scheduler with the new interval
+        import time as _time
+        checker._next_ts = _time.time() + interval_s
+        checker._trigger.set()
+
+    if "disabled" in data:
+        checker.set_disabled(bool(data["disabled"]))
+        saved["disabled"] = bool(data["disabled"])
+
+    return jsonify({"ok": True, **saved})
+
+
 @app.route("/jenkins/results")
 def jenkins_results():
     """Return the latest local CI check results."""
@@ -2616,6 +3240,27 @@ def jenkins_results():
     results = load_results()
     if results is None:
         return jsonify({"ok": None, "message": "No checks have been run yet."})
+    return jsonify(results)
+
+
+@app.route("/jenkins/sync")
+def jenkins_sync():
+    """Fetch the current build status of all registered pipelines from Jenkins,
+    prune any pipelines deleted from Jenkins, and update the local cache.
+    No AI required — pure Jenkins API calls."""
+    from modules.jenkins_runner import (
+        sync_scheduled_build_results, prune_deleted_pipelines, load_results
+    )
+    try:
+        pruned  = prune_deleted_pipelines()
+        updated = sync_scheduled_build_results()
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    results = load_results()
+    if results is None:
+        results = {"ok": None, "message": "No data yet"}
+    results["_synced"]  = updated
+    results["_pruned"]  = pruned
     return jsonify(results)
 
 
@@ -2770,18 +3415,55 @@ def jenkins_schedule_set(job_name: str):
     else:
         new_triggers = "<triggers/>"
 
+    # ── Targeted XML trigger replacement ──────────────────────────────────
+    # Jenkins pipeline config.xml can contain <triggers> in three places:
+    #   1. Inside <DeclarativeJobPropertyTrackerAction> — DO NOT touch (declarative syntax)
+    #   2. Inside <PipelineTriggersJobProperty>        — update this one
+    #   3. Root-level, after </definition>             — update this one
+    # Replacing all occurrences blindly corrupts the declarative action block
+    # and causes Jenkins to return HTTP 500.
+
+    _TRIG_PAT = r"<triggers\s*/>|<triggers>[\s\S]*?</triggers>"
+
+    # Update PipelineTriggersJobProperty triggers specifically
     xml_updated = _re.sub(
-        r"<triggers\s*/>|<triggers>[\s\S]*?</triggers>",
-        new_triggers, xml_str,
+        r"(<org\.jenkinsci\.plugins\.workflow\.job\.properties\.PipelineTriggersJobProperty>\s*)"
+        r"(?:<triggers\s*/>|<triggers>[\s\S]*?</triggers>)",
+        lambda m: m.group(1) + new_triggers,
+        xml_str,
     )
-    if xml_updated == xml_str:
-        # No existing <triggers> element — insert before the closing root tag
-        root_close = _re.search(r"</[a-zA-Z][\w.-]*>\s*$", xml_str)
+
+    # Update root-level triggers: it's the <triggers> block that comes after </definition>
+    # (i.e. the last occurrence in the document, outside <properties>).
+    all_matches = list(_re.finditer(_TRIG_PAT, xml_updated))
+    # Filter out any match that sits inside a known declarative-action element by
+    # checking whether there is a <DeclarativeJobPropertyTrackerAction> open tag
+    # between the start of the document and the match that has no corresponding
+    # close tag before the match.
+    _declarative_open  = r"<org\.jenkinsci\.plugins\.pipeline\.modeldefinition\.action\.DeclarativeJobPropertyTrackerAction"
+    _declarative_close = r"</org\.jenkinsci\.plugins\.pipeline\.modeldefinition\.action\.DeclarativeJobPropertyTrackerAction>"
+    root_match = None
+    for m in reversed(all_matches):
+        before = xml_updated[:m.start()]
+        opens  = len(_re.findall(_declarative_open, before))
+        closes = len(_re.findall(_declarative_close, before))
+        if opens == closes:   # not inside declarative action
+            root_match = m
+            break
+
+    if root_match:
+        xml_updated = (
+            xml_updated[:root_match.start()]
+            + new_triggers
+            + xml_updated[root_match.end():]
+        )
+    else:
+        # No root-level triggers block found — insert one before the closing root tag
+        root_close = _re.search(r"</[a-zA-Z][\w.-]*>\s*$", xml_updated)
         if root_close:
-            xml_updated = xml_str[:root_close.start()] + new_triggers + "\n" + xml_str[root_close.start():]
+            xml_updated = xml_updated[:root_close.start()] + new_triggers + "\n" + xml_updated[root_close.start():]
         else:
-            # Last resort: append before the very end
-            xml_updated = xml_str.rstrip() + "\n" + new_triggers
+            xml_updated = xml_updated.rstrip() + "\n" + new_triggers
 
     try:
         update_jenkins_job(cfg, job_name, xml_updated)
@@ -2886,15 +3568,29 @@ def ai_delete_playbook(playbook_id):
     if not pb:
         return jsonify({"error": "not found"}), 404
     # Remove YAML file
-    import os as _os
-    yml = _os.path.join(_ai._PLAYBOOKS_DIR, pb.get("file", ""))
+    yml = os.path.join(_ai._get_playbooks_dir(), pb.get("file", ""))
     try:
-        _os.remove(yml)
+        os.remove(yml)
     except FileNotFoundError:
         pass
     idx = [p for p in idx if p["id"] != playbook_id]
     _ai._save_playbook_index(idx)
     return jsonify({"status": "deleted", "id": playbook_id})
+
+
+@app.route("/ai/report/<path:filename>")
+def ai_download_report(filename):
+    """Serve a saved network report as a Markdown file download."""
+    rpt_dir = _ai._get_reports_dir()
+    rpt_path = os.path.join(rpt_dir, os.path.basename(filename))
+    if not os.path.isfile(rpt_path):
+        return jsonify({"error": "Report not found"}), 404
+    return send_file(
+        rpt_path,
+        as_attachment=True,
+        download_name=os.path.basename(filename),
+        mimetype="text/markdown",
+    )
 
 
 @app.route("/ci/appdir")
@@ -2995,12 +3691,217 @@ def list_variables_discover():
 
 
 # ---------------------------------------------------------------------------
+# NetBox source-of-truth sync
+# ---------------------------------------------------------------------------
+
+@app.route("/netbox/test_connection", methods=["POST"])
+def netbox_test_connection():
+    """Verify the NetBox URL + token work.
+
+    Accepts optional overrides in the request body (so the Settings modal can
+    test a pending change before saving it). Falls back to stored config.
+    """
+    from modules.netbox_client import test_connection, get_netbox_config
+    data  = request.get_json(silent=True) or {}
+    cfg   = get_netbox_config()
+    url   = (data.get("url")   or cfg["url"]   or "").strip()
+    token = (data.get("token") or cfg["token"] or "").strip()
+    verify_tls = bool(data.get("verify_tls", cfg["verify_tls"]))
+
+    # Persist the working auth scheme only when using the stored token,
+    # so "Test" in the modal with a not-yet-saved token doesn't overwrite it.
+    persist = not data.get("token")
+    ok, message = test_connection(url, token, verify_tls, persist_scheme=persist)
+    return jsonify({"ok": ok, "message": message})
+
+
+@app.route("/netbox/status", methods=["GET"])
+def netbox_status():
+    """Return the last-sync summary for every list (plus in-progress markers)."""
+    from modules.netbox_client import load_sync_status, get_netbox_config
+    cfg = get_netbox_config()
+    return jsonify({
+        "configured": bool(cfg["url"] and cfg["token"]),
+        "url":        cfg["url"],
+        "status":     load_sync_status(),
+        "lists":      get_device_lists(),
+    })
+
+
+@app.route("/netbox/sync", methods=["POST"])
+def netbox_sync():
+    """Sync the current (or a named) device list to NetBox in a background thread."""
+    from modules.netbox_client import (
+        sync_list_to_netbox, set_sync_running, get_netbox_config,
+    )
+    from modules.config import LISTS_DIR
+
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        return jsonify({"status": "error",
+                        "message": "NetBox is not configured — set URL and API token first."}), 400
+
+    data = request.get_json(silent=True) or {}
+    list_name = (data.get("list_name") or "").strip()
+
+    if list_name:
+        # Look up the list's CSV file by name.
+        all_lists = get_device_lists()
+        match = next((l for l in all_lists if l["name"] == list_name), None)
+        if not match:
+            return jsonify({"status": "error", "message": f"List '{list_name}' not found"}), 404
+        csv_path = os.path.join(LISTS_DIR, match["filename"], "devices.csv")
+        devices  = load_saved_devices(csv_path)
+    else:
+        list_name, csv_path = get_current_device_list()
+        devices = load_saved_devices(csv_path)
+
+    if not devices:
+        return jsonify({"status": "error", "message": f"List '{list_name}' has no devices"}), 400
+
+    def _run(name=list_name, devs=devices):
+        try:
+            set_sync_running(name, True)
+            sync_list_to_netbox(name, devs, status_cache=device_status_cache)
+        except Exception as exc:
+            app.logger.error("netbox_sync thread failed: %s", exc, exc_info=True)
+        finally:
+            set_sync_running(name, False)
+
+    threading.Thread(target=_run, daemon=True, name=f"netbox-sync-{list_name}").start()
+    set_sync_running(list_name, True)
+    return jsonify({
+        "status":    "started",
+        "list":      list_name,
+        "device_count": len(devices),
+        "message":   f"NetBox sync started for '{list_name}' ({len(devices)} device(s)). Refresh in ~15–30s.",
+    })
+
+
+@app.route("/netbox/sync_all", methods=["POST"])
+def netbox_sync_all():
+    """Sync every device list to NetBox (one region per list)."""
+    from modules.netbox_client import (
+        sync_all_lists_to_netbox, set_sync_running, get_netbox_config,
+    )
+    from modules.config import LISTS_DIR
+
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        return jsonify({"status": "error",
+                        "message": "NetBox is not configured — set URL and API token first."}), 400
+
+    all_lists = get_device_lists()
+    if not all_lists:
+        return jsonify({"status": "error", "message": "No device lists available"}), 400
+
+    # Load each list's devices up front (cheap — just CSV reads).
+    lists_with_devices = []
+    for lst in all_lists:
+        csv_path = os.path.join(LISTS_DIR, lst["filename"], "devices.csv")
+        lists_with_devices.append((lst["name"], load_saved_devices(csv_path)))
+
+    def _run(payload=lists_with_devices):
+        for name, _ in payload:
+            set_sync_running(name, True)
+        try:
+            sync_all_lists_to_netbox(payload, status_cache=device_status_cache)
+        except Exception as exc:
+            app.logger.error("netbox_sync_all thread failed: %s", exc, exc_info=True)
+        finally:
+            for name, _ in payload:
+                set_sync_running(name, False)
+
+    threading.Thread(target=_run, daemon=True, name="netbox-sync-all").start()
+    return jsonify({
+        "status":    "started",
+        "list_count": len(lists_with_devices),
+        "message":   f"NetBox sync started for {len(lists_with_devices)} list(s). Refresh in ~15–30s.",
+    })
+
+
+@app.route("/netbox/remove", methods=["POST"])
+def netbox_remove():
+    """Delete all NetBox objects for a device list (devices → site → region)."""
+    from modules.netbox_client import remove_list_from_netbox, get_netbox_config
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        return jsonify({"ok": False, "error": "NetBox is not configured"}), 400
+
+    data      = request.get_json(silent=True) or {}
+    list_name = (data.get("list_name") or "").strip()
+    if not list_name:
+        _, current_list_file = get_current_device_list()
+        list_name = os.path.basename(os.path.dirname(current_list_file))
+    if not list_name:
+        return jsonify({"ok": False, "error": "No list name provided"}), 400
+
+    result = remove_list_from_netbox(list_name)
+    return jsonify(result), (200 if result["ok"] else 500)
+
+
+# ---------------------------------------------------------------------------
 # Golden configs
 # ---------------------------------------------------------------------------
 
 @app.route("/list/golden_configs")
 def list_golden_configs_route():
     return jsonify({"golden_configs": _ai._list_golden_configs()})
+
+
+@app.route("/bulk_restore_golden_config", methods=["POST"])
+def bulk_restore_golden_config():
+    """
+    Restore the AI's stored golden configs for one or more devices.
+    Accepts JSON: {"device_ips": ["1.2.3.4", ...]}
+    Same source as the AI restore_golden_config tool — pushes line-by-line via SSH.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    requested_ips = data.get("device_ips", [])
+    if not requested_ips:
+        return jsonify({"status": "error", "message": "No device IPs provided"}), 400
+
+    _, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
+    dev_by_ip = {d["ip"]: d for d in devices}
+
+    results = []
+    for ip in requested_ips:
+        dev = dev_by_ip.get(ip)
+        if not dev:
+            results.append({"ip": ip, "status": "error", "message": "Device not in inventory"})
+            continue
+
+        cfg_text = _ai._load_golden_config_file(ip)
+        if not cfg_text:
+            results.append({"ip": ip, "status": "error", "message": "No golden config saved — save one via the AI first"})
+            continue
+
+        config_lines = [l for l in cfg_text.splitlines() if not l.startswith("!") and l.strip()]
+        try:
+            def _push(conn, lines=config_lines):
+                conn.config_mode()
+                try:
+                    for line in lines:
+                        run_device_command(conn, line)
+                finally:
+                    conn.exit_config_mode()
+                return len(lines)
+
+            n = with_temp_connection(dev, _push)
+            results.append({"ip": ip, "status": "ok", "message": f"Restored {n} lines on {dev.get('hostname', ip)}"})
+            app.logger.info(f"bulk_restore_golden_config: restored {ip} ({n} lines)")
+        except Exception as exc:
+            results.append({"ip": ip, "status": "error", "message": str(exc)})
+            app.logger.error(f"bulk_restore_golden_config: failed {ip}: {exc}")
+
+    ok_count  = sum(1 for r in results if r["status"] == "ok")
+    err_count = len(results) - ok_count
+    return jsonify({
+        "status":    "success" if ok_count else "error",
+        "message":   f"Restored {ok_count} device(s)" + (f", {err_count} failed" if err_count else ""),
+        "results":   results,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -3054,6 +3955,8 @@ def ai_events_clear():
 @app.route("/ai/agent_log")
 def ai_agent_log():
     """Return the background agent's activity log (newest first)."""
+    if not _ai_enabled():
+        return jsonify({"error": "AI is disabled", "status": {}, "entries": []}), 503
     from modules.agent_runner import get_activity_log, get_status
     limit = min(int(request.args.get("limit", 50)), 200)
     return jsonify({
@@ -3065,6 +3968,8 @@ def ai_agent_log():
 @app.route("/ai/agent_run", methods=["POST"])
 def ai_agent_run():
     """Manually trigger a background agent task."""
+    if not _ai_enabled():
+        return jsonify({"error": "AI is disabled. Re-enable it in Settings."}), 503
     from modules.agent_runner import trigger_task
     data = request.get_json(silent=True) or {}
     task = (data.get("task") or "").strip()
@@ -3076,6 +3981,8 @@ def ai_agent_run():
 @app.route("/ai/agent_pause", methods=["POST"])
 def ai_agent_pause():
     """Pause autonomous background processing."""
+    if not _ai_enabled():
+        return jsonify({"error": "AI is disabled"}), 503
     from modules.agent_runner import pause_agent
     pause_agent()
     return jsonify({"ok": True, "paused": True})
@@ -3084,6 +3991,8 @@ def ai_agent_pause():
 @app.route("/ai/agent_resume", methods=["POST"])
 def ai_agent_resume():
     """Resume autonomous background processing."""
+    if not _ai_enabled():
+        return jsonify({"error": "AI is disabled"}), 503
     from modules.agent_runner import resume_agent
     resume_agent()
     return jsonify({"ok": True, "paused": False})
@@ -3092,6 +4001,8 @@ def ai_agent_resume():
 @app.route("/ai/agent_timers", methods=["GET"])
 def ai_agent_timers_get():
     """Return current timer configuration for the UI."""
+    if not _ai_enabled():
+        return jsonify({"ok": False, "error": "AI is disabled", "timers": []}), 503
     from modules.agent_timers import get_ui_config
     return jsonify({"ok": True, "timers": get_ui_config()})
 
@@ -3099,6 +4010,8 @@ def ai_agent_timers_get():
 @app.route("/ai/agent_timers", methods=["POST"])
 def ai_agent_timers_post():
     """Save updated timer values. Accepts {key: value, ...}."""
+    if not _ai_enabled():
+        return jsonify({"ok": False, "error": "AI is disabled", "timers": []}), 503
     from modules.agent_timers import save as save_timers
     data = request.get_json(force=True) or {}
     saved = save_timers(data)
@@ -3111,7 +4024,11 @@ def ai_agent_timers_post():
 
 @app.route("/ai/approvals")
 def ai_approvals_list():
-    """Return pending approval requests (or all if ?all=1)."""
+    """Return pending approval requests (or all if ?all=1).
+
+    Drift-check approvals are Python-generated and must be accessible
+    regardless of AI state so the user can approve/reject config drift.
+    """
     from modules.approval_queue import get_pending, get_all, get_pending_count
     show_all = request.args.get("all") == "1"
     limit    = min(int(request.args.get("limit", 50)), 200)
@@ -3119,12 +4036,16 @@ def ai_approvals_list():
     return jsonify({
         "pending_count": get_pending_count(),
         "entries":       entries,
+        "ai_enabled":    _ai_enabled(),
     })
 
 
 @app.route("/ai/approvals/<entry_id>/approve", methods=["POST"])
 def ai_approval_approve(entry_id: str):
-    """Approve a queued action and execute it immediately."""
+    """Approve a queued action and execute it immediately.
+
+    Drift-check approvals execute via Python SSH — no AI needed.
+    """
     from modules.approval_queue import resolve
     result = resolve(entry_id, "approve")
     if not result.get("ok"):
@@ -3153,6 +4074,409 @@ def ai_approval_approve_all():
     ok_count   = sum(1 for r in results if r.get("ok"))
     fail_count = len(results) - ok_count
     return jsonify({"ok": True, "approved": ok_count, "failed": fail_count, "results": results})
+
+
+# ---------------------------------------------------------------------------
+# Configure tab — push IOS config, create Jenkins verification pipeline
+# ---------------------------------------------------------------------------
+
+@app.route("/configure/apply", methods=["POST"])
+def configure_apply():
+    """
+    Apply a network configuration to one or more devices, then create and
+    trigger a Jenkins pipeline that verifies it with Python checks.
+
+    On pipeline success Jenkins POSTs /configure/pipeline_success which
+    creates an approval to update the golden config for each device.
+    """
+    import secrets as _sec
+    from modules.configure import (
+        generate_config_commands, generate_check_script,
+        generate_pipeline_xml, save_config_job,
+    )
+    from modules.device import load_saved_devices, decrypt_field
+    from modules.jenkins_runner import (
+        load_config as _jcfg, create_jenkins_job, register_pipeline,
+        _trigger_jenkins,
+    )
+    from modules.ai_assistant import (
+        _save_pre_change_file, _get_running_config_for_golden,
+    )
+
+    data        = request.get_json(silent=True) or {}
+    config_type = data.get("config_type", "")
+    per_device  = data.get("per_device")   # [{ip, params}, ...] for per-device wizard
+    params      = data.get("params", {})
+    device_ips  = data.get("device_ips", [])
+
+    if not config_type:
+        return jsonify({"ok": False, "error": "config_type is required"}), 400
+
+    # Build ip→params map: per_device overrides shared params/device_ips
+    if per_device:
+        ip_params_map = {entry["ip"]: entry["params"] for entry in per_device if "ip" in entry}
+        device_ips    = list(ip_params_map.keys())
+    else:
+        ip_params_map = {}  # empty = use shared params for all
+
+    if not device_ips:
+        return jsonify({"ok": False, "error": "No devices specified"}), 400
+
+    _, current_list_file = get_current_device_list()
+    all_devices = load_saved_devices(current_list_file)
+    device_map  = {d["ip"]: d for d in all_devices}
+
+    selected = [device_map[ip] for ip in device_ips if ip in device_map]
+    if not selected:
+        return jsonify({"ok": False, "error": "None of the selected IPs found in device list"}), 400
+
+    # 1. Generate commands — for shared-params mode generate once; per-device generates per device later
+    all_commands: list = []
+    if not per_device:
+        try:
+            commands = generate_config_commands(config_type, params)
+            all_commands = commands
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+    else:
+        commands = []  # will vary per device
+
+    # 2. Pre-config snapshot for each device
+    snapshot_results = []
+    for dev in selected:
+        ip       = dev["ip"]
+        hostname = dev.get("hostname", ip)
+        try:
+            cfg = _get_running_config_for_golden(ip, hostname)
+            if cfg:
+                _save_pre_change_file(ip, hostname, cfg)
+                snapshot_results.append({"ip": ip, "hostname": hostname, "snapshot": "ok"})
+            else:
+                snapshot_results.append({"ip": ip, "hostname": hostname, "snapshot": "failed"})
+        except Exception as exc:
+            app.logger.warning("pre-snapshot failed for %s: %s", hostname, exc)
+            snapshot_results.append({"ip": ip, "hostname": hostname, "snapshot": f"error: {exc}"})
+
+    # 3. Push configuration to each device
+    push_results = []
+    for dev in selected:
+        ip       = dev["ip"]
+        hostname = dev.get("hostname", ip)
+        try:
+            dev_params   = ip_params_map.get(ip, params)
+            dev_commands = generate_config_commands(config_type, dev_params) if per_device else commands
+            if per_device:
+                all_commands.extend(dev_commands)
+            conn = get_persistent_connection(dev, connections, lock)
+            with _device_lock(ip):
+                conn.enable()
+                output = conn.send_config_set(dev_commands, read_timeout=60)
+                conn.save_config()
+            push_results.append({"ip": ip, "hostname": hostname, "ok": True, "output": output[:500],
+                                  "commands": dev_commands if per_device else None})
+        except Exception as exc:
+            app.logger.warning("config push failed for %s: %s", hostname, exc)
+            push_results.append({"ip": ip, "hostname": hostname, "ok": False, "error": str(exc)})
+
+    # 4. Build decrypted device list for the check script
+    check_devices = []
+    for dev in selected:
+        try:
+            pwd = decrypt_field(dev["password"])
+        except Exception:
+            pwd = dev.get("password", "")
+        check_devices.append({
+            "hostname": dev.get("hostname", dev["ip"]),
+            "ip":       dev["ip"],
+            "username": dev.get("username", ""),
+            "password": pwd,
+        })
+
+    # 5. Create Jenkins pipeline (use shared params or first device's params for check script)
+    check_params = ip_params_map.get(device_ips[0], params) if per_device else params
+    jenkins_cfg  = _jcfg()
+    jenkins_url  = jenkins_cfg.get("jenkins_url", "").rstrip("/")
+    config_id    = f"cfg-{int(time.time())}-{_sec.token_hex(4)}"
+    token        = _sec.token_hex(16)
+    job_name     = f"configure-{config_type}-{int(time.time())}"
+    nmas_base    = request.host_url.rstrip("/")
+    callback_url = f"{nmas_base}/configure/pipeline_success"
+
+    check_script  = generate_check_script(config_type, check_params, check_devices)
+    pipeline_xml  = generate_pipeline_xml(job_name, check_script, callback_url, config_id, token)
+
+    pipeline_created = False
+    pipeline_triggered = False
+    pipeline_error   = None
+
+    if jenkins_url:
+        try:
+            create_jenkins_job(jenkins_cfg, job_name, pipeline_xml)
+            register_pipeline(job_name)
+            pipeline_created = True
+        except Exception as exc:
+            pipeline_error = str(exc)
+            app.logger.warning("configure: pipeline create failed: %s", exc)
+
+        if pipeline_created:
+            try:
+                _trigger_jenkins(jenkins_cfg, job_name)
+                pipeline_triggered = True
+            except Exception as exc:
+                pipeline_error = str(exc)
+                app.logger.warning("configure: pipeline trigger failed: %s", exc)
+    else:
+        pipeline_error = "Jenkins not configured — pipeline skipped."
+
+    # 6. Persist job metadata for the success callback
+    save_config_job(config_id, {
+        "config_id":   config_id,
+        "token":       token,
+        "config_type": config_type,
+        "params":      check_params,
+        "devices":     [{"ip": d["ip"], "hostname": d.get("hostname", d["ip"])} for d in selected],
+        "job_name":    job_name,
+        "created_at":  time.strftime("%Y-%m-%d %H:%M:%S"),
+        "status":      "pipeline_running" if pipeline_triggered else "pipeline_skipped",
+    })
+
+    return jsonify({
+        "ok":                True,
+        "config_id":         config_id,
+        "commands":          list(dict.fromkeys(all_commands)),  # deduplicated, ordered
+        "snapshots":         snapshot_results,
+        "push_results":      push_results,
+        "pipeline_created":  pipeline_created,
+        "pipeline_triggered": pipeline_triggered,
+        "pipeline_job":      job_name,
+        "pipeline_error":    pipeline_error,
+    })
+
+
+@app.route("/configure/pipeline_success", methods=["POST"])
+def configure_pipeline_success():
+    """
+    Called by Jenkins on pipeline success.  Creates an approval to update
+    the golden config for every device that was configured.
+    """
+    from modules.configure import load_config_job, update_config_job
+    from modules.approval_queue import add_approval
+
+    data      = request.get_json(silent=True) or {}
+    config_id = data.get("config_id", "")
+    token     = data.get("token", "")
+
+    job = load_config_job(config_id)
+    if not job:
+        return jsonify({"ok": False, "error": "config_id not found"}), 404
+    if job.get("token") != token:
+        return jsonify({"ok": False, "error": "invalid token"}), 403
+
+    approval_ids = []
+    for dev in job.get("devices", []):
+        ip       = dev.get("ip", "")
+        hostname = dev.get("hostname", ip)
+        aid = add_approval(
+            action_type     = "update_golden_config",
+            description     = (
+                f"Configuration verified: {job['config_type']} on {hostname} — "
+                f"Jenkins pipeline '{job['job_name']}' passed. "
+                f"Approve to update golden config baseline."
+            ),
+            device_ip       = ip,
+            device_hostname = hostname,
+            context         = f"Configured via Configure tab (job: {job['job_name']}, id: {config_id})",
+        )
+        approval_ids.append(aid)
+
+    update_config_job(config_id, status="awaiting_approval", approval_ids=approval_ids)
+    app.logger.info("configure: pipeline success for %s — %d approval(s) created", config_id, len(approval_ids))
+    return jsonify({"ok": True, "approvals_created": len(approval_ids)})
+
+
+@app.route("/configure/interfaces")
+def configure_interfaces():
+    """Return interface names for the given device IPs (query param: ips=ip1,ip2,...)."""
+    from modules.topology import parse_ip_interfaces
+    ips_param = request.args.get("ips", "")
+    ips = [i.strip() for i in ips_param.split(",") if i.strip()]
+    if not ips:
+        return jsonify({"interfaces": []})
+
+    _, current_list_file = get_current_device_list()
+    from modules.device import load_saved_devices
+    all_devices = load_saved_devices(current_list_file)
+    device_map  = {d["ip"]: d for d in all_devices}
+
+    seen: set[str] = set()
+    interfaces: list[str] = []
+    for ip in ips:
+        dev = device_map.get(ip)
+        if not dev:
+            continue
+        try:
+            with _device_lock(ip):
+                conn = get_persistent_connection(dev, connections, lock)
+                if conn is None:
+                    continue
+                out  = conn.send_command("show ip interface brief")
+            for entry in parse_ip_interfaces(out):
+                name = entry["interface"]
+                if name not in seen:
+                    seen.add(name)
+                    interfaces.append(name)
+        except Exception as exc:
+            app.logger.debug("configure_interfaces: %s: %s", ip, exc)
+
+    interfaces.sort()
+    return jsonify({"interfaces": interfaces})
+
+
+@app.route("/configure/devices")
+def configure_devices():
+    """Return devices in the current list with their online status."""
+    _, current_list_file = get_current_device_list()
+    from modules.device import load_saved_devices
+    devices = load_saved_devices(current_list_file)
+    result = []
+    for d in devices:
+        ip = d.get("ip", "")
+        result.append({
+            "ip":       ip,
+            "hostname": d.get("hostname", ip),
+            "online":   bool(device_status_cache.get(ip, False)),
+        })
+    return jsonify({"devices": result})
+
+
+@app.route("/jenkins/create_job", methods=["POST"])
+def jenkins_create_job_route():
+    """Create a Jenkins job from the wizard-generated pipeline XML."""
+    from modules.jenkins_runner import load_config as _jcfg, create_jenkins_job, register_pipeline
+    data = request.get_json(silent=True) or {}
+    job_name     = data.get("job_name", "").strip()
+    pipeline_xml = data.get("pipeline_xml", "").strip()
+    if not job_name or not pipeline_xml:
+        return jsonify({"ok": False, "error": "job_name and pipeline_xml are required"}), 400
+    jenkins_cfg = _jcfg()
+    if not jenkins_cfg.get("jenkins_url"):
+        return jsonify({"ok": False, "error": "Jenkins not configured — set URL in Settings"}), 400
+    try:
+        create_jenkins_job(jenkins_cfg, job_name, pipeline_xml)
+        register_pipeline(job_name)
+        return jsonify({"ok": True, "job": job_name})
+    except Exception as exc:
+        app.logger.warning("jenkins_create_job: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/configure/networks")
+def configure_networks():
+    """Return connected networks for selected devices (query param: ips=ip1,ip2,...).
+    Used to auto-populate OSPF/EIGRP/BGP network tables."""
+    import re as _re
+    ips_param = request.args.get("ips", "")
+    ips = [i.strip() for i in ips_param.split(",") if i.strip()]
+    if not ips:
+        return jsonify({"networks": []})
+
+    _, current_list_file = get_current_device_list()
+    from modules.device import load_saved_devices
+    all_devices = load_saved_devices(current_list_file)
+    device_map  = {d["ip"]: d for d in all_devices}
+
+    seen: set = set()
+    networks: list = []
+    for ip in ips:
+        dev = device_map.get(ip)
+        if not dev:
+            continue
+        try:
+            with _device_lock(ip):
+                conn = get_persistent_connection(dev, connections, lock)
+                if conn is None:
+                    continue
+                route_out = conn.send_command("show ip route connected")
+                # Fallback: if no connected routes found (e.g. interfaces down/down),
+                # parse interface addresses directly from show ip interface
+                intf_out = ""
+                if not _re.search(r'\bC\s+[\d.]+/[\d]+', route_out):
+                    intf_out = conn.send_command("show ip interface")
+
+            def _net_from_prefix(ip_addr, preflen):
+                """Return (network, mask, wildcard) for an IP/preflen."""
+                ip_int = sum(int(b) << (24 - 8 * i) for i, b in enumerate(ip_addr.split(".")))
+                mask_bits = (0xFFFFFFFF << (32 - preflen)) & 0xFFFFFFFF
+                net_int  = ip_int & mask_bits
+                net  = ".".join(str((net_int  >> (8 * j)) & 0xFF) for j in (3, 2, 1, 0))
+                mask = ".".join(str((mask_bits >> (8 * j)) & 0xFF) for j in (3, 2, 1, 0))
+                wild = ".".join(str(255 - int(x)) for x in mask.split("."))
+                return net, mask, wild
+
+            # Parse "C  10.0.0.0/24 is directly connected, ..."
+            for line in route_out.splitlines():
+                m = _re.search(r'C\s+([\d.]+)/([\d]+)', line)
+                if m:
+                    prefix, preflen = m.group(1), int(m.group(2))
+                    net, mask, wild = _net_from_prefix(prefix, preflen)
+                    key = f"{net}/{preflen}"
+                    if key not in seen:
+                        seen.add(key)
+                        networks.append({"network": net, "mask": mask, "wildcard": wild, "prefix": key})
+
+            # Fallback: parse "Internet address is 10.0.1.1/30" from show ip interface
+            for line in intf_out.splitlines():
+                m = _re.search(r'Internet address is ([\d.]+)/([\d]+)', line)
+                if m:
+                    ip_addr, preflen = m.group(1), int(m.group(2))
+                    net, mask, wild = _net_from_prefix(ip_addr, preflen)
+                    key = f"{net}/{preflen}"
+                    if key not in seen:
+                        seen.add(key)
+                        networks.append({"network": net, "mask": mask, "wildcard": wild, "prefix": key})
+        except Exception as exc:
+            app.logger.debug("configure_networks: %s: %s", ip, exc)
+
+    networks.sort(key=lambda n: n["network"])
+    return jsonify({"networks": networks})
+
+
+@app.route("/golden_configs/auto_create", methods=["POST"])
+def golden_configs_auto_create():
+    """For each device in the current list that has no golden config, fetch
+    show running-config and save it as the baseline golden config."""
+    from modules.ai_assistant import (
+        _find_golden_config_file, _save_golden_config_file,
+        _get_running_config_for_golden,
+    )
+    _, current_list_file = get_current_device_list()
+    from modules.device import load_saved_devices
+    devices = load_saved_devices(current_list_file)
+
+    created = []
+    skipped = []
+    failed  = []
+    for dev in devices:
+        ip       = dev.get("ip", "")
+        hostname = dev.get("hostname", ip)
+        if _find_golden_config_file(ip):
+            skipped.append({"ip": ip, "hostname": hostname, "reason": "already exists"})
+            continue
+        if not device_status_cache.get(ip, False):
+            failed.append({"ip": ip, "hostname": hostname, "reason": "offline"})
+            continue
+        try:
+            cfg = _get_running_config_for_golden(ip, hostname)
+            if cfg:
+                _save_golden_config_file(ip, hostname, cfg)
+                created.append({"ip": ip, "hostname": hostname})
+            else:
+                failed.append({"ip": ip, "hostname": hostname, "reason": "empty config"})
+        except Exception as exc:
+            app.logger.warning("auto_create golden config %s: %s", hostname, exc)
+            failed.append({"ip": ip, "hostname": hostname, "reason": str(exc)})
+
+    return jsonify({"ok": True, "created": created, "skipped": skipped, "failed": failed})
 
 
 @app.route("/monitoring/config", methods=["GET", "POST"])
@@ -3207,19 +4531,39 @@ def monitoring_snmp_poll():
 @app.route("/monitoring/snmp/traps")
 def monitoring_snmp_traps():
     from modules.snmp_collector import get_recent_traps
+    from modules.device import load_saved_devices
     limit = int(request.args.get("limit", 50))
-    return jsonify({"traps": get_recent_traps(limit)})
+    _, current_list_file = get_current_device_list()
+    device_ips = {d["ip"] for d in load_saved_devices(current_list_file)}
+    return jsonify({"traps": get_recent_traps(limit, device_ips=device_ips)})
 
 
 @app.route("/monitoring/netflow")
 def monitoring_netflow():
     from modules.netflow_collector import get_flow_stats, get_recent_flows
+    from modules.device import load_saved_devices
     include_flows = int(request.args.get("flows", 0))
-    stats = get_flow_stats()
+    _, current_list_file = get_current_device_list()
+    device_ips = {d["ip"] for d in load_saved_devices(current_list_file)}
+    stats = get_flow_stats(device_ips=device_ips)
     result = {"stats": stats}
     if include_flows:
-        result["recent_flows"] = get_recent_flows(include_flows)
+        result["recent_flows"] = get_recent_flows(include_flows, device_ips=device_ips)
     return jsonify(result)
+
+
+@app.route("/monitoring/snmp/traps/clear", methods=["POST"])
+def clear_snmp_traps():
+    from modules.snmp_collector import clear_traps
+    clear_traps()
+    return jsonify({"ok": True})
+
+
+@app.route("/monitoring/netflow/clear", methods=["POST"])
+def clear_netflow_flows():
+    from modules.netflow_collector import clear_flows
+    clear_flows()
+    return jsonify({"ok": True})
 
 
 @app.route("/ai/debug_log")
@@ -3277,6 +4621,13 @@ def _start_background_daemons():
         connections_pool = {},
         pool_lock        = threading.Lock(),
     )
+
+    # Start standalone Python drift checker (independent of AI state)
+    try:
+        from modules.drift_check import get_checker as _get_drift_checker
+        _get_drift_checker().start()
+    except Exception as _e:
+        app.logger.warning("Drift checker startup: %s", _e)
 
     # Start SNMP trap receiver and NetFlow collector using per-list config
     try:

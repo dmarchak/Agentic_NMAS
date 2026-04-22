@@ -1,6 +1,6 @@
 # Agentic Network Management and Automation
 
-A Flask-based web application for managing, automating, and monitoring Cisco IOS network devices. It provides a unified interface for device inventory, remote SSH command execution, multi-device parallel operations, live terminal access, an AI-powered autonomous network agent (Claude), Jenkins CI/CD integration, topology visualization, SNMP/NetFlow/syslog monitoring, and config backup and drift detection.
+A Flask-based web application for managing, automating, and monitoring Cisco IOS network devices. It provides a unified interface for device inventory, remote SSH command execution, multi-device parallel operations, live terminal access, an AI-powered autonomous network agent (Claude), Jenkins CI/CD integration, topology visualization, SNMP/NetFlow/syslog monitoring, NetBox IPAM/DCIM sync, config generation, and config backup and drift detection.
 
 ## Features
 
@@ -10,6 +10,7 @@ A Flask-based web application for managing, automating, and monitoring Cisco IOS
 - Real-time online/offline status via background ping worker
 - Multiple named device lists with create, rename, delete, and switch support
 - Drag-and-drop device reordering
+- Manage button opens device page in a new tab
 
 ### Remote Execution
 - Single-device command execution with automatic prompt/timing routing
@@ -27,12 +28,37 @@ A Flask-based web application for managing, automating, and monitoring Cisco IOS
 - File upload: attach configs, diffs, or any text file to the chat for context
 - Background autonomous mode: processes events (Jenkins failures, SNMP traps, config drift) while the user is idle
 - Configurable agent timing intervals (hot-reload, no restart needed)
-- All settings (API key, Jenkins, TFTP) configurable via the UI Settings panel
+- Chunked report generation (`report_begin` / `report_append` / `report_finish`) to handle large multi-device reports without hitting token limits
+- All settings (API key, Jenkins, TFTP, NetBox) configurable via the UI Settings panel
 
 ### CI/CD Integration
 - Jenkins pipeline creation, scheduling, triggering, and result polling
 - Per-list pipeline registry with build history
 - Event monitor fires AI investigation tasks on build failures
+- Deleting a device list automatically removes all associated Jenkins pipelines
+
+### Config Generation
+- Cisco IOS configuration generator for 10 feature types (routing, interfaces, ACLs, NAT, VPN, QoS, and more)
+- Generates Python Jenkins verification scripts and pipeline XML for each pushed config
+- Per-job metadata stored so CI success callbacks can create golden-config approval requests
+
+### Drift Detection
+- Standalone drift checker (`modules/drift_check.py`) that runs on a schedule without consuming Claude API tokens
+- SSHes devices and diffs their running config against the golden config baseline
+- Findings are routed to the approval queue for human review
+
+### NetBox IPAM/DCIM Integration
+- Syncs device inventory to NetBox DCIM: model, serial, platform, and software version extracted from `show version` / `show inventory`
+- Each device list creates its own NetBox region, site, and VRF
+- All interface IPs are pushed to NetBox IPAM under the list VRF (per-interface VRF respected as override)
+- Secondary IPs, IPv6 addresses, LAG (port-channel) membership, switchport mode/VLAN tags, and dot1q sub-interfaces all synced
+- Static routes synced as IPAM prefixes
+- VPN tunnels (GRE, DMVPN/mGRE, IPsec) synced to NetBox VPN tunnel records with termination endpoints
+- Structured local-context data for OSPF, BGP, NTP, and SNMP per device
+- Protocol tags auto-applied based on running config (OSPF, BGP, DMVPN, NTP, SNMP, ACL, NAT, etc.)
+- Primary IPv4 fallback chain: exact SSH-IP match → IPAM search → Loopback0 preference → first available IP → SSH IP created as /32
+- "Remove" button in the NetBox panel cleans up the list's region, site, VRF, and all associated device records
+- Deleting a device list automatically removes its NetBox data and Jenkins pipelines before wiping local files
 
 ### Topology
 - CDP (physical), OSPF, BGP, and DMVPN/mGRE tunnel topology discovery
@@ -59,11 +85,12 @@ A Flask-based web application for managing, automating, and monitoring Cisco IOS
 ## Project Structure
 
 ```
-Final Project - Dustin Marchak/
+Claude_NMAS/
 ├── app.py                          # Flask application — all routes and SocketIO handlers
 ├── requirements.txt                # Python dependencies
 ├── Jenkinsfile                     # Reference Jenkinsfile for CI pipeline
 ├── telnetlib.py                    # telnetlib shim (removed from Python 3.13+)
+├── CLAUDE.md                       # Project instructions for Claude Code
 ├── modules/
 │   ├── ai_assistant.py             # AI agent core: tool definitions, run_chat(), golden configs
 │   ├── agent_runner.py             # Background autonomous agent daemon
@@ -74,10 +101,13 @@ Final Project - Dustin Marchak/
 │   ├── collector_config.py         # SNMP/NetFlow/syslog collector IP settings
 │   ├── commands.py                 # SSH command execution with prompt/timing routing
 │   ├── config.py                   # Paths, constants, user settings
+│   ├── configure.py                # Cisco IOS config generator (10 feature types) + Jenkins XML
 │   ├── connection.py               # Netmiko SSH connection pool and ping worker
 │   ├── device.py                   # Device CRUD, encryption, multi-list management
+│   ├── drift_check.py              # Scheduled golden-config drift checker (no AI tokens)
 │   ├── event_monitor.py            # Jenkins/drift/compliance event monitor
 │   ├── jenkins_runner.py           # Jenkins CI pipeline integration
+│   ├── netbox_client.py            # NetBox IPAM/DCIM sync (devices, IPs, tunnels, VRFs)
 │   ├── netflow_collector.py        # NetFlow v5/v9 UDP collector
 │   ├── quick_actions.py            # Quick action (command shortcut) persistence
 │   ├── snmp_collector.py           # SNMP trap receiver and OID polling
@@ -100,7 +130,7 @@ Final Project - Dustin Marchak/
     ├── jenkins_checks.json         # Jenkins server connection settings
     ├── agent_activity.json         # Background agent task log
     ├── agent_timers.json           # Agent timing interval overrides
-    ├── user_settings.json          # User preference overrides (TFTP IP, etc.)
+    ├── user_settings.json          # User preference overrides (TFTP IP, NetBox URL/token, etc.)
     └── lists/
         └── {slug}/                 # Per-list data directory
             ├── devices.csv         # Encrypted device inventory
@@ -118,6 +148,7 @@ Final Project - Dustin Marchak/
 - Cisco IOS devices with SSH enabled (`ip ssh version 2`)
 - Jenkins server (optional, for CI/CD pipeline features)
 - SNMP-enabled devices pointing traps at this host (optional)
+- NetBox instance (optional, for IPAM/DCIM sync)
 - An Anthropic API key for the AI assistant features
 
 ## Quick Start
@@ -139,6 +170,7 @@ All settings are configurable from the **Settings** button on the home page, inc
 - **Anthropic API key** — saved to `.env` and takes effect immediately without a restart
 - **Jenkins** — server URL, username, API key, and webhook token
 - **TFTP server IP** — used for bulk file transfer operations
+- **NetBox** — instance URL and API token for IPAM/DCIM sync
 
 Alternatively, create a `.env` file in the project root:
 ```
@@ -160,10 +192,21 @@ The AI assistant uses Claude (Anthropic) with a large tool set that lets it act 
 - **Topology**: query CDP/OSPF/BGP/tunnel topology data
 - **SNMP/NetFlow**: inspect trap history and flow data
 - **File upload**: attach a config file, diff, or design doc to the chat for additional context
+- **Chunked reports**: large multi-device reports are written in sections to avoid API token limits
 
 The background agent mode processes events autonomously (Jenkins failures, SNMP traps, config drift) while the user is away, and pauses automatically when the user opens the chat.
 
 Potentially destructive actions (updating a golden config, reverting a device) are routed through the **approval queue** — the agent proposes the action and the user approves or rejects it from the UI.
+
+## NetBox Integration
+
+The NetBox sync reads golden configs as the source of truth — no live SSH sessions needed:
+
+1. Open **Settings** and enter your NetBox URL and API token.
+2. Click **Sync to NetBox** in the NetBox panel on the dashboard.
+3. Each device list is created as a region, site, and VRF in NetBox.
+4. All devices, interfaces, IP addresses, VPN tunnels, and static routes are pushed automatically.
+5. To clean up, click **Remove** in the NetBox panel — this deletes the list's region, site, VRF, and all associated records from NetBox.
 
 ## Security Notes
 
