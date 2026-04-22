@@ -25,6 +25,64 @@ from modules.config import DEVICES_FILE, FAST_CLI
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Per-device send locks
+# ---------------------------------------------------------------------------
+# Each device IP gets one RLock that serialises all SSH sends/receives.
+# Using RLock so callers that explicitly hold the lock for a multi-step
+# sequence don't deadlock when LockedConnection re-acquires it per-method.
+
+_send_locks: dict = {}
+_send_locks_mu = threading.Lock()
+
+
+def get_device_send_lock(ip: str) -> threading.RLock:
+    """Return (creating if needed) the per-device send-serialisation RLock."""
+    with _send_locks_mu:
+        if ip not in _send_locks:
+            _send_locks[ip] = threading.RLock()
+        return _send_locks[ip]
+
+
+class LockedConnection:
+    """Thread-safe proxy for a Netmiko ConnectHandler.
+
+    Every method call acquires the per-device RLock before delegating to the
+    underlying connection, preventing two threads from interleaving commands
+    on the same SSH session.
+
+    Callers that need to execute a *sequence* of commands atomically should
+    hold the same lock explicitly::
+
+        with get_device_send_lock(ip):
+            conn.send_command_timing(cmd1)
+            conn.send_command_timing(cmd2)
+
+    Because the lock is an RLock the nested acquire inside each method does
+    not deadlock.
+    """
+
+    __slots__ = ('_conn', '_lock')
+
+    def __init__(self, conn: ConnectHandler, lock: threading.RLock) -> None:
+        object.__setattr__(self, '_conn', conn)
+        object.__setattr__(self, '_lock', lock)
+
+    def __getattr__(self, name: str):
+        conn = object.__getattribute__(self, '_conn')
+        lock = object.__getattribute__(self, '_lock')
+        attr = getattr(conn, name)
+        if callable(attr):
+            def _locked(*args, **kwargs):
+                with lock:
+                    return attr(*args, **kwargs)
+            return _locked
+        return attr
+
+    def __setattr__(self, name: str, value) -> None:
+        conn = object.__getattribute__(self, '_conn')
+        setattr(conn, name, value)
+
 # This module provides two connection styles:
 
 #   `with_temp_connection`: create a short-lived connection, run a
@@ -152,28 +210,40 @@ def ping_worker(
 
 def get_persistent_connection(
     dev: dict, connections: dict, lock: threading.Lock
-) -> ConnectHandler:
-    #Returns a persistent Netmiko connection for status checks.
-    ip = dev["ip"]
+) -> 'LockedConnection':
+    """Return a thread-safe LockedConnection for the device.
+
+    The pool lock (`lock`) guards the connections dict.  The per-device
+    send lock is acquired while checking liveness and during reconnect so
+    that a health-check never races with an in-flight send_command from
+    another thread.
+    """
+    ip        = dev["ip"]
+    send_lock = get_device_send_lock(ip)
     with lock:
-        conn = connections.get(ip)
-        if not conn or not getattr(conn, "is_alive", lambda: True)():
-            try:
-                if conn:
-                    conn.disconnect()
-            except Exception:
-                pass
-            conn = ConnectHandler(
-                device_type=dev["device_type"],
-                ip=dev["ip"],
-                username=dev["username"],
-                password=decrypt_field(dev["password"]),
-                secret=decrypt_field(dev["secret"]),
-                port=22,
-                fast_cli=FAST_CLI,
-            )
-            conn.enable()
-            connections[ip] = conn
+        with send_lock:
+            conn = connections.get(ip)
+            # Unwrap LockedConnection to get the raw ConnectHandler for is_alive
+            raw = object.__getattribute__(conn, '_conn') if isinstance(conn, LockedConnection) else conn
+            if not raw or not getattr(raw, "is_alive", lambda: True)():
+                try:
+                    if raw:
+                        raw.disconnect()
+                except Exception:
+                    pass
+                raw = ConnectHandler(
+                    device_type=dev["device_type"],
+                    ip=dev["ip"],
+                    username=dev["username"],
+                    password=decrypt_field(dev["password"]),
+                    secret=decrypt_field(dev["secret"]),
+                    port=22,
+                    fast_cli=FAST_CLI,
+                )
+                raw.enable()
+                connections[ip] = LockedConnection(raw, send_lock)
+            elif not isinstance(conn, LockedConnection):
+                connections[ip] = LockedConnection(raw, send_lock)
         return connections[ip]
 
 

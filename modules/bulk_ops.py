@@ -10,10 +10,43 @@ by a unique ID so the UI can poll for per-device progress and results.
 A module-level singleton `bulk_manager` is imported by app.py.
 """
 
+import re
 import threading
 from typing import List, Dict, Callable
 from queue import Queue
 import time
+
+# Commands that show interactive confirmation/filename prompts.
+# Each entry: (prefix_to_match, list of extra "\n" replies needed after the command)
+_INTERACTIVE_COMMANDS = [
+    # copy run start / copy running-config startup-config
+    (re.compile(r'^copy\s+run(ning(-config)?)?\s+start(up(-config)?)?', re.I), 1),
+    # write memory / wr mem / wr
+    (re.compile(r'^(write\s+mem(ory)?|wr(\s+mem(ory)?)?)$', re.I), 0),
+    # erase startup-config
+    (re.compile(r'^erase\s+startup-config', re.I), 1),
+    # reload (without "in" / "at" — interactive confirm)
+    (re.compile(r'^reload\b(?!\s+in\b|\s+at\b)', re.I), 1),
+]
+
+
+def _run_enable_command(conn, command: str) -> str:
+    """
+    Run a single enable-mode command, automatically answering interactive
+    prompts (copy run start, erase nvram, reload, etc.) with Enter.
+    Falls back to run_device_command for non-interactive commands.
+    """
+    from modules.commands import run_device_command
+    cmd = command.strip()
+    for pattern, extra_enters in _INTERACTIVE_COMMANDS:
+        if pattern.match(cmd):
+            output = conn.send_command_timing(cmd, delay_factor=2, read_timeout=30)
+            for _ in range(extra_enters):
+                output += conn.send_command_timing("\n", delay_factor=2, read_timeout=30)
+            # One final timing read to collect any completion message
+            output += conn.send_command_timing("", delay_factor=3, read_timeout=30)
+            return output
+    return run_device_command(conn, command)
 
 
 class BulkOperationManager:
@@ -83,8 +116,6 @@ class BulkOperationManager:
         command_mode: str = "enable"
     ):
         """Background worker to execute commands on devices."""
-        from modules.commands import run_device_command
-
         # Create work queue
         work_queue = Queue()
         for device in devices:
@@ -145,8 +176,8 @@ class BulkOperationManager:
                         # Remove all non-VRF static routes
                         output = self._execute_remove_static_routes(conn)
                     else:
-                        # Enable mode - use regular command execution
-                        output = run_device_command(conn, command)
+                        # Enable mode - handles interactive prompts automatically
+                        output = _run_enable_command(conn, command)
 
                     result["status"] = "success"
                     result["output"] = output

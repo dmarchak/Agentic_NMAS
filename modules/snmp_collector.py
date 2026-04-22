@@ -100,9 +100,26 @@ def _save_trap(trap: dict) -> None:
         pass
 
 
-def get_recent_traps(n: int = 50) -> list:
+def get_recent_traps(n: int = 50, device_ips: set | None = None) -> list:
     with _trap_lock:
-        return list(reversed(_traps))[:n]
+        traps = list(reversed(_traps))
+    if device_ips is not None:
+        traps = [t for t in traps if t.get("source_ip") in device_ips]
+    return traps[:n]
+
+
+def clear_traps() -> None:
+    """Clear the in-memory trap buffer and remove the persisted file."""
+    global _traps
+    with _trap_lock:
+        _traps.clear()
+    try:
+        path = _trap_file()
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+    log.info("snmp_collector: trap buffer cleared")
 
 
 # ---------------------------------------------------------------------------

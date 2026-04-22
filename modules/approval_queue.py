@@ -220,12 +220,109 @@ def _exec_update_golden(entry: dict) -> dict:
 
 
 def _exec_revert_golden(entry: dict) -> dict:
-    """Push the golden config back to the device (restore)."""
-    # This is intentionally left as a stub — revert via SSH is complex and
-    # should go through the AI agent with full verification. Flag it instead.
+    """Push the golden config back to the device using Python SSH.
+
+    Parses the unified diff stored in the entry to build targeted remediation
+    commands rather than blindly pushing the entire config:
+
+      - Lines present in golden but missing from running (diff ``-`` lines)
+        are pushed directly in config mode.
+      - Lines present in running but absent from golden (diff ``+`` lines)
+        are negated with ``no <command>`` in config mode.
+
+    After all commands are applied, ``write memory`` saves the result.
+    """
+    from modules.device import get_current_device_list, load_saved_devices
+    from modules.connection import get_persistent_connection
+    from modules.commands import run_device_command
+    import threading
+
+    device_ip = entry.get("device_ip", "")
+    hostname  = entry.get("device_hostname", device_ip)
+    if not device_ip:
+        return {"error": "No device_ip in approval entry"}
+
+    diff_text = entry.get("diff", "")
+    if not diff_text:
+        return {"error": "No diff stored in approval entry — cannot revert"}
+
+    # Parse unified diff into remediation command lists
+    to_add:    list[str] = []   # in golden but not running  → re-apply
+    to_remove: list[str] = []   # in running but not golden  → negate with "no"
+
+    for line in diff_text.splitlines():
+        if line.startswith(("---", "+++", "@@", "[...")):
+            continue
+        if line.startswith("-") and not line.startswith("---"):
+            stripped = line[1:].strip()
+            if stripped and not stripped.startswith("!"):
+                to_add.append(stripped)
+        elif line.startswith("+") and not line.startswith("+++"):
+            stripped = line[1:].strip()
+            if stripped and not stripped.startswith("!"):
+                to_remove.append(f"no {stripped}")
+
+    if not to_add and not to_remove:
+        return {"note": "No actionable differences found in stored diff — nothing to revert"}
+
+    # Load device credentials
+    _, list_file = get_current_device_list()
+    all_devices  = load_saved_devices(list_file)
+    dev = next((d for d in all_devices if d["ip"] == device_ip), None)
+    if not dev:
+        return {"error": f"Device {device_ip} not found in current device list"}
+
+    _pool      = {}
+    _pool_lock = threading.Lock()
+
+    try:
+        conn = get_persistent_connection(dev, _pool, _pool_lock)
+    except Exception as exc:
+        return {"error": f"SSH connection failed to {hostname} ({device_ip}): {exc}"}
+
+    applied: list[str] = []
+    failed:  list[dict] = []
+
+    _IOS_ERR = ("% Invalid", "% Incomplete", "% Ambiguous", "% Unknown", "% Error",
+                "% Bad", "% Command rejected", "% Not supported")
+
+    def _ios_error(out: str) -> str:
+        for ln in out.splitlines():
+            if any(pat in ln for pat in _IOS_ERR):
+                return ln.strip()
+        return ""
+
+    try:
+        conn.config_mode()
+        try:
+            for cmd in (to_add + to_remove):
+                out = run_device_command(conn, cmd)
+                err = _ios_error(out)
+                if err:
+                    failed.append({"cmd": cmd, "error": err})
+                    log.warning("drift_check revert: %s rejected '%s': %s", hostname, cmd, err)
+                else:
+                    applied.append(cmd)
+        finally:
+            conn.exit_config_mode()
+
+        # Persist to startup config
+        run_device_command(conn, "write memory")
+    except Exception as exc:
+        return {"error": f"SSH error during revert on {hostname}: {exc}",
+                "applied": applied, "failed": failed}
+
+    log.info(
+        "approval_queue: revert_to_golden on %s — %d applied, %d failed",
+        hostname, len(applied), len(failed),
+    )
     return {
-        "note": (
-            "Revert requires AI agent execution with pre-change snapshot and CI verification. "
-            "Open the AI chat and say: 'Revert <hostname> to golden config and verify with CI.'"
-        )
+        "device":           device_ip,
+        "hostname":         hostname,
+        "applied":          len(applied),
+        "failed":           len(failed),
+        "commands_applied": applied,
+        "commands_failed":  failed,
+        "note":             ("Some commands were rejected by IOS — review manually."
+                             if failed else "Revert complete — config saved to startup."),
     }

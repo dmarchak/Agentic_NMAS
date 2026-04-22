@@ -64,10 +64,11 @@ def save_device(device: dict, filename: str | None = None) -> None:
     #Add or update a device in the devices CSV (encrypting creds).
     if not filename:
         filename = DEVICES_FILE
-    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret"]
+    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
     encrypted = device.copy()
     encrypted["password"] = fernet.encrypt(device["password"].encode()).decode()
     encrypted["secret"] = fernet.encrypt(device["secret"].encode()).decode()
+    encrypted.setdefault("role", "router")
 
     devices: list[dict] = []
     if os.path.exists(filename):
@@ -92,7 +93,7 @@ def delete_device(ip: str, filename: str | None = None) -> None:
     if not filename:
         filename = DEVICES_FILE
     devices = [d for d in load_saved_devices(filename) if d.get("ip") != ip]
-    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret"]
+    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
     with open(filename, mode="w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -153,7 +154,7 @@ def write_devices_csv(devices: list[dict], filename: str | None = None) -> None:
     #Write a list of device dicts to the CSV file.
     if not filename:
         filename = DEVICES_FILE
-    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret"]
+    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
     with open(filename, mode="w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -240,7 +241,7 @@ def _ensure_devices_csv(list_dir: str) -> None:
     """Create an empty devices.csv with headers if it doesn't exist."""
     csv_path = os.path.join(list_dir, "devices.csv")
     if not os.path.exists(csv_path):
-        fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret"]
+        fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
         with open(csv_path, mode="w", newline="") as f:
             csv.DictWriter(f, fieldnames=fieldnames).writeheader()
 

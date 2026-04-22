@@ -240,6 +240,15 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
     global _running_task
     from modules.ai_assistant import run_chat  # imported here to avoid circular at module load
 
+    # Hard gate — checked here so trap timers and all other call-paths are covered.
+    try:
+        from modules.config import get_user_setting
+        if not get_user_setting("ai_enabled", True):
+            log.info("run_background_task: AI disabled — dropping task: %s", task[:80])
+            return {"error": "AI disabled", "task": task[:80]}
+    except Exception:
+        pass
+
     if not _devices_loader:
         return {"error": "agent_runner not initialized"}
 
@@ -289,6 +298,7 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
         "• Do NOT investigate or fix Jenkins failures unless the task explicitly says to.\n"
         "• Do NOT run Jenkins, run_jenkins_checks, save_golden_config,\n"
         "  capture_pre_change_snapshot, or compliance checks unless the task explicitly says to.\n"
+        "• If the task names a specific Jenkins pipeline, re-run ONLY that pipeline using run_jenkins_job — NEVER use run_jenkins_checks (which triggers ALL pipelines).\n"
         "• Applying a direct restoration fix (e.g. 'no shutdown') is allowed when the task says so —\n"
         "  but do NOT trigger Jenkins, golden config saves, or snapshots afterward.\n"
         "• Do NOT ask for permission, confirmation, or approval at any point.\n"
@@ -399,12 +409,37 @@ def _build_task_prompt(event: dict) -> Optional[str]:
     if etype == "jenkins_failure":
         job = meta.get("job", "unknown")
         num = meta.get("build_number", "?")
+
+        # Before dispatching, check whether the pipeline has already recovered.
+        # If the most recent build on record is a SUCCESS with a build number
+        # >= the failed build, the failure is stale — no action needed.
+        try:
+            from modules.jenkins_runner import _results_file
+            with open(_results_file(), encoding="utf-8") as _fh:
+                _rdata = json.load(_fh)
+            _current = _rdata.get("pipelines", _rdata).get(job, {})
+            _latest_result = _current.get("jenkins_result", "")
+            _latest_build  = _current.get("jenkins_build", 0)
+            _failed_build  = int(num) if str(num).isdigit() else 0
+            if _latest_result == "SUCCESS" and _latest_build >= _failed_build:
+                log.info(
+                    "agent_runner: jenkins_failure for '%s' build #%s is stale — "
+                    "most recent build #%s already succeeded, skipping",
+                    job, num, _latest_build,
+                )
+                return None
+        except Exception as _exc:
+            log.debug("agent_runner: could not check latest build state for '%s': %s", job, _exc)
+
         return (
             f'[AUTONOMOUS TASK] The Jenkins pipeline "{job}" build #{num} has FAILED. '
             f"Retrieve the console log, identify the root cause, and fix it. "
             f"If it is a pipeline/Groovy bug: update the job XML. "
             f"If it is an application code bug: patch and restart the server. "
-            f"After fixing, re-run CI and confirm it passes. "
+            f'After fixing, call run_jenkins_job with job_name="{job}" — '
+            f"CRITICAL: use run_jenkins_job NOT run_jenkins_checks. "
+            f"run_jenkins_checks triggers ALL pipelines; run_jenkins_job triggers only '{job}'. "
+            f"Then call jenkins_wait_for_result to confirm it passes. "
             f"Update the network KB with what was broken and what fixed it. "
             f"Do not ask for permission — proceed autonomously."
         )
@@ -479,6 +514,16 @@ def _processor_loop() -> None:
             _stop_event.wait(timeout=drain_interval)
             continue
 
+        # ── AI master switch ───────────────────────────────────────────────
+        try:
+            from modules.config import get_user_setting
+            if not get_user_setting("ai_enabled", True):
+                log.debug("agent_runner: AI disabled — skipping cycle")
+                _stop_event.wait(timeout=drain_interval)
+                continue
+        except Exception:
+            pass
+
         # ── Event queue drain ──────────────────────────────────────────────
         try:
             if (time.time() - _last_user_activity) < idle_seconds:
@@ -528,35 +573,9 @@ def _processor_loop() -> None:
         except Exception as exc:
             log.exception("agent_runner: processor loop error: %s", exc)
 
-        # ── Scheduled drift check ──────────────────────────────────────────
-        now = time.time()
-        time_since = now - _last_drift_check
-        if time_since >= drift_interval:
-            if _paused.is_set():
-                log.debug("agent_runner: drift check due but agent is paused")
-            elif (time.time() - _last_user_activity) < idle_seconds:
-                log.debug(
-                    "agent_runner: drift check due but user is active "
-                    "(%.0fs < idle threshold %.0fs)",
-                    time.time() - _last_user_activity, idle_seconds,
-                )
-            else:
-                log.info(
-                    "agent_runner: launching drift check (%.0fs since last, interval=%.0fs)",
-                    time_since, drift_interval,
-                )
-                _last_drift_check = now
-                _save_last_drift_check(now)   # persist across restarts
-                threading.Thread(
-                    target=_run_drift_check,
-                    daemon=True,
-                    name="drift-check",
-                ).start()
-        else:
-            log.debug(
-                "agent_runner: drift check in %.0fs (interval=%.0fs)",
-                drift_interval - time_since, drift_interval,
-            )
+        # ── Drift check ───────────────────────────────────────────────────
+        # Drift checking is now handled by modules/drift_check.py which runs
+        # independently of AI state.  Nothing to do here.
 
         _stop_event.wait(timeout=drain_interval)
 
@@ -864,29 +883,26 @@ def _build_trap_task_prompt(device_ip: str, trap: dict, reason: str) -> Optional
         iface_str = f" {iface}" if iface else ""
         return (
             f"[AGENT EVENT] SNMP linkDown trap from {hostname} ({device_ip}) at {recv_at}\n"
-            f"Interface{iface_str} went DOWN.\n"
+            f"Interface{iface_str} reported DOWN.\n"
             f"Trap varbinds:\n{vb_lines}\n\n"
             f"EXACT STEPS — do these and nothing else:\n"
-            f"1. SSH to {device_ip}. Run these diagnostics:\n"
-            f"   - show interface{iface_str}\n"
-            f"   - show ip interface brief\n"
-            f"   - show log | last 30\n"
-            f"2. Act based on what you find — apply the fix directly, no approval needed for restoration:\n"
-            f"   a. Interface is ADMIN-DOWN (shows 'administratively down'):\n"
-            f"      → Use execute_commands_on_device with mode='config' and commands\n"
-            f"        [\"interface{iface_str}\", \"no shutdown\"] to restore it immediately.\n"
-            f"      → Wait 5 seconds, then verify with show interface{iface_str}.\n"
-            f"      → Confirm it came up, or report if it stayed down despite the fix.\n"
-            f"   b. Interface is LINE-PROTOCOL DOWN (admin up, but line protocol down — physical/SFP issue):\n"
-            f"      → Report the fault. Config cannot fix a physical problem.\n"
-            f"   c. Interface already recovered before you checked:\n"
-            f"      → Confirm recovery and note the downtime duration.\n"
-            f"3. If the root cause requires a NEW config change that was not previously there\n"
-            f"   (e.g. adding a new route, changing MTU, modifying a policy) → call request_approval.\n"
-            f"4. Log everything with log_change: what the fault was, what action was taken, current state.\n"
-            f"5. Stop. CRITICAL: Do NOT run Jenkins, run_jenkins_checks, save_golden_config,\n"
-            f"   capture_pre_change_snapshot, or any compliance/drift detection — this is\n"
-            f"   a routine restoration, not a new deployment."
+            f"1. SSH to {device_ip}. Run: show interface{iface_str}\n"
+            f"   (or show ip interface brief if no specific interface was reported)\n"
+            f"2. Check the status line:\n"
+            f"   a. Interface shows 'up' / 'line protocol is up' (up/up):\n"
+            f"      → This was a spurious trap (common in virtual environments). "
+            f"The interface is FINE.\n"
+            f"      → Log a single line with log_change: "
+            f"'Spurious linkDown trap from {hostname}{iface_str} — interface is up/up, no action taken.'\n"
+            f"      → STOP immediately. Do nothing else.\n"
+            f"   b. Interface is ADMIN-DOWN ('administratively down'):\n"
+            f"      → Restore with execute_commands_on_device mode='config': "
+            f"[\"interface{iface_str}\", \"no shutdown\"]\n"
+            f"      → Verify recovery with show interface{iface_str}, then log_change.\n"
+            f"   c. Interface is LINE-PROTOCOL DOWN (admin up, line protocol down — physical issue):\n"
+            f"      → Log the fault with log_change. Cannot fix in software. Stop.\n"
+            f"3. CRITICAL: Do NOT run Jenkins, run_jenkins_checks, save_golden_config,\n"
+            f"   capture_pre_change_snapshot, or compliance checks — ever, for this task."
         )
 
     if reason == "down" and ttype == "bgpBackwardTransition":
@@ -939,22 +955,22 @@ def _build_trap_task_prompt(device_ip: str, trap: dict, reason: str) -> Optional
             f"OSPF neighbor{nbr_str} state: {ospf_state or 'not full'}.\n"
             f"Trap varbinds:\n{vb_lines}\n\n"
             f"EXACT STEPS — do these and nothing else:\n"
-            f"1. SSH to {device_ip}. Run:\n"
-            f"   - show ip ospf neighbor\n"
-            f"   - show ip ospf neighbor detail{' ' + nbr_ip if nbr_ip else ''}\n"
-            f"   - show ip interface brief\n"
-            f"   - show log | last 30\n"
-            f"2. Identify the interface connecting to this OSPF neighbor.\n"
-            f"3. Act based on root cause — restoration does NOT need approval:\n"
-            f"   a. Connecting interface is admin-down → restore it with execute_commands_on_device\n"
-            f"      (mode='config', 'no shutdown' on the interface). Verify OSPF re-establishes.\n"
-            f"   b. OSPF neighbor is already back to FULL → confirm recovery, report downtime duration.\n"
-            f"   c. Root cause is a NEW config problem (MTU mismatch, wrong area, wrong auth key,\n"
-            f"      timer mismatch) → call request_approval describing the specific change needed.\n"
-            f"      Do NOT push new config without approval.\n"
-            f"4. Log findings with log_change: root cause, action taken, current OSPF neighbor state.\n"
-            f"5. Stop. CRITICAL: Do NOT run Jenkins, run_jenkins_checks, save_golden_config,\n"
-            f"   or capture_pre_change_snapshot — this is routine troubleshooting, not a deployment."
+            f"1. SSH to {device_ip}. Run: show ip ospf neighbor{' ' + nbr_ip if nbr_ip else ''}\n"
+            f"2. Check the neighbor state:\n"
+            f"   a. Neighbor shows FULL:\n"
+            f"      → Spurious trap (common in virtual environments). Neighbor is FINE.\n"
+            f"      → Log one line with log_change: "
+            f"'Spurious ospfNbrStateChange from {hostname}{nbr_str} — neighbor is FULL, no action taken.'\n"
+            f"      → STOP immediately. Do nothing else.\n"
+            f"   b. Neighbor is missing or in a non-FULL state:\n"
+            f"      → Run: show ip interface brief, show log | last 30\n"
+            f"      → If the connecting interface is admin-down: restore with execute_commands_on_device\n"
+            f"         (mode='config', 'no shutdown'). Verify OSPF re-establishes.\n"
+            f"      → If it is a config problem (MTU, area, auth): call request_approval. "
+            f"Do NOT push new config without approval.\n"
+            f"      → Log findings with log_change.\n"
+            f"3. CRITICAL: Do NOT run Jenkins, run_jenkins_checks, save_golden_config,\n"
+            f"   or capture_pre_change_snapshot — ever, for this task."
         )
 
     # Generic fallback for unclassified actionable traps
