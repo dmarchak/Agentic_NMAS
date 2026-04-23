@@ -319,6 +319,7 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
             status_cache      = _status_cache,
             connections_pool  = _connections_pool,
             pool_lock         = _pool_lock,
+            force_provider    = "anthropic_haiku",
         ):
             # Stop immediately if the user started chatting mid-task
             if _user_is_active():

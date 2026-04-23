@@ -3133,6 +3133,33 @@ def ai_tool_cache_snapshot():
     return jsonify({"cache": snapshot, "count": len(snapshot)})
 
 
+@app.route("/ai/history", methods=["GET"])
+def ai_history():
+    """Return the conversation history as simplified display pairs."""
+    session_id = request.args.get("session_id") or "main"
+    raw = _ai.get_history(session_id)
+    out = []
+    for msg in raw:
+        role = msg.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block["text"])
+            text = "\n".join(parts)
+        else:
+            text = str(content)
+        text = text.strip()
+        if text:
+            out.append({"role": role, "text": text})
+    return jsonify(out)
+
+
 @app.route("/ai/clear", methods=["POST"])
 def ai_clear():
     """Clear the AI conversation history for a session."""
@@ -3837,6 +3864,65 @@ def netbox_remove():
         return jsonify({"ok": False, "error": "No list name provided"}), 400
 
     result = remove_list_from_netbox(list_name)
+    return jsonify(result), (200 if result["ok"] else 500)
+
+
+@app.route("/netbox/query/devices", methods=["GET"])
+def netbox_query_devices_route():
+    from modules.netbox_client import netbox_query_devices
+    result = netbox_query_devices(
+        search=request.args.get("search", ""),
+        site=request.args.get("site", ""),
+        role=request.args.get("role", ""),
+        tag=request.args.get("tag", ""),
+    )
+    return jsonify(result), (200 if result["ok"] else 500)
+
+
+@app.route("/netbox/query/device", methods=["GET"])
+def netbox_get_device_route():
+    from modules.netbox_client import netbox_get_device
+    name_or_ip = request.args.get("name", "").strip()
+    if not name_or_ip:
+        return jsonify({"ok": False, "error": "name parameter required"}), 400
+    result = netbox_get_device(name_or_ip)
+    return jsonify(result), (200 if result["ok"] else 404)
+
+
+@app.route("/netbox/query/interfaces", methods=["GET"])
+def netbox_get_interfaces_route():
+    from modules.netbox_client import netbox_get_interfaces
+    name_or_ip = request.args.get("name", "").strip()
+    if not name_or_ip:
+        return jsonify({"ok": False, "error": "name parameter required"}), 400
+    result = netbox_get_interfaces(name_or_ip)
+    return jsonify(result), (200 if result["ok"] else 404)
+
+
+@app.route("/netbox/query/ip", methods=["GET"])
+def netbox_get_ip_route():
+    from modules.netbox_client import netbox_get_ip
+    address = request.args.get("address", "").strip()
+    if not address:
+        return jsonify({"ok": False, "error": "address parameter required"}), 400
+    result = netbox_get_ip(address)
+    return jsonify(result), (200 if result["ok"] else 500)
+
+
+@app.route("/netbox/query/prefixes", methods=["GET"])
+def netbox_get_prefixes_route():
+    from modules.netbox_client import netbox_get_prefixes
+    result = netbox_get_prefixes(
+        vrf=request.args.get("vrf", ""),
+        prefix=request.args.get("prefix", ""),
+    )
+    return jsonify(result), (200 if result["ok"] else 500)
+
+
+@app.route("/netbox/query/tunnels", methods=["GET"])
+def netbox_get_vpn_tunnels_route():
+    from modules.netbox_client import netbox_get_vpn_tunnels
+    result = netbox_get_vpn_tunnels(device_name=request.args.get("device", ""))
     return jsonify(result), (200 if result["ok"] else 500)
 
 

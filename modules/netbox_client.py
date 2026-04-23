@@ -2400,3 +2400,233 @@ def set_sync_running(list_name: str, running: bool) -> None:
                 json.dump(data, fh, indent=2)
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Query API — read-only helpers used by the AI tool layer
+# ---------------------------------------------------------------------------
+
+def _nb_ready() -> tuple[bool, str, Any, str]:
+    """Return (ok, error_msg, session, base_url) for query calls."""
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        return False, "NetBox URL and API token are not configured", None, ""
+    return True, "", _session_from_config(cfg), cfg["url"]
+
+
+def _compact_device(d: dict) -> dict:
+    """Flatten a raw NetBox device record to a compact AI-readable dict."""
+    def _name(obj): return obj["name"] if isinstance(obj, dict) else obj
+    def _val(obj):  return obj.get("value") if isinstance(obj, dict) else obj
+    return {
+        "id":             d.get("id"),
+        "name":           d.get("name"),
+        "status":         _val(d.get("status")),
+        "site":           _name(d.get("site") or {}),
+        "role":           _name(d.get("role") or d.get("device_role") or {}),
+        "device_type":    _name(d.get("device_type") or {}),
+        "platform":       _name(d.get("platform") or {}),
+        "serial":         d.get("serial") or "",
+        "primary_ip4":    (d.get("primary_ip4") or {}).get("address", ""),
+        "primary_ip6":    (d.get("primary_ip6") or {}).get("address", ""),
+        "local_context":  d.get("local_context_data") or {},
+        "tags":           [t.get("name") for t in (d.get("tags") or [])],
+    }
+
+
+def _compact_interface(i: dict) -> dict:
+    def _name(obj): return obj["name"] if isinstance(obj, dict) else obj
+    def _val(obj):  return obj.get("value") if isinstance(obj, dict) else obj
+    return {
+        "name":         i.get("name"),
+        "enabled":      i.get("enabled"),
+        "type":         _val(i.get("type")),
+        "mode":         _val(i.get("mode")),
+        "vrf":          _name(i.get("vrf") or {}),
+        "lag":          _name(i.get("lag") or {}),
+        "mtu":          i.get("mtu"),
+        "description":  i.get("description") or "",
+        "tagged_vlans": [v.get("vid") for v in (i.get("tagged_vlans") or [])],
+        "untagged_vlan": (i.get("untagged_vlan") or {}).get("vid"),
+    }
+
+
+def netbox_query_devices(search: str = "", site: str = "",
+                         role: str = "", tag: str = "") -> dict:
+    """
+    Search NetBox for devices.  Returns a list of compact device dicts.
+    ``search`` matches against device name / primary IP.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    params: dict[str, Any] = {"limit": 100}
+    if search:
+        params["q"] = search
+    if site:
+        params["site"] = site
+    if role:
+        params["role"] = role
+    if tag:
+        params["tag"] = tag
+    try:
+        results = _nb_get(session, base, "dcim/devices/", **params)
+        return {"ok": True, "devices": [_compact_device(d) for d in results]}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_device(name_or_ip: str) -> dict:
+    """
+    Fetch a single device from NetBox by name or primary IP.
+    Returns a compact device dict with local_context_data included.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        # Try by name first
+        hit = _nb_first(session, base, "dcim/devices/", name=name_or_ip, limit=1)
+        if not hit:
+            # Try by primary IP (exact address string match)
+            hit = _nb_first(session, base, "dcim/devices/",
+                            q=name_or_ip, limit=1)
+        if not hit:
+            return {"ok": False, "error": f"Device '{name_or_ip}' not found in NetBox"}
+        return {"ok": True, "device": _compact_device(hit)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_interfaces(name_or_ip: str) -> dict:
+    """
+    Return all interfaces for a device (by name or primary IP), including
+    their assigned IP addresses and VRF.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        dev = _nb_first(session, base, "dcim/devices/", name=name_or_ip, limit=1)
+        if not dev:
+            dev = _nb_first(session, base, "dcim/devices/", q=name_or_ip, limit=1)
+        if not dev:
+            return {"ok": False, "error": f"Device '{name_or_ip}' not found in NetBox"}
+        dev_id = dev["id"]
+        ifaces = _nb_get(session, base, "dcim/interfaces/", device_id=dev_id)
+        ips    = _nb_get(session, base, "ipam/ip-addresses/", device_id=dev_id)
+        ip_by_iface: dict[int, list[str]] = {}
+        for ip in ips:
+            aif = ip.get("assigned_object")
+            if isinstance(aif, dict):
+                iid = aif.get("id")
+                if iid:
+                    ip_by_iface.setdefault(iid, []).append(ip["address"])
+        out = []
+        for i in ifaces:
+            ci = _compact_interface(i)
+            ci["ip_addresses"] = ip_by_iface.get(i["id"], [])
+            out.append(ci)
+        return {"ok": True, "device": dev["name"], "interfaces": out}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_ip(address: str) -> dict:
+    """
+    Look up an IP address in NetBox IPAM.
+    Returns which device/interface it is assigned to, its VRF, and description.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        hits = _nb_get(session, base, "ipam/ip-addresses/", address=address)
+        if not hits:
+            # Try prefix search (e.g. caller passed just the host portion)
+            hits = _nb_get(session, base, "ipam/ip-addresses/", q=address)
+        results = []
+        for ip in hits:
+            obj  = ip.get("assigned_object") or {}
+            dev  = (ip.get("assigned_object_type") or "").replace("dcim.", "")
+            results.append({
+                "address":     ip.get("address"),
+                "status":      (ip.get("status") or {}).get("value"),
+                "vrf":         (ip.get("vrf") or {}).get("name"),
+                "description": ip.get("description") or "",
+                "dns_name":    ip.get("dns_name") or "",
+                "assigned_to": obj.get("name") or obj.get("display") or "",
+                "object_type": dev,
+            })
+        return {"ok": True, "results": results}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_prefixes(vrf: str = "", prefix: str = "") -> dict:
+    """
+    List IPAM prefixes (static routes are synced here).
+    Optionally filter by VRF name or prefix string.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    params: dict[str, Any] = {"limit": 200}
+    if vrf:
+        params["vrf"] = vrf
+    if prefix:
+        params["prefix"] = prefix
+    try:
+        hits = _nb_get(session, base, "ipam/prefixes/", **params)
+        results = []
+        for p in hits:
+            results.append({
+                "prefix":      p.get("prefix"),
+                "status":      (p.get("status") or {}).get("value"),
+                "vrf":         (p.get("vrf") or {}).get("name"),
+                "description": p.get("description") or "",
+                "tags":        [t.get("name") for t in (p.get("tags") or [])],
+            })
+        return {"ok": True, "prefixes": results}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_vpn_tunnels(device_name: str = "") -> dict:
+    """
+    List VPN tunnels from NetBox.  Optionally filter to tunnels that
+    involve a specific device (matched against termination descriptions).
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        params: dict[str, Any] = {"limit": 200}
+        if device_name:
+            params["q"] = device_name
+        tunnels = _nb_get(session, base, "vpn/tunnels/", **params)
+        terminations = _nb_get(session, base, "vpn/tunnel-terminations/", **params)
+        term_by_tunnel: dict[int, list[dict]] = {}
+        for t in terminations:
+            tid = (t.get("tunnel") or {}).get("id")
+            if tid:
+                obj  = t.get("termination") or {}
+                term_by_tunnel.setdefault(tid, []).append({
+                    "role":    (t.get("role") or {}).get("value"),
+                    "ip":      (t.get("outside_ip") or {}).get("address", ""),
+                    "device":  obj.get("name") or obj.get("display") or "",
+                })
+        results = []
+        for tn in tunnels:
+            results.append({
+                "name":         tn.get("name"),
+                "status":       (tn.get("status") or {}).get("value"),
+                "encapsulation": (tn.get("encapsulation") or {}).get("value")
+                                  if isinstance(tn.get("encapsulation"), dict)
+                                  else tn.get("encapsulation"),
+                "description":  tn.get("description") or "",
+                "terminations": term_by_tunnel.get(tn["id"], []),
+            })
+        return {"ok": True, "tunnels": results}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}

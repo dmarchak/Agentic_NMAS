@@ -99,8 +99,8 @@ PROVIDER_DEFAULTS = {
     "anthropic": {
         "name":              "Claude Sonnet",
         "model":             "claude-sonnet-4-6",
-        "max_tokens_per_req": 16000,
-        "max_history":        20,
+        "max_tokens_per_req": 4096,   # adaptive; bumped to 16000 for reports/generation
+        "max_history":        12,
         "inject_topo":        "always",
         "price": {
             "input": 3.00, "output": 15.00,
@@ -110,12 +110,24 @@ PROVIDER_DEFAULTS = {
     "anthropic_opus": {
         "name":              "Claude Opus",
         "model":             "claude-opus-4-6",
-        "max_tokens_per_req": 16000,
-        "max_history":        20,
+        "max_tokens_per_req": 4096,
+        "max_history":        12,
         "inject_topo":        "always",
         "price": {
             "input": 15.00, "output": 75.00,
             "cache_write": 18.75, "cache_read": 1.50,
+        },
+    },
+    # Background agent model — cheap, fast, good enough for monitoring/triage tasks.
+    "anthropic_haiku": {
+        "name":              "Claude Haiku",
+        "model":             "claude-haiku-4-5-20251001",
+        "max_tokens_per_req": 4096,
+        "max_history":        8,
+        "inject_topo":        "first_turn",
+        "price": {
+            "input": 0.80, "output": 4.00,
+            "cache_write": 1.00, "cache_read": 0.08,
         },
     },
 }
@@ -512,6 +524,202 @@ def _load_pre_change_file(device_ip: str) -> Optional[str]:
             return fh.read()
     except FileNotFoundError:
         return None
+
+
+# ---- Network state snapshot (injected as context so AI doesn't re-discover) --
+
+def _mask_to_cidr(mask: str) -> str:
+    try:
+        return str(ipaddress.IPv4Network(f"0.0.0.0/{mask}").prefixlen)
+    except Exception:
+        return mask
+
+
+def _build_network_state_snapshot() -> str:
+    """
+    Parse all golden configs and return a compact per-device summary.
+    Injected into every turn so the AI doesn't need read_golden_config()
+    just to discover what protocols/IPs are configured.
+    """
+    golden_list = _list_golden_configs()
+    if not golden_list:
+        return ""
+
+    device_blocks = []
+    for entry in sorted(golden_list, key=lambda x: x.get("hostname", "")):
+        ip       = entry["device_ip"]
+        hostname = entry["hostname"]
+        cfg      = _load_golden_config_file(ip)
+        if not cfg:
+            continue
+
+        # Interfaces with IPs
+        iface_ips: dict[str, str] = {}
+        for m in re.finditer(
+            r'^interface\s+(\S+)(.*?)(?=^interface\s|\Z)',
+            cfg, re.MULTILINE | re.DOTALL
+        ):
+            intf_name  = m.group(1)
+            intf_block = m.group(2)
+            ip_m = re.search(r'ip address (\d[\d.]+)\s+(\d[\d.]+)', intf_block)
+            if ip_m:
+                iface_ips[intf_name] = f"{ip_m.group(1)}/{_mask_to_cidr(ip_m.group(2))}"
+            ipv6_m = re.search(r'ipv6 address (\S+)', intf_block)
+            if ipv6_m:
+                iface_ips[intf_name] = (iface_ips.get(intf_name, "") + f" v6:{ipv6_m.group(1)}").strip()
+
+        # Protocols
+        protocols: list[str] = []
+        ospf_m = re.search(r'^router ospf (\d+)', cfg, re.MULTILINE)
+        if ospf_m:
+            rid_m = re.search(r'router-id (\S+)', cfg[ospf_m.start():ospf_m.start() + 500])
+            protocols.append(
+                f"OSPF(pid={ospf_m.group(1)}" + (f",rid={rid_m.group(1)}" if rid_m else "") + ")"
+            )
+        bgp_m = re.search(r'^router bgp (\d+)', cfg, re.MULTILINE)
+        if bgp_m:
+            peers = re.findall(
+                r'neighbor (\d[\d.]+)\s+remote-as (\d+)',
+                cfg[bgp_m.start():bgp_m.start() + 2000]
+            )
+            peer_str = ",".join(f"{p[0]}(AS{p[1]})" for p in peers[:4])
+            protocols.append(
+                f"BGP(AS={bgp_m.group(1)}" + (f",peers={peer_str}" if peer_str else "") + ")"
+            )
+        if re.search(r'\bmpls ip\b|\bmpls label protocol\b|\btag-switching ip\b',
+                     cfg, re.MULTILINE | re.IGNORECASE):
+            protocols.append("MPLS/LDP")
+        tun_blocks = list(re.finditer(
+            r'^interface (Tunnel\d+)(.*?)(?=^interface\s|\Z)', cfg, re.MULTILINE | re.DOTALL
+        ))
+        if tun_blocks:
+            tun_strs: list[str] = []
+            for tb in tun_blocks[:3]:
+                tname = tb.group(1)
+                blk   = tb.group(2)
+                mode_m = re.search(r'tunnel mode (\S+ \S+)', blk)
+                dst_m  = re.search(r'tunnel destination (\S+)', blk)
+                tun_strs.append(
+                    tname
+                    + (f"/{mode_m.group(1)}" if mode_m else "")
+                    + (f"→{dst_m.group(1)}" if dst_m else "")
+                )
+            protocols.append("Tunnels:" + ",".join(tun_strs))
+        if re.search(r'\bip nat\b', cfg, re.MULTILINE):
+            protocols.append("NAT")
+        vrfs = re.findall(r'^(?:ip vrf|vrf definition)\s+(\S+)', cfg, re.MULTILINE)
+        if vrfs:
+            protocols.append(f"VRF({','.join(vrfs[:3])})")
+        if re.search(r'^\s*snmp-server\b', cfg, re.MULTILINE):
+            protocols.append("SNMP")
+        if re.search(r'\bntp server\b', cfg, re.MULTILINE):
+            protocols.append("NTP")
+
+        lines = [f"{hostname} ({ip})  [golden: {entry['saved_at']}]"]
+        if iface_ips:
+            lines.append(
+                "  IPs: "
+                + "  ".join(f"{k}={v}" for k, v in sorted(iface_ips.items()))
+            )
+        if protocols:
+            lines.append("  Protocols: " + "  ".join(protocols))
+        device_blocks.append("\n".join(lines))
+
+    if not device_blocks:
+        return ""
+
+    return (
+        "[NETWORK STATE — extracted from golden configs, treat as your working knowledge]\n"
+        "You already know this network. Use the facts below instead of calling\n"
+        "read_golden_config() for discovery. Only call read_golden_config() when you need\n"
+        "the full raw config text (diffing, reports, copying a specific block verbatim).\n"
+        "Before any change: reason about what else might break given the state below.\n\n"
+        + "\n\n".join(device_blocks)
+    )
+
+
+# ---- Context size caps — prevent token runaway as KB/configs grow -----------
+# ~4 chars per token is a conservative estimate for mixed network/prose text.
+_STABLE_CAP_KB      = 24_000   # ~6k tokens  — per KB section
+_STABLE_CAP_VARS    = 12_000   # ~3k tokens  — variable store
+_STABLE_CAP_NETSTATE = 24_000  # ~6k tokens  — network state snapshot
+_STABLE_CAP_TOTAL   = 96_000   # ~24k tokens — entire stable block
+
+
+def _cap(text: str, max_chars: int, label: str = "") -> str:
+    """Truncate text to max_chars with a notice if truncated."""
+    if len(text) <= max_chars:
+        return text
+    suffix = f"\n... [{label} truncated to {max_chars // 1000}k chars to control token cost]"
+    return text[: max_chars - len(suffix)] + suffix
+
+
+# ---- Stable-context summary builders ---------------------------------------
+# These are injected as a cached system block so the AI doesn't call
+# discovery tools (list_ansible_playbooks, jenkins_get_current_pipelines,
+# read_compliance_policy) on every task.
+
+def _get_playbooks_summary() -> str:
+    index = _load_playbook_index()
+    if not index:
+        return ""
+    lines = [
+        "[PLAYBOOKS — pre-loaded; call run_ansible_playbook(id) if a match exists; never recreate]"
+    ]
+    for pb in sorted(index, key=lambda x: x.get("name", "")):
+        kw = " ".join((pb.get("keywords") or [])[:8])
+        lines.append(f"  {pb['id']:36s}  \"{pb['name']}\"  [{kw}]")
+    lines.append(
+        "RULE: if any playbook matches the current task → run_ansible_playbook(playbook_id). "
+        "Never regenerate SSH commands that a playbook already covers. "
+        "Do NOT call list_ansible_playbooks — this list is already here."
+    )
+    return "\n".join(lines)
+
+
+def _get_pipelines_summary() -> str:
+    try:
+        from modules.jenkins_runner import (
+            load_config as _jlc, get_current_list_pipeline_status as _jps,
+        )
+        cfg  = _jlc()
+        info = _jps(cfg)
+        rows = info.get("registered", [])
+        if not rows:
+            return ""
+        list_name = info.get("list_name", "?")
+        lines = [
+            f"[JENKINS PIPELINES for '{list_name}' — pre-loaded; "
+            "do NOT call jenkins_get_current_pipelines to discover these]"
+        ]
+        for r in rows:
+            result = r.get("last_result") or "no builds"
+            build  = f" #{r['last_build']}" if r.get("last_build") else ""
+            warn   = "  ⚠ NOT FOUND ON SERVER" if not r.get("exists_on_server") else ""
+            lines.append(f"  {r['job_name']}{warn}  last={result}{build}")
+        lines.append(
+            "RULE: use these job names directly in run_jenkins_job / run_jenkins_checks. "
+            "No discovery call needed."
+        )
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _get_compliance_summary() -> str:
+    policy = _load_compliance_policy()
+    rules  = policy.get("rules", [])
+    if not rules:
+        return ""
+    lines = [
+        "[COMPLIANCE POLICY — pre-loaded; do NOT call read_compliance_policy; "
+        "add/change rules via update_compliance_policy]"
+    ]
+    for r in rules:
+        lines.append(
+            f"  [{r.get('severity','?'):8s}] {r.get('name','?')}: {r.get('check','')}"
+        )
+    return "\n".join(lines)
 
 
 # ---- Change audit log ------------------------------------------------------
@@ -1312,15 +1520,55 @@ def _clear_stop(session_id: str) -> None:
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """[v4] You are an autonomous network automation agent embedded in a \
-Cisco IOS device management platform. You have direct SSH access to managed network \
-devices through a Python intermediary layer — you never connect to devices yourself, \
+SYSTEM_PROMPT = """[v5] You are a senior network engineer who has been running and \
+maintaining this specific Cisco IOS network. You know this network intimately — its \
+devices, addressing scheme, routing design, what was built, when, and why. You have \
+direct SSH access through a Python intermediary layer: you never connect directly, \
 but you call tools that execute commands on your behalf.
 
-You are NOT a chatbot. You are an agent. You observe state, infer what needs to be
-done, and act — without waiting for explicit step-by-step instructions. When you
-see a problem, fix it. When you see a gap, fill it. When you complete a workflow
-step, move to the next one automatically.
+You are NOT discovering a new network on every task. You already know it.
+The [NETWORK STATE] block injected in each turn is your working knowledge — it was
+extracted from the golden configs you saved. Treat it like your own memory:
+  - You know which IPs are on each interface without asking.
+  - You know which protocols are running and their key parameters.
+  - You know what was recently changed from [RECENT CHANGES].
+Before acting: reason briefly about what the requested change could impact on the
+KNOWN topology — adjacent devices, redistribution points, BGP neighbours, tunnels,
+downstream prefixes — then act. Do not re-discover what you already know.
+
+You are NOT a chatbot. You are an engineer who acts. You observe state, infer what
+needs to be done, and execute — without waiting for step-by-step instructions. When
+you see a problem, fix it. When you see a gap, fill it. When you complete a workflow
+step, move to the next automatically.
+
+═══════════════════════════════════════════════════════════════════
+CACHE-FIRST PRINCIPLE — never regenerate what already exists
+═══════════════════════════════════════════════════════════════════
+Your context is pre-loaded with everything known about this network. Before taking ANY
+action, check what already exists:
+
+  ALREADY IN CONTEXT (never call tools to re-read these):
+  • [NETWORK STATE]      — device IPs, protocols, tunnel endpoints from golden configs
+  • [VARIABLES]          — stored network facts (IPs, AS numbers, IDs, etc.)
+  • [NETWORK KB]         — confirmed facts and past discoveries
+  • [PLAYBOOKS]          — library of past configuration tasks, ready to re-run
+  • [JENKINS PIPELINES]  — registered CI pipelines for this list
+  • [COMPLIANCE POLICY]  — policy rules already being enforced
+
+  USE WHAT EXISTS — only generate new things when nothing applicable exists:
+  • Task involves configuration already in a playbook → run_ansible_playbook(id)
+  • Fact needed is in [VARIABLES] or [NETWORK STATE] → use it directly, no SSH
+  • Fix already documented in [NETWORK KB] or [CI/CD KB] → apply it, no re-diagnosis
+  • Pipeline already exists for this change type → use it, don't create a new one
+  • Compliance rule already covers what you are about to check → skip, it's monitored
+
+  ONLY USE THE LLM (i.e. your own reasoning) FOR:
+  • Interpreting new user intent
+  • Generating new config templates or logic for tasks not yet in [PLAYBOOKS]
+  • Generating new Jenkins pipeline stages for new check types
+  • Validating a proposed config change against the known network state
+  • Summarising diffs / troubleshooting novel failures
+  • Anything that truly has no cached equivalent
 
 ═══════════════════════════════════════════════════════════════════
 AUTONOMOUS TRIGGER RULES — act on these WITHOUT being asked
@@ -1472,17 +1720,20 @@ Efficiency rules  ← follow these strictly
    table directly to plan configurations.  The IPs in [Topology] are authoritative.
    Only call get_network_topology if you observe a discrepancy between [Topology] and
    live device output — in that case refresh it, then update the network KB.
-2a. GOLDEN CONFIG + VARIABLES are the primary source for ALL device information lookups.
-   BEFORE running any live show command, check these first:
-     • read_variables()          — stored IPs, IDs, AS numbers, prefixes, etc.
-     • read_golden_config(ip)    — full last-known-good config for a device
-   Only run live SSH commands (execute_command / execute_commands_on_device) when:
-     a) You are MAKING a new configuration change (push, then verify it applied), OR
-     b) The golden config and variables do not contain the specific fact needed, OR
-     c) The user explicitly asks for live/current data.
-   "What IP is on Gi0/0?" → read_golden_config, not show interfaces.
-   "Is OSPF up right now?" → this is a live-state question, so execute_command is correct.
-   This rule avoids unnecessary SSH sessions and keeps the interaction fast.
+2a. [NETWORK STATE] IS your knowledge of each device — do NOT call read_golden_config()
+   for facts already listed there (IPs, protocols, tunnel endpoints, OSPF/BGP params).
+   VARIABLES and NETWORK KB are also pre-injected — treat them as your own memory.
+   Only call read_golden_config(ip) when you need the RAW full config text:
+     • generating a report section that quotes specific config blocks
+     • computing a diff against the running config
+     • copying an exact config block verbatim for a new device
+   For any other information request (IPs, protocol state, interface list):
+     a) Check [NETWORK STATE], [VARIABLES], [NETWORK KB] first — these are YOUR memory.
+     b) If the fact is missing from all three, THEN run a focused show command.
+     c) If the user asks about LIVE state (is OSPF up RIGHT NOW?) — execute_command is correct.
+   "What IP is on Gi0/0?" → answer from [NETWORK STATE], not a tool call.
+   "Is OSPF converged right now?" → execute_command is correct (live state question).
+   This rule eliminates the read_golden_config-for-every-device anti-pattern.
 3. Knowledge base (KB) is the authoritative source of truth for this list.
    The KB covers network facts AND Jenkins/Ansible lessons — use the same tools for all of them.
    THE RULE: if a fact is in [NETWORK KB], use it as-is without re-querying or re-diagnosing.
@@ -1613,7 +1864,8 @@ Tool reference:
   run_jenkins_job               — trigger ONE specific pipeline by name (use this when re-running after a single failure)
 
 Per-list rules (critical):
-- jenkins_get_current_pipelines is the FIRST tool to call when asked about CI for this list.
+- [JENKINS PIPELINES] is pre-loaded — do NOT call jenkins_get_current_pipelines to discover
+  what pipelines exist. Use the names already in that block for run_jenkins_job / run_jenkins_checks.
 - jenkins_create_job auto-registers the new job to the current list.
 - jenkins_delete_job removes from server AND from this list's registry.
 - run_jenkins_checks triggers ONLY the pipelines registered to the current list.
@@ -1794,22 +2046,26 @@ Fixing / updating an existing playbook:
    Also record any device-specific quirk discovered (commit requirements, IOS version behaviour, etc.).
 
 Rules for using saved playbooks:
-- When the user asks you to configure something, call list_ansible_playbooks FIRST
-  to check if a matching playbook already exists.
-- If a matching playbook is found, call run_ansible_playbook with its id instead of
-  manually running SSH commands. This is faster and guaranteed to be correct.
-- Only fall through to manual SSH commands if no playbook matches.
+- The playbook library is pre-loaded in [PLAYBOOKS]. Do NOT call list_ansible_playbooks
+  to discover what exists — the list is already in your context.
+- If a playbook in [PLAYBOOKS] matches the current task, call run_ansible_playbook with
+  its id instead of manually running SSH commands. This is faster and guaranteed correct.
+- Only fall through to manual SSH commands if no playbook in [PLAYBOOKS] matches.
 
 Complete config-push workflow — follow this EVERY time you push config to devices
 This is the full mandatory lifecycle for any configuration change.
 Human approval is NOT required at any step — Jenkins CI pass is the gate.
 
 STEP 0 — Read context (before starting)
-  - read_variables()            → use stored facts instead of running live show commands
-  - read_golden_config(ip)      → use golden config as reference for current device state
-  - list_golden_configs()       → confirm a baseline exists to roll back to
-  - read_compliance_policy()    → know what the network must satisfy after your change
-  Do NOT SSH to devices for information that golden configs or variables already contain.
+  Everything below is ALREADY IN YOUR CONTEXT — do NOT call these tools just to read them:
+  - [VARIABLES]          → already injected
+  - [NETWORK STATE]      → already injected (parsed from golden configs)
+  - [PLAYBOOKS]          → already injected
+  - [JENKINS PIPELINES]  → already injected
+  - [COMPLIANCE POLICY]  → already injected
+  Only call read_golden_config(ip) when you need the full raw config text for a specific device.
+  Only call list_golden_configs() when you need to confirm rollback baseline existence.
+  Do NOT SSH to devices for information already present in the above blocks.
 
 STEP 1 — Pre-change backup (safety net)
   - capture_pre_change_snapshot(device_ips=[...affected IPs...])
@@ -1883,13 +2139,14 @@ Jenkins scheduling — ALWAYS schedule new pipelines (never leave them manual-on
 
 Network report generation
 When the user asks for a network report, explanation, or documentation of the network:
-1. Gather all needed data FIRST using read-only tools (NO live SSH):
-   - get_all_devices()                      → inventory and roles
-   - list_golden_configs()                  → see which devices have a saved baseline
-   - read_golden_config(ip) for EACH device → full last-known-good configs (NO SSH)
-   - get_network_topology()                 → physical/logical links, CDP neighbours
-   - read_variables()                       → stored IP addressing facts
-   - read_network_kb()                      → any recorded knowledge base entries
+1. Gather all needed data FIRST — start with what is already in context:
+   - [NETWORK STATE] (injected)             → per-device IPs and protocols — already here
+   - [VARIABLES] (injected)                 → stored IP addressing facts — already here
+   - [NETWORK KB] (injected)                → confirmed facts — already here
+   - [Topology] (injected)                  → physical/logical links — already here
+   Then fetch only what is NOT already covered:
+   - read_golden_config(ip) for each device → full config text for report sections
+   - read_change_log()                      → recent change history for the report
    If a device has no golden config, note it as "no baseline saved" in the report
    rather than falling back to a live SSH call.
 2. Build a comprehensive Markdown report covering:
@@ -1907,6 +2164,29 @@ When the user asks for a network report, explanation, or documentation of the ne
      c. report_finish()              — once, to finalize and create the download link
    Use write_report only for very short single-device reports (< 500 words).
 4. The user will receive a download link automatically — no need to paste the report in chat.
+
+NetBox — authoritative source of truth
+NetBox holds the IPAM/DCIM record of this network, populated from golden configs.
+Use it as a second authoritative source alongside [NETWORK STATE]:
+
+  netbox_get_device(name_or_ip)   — hardware info: model, serial, SW version, role,
+                                    site, primary IP, tags, structured context
+                                    (OSPF/BGP/NTP/SNMP params in local_context_data)
+  netbox_search_devices()         — discover devices by site, role, or tag
+  netbox_get_interfaces(name_or_ip) — interfaces with IPs, VRF, LAG, VLAN tags
+  netbox_get_prefixes()           — IPAM address plan + static routes as prefixes
+  netbox_get_vpn_tunnels()        — GRE/DMVPN/IPsec tunnel inventory with endpoints
+
+When to use NetBox tools (never call them redundantly):
+  - Hardware inventory questions (model, serial, SW version) → netbox_get_device
+  - "What VLAN is this port in?" / "What VRF is this IP?" → netbox_get_interfaces
+  - IP addressing / overlap / prefix questions → netbox_get_prefixes
+  - Tunnel inventory or "which devices peer over GRE?" → netbox_get_vpn_tunnels
+  - Planning a change: verify current NetBox state first so changes are accurate
+  - Troubleshooting: cross-check IPAM to confirm what is SUPPOSED to be there vs live
+  When [NETWORK STATE] already answers the question, do NOT duplicate with NetBox.
+  NetBox adds value for: hardware details, VLANs, VRF assignments, IPAM prefixes,
+  and structured context data that [NETWORK STATE] does not include.
 
 Safety
 - You have real SSH access to real routers and switches.
@@ -3265,6 +3545,100 @@ TOOLS = [
             "required": [],
         },
     },
+    # ── NetBox query tools ──────────────────────────────────────────────────
+    {
+        "name": "netbox_get_device",
+        "description": (
+            "Fetch a device record from NetBox by hostname or IP address. "
+            "Returns model, serial, platform, software version, role, site, "
+            "primary IP, tags, and structured local_context_data (OSPF/BGP/NTP/SNMP params). "
+            "Use this when you need authoritative hardware/software inventory details "
+            "or the full structured config context stored in NetBox."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name_or_ip": {
+                    "type": "string",
+                    "description": "Device hostname (e.g. 'PE-1') or primary IP address",
+                },
+            },
+            "required": ["name_or_ip"],
+        },
+    },
+    {
+        "name": "netbox_search_devices",
+        "description": (
+            "Search NetBox for devices matching a name/IP query, or filter by "
+            "site, role, or tag. Returns a list of compact device summaries. "
+            "Use this to discover which devices are in a site or have a specific role."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "search": {"type": "string", "description": "Name or IP fragment to search"},
+                "site":   {"type": "string", "description": "Filter by site name/slug"},
+                "role":   {"type": "string", "description": "Filter by device role name/slug"},
+                "tag":    {"type": "string", "description": "Filter by tag name"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "netbox_get_interfaces",
+        "description": (
+            "Return all interfaces for a device from NetBox, including their assigned "
+            "IP addresses, VRF membership, LAG, switchport mode, and tagged VLANs. "
+            "Use this for authoritative IP/interface inventory, VLAN verification, "
+            "or when planning changes that touch interface configuration."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name_or_ip": {
+                    "type": "string",
+                    "description": "Device hostname or primary IP",
+                },
+            },
+            "required": ["name_or_ip"],
+        },
+    },
+    {
+        "name": "netbox_get_prefixes",
+        "description": (
+            "List IPAM prefixes stored in NetBox. Static routes are synced here as prefixes. "
+            "Filter by VRF name to get routing table context or by prefix string for a "
+            "specific subnet. Use this to verify IP addressing, spot overlaps, or understand "
+            "the full address plan."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "vrf":    {"type": "string", "description": "Filter by VRF name (e.g. list name)"},
+                "prefix": {"type": "string", "description": "Filter by specific prefix (e.g. '10.0.0.0/8')"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "netbox_get_vpn_tunnels",
+        "description": (
+            "List VPN tunnels from NetBox with their encapsulation type and termination "
+            "endpoints (device, IP, role). Filter by device name to see only tunnels "
+            "involving a specific device. Use this for GRE/DMVPN/IPsec tunnel inventory "
+            "and to understand the full tunnel mesh."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device": {
+                    "type": "string",
+                    "description": "Filter tunnels involving this device name (optional)",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -3358,12 +3732,95 @@ def _tool_label(name: str, args: dict) -> str:
         return "Reading monitoring configuration..."
     if name == "write_report":
         return f"Writing network report: {args.get('title', '')}..."
+    if name == "netbox_get_device":
+        return f"NetBox: fetching device {args.get('name_or_ip', '')}..."
+    if name == "netbox_search_devices":
+        q = args.get("search") or args.get("role") or args.get("site") or "all"
+        return f"NetBox: searching devices ({q})..."
+    if name == "netbox_get_interfaces":
+        return f"NetBox: fetching interfaces for {args.get('name_or_ip', '')}..."
+    if name == "netbox_get_prefixes":
+        return f"NetBox: fetching IPAM prefixes..."
+    if name == "netbox_get_vpn_tunnels":
+        dev = args.get("device", "")
+        return f"NetBox: fetching VPN tunnels{' for ' + dev if dev else ''}..."
     return f"Executing {name}..."
 
 
 # ---------------------------------------------------------------------------
 # Main agent loop
 # ---------------------------------------------------------------------------
+def _try_local_answer(
+    msg: str,
+    devices: list,
+    status_cache: dict,
+    variables: dict,
+    playbook_index: list,
+    pipeline_summary: str,
+) -> Optional[str]:
+    """
+    Try to answer a message entirely from cached context without any LLM call.
+    Returns a markdown answer string if matched, None if the LLM is needed.
+    Only handles unambiguous, single-fact lookups.
+    """
+    m = msg.strip().rstrip("?").lower()
+
+    # ── Device inventory ──────────────────────────────────────────────────
+    if re.search(r'\b(list|show|what|which|how many)\b.*(device|router|switch|host)', m):
+        if not any(kw in m for kw in ("configure", "fix", "troubleshoot", "check", "verify")):
+            online  = [d for d in devices if status_cache.get(d.get("ip", ""), False)]
+            offline = [d for d in devices if not status_cache.get(d.get("ip", ""), False)]
+            lines   = [f"**{len(devices)} device(s)** in this list "
+                       f"({len(online)} online, {len(offline)} offline):"]
+            for d in devices:
+                state = "🟢 online" if status_cache.get(d.get("ip", ""), False) else "🔴 offline"
+                lines.append(f"- **{d.get('hostname', d['ip'])}** ({d['ip']}) — {state}")
+            return "\n".join(lines)
+
+    # ── Online/offline status for a specific device ───────────────────────
+    _status_match = re.search(
+        r'\b(is|check)\b.+\b(online|offline|up|down|reachable|unreachable|ping)\b', m
+    )
+    if _status_match:
+        for d in devices:
+            hn = d.get("hostname", "").lower()
+            ip = d.get("ip", "")
+            if hn and hn in m or ip in msg:
+                online = status_cache.get(ip, False)
+                label  = d.get("hostname", ip)
+                return f"**{label}** ({ip}) is currently **{'online 🟢' if online else 'offline 🔴'}**."
+
+    # ── Variable direct lookup ────────────────────────────────────────────
+    if variables:
+        for key, entry in variables.items():
+            val = entry.get("value", entry) if isinstance(entry, dict) else entry
+            # Match "what is <key>" or "show <key>" patterns
+            kl = key.lower().replace("_", " ")
+            if kl in m and any(kw in m for kw in ("what", "show", "value", "get", "tell")):
+                desc = (entry.get("description", "") if isinstance(entry, dict) else "")
+                return f"**{key}** = `{val}`" + (f"\n_{desc}_" if desc else "")
+
+    # ── Playbook listing ──────────────────────────────────────────────────
+    if re.search(r'\b(list|show|what|which)\b.*(playbook|automation|ansible)', m):
+        if not any(kw in m for kw in ("run", "execute", "create", "add", "delete")):
+            if not playbook_index:
+                return "No playbooks saved yet for this list."
+            lines = [f"**{len(playbook_index)} playbook(s)** saved for this list:"]
+            for pb in sorted(playbook_index, key=lambda x: x.get("name", "")):
+                kw = ", ".join((pb.get("keywords") or [])[:5])
+                lines.append(f"- `{pb['id']}` — **{pb['name']}**" + (f" [{kw}]" if kw else ""))
+            return "\n".join(lines)
+
+    # ── Pipeline listing ──────────────────────────────────────────────────
+    if re.search(r'\b(list|show|what|which)\b.*(pipeline|jenkins|ci)', m):
+        if not any(kw in m for kw in ("run", "trigger", "create", "add", "delete", "fail")):
+            if pipeline_summary:
+                return pipeline_summary.replace("[JENKINS PIPELINES", "**Jenkins pipelines")
+            return "No Jenkins pipelines registered for this list yet."
+
+    return None  # LLM needed
+
+
 def run_chat(
     session_id: str,
     user_message: str,
@@ -3376,6 +3833,7 @@ def run_chat(
     topology_context: Optional[str] = None,
     attached_files: Optional[list] = None,
     workflow_flags: Optional[dict] = None,
+    force_provider: Optional[str] = None,
 ) -> Iterator[dict]:
     """
     Run one chat turn with the active AI provider.
@@ -3400,10 +3858,32 @@ def run_chat(
     from modules.topology import discover_topology
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    provider_info    = get_provider_info()
-    provider_id      = provider_info["id"]
+    provider_info    = (PROVIDER_DEFAULTS[force_provider]
+                        if force_provider and force_provider in PROVIDER_DEFAULTS
+                        else get_provider_info())
+    provider_id      = force_provider or provider_info["id"]
     model            = provider_info["model"]
-    max_tokens_out   = provider_info.get("max_tokens_per_req", 4096)
+
+    # Adaptive max_tokens: use a small default to keep responses concise and cheap.
+    # Bump to 16000 only when the request is clearly asking for long-form output.
+    _LONG_OUTPUT_KEYWORDS = (
+        "report", "document", "generate", "create a config", "write a full",
+        "describe all", "explain everything", "summarize the whole",
+        "full configuration", "complete config", "all devices",
+        "detailed breakdown", "step by step for all",
+    )
+    _SHORT_OUTPUT_KEYWORDS = (
+        "is ", "does ", "what is ", "what's ", "how many", "list ", "show ",
+        "which ", "are there", "do we have", "status of", "count",
+    )
+    _msg_lower = user_message.lower()
+    if any(kw in _msg_lower for kw in _LONG_OUTPUT_KEYWORDS):
+        max_tokens_out = 16000
+    elif any(_msg_lower.startswith(kw) or f" {kw}" in _msg_lower
+             for kw in _SHORT_OUTPUT_KEYWORDS):
+        max_tokens_out = 2048
+    else:
+        max_tokens_out = provider_info.get("max_tokens_per_req", 4096)
     max_history      = provider_info.get("max_history", 20)
     _inject_topo_cfg = provider_info.get("inject_topo", "first_turn")
     active_prompt    = SYSTEM_PROMPT
@@ -3411,6 +3891,36 @@ def run_chat(
     # Inform the UI which provider is handling this turn.
     yield {"type": "provider", "id": provider_id,
            "name": provider_info["name"], "model": model}
+
+    # ── Local answer short-circuit — no LLM call needed ───────────────────
+    # Try to answer simple factual lookups from pre-loaded cached data.
+    # Only fires on the first turn of a conversation (no prior tool work).
+    if session_id not in _chat_histories or not _chat_histories[session_id]:
+        try:
+            _local_devices  = devices_loader()
+            _local_vars     = _load_variables()
+            _local_pbs      = _load_playbook_index()
+            _local_pipes    = _get_pipelines_summary()
+            _local_ans = _try_local_answer(
+                user_message, _local_devices, status_cache,
+                _local_vars, _local_pbs, _local_pipes,
+            )
+            if _local_ans is not None:
+                _save_history_to_disk(session_id, _chat_histories.get(session_id, []) + [
+                    {"role": "user",      "content": user_message},
+                    {"role": "assistant", "content": _local_ans},
+                ])
+                _chat_histories[session_id] = _chat_histories.get(session_id, []) + [
+                    {"role": "user",      "content": user_message},
+                    {"role": "assistant", "content": _local_ans},
+                ]
+                yield {"type": "text", "content": _local_ans}
+                yield {"type": "usage", "input": 0, "output": 0,
+                       "cache_write": 0, "cache_read": 0, "cost_usd": 0.0}
+                yield {"type": "done"}
+                return
+        except Exception:
+            pass  # fall through to LLM if local answer fails
 
     _clear_stop(session_id)
     if session_id not in _chat_histories:
@@ -3430,53 +3940,59 @@ def run_chat(
         or (_inject_topo_cfg == "first_turn" and is_first_turn)
     )
 
-    prefix_parts = []
+    # stable_parts → cached as a second Anthropic system block (cache_control: ephemeral)
+    # dynamic_parts → injected into the user message prefix each turn (not cached)
+    # Splitting saves full input token cost on every agentic loop iteration after the first.
+    stable_parts:  list[str] = []
+    dynamic_parts: list[str] = []
 
-    # Inject persistent lab notes first so Claude sees them before anything else.
+    # ── STABLE context — sent as a cached Anthropic system block ─────────────
+    # This content rarely changes within a session. Anthropic caches it after
+    # the first API call, so all subsequent loop iterations pay only cache-read
+    # price (~10× cheaper than full input price).
+
+    # Lab notes
     _lab_notes = _load_lab_notes()
     if _lab_notes:
-        prefix_parts.append(
-            "[LAB NOTES — platform/tool quirks, apply immediately]\n"
-            + _lab_notes
+        stable_parts.append(
+            "[LAB NOTES — platform/tool quirks, apply immediately]\n" + _lab_notes
         )
 
-    # Inject the global KB — reusable lessons that apply across all lists.
+    # Global KB
     _gkb = _load_global_kb()
     if _gkb:
-        prefix_parts.append(
+        stable_parts.append(
             "[GLOBAL KB — lessons that apply to every network/list, treat as standing rules]\n"
             + _format_network_kb(_gkb)
             + "\nRULE: always apply global KB entries before attempting any tool call. "
             "Update the global KB when you discover a lesson that will apply to future lists too."
         )
 
-    # Inject the list-specific KB — confirmed facts about THIS network.
+    # List-specific KB
     _kb = _load_network_kb()
     if _kb:
-        # Split into network facts vs CI/CD lessons for clearer presentation
-        _ci_cats   = {"jenkins", "ansible"}
-        _net_kb    = {k: v for k, v in _kb.items() if k not in _ci_cats}
-        _cicd_kb   = {k: v for k, v in _kb.items() if k in _ci_cats}
-        _kb_blocks = []
+        _ci_cats  = {"jenkins", "ansible"}
+        _net_kb   = {k: v for k, v in _kb.items() if k not in _ci_cats}
+        _cicd_kb  = {k: v for k, v in _kb.items() if k in _ci_cats}
+        _kb_blocks: list[str] = []
         if _net_kb:
             _kb_blocks.append(
                 "[NETWORK KB — confirmed facts about this specific list/network]\n"
-                + _format_network_kb(_net_kb)
+                + _cap(_format_network_kb(_net_kb), _STABLE_CAP_KB, "NETWORK KB")
             )
         if _cicd_kb:
             _kb_blocks.append(
                 "[CI/CD KB — pipeline & playbook details specific to this list]\n"
-                + _format_network_kb(_cicd_kb)
+                + _cap(_format_network_kb(_cicd_kb), _STABLE_CAP_KB, "CI/CD KB")
             )
-        prefix_parts.append(
+        stable_parts.append(
             "\n\n".join(_kb_blocks)
-            + "\nRULE: treat every entry above as ground truth for this list. Do NOT re-query or "
+            + "\nRULE: treat every entry above as ground truth. Do NOT re-query or "
             "re-diagnose anything already recorded here. Only go to the live source "
-            "when a fact is absent or a live result directly contradicts an entry "
-            "(then update the KB). After fixing anything, call update_network_kb."
+            "when a fact is absent or a live result directly contradicts an entry."
         )
 
-    # Inject variable store if any variables are set
+    # Variables
     _vars = _load_variables()
     if _vars:
         _var_lines = ["[VARIABLES — use these values when building configs, playbooks, or pipelines]"]
@@ -3485,46 +4001,86 @@ def run_chat(
             desc = v.get("description", "") if isinstance(v, dict) else ""
             _var_lines.append(f"  {k} = {val}" + (f"  ({desc})" if desc else ""))
         _var_lines.append("RULE: always use these variables instead of hardcoding values.")
-        prefix_parts.append("\n".join(_var_lines))
+        stable_parts.append(_cap("\n".join(_var_lines), _STABLE_CAP_VARS, "VARIABLES"))
     else:
-        # No variables stored yet — remind the agent to populate them from running configs
-        prefix_parts.append(
+        stable_parts.append(
             "[VARIABLES — none stored yet]\n"
-            "No network facts have been stored for this list. "
-            "As you encounter or verify facts during your work, call set_variable to record them.\n"
-            "Do NOT proactively run a discovery sweep — the background agent handles that separately."
+            "As you encounter or verify facts, call set_variable to record them.\n"
+            "Do NOT proactively run a discovery sweep."
         )
 
-    # ── Proactive context: surface pending issues the agent should act on ──
-    _proactive_items = []
+    # Network state snapshot (parsed from all golden configs)
+    try:
+        _net_state = _build_network_state_snapshot()
+        if _net_state:
+            stable_parts.append(_cap(_net_state, _STABLE_CAP_NETSTATE, "NETWORK STATE"))
+    except Exception:
+        pass
 
-    # 1. Devices missing a golden config
+    # Ansible playbook library — pre-injected so the AI never needs list_ansible_playbooks
+    try:
+        _pb_summary = _get_playbooks_summary()
+        if _pb_summary:
+            stable_parts.append(_pb_summary)
+    except Exception:
+        pass
+
+    # Jenkins pipeline list — pre-injected so the AI never needs jenkins_get_current_pipelines
+    try:
+        _pipe_summary = _get_pipelines_summary()
+        if _pipe_summary:
+            stable_parts.append(_pipe_summary)
+    except Exception:
+        pass
+
+    # Compliance policy — pre-injected so the AI never needs read_compliance_policy
+    try:
+        _comp_summary = _get_compliance_summary()
+        if _comp_summary:
+            stable_parts.append(_comp_summary)
+    except Exception:
+        pass
+
+    # ── DYNAMIC context — re-injected into the user message each turn ─────────
+    # Changes between messages (alerts, checkpoint, per-request context).
+
+    # Recent change history
+    try:
+        _recent_changes = _load_change_log()[-3:][::-1]
+        if _recent_changes:
+            _cl_lines = ["[RECENT CHANGES — what was last done on this network]"]
+            for _ch in _recent_changes:
+                _ts   = (_ch.get("timestamp") or "")[:16]
+                _desc = _ch.get("description", "")
+                _devs = ", ".join(_ch.get("devices") or [])
+                _res  = _ch.get("jenkins_result") or "n/a"
+                _gc   = "golden saved" if _ch.get("golden_config_saved") else "no golden update"
+                _cl_lines.append(f"  {_ts}  [{_ch.get('change_type','change')}] {_desc}")
+                if _devs:
+                    _cl_lines.append(f"    Devices: {_devs}  CI: {_res}  {_gc}")
+            dynamic_parts.append("\n".join(_cl_lines))
+    except Exception:
+        pass
+
+    # Proactive context: surface pending issues
+    _proactive_items: list[str] = []
+
     try:
         _all_devices = devices_loader()
         _golden_ips  = {e["device_ip"] for e in _list_golden_configs()}
-        _missing_gc  = [
-            d for d in _all_devices
-            if d.get("ip") and d["ip"] not in _golden_ips
-        ]
+        _missing_gc  = [d for d in _all_devices if d.get("ip") and d["ip"] not in _golden_ips]
         if _missing_gc:
-            _missing_strs = [
-                f"  - {d.get('hostname', d['ip'])} ({d['ip']})"
-                for d in _missing_gc
-            ]
             _proactive_items.append(
-                "MISSING GOLDEN CONFIGS — these devices have no verified baseline:\n"
-                + "\n".join(_missing_strs)
-                + "\nACTION: after the next successful CI run that covers these devices, "
-                "call save_golden_config for each one automatically."
+                "MISSING GOLDEN CONFIGS:\n"
+                + "\n".join(f"  - {d.get('hostname', d['ip'])} ({d['ip']})" for d in _missing_gc)
+                + "\nACTION: after the next successful CI run, call save_golden_config automatically."
             )
     except Exception:
         pass
 
-    # 2. Recent Jenkins failures for this list
     try:
         from modules.jenkins_runner import _results_file as _jr_results_file
-        _jrf = _jr_results_file()
-        with open(_jrf, encoding="utf-8") as _fh:
+        with open(_jr_results_file(), encoding="utf-8") as _fh:
             _jresults = json.load(_fh)
         _failed_jobs = [
             f"  - {job}: build #{info.get('build_number','?')} FAILED "
@@ -3534,15 +4090,12 @@ def run_chat(
         ]
         if _failed_jobs:
             _proactive_items.append(
-                "JENKINS FAILURES — these pipelines last ended in FAILURE:\n"
-                + "\n".join(_failed_jobs)
-                + "\nACTION: diagnose the console for each failed job and fix the root "
-                "cause without waiting to be asked."
+                "JENKINS FAILURES:\n" + "\n".join(_failed_jobs)
+                + "\nACTION: diagnose and fix without waiting to be asked."
             )
     except Exception:
         pass
 
-    # 3. Cached drift status
     try:
         from modules.config import get_current_list_data_dir as _gcld
         _drift_path = os.path.join(_gcld(), "drift_cache.json")
@@ -3555,21 +4108,19 @@ def run_chat(
         ]
         if _drifted:
             _proactive_items.append(
-                "CONFIG DRIFT DETECTED — running config differs from golden for:\n"
-                + "\n".join(_drifted)
-                + "\nACTION: report diffs to user and recommend: update golden OR revert device."
+                "CONFIG DRIFT DETECTED:\n" + "\n".join(_drifted)
+                + "\nACTION: report diffs and recommend update golden OR revert."
             )
     except Exception:
         pass
 
     if _proactive_items:
-        prefix_parts.append(
+        dynamic_parts.append(
             "[PROACTIVE CONTEXT — act on these items, do not ignore them]\n"
             + "\n\n".join(_proactive_items)
         )
 
-    # Detect continuation requests and inject the saved checkpoint so Claude
-    # knows exactly where it left off without re-running any tool calls.
+    # Session checkpoint (continuation detection)
     _CONTINUATION_KEYWORDS = (
         "continue", "keep going", "left off", "resume", "carry on",
         "pick up", "where we", "next step", "what's next", "what next",
@@ -3578,53 +4129,42 @@ def run_chat(
     _checkpoint = _load_checkpoint(session_id)
 
     if _is_continuation and _checkpoint:
-        cp_text = (
-            f"[SESSION CHECKPOINT — do NOT re-run tool calls to verify this, "
-            f"trust it and continue from here]\n"
+        dynamic_parts.append(
+            f"[SESSION CHECKPOINT — trust this, do NOT re-run tool calls to verify]\n"
             f"Task: {_checkpoint.get('task', '(unknown)')}\n"
-            f"Saved at: {_checkpoint.get('saved_at', '')}"
-            f" (after step {_checkpoint.get('iteration', '?')})\n"
+            f"Saved at: {_checkpoint.get('saved_at', '')} (after step {_checkpoint.get('iteration', '?')})\n"
             f"Last progress note:\n{_checkpoint.get('progress', '')}"
         )
-        prefix_parts.append(cp_text)
     elif not _is_continuation and is_first_turn:
-        # Fresh task — clear any stale checkpoint from a previous session.
         _clear_checkpoint(session_id)
 
+    # Device inventory background context
     if device_context:
         try:
             devs = json.loads(device_context)
-            # Omit online-status — it triggers Claude to summarise device
-            # reachability instead of focusing on the actual task.
-            compact = [
-                {"h": d.get("hostname", ""), "ip": d.get("ip", "")}
-                for d in devs
-            ]
-            prefix_parts.append(
+            compact = [{"h": d.get("hostname", ""), "ip": d.get("ip", "")} for d in devs]
+            dynamic_parts.append(
                 "[BACKGROUND — managed device inventory, NOT a question]\n"
                 + json.dumps(compact, separators=(",", ":"))
-                + "\nDo NOT call get_all_devices unless the user explicitly asks "
-                "to refresh. Do NOT summarise this list unless asked."
+                + "\nDo NOT call get_all_devices unless the user explicitly asks to refresh."
             )
         except Exception:
             pass
 
+    # Topology
     if topology_context and inject_topo:
         try:
             topo = json.loads(topology_context)
-            # Strip HTML title fields — they're for the visual graph, not the AI.
             for node in topo.get("nodes", []):
                 node.pop("title", None)
             for edge in topo.get("edges", []):
                 edge.pop("title", None)
-            iface_map = topo.get("interface_map", {})
-            iface_lines = []
+            iface_map  = topo.get("interface_map", {})
+            iface_lines: list[str] = []
             for hostname, ifaces in sorted(iface_map.items()):
                 for entry in ifaces:
-                    iface_lines.append(
-                        f"  {hostname:12s}  {entry['intf']:20s}  {entry['ip']}"
-                    )
-            link_lines = []
+                    iface_lines.append(f"  {hostname:12s}  {entry['intf']:20s}  {entry['ip']}")
+            link_lines: list[str] = []
             for edge in topo.get("edges", []):
                 link_lines.append(
                     f"  {edge['from']:12s} {edge.get('from_intf',''):12s} "
@@ -3634,45 +4174,46 @@ def run_chat(
                 )
             topo_text = "[Topology — authoritative, do NOT call get_network_topology]\n"
             if iface_lines:
-                topo_text += "\nInterface IP table:\n"
-                topo_text += "  Device        Interface             IP\n"
+                topo_text += "\nInterface IP table:\n  Device        Interface             IP\n"
                 topo_text += "\n".join(iface_lines)
             if link_lines:
-                topo_text += "\n\nLinks (use these IPs for next-hops):\n"
-                topo_text += "  From          From-intf    From-IP          <->  To            To-intf      To-IP\n"
+                topo_text += "\n\nLinks:\n  From          From-intf    From-IP          <->  To            To-intf      To-IP\n"
                 topo_text += "\n".join(link_lines)
-            prefix_parts.append(topo_text)
+            dynamic_parts.append(topo_text)
         except Exception:
             pass
 
+    # Attached files
     if attached_files:
-        _MAX_FILE_CHARS = 400_000  # ~100k tokens total across all files
+        _MAX_FILE_CHARS = 400_000
         _total_chars = 0
-        _file_blocks = []
+        _file_blocks: list[str] = []
         for _af in attached_files:
             _fname   = str(_af.get("name", "file"))[:200]
             _content = str(_af.get("content", ""))
             if _total_chars + len(_content) > _MAX_FILE_CHARS:
                 _content = _content[:_MAX_FILE_CHARS - _total_chars]
                 _file_blocks.append(
-                    f"[ATTACHED FILE: {_fname}]\n```\n{_content}\n```\n(truncated — file exceeded size limit)"
+                    f"[ATTACHED FILE: {_fname}]\n```\n{_content}\n```\n(truncated)"
                 )
                 _total_chars = _MAX_FILE_CHARS
                 break
             _file_blocks.append(f"[ATTACHED FILE: {_fname}]\n```\n{_content}\n```")
             _total_chars += len(_content)
         if _file_blocks:
-            prefix_parts.append(
+            dynamic_parts.append(
                 "[USER-UPLOADED FILES — read these carefully before responding]\n"
                 + "\n\n".join(_file_blocks)
             )
 
+    # Viewing context
     if context_ip:
-        devices = devices_loader()
-        dev = next((d for d in devices if d["ip"] == context_ip), None)
-        label = dev.get("hostname", context_ip) if dev else context_ip
-        prefix_parts.append(f"[Viewing: {label} ({context_ip})]")
+        _view_devices = devices_loader()
+        _view_dev = next((d for d in _view_devices if d["ip"] == context_ip), None)
+        _view_label = _view_dev.get("hostname", context_ip) if _view_dev else context_ip
+        dynamic_parts.append(f"[Viewing: {_view_label} ({context_ip})]")
 
+    # Task constraint injection
     _ACTION_KEYWORDS = (
         "verify", "verif", "check", "configure", "config", "enable", "disable",
         "fix", "troubleshoot", "apply", "set up", "setup", "implement",
@@ -3681,28 +4222,22 @@ def run_chat(
         "continue", "keep going", "left off", "resume", "carry on", "proceed",
         "where we", "pick up",
     )
-    # Also inject the constraint whenever the session has prior history with
-    # tool results — if work was already in progress, Claude must continue it.
     _has_prior_tool_work = any(
         isinstance(m.get("content"), list)
         and any(b.get("type") == "tool_result" for b in m["content"])
-        for m in history[:-1]  # exclude the message just appended
+        for m in history[:-1]
     )
     _kw_matched = any(kw in user_message.lower() for kw in _ACTION_KEYWORDS)
     _inject_constraint = _kw_matched or _has_prior_tool_work
     if _inject_constraint:
-        prefix_parts.append(
+        dynamic_parts.append(
             "[TASK CONSTRAINT] Complete the assigned task fully. Do NOT stop to "
-            "summarise devices or topology — the [BACKGROUND] block above is context "
-            "only, not a question. After gathering information, immediately proceed to "
-            "execute every required step. Report PASS/FAIL with evidence. "
-            "Do NOT ask 'what would you like me to do?' when the user has already "
-            "given you a task."
+            "summarise devices or topology — the [BACKGROUND] block is context only. "
+            "After gathering information, immediately proceed to execute every required step. "
+            "Report PASS/FAIL with evidence. Do NOT ask 'what would you like me to do?'."
         )
 
-    # ── Workflow flag overrides ───────────────────────────────────────────
-    # Build an explicit OVERRIDES block so the AI knows which steps are
-    # enabled or disabled regardless of its default system-prompt rules.
+    # Workflow flag overrides
     _wf = {
         "wf_read_first":       True,
         "wf_auto_backup":      True,
@@ -3714,41 +4249,35 @@ def run_chat(
     }
     _wf_lines = ["[WORKFLOW OVERRIDES — these take precedence over your default rules]"]
     _wf_lines.append(
-        f"  Read-first (check golden config + variables before live SSH): "
-        f"{'ENABLED' if _wf['wf_read_first'] else 'DISABLED — you MAY run live show commands without checking golden/variables first'}"
+        f"  Read-first: {'ENABLED' if _wf['wf_read_first'] else 'DISABLED'}"
     )
     _wf_lines.append(
-        f"  Auto-backup before config push: "
-        f"{'ENABLED' if _wf['wf_auto_backup'] else 'DISABLED — skip the pre-change backup step'}"
+        f"  Auto-backup: {'ENABLED' if _wf['wf_auto_backup'] else 'DISABLED — skip pre-change backup'}"
     )
     _wf_lines.append(
-        f"  Run Jenkins CI after config push: "
-        f"{'ENABLED' if _wf['wf_run_jenkins'] else 'DISABLED — do NOT trigger Jenkins after pushing config'}"
+        f"  Run Jenkins CI: {'ENABLED' if _wf['wf_run_jenkins'] else 'DISABLED — do NOT trigger Jenkins'}"
     )
     _wf_lines.append(
-        f"  Save golden config after CI pass: "
-        f"{'ENABLED' if _wf['wf_save_golden'] else 'DISABLED — do NOT save a new golden config after CI'}"
+        f"  Save golden after CI: {'ENABLED' if _wf['wf_save_golden'] else 'DISABLED'}"
     )
     _wf_lines.append(
-        f"  Update variables from new golden config: "
-        f"{'ENABLED' if _wf['wf_update_vars'] else 'DISABLED — do NOT update variables after saving golden config'}"
+        f"  Update variables: {'ENABLED' if _wf['wf_update_vars'] else 'DISABLED'}"
     )
-    if _wf["wf_require_approval"]:
-        _wf_lines.append(
-            "  Human approval: ALWAYS REQUIRED for config changes — route every "
-            "config push through the approval queue regardless of CI result."
+    _wf_lines.append(
+        "  Human approval: " + (
+            "ALWAYS REQUIRED — route config changes through approval queue."
+            if _wf["wf_require_approval"]
+            else "CI pass is sufficient — no approval queue needed."
         )
-    else:
-        _wf_lines.append(
-            "  Human approval: CI pass is sufficient — no approval queue needed "
-            "when Jenkins CI passes."
-        )
-    prefix_parts.append("\n".join(_wf_lines))
+    )
+    dynamic_parts.append("\n".join(_wf_lines))
 
-    # Separate context prefix (re-injected every API call) from the user message
-    # stored in history.  History only stores the clean user question so it
-    # never accumulates large context blocks across turns.
-    context_prefix = "\n".join(prefix_parts) if prefix_parts else ""
+    # Build final prefix strings; cap stable to prevent runaway cache-write costs
+    stable_context  = _cap(
+        "\n\n".join(filter(None, stable_parts)),
+        _STABLE_CAP_TOTAL, "STABLE CONTEXT"
+    )
+    context_prefix  = "\n\n".join(filter(None, dynamic_parts))   # legacy name kept for debug log
     history.append({"role": "user", "content": user_message})
 
     # --- Diagnostic log: summarise what was built for this turn --------------
@@ -5381,6 +5910,62 @@ def run_chat(
                     "The user will see a download link in the UI."
                 )
 
+            # ── NetBox query tools ────────────────────────────────────────
+            elif name == "netbox_get_device":
+                from modules.netbox_client import netbox_get_device as _nb_dev
+                result = _nb_dev(args.get("name_or_ip", ""))
+                if not result["ok"]:
+                    return f"NetBox error: {result['error']}"
+                return json.dumps(result["device"], indent=2)
+
+            elif name == "netbox_search_devices":
+                from modules.netbox_client import netbox_query_devices as _nb_search
+                result = _nb_search(
+                    search=args.get("search", ""),
+                    site=args.get("site", ""),
+                    role=args.get("role", ""),
+                    tag=args.get("tag", ""),
+                )
+                if not result["ok"]:
+                    return f"NetBox error: {result['error']}"
+                devs = result["devices"]
+                if not devs:
+                    return "No devices found matching the query."
+                return json.dumps(devs, indent=2)
+
+            elif name == "netbox_get_interfaces":
+                from modules.netbox_client import netbox_get_interfaces as _nb_ifaces
+                result = _nb_ifaces(args.get("name_or_ip", ""))
+                if not result["ok"]:
+                    return f"NetBox error: {result['error']}"
+                return json.dumps(
+                    {"device": result["device"], "interfaces": result["interfaces"]},
+                    indent=2,
+                )
+
+            elif name == "netbox_get_prefixes":
+                from modules.netbox_client import netbox_get_prefixes as _nb_pfx
+                result = _nb_pfx(
+                    vrf=args.get("vrf", ""),
+                    prefix=args.get("prefix", ""),
+                )
+                if not result["ok"]:
+                    return f"NetBox error: {result['error']}"
+                pfxs = result["prefixes"]
+                if not pfxs:
+                    return "No prefixes found."
+                return json.dumps(pfxs, indent=2)
+
+            elif name == "netbox_get_vpn_tunnels":
+                from modules.netbox_client import netbox_get_vpn_tunnels as _nb_tun
+                result = _nb_tun(device_name=args.get("device", ""))
+                if not result["ok"]:
+                    return f"NetBox error: {result['error']}"
+                tunnels = result["tunnels"]
+                if not tunnels:
+                    return "No VPN tunnels found in NetBox."
+                return json.dumps(tunnels, indent=2)
+
             else:
                 return f"Unknown tool: {name}"
 
@@ -5451,6 +6036,11 @@ def run_chat(
         "report_begin":                            500,
         "report_append":                           200,
         "report_finish":                           500,
+        "netbox_get_device":                      3000,
+        "netbox_search_devices":                  5000,
+        "netbox_get_interfaces":                  5000,
+        "netbox_get_prefixes":                    5000,
+        "netbox_get_vpn_tunnels":                 5000,
         "run_jenkins_checks":                    10000,
         "run_jenkins_job":                       10000,
         "jenkins_get_current_pipelines":           1000,
@@ -5592,14 +6182,25 @@ def run_chat(
                     cached_tools[-1] = dict(
                         cached_tools[-1], cache_control={"type": "ephemeral"}
                     )
+                    # System = [system_prompt (cached)] + [stable_context (cached)]
+                    # stable_context holds lab notes, KB, variables, network state,
+                    # playbooks, pipelines, compliance — all cached after the first
+                    # call so subsequent loop iterations pay only cache-read price.
+                    _system_blocks: list[dict] = [{
+                        "type": "text",
+                        "text": active_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }]
+                    if stable_context:
+                        _system_blocks.append({
+                            "type": "text",
+                            "text": stable_context,
+                            "cache_control": {"type": "ephemeral"},
+                        })
                     _resp = _get_anthropic_client().messages.create(
                         model=model,
                         max_tokens=max_tokens_out,
-                        system=[{
-                            "type": "text",
-                            "text": active_prompt,
-                            "cache_control": {"type": "ephemeral"},
-                        }],
+                        system=_system_blocks,
                         messages=trimmed,
                         tools=cached_tools,
                         extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},

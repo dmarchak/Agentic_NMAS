@@ -507,6 +507,44 @@
     .ai-open-btn:hover { opacity: .92; transform: translateY(-1px); }
     .ai-open-btn:active { transform: translateY(0); }
 
+    /* AI notification bubble */
+    .ai-notif {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      z-index: 1090;
+      background: linear-gradient(135deg, var(--ai-accent), var(--ai-accent2));
+      color: #fff;
+      border-radius: 20px;
+      padding: .5rem 1rem .5rem .75rem;
+      font-size: .82rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      box-shadow: 0 4px 18px rgba(0,0,0,.35);
+      cursor: pointer;
+      user-select: none;
+      animation: ai-notif-in .25s cubic-bezier(.4,0,.2,1);
+      transition: opacity .2s, transform .15s;
+    }
+    .ai-notif:hover { opacity: .9; transform: translateY(-2px); }
+    .ai-notif-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #fff;
+      opacity: .9;
+      animation: ai-notif-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes ai-notif-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes ai-notif-pulse {
+      0%, 100% { transform: scale(1);   opacity: .9; }
+      50%       { transform: scale(1.4); opacity: .6; }
+    }
+
     /* Error message */
     .ai-error-bubble {
       align-self: flex-start;
@@ -998,8 +1036,33 @@
       });
     })();
 
+    /* ---- AI notification bubble --------------------------------------- */
+    let _aiNotifEl = null;
+
+    function showAiNotif(label) {
+      if (_aiNotifEl) _aiNotifEl.remove();
+      const el = document.createElement('div');
+      el.className = 'ai-notif';
+      el.innerHTML = '<span class="ai-notif-dot"></span>' + escHtml(label);
+      el.addEventListener('click', function () {
+        hideAiNotif();
+        openPanel();
+      });
+      document.body.appendChild(el);
+      _aiNotifEl = el;
+    }
+
+    function hideAiNotif() {
+      if (_aiNotifEl) { _aiNotifEl.remove(); _aiNotifEl = null; }
+    }
+
+    function isPanelOpen() {
+      return panel.classList.contains('open');
+    }
+
     /* ---- Open / close -------------------------------------------------- */
     function openPanel() {
+      hideAiNotif();
       panel.classList.add('open');
       backdrop.classList.add('show');
       input.focus();
@@ -2256,6 +2319,16 @@
         setInputEnabled(true);
         busy = false;
         currentAssistantRow = null;
+
+        // Show notification bubble when panel is closed
+        if (!isPanelOpen()) {
+          // Detect if last assistant message is asking for "continue"
+          const lastAsst = Array.from(messages.querySelectorAll('.ai-msg-row.assistant .ai-msg-text')).pop();
+          const lastText = lastAsst ? lastAsst.textContent : '';
+          const needsContinue = /\bcontinue\b|\bproceed\b|\bgo ahead\b/i.test(lastText.slice(-300));
+          showAiNotif(needsContinue ? '↩ AI needs your input' : '✓ AI task complete');
+        }
+
         currentTextBuffer   = '';
 
         // Auto-troubleshoot if a playbook just failed
@@ -2290,6 +2363,30 @@
       currentTextBuffer = '';
       scrollBottom();
     }
+
+    /* ---- Load persisted history on page load --------------------------- */
+    (async function loadHistory() {
+      try {
+        const r = await fetch('/ai/history?session_id=' + encodeURIComponent(sessionId), { cache: 'no-store' });
+        if (!r.ok) return;
+        const msgs = await r.json();
+        if (!Array.isArray(msgs) || msgs.length === 0) return;
+        hideWelcome();
+        for (const msg of msgs) {
+          if (msg.role === 'user') {
+            const row = document.createElement('div');
+            row.className = 'ai-msg-row user';
+            row.innerHTML = '<div class="ai-msg-label">You</div>'
+              + '<div class="ai-msg-bubble">' + escHtml(msg.text) + '</div>';
+            messages.insertBefore(row, thinking);
+          } else if (msg.role === 'assistant') {
+            const row = createAssistantRow();
+            row.querySelector('.ai-msg-text').innerHTML = renderMarkdown(msg.text);
+          }
+        }
+        scrollBottom();
+      } catch { /* history load is best-effort */ }
+    })();
 
     // Auto-troubleshoot Jenkins failures triggered from outside this closure
     setInterval(function () {
