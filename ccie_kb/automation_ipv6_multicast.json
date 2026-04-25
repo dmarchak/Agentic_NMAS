@@ -1,0 +1,592 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "scope": "CCIE Enterprise Automation + IPv6 + Multicast"
+  },
+  "ipv6": {
+    "addressing": {
+      "types": {
+        "global_unicast": "2000::/3 \u00e2\u20ac\u201d routable on internet",
+        "link_local": "FE80::/10 \u00e2\u20ac\u201d mandatory on every IPv6 interface, not routed",
+        "unique_local": "FC00::/7 \u00e2\u20ac\u201d RFC 4193, analogous to RFC 1918",
+        "multicast": "FF00::/8",
+        "loopback": "::1/128",
+        "unspecified": "::/128"
+      },
+      "eui64": "Interface ID derived from MAC: insert FFFE in middle, flip U/L bit",
+      "prefix_notation": "/64 for LAN, /127 for P2P links (RFC 6164), /128 for loopbacks"
+    },
+    "basic_interface": [
+      "ipv6 unicast-routing",
+      "interface {intf}",
+      " ipv6 address {prefix}/{len}",
+      " ipv6 address FE80::1 link-local",
+      " ipv6 enable",
+      " ipv6 nd ra-interval 200",
+      " no ipv6 nd suppress-ra",
+      " ipv6 nd prefix {prefix}/{len} 3600 1800"
+    ],
+    "transition_mechanisms": {
+      "6in4": [
+        "interface Tunnel{id}",
+        " ipv6 address {prefix}/{len}",
+        " tunnel source {local_ipv4}",
+        " tunnel destination {remote_ipv4}",
+        " tunnel mode ipv6ip"
+      ],
+      "6to4": [
+        "interface Tunnel{id}",
+        " ipv6 address 2002:{ipv4_hex}::/48",
+        " tunnel source {local_ipv4}",
+        " tunnel mode ipv6ip 6to4"
+      ],
+      "isatap": [
+        "interface Tunnel{id}",
+        " ipv6 address {prefix}::/64 eui-64",
+        " tunnel source {local_ipv4}",
+        " tunnel mode ipv6ip isatap"
+      ],
+      "nat64": [
+        "nat64 prefix stateful 64:ff9b::/96",
+        "nat64 v4 pool NAT64_POOL {start} {end}",
+        "interface {v6_facing}",
+        " nat64 enable",
+        "interface {v4_facing}",
+        " nat64 enable"
+      ]
+    },
+    "ospfv3": "See routing.json ospfv3 section",
+    "bgp_ipv6": "See routing.json bgp.multiprotocol section",
+    "acl_ipv6": "See security_qos_ha.json access_lists.ipv6 section",
+    "dhcpv6": {
+      "stateful": [
+        "ipv6 dhcp pool DHCPV6_POOL",
+        " address prefix {prefix}/{len} lifetime 86400 3600",
+        " dns-server {dns_ip}",
+        " domain-name {domain}",
+        "interface {intf}",
+        " ipv6 dhcp server DHCPV6_POOL",
+        " ipv6 nd managed-config-flag",
+        " ipv6 nd other-config-flag"
+      ],
+      "stateless": [
+        "ipv6 dhcp pool DHCPV6_STATELESS",
+        " dns-server {dns_ip}",
+        "interface {intf}",
+        " ipv6 dhcp server DHCPV6_STATELESS",
+        " ipv6 nd other-config-flag"
+      ],
+      "relay": [
+        "interface {client_intf}",
+        " ipv6 dhcp relay destination {server_ip}"
+      ]
+    },
+    "verification": [
+      "show ipv6 interface brief",
+      "show ipv6 route",
+      "show ipv6 neighbors",
+      "show ipv6 ospf neighbor",
+      "show bgp ipv6 unicast summary",
+      "show ipv6 dhcp binding"
+    ],
+    "nd_tuning": {
+      "description": "Neighbor Discovery Protocol tuning and security.",
+      "commands": [
+        "interface {intf}",
+        " ipv6 nd ra-interval {seconds}",
+        " ipv6 nd ra-lifetime {0_or_secs}",
+        " ipv6 nd prefix {prefix}/{len} [no-advertise]",
+        " ipv6 nd managed-config-flag",
+        " ipv6 nd other-config-flag",
+        " ipv6 nd suppress-ra",
+        " ipv6 nd cache expire {seconds} refresh",
+        " ipv6 nd reachable-time {msec}",
+        " ipv6 nd retransmit-time {msec}"
+      ]
+    },
+    "dual_stack_interface": {
+      "description": "Configure both IPv4 and IPv6 on the same interface.",
+      "commands": [
+        "interface {intf}",
+        " ip address {ipv4} {mask}",
+        " ipv6 address {prefix}/{len}",
+        " ipv6 address FE80::{id} link-local",
+        " ipv6 enable",
+        " no shutdown"
+      ]
+    },
+    "address_types_summary": {
+      "global_unicast": "2000::/3 \u2014 internet routable",
+      "unique_local": "FC00::/7 \u2014 RFC 4193, like RFC 1918",
+      "link_local": "FE80::/10 \u2014 mandatory, never routed",
+      "multicast": "FF00::/8 \u2014 no broadcast in IPv6",
+      "solicited_node_multicast": "FF02::1:FF00:0/104 \u2014 used for NDP",
+      "all_nodes": "FF02::1 \u2014 like 255.255.255.255",
+      "all_routers": "FF02::2",
+      "loopback": "::1/128",
+      "unspecified": "::/128"
+    },
+    "eui64_calculation": {
+      "description": "EUI-64 interface ID derivation from MAC address.",
+      "steps": [
+        "1. Take 48-bit MAC: AA:BB:CC:DD:EE:FF",
+        "2. Split in middle: AA:BB:CC | DD:EE:FF",
+        "3. Insert FFFE: AA:BB:CC:FF:FE:DD:EE:FF",
+        "4. Flip U/L bit (7th bit of first octet): XOR 0x02",
+        "5. Result interface ID: A8:BB:CC:FF:FE:DD:EE:FF"
+      ],
+      "ios_command": "ipv6 address {prefix}/64 eui-64"
+    },
+    "6in4": {
+      "description": "Pure IPv6-over-IPv4 tunnel \u2014 protocol 41 (not GRE). RFC 4213.",
+      "commands": [
+        "ipv6 unicast-routing",
+        "interface Tunnel{id}",
+        " ipv6 address {prefix}/{len}",
+        " tunnel source {local_ipv4_intf}",
+        " tunnel destination {remote_ipv4}",
+        " tunnel mode ipv6ip",
+        " ipv6 mtu 1480",
+        " ipv6 tcp adjust-mss 1440"
+      ],
+      "notes": "tunnel mode ipv6ip = protocol 41 encapsulation (no GRE header). Lighter than GRE. Static destination required."
+    },
+    "6to4": {
+      "description": "6to4 automatic tunneling \u2014 RFC 3056. IPv4 address embedded in 2002::/16 prefix.",
+      "commands": [
+        "ipv6 unicast-routing",
+        "interface Tunnel{id}",
+        " ipv6 address 2002:{ipv4_hex_encoded}::/48",
+        " tunnel source {local_ipv4_intf}",
+        " tunnel mode ipv6ip 6to4",
+        " ipv6 mtu 1480"
+      ],
+      "notes": "IPv4 addr embedded: 192.168.1.1 = C0A80101 hex. Prefix = 2002:C0A8:0101::/48. No static destination."
+    },
+    "isatap": {
+      "description": "ISATAP \u2014 Intra-Site Automatic Tunnel Addressing Protocol. RFC 5214.",
+      "commands": [
+        "ipv6 unicast-routing",
+        "interface Tunnel{id}",
+        " ipv6 address {prefix}::/64 eui-64",
+        " tunnel source {local_ipv4_intf}",
+        " tunnel mode ipv6ip isatap",
+        " no ipv6 nd suppress-ra"
+      ],
+      "notes": "Interface ID derived from IPv4 address: 0000:5EFE:{ipv4-in-hex}. Used within a site (not internet-scale)."
+    },
+    "nat64": {
+      "description": "NAT64 \u2014 stateful translation between IPv6 and IPv4. RFC 6146.",
+      "commands": [
+        "ipv6 unicast-routing",
+        "nat64 enable",
+        "nat64 prefix stateful {nat64_prefix}/{len}",
+        "nat64 v4 pool {pool_name} {start_ipv4} {end_ipv4}",
+        "nat64 v6v4 list {acl_name} pool {pool_name}",
+        "interface {ipv6_facing_intf}",
+        " nat64 enable",
+        "interface {ipv4_facing_intf}",
+        " nat64 enable"
+      ],
+      "notes": "Default well-known prefix: 64:ff9b::/96. DNS64 also needed for full translation."
+    }
+  },
+  "multicast": {
+    "description": "IP Multicast \u00e2\u20ac\u201d group-based delivery. 224.0.0.0/4 for IPv4.",
+    "address_ranges": {
+      "224.0.0.0/24": "Link-local \u00e2\u20ac\u201d not forwarded by routers (OSPF, HSRP, etc.)",
+      "224.0.1.0/24": "Globally scoped (NTP, etc.)",
+      "232.0.0.0/8": "Source Specific Multicast (SSM)",
+      "233.0.0.0/8": "GLOP \u00e2\u20ac\u201d AS-based multicast allocation",
+      "239.0.0.0/8": "Administratively scoped (RFC 2365 \u00e2\u20ac\u201d private)"
+    },
+    "pim_sparse_mode": {
+      "description": "Pull model \u00e2\u20ac\u201d join must be explicit. Requires Rendezvous Point (RP).",
+      "basic": [
+        "ip multicast-routing",
+        "interface {intf}",
+        " ip pim sparse-mode",
+        "ip pim rp-address {rp_ip} [override]"
+      ],
+      "auto_rp": [
+        "ip pim send-rp-announce Loopback0 scope 16",
+        "ip pim send-rp-discovery scope 16",
+        "ip pim autorp listener"
+      ],
+      "bsr": [
+        "ip pim bsr-candidate Loopback0 32 priority 200",
+        "ip pim rp-candidate Loopback0 priority 100 interval 60"
+      ],
+      "anycast_rp": [
+        "ip pim anycast-rp {anycast_rp_ip} {rp1_ip}",
+        "ip pim anycast-rp {anycast_rp_ip} {rp2_ip}",
+        "ip msdp peer {rp2_ip} connect-source Loopback0"
+      ]
+    },
+    "pim_ssm": {
+      "description": "Source Specific Multicast \u00e2\u20ac\u201d no RP needed. Group 232.0.0.0/8 by default.",
+      "commands": [
+        "ip pim ssm default",
+        "ip pim ssm range {acl}",
+        "interface {intf}",
+        " ip pim sparse-mode",
+        "ip igmp version 3"
+      ]
+    },
+    "igmp": {
+      "versions": "IGMPv1 (basic), IGMPv2 (leave messages), IGMPv3 (source filtering for SSM)",
+      "commands": [
+        "interface {intf}",
+        " ip igmp version {1|2|3}",
+        " ip igmp join-group {group_ip}",
+        " ip igmp static-group {group_ip} source {src_ip}",
+        " ip igmp query-interval {secs}",
+        " ip igmp query-max-response-time {secs}",
+        " ip igmp access-group {acl}"
+      ]
+    },
+    "multicast_boundary": [
+      "ip access-list standard MCAST_BOUNDARY",
+      " deny 239.0.0.0 0.255.255.255",
+      " permit 224.0.0.0 15.255.255.255",
+      "interface {intf}",
+      " ip multicast boundary MCAST_BOUNDARY [filter-autorp]"
+    ],
+    "verification": [
+      "show ip pim neighbor",
+      "show ip pim interface",
+      "show ip mroute",
+      "show ip mroute summary",
+      "show ip pim rp mapping",
+      "show ip igmp groups",
+      "show ip igmp interface"
+    ]
+  },
+  "automation": {
+    "description": "CCIE Automation \u00e2\u20ac\u201d programmatic network management.",
+    "netconf": {
+      "description": "NETCONF \u00e2\u20ac\u201d RFC 6241. XML-encoded RPC over SSH port 830.",
+      "enable_iosxe": [
+        "netconf-yang",
+        "netconf max-sessions 16",
+        "netconf lock-time 10"
+      ],
+      "python_example": {
+        "library": "ncclient",
+        "connect": "manager.connect(host, port=830, username, password, device_params={'name':'iosxe'}, hostkey_verify=False)",
+        "get_config": "m.get_config(source='running', filter=('xpath', '/native/interface'))",
+        "edit_config": "m.edit_config(target='running', config=config_xml)"
+      },
+      "yang_models": {
+        "native": "Cisco IOS-XE native YANG \u00e2\u20ac\u201d Cisco-IOS-XE-native",
+        "openconfig": "Vendor-neutral \u00e2\u20ac\u201d openconfig-interfaces, openconfig-bgp",
+        "ietf": "Standards-based \u00e2\u20ac\u201d ietf-interfaces, ietf-routing"
+      }
+    },
+    "restconf": {
+      "description": "RESTCONF \u00e2\u20ac\u201d RFC 8040. REST API over HTTP/HTTPS using YANG data.",
+      "enable": [
+        "restconf",
+        "ip http secure-server",
+        "ip http authentication local"
+      ],
+      "base_url": "https://{device}/restconf/data/",
+      "examples": {
+        "get_interfaces": "GET /restconf/data/ietf-interfaces:interfaces",
+        "get_bgp": "GET /restconf/data/Cisco-IOS-XE-bgp-oper:bgp-state-data",
+        "put_config": "PUT /restconf/data/native/interface/GigabitEthernet={id} Content-Type: application/yang-data+json"
+      },
+      "headers": {
+        "Accept": "application/yang-data+json",
+        "Content-Type": "application/yang-data+json"
+      }
+    },
+    "python_netmiko": {
+      "description": "Netmiko \u00e2\u20ac\u201d Python library for SSH to network devices.",
+      "connect": [
+        "from netmiko import ConnectHandler",
+        "device = {'device_type': 'cisco_ios', 'ip': '{ip}', 'username': '{user}', 'password': '{pass}'}",
+        "conn = ConnectHandler(**device)",
+        "conn.enable()"
+      ],
+      "commands": [
+        "output = conn.send_command('show version')",
+        "output = conn.send_command('show ip route', use_textfsm=True)",
+        "output = conn.send_config_set(['interface Gi0/0', ' description TEST'])",
+        "conn.save_config()",
+        "conn.disconnect()"
+      ],
+      "textfsm_parsing": "use_textfsm=True returns list of dicts instead of raw string for supported commands"
+    },
+    "python_napalm": {
+      "description": "NAPALM \u00e2\u20ac\u201d vendor-neutral Python library with structured data.",
+      "example": [
+        "from napalm import get_network_driver",
+        "driver = get_network_driver('ios')",
+        "device = driver('{ip}', '{user}', '{pass}')",
+        "device.open()",
+        "facts = device.get_facts()",
+        "interfaces = device.get_interfaces()",
+        "bgp_neighbors = device.get_bgp_neighbors()",
+        "device.load_merge_candidate(config='...')",
+        "diff = device.compare_config()",
+        "device.commit_config()",
+        "device.close()"
+      ]
+    },
+    "ansible": {
+      "ios_module": [
+        "- name: Configure interfaces",
+        "  cisco.ios.ios_config:",
+        "    lines:",
+        "      - description {{ descr }}",
+        "      - ip address {{ ip }} {{ mask }}",
+        "    parents: interface {{ intf }}",
+        "    save_when: modified"
+      ],
+      "ios_command": [
+        "- name: Show version",
+        "  cisco.ios.ios_command:",
+        "    commands: show version",
+        "  register: result"
+      ],
+      "ios_facts": [
+        "- name: Gather facts",
+        "  cisco.ios.ios_facts:",
+        "    gather_subset: all"
+      ],
+      "inventory": {
+        "group_vars": "ansible_network_os: ios, ansible_connection: network_cli, ansible_become: yes, ansible_become_method: enable"
+      }
+    },
+    "embedded_event_manager": {
+      "description": "EEM \u00e2\u20ac\u201d Cisco IOS event-driven automation without external tools.",
+      "syslog_trigger": [
+        "event manager applet LINK_DOWN",
+        " event syslog pattern 'changed state to down'",
+        " action 1.0 syslog msg 'Interface down detected by EEM'",
+        " action 2.0 cli command 'show ip interface brief'",
+        " action 3.0 mail server {smtp} to {addr} from {addr} subject 'Alert' body $_cli_result"
+      ],
+      "cli_trigger": [
+        "event manager applet BLOCK_RELOAD",
+        " event cli pattern 'reload' sync yes",
+        " action 1.0 syslog msg 'Reload blocked by EEM policy'",
+        " set _exit_status 0"
+      ],
+      "timer_trigger": [
+        "event manager applet PERIODIC_CHECK",
+        " event timer cron cron-entry '*/5 * * * *'",
+        " action 1.0 cli command 'show interface summary'"
+      ]
+    }
+  },
+  "sdwan": {
+    "description": "Cisco SD-WAN (Viptela) \u00e2\u20ac\u201d overlay-based WAN with centralized control.",
+    "components": {
+      "vManage": "GUI + REST API management plane",
+      "vSmart": "Control plane \u00e2\u20ac\u201d distributes OMP routes and policies",
+      "vBond": "Orchestrator \u00e2\u20ac\u201d NAT traversal, vEdge authentication",
+      "vEdge/cEdge": "Data plane \u00e2\u20ac\u201d customer edge devices"
+    },
+    "omp": {
+      "description": "Overlay Management Protocol \u00e2\u20ac\u201d BGP-like control protocol between vEdge and vSmart.",
+      "route_types": {
+        "OMP routes": "Prefixes advertised from transport/service VPN",
+        "TLOC routes": "Transport Locator \u00e2\u20ac\u201d color, encapsulation, IP",
+        "Service routes": "Services advertised (FW, IPS, etc.)"
+      }
+    },
+    "verification": [
+      "show sdwan omp routes",
+      "show sdwan omp peers",
+      "show sdwan bfd sessions",
+      "show sdwan control connections",
+      "show sdwan interface"
+    ]
+  },
+  "ipv6_multicast": {
+    "description": "IPv6 Multicast \u2014 uses PIMv6 and MLD instead of PIM/IGMP.",
+    "pimv6_sparse_mode": {
+      "description": "PIMv6 Sparse Mode \u2014 same pull model as PIMv4, different RP configuration.",
+      "commands": [
+        "ipv6 multicast-routing",
+        "interface {intf}",
+        " ipv6 pim",
+        "ipv6 pim rp-address {ipv6_rp_address}"
+      ]
+    },
+    "pimv6_ssm": {
+      "description": "PIMv6 SSM \u2014 source-specific, no RP. FF3x::/96 range by default.",
+      "commands": [
+        "ipv6 multicast-routing",
+        "ipv6 pim ssm default",
+        "interface {intf}",
+        " ipv6 pim",
+        " mld version 2"
+      ]
+    },
+    "mld": {
+      "description": "Multicast Listener Discovery \u2014 IPv6 equivalent of IGMP.",
+      "versions": {
+        "MLDv1": "RFC 2710 \u2014 maps to IGMPv2. Listener join/leave.",
+        "MLDv2": "RFC 3810 \u2014 maps to IGMPv3. Source-specific joins (for SSM)."
+      },
+      "commands": [
+        "interface {intf}",
+        " mld version {1|2}",
+        " mld join-group {ipv6_group}",
+        " mld join-group {ipv6_group} source {src_ipv6}",
+        " mld query-interval {secs}",
+        " mld query-max-response-time {secs}",
+        " mld limit {max_groups}",
+        " mld access-group {acl_name}"
+      ]
+    },
+    "pimv6_bsr": {
+      "description": "Bootstrap Router for PIMv6 RP election.",
+      "commands": [
+        "ipv6 pim bsr candidate bsr {ipv6_intf} {hash_mask_len}",
+        "ipv6 pim bsr candidate rp {ipv6_intf} group-list {acl}"
+      ]
+    },
+    "embedded_rp": {
+      "description": "Embedded RP \u2014 RP address encoded in multicast group address. No BSR needed.",
+      "group_format": "FF7x:0y00::{RP_prefix_encoded}/{len}",
+      "commands": [
+        "ipv6 pim rp-address {RP_addr} {group_acl}",
+        "ipv6 access-list EMBEDDED_RP_GROUPS",
+        " permit ipv6 any FF70::/12"
+      ],
+      "notes": "Groups FF70::/12 to FF7F::/12 support Embedded RP. RP addr encoded in bits 12-39 of group."
+    },
+    "multicast_boundary_v6": [
+      "ipv6 access-list MC_BOUNDARY",
+      " deny ipv6 any FF00::/8",
+      " permit ipv6 any any",
+      "interface {intf}",
+      " ipv6 multicast boundary MC_BOUNDARY"
+    ],
+    "verification": [
+      "show ipv6 pim neighbor",
+      "show ipv6 pim interface",
+      "show ipv6 mroute",
+      "show ipv6 mroute summary",
+      "show mld groups",
+      "show mld interface",
+      "show ipv6 pim rp mapping"
+    ]
+  },
+  "restconf": {
+    "description": "RESTCONF \u2014 RFC 8040. REST API over HTTPS using YANG data models. IOS-XE 16.3+.",
+    "enable": [
+      "restconf",
+      "ip http secure-server",
+      "ip http authentication local",
+      "aaa new-model",
+      "aaa authentication login default local",
+      "username {username} privilege 15 secret {password}"
+    ],
+    "base_url": "https://{device_ip}/restconf/data/",
+    "examples": {
+      "get_interfaces": "GET /restconf/data/ietf-interfaces:interfaces",
+      "get_bgp": "GET /restconf/data/Cisco-IOS-XE-bgp-oper:bgp-state-data"
+    },
+    "headers": {
+      "Accept": "application/yang-data+json",
+      "Content-Type": "application/yang-data+json"
+    },
+    "verification": [
+      "show platform software yang-management process",
+      "show restconf capabilities"
+    ]
+  },
+  "eem": {
+    "description": "Embedded Event Manager \u2014 IOS on-device automation triggered by system events.",
+    "syslog_trigger": [
+      "event manager applet {applet_name}",
+      " event syslog pattern {syslog_pattern}",
+      " action 1.0 syslog msg {log_message}",
+      " action 2.0 cli command enable",
+      " action 3.0 cli command {show_command}"
+    ],
+    "cli_trigger": [
+      "event manager applet {applet_name}",
+      " event cli pattern {cli_pattern} sync yes",
+      " action 1.0 syslog msg {log_message}",
+      " set _exit_status 0"
+    ],
+    "timer_trigger": [
+      "event manager applet {applet_name}",
+      " event timer cron cron-entry {cron_entry}",
+      " action 1.0 cli command enable",
+      " action 2.0 cli command {periodic_command}"
+    ],
+    "environment_variable": [
+      "event manager environment {var_name} {value}"
+    ],
+    "verification": [
+      "show event manager policy registered",
+      "show event manager history events",
+      "show event manager environment"
+    ]
+  },
+  "netmiko": {
+    "description": "Netmiko \u00e2\u20ac\u201d Python library for SSH to network devices.",
+    "connect": [
+      "from netmiko import ConnectHandler",
+      "device = {'device_type': 'cisco_ios', 'ip': '{ip}', 'username': '{user}', 'password': '{pass}'}",
+      "conn = ConnectHandler(**device)",
+      "conn.enable()"
+    ],
+    "commands": [
+      "output = conn.send_command('show version')",
+      "output = conn.send_command('show ip route', use_textfsm=True)",
+      "output = conn.send_config_set(['interface Gi0/0', ' description TEST'])",
+      "conn.save_config()",
+      "conn.disconnect()"
+    ],
+    "textfsm_parsing": "use_textfsm=True returns list of dicts instead of raw string for supported commands"
+  },
+  "napalm": {
+    "description": "NAPALM \u00e2\u20ac\u201d vendor-neutral Python library with structured data.",
+    "example": [
+      "from napalm import get_network_driver",
+      "driver = get_network_driver('ios')",
+      "device = driver('{ip}', '{user}', '{pass}')",
+      "device.open()",
+      "facts = device.get_facts()",
+      "interfaces = device.get_interfaces()",
+      "bgp_neighbors = device.get_bgp_neighbors()",
+      "device.load_merge_candidate(config='...')",
+      "diff = device.compare_config()",
+      "device.commit_config()",
+      "device.close()"
+    ]
+  },
+  "ansible": {
+    "ios_module": [
+      "- name: Configure interfaces",
+      "  cisco.ios.ios_config:",
+      "    lines:",
+      "      - description {{ descr }}",
+      "      - ip address {{ ip }} {{ mask }}",
+      "    parents: interface {{ intf }}",
+      "    save_when: modified"
+    ],
+    "ios_command": [
+      "- name: Show version",
+      "  cisco.ios.ios_command:",
+      "    commands: show version",
+      "  register: result"
+    ],
+    "ios_facts": [
+      "- name: Gather facts",
+      "  cisco.ios.ios_facts:",
+      "    gather_subset: all"
+    ],
+    "inventory": {
+      "group_vars": "ansible_network_os: ios, ansible_connection: network_cli, ansible_become: yes, ansible_become_method: enable"
+    }
+  }
+}

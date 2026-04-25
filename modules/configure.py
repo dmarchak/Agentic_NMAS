@@ -58,9 +58,15 @@ def update_config_job(config_id: str, **updates) -> None:
 # ---------------------------------------------------------------------------
 
 def generate_config_commands(config_type: str, params: dict) -> list[str]:
-    """Return Cisco IOS config-mode lines for the given config_type."""
+    """
+    Return Cisco IOS config-mode lines for the given config_type.
+
+    Supports two formats:
+    • Legacy: config_type = "ospf"  → uses hand-crafted Python generator
+    • KB-backed: config_type = "ospf/authentication" → fills CCIE KB template
+    """
     generators = {
-        "interface": _gen_interface,
+        "interface": _gen_interface_smart,
         "snmp":      _gen_snmp,
         "netflow":   _gen_netflow,
         "netconf":   _gen_netconf,
@@ -80,9 +86,69 @@ def generate_config_commands(config_type: str, params: dict) -> list[str]:
         "loopback":  _gen_loopback,
     }
     fn = generators.get(config_type)
-    if not fn:
-        raise ValueError(f"Unknown config type: {config_type!r}")
-    return fn(params)
+    if fn:
+        return fn(params)
+
+    # KB-backed type: "topic/subtopic" format
+    if "/" in config_type:
+        topic, subtopic = config_type.split("/", 1)
+        return generate_from_kb(topic, subtopic, params)
+
+    raise ValueError(f"Unknown config type: {config_type!r}")
+
+
+import re as _re
+_PARAM_PATTERN = _re.compile(r'\{([^}]+)\}')
+
+
+def generate_from_kb(topic: str, subtopic: str, params: dict) -> list[str]:
+    """
+    Fill CCIE KB command templates with user-supplied parameters.
+
+    Parameters map field IDs (from get_fields()) to string values.
+    Command lines with any unfilled placeholder are silently skipped so
+    optional commands are omitted when the user leaves a field blank.
+    """
+    from modules.ccie_kb import get_commands_for
+
+    cmds = get_commands_for(topic, subtopic)
+    if not cmds:
+        raise ValueError(f"No KB commands found for {topic}/{subtopic}")
+
+    # Build normalised lookup: both "a_b_c_d" and "a.b.c.d" map to the value
+    lookup: dict[str, str] = {}
+    for k, v in params.items():
+        if v is None or str(v).strip() == "":
+            continue
+        norm = k.lower().replace(".", "_").replace("-", "_")
+        lookup[norm] = str(v)
+        lookup[k.lower()] = str(v)
+
+    result: list[str] = []
+    for cmd in cmds:
+        filled = cmd
+        for m in _PARAM_PATTERN.finditer(cmd):
+            raw  = m.group(1).strip()
+            norm = raw.lower().replace(".", "_").replace("-", "_").replace("|", "_or_")
+            val  = lookup.get(norm) or lookup.get(raw.lower())
+            if val:
+                filled = filled.replace(m.group(0), val)
+        # Skip if any placeholder remains unfilled
+        if _PARAM_PATTERN.search(filled):
+            continue
+        result.append(filled)
+    return result
+
+
+def _gen_interface_smart(p: dict) -> list[str]:
+    """Route to multi-interface generator if params contain an 'interfaces' list."""
+    if isinstance(p.get("interfaces"), list):
+        cmds: list[str] = []
+        for intf_params in p["interfaces"]:
+            if intf_params.get("interface"):
+                cmds.extend(_gen_interface(intf_params))
+        return cmds
+    return _gen_interface(p)
 
 
 def _gen_interface(p: dict) -> list[str]:
@@ -965,40 +1031,43 @@ def _check_generic(_p: dict) -> str:
 
 def generate_pipeline_xml(
     job_name:           str,
-    check_script:       str,
+    check_script:       str,   # kept for API compatibility; no longer embedded in XML
     nmas_callback_url:  str,
     config_id:          str,
     token:              str,
 ) -> str:
-    """Return Jenkins pipeline XML that runs the Python check and calls back on success."""
+    """
+    Return Jenkins pipeline XML that verifies the config and calls back on success.
 
-    # Escape the Python script so it can sit inside a Groovy triple-single-quote string.
-    # Groovy ''' strings don't interpolate but still need the delimiter escaped.
-    safe_script = check_script.replace("\\", "\\\\").replace("'''", "\\'''")
-
+    The pipeline calls ``modules\\check_runner.py --config-id {config_id}``
+    directly — no Groovy string embedding, no writeFile, no escaping required.
+    All check logic lives in modules/check_runner.py as plain Python functions.
+    """
     groovy = textwrap.dedent(f"""\
         pipeline {{
             agent any
+            options {{
+                timeout(time: 15, unit: 'MINUTES')
+                timestamps()
+            }}
             stages {{
+                stage('Install deps') {{
+                    steps {{
+                        bat 'pip install netmiko --quiet 2>NUL || echo netmiko already installed'
+                    }}
+                }}
                 stage('Verify Configuration') {{
                     steps {{
-                        script {{
-                            writeFile file: 'check.py', text: '''{safe_script}'''
-                            sh 'pip3 install netmiko --quiet 2>/dev/null || pip install netmiko --quiet 2>/dev/null || true'
-                            sh 'python3 check.py'
-                        }}
+                        bat 'python modules\\\\check_runner.py --config-id {_sax.escape(config_id)}'
                     }}
                 }}
             }}
             post {{
                 success {{
-                    sh \"""curl -s -X POST '{nmas_callback_url}' \\
-                             -H 'Content-Type: application/json' \\
-                             -d '{{"config_id": "{config_id}", "token": "{token}"}}'
-                    \"""
+                    bat 'curl -s -X POST "{_sax.escape(nmas_callback_url)}" -H "Content-Type: application/json" -d "{{\\"config_id\\": \\"{_sax.escape(config_id)}\\", \\"token\\": \\"{_sax.escape(token)}\\"}}"'
                 }}
                 always {{
-                    cleanWs()
+                    echo "Pipeline finished: ${{currentBuild.currentResult}}"
                 }}
             }}
         }}

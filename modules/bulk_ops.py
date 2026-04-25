@@ -17,34 +17,54 @@ from queue import Queue
 import time
 
 # Commands that show interactive confirmation/filename prompts.
-# Each entry: (prefix_to_match, list of extra "\n" replies needed after the command)
+# Each entry: (regex, number of extra "\n" replies to send after the command)
+# The initial send_command_timing captures the prompt; each "\n" confirms it.
+#
+# "copy X startup-config" always asks "Destination filename [startup-config]?"
+# regardless of source (flash:, nvram:, tftp:, running-config, etc.).
+# One Enter accepts the bracketed default.
 _INTERACTIVE_COMMANDS = [
-    # copy run start / copy running-config startup-config
-    (re.compile(r'^copy\s+run(ning(-config)?)?\s+start(up(-config)?)?', re.I), 1),
-    # write memory / wr mem / wr
+    # copy <any-source> startup-config / start
+    # Covers: copy run start, copy flash:X start, copy nvram:X startup-config, …
+    (re.compile(r'^copy\s+\S+\s+start(up(-config)?)?$', re.I), 1),
+    # write memory / wr mem / wr  (no confirmation prompt — just collects output)
     (re.compile(r'^(write\s+mem(ory)?|wr(\s+mem(ory)?)?)$', re.I), 0),
-    # erase startup-config
-    (re.compile(r'^erase\s+startup-config', re.I), 1),
+    # write erase / wr erase  — "Continue? [confirm]" prompt requires one Enter
+    (re.compile(r'^(write\s+erase|wr\s+erase)$', re.I), 1),
+    # erase startup-config / erase nvram: / erase flash: / erase disk:
+    (re.compile(r'^erase\s+(startup-config|nvram:|flash:|disk:)', re.I), 1),
+    # format flash: / format nvram: / format disk:
+    (re.compile(r'^format\s+\S+', re.I), 1),
     # reload (without "in" / "at" — interactive confirm)
     (re.compile(r'^reload\b(?!\s+in\b|\s+at\b)', re.I), 1),
+    # crypto key zeroize rsa
+    (re.compile(r'^crypto\s+key\s+zeroize', re.I), 1),
 ]
+
+
+# Commands that write/erase flash take longer — use a higher read_timeout.
+_SLOW_INTERACTIVE = re.compile(
+    r'^(write\s+erase|wr\s+erase|erase\s+|format\s+)', re.I
+)
 
 
 def _run_enable_command(conn, command: str) -> str:
     """
     Run a single enable-mode command, automatically answering interactive
-    prompts (copy run start, erase nvram, reload, etc.) with Enter.
+    prompts (write erase, erase nvram, reload, crypto key zeroize, …) with Enter.
     Falls back to run_device_command for non-interactive commands.
     """
     from modules.commands import run_device_command
     cmd = command.strip()
     for pattern, extra_enters in _INTERACTIVE_COMMANDS:
         if pattern.match(cmd):
-            output = conn.send_command_timing(cmd, delay_factor=2, read_timeout=30)
+            # Flash/NVRAM erase operations can take 10-30 s; use a longer timeout.
+            timeout = 60 if _SLOW_INTERACTIVE.match(cmd) else 30
+            output = conn.send_command_timing(cmd, delay_factor=2, read_timeout=timeout)
             for _ in range(extra_enters):
-                output += conn.send_command_timing("\n", delay_factor=2, read_timeout=30)
-            # One final timing read to collect any completion message
-            output += conn.send_command_timing("", delay_factor=3, read_timeout=30)
+                output += conn.send_command_timing("\n", delay_factor=2, read_timeout=timeout)
+            # Final read to collect any completion banner (e.g. "[OK]")
+            output += conn.send_command_timing("", delay_factor=3, read_timeout=timeout)
             return output
     return run_device_command(conn, command)
 
@@ -145,7 +165,9 @@ class BulkOperationManager:
                     if command_mode == "config":
                         # Parse commands - split by semicolon for multiple commands
                         config_commands = [cmd.strip() for cmd in command.split(';') if cmd.strip()]
-                        output = conn.send_config_set(config_commands)
+                        output = conn.send_config_set(
+                            config_commands, read_timeout=60, cmd_verify=False
+                        )
                     elif command_mode == "tftp_upload":
                         # TFTP upload - handle interactive prompts
                         # command format: "tftp_server|filename"
@@ -287,7 +309,7 @@ class BulkOperationManager:
         negate_commands = [f"no {route}" for route in routes_to_remove]
 
         # Send config commands to remove the routes
-        output = conn.send_config_set(negate_commands)
+        output = conn.send_config_set(negate_commands, read_timeout=60, cmd_verify=False)
         output += f"\n\nRemoved {len(routes_to_remove)} static route(s)."
         return output
 

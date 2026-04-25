@@ -197,6 +197,16 @@ def start_agent_loop(
     if _processor_thread and _processor_thread.is_alive():
         return
 
+    # Respect the persistent background_agent_enabled setting.
+    # When false the thread is never started so no Haiku API calls are made.
+    try:
+        from modules.config import get_user_setting
+        if not get_user_setting("background_agent_enabled", True):
+            log.info("agent_runner: background agent disabled by settings — not starting")
+            return
+    except Exception:
+        pass
+
     _stop_event.clear()
     _paused.clear()
     _processor_thread = threading.Thread(
@@ -246,6 +256,9 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
         if not get_user_setting("ai_enabled", True):
             log.info("run_background_task: AI disabled — dropping task: %s", task[:80])
             return {"error": "AI disabled", "task": task[:80]}
+        if not get_user_setting("background_agent_enabled", True):
+            log.debug("run_background_task: background agent disabled — dropping: %s", task[:80])
+            return {"error": "Background agent disabled", "task": task[:80]}
     except Exception:
         pass
 

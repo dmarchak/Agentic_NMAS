@@ -918,7 +918,7 @@
 <div class="d-flex align-items-center gap-2 mb-3">
   <h2 class="text-primary mb-0 me-auto">Configure</h2>
 </div>
-<p class="text-muted small mb-3">Select devices, choose a configuration type, fill in the parameters, and click <strong>Apply</strong>. A pre-change snapshot is taken automatically, the configuration is pushed, and a Jenkins pipeline verifies it. If the pipeline passes, an approval appears in the Approvals tab to update the golden config baseline.</p>
+<p class="text-muted small mb-3">Select devices, choose a configuration type, fill in the parameters, and click <strong>Apply</strong>. Golden configs are saved automatically. A Jenkins pipeline verifies the change runs in the background.</p>
 
 <!-- Step 1: Device selector -->
 <div class="card mb-3" style="background:var(--bs-body-bg,#1e293b);border:1px solid #334155">
@@ -930,32 +930,215 @@
   </div>
 </div>
 
-<!-- Step 2: Config type buttons -->
+<!-- Step 2: Config type — accordion sections mirroring CCIE KB -->
 <div class="card mb-3" style="background:var(--bs-body-bg,#1e293b);border:1px solid #334155">
   <div class="card-header fw-semibold py-2">2 — Select Configuration Type</div>
-  <div class="card-body">
-    <div class="d-flex flex-wrap gap-2">
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('interface')">Interface</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('loopback')">Loopback Interface</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('staticroute')">Static Routes</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('ospf')">OSPF</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('eigrp')">EIGRP</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('bgp')">BGP</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('mpls')">MPLS</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('rsvpte')">RSVP-TE</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('nat')">NAT</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('dhcp')">DHCP Server (IPv4)</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('dhcpv6')">DHCPv6 Server</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('ipv6pd')">IPv6 Prefix Delegation</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('slaac')">SLAAC</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('snmp')">SNMP</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('netflow')">NetFlow</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('netconf')">NETCONF</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('user')">User Creation</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="cfgOpenConfig('vtp')">VTP</button>
+  <div class="accordion accordion-flush" id="cfgTypeAccordion">
+
+    <!-- Routing -->
+    <div class="accordion-item" style="background:transparent;border:0;border-bottom:1px solid #334155">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                data-bs-toggle="collapse" data-bs-target="#cfgSec-routing"
+                style="background:transparent;color:inherit;box-shadow:none">
+          🔀 Routing (OSPF · BGP · EIGRP · MPLS · Static · PBR)
+        </button>
+      </h2>
+      <div id="cfgSec-routing" class="accordion-collapse collapse" data-bs-parent="#cfgTypeAccordion">
+        <div class="accordion-body pt-1 pb-2 d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ospf')">OSPF</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ospf/authentication')">OSPF Auth</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ospf/area_types')">OSPF Area Types</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ospf/redistribution')">OSPF Redistribution</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('bgp')">BGP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('bgp/basic_ibgp')">BGP iBGP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('bgp/route_reflector')">BGP Route Reflector</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('bgp/policy')">BGP Policy</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('eigrp')">EIGRP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('eigrp/named_mode')">EIGRP Named Mode</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('mpls')">MPLS</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('mpls_ldp')">MPLS LDP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('rsvpte')">RSVP-TE</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('staticroute')">Static Routes</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('pbr')">Policy-Based Routing</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('redistribution')">Route Redistribution</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ospfv3/basic_ipv6_only')">OSPFv3 (IPv6)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ospfv3/address_family_iosxe')">OSPFv3 Dual-Stack</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('eigrp/named_mode_ipv6')">EIGRP IPv6</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('isis/basic_dual_stack')">IS-IS Dual-Stack</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_static_routes')">IPv6 Static Routes</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_pbr')">IPv6 PBR</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('bgp/multiprotocol')">BGP IPv6 AF</button>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
+
+    <!-- Switching -->
+    <div class="accordion-item" style="background:transparent;border:0;border-bottom:1px solid #334155">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                data-bs-toggle="collapse" data-bs-target="#cfgSec-switching"
+                style="background:transparent;color:inherit;box-shadow:none">
+          🔌 Switching (VLANs · STP · EtherChannel · Security)
+        </button>
+      </h2>
+      <div id="cfgSec-switching" class="accordion-collapse collapse" data-bs-parent="#cfgTypeAccordion">
+        <div class="accordion-body pt-1 pb-2 d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vlans/access_port')">Access Port</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vlans/trunk_port')">Trunk Port</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vlans/svi')">SVI (Layer-3 VLAN)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vlans/vtp')">VTP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vtp')">VTP (advanced)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('spanning_tree/enable_rapid')">STP Rapid-PVST</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('spanning_tree/root_bridge')">STP Root Bridge</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('spanning_tree/edge_ports')">STP PortFast/BPDU</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('spanning_tree/mst_config')">MST</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('etherchannel/lacp')">EtherChannel LACP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('etherchannel/layer3_etherchannel')">EtherChannel L3</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('dhcp_snooping/dhcp_snooping')">DHCP Snooping</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('dhcp_snooping/dynamic_arp_inspection')">Dynamic ARP Inspection</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('port_security')">Port Security</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('private_vlan')">Private VLAN</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_fhs/ra_guard')">RA Guard</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_fhs/dhcpv6_guard')">DHCPv6 Guard</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_fhs/nd_inspection')">ND Inspection</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_fhs/ipv6_source_guard')">IPv6 Source Guard</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vlans/ipv6_svi')">IPv6 SVI</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VPN & Tunnels -->
+    <div class="accordion-item" style="background:transparent;border:0;border-bottom:1px solid #334155">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                data-bs-toggle="collapse" data-bs-target="#cfgSec-vpn"
+                style="background:transparent;color:inherit;box-shadow:none">
+          🔐 VPN &amp; Tunnels (GRE · DMVPN · IPsec · MPLS VPN)
+        </button>
+      </h2>
+      <div id="cfgSec-vpn" class="accordion-collapse collapse" data-bs-parent="#cfgTypeAccordion">
+        <div class="accordion-body pt-1 pb-2 d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('gre')">GRE Tunnel (IPv4)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('gre/ipv6_over_ipv4')">6-in-4 Tunnel (IPv6 over IPv4)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('dmvpn/phase1')">DMVPN Hub (Phase 1)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('dmvpn/with_ipsec')">DMVPN + IPsec</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipsec/ikev1_site_to_site')">IPsec IKEv1</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipsec/ikev2_site_to_site')">IPsec IKEv2</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipsec/virtual_tunnel_interface')">IPsec VTI</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('mpls_vpn/vrf_config')">VRF Definition</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('mpls_vpn/pe_ce_routing')">MPLS L3VPN PE-CE</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('mpls_vpn/pe_pe_mpls_bgp')">MPLS L3VPN PE-PE BGP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('6pe/pe_config')">6PE (IPv6 over MPLS)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('6vpe/vrf_config')">6VPE VRF</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('gre/ipv6_tunnel')">GRE IPv6 Tunnel</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('gre/dual_stack')">GRE Dual-Stack</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('dmvpn/phase1_ipv6')">DMVPN IPv6</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipsec/ikev2_ipv6')">IPsec IKEv2 IPv6</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Security & QoS & HA -->
+    <div class="accordion-item" style="background:transparent;border:0;border-bottom:1px solid #334155">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                data-bs-toggle="collapse" data-bs-target="#cfgSec-secqos"
+                style="background:transparent;color:inherit;box-shadow:none">
+          🛡 Security · QoS · High Availability
+        </button>
+      </h2>
+      <div id="cfgSec-secqos" class="accordion-collapse collapse" data-bs-parent="#cfgTypeAccordion">
+        <div class="accordion-body pt-1 pb-2 d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('acl/extended')">ACL (Extended)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('acl/standard')">ACL (Standard)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('acl/ipv6')">ACL (IPv6)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('zbf')">Zone-Based Firewall</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('aaa/tacacs_plus')">AAA TACACS+</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('aaa/radius')">AAA RADIUS</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('aaa/ssh_hardening')">SSH Hardening</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('qos/classification_marking')">QoS Marking</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('qos/queuing_llq')">QoS LLQ Queuing</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('qos/policing')">QoS Policing</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('qos/shaping')">QoS Shaping</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('hsrp/v2')">HSRP v2</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vrrp')">VRRP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('glbp')">GLBP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('tracking')">Object Tracking</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ip_sla/icmp_echo')">IP SLA (ICMP)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ip_sla/udp_jitter')">IP SLA (UDP Jitter)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('hsrp/v2_ipv6')">HSRP IPv6</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vrrp/v3_ipv6')">VRRPv3 IPv6</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('vrrp/v3_ipv4')">VRRPv3 IPv4</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('acl/ipv6_extended')">ACL IPv6 Extended</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('zbf/ipv6_inspection')">ZBF IPv6</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('qos/ipv6_classification')">QoS IPv6 Marking</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- IPv6 & Multicast -->
+    <div class="accordion-item" style="background:transparent;border:0;border-bottom:1px solid #334155">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed py-2 small fw-semibold" type="button"
+                data-bs-toggle="collapse" data-bs-target="#cfgSec-ipv6mc"
+                style="background:transparent;color:inherit;box-shadow:none">
+          🌐 IPv6 &amp; Multicast
+        </button>
+      </h2>
+      <div id="cfgSec-ipv6mc" class="accordion-collapse collapse" data-bs-parent="#cfgTypeAccordion">
+        <div class="accordion-body pt-1 pb-2 d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/basic_interface')">IPv6 Interface</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/dhcpv6')">DHCPv6</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6pd')">IPv6 Prefix Delegation</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('slaac')">SLAAC</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('multicast/pim_sparse_mode')">PIM Sparse Mode</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('multicast/pim_ssm')">PIM SSM</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('multicast/igmp')">IGMP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_multicast/pimv6_sparse_mode')">PIMv6 Sparse Mode</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_multicast/pimv6_ssm')">PIMv6 SSM</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_multicast/mld')">MLD (IPv6 IGMP)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6_multicast/embedded_rp')">Embedded RP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/dual_stack_interface')">Dual-Stack Interface</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/nd_tuning')">IPv6 ND Tuning</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/dhcpv6')">DHCPv6 Server</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/6to4')">6to4 Tunnel</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/isatap')">ISATAP Tunnel</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('ipv6/nat64')">NAT64</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interfaces & Services -->
+    <div class="accordion-item" style="background:transparent;border:0">
+      <h2 class="accordion-header">
+        <button class="accordion-button py-2 small fw-semibold" type="button"
+                data-bs-toggle="collapse" data-bs-target="#cfgSec-services"
+                style="background:transparent;color:inherit;box-shadow:none">
+          ⚙️ Interfaces &amp; Services
+        </button>
+      </h2>
+      <div id="cfgSec-services" class="accordion-collapse collapse show" data-bs-parent="#cfgTypeAccordion">
+        <div class="accordion-body pt-1 pb-2 d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('interface')">Interface</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('loopback')">Loopback Interface</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('nat')">NAT</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('dhcp')">DHCP Server (IPv4)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('dhcpv6')">DHCPv6 Server</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('snmp')">SNMP</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('netflow')">NetFlow</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('netconf')">NETCONF</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('user')">User Creation</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('eem/syslog_trigger')">EEM (Syslog Trigger)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('eem/cli_trigger')">EEM (CLI Trigger)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('eem/timer_trigger')">EEM (Timer Trigger)</button>
+          <button class="btn btn-outline-secondary btn-sm cfg-type-btn" onclick="cfgOpenConfig('restconf')">Enable RESTCONF</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end accordion -->
+</div><!-- end Step 2 card -->
 
 <!-- Utility buttons row -->
 <div class="d-flex flex-wrap gap-2 mb-3">
@@ -971,37 +1154,54 @@
 <div id="cfgFormWrap" class="d-none">
   <div class="card-body">
 
-    <!-- Interface Configuration -->
+    <!-- Interface Configuration — multi-interface repeater -->
     <div id="cfgForm-interface" class="cfg-form d-none">
-      <div class="row g-2">
-        <div class="col-md-4"><label class="form-label small mb-1">Interface <span class="text-danger">*</span></label>
-          <select id="cfg_intf_interface" class="form-select form-select-sm cfg-intf-select"><option value="">— select interface —</option></select></div>
-        <div class="col-md-4"><label class="form-label small mb-1">Description <em class="text-muted">(optional)</em></label>
-          <input id="cfg_intf_description" class="form-control form-control-sm" placeholder="WAN uplink"></div>
-        <div class="col-md-4"><label class="form-label small mb-1">IPv4 Address <em class="text-muted">(optional)</em></label>
-          <input id="cfg_intf_ip_address" class="form-control form-control-sm" placeholder="10.0.0.1"></div>
-        <div class="col-md-4"><label class="form-label small mb-1">Subnet Mask <em class="text-muted">(optional)</em></label>
-          <input id="cfg_intf_subnet_mask" class="form-control form-control-sm" placeholder="255.255.255.0"></div>
-        <div class="col-md-4"><label class="form-label small mb-1">IPv6 Address / Prefix <em class="text-muted">(optional)</em></label>
-          <input id="cfg_intf_ipv6_address" class="form-control form-control-sm" placeholder="2001:db8::1/64"></div>
-        <div class="col-md-4"><label class="form-label small mb-1">IPv6 Mode <em class="text-muted">(optional)</em></label>
-          <select id="cfg_intf_ipv6_mode" class="form-select form-select-sm">
-            <option value="">— none —</option>
-            <option value="enable">Enable IPv6 (link-local only)</option>
-            <option value="autoconfig">Stateless Autoconfig (SLAAC)</option>
-            <option value="dhcp">DHCPv6</option>
-            <option value="manual">Manual (use address above)</option>
-          </select></div>
-        <div class="col-md-2"><label class="form-label small mb-1">Admin State <em class="text-muted">(optional)</em></label>
-          <select id="cfg_intf_admin_state" class="form-select form-select-sm"><option value="up">Up</option><option value="down">Down</option></select></div>
-        <div class="col-md-2"><label class="form-label small mb-1">Speed <em class="text-muted">(optional)</em></label>
-          <select id="cfg_intf_speed" class="form-select form-select-sm"><option value="auto">Auto</option><option value="10">10</option><option value="100">100</option><option value="1000">1000</option></select></div>
-        <div class="col-md-2"><label class="form-label small mb-1">Duplex <em class="text-muted">(optional)</em></label>
-          <select id="cfg_intf_duplex" class="form-select form-select-sm"><option value="auto">Auto</option><option value="full">Full</option><option value="half">Half</option></select></div>
-        <div class="col-md-2"><label class="form-label small mb-1">MTU <em class="text-muted">(optional)</em></label>
-          <input id="cfg_intf_mtu" class="form-control form-control-sm" placeholder="1500" type="number"></div>
-      </div>
+      <!-- Repeating interface rows are injected here by cfgAddIntfRow() -->
+      <div id="cfgIntfRows"></div>
+      <button type="button" class="btn btn-outline-secondary btn-sm mt-2" onclick="cfgAddIntfRow()">
+        + Add Interface
+      </button>
     </div>
+
+    <!-- Hidden template for a single interface row (cloned by JS, never submitted) -->
+    <template id="cfgIntfRowTemplate">
+      <div class="cfg-intf-row border border-secondary rounded p-2 mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="small fw-semibold text-info cfg-intf-row-label">Interface 1</span>
+          <button type="button" class="btn-close btn-close-white cfg-intf-remove-btn d-none"
+                  aria-label="Remove" onclick="cfgRemoveIntfRow(this)"
+                  style="filter:invert(.5)"></button>
+        </div>
+        <div class="row g-2">
+          <div class="col-md-4"><label class="form-label small mb-1">Interface <span class="text-danger">*</span></label>
+            <select class="form-select form-select-sm cfg-intf-select cfg-intf-field" data-field="interface"><option value="">— select —</option></select></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Description</label>
+            <input class="form-control form-control-sm cfg-intf-field" data-field="description" placeholder="WAN uplink"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">IPv4 Address</label>
+            <input class="form-control form-control-sm cfg-intf-field" data-field="ip_address" placeholder="10.0.0.1"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Subnet Mask</label>
+            <input class="form-control form-control-sm cfg-intf-field" data-field="subnet_mask" placeholder="255.255.255.0"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">IPv6 Address / Prefix</label>
+            <input class="form-control form-control-sm cfg-intf-field" data-field="ipv6_address" placeholder="2001:db8::1/64"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">IPv6 Mode</label>
+            <select class="form-select form-select-sm cfg-intf-field" data-field="ipv6_mode">
+              <option value="">— none —</option>
+              <option value="enable">Enable IPv6 (link-local only)</option>
+              <option value="autoconfig">Stateless Autoconfig (SLAAC)</option>
+              <option value="dhcp">DHCPv6</option>
+              <option value="manual">Manual (use address above)</option>
+            </select></div>
+          <div class="col-md-2"><label class="form-label small mb-1">Admin State</label>
+            <select class="form-select form-select-sm cfg-intf-field" data-field="admin_state"><option value="up">Up</option><option value="down">Down</option></select></div>
+          <div class="col-md-2"><label class="form-label small mb-1">Speed</label>
+            <select class="form-select form-select-sm cfg-intf-field" data-field="speed"><option value="auto">Auto</option><option value="10">10</option><option value="100">100</option><option value="1000">1000</option></select></div>
+          <div class="col-md-2"><label class="form-label small mb-1">Duplex</label>
+            <select class="form-select form-select-sm cfg-intf-field" data-field="duplex"><option value="auto">Auto</option><option value="full">Full</option><option value="half">Half</option></select></div>
+          <div class="col-md-2"><label class="form-label small mb-1">MTU</label>
+            <input class="form-control form-control-sm cfg-intf-field" data-field="mtu" placeholder="1500" type="number"></div>
+        </div>
+      </div>
+    </template>
 
     <!-- SNMP -->
     <div id="cfgForm-snmp" class="cfg-form d-none">
@@ -1620,6 +1820,21 @@
 
   </div><!-- card-body -->
 </div><!-- cfgFormWrap -->
+
+<!-- Dynamic form container — populated from CCIE KB schema for KB-backed config types -->
+<div id="cfgDynamicFormWrap" class="d-none">
+  <div class="card-body">
+    <div id="cfgDynamicTitle" class="fw-semibold small text-info mb-2"></div>
+    <div id="cfgDynamicDesc" class="text-muted small mb-3"></div>
+    <div id="cfgDynamicFields" class="row g-2">
+      <!-- Fields injected here by cfgRenderDynamicForm() -->
+    </div>
+    <div id="cfgDynamicLoading" class="d-none text-muted small">
+      <span class="spinner-border spinner-border-sm me-2"></span>Loading CCIE KB schema…
+    </div>
+    <div id="cfgDynamicError" class="d-none text-danger small mt-2"></div>
+  </div>
+</div>
 
 <!-- Configuration wizard modal (always used — single and multi-device) -->
 <div class="modal fade" id="cfgWizardModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
@@ -2302,7 +2517,6 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.disabled = false;
       if (data.status === 'success') {
         showToast(data.message, 'warning');
-        showBulkResults(data.operation_id);
       } else {
         showToast(data.message || 'Reload failed', 'danger');
       }
@@ -5782,6 +5996,19 @@ function askAiAboutSelection() {
 
           <div class="d-flex align-items-start justify-content-between gap-3">
             <div>
+              <div class="fw-semibold small">Background agent</div>
+              <div class="text-muted" style="font-size:.8rem;">
+                Autonomous monitoring: watches Jenkins failures, SNMP traps, and config drift.
+                Disable to eliminate background API calls completely. Chat still works normally.
+              </div>
+            </div>
+            <div class="form-check form-switch flex-shrink-0 mt-1">
+              <input class="form-check-input" type="checkbox" id="bgAgentEnabled" role="switch">
+            </div>
+          </div>
+
+          <div class="d-flex align-items-start justify-content-between gap-3">
+            <div>
               <div class="fw-semibold small">Read golden configs &amp; variables first</div>
               <div class="text-muted" style="font-size:.8rem;">Check stored configs and variables before running live SSH commands.</div>
             </div>
@@ -6122,6 +6349,8 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
       sel.innerHTML = '<option value="">— select interface —</option>' +
         interfaces.map(i => `<option value="${i}"${i === cur ? ' selected' : ''}>${i}</option>`).join('');
     });
+    // Also refresh any interface selects inside the multi-interface repeater rows
+    _cfgRefreshIntfRowSelects(interfaces);
   }
 
   // When a new dynamic row is added with an interface select, populate it immediately
@@ -6140,11 +6369,180 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
   };
 
   /* ---- show/hide form sections (form lives in modal, no page visibility needed) ---- */
+  // ── CCIE KB dynamic form helpers ──────────────────────────────────────────
+
+  let _cfgKbSchema = null; // cached field schema for current KB-backed type
+
+  function _isKbType(type) {
+    return type && type.includes('/');
+  }
+
+  async function _cfgLoadKbSchema(type) {
+    const [topic, subtopic] = type.split('/', 2);
+    const url = `/configure/kb_schema?topic=${encodeURIComponent(topic)}&subtopic=${encodeURIComponent(subtopic || '')}`;
+    const loading = document.getElementById('cfgDynamicLoading');
+    const errEl   = document.getElementById('cfgDynamicError');
+    const fields  = document.getElementById('cfgDynamicFields');
+    const title   = document.getElementById('cfgDynamicTitle');
+    if (loading) loading.classList.remove('d-none');
+    if (errEl)   errEl.classList.add('d-none');
+    if (fields)  fields.innerHTML = '';
+    if (title)   title.textContent = type.replace('/', ' › ').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    try {
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (loading) loading.classList.add('d-none');
+      if (!data.ok || !data.fields || data.fields.length === 0) {
+        if (errEl) { errEl.textContent = data.error || 'No fields found for this topic.'; errEl.classList.remove('d-none'); }
+        return null;
+      }
+      _cfgKbSchema = data.fields;
+      _cfgRenderDynamicFields(data.fields);
+      return data.fields;
+    } catch (e) {
+      if (loading) loading.classList.add('d-none');
+      if (errEl) { errEl.textContent = 'Failed to load schema: ' + e.message; errEl.classList.remove('d-none'); }
+      return null;
+    }
+  }
+
+  function _cfgRenderDynamicFields(fieldDefs) {
+    const container = document.getElementById('cfgDynamicFields');
+    if (!container) return;
+    container.innerHTML = '';
+
+    fieldDefs.forEach(f => {
+      const col = document.createElement('div');
+      col.className = 'col-md-4';
+      const req  = f.required ? ' <span class="text-danger">*</span>' : ' <em class="text-muted">(optional)</em>';
+      let input;
+
+      if (f.type === 'select' && f.options) {
+        const opts = f.options.map(o => `<option value="${o}">${o}</option>`).join('');
+        input = `<select id="kbf_${f.id}" class="form-select form-select-sm kb-dyn-field">${opts}</select>`;
+      } else if (f.type === 'interface') {
+        input = `<select id="kbf_${f.id}" class="form-select form-select-sm kb-dyn-field cfg-intf-select"><option value="">— select —</option></select>`;
+      } else if (f.type === 'password') {
+        input = `<input type="password" id="kbf_${f.id}" class="form-control form-control-sm kb-dyn-field" placeholder="${f.placeholder || ''}">`;
+      } else if (f.type === 'number') {
+        input = `<input type="number" id="kbf_${f.id}" class="form-control form-control-sm kb-dyn-field" placeholder="${f.placeholder || '1'}" value="${f.default || ''}">`;
+      } else {
+        input = `<input type="text" id="kbf_${f.id}" class="form-control form-control-sm kb-dyn-field" placeholder="${f.placeholder || ''}">`;
+      }
+
+      col.innerHTML = `<label class="form-label small mb-1">${f.label}${req}</label>${input}`;
+      container.appendChild(col);
+    });
+    // Populate interface selects from current device context
+    if (fieldDefs.some(f => f.type === 'interface')) {
+      populateIntfSelects(_cfgIntfCache || []);
+    }
+  }
+
+  function _cfgCollectKbParams() {
+    const params = {};
+    document.querySelectorAll('#cfgDynamicFields .kb-dyn-field').forEach(el => {
+      const key = el.id.replace('kbf_', '');
+      params[key] = el.value || '';
+    });
+    return params;
+  }
+
+  // ── end CCIE KB dynamic form helpers ──────────────────────────────────────
+
+  // ── Multi-interface repeater helpers ──────────────────────────────────────
+
+  window.cfgAddIntfRow = function cfgAddIntfRow() {
+    const tpl  = document.getElementById('cfgIntfRowTemplate');
+    const list = document.getElementById('cfgIntfRows');
+    if (!tpl || !list) return;
+
+    const clone = tpl.content.cloneNode(true);
+    const row   = clone.querySelector('.cfg-intf-row');
+    const idx   = list.querySelectorAll('.cfg-intf-row').length + 1;
+
+    // Update the row label
+    row.querySelector('.cfg-intf-row-label').textContent = `Interface ${idx}`;
+
+    // Show remove button for all rows after the first
+    if (idx > 1) {
+      row.querySelector('.cfg-intf-remove-btn').classList.remove('d-none');
+    }
+
+    // Populate the interface selector with current device interfaces
+    const sel = row.querySelector('.cfg-intf-select');
+    if (sel && _cfgIntfCache && _cfgIntfCache.length) {
+      _cfgIntfCache.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        sel.appendChild(opt);
+      });
+    }
+
+    list.appendChild(row);
+    _cfgRenumberIntfRows();
+  }
+
+  window.cfgRemoveIntfRow = function cfgRemoveIntfRow(btn) {
+    const row = btn.closest('.cfg-intf-row');
+    if (row) row.remove();
+    _cfgRenumberIntfRows();
+  }
+
+  function _cfgRenumberIntfRows() {
+    const rows = document.querySelectorAll('#cfgIntfRows .cfg-intf-row');
+    rows.forEach((row, i) => {
+      row.querySelector('.cfg-intf-row-label').textContent = `Interface ${i + 1}`;
+      const btn = row.querySelector('.cfg-intf-remove-btn');
+      if (btn) btn.classList.toggle('d-none', i === 0);
+    });
+  }
+
+  function _cfgInitIntfRows() {
+    // Clear any existing rows and add one fresh row
+    const list = document.getElementById('cfgIntfRows');
+    if (!list) return;
+    list.innerHTML = '';
+    cfgAddIntfRow();
+  }
+
+  // Re-populate interface selects in repeater rows whenever the device changes
+  function _cfgRefreshIntfRowSelects(intfNames) {
+    document.querySelectorAll('#cfgIntfRows .cfg-intf-select').forEach(sel => {
+      const current = sel.value;
+      sel.innerHTML = '<option value="">— select —</option>';
+      intfNames.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        if (name === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  // ── end Multi-interface repeater helpers ──────────────────────────────────
+
   window.cfgShowForm = function(type) {
+    // Hide all static forms and the dynamic container
     document.querySelectorAll('.cfg-form').forEach(el => el.classList.add('d-none'));
+    const dynWrap = document.getElementById('cfgDynamicFormWrap');
+    if (dynWrap) dynWrap.classList.add('d-none');
+
+    if (_isKbType(type)) {
+      // KB-backed: show dynamic container, load schema
+      if (dynWrap) dynWrap.classList.remove('d-none');
+      _cfgKbSchema = null;
+      _cfgLoadKbSchema(type);
+      return;
+    }
+
     if (type) {
       const sec = document.getElementById('cfgForm-' + type);
       if (sec) sec.classList.remove('d-none');
+    }
+    // Seed one fresh row whenever the interface form is shown
+    if (type === 'interface') {
+      _cfgInitIntfRows();
     }
     // Pre-populate SNMP and NetFlow forms from monitoring config
     if (type === 'snmp' || type === 'netflow') {
@@ -6278,6 +6676,10 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
 
   /* ---- collect form values by config type ---- */
   function collectParams(type) {
+    // KB-backed types: read from dynamic field inputs
+    if (_isKbType(type)) {
+      return _cfgCollectKbParams();
+    }
     function v(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
     // Extract rows from a container using CSS class selectors for each field
     function rowsByClass(containerId, fieldMap) {
@@ -6298,18 +6700,30 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     }
 
     const map = {
-      interface: () => ({
-        interface:    v('cfg_intf_interface'),
-        description:  v('cfg_intf_description'),
-        ip:           v('cfg_intf_ip_address'),
-        mask:         v('cfg_intf_subnet_mask'),
-        ipv6_address: v('cfg_intf_ipv6_address'),
-        ipv6_mode:    v('cfg_intf_ipv6_mode'),
-        admin_state:  v('cfg_intf_admin_state'),
-        speed:        v('cfg_intf_speed'),
-        duplex:       v('cfg_intf_duplex'),
-        mtu:          v('cfg_intf_mtu'),
-      }),
+      interface: () => {
+        // Collect params from all interface rows in the repeater.
+        // If there is exactly one row the backend receives the single-interface
+        // params dict; if there are multiple rows they are wrapped in an array
+        // under the key `interfaces` so the multi_interface generator is used.
+        const rows = document.querySelectorAll('#cfgIntfRows .cfg-intf-row');
+        const intfs = Array.from(rows).map(row => {
+          const f = k => (row.querySelector(`[data-field="${k}"]`) || {}).value || '';
+          return {
+            interface:    f('interface'),
+            description:  f('description'),
+            ip:           f('ip_address'),
+            mask:         f('subnet_mask'),
+            ipv6_address: f('ipv6_address'),
+            ipv6_mode:    f('ipv6_mode'),
+            admin_state:  f('admin_state'),
+            speed:        f('speed'),
+            duplex:       f('duplex'),
+            mtu:          f('mtu'),
+          };
+        });
+        if (intfs.length <= 1) return intfs[0] || {};
+        return { interfaces: intfs };
+      },
       snmp: () => ({
         version:    v('cfg_snmp_version'),
         community:  v('cfg_snmp_community'),
@@ -6594,6 +7008,19 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
 
   /* ---- form validation ---- */
   function _cfgValidate(type) {
+    // KB-backed types use dynamic fields — basic required check only
+    if (_isKbType(type)) {
+      const errors = [];
+      document.querySelectorAll('#cfgDynamicFields .kb-dyn-field').forEach(el => {
+        const label = el.closest('.col-md-4')?.querySelector('label')?.textContent?.replace('*','').trim() || el.id;
+        if (el.required !== false && !el.value.trim() && !el.id.endsWith('_opt')) {
+          el.classList.add('is-invalid');
+          // Only block on truly empty required fields — KB types are flexible
+        }
+      });
+      return errors; // KB types never hard-block (optional fields allowed empty)
+    }
+
     // Clear previous invalid state
     document.querySelectorAll('#cfgForm-' + type + ' .is-invalid').forEach(el => el.classList.remove('is-invalid'));
 
@@ -6620,7 +7047,14 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     }
 
     if (type === 'interface') {
-      req('cfg_intf_interface', 'Interface');
+      // Validate that every repeater row has an interface selected
+      document.querySelectorAll('#cfgIntfRows .cfg-intf-row').forEach((row, i) => {
+        const sel = row.querySelector('[data-field="interface"]');
+        if (sel && !sel.value) {
+          sel.classList.add('is-invalid');
+          errors.push(`Interface ${i + 1}: interface selection is required`);
+        }
+      });
     } else if (type === 'snmp') {
       req('cfg_snmp_community', 'Community String');
     } else if (type === 'netflow') {
@@ -6720,9 +7154,17 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     _cfgAbortIntfFetch(); // cancel any in-flight combined-device fetch before wizard takes over
     // Show the right form section
     cfgShowForm(type);
-    // Move form into modal body
-    const formWrap   = document.getElementById('cfgFormWrap');
+    // Move the relevant form container into the modal body
     const modalBody  = document.getElementById('cfgWizardModalBody');
+    const isKb = _isKbType(type);
+    const formWrap   = isKb
+      ? document.getElementById('cfgDynamicFormWrap')
+      : document.getElementById('cfgFormWrap');
+    // Also move the static wrap (hidden) so static forms stay in DOM
+    if (isKb) {
+      const staticWrap = document.getElementById('cfgFormWrap');
+      modalBody.appendChild(staticWrap);
+    }
     modalBody.appendChild(formWrap);
     formWrap.classList.remove('d-none');
     // Init wizard state — clear stale interfaces before modal opens
@@ -6731,12 +7173,16 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     _cfgWizard = { devices: selectedDevices, type, index: 0, perDeviceParams: [] };
     _cfgWizardUpdateModal(); // also calls _cfgLoadIntfsForDevice for current device
     _cfgWizardModal = new bootstrap.Modal(document.getElementById('cfgWizardModal'));
-    // Restore form to hidden container when modal closes
+    // Restore forms to configure pane when modal closes
     document.getElementById('cfgWizardModal').addEventListener('hidden.bs.modal', function handler() {
       document.getElementById('cfgWizardModal').removeEventListener('hidden.bs.modal', handler);
-      const fw = document.getElementById('cfgFormWrap');
+      const fw  = document.getElementById('cfgFormWrap');
+      const dfw = document.getElementById('cfgDynamicFormWrap');
       fw.classList.add('d-none');
-      document.getElementById('configurePane').appendChild(fw);
+      dfw.classList.add('d-none');
+      const pane = document.getElementById('configurePane');
+      pane.appendChild(fw);
+      pane.appendChild(dfw);
     }, { once: true });
     _cfgWizardModal.show();
   };

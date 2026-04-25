@@ -1,0 +1,382 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "scope": "CCIE Enterprise \u00e2\u20ac\u201d Security, QoS, High Availability"
+  },
+  "acl": {
+    "description": "Access Control Lists \u00e2\u20ac\u201d packet filtering.",
+    "standard": [
+      "ip access-list standard {name}",
+      " permit {src_ip} {wildcard_mask}",
+      " deny any log",
+      "interface {intf}",
+      " ip access-group {name} {in_or_out}"
+    ],
+    "extended": [
+      "ip access-list extended {name}",
+      " permit {protocol} {src_ip} {src_wildcard} {dst_ip} {dst_wildcard}",
+      " permit tcp any any established",
+      " deny ip any any log",
+      "interface {intf}",
+      " ip access-group {name} {in_or_out}"
+    ],
+    "ipv6": [
+      "ipv6 access-list {name}",
+      " permit ipv6 {src_prefix} {dst_prefix}",
+      " deny ipv6 any any log",
+      "interface {intf}",
+      " ipv6 traffic-filter {name} {in_or_out}"
+    ],
+    "verification": [
+      "show ip access-lists",
+      "show ip access-lists {name}",
+      "show ipv6 access-list"
+    ],
+    "ipv6_extended": [
+      "ipv6 access-list {name}",
+      " permit {protocol} {src_prefix}/{len} {dst_prefix}/{len}",
+      " permit tcp any any established",
+      " permit icmpv6 any any nd-na",
+      " permit icmpv6 any any nd-ns",
+      " deny ipv6 any any log",
+      "interface {intf}",
+      " ipv6 traffic-filter {name} {in_or_out}"
+    ]
+  },
+  "zbf": {
+    "description": "Zone-Based Firewall \u00e2\u20ac\u201d stateful inspection. IOS 12.4(6)T+",
+    "commands": [
+      "zone security {inside_zone}",
+      "zone security {outside_zone}",
+      "class-map type inspect match-any {class_name}",
+      " match protocol http",
+      " match protocol https",
+      " match protocol dns",
+      " match protocol icmp",
+      "policy-map type inspect {policy_name}",
+      " class type inspect {class_name}",
+      "  inspect",
+      " class class-default",
+      "  drop",
+      "zone-pair security {zone_pair_name} source {inside_zone} destination {outside_zone}",
+      " service-policy type inspect {policy_name}",
+      "interface {inside_intf}",
+      " zone-member security {inside_zone}",
+      "interface {outside_intf}",
+      " zone-member security {outside_zone}"
+    ],
+    "verification": [
+      "show zone security",
+      "show zone-pair security",
+      "show policy-map type inspect zone-pair"
+    ],
+    "ipv6_inspection": {
+      "description": "IPv6 Zone-Based Firewall \u2014 same zone model, different class-map match.",
+      "commands": [
+        "class-map type inspect match-any {class_name}",
+        " match protocol http",
+        " match protocol https",
+        " match protocol icmpv6",
+        "policy-map type inspect {policy_name}",
+        " class type inspect {class_name}",
+        "  inspect",
+        " class class-default",
+        "  drop",
+        "zone-pair security {zone_pair_name} source {src_zone} destination {dst_zone}",
+        " service-policy type inspect {policy_name}"
+      ],
+      "notes": "ICMPv6 must be permitted for NDP to work (type 133-137). Do not block it blindly."
+    }
+  },
+  "aaa": {
+    "description": "Authentication, Authorization, Accounting.",
+    "tacacs_plus": [
+      "aaa new-model",
+      "tacacs server {server_name}",
+      " address ipv4 {server_ip}",
+      " key {secret}",
+      " timeout 5",
+      "aaa group server tacacs+ TACACS_GROUP",
+      " server name {server_name}",
+      "aaa authentication login default group TACACS_GROUP local",
+      "aaa authorization exec default group TACACS_GROUP local",
+      "aaa accounting exec default start-stop group TACACS_GROUP"
+    ],
+    "radius": [
+      "aaa new-model",
+      "radius server {server_name}",
+      " address ipv4 {server_ip} auth-port 1812 acct-port 1813",
+      " key {secret}",
+      "aaa group server radius RADIUS_GROUP",
+      " server name {server_name}",
+      "aaa authentication login default group RADIUS_GROUP local"
+    ],
+    "ssh_hardening": [
+      "ip ssh version 2",
+      "ip ssh authentication-retries 3",
+      "ip ssh time-out 60",
+      "line vty 0 15",
+      " transport input ssh",
+      " login authentication default",
+      " exec-timeout 10 0"
+    ],
+    "verification": [
+      "show aaa servers",
+      "show tacacs",
+      "show aaa sessions",
+      "debug aaa authentication"
+    ]
+  },
+  "qos": {
+    "description": "Quality of Service \u00e2\u20ac\u201d MQC. Classify \u00e2\u2020\u2019 Mark \u00e2\u2020\u2019 Queue.",
+    "dscp_values": {
+      "EF": "46 \u00e2\u20ac\u201d voice/real-time",
+      "AF41": "34 \u00e2\u20ac\u201d video conferencing",
+      "AF31": "26 \u00e2\u20ac\u201d call signaling",
+      "AF21": "18 \u00e2\u20ac\u201d critical data",
+      "CS3": "24 \u00e2\u20ac\u201d call signaling alt",
+      "BE": "0 \u00e2\u20ac\u201d best effort"
+    },
+    "classification_marking": [
+      "class-map match-any VOICE",
+      " match dscp ef",
+      "class-map match-any VIDEO",
+      " match dscp af41",
+      "class-map match-all CRITICAL_DATA",
+      " match dscp af21 af31",
+      "policy-map MARK_INGRESS",
+      " class VOICE",
+      "  set dscp ef",
+      " class VIDEO",
+      "  set dscp af41",
+      " class class-default",
+      "  set dscp default",
+      "interface {intf}",
+      " service-policy input MARK_INGRESS"
+    ],
+    "queuing_llq": [
+      "policy-map EGRESS_QOS",
+      " class VOICE",
+      "  priority percent {voice_pct}",
+      " class VIDEO",
+      "  bandwidth percent {video_pct}",
+      " class CRITICAL_DATA",
+      "  bandwidth percent {data_pct}",
+      "  fair-queue",
+      " class class-default",
+      "  bandwidth percent {default_pct}",
+      "  fair-queue",
+      "interface {intf}",
+      " service-policy output EGRESS_QOS"
+    ],
+    "policing": [
+      "policy-map POLICE_INGRESS",
+      " class class-default",
+      "  police rate {rate_bps} burst {burst_bytes}",
+      "  conform-action transmit",
+      "  exceed-action set-dscp-transmit default",
+      "  violate-action drop",
+      "interface {intf}",
+      " service-policy input POLICE_INGRESS"
+    ],
+    "shaping": [
+      "policy-map SHAPE_EGRESS",
+      " class class-default",
+      "  shape average {rate_bps}",
+      "interface {intf}",
+      " service-policy output SHAPE_EGRESS"
+    ],
+    "verification": [
+      "show policy-map interface {intf}",
+      "show class-map",
+      "show policy-map"
+    ],
+    "ipv6_classification": {
+      "description": "Match IPv6 traffic in QoS class-maps for marking and queuing.",
+      "commands": [
+        "class-map match-any VOICE_V6",
+        " match dscp ef",
+        " match protocol rtp audio",
+        "class-map match-any VIDEO_V6",
+        " match dscp af41",
+        "class-map match-all MATCH_V6_PREFIX",
+        " match ipv6 address prefix-list V6_CRITICAL",
+        "ip ipv6 prefix-list V6_CRITICAL permit {prefix}/{len}",
+        "policy-map MARK_V6_INGRESS",
+        " class VOICE_V6",
+        "  set dscp ef",
+        " class VIDEO_V6",
+        "  set dscp af41",
+        " class class-default",
+        "  set dscp default",
+        "interface {intf}",
+        " service-policy input MARK_V6_INGRESS"
+      ],
+      "notes": "DSCP values are identical for IPv4 and IPv6 \u2014 same LLQ policy applies to both. match dscp works for both."
+    }
+  },
+  "hsrp": {
+    "description": "Hot Standby Router Protocol \u00e2\u20ac\u201d Cisco proprietary. Active/standby gateway redundancy.",
+    "v1": [
+      "interface {intf}",
+      " standby {group} ip {virtual_ip}",
+      " standby {group} priority {priority}",
+      " standby {group} preempt",
+      " standby {group} timers {hello} {hold}",
+      " standby {group} authentication md5 key-string {key}"
+    ],
+    "v2": [
+      "interface {intf}",
+      " standby version 2",
+      " standby {group} ip {virtual_ip}",
+      " standby {group} priority {priority}",
+      " standby {group} preempt delay minimum 30",
+      " standby {group} timers msec 200 msec 700",
+      " standby {group} track {track_object} decrement {decrement}"
+    ],
+    "verification": [
+      "show standby",
+      "show standby brief",
+      "show standby {intf} {group}"
+    ],
+    "notes": "Default priority 100. Active = highest priority (tie: highest IP). v2 supports IPv6 and groups 0-4095.",
+    "v2_ipv6": {
+      "description": "HSRPv2 for IPv6 \u2014 virtual IPv6 link-local address. Group 0-4095.",
+      "commands": [
+        "ipv6 unicast-routing",
+        "interface {intf}",
+        " standby version 2",
+        " standby {group} ipv6 {FE80_virtual_or_autoconfig}",
+        " standby {group} priority {priority}",
+        " standby {group} preempt delay minimum 30",
+        " standby {group} timers msec 200 msec 700",
+        " standby {group} track {track_object} decrement {decrement}"
+      ],
+      "notes": "Use autoconfig for link-local: standby 1 ipv6 autoconfig. Virtual MAC: 0005.73A0.0001 format."
+    }
+  },
+  "vrrp": {
+    "description": "Virtual Router Redundancy Protocol \u00e2\u20ac\u201d IEEE open standard.",
+    "commands": [
+      "interface {intf}",
+      " vrrp {group} ip {virtual_ip}",
+      " vrrp {group} priority {priority}",
+      " vrrp {group} preempt",
+      " vrrp {group} timers advertise msec 200",
+      " vrrp {group} track {track_object} decrement {decrement}"
+    ],
+    "verification": [
+      "show vrrp",
+      "show vrrp brief",
+      "show vrrp interface {intf}"
+    ],
+    "notes": "Default priority 100. Owner (interface IP = VIP) gets 255. Open standard alternative to HSRP.",
+    "v3_ipv6": {
+      "description": "VRRPv3 for IPv6 \u2014 open standard, replaces VRRPv2 which only supports IPv4.",
+      "commands": [
+        "ipv6 unicast-routing",
+        "fhrp version vrrp v3",
+        "interface {intf}",
+        " vrrp {group} address-family ipv6",
+        "  address {virtual_ipv6} primary",
+        "  priority {priority}",
+        "  preempt delay minimum 30",
+        "  timers advertise msec 200",
+        "  track {track_object} decrement {decrement}"
+      ],
+      "notes": "fhrp version vrrp v3 is required globally on IOS-XE. VRRPv3 supports both IPv4 and IPv6 AFs."
+    },
+    "v3_ipv4": {
+      "description": "VRRPv3 for IPv4 \u2014 cleaner AF-based config on IOS-XE.",
+      "commands": [
+        "fhrp version vrrp v3",
+        "interface {intf}",
+        " vrrp {group} address-family ipv4",
+        "  address {virtual_ip} primary",
+        "  priority {priority}",
+        "  preempt delay minimum 30",
+        "  timers advertise msec 200",
+        "  track {track_object} decrement {decrement}"
+      ]
+    }
+  },
+  "glbp": {
+    "description": "Gateway Load Balancing Protocol \u00e2\u20ac\u201d Cisco. Multiple active gateways.",
+    "commands": [
+      "interface {intf}",
+      " glbp {group} ip {virtual_ip}",
+      " glbp {group} priority {priority}",
+      " glbp {group} preempt",
+      " glbp {group} load-balancing {round-robin_or_weighted}",
+      " glbp {group} weighting track {track_object} decrement {decrement}"
+    ],
+    "verification": [
+      "show glbp",
+      "show glbp brief"
+    ]
+  },
+  "tracking": {
+    "description": "Object tracking for HSRP/VRRP/GLBP failover.",
+    "commands": [
+      "track {obj_num} interface {intf} line-protocol",
+      "track {obj_num} ip route {network} {mask} reachability",
+      "track {obj_num} ip sla {sla_id} reachability"
+    ],
+    "verification": [
+      "show track",
+      "show track brief"
+    ]
+  },
+  "ip_sla": {
+    "description": "IP SLA \u00e2\u20ac\u201d active probes for monitoring and fault detection.",
+    "icmp_echo": [
+      "ip sla {id}",
+      " icmp-echo {target_ip} source-interface {intf}",
+      " frequency {frequency}",
+      " threshold {threshold}",
+      " timeout {timeout}",
+      "ip sla schedule {id} life forever start-time now"
+    ],
+    "udp_jitter": [
+      "ip sla {id}",
+      " udp-jitter {target_ip} {port} num-packets 100",
+      " frequency 60",
+      "ip sla schedule {id} life forever start-time now"
+    ],
+    "verification": [
+      "show ip sla summary",
+      "show ip sla statistics {id}",
+      "show track"
+    ]
+  },
+  "port_security": {
+    "description": "Limit MAC addresses per switchport. Prevents MAC flooding.",
+    "commands": [
+      "interface {intf}",
+      " switchport mode access",
+      " switchport port-security",
+      " switchport port-security maximum {max_mac}",
+      " switchport port-security mac-address sticky",
+      " switchport port-security violation {shutdown_or_restrict}",
+      " switchport port-security aging time {aging_minutes}",
+      "errdisable recovery cause psecure-violation",
+      "errdisable recovery interval 300"
+    ],
+    "verification": [
+      "show port-security interface {intf}",
+      "show port-security address",
+      "show errdisable recovery"
+    ],
+    "ipv6_nd_snooping": {
+      "description": "IPv6 NDP equivalent of port security \u2014 use ND Inspection policy (see switching.ipv6_fhs).",
+      "commands": [
+        "ipv6 nd inspection policy ND_STRICT",
+        " device-role host",
+        " validate source-mac",
+        " drop-unsecured",
+        "interface {intf}",
+        " ipv6 nd inspection attach-policy ND_STRICT"
+      ]
+    }
+  }
+}

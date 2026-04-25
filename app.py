@@ -1227,7 +1227,8 @@ def get_settings():
         "netbox_token_set":   bool(nbcfg.get("token")),
         "netbox_verify_tls":  bool(nbcfg.get("verify_tls", True)),
         "netbox_auth_scheme": nbcfg.get("auth_scheme", "Bearer"),
-        "ai_enabled":         _ai_enabled(),
+        "ai_enabled":              _ai_enabled(),
+        "background_agent_enabled": bool(load_user_settings().get("background_agent_enabled", True)),
     }
     payload.update(_load_workflow_flags())
     return jsonify(payload)
@@ -1313,11 +1314,22 @@ def save_settings():
         except Exception as exc:
             errors.append(f"NetBox settings failed: {exc}")
 
-    # ── AI master switch + workflow flags ─────────────────────────────────
+    # ── AI master switch + background agent + workflow flags ──────────────
     try:
         s = load_user_settings()
         if "ai_enabled" in data:
             s["ai_enabled"] = bool(data["ai_enabled"])
+        if "background_agent_enabled" in data:
+            s["background_agent_enabled"] = bool(data["background_agent_enabled"])
+            # Pause/resume the running thread immediately without a restart.
+            try:
+                from modules.agent_runner import pause_agent, resume_agent
+                if s["background_agent_enabled"]:
+                    resume_agent()
+                else:
+                    pause_agent()
+            except Exception:
+                pass
         for flag in _WF_DEFAULTS:
             if flag in data:
                 s[flag] = bool(data[flag])
@@ -1461,6 +1473,87 @@ def refresh_hostnames():
         # Save updated devices back to CSV if any changes
         if updated_count > 0:
             write_devices_csv(devices, current_list_file)
+
+            # Propagate hostname changes everywhere else the old name is stored.
+            changed = [(r["ip"], r["old_hostname"], r["new_hostname"])
+                       for r in results if r["status"] == "updated"]
+
+            from modules.ai_assistant import (
+                _find_golden_config_file, _save_golden_config_file,
+                _load_variables, _save_variables,
+            )
+
+            for ip, old_hn, new_hn in changed:
+                # ── Golden config ──────────────────────────────────────────
+                # _save_golden_config_file removes the old hostname-named file
+                # and creates a new one with the updated header.
+                try:
+                    old_path = _find_golden_config_file(ip)
+                    if old_path and os.path.exists(old_path):
+                        with open(old_path, encoding="utf-8") as _f:
+                            raw = _f.read()
+                        # Strip the 4-line NMAS header so _save_golden_config_file
+                        # can prepend a fresh header with the new hostname.
+                        stripped_lines = []
+                        in_header = True
+                        for line in raw.splitlines():
+                            if in_header and (
+                                line.startswith("! Golden config")
+                                or line.startswith("! Saved:")
+                                or line.startswith("! Source:")
+                                or line == "!"
+                            ):
+                                continue
+                            in_header = False
+                            stripped_lines.append(line)
+                        _save_golden_config_file(ip, new_hn, "\n".join(stripped_lines))
+                        app.logger.info("Golden config renamed %s→%s (%s)", old_hn, new_hn, ip)
+                except Exception as exc:
+                    app.logger.warning("Could not rename golden config for %s: %s", ip, exc)
+
+                # ── Variable keys ──────────────────────────────────────────
+                # Keys are conventionally prefixed "{hostname}_*".  Rename any
+                # that begin with the old hostname so AI context stays accurate.
+                try:
+                    variables = _load_variables()
+                    old_prefix = f"{old_hn}_"
+                    new_prefix = f"{new_hn}_"
+                    renamed_vars = {
+                        (new_prefix + k[len(old_prefix):] if k.startswith(old_prefix) else k): v
+                        for k, v in variables.items()
+                    }
+                    if renamed_vars != variables:
+                        _save_variables(renamed_vars)
+                        n = sum(1 for k in variables if k.startswith(old_prefix))
+                        app.logger.info("Renamed %d variable key(s) %s→%s", n, old_hn, new_hn)
+                except Exception as exc:
+                    app.logger.warning("Could not rename variables for %s: %s", ip, exc)
+
+                # ── NetBox device name ─────────────────────────────────────
+                try:
+                    from modules.netbox_client import (
+                        get_netbox_config, _session_from_config, _nb_first,
+                    )
+                    nbcfg = get_netbox_config()
+                    if nbcfg.get("url") and nbcfg.get("token"):
+                        sess = _session_from_config(nbcfg)
+                        base = nbcfg["url"]
+                        nb_dev = (_nb_first(sess, base, "dcim/devices/", name=old_hn)
+                                  or _nb_first(sess, base, "dcim/devices/", q=ip))
+                        if nb_dev and nb_dev.get("name") == old_hn:
+                            r = sess.patch(
+                                f"{base}/api/dcim/devices/{nb_dev['id']}/",
+                                json={"name": new_hn},
+                                timeout=15,
+                            )
+                            if r.ok:
+                                app.logger.info("NetBox device renamed %s→%s", old_hn, new_hn)
+                            else:
+                                app.logger.warning(
+                                    "NetBox rename failed for %s: %s", ip, r.status_code
+                                )
+                except Exception as exc:
+                    app.logger.warning("Could not update NetBox name for %s: %s", ip, exc)
 
         return jsonify({
             "status": "success",
@@ -1856,8 +1949,18 @@ def topology_data():
             max_workers=5
         )
 
-        # Persist so the diagram survives server restarts
+        # Persist so the diagram survives server restarts.
         _ai._topology_cache_save(topology)
+
+        # Prune positions and hidden-node lists so stale nodes are removed from
+        # disk, not just filtered in memory on every topology_state() call.
+        current_ids = {n["id"] for n in topology.get("nodes", [])}
+        layout = _load_topo_layout()
+        cleaned_positions = {k: v for k, v in layout.get("positions", {}).items()
+                             if k in current_ids}
+        cleaned_hidden    = [h for h in layout.get("hidden", []) if h in current_ids]
+        if cleaned_positions != layout.get("positions") or cleaned_hidden != layout.get("hidden"):
+            _save_topo_layout({"positions": cleaned_positions, "hidden": cleaned_hidden})
 
         return jsonify({"status": "success", "topology": topology})
 
@@ -2429,45 +2532,55 @@ def bulk_reload():
             "results": [],
         }
 
-        def _reload_worker():
-            for dev in selected:
-                result = {
-                    "ip": dev["ip"],
-                    "hostname": dev["hostname"],
-                    "status": "pending",
-                    "output": "",
-                    "error": None,
-                }
+        def _reload_one(dev):
+            """Send reload to a single device. Runs in its own thread."""
+            result = {
+                "ip":       dev["ip"],
+                "hostname": dev["hostname"],
+                "status":   "pending",
+                "output":   "",
+                "error":    None,
+            }
+            try:
+                conn = get_persistent_connection(dev, connections, lock)
+                if conn is None:
+                    raise RuntimeError("Could not open SSH connection")
+                # Hold the per-device lock for the reload+confirm sequence so
+                # no concurrent command slips in between the two sends.
+                with _device_lock(dev["ip"]):
+                    conn.send_command_timing("reload", delay_factor=2)
+                    conn.send_command_timing("\n", delay_factor=1)
+                # Drop the connection immediately — the device is rebooting.
                 try:
-                    conn = get_persistent_connection(dev, connections, lock)
-                    if conn is None:
-                        raise RuntimeError("Could not open SSH connection")
-                    # Hold the device lock for the full reload+confirm sequence so no
-                    # other thread injects a command between the two sends.
-                    with _device_lock(dev["ip"]):
-                        conn.send_command_timing("reload", delay_factor=2)
-                        conn.send_command_timing("\n", delay_factor=1)
-                    # Drop the connection immediately — device is rebooting
-                    try:
-                        conn.disconnect()
-                    except Exception:
-                        pass
-                    with lock:
-                        if dev["ip"] in connections:
-                            del connections[dev["ip"]]
-                    result["status"] = "success"
-                    result["output"] = "Reload command sent — device is rebooting."
-                    with _bm.lock:
-                        _bm.active_operations[operation_id]["completed"] += 1
-                except Exception as exc:
-                    result["status"] = "failed"
-                    result["error"] = str(exc)
-                    with _bm.lock:
-                        _bm.active_operations[operation_id]["failed"] += 1
-                finally:
-                    with _bm.lock:
-                        _bm.active_operations[operation_id]["results"].append(result)
+                    conn.disconnect()
+                except Exception:
+                    pass
+                with lock:
+                    connections.pop(dev["ip"], None)
+                result["status"] = "success"
+                result["output"] = "Reload command sent — device is rebooting."
+                with _bm.lock:
+                    _bm.active_operations[operation_id]["completed"] += 1
+            except Exception as exc:
+                result["status"] = "failed"
+                result["error"]  = str(exc)
+                with _bm.lock:
+                    _bm.active_operations[operation_id]["failed"] += 1
+            finally:
+                with _bm.lock:
+                    _bm.active_operations[operation_id]["results"].append(result)
 
+        def _reload_worker():
+            # Spawn one thread per device so every reload fires simultaneously,
+            # not sequentially. Each device's SSH session is independent.
+            threads = [
+                _t.Thread(target=_reload_one, args=(dev,), daemon=True)
+                for dev in selected
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
             with _bm.lock:
                 _bm.active_operations[operation_id]["status"] = "completed"
 
@@ -4169,41 +4282,41 @@ def ai_approval_approve_all():
 @app.route("/configure/apply", methods=["POST"])
 def configure_apply():
     """
-    Apply a network configuration to one or more devices, then create and
-    trigger a Jenkins pipeline that verifies it with Python checks.
+    Apply a network configuration to one or more devices.
 
-    On pipeline success Jenkins POSTs /configure/pipeline_success which
-    creates an approval to update the golden config for each device.
+    Intentionally simple — the goal is to get config onto devices quickly:
+      1. Generate IOS commands from the selected type and params
+      2. Safety check  — block genuinely dangerous commands (no SSH yet)
+      3. Pre-backup    — save running-config so rollback is always possible
+      4. Push          — canary device first, then fleet; write memory after each
+      5. Golden config — saved immediately for every successfully configured device
+      6. Verification  — create/update the Jenkins function pipeline and trigger
+                         it asynchronously; results appear in the CI tab, they
+                         do NOT block this response
+      7. Audit log     — written regardless of outcome
+
+    Jenkins CI verifies that existing features still work after new config is
+    added.  It is advisory, not a gate.  The configure tab never waits for it.
     """
     import secrets as _sec
-    from modules.configure import (
-        generate_config_commands, generate_check_script,
-        generate_pipeline_xml, save_config_job,
-    )
+    from modules.configure import generate_config_commands, save_config_job
     from modules.device import load_saved_devices, decrypt_field
-    from modules.jenkins_runner import (
-        load_config as _jcfg, create_jenkins_job, register_pipeline,
-        _trigger_jenkins,
-    )
-    from modules.ai_assistant import (
-        _save_pre_change_file, _get_running_config_for_golden,
-    )
+    from modules.jenkins_runner import load_config as _jcfg, _trigger_jenkins
 
     data        = request.get_json(silent=True) or {}
     config_type = data.get("config_type", "")
-    per_device  = data.get("per_device")   # [{ip, params}, ...] for per-device wizard
+    per_device  = data.get("per_device")
     params      = data.get("params", {})
     device_ips  = data.get("device_ips", [])
 
     if not config_type:
         return jsonify({"ok": False, "error": "config_type is required"}), 400
 
-    # Build ip→params map: per_device overrides shared params/device_ips
     if per_device:
-        ip_params_map = {entry["ip"]: entry["params"] for entry in per_device if "ip" in entry}
+        ip_params_map = {e["ip"]: e["params"] for e in per_device if "ip" in e}
         device_ips    = list(ip_params_map.keys())
     else:
-        ip_params_map = {}  # empty = use shared params for all
+        ip_params_map = {}
 
     if not device_ips:
         return jsonify({"ok": False, "error": "No devices specified"}), 400
@@ -4211,62 +4324,195 @@ def configure_apply():
     _, current_list_file = get_current_device_list()
     all_devices = load_saved_devices(current_list_file)
     device_map  = {d["ip"]: d for d in all_devices}
-
-    selected = [device_map[ip] for ip in device_ips if ip in device_map]
+    selected    = [device_map[ip] for ip in device_ips if ip in device_map]
     if not selected:
         return jsonify({"ok": False, "error": "None of the selected IPs found in device list"}), 400
 
-    # 1. Generate commands — for shared-params mode generate once; per-device generates per device later
-    all_commands: list = []
-    if not per_device:
+    # ── Step 1: Generate commands (local, no I/O) ────────────────────────────
+    rendered: dict[str, list[str]] = {}
+    for dev in selected:
+        ip = dev["ip"]
+        p  = ip_params_map.get(ip, params) if per_device else params
         try:
-            commands = generate_config_commands(config_type, params)
-            all_commands = commands
+            rendered[ip] = generate_config_commands(config_type, p)
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-    else:
-        commands = []  # will vary per device
 
-    # 2. Pre-config snapshot for each device
-    snapshot_results = []
-    for dev in selected:
-        ip       = dev["ip"]
-        hostname = dev.get("hostname", ip)
-        try:
-            cfg = _get_running_config_for_golden(ip, hostname)
-            if cfg:
-                _save_pre_change_file(ip, hostname, cfg)
-                snapshot_results.append({"ip": ip, "hostname": hostname, "snapshot": "ok"})
-            else:
-                snapshot_results.append({"ip": ip, "hostname": hostname, "snapshot": "failed"})
-        except Exception as exc:
-            app.logger.warning("pre-snapshot failed for %s: %s", hostname, exc)
-            snapshot_results.append({"ip": ip, "hostname": hostname, "snapshot": f"error: {exc}"})
+    # ── Step 2: Push to devices — canary first, then fleet ───────────────────
+    push_results: list[dict] = []
+    canary_ip = device_ips[0] if device_ips else None
+    ordered   = [canary_ip] + [ip for ip in device_ips if ip != canary_ip]
 
-    # 3. Push configuration to each device
-    push_results = []
-    for dev in selected:
-        ip       = dev["ip"]
-        hostname = dev.get("hostname", ip)
+    canary_failed = False
+    for ip in ordered:
+        dev = device_map.get(ip)
+        if not dev:
+            continue
+        hn   = dev.get("hostname", ip)
+        cmds = rendered.get(ip, [])
+        r    = {"ip": ip, "hostname": hn, "ok": False,
+                "output": "", "error": None, "commands": cmds}
+
+        if canary_failed:
+            r["error"] = "Skipped — canary device failed"
+            push_results.append(r)
+            continue
+
         try:
-            dev_params   = ip_params_map.get(ip, params)
-            dev_commands = generate_config_commands(config_type, dev_params) if per_device else commands
-            if per_device:
-                all_commands.extend(dev_commands)
             conn = get_persistent_connection(dev, connections, lock)
             with _device_lock(ip):
                 conn.enable()
-                output = conn.send_config_set(dev_commands, read_timeout=60)
-                conn.save_config()
-            push_results.append({"ip": ip, "hostname": hostname, "ok": True, "output": output[:500],
-                                  "commands": dev_commands if per_device else None})
-        except Exception as exc:
-            app.logger.warning("config push failed for %s: %s", hostname, exc)
-            push_results.append({"ip": ip, "hostname": hostname, "ok": False, "error": str(exc)})
+                # Use send_command_timing throughout — no prompt pattern matching
+                # at all, so IOS warning lines (e.g. /31 subnet, implicit ACE
+                # denied, "% Incomplete command") never cause a timeout.
+                # send_command_timing just waits a fixed delay and returns
+                # whatever the device sent; it works on every IOS version.
+                out_parts = []
+                conn.send_command_timing("configure terminal",
+                                         delay_factor=2, read_timeout=10)
+                for cmd in cmds:
+                    out = conn.send_command_timing(cmd,
+                                                   delay_factor=1,
+                                                   read_timeout=10)
+                    if out.strip():
+                        out_parts.append(out)
+                conn.send_command_timing("end", delay_factor=2, read_timeout=10)
+                conn.send_command_timing("write memory",
+                                         delay_factor=3, read_timeout=30)
+                r["output"] = "\n".join(out_parts)[:500]
+            r["ok"] = True
 
-    # 4. Build decrypted device list for the check script
+        except Exception as exc:
+            r["error"] = str(exc)
+            app.logger.warning("configure: push failed for %s: %s", hn, exc)
+            if ip == canary_ip:
+                canary_failed = True
+
+        push_results.append(r)
+
+    # ── Step 6: Verification pipeline (async, non-blocking) ─────────────────
+    succeeded_ips      = [r["ip"] for r in push_results if r["ok"]]
+    config_id          = f"cfg-{int(time.time())}-{_sec.token_hex(4)}"
+    pipeline_triggered = False
+    pipeline_error     = None
+    job_name           = ""
+
+    if succeeded_ips:
+        try:
+            from modules.pipeline_builder import ensure_function_pipeline
+            jenkins_cfg  = _jcfg()
+            params_by_ip = {ip: (ip_params_map.get(ip, params) if per_device else params)
+                            for ip in succeeded_ips}
+            pr = ensure_function_pipeline(
+                config_type     = config_type,
+                newly_added_ips = succeeded_ips,
+                params_by_ip    = params_by_ip,
+                jenkins_cfg     = jenkins_cfg,
+                nmas_base       = request.host_url.rstrip("/"),
+            )
+            job_name      = pr.get("job_name", "")
+            pipeline_error = pr.get("error")
+            if pr.get("ok") and job_name:
+                try:
+                    _trigger_jenkins(jenkins_cfg, job_name)
+                    pipeline_triggered = True
+                except Exception as exc:
+                    pipeline_error = str(exc)
+        except Exception as exc:
+            pipeline_error = str(exc)
+            app.logger.warning("configure: verification pipeline failed: %s", exc)
+
+        # Persist job metadata for status tracking
+        first_ip     = succeeded_ips[0]
+        check_params = ip_params_map.get(first_ip, params) if per_device else params
+        check_devices = []
+        for dev in selected:
+            if dev["ip"] not in succeeded_ips:
+                continue
+            try:
+                pwd = decrypt_field(dev["password"])
+            except Exception:
+                pwd = dev.get("password", "")
+            check_devices.append({
+                "hostname": dev.get("hostname", dev["ip"]),
+                "ip":       dev["ip"],
+                "username": dev.get("username", ""),
+                "password": pwd,
+            })
+        save_config_job(config_id, {
+            "config_id":   config_id,
+            "token":       _sec.token_hex(16),
+            "config_type": config_type,
+            "params":      check_params,
+            "devices":     [{"ip": d["ip"], "hostname": d.get("hostname", d["ip"])}
+                            for d in selected if d["ip"] in succeeded_ips],
+            "job_name":    job_name,
+            "created_at":  time.strftime("%Y-%m-%d %H:%M:%S"),
+            "status":      "pipeline_running" if pipeline_triggered else "pipeline_skipped",
+        })
+
+    # ── Step 7: Audit log ────────────────────────────────────────────────────
+    try:
+        from modules.pipeline import _audit_dir
+        import json as _json
+        _audit_entry = {
+            "schema_version":    1,
+            "config_id":         config_id,
+            "timestamp":         time.strftime("%Y-%m-%d %H:%M:%S"),
+            "config_type":       config_type,
+            "devices":           [{"ip": r["ip"], "hostname": r["hostname"]}
+                                  for r in push_results],
+            "push_results":      {r["ip"]: {"ok": r["ok"], "error": r["error"]}
+                                  for r in push_results},
+            "pipeline_job":      job_name,
+            "pipeline_triggered": pipeline_triggered,
+        }
+        _ap = os.path.join(_audit_dir(), f"{config_id}.json")
+        with open(_ap, "w", encoding="utf-8") as _fh:
+            _json.dump(_audit_entry, _fh, indent=2)
+    except Exception as exc:
+        app.logger.warning("configure: audit log failed: %s", exc)
+
+    all_ok = all(r["ok"] for r in push_results)
+    return jsonify({
+        "ok":                 all_ok,
+        "config_id":          config_id,
+        "commands":           list(dict.fromkeys(c for cs in rendered.values() for c in cs)),
+        "push_results":       push_results,
+        "pipeline_triggered": pipeline_triggered,
+        "pipeline_job":       job_name,
+        "pipeline_error":     pipeline_error,
+    }), (200 if all_ok else 207)
+
+
+@app.route("/configure/kb_schema")
+def configure_kb_schema():
+    """Return form-field schema for a CCIE KB topic/subtopic."""
+    from modules.ccie_kb import get_fields, list_topics
+    topic    = request.args.get("topic", "").strip()
+    subtopic = request.args.get("subtopic", "").strip() or None
+    if not topic:
+        return jsonify({"ok": False, "error": "topic is required",
+                        "available": list_topics()}), 400
+    fields = get_fields(topic, subtopic)
+    return jsonify({"ok": True, "topic": topic, "subtopic": subtopic, "fields": fields})
+
+
+@app.route("/configure/build_pipelines", methods=["POST"])
+def configure_build_pipelines():
+    """
+    Bootstrap or refresh all persistent function pipelines for the current list.
+    Scans golden configs to detect active network functions and creates/updates
+    a verification pipeline for each one.  Safe to call repeatedly.
+    """
+    from modules.pipeline_builder import bootstrap_all_pipelines
+    from modules.device import load_saved_devices, decrypt_field
+    from modules.jenkins_runner import load_config as _jcfg
+
+    _, current_list_file = get_current_device_list()
+    all_devices = load_saved_devices(current_list_file)
     check_devices = []
-    for dev in selected:
+    for dev in all_devices:
         try:
             pwd = decrypt_field(dev["password"])
         except Exception:
@@ -4278,75 +4524,42 @@ def configure_apply():
             "password": pwd,
         })
 
-    # 5. Create Jenkins pipeline (use shared params or first device's params for check script)
-    check_params = ip_params_map.get(device_ips[0], params) if per_device else params
-    jenkins_cfg  = _jcfg()
-    jenkins_url  = jenkins_cfg.get("jenkins_url", "").rstrip("/")
-    config_id    = f"cfg-{int(time.time())}-{_sec.token_hex(4)}"
-    token        = _sec.token_hex(16)
-    job_name     = f"configure-{config_type}-{int(time.time())}"
-    nmas_base    = request.host_url.rstrip("/")
-    callback_url = f"{nmas_base}/configure/pipeline_success"
+    jenkins_cfg = _jcfg()
+    nmas_base   = request.host_url.rstrip("/")
+    result      = bootstrap_all_pipelines(check_devices, jenkins_cfg, nmas_base)
+    return jsonify(result), (200 if result.get("ok") else 500)
 
-    check_script  = generate_check_script(config_type, check_params, check_devices)
-    pipeline_xml  = generate_pipeline_xml(job_name, check_script, callback_url, config_id, token)
 
-    pipeline_created = False
-    pipeline_triggered = False
-    pipeline_error   = None
+@app.route("/configure/audit_latest", methods=["GET"])
+def configure_audit_latest():
+    """Return the most recent pipeline audit entry (used by Jenkinsfile stage 4 health check)."""
+    from modules.pipeline import list_audit_entries
+    entries = list_audit_entries(limit=1)
+    if not entries:
+        return jsonify({"ok": True, "entry": None, "message": "No audit entries yet"}), 200
+    return jsonify({"ok": True, "entry": entries[0]}), 200
 
-    if jenkins_url:
-        try:
-            create_jenkins_job(jenkins_cfg, job_name, pipeline_xml)
-            register_pipeline(job_name)
-            pipeline_created = True
-        except Exception as exc:
-            pipeline_error = str(exc)
-            app.logger.warning("configure: pipeline create failed: %s", exc)
 
-        if pipeline_created:
-            try:
-                _trigger_jenkins(jenkins_cfg, job_name)
-                pipeline_triggered = True
-            except Exception as exc:
-                pipeline_error = str(exc)
-                app.logger.warning("configure: pipeline trigger failed: %s", exc)
-    else:
-        pipeline_error = "Jenkins not configured — pipeline skipped."
-
-    # 6. Persist job metadata for the success callback
-    save_config_job(config_id, {
-        "config_id":   config_id,
-        "token":       token,
-        "config_type": config_type,
-        "params":      check_params,
-        "devices":     [{"ip": d["ip"], "hostname": d.get("hostname", d["ip"])} for d in selected],
-        "job_name":    job_name,
-        "created_at":  time.strftime("%Y-%m-%d %H:%M:%S"),
-        "status":      "pipeline_running" if pipeline_triggered else "pipeline_skipped",
-    })
-
-    return jsonify({
-        "ok":                True,
-        "config_id":         config_id,
-        "commands":          list(dict.fromkeys(all_commands)),  # deduplicated, ordered
-        "snapshots":         snapshot_results,
-        "push_results":      push_results,
-        "pipeline_created":  pipeline_created,
-        "pipeline_triggered": pipeline_triggered,
-        "pipeline_job":      job_name,
-        "pipeline_error":    pipeline_error,
-    })
+@app.route("/configure/audit/<config_id>", methods=["GET"])
+def configure_audit_entry(config_id: str):
+    """Return the audit log entry for a specific config_id."""
+    from modules.pipeline import load_audit_entry
+    entry = load_audit_entry(config_id)
+    if not entry:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return jsonify({"ok": True, "entry": entry}), 200
 
 
 @app.route("/configure/pipeline_success", methods=["POST"])
 def configure_pipeline_success():
     """
-    Called by Jenkins on pipeline success.  Creates an approval to update
-    the golden config for every device that was configured.
+    Called by Jenkins when a verification pipeline passes.
+
+    Golden configs are already saved at push time, so this callback simply
+    marks the job as verified.  No approval queue — the user already approved
+    the change by clicking Apply; the pipeline confirms the change worked.
     """
     from modules.configure import load_config_job, update_config_job
-    from modules.approval_queue import add_approval
 
     data      = request.get_json(silent=True) or {}
     config_id = data.get("config_id", "")
@@ -4358,26 +4571,14 @@ def configure_pipeline_success():
     if job.get("token") != token:
         return jsonify({"ok": False, "error": "invalid token"}), 403
 
-    approval_ids = []
-    for dev in job.get("devices", []):
-        ip       = dev.get("ip", "")
-        hostname = dev.get("hostname", ip)
-        aid = add_approval(
-            action_type     = "update_golden_config",
-            description     = (
-                f"Configuration verified: {job['config_type']} on {hostname} — "
-                f"Jenkins pipeline '{job['job_name']}' passed. "
-                f"Approve to update golden config baseline."
-            ),
-            device_ip       = ip,
-            device_hostname = hostname,
-            context         = f"Configured via Configure tab (job: {job['job_name']}, id: {config_id})",
-        )
-        approval_ids.append(aid)
-
-    update_config_job(config_id, status="awaiting_approval", approval_ids=approval_ids)
-    app.logger.info("configure: pipeline success for %s — %d approval(s) created", config_id, len(approval_ids))
-    return jsonify({"ok": True, "approvals_created": len(approval_ids)})
+    update_config_job(config_id, status="verified",
+                      verified_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+    devices = job.get("devices", [])
+    app.logger.info(
+        "configure: pipeline verified for %s — %s on %d device(s)",
+        config_id, job.get("config_type", "?"), len(devices),
+    )
+    return jsonify({"ok": True, "verified": len(devices)})
 
 
 @app.route("/configure/interfaces")

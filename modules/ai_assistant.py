@@ -1562,13 +1562,18 @@ action, check what already exists:
   • Pipeline already exists for this change type → use it, don't create a new one
   • Compliance rule already covers what you are about to check → skip, it's monitored
 
+  CCIE KB — use query_ccie_kb BEFORE writing any IOS commands:
+  • [CCIE KB] lists all available topics (ospf, bgp, dmvpn, qos, acl, …)
+  • call query_ccie_kb(topic) to get exact verified IOS command syntax
+  • call query_ccie_kb(topic, subtopic) for a specific section
+  • this eliminates hallucinated commands — always look it up, don't guess
+
   ONLY USE THE LLM (i.e. your own reasoning) FOR:
   • Interpreting new user intent
-  • Generating new config templates or logic for tasks not yet in [PLAYBOOKS]
-  • Generating new Jenkins pipeline stages for new check types
-  • Validating a proposed config change against the known network state
+  • Composing KB-retrieved commands into a complete configuration
+  • Adapting templates to specific device parameters from [NETWORK STATE]
   • Summarising diffs / troubleshooting novel failures
-  • Anything that truly has no cached equivalent
+  • Anything not covered by the CCIE KB
 
 ═══════════════════════════════════════════════════════════════════
 AUTONOMOUS TRIGGER RULES — act on these WITHOUT being asked
@@ -1579,7 +1584,7 @@ CONFIG PUSH triggers (fire every time you push config to any device —
   IF you apply any config change to a device, follow this order WITHOUT stopping for human approval:
     1. capture_pre_change_snapshot(device_ips)    — safety net before any change
     2. Push config (run_ansible_playbook or execute_commands_on_device) + write memory
-    3. run_jenkins_checks → jenkins_wait_for_result (NEVER skip the wait)
+    3. run_jenkins_checks → jenkins_wait_for_result (NEVER skip the post-push verification)
     4. IF pipeline PASSES:
          → save_golden_config(device_ips)          — update golden baseline
          → read_golden_config for each device      — parse the freshly saved config
@@ -1615,9 +1620,18 @@ PLAYBOOK triggers:
   Do NOT suggest running existing playbooks — playbooks are run manually by the user.
 
 PIPELINE triggers:
-  IF you make a network change that has no matching Jenkins pipeline:
-    → Create one automatically with parallel{} stages for the affected protocols
-    → Immediately call jenkins_set_schedule to set a default recurring schedule
+  IF [PROACTIVE CONTEXT] shows "NO VERIFICATION PIPELINES":
+    → Call build_network_pipelines() immediately — this is the highest-priority action
+       when golden configs exist but no function pipelines do.  Do NOT create individual
+       pipelines manually; the builder detects every active function in one pass.
+  IF you make a network change (configure_apply / execute_commands_on_device):
+    → The configure route already calls ensure_function_pipeline automatically.
+       You do NOT need to create pipelines after a Configure-tab deploy.
+    → After a direct SSH config push (execute_commands_on_device), call
+       build_network_pipelines() once so the new function is covered.
+  IF a new config type has never been added to this list before:
+    → build_network_pipelines() will detect the new function from the saved golden
+       config and add its pipeline.  Call it AFTER save_golden_config completes.
   IF you create ANY new Jenkins pipeline:
     → ALWAYS call jenkins_set_schedule immediately after creation
     → Default schedules by pipeline type:
@@ -2053,8 +2067,8 @@ Rules for using saved playbooks:
 - Only fall through to manual SSH commands if no playbook in [PLAYBOOKS] matches.
 
 Complete config-push workflow — follow this EVERY time you push config to devices
-This is the full mandatory lifecycle for any configuration change.
-Human approval is NOT required at any step — Jenkins CI pass is the gate.
+The goal is to get correct config onto devices and document it.  CI verifies that
+nothing broke — it is advisory, not a gate.  Never block a push waiting for CI.
 
 STEP 0 — Read context (before starting)
   Everything below is ALREADY IN YOUR CONTEXT — do NOT call these tools just to read them:
@@ -2064,43 +2078,34 @@ STEP 0 — Read context (before starting)
   - [JENKINS PIPELINES]  → already injected
   - [COMPLIANCE POLICY]  → already injected
   Only call read_golden_config(ip) when you need the full raw config text for a specific device.
-  Only call list_golden_configs() when you need to confirm rollback baseline existence.
   Do NOT SSH to devices for information already present in the above blocks.
 
 STEP 1 — Pre-change backup (safety net)
   - capture_pre_change_snapshot(device_ips=[...affected IPs...])
-  This saves the current running-config so you can restore it exactly if Jenkins fails.
+  Saves the running-config so you can roll back if anything goes wrong.
   NEVER skip this step.
 
 STEP 2 — Push the config change
   - Use run_ansible_playbook (preferred) or execute_commands_on_device
   - After config is applied: run `write memory` on each modified device
 
-STEP 3 — Select or create a Jenkins pipeline
-  - jenkins_get_current_pipelines → see what pipelines exist for this list
-  - Pick the pipeline that validates the type of change:
-      Network protocol change  → network verification pipeline
-      App code change          → app health/syntax pipeline
-      Tunnel/VPN change        → GRE/IPsec verification pipeline
-  - If no match: jenkins_create_job with parallel{} stages for the affected protocols
-  - If existing pipeline needs to cover the new check: jenkins_update_job
-
-STEP 4 — Run CI and wait
-  - run_jenkins_checks → jenkins_wait_for_result (NEVER skip the wait)
-
-STEP 5a — Pipeline PASSES (no human approval needed — proceed automatically)
-  - save_golden_config(device_ips=[...modified IPs...])
+STEP 3 — Save golden config and update variables (do this immediately after push)
+  - save_golden_config(device_ips=[...modified IPs...])   — do NOT wait for CI first
   - read_golden_config for each modified device → extract ALL configured values →
     call set_variable for each one (IPs, loopbacks, OSPF IDs, BGP AS, tunnel endpoints,
-    VLANs, ACLs, NTP, etc.)  — use the golden config as the source of truth, not memory
-  - log_change(description, devices, change_type, jenkins_pipeline, jenkins_result=SUCCESS, golden_config_saved=True)
+    VLANs, ACLs, NTP, etc.)
+  - log_change(description, devices, change_type, golden_config_saved=True)
+  Golden config is saved NOW regardless of CI.  It represents what is on the device.
 
-STEP 5b — Pipeline FAILS
-  - Read the console (auto-included) and diagnose
-  - Option A: Fix the config issue → re-push → go back to Step 4
-  - Option B: Revert → restore_pre_change_snapshot(device_ips) → run CI → confirm clean
-  - Do NOT save golden config or update variables until CI passes
-  - log_change(... jenkins_result=FAILURE, golden_config_saved=False)
+STEP 4 — Trigger verification CI (fire-and-forget, do NOT wait)
+  - run_jenkins_checks()   — triggers all registered pipelines
+  Do NOT call jenkins_wait_for_result here.  CI runs in the background.
+  The user can see results in the Jenkins tab.
+  IF CI later fails: investigate the console, diagnose root cause, fix the issue.
+  IF CI passes: the change is fully verified — no further action needed.
+
+Rollback (if the push itself caused a problem — not CI):
+  restore_pre_change_snapshot(device_ips, reason) — exact pre-change state
 
 Rollback tools:
   restore_pre_change_snapshot(device_ips, reason) — exact pre-change state
@@ -3639,6 +3644,58 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "build_network_pipelines",
+        "description": (
+            "Scan golden configs to detect every active network function "
+            "(OSPF, BGP, MPLS, tunnels, NAT, SNMP, static routes, interfaces, …) "
+            "and create or update a persistent Jenkins verification pipeline for each one. "
+            "Each pipeline has a stable name (nmas-{list}-{function}), runs on a cron "
+            "schedule, and tests ALL devices that have that function configured. "
+            "Use this: (1) when no pipelines exist yet, (2) after bootstrapping a new "
+            "network, or (3) when asked to 'set up CI' or 'create verification pipelines'. "
+            "After every configure_apply success the relevant pipeline is updated "
+            "automatically — this tool is for initial setup and full rebuilds only."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "trigger_runs": {
+                    "type":        "boolean",
+                    "description": "Trigger each newly-created pipeline immediately (default true).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "query_ccie_kb",
+        "description": (
+            "Look up exact Cisco IOS command syntax, best practices, verification commands, "
+            "and troubleshooting steps from the local CCIE Enterprise knowledge base. "
+            "ALWAYS call this FIRST before generating any IOS configuration commands — "
+            "it returns verified, production-correct syntax without LLM inference. "
+            "Topics include: ospf, bgp, eigrp, redistribution, pbr, vlans, spanning_tree, "
+            "etherchannel, dhcp_snooping, port_security, gre, dmvpn, ipsec, mpls_vpn, "
+            "mpls_ldp, acl, zbf, aaa, qos, hsrp, vrrp, glbp, ip_sla, ipv6, multicast, "
+            "netconf, restconf, netmiko, ansible, eem, sdwan. "
+            "Omit subtopic to get the full topic section."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type":        "string",
+                    "description": "Protocol or feature name (e.g. 'ospf', 'bgp', 'dmvpn', 'qos')",
+                },
+                "subtopic": {
+                    "type":        "string",
+                    "description": "Optional sub-section (e.g. 'authentication', 'redistribution', 'verification')",
+                },
+            },
+            "required": ["topic"],
+        },
+    },
 ]
 
 
@@ -3744,6 +3801,12 @@ def _tool_label(name: str, args: dict) -> str:
     if name == "netbox_get_vpn_tunnels":
         dev = args.get("device", "")
         return f"NetBox: fetching VPN tunnels{' for ' + dev if dev else ''}..."
+    if name == "build_network_pipelines":
+        return "Scanning network functions and building verification pipelines..."
+    if name == "query_ccie_kb":
+        t = args.get("topic", "")
+        s = args.get("subtopic", "")
+        return f"CCIE KB: looking up {t}{('/' + s) if s else ''}..."
     return f"Executing {name}..."
 
 
@@ -4041,6 +4104,16 @@ def run_chat(
     except Exception:
         pass
 
+    # CCIE KB index — tells the AI what topics are available so it calls
+    # query_ccie_kb before generating any IOS config commands.
+    try:
+        from modules.ccie_kb import compact_index as _ccie_index
+        _kb_index = _ccie_index()
+        if _kb_index:
+            stable_parts.append(_kb_index)
+    except Exception:
+        pass
+
     # ── DYNAMIC context — re-injected into the user message each turn ─────────
     # Changes between messages (alerts, checkpoint, per-request context).
 
@@ -4074,6 +4147,26 @@ def run_chat(
                 "MISSING GOLDEN CONFIGS:\n"
                 + "\n".join(f"  - {d.get('hostname', d['ip'])} ({d['ip']})" for d in _missing_gc)
                 + "\nACTION: after the next successful CI run, call save_golden_config automatically."
+            )
+    except Exception:
+        pass
+
+    # Surface missing function pipelines so the AI bootstraps CI automatically.
+    try:
+        from modules.jenkins_runner import load_list_pipelines as _llp, load_config as _ljc
+        _jcfg_probe = _ljc()
+        _has_jenkins = bool(_jcfg_probe.get("jenkins_url", "").strip())
+        _existing_pipes = set(_llp())
+        _has_golden = bool(_list_golden_configs())
+        # Only surface if Jenkins is configured, golden configs exist, but no
+        # function pipelines have been created yet for this list.
+        _has_func_pipes = any(p.startswith("nmas-") for p in _existing_pipes)
+        if _has_jenkins and _has_golden and not _has_func_pipes:
+            _proactive_items.append(
+                "NO VERIFICATION PIPELINES:\n"
+                "  This list has golden configs but no persistent function pipelines.\n"
+                "ACTION: call build_network_pipelines() now to scan active functions and "
+                "create a verification pipeline for each one (OSPF, BGP, MPLS, interfaces, …)."
             )
     except Exception:
         pass
@@ -4287,10 +4380,13 @@ def run_chat(
     _dbg(f"is_first_turn={is_first_turn}  has_prior_tool_work={_has_prior_tool_work}")
     _dbg(f"kw_matched={_kw_matched}  inject_constraint={_inject_constraint}")
     _dbg(f"inject_topo={inject_topo}  history_len_before_append={len(history)-1}")
-    _dbg(f"PREFIX_PARTS ({len(prefix_parts)}):")
-    for _i, _p in enumerate(prefix_parts):
-        _dbg(f"  [{_i}] {_p[:200]!r}{'...' if len(_p) > 200 else ''}")
-    _dbg(f"context_prefix length={len(context_prefix)} chars")
+    _dbg(f"STABLE_PARTS ({len(stable_parts)}):")
+    for _i, _p in enumerate(stable_parts):
+        _dbg(f"  [S{_i}] {_p[:200]!r}{'...' if len(_p) > 200 else ''}")
+    _dbg(f"DYNAMIC_PARTS ({len(dynamic_parts)}):")
+    for _i, _p in enumerate(dynamic_parts):
+        _dbg(f"  [D{_i}] {_p[:200]!r}{'...' if len(_p) > 200 else ''}")
+    _dbg(f"stable_context length={len(stable_context)} chars  dynamic_prefix length={len(context_prefix)} chars")
 
     # -----------------------------------------------------------------
     # Tool executor
@@ -5966,6 +6062,75 @@ def run_chat(
                     return "No VPN tunnels found in NetBox."
                 return json.dumps(tunnels, indent=2)
 
+            elif name == "build_network_pipelines":
+                from modules.pipeline_builder import bootstrap_all_pipelines
+                from modules.jenkins_runner   import load_config as _pb_jcfg, _trigger_jenkins
+                from modules.device           import load_saved_devices, decrypt_field
+
+                _pb_cfg  = _pb_jcfg()
+                _pb_devs = []
+                for _d in devices_loader():
+                    try:
+                        _pwd = decrypt_field(_d["password"])
+                    except Exception:
+                        _pwd = _d.get("password", "")
+                    _pb_devs.append({
+                        "hostname": _d.get("hostname", _d["ip"]),
+                        "ip":       _d["ip"],
+                        "username": _d.get("username", ""),
+                        "password": _pwd,
+                    })
+
+                _pb_result = bootstrap_all_pipelines(_pb_devs, _pb_cfg)
+
+                if not _pb_result.get("ok") and _pb_result.get("skipped"):
+                    return "Jenkins is not configured — cannot create pipelines. Configure Jenkins in Settings first."
+
+                created = _pb_result.get("created", [])
+                updated = _pb_result.get("updated", [])
+                errors  = _pb_result.get("errors",  [])
+                funcs   = _pb_result.get("functions_detected", [])
+
+                if not funcs:
+                    return (
+                        "No network functions detected. "
+                        "Save golden configs for at least one device first so the builder "
+                        "can determine which protocols are configured."
+                    )
+
+                # Optionally trigger all newly-created pipelines for instant feedback.
+                trigger = args.get("trigger_runs", True)
+                triggered = []
+                if trigger and created:
+                    for _jn in created:
+                        try:
+                            _trigger_jenkins(_pb_cfg, _jn)
+                            triggered.append(_jn)
+                        except Exception:
+                            pass
+
+                lines = [
+                    f"Built verification pipelines for {len(funcs)} network function(s): "
+                    f"{', '.join(funcs)}."
+                ]
+                if created:
+                    lines.append(f"Created ({len(created)}): {', '.join(created)}")
+                if updated:
+                    lines.append(f"Updated ({len(updated)}): {', '.join(updated)}")
+                if triggered:
+                    lines.append(f"Triggered immediately: {', '.join(triggered)}")
+                if errors:
+                    lines.append(f"Errors ({len(errors)}): {'; '.join(errors)}")
+                return "\n".join(lines)
+
+            elif name == "query_ccie_kb":
+                from modules.ccie_kb import query as _ccie_query
+                topic    = args.get("topic", "").strip()
+                subtopic = args.get("subtopic", "").strip() or None
+                if not topic:
+                    return "Error: topic is required."
+                return _ccie_query(topic, subtopic)
+
             else:
                 return f"Unknown tool: {name}"
 
@@ -6041,6 +6206,8 @@ def run_chat(
         "netbox_get_interfaces":                  5000,
         "netbox_get_prefixes":                    5000,
         "netbox_get_vpn_tunnels":                 5000,
+        "build_network_pipelines":               3000,
+        "query_ccie_kb":                         8000,
         "run_jenkins_checks":                    10000,
         "run_jenkins_job":                       10000,
         "jenkins_get_current_pipelines":           1000,
