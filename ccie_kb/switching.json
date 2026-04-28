@@ -1,0 +1,310 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "scope": "CCIE Enterprise Infrastructure \u00e2\u20ac\u201d Layer 2 switching"
+  },
+  "vlans": {
+    "vlan_database": [
+      "vlan {id}",
+      " name {name}",
+      "vlan {start}-{end}"
+    ],
+    "access_port": [
+      "interface {intf}",
+      " switchport mode access",
+      " switchport access vlan {id}",
+      " switchport nonegotiate",
+      " spanning-tree portfast",
+      " spanning-tree bpduguard enable"
+    ],
+    "trunk_port": [
+      "interface {intf}",
+      " switchport mode trunk",
+      " switchport trunk encapsulation dot1q",
+      " switchport trunk native vlan {id}",
+      " switchport trunk allowed vlan {list}",
+      " switchport nonegotiate"
+    ],
+    "svi": [
+      "interface Vlan{id}",
+      " ip address {ip} {mask}",
+      " no shutdown",
+      " ip helper-address {dhcp_server}"
+    ],
+    "vtp": {
+      "server": [
+        "vtp mode server",
+        "vtp domain {name}",
+        "vtp password {pass}"
+      ],
+      "client": [
+        "vtp mode client",
+        "vtp domain {name}",
+        "vtp password {pass}"
+      ],
+      "transparent": [
+        "vtp mode transparent"
+      ],
+      "off": [
+        "vtp mode off"
+      ],
+      "version3": [
+        "vtp version 3",
+        "vtp primary vlan force"
+      ],
+      "notes": "VTPv3 adds MST instance sync and extended VLANs 1006-4094. Always use VTP passwords."
+    },
+    "ipv6_svi": [
+      "interface Vlan{vlan_id}",
+      " ipv6 address {prefix}/{len}",
+      " ipv6 address FE80::{link_local_id} link-local",
+      " ipv6 nd ra-interval 200",
+      " ipv6 nd prefix {prefix}/{len} 3600 1800",
+      " no shutdown"
+    ],
+    "ipv6_trunk_guard": [
+      "interface {intf}",
+      " switchport mode trunk",
+      " switchport trunk allowed vlan {vlan_list}",
+      " ipv6 nd raguard attach-policy RAGUARD_HOST",
+      " ipv6 dhcp guard attach-policy DHCPV6_CLIENT"
+    ]
+  },
+  "spanning_tree": {
+    "modes": {
+      "pvst_plus": "Per-VLAN STP (IEEE 802.1D per VLAN) \u00e2\u20ac\u201d default on Cisco",
+      "rapid_pvst": "Per-VLAN Rapid STP (IEEE 802.1w) \u00e2\u20ac\u201d recommended",
+      "mst": "Multiple Spanning Tree (IEEE 802.1s) \u00e2\u20ac\u201d maps VLANs to instances"
+    },
+    "enable_rapid": [
+      "spanning-tree mode rapid-pvst"
+    ],
+    "root_bridge": [
+      "spanning-tree vlan {id} root primary",
+      "spanning-tree vlan {id} root secondary",
+      "spanning-tree vlan {id} priority {0|4096|8192|16384|32768}"
+    ],
+    "port_cost": [
+      "interface {intf}",
+      " spanning-tree vlan {id} cost {1-200000000}",
+      " spanning-tree vlan {id} port-priority {0-240}"
+    ],
+    "timers": [
+      "spanning-tree vlan {id} hello-time {1-10}",
+      "spanning-tree vlan {id} forward-time {4-30}",
+      "spanning-tree vlan {id} max-age {6-40}"
+    ],
+    "edge_ports": [
+      "interface {intf}",
+      " spanning-tree portfast",
+      " spanning-tree bpduguard enable",
+      "spanning-tree portfast default",
+      "spanning-tree portfast bpduguard default"
+    ],
+    "loop_prevention": [
+      "spanning-tree guard loop",
+      "spanning-tree guard root",
+      "spanning-tree loopguard default",
+      "spanning-tree bpdufilter enable"
+    ],
+    "mst_config": [
+      "spanning-tree mst configuration",
+      " name {region_name}",
+      " revision {0-65535}",
+      " instance {1-4094} vlan {list}",
+      "spanning-tree mode mst",
+      "spanning-tree mst {instance} root primary",
+      "spanning-tree mst {instance} priority {0-61440}"
+    ],
+    "topology_change_notification": "TCN flushes MAC table on all ports. Portfast suppresses TCN generation.",
+    "verification": [
+      "show spanning-tree",
+      "show spanning-tree vlan {id}",
+      "show spanning-tree detail",
+      "show spanning-tree interface {intf} detail",
+      "show spanning-tree inconsistentports",
+      "show spanning-tree mst {instance}"
+    ]
+  },
+  "etherchannel": {
+    "lacp": {
+      "description": "IEEE 802.3ad \u00e2\u20ac\u201d open standard. Active sends LACPDU, passive waits.",
+      "commands": [
+        "interface range {intf1} - {intf2}",
+        " channel-protocol lacp",
+        " channel-group {1-48} mode {active|passive}",
+        "interface Port-channel{id}",
+        " switchport mode trunk",
+        " switchport trunk allowed vlan {list}"
+      ],
+      "notes": "At least one side must be active. Max 8 active + 8 standby links per bundle."
+    },
+    "pagp": {
+      "description": "Cisco proprietary. Desirable sends PAgP, auto waits.",
+      "commands": [
+        "interface range {intf1} - {intf2}",
+        " channel-group {id} mode {desirable|auto}"
+      ]
+    },
+    "static": {
+      "commands": [
+        "interface range {intf1} - {intf2}",
+        " channel-group {id} mode on"
+      ],
+      "notes": "No negotiation. Both sides must be 'on'. Not recommended \u00e2\u20ac\u201d no error detection."
+    },
+    "layer3_etherchannel": [
+      "interface Port-channel{id}",
+      " no switchport",
+      " ip address {ip} {mask}",
+      "interface range {intf1} - {intf2}",
+      " no switchport",
+      " channel-group {id} mode active"
+    ],
+    "load_balance": [
+      "port-channel load-balance {src-mac|dst-mac|src-dst-mac|src-ip|dst-ip|src-dst-ip|src-port|dst-port}"
+    ],
+    "verification": [
+      "show etherchannel summary",
+      "show etherchannel {id} detail",
+      "show lacp {id} neighbor",
+      "show pagp {id} neighbor"
+    ],
+    "troubleshooting": {
+      "bundle_not_forming": [
+        "Speed and duplex must match on all member links",
+        "All members must have same VLAN config, STP config",
+        "Switchport mode must match \u00e2\u20ac\u201d all access or all trunk with same config",
+        "Cannot mix access and trunk ports in same bundle",
+        "Both sides must agree on negotiation mode (not one active + one on)"
+      ]
+    }
+  },
+  "dhcp_snooping_dai": {
+    "dhcp_snooping": {
+      "description": "Prevents rogue DHCP servers. Untrusted ports only receive DISCOVER/REQUEST.",
+      "commands": [
+        "ip dhcp snooping",
+        "ip dhcp snooping vlan {list}",
+        "no ip dhcp snooping information option",
+        "interface {uplink_to_server}",
+        " ip dhcp snooping trust",
+        "ip dhcp snooping limit rate {pps}"
+      ]
+    },
+    "dynamic_arp_inspection": {
+      "description": "ARP validation using DHCP snooping binding table. Prevents ARP poisoning.",
+      "commands": [
+        "ip arp inspection vlan {list}",
+        "interface {trusted_intf}",
+        " ip arp inspection trust",
+        "ip arp inspection limit rate {pps} [burst interval {secs}]",
+        "ip arp inspection validate src-mac dst-mac ip"
+      ]
+    },
+    "ip_source_guard": {
+      "description": "Filters traffic based on DHCP snooping binding table.",
+      "commands": [
+        "interface {intf}",
+        " ip verify source [port-security]"
+      ]
+    },
+    "dhcpv6_guard_note": {
+      "description": "DHCPv6 Guard replaces DHCPv6 snooping for IPv6. See ipv6_fhs.dhcpv6_guard.",
+      "commands": [
+        "ipv6 dhcp guard policy DHCPV6_SERVER",
+        " device-role server",
+        "interface {uplink_to_server}",
+        " ipv6 dhcp guard attach-policy DHCPV6_SERVER"
+      ]
+    }
+  },
+  "port_security": {
+    "commands": [
+      "interface {intf}",
+      " switchport port-security",
+      " switchport port-security maximum {1-8192}",
+      " switchport port-security mac-address {mac|sticky}",
+      " switchport port-security violation {protect|restrict|shutdown}",
+      " switchport port-security aging time {1-1440}",
+      " switchport port-security aging type {absolute|inactivity}"
+    ],
+    "violation_modes": {
+      "protect": "Drop frames from unknown MACs silently. No increment of violation counter.",
+      "restrict": "Drop + increment violation counter + send SNMP trap/syslog.",
+      "shutdown": "Put port into err-disabled state. Must manually re-enable or use err-disable recovery."
+    },
+    "recovery": [
+      "errdisable recovery cause psecure-violation",
+      "errdisable recovery interval {30-86400}"
+    ]
+  },
+  "private_vlan": {
+    "description": "Isolates ports within same VLAN/subnet. Promiscuous ports communicate with all.",
+    "commands": [
+      "vlan {primary_id}",
+      " private-vlan primary",
+      "vlan {isolated_id}",
+      " private-vlan isolated",
+      "vlan {community_id}",
+      " private-vlan community",
+      "vlan {primary_id}",
+      " private-vlan association {isolated_id} {community_id}",
+      "interface {promiscuous}",
+      " switchport mode private-vlan promiscuous",
+      " switchport private-vlan mapping {primary_id} {secondary_list}",
+      "interface {host}",
+      " switchport mode private-vlan host",
+      " switchport private-vlan host-association {primary_id} {secondary_id}"
+    ]
+  },
+  "ipv6_fhs": {
+    "description": "IPv6 First Hop Security \u2014 protects against rogue RAs, DHCPv6 spoofing, ND spoofing/replay.",
+    "ra_guard": [
+      "ipv6 nd raguard policy RAGUARD_HOST",
+      " device-role host",
+      "ipv6 nd raguard policy RAGUARD_ROUTER",
+      " device-role router",
+      " trusted-port",
+      "interface {host_intf}",
+      " ipv6 nd raguard attach-policy RAGUARD_HOST",
+      "interface {uplink_intf}",
+      " ipv6 nd raguard attach-policy RAGUARD_ROUTER"
+    ],
+    "dhcpv6_guard": [
+      "ipv6 dhcp guard policy DHCPV6_SERVER",
+      " device-role server",
+      "ipv6 dhcp guard policy DHCPV6_CLIENT",
+      " device-role client",
+      "interface {uplink_to_server}",
+      " ipv6 dhcp guard attach-policy DHCPV6_SERVER",
+      "interface {host_intf}",
+      " ipv6 dhcp guard attach-policy DHCPV6_CLIENT"
+    ],
+    "nd_inspection": [
+      "ipv6 nd inspection policy ND_INSPECT",
+      " device-role host",
+      " drop-unsecured",
+      "interface {intf}",
+      " ipv6 nd inspection attach-policy ND_INSPECT",
+      "vlan configuration {vlan_id}",
+      " ipv6 nd inspection attach-policy ND_INSPECT"
+    ],
+    "ipv6_source_guard": [
+      "ipv6 source-guard policy SG_POLICY",
+      " permit link-local",
+      "interface {intf}",
+      " ipv6 source-guard attach-policy SG_POLICY"
+    ],
+    "binding_table": [
+      "ipv6 neighbor binding max-entries {max_entries}",
+      "ipv6 neighbor binding logging"
+    ],
+    "verification": [
+      "show ipv6 neighbor binding",
+      "show ipv6 nd raguard policy",
+      "show ipv6 dhcp guard policy",
+      "show ipv6 nd inspection policy"
+    ]
+  }
+}

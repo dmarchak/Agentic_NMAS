@@ -1,0 +1,413 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "scope": "CCIE Enterprise Infrastructure \u00e2\u20ac\u201d VPN and tunneling"
+  },
+  "gre": {
+    "description": "Generic Routing Encapsulation \u00e2\u20ac\u201d RFC 2784. Multiprotocol, supports multicast/routing.",
+    "basic": [
+      "interface Tunnel{id}",
+      " ip address {tunnel_ip} {mask}",
+      " tunnel source {local_ip_or_intf}",
+      " tunnel destination {remote_ip}",
+      " tunnel mode gre ip",
+      " ip mtu 1400",
+      " ip tcp adjust-mss 1360",
+      " keepalive {interval} {retries}"
+    ],
+    "ipv6_over_ipv4": [
+      "interface Tunnel{id}",
+      " ipv6 address {prefix}/{len}",
+      " tunnel source {local_ipv4_intf}",
+      " tunnel destination {remote_ipv4}",
+      " tunnel mode ipv6ip",
+      " ip mtu 1480",
+      " ip tcp adjust-mss 1440"
+    ],
+    "notes": "MTU: GRE adds 24B header. With IPsec: 24+52 = 76B overhead. Set ip mtu 1400, tcp adjust-mss 1360 at minimum.",
+    "ipv6_tunnel": [
+      "interface Tunnel{id}",
+      " ipv6 address {prefix}/{len}",
+      " tunnel source {local_intf}",
+      " tunnel destination {remote_ipv6}",
+      " tunnel mode ipv6ip",
+      " ipv6 mtu 1480",
+      " ipv6 tcp adjust-mss 1440"
+    ],
+    "dual_stack": [
+      "interface Tunnel{id}",
+      " ip address {ipv4_tunnel_ip} {mask}",
+      " ipv6 address {prefix}/{len}",
+      " tunnel source {local_intf}",
+      " tunnel destination {remote_ip}",
+      " tunnel mode gre ip",
+      " ip mtu 1400",
+      " ipv6 mtu 1400",
+      " ip tcp adjust-mss 1360",
+      " ipv6 tcp adjust-mss 1360"
+    ]
+  },
+  "dmvpn": {
+    "description": "Dynamic Multipoint VPN. Hub-spoke with dynamic spoke-to-spoke tunnels via NHRP.",
+    "phase1": {
+      "description": "Hub-spoke only. Spoke-to-spoke traffic routes via hub. Simplest.",
+      "hub": [
+        "interface Tunnel{id}",
+        " ip address {hub_tunnel_ip} {mask}",
+        " ip nhrp map multicast dynamic",
+        " ip nhrp network-id {id}",
+        " ip nhrp holdtime 300",
+        " tunnel source {hub_physical_intf}",
+        " tunnel mode gre multipoint",
+        " tunnel key {key}",
+        " ip ospf network point-to-multipoint",
+        " ip mtu 1400",
+        " ip tcp adjust-mss 1360"
+      ],
+      "spoke": [
+        "interface Tunnel{id}",
+        " ip address {spoke_tunnel_ip} {mask}",
+        " ip nhrp map {hub_tunnel_ip} {hub_physical_ip}",
+        " ip nhrp map multicast {hub_physical_ip}",
+        " ip nhrp network-id {id}",
+        " ip nhrp nhs {hub_tunnel_ip}",
+        " ip nhrp holdtime 300",
+        " tunnel source {spoke_physical_intf}",
+        " tunnel destination {hub_physical_ip}",
+        " tunnel key {key}",
+        " ip ospf network point-to-multipoint",
+        " ip mtu 1400",
+        " ip tcp adjust-mss 1360"
+      ]
+    },
+    "phase2": {
+      "description": "Spoke-to-spoke tunnels formed dynamically after initial hub resolution.",
+      "hub_changes": [
+        " tunnel mode gre multipoint (same as phase1)",
+        " ip nhrp redirect"
+      ],
+      "spoke_changes": [
+        " tunnel mode gre multipoint (no longer point-to-point)",
+        " ip nhrp shortcut",
+        " ip ospf network broadcast OR use EIGRP"
+      ],
+      "routing_note": "Use EIGRP or BGP for phase2. OSPF requires point-to-multipoint which disables shortcuts."
+    },
+    "phase3": {
+      "description": "NHRP shortcuts with hierarchical topologies.",
+      "hub": [
+        " ip nhrp redirect"
+      ],
+      "spoke": [
+        " ip nhrp shortcut"
+      ],
+      "notes": "Phase 3 allows spoke-to-spoke even in hierarchical hub-and-spoke."
+    },
+    "with_ipsec": [
+      "crypto isakmp policy 10",
+      " authentication pre-share",
+      " encryption aes 256",
+      " hash sha256",
+      " group 14",
+      " lifetime 86400",
+      "crypto isakmp key {key} address 0.0.0.0 0.0.0.0",
+      "crypto ipsec transform-set TS esp-aes 256 esp-sha256-hmac",
+      " mode transport",
+      "crypto ipsec profile DMVPN_PROFILE",
+      " set transform-set TS",
+      " set pfs group14",
+      "interface Tunnel{id}",
+      " tunnel protection ipsec profile DMVPN_PROFILE"
+    ],
+    "verification": [
+      "show dmvpn",
+      "show dmvpn detail",
+      "show ip nhrp",
+      "show ip nhrp multicast",
+      "show ip nhrp nhs",
+      "show tunnel endpoints"
+    ],
+    "phase1_ipv6": {
+      "description": "DMVPN over IPv6 transport (underlay is IPv6, overlay can be IPv4 or IPv6).",
+      "hub": [
+        "interface Tunnel{id}",
+        " ipv6 address {hub_tunnel_ipv6}/{len}",
+        " ipv6 nhrp map multicast dynamic",
+        " ipv6 nhrp network-id {nhrp_network_id}",
+        " ipv6 nhrp holdtime 300",
+        " tunnel source {hub_intf}",
+        " tunnel mode gre multipoint ipv6",
+        " tunnel key {tunnel_key}"
+      ],
+      "spoke": [
+        "interface Tunnel{id}",
+        " ipv6 address {spoke_tunnel_ipv6}/{len}",
+        " ipv6 nhrp map {hub_tunnel_ipv6} {hub_physical_ipv6}",
+        " ipv6 nhrp map multicast {hub_physical_ipv6}",
+        " ipv6 nhrp network-id {nhrp_network_id}",
+        " ipv6 nhrp nhs {hub_tunnel_ipv6}",
+        " tunnel source {spoke_intf}",
+        " tunnel destination {hub_physical_ipv6}",
+        " tunnel key {tunnel_key}"
+      ]
+    }
+  },
+  "ipsec": {
+    "description": "IKEv1/IKEv2 site-to-site VPN. Two phases: IKE SA (phase 1) + IPsec SA (phase 2).",
+    "ikev1_site_to_site": [
+      "crypto isakmp policy {priority}",
+      " authentication {pre-share|rsa-sig}",
+      " encryption {aes 256|3des|aes 128}",
+      " hash {sha256|sha|md5}",
+      " group {14|5|2|19|20}",
+      " lifetime {seconds}",
+      "crypto isakmp key {psk} address {peer_ip}",
+      "crypto ipsec transform-set {name} esp-aes 256 esp-sha256-hmac",
+      " mode {tunnel|transport}",
+      "crypto ipsec security-association lifetime seconds {3600}",
+      "ip access-list extended CRYPTO_ACL",
+      " permit ip {local_net} {wc} {remote_net} {wc}",
+      "crypto map {MAP_NAME} {seq} ipsec-isakmp",
+      " set peer {peer_ip}",
+      " set transform-set {name}",
+      " set pfs group{14}",
+      " match address CRYPTO_ACL",
+      "interface {outside_intf}",
+      " crypto map {MAP_NAME}"
+    ],
+    "ikev2_site_to_site": [
+      "crypto ikev2 proposal IKEv2_PROP",
+      " encryption aes-cbc-256",
+      " integrity sha256",
+      " group 14",
+      "crypto ikev2 policy IKEv2_POLICY",
+      " proposal IKEv2_PROP",
+      "crypto ikev2 keyring IKEv2_KEYRING",
+      " peer {peer_name}",
+      "  address {peer_ip}",
+      "  pre-shared-key {key}",
+      "crypto ikev2 profile IKEv2_PROFILE",
+      " match identity remote address {peer_ip} 255.255.255.255",
+      " authentication local pre-share",
+      " authentication remote pre-share",
+      " keyring local IKEv2_KEYRING",
+      "crypto ipsec transform-set TS esp-aes 256 esp-sha256-hmac",
+      " mode tunnel",
+      "crypto map CMAP {seq} ipsec-isakmp",
+      " set peer {peer_ip}",
+      " set transform-set TS",
+      " set ikev2-profile IKEv2_PROFILE",
+      " match address CRYPTO_ACL"
+    ],
+    "virtual_tunnel_interface": {
+      "description": "IKEv2 + VTI \u00e2\u20ac\u201d preferred over crypto maps for route-based VPN.",
+      "commands": [
+        "crypto ipsec profile VTI_PROFILE",
+        " set transform-set TS",
+        " set ikev2-profile IKEv2_PROFILE",
+        "interface Tunnel{id}",
+        " ip address {ip} {mask}",
+        " tunnel source {intf}",
+        " tunnel destination {peer_ip}",
+        " tunnel mode ipsec ipv4",
+        " tunnel protection ipsec profile VTI_PROFILE"
+      ]
+    },
+    "nat_traversal": "Enabled by default on IOS. Uses UDP 4500. Detects NAT with vendor ID.",
+    "verification": [
+      "show crypto isakmp sa",
+      "show crypto ipsec sa",
+      "show crypto session",
+      "show crypto session detail",
+      "debug crypto isakmp",
+      "debug crypto ipsec"
+    ],
+    "ikev2_ipv6": {
+      "description": "IKEv2 VTI for IPv6 \u2014 native IPv6 IPsec transport.",
+      "commands": [
+        "crypto ikev2 proposal IKEv2_PROP",
+        " encryption aes-cbc-256",
+        " integrity sha256",
+        " group 14",
+        "crypto ikev2 policy IKEv2_POLICY",
+        " proposal IKEv2_PROP",
+        "crypto ikev2 keyring IKEv2_KR",
+        " peer {peer_name}",
+        "  address {peer_ipv6}",
+        "  pre-shared-key {psk}",
+        "crypto ikev2 profile IKEv2_PROFILE",
+        " match identity remote address {peer_ipv6} ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        " authentication local pre-share",
+        " authentication remote pre-share",
+        " keyring local IKEv2_KR",
+        "crypto ipsec transform-set TS esp-aes 256 esp-sha256-hmac",
+        " mode tunnel",
+        "crypto ipsec profile VTI_PROFILE",
+        " set transform-set TS",
+        " set ikev2-profile IKEv2_PROFILE",
+        "interface Tunnel{id}",
+        " ipv6 address {prefix}/{len}",
+        " tunnel source {local_intf}",
+        " tunnel destination {peer_ipv6}",
+        " tunnel mode ipsec ipv6",
+        " tunnel protection ipsec profile VTI_PROFILE"
+      ]
+    }
+  },
+  "mpls_vpn": {
+    "description": "MPLS L3VPN \u00e2\u20ac\u201d PE routes customer traffic in separate VRF. RFC 4364.",
+    "vrf_config": [
+      "vrf definition {VRF_NAME}",
+      " rd {asn}:{id}",
+      " address-family ipv4",
+      "  route-target import {asn}:{id}",
+      "  route-target export {asn}:{id}",
+      " address-family ipv6",
+      "  route-target import {asn}:{id}",
+      "  route-target export {asn}:{id}",
+      "interface {CE_facing_intf}",
+      " vrf forwarding {VRF_NAME}",
+      " ip address {ip} {mask}"
+    ],
+    "pe_ce_routing": {
+      "static": [
+        "ip route vrf {VRF_NAME} {customer_prefix} {mask} {CE_ip}"
+      ],
+      "ospf": [
+        "router ospf {pid} vrf {VRF_NAME}",
+        " router-id {ip}",
+        " redistribute bgp {as} subnets",
+        " network {CE_network} {wc} area 0",
+        "router bgp {as}",
+        " address-family ipv4 vrf {VRF_NAME}",
+        "  redistribute ospf {pid} vrf {VRF_NAME}"
+      ],
+      "bgp": [
+        "router bgp {as}",
+        " address-family ipv4 vrf {VRF_NAME}",
+        "  neighbor {CE_ip} remote-as {CE_as}",
+        "  neighbor {CE_ip} activate",
+        "  neighbor {CE_ip} as-override",
+        "  neighbor {CE_ip} send-community both"
+      ]
+    },
+    "pe_pe_mpls_bgp": [
+      "router bgp {provider_as}",
+      " neighbor {RR_or_PE_ip} remote-as {provider_as}",
+      " neighbor {RR_or_PE_ip} update-source Loopback0",
+      " address-family vpnv4",
+      "  neighbor {RR_or_PE_ip} activate",
+      "  neighbor {RR_or_PE_ip} send-community extended"
+    ],
+    "route_target_filtering": {
+      "rt_import_export": "RT export tags routes leaving VRF. RT import selects routes entering VRF.",
+      "hub_spoke_rt": {
+        "hub_import": "Import spoke RT + hub RT",
+        "spoke_import": "Import hub RT only \u00e2\u20ac\u201d spokes communicate only via hub"
+      }
+    },
+    "verification": [
+      "show vrf",
+      "show ip vrf interfaces",
+      "show bgp vpnv4 unicast all",
+      "show bgp vpnv4 unicast vrf {VRF_NAME}",
+      "show ip route vrf {VRF_NAME}",
+      "show mpls forwarding-table",
+      "show mpls ldp neighbor",
+      "ping vrf {VRF_NAME} {ip}"
+    ],
+    "ipv6_vrf": [
+      "vrf definition {vrf_name}",
+      " rd {asn}:{id}",
+      " address-family ipv4",
+      "  route-target import {asn}:{id}",
+      "  route-target export {asn}:{id}",
+      " address-family ipv6",
+      "  route-target import {asn}:{id}",
+      "  route-target export {asn}:{id}"
+    ]
+  },
+  "mpls_ldp": {
+    "description": "MPLS Label Distribution Protocol \u00e2\u20ac\u201d RFC 5036.",
+    "basic": [
+      "mpls ip",
+      "mpls ldp router-id Loopback0 force",
+      "mpls label protocol ldp",
+      "interface {core_intf}",
+      " mpls ip",
+      " mpls mtu 1508"
+    ],
+    "authentication": [
+      "mpls ldp neighbor {peer_ldp_id} password {key}"
+    ],
+    "graceful_restart": [
+      "mpls ldp graceful-restart"
+    ],
+    "verification": [
+      "show mpls ldp neighbor",
+      "show mpls ldp bindings",
+      "show mpls forwarding-table",
+      "show mpls interfaces",
+      "show mpls ldp discovery",
+      "show mpls ldp parameters"
+    ]
+  },
+  "6pe": {
+    "description": "6PE \u2014 IPv6 Provider Edge. Carries IPv6 over IPv4 MPLS backbone. RFC 4798.",
+    "concept": "P routers remain IPv4-only. PE routers do IPv4+IPv6 with BGP labeled IPv6 (label stack).",
+    "pe_config": [
+      "ipv6 unicast-routing",
+      "router bgp {as}",
+      " neighbor {ibgp_peer} remote-as {as}",
+      " neighbor {ibgp_peer} update-source Loopback0",
+      " address-family ipv6",
+      "  neighbor {ibgp_peer} activate",
+      "  neighbor {ibgp_peer} send-community both",
+      "  neighbor {ibgp_peer} send-label",
+      "  redistribute connected",
+      "  redistribute ospfv3 {pid}",
+      "  redistribute isis {tag}"
+    ],
+    "ce_facing_interface": [
+      "interface {ce_intf}",
+      " ipv6 address {prefix}/{len}",
+      " mpls bgp forwarding"
+    ],
+    "verification": [
+      "show bgp ipv6 unicast",
+      "show bgp ipv6 unicast labels",
+      "show mpls forwarding-table",
+      "show ipv6 route bgp"
+    ]
+  },
+  "6vpe": {
+    "description": "6VPE \u2014 IPv6 VPN over MPLS. RFC 4659. Carries IPv6 customer routes in VRF with VPNv6.",
+    "vrf_config": [
+      "vrf definition {vrf_name}",
+      " rd {asn}:{id}",
+      " address-family ipv6",
+      "  route-target import {asn}:{id}",
+      "  route-target export {asn}:{id}",
+      "interface {ce_facing_intf}",
+      " vrf forwarding {vrf_name}",
+      " ipv6 address {prefix}/{len}"
+    ],
+    "pe_bgp": [
+      "router bgp {as}",
+      " address-family vpnv6",
+      "  neighbor {ibgp_peer} activate",
+      "  neighbor {ibgp_peer} send-community both",
+      " address-family ipv6 vrf {vrf_name}",
+      "  redistribute connected",
+      "  redistribute ospfv3 {pid} vrf {vrf_name}",
+      "  neighbor {ce_ipv6} remote-as {ce_as}",
+      "  neighbor {ce_ipv6} activate"
+    ],
+    "verification": [
+      "show bgp vpnv6 unicast all",
+      "show bgp vpnv6 unicast vrf {vrf_name}",
+      "show ipv6 route vrf {vrf_name}",
+      "show vrf {vrf_name}"
+    ]
+  }
+}

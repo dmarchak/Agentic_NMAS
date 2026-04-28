@@ -351,7 +351,15 @@ def delete_device_list(list_name: str) -> tuple[bool, str]:
     slug     = lists[list_name]
     list_dir = os.path.join(LISTS_DIR, slug)
     if os.path.exists(list_dir):
-        shutil.rmtree(list_dir)
+        import stat
+
+        def _force_remove(func, path, _exc):
+            # Windows marks some files read-only (e.g. golden config .cfg files);
+            # clear the attribute and retry the failed delete operation.
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+
+        shutil.rmtree(list_dir, onerror=_force_remove)
         logger.info("Deleted list folder: %s", list_dir)
 
     del lists[list_name]

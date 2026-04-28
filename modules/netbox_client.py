@@ -2052,18 +2052,24 @@ def _scan_device_from_golden(dev: dict) -> dict:
     from modules.ai_assistant import _load_golden_config_file
 
     ip       = dev.get("ip", "")
-    hostname = dev.get("hostname", "") or ip
+    # CSV hostname is authoritative — it reflects the current name (manually set
+    # or updated via Refresh Hostnames).  Only fall back to the golden config's
+    # IOS hostname command when the CSV entry has no hostname at all.
+    csv_hostname = dev.get("hostname", "").strip()
 
     golden = _load_golden_config_file(ip)
     if not golden:
         return {
             "ip":       ip,
-            "hostname": hostname,
+            "hostname": csv_hostname or ip,
             "error":    "No golden config saved — run 'Save Golden Config' first",
         }
 
     facts           = _parse_facts_from_config(golden)
-    hostname        = facts.pop("hostname") or hostname
+    golden_hostname = facts.pop("hostname", "") or ""
+    # Prefer the CSV hostname; fall back to the IOS hostname from the config;
+    # final fallback is the IP address.
+    hostname = csv_hostname or golden_hostname or ip
     interfaces      = _parse_all_interfaces_from_config(golden)
     vrfs            = _parse_vrfs_from_config(golden)
     vlans           = _parse_vlans_from_config(golden)
@@ -2245,14 +2251,26 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
     return summary
 
 
+def _nb_delete(session, base: str, path: str, obj_id: int) -> bool:
+    """DELETE one NetBox object; return True on success or already-gone (404)."""
+    try:
+        r = session.delete(f"{base}/api/{path.lstrip('/')}{obj_id}/", timeout=15)
+        return r.ok or r.status_code == 404
+    except Exception as exc:
+        log.debug("netbox _nb_delete %s/%s: %s", path, obj_id, exc)
+        return False
+
+
 def remove_list_from_netbox(list_name: str) -> dict:
-    """Delete all NetBox objects that were created for a device list.
+    """Delete every NetBox object created for a device list.
 
-    Deletes (in order): devices in the site → site → region → list VRF.
-    NetBox cascades the device deletion to interfaces, IP addresses, cables,
-    and config contexts automatically.
-
-    Returns {ok, deleted_devices, deleted_site, deleted_region, deleted_vrf, error}.
+    Deletion order (respects referential integrity):
+      1. VPN tunnel terminations + tunnels
+      2. IPAM prefixes scoped to the site or list VRF
+      3. VLANs scoped to the site
+      4. Devices (NetBox cascades → interfaces, IP-address assignments)
+      5. Per-interface VRFs that are now empty (no IPs, no prefixes)
+      6. Site → region → list-level VRF
     """
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
@@ -2262,62 +2280,134 @@ def remove_list_from_netbox(list_name: str) -> dict:
     base    = cfg["url"]
     slug    = _slug(list_name)
 
-    deleted_devices = 0
-    deleted_site    = False
-    deleted_region  = False
-    deleted_vrf     = False
+    counts: dict[str, int] = {
+        "devices": 0, "tunnels": 0, "prefixes": 0,
+        "vlans": 0, "vrfs": 0,
+    }
+    flags: dict[str, bool] = {
+        "site": False, "region": False, "list_vrf": False,
+    }
 
     try:
-        # Find the site
-        site = _nb_first(session, base, "dcim/sites/", slug=slug)
-        if site:
-            site_id = site["id"]
-            # Delete all devices in the site
-            devices = _nb_get(session, base, "dcim/devices/", site_id=site_id)
-            for dev in devices:
-                try:
-                    r = session.delete(f"{base}/api/dcim/devices/{dev['id']}/", timeout=15)
-                    if r.ok or r.status_code == 404:
-                        deleted_devices += 1
-                    else:
-                        log.warning("netbox remove: device %s delete returned %s",
-                                    dev.get("name"), r.status_code)
-                except Exception as exc:
-                    log.warning("netbox remove: device %s delete failed: %s",
-                                dev.get("name"), exc)
+        # ── Resolve site and list VRF ────────────────────────────────────────
+        site         = _nb_first(session, base, "dcim/sites/",  slug=slug)
+        list_vrf_obj = _nb_first(session, base, "ipam/vrfs/",   name=list_name)
+        site_id      = site["id"]         if site         else None
+        list_vrf_id  = list_vrf_obj["id"] if list_vrf_obj else None
 
-            # Delete the site
+        # ── Collect devices in the site ────────────────────────────────────────
+        site_devices: list[dict] = (
+            _nb_get(session, base, "dcim/devices/", site_id=site_id) if site_id else []
+        )
+        site_device_ids: set[int] = {d["id"] for d in site_devices}
+
+        # ── Collect ALL VRF IDs used by this list's devices ─────────────────
+        # Query dcim/interfaces for each device and record the VRF assigned to
+        # each interface.  This is the only reliably supported filter — the
+        # ipam/ip-addresses/?site_id= filter is not guaranteed across NetBox
+        # versions and was the root cause of VRFs being left behind.
+        per_intf_vrf_ids: set[int] = set()
+        for dev_id in site_device_ids:
             try:
-                r = session.delete(f"{base}/api/dcim/sites/{site_id}/", timeout=15)
-                if r.ok or r.status_code == 404:
-                    deleted_site = True
+                for iface in _nb_get(session, base, "dcim/interfaces/", device_id=dev_id):
+                    vrf_obj = iface.get("vrf")
+                    if isinstance(vrf_obj, dict) and vrf_obj.get("id"):
+                        candidate = vrf_obj["id"]
+                        if candidate != list_vrf_id:
+                            per_intf_vrf_ids.add(candidate)
             except Exception as exc:
-                log.warning("netbox remove: site delete failed: %s", exc)
+                log.debug("netbox remove: interface VRF scan for device %s: %s", dev_id, exc)
 
-        # Find and delete the region
+        # All VRF IDs to sweep for prefixes (list-level + per-interface)
+        all_vrf_ids: set[int] = {v for v in (per_intf_vrf_ids | ({list_vrf_id} if list_vrf_id else set()))}
+
+        # ── 1. VPN tunnels ────────────────────────────────────────────────────
+        if site_device_ids:
+            try:
+                for tun in _nb_get(session, base, "vpn/tunnels/"):
+                    try:
+                        terms = _nb_get(session, base, "vpn/tunnel-terminations/",
+                                        tunnel_id=tun["id"])
+                        belongs = False
+                        for t in terms:
+                            obj    = t.get("termination") or {}
+                            dev_id = (obj.get("device") or {}).get("id")
+                            if dev_id in site_device_ids:
+                                belongs = True
+                                _nb_delete(session, base, "vpn/tunnel-terminations/", t["id"])
+                        if belongs and _nb_delete(session, base, "vpn/tunnels/", tun["id"]):
+                            counts["tunnels"] += 1
+                    except Exception as exc:
+                        log.debug("netbox remove: tunnel %s: %s", tun.get("name"), exc)
+            except Exception as exc:
+                log.debug("netbox remove: tunnel sweep failed: %s", exc)
+
+        # ── 2. IPAM prefixes ──────────────────────────────────────────────────
+        # Collect by site (catches all site-scoped prefixes regardless of VRF)
+        # and by each VRF used by this list (catches VRF-scoped prefixes that
+        # may not carry a site field).
+        seen_prefix_ids: set[int] = set()
+
+        def _delete_prefixes_by(**params) -> int:
+            deleted = 0
+            for pf in _nb_get(session, base, "ipam/prefixes/", **params):
+                pid = pf["id"]
+                if pid not in seen_prefix_ids:
+                    seen_prefix_ids.add(pid)
+                    if _nb_delete(session, base, "ipam/prefixes/", pid):
+                        deleted += 1
+            return deleted
+
+        if site_id:
+            counts["prefixes"] += _delete_prefixes_by(site_id=site_id)
+        for vrf_id in all_vrf_ids:
+            counts["prefixes"] += _delete_prefixes_by(vrf_id=vrf_id)
+
+        # ── 3. VLANs ─────────────────────────────────────────────────────────
+        if site_id:
+            for vlan in _nb_get(session, base, "ipam/vlans/", site_id=site_id):
+                if _nb_delete(session, base, "ipam/vlans/", vlan["id"]):
+                    counts["vlans"] += 1
+
+        # ── 4. Devices ────────────────────────────────────────────────────────
+        # NetBox cascades device deletion to interfaces and their IP assignments.
+        for dev in site_devices:
+            if _nb_delete(session, base, "dcim/devices/", dev["id"]):
+                counts["devices"] += 1
+
+        # ── 5. Per-interface VRFs ─────────────────────────────────────────────
+        # Devices are gone so their IPs were cascaded.  Only delete a VRF when
+        # nothing else remains in it — guards against deleting a VRF shared
+        # across multiple device lists (e.g. a global "MGMT" VRF).
+        for vrf_id in per_intf_vrf_ids:
+            try:
+                if (not _nb_get(session, base, "ipam/ip-addresses/", vrf_id=vrf_id)
+                        and not _nb_get(session, base, "ipam/prefixes/", vrf_id=vrf_id)):
+                    if _nb_delete(session, base, "ipam/vrfs/", vrf_id):
+                        counts["vrfs"] += 1
+                        log.debug("netbox remove: deleted empty per-interface VRF id=%s", vrf_id)
+            except Exception as exc:
+                log.debug("netbox remove: per-intf VRF %s cleanup: %s", vrf_id, exc)
+
+        # ── 6. Site → region → list-level VRF ────────────────────────────────
+        if site_id:
+            flags["site"] = _nb_delete(session, base, "dcim/sites/", site_id)
+
         region = _nb_first(session, base, "dcim/regions/", slug=slug)
         if region:
-            try:
-                r = session.delete(f"{base}/api/dcim/regions/{region['id']}/", timeout=15)
-                if r.ok or r.status_code == 404:
-                    deleted_region = True
-            except Exception as exc:
-                log.warning("netbox remove: region delete failed: %s", exc)
+            flags["region"] = _nb_delete(session, base, "dcim/regions/", region["id"])
 
-        # Delete the list-level VRF (devices are gone so IPs are already removed)
-        vrf = _nb_first(session, base, "ipam/vrfs/", name=list_name)
-        if vrf:
-            try:
-                r = session.delete(f"{base}/api/ipam/vrfs/{vrf['id']}/", timeout=15)
-                if r.ok or r.status_code == 404:
-                    deleted_vrf = True
-            except Exception as exc:
-                log.warning("netbox remove: VRF delete failed: %s", exc)
+        if list_vrf_id:
+            # One final sweep — delete any prefixes still in the list VRF that
+            # were not caught by the site filter (e.g. prefixes with no site field).
+            for pf in _nb_get(session, base, "ipam/prefixes/", vrf_id=list_vrf_id):
+                _nb_delete(session, base, "ipam/prefixes/", pf["id"])
+            flags["list_vrf"] = _nb_delete(session, base, "ipam/vrfs/", list_vrf_id)
 
-        # Clear local sync status for this list
+        # ── Clear local sync status ───────────────────────────────────────────
         with _status_lock:
             data = load_sync_status()
-            data.get("lists", {}).pop(list_name, None)
+            data.get("lists",   {}).pop(list_name, None)
             data.get("running", {}).pop(list_name, None)
             try:
                 os.makedirs(DATA_DIR, exist_ok=True)
@@ -2328,15 +2418,18 @@ def remove_list_from_netbox(list_name: str) -> dict:
             except Exception as exc:
                 log.warning("netbox remove: could not update sync status: %s", exc)
 
-        log.info("netbox: removed list '%s' — devices=%d site=%s region=%s vrf=%s",
-                 list_name, deleted_devices, deleted_site, deleted_region, deleted_vrf)
+        log.info(
+            "netbox: removed list '%s' — devices=%d tunnels=%d prefixes=%d "
+            "vlans=%d vrfs=%d site=%s region=%s list_vrf=%s",
+            list_name, counts["devices"], counts["tunnels"], counts["prefixes"],
+            counts["vlans"], counts["vrfs"],
+            flags["site"], flags["region"], flags["list_vrf"],
+        )
         return {
-            "ok":              True,
-            "list":            list_name,
-            "deleted_devices": deleted_devices,
-            "deleted_site":    deleted_site,
-            "deleted_region":  deleted_region,
-            "deleted_vrf":     deleted_vrf,
+            "ok":      True,
+            "list":    list_name,
+            **counts,
+            **{f"deleted_{k}": v for k, v in flags.items()},
         }
 
     except Exception as exc:
@@ -2400,3 +2493,238 @@ def set_sync_running(list_name: str, running: bool) -> None:
                 json.dump(data, fh, indent=2)
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Query API — read-only helpers used by the AI tool layer
+# ---------------------------------------------------------------------------
+
+def _nb_ready() -> tuple[bool, str, Any, str]:
+    """Return (ok, error_msg, session, base_url) for query calls."""
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        return False, "NetBox URL and API token are not configured", None, ""
+    return True, "", _session_from_config(cfg), cfg["url"]
+
+
+def _compact_device(d: dict) -> dict:
+    """Flatten a raw NetBox device record to a compact AI-readable dict."""
+    # Some NetBox versions use "display" instead of (or in addition to) "name"
+    # on nested objects like device_type and platform — use .get() to avoid KeyError.
+    def _name(obj):
+        if not isinstance(obj, dict):
+            return obj
+        return obj.get("name") or obj.get("display") or ""
+    def _val(obj):  return obj.get("value") if isinstance(obj, dict) else obj
+    return {
+        "id":             d.get("id"),
+        "name":           d.get("name"),
+        "status":         _val(d.get("status")),
+        "site":           _name(d.get("site") or {}),
+        "role":           _name(d.get("role") or d.get("device_role") or {}),
+        "device_type":    _name(d.get("device_type") or {}),
+        "platform":       _name(d.get("platform") or {}),
+        "serial":         d.get("serial") or "",
+        "primary_ip4":    (d.get("primary_ip4") or {}).get("address", ""),
+        "primary_ip6":    (d.get("primary_ip6") or {}).get("address", ""),
+        "local_context":  d.get("local_context_data") or {},
+        "tags":           [t.get("name") for t in (d.get("tags") or [])],
+    }
+
+
+def _compact_interface(i: dict) -> dict:
+    def _name(obj): return obj["name"] if isinstance(obj, dict) else obj
+    def _val(obj):  return obj.get("value") if isinstance(obj, dict) else obj
+    return {
+        "name":         i.get("name"),
+        "enabled":      i.get("enabled"),
+        "type":         _val(i.get("type")),
+        "mode":         _val(i.get("mode")),
+        "vrf":          _name(i.get("vrf") or {}),
+        "lag":          _name(i.get("lag") or {}),
+        "mtu":          i.get("mtu"),
+        "description":  i.get("description") or "",
+        "tagged_vlans": [v.get("vid") for v in (i.get("tagged_vlans") or [])],
+        "untagged_vlan": (i.get("untagged_vlan") or {}).get("vid"),
+    }
+
+
+def netbox_query_devices(search: str = "", site: str = "",
+                         role: str = "", tag: str = "") -> dict:
+    """
+    Search NetBox for devices.  Returns a list of compact device dicts.
+    ``search`` matches against device name / primary IP.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    params: dict[str, Any] = {"limit": 100}
+    if search:
+        params["q"] = search
+    if site:
+        params["site"] = site
+    if role:
+        params["role"] = role
+    if tag:
+        params["tag"] = tag
+    try:
+        results = _nb_get(session, base, "dcim/devices/", **params)
+        return {"ok": True, "devices": [_compact_device(d) for d in results]}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_device(name_or_ip: str) -> dict:
+    """
+    Fetch a single device from NetBox by name or primary IP.
+    Returns a compact device dict with local_context_data included.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        # Try by name first
+        hit = _nb_first(session, base, "dcim/devices/", name=name_or_ip, limit=1)
+        if not hit:
+            # Try by primary IP (exact address string match)
+            hit = _nb_first(session, base, "dcim/devices/",
+                            q=name_or_ip, limit=1)
+        if not hit:
+            return {"ok": False, "error": f"Device '{name_or_ip}' not found in NetBox"}
+        return {"ok": True, "device": _compact_device(hit)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_interfaces(name_or_ip: str) -> dict:
+    """
+    Return all interfaces for a device (by name or primary IP), including
+    their assigned IP addresses and VRF.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        dev = _nb_first(session, base, "dcim/devices/", name=name_or_ip, limit=1)
+        if not dev:
+            dev = _nb_first(session, base, "dcim/devices/", q=name_or_ip, limit=1)
+        if not dev:
+            return {"ok": False, "error": f"Device '{name_or_ip}' not found in NetBox"}
+        dev_id = dev["id"]
+        ifaces = _nb_get(session, base, "dcim/interfaces/", device_id=dev_id)
+        ips    = _nb_get(session, base, "ipam/ip-addresses/", device_id=dev_id)
+        ip_by_iface: dict[int, list[str]] = {}
+        for ip in ips:
+            aif = ip.get("assigned_object")
+            if isinstance(aif, dict):
+                iid = aif.get("id")
+                if iid:
+                    ip_by_iface.setdefault(iid, []).append(ip["address"])
+        out = []
+        for i in ifaces:
+            ci = _compact_interface(i)
+            ci["ip_addresses"] = ip_by_iface.get(i["id"], [])
+            out.append(ci)
+        return {"ok": True, "device": dev["name"], "interfaces": out}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_ip(address: str) -> dict:
+    """
+    Look up an IP address in NetBox IPAM.
+    Returns which device/interface it is assigned to, its VRF, and description.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        hits = _nb_get(session, base, "ipam/ip-addresses/", address=address)
+        if not hits:
+            # Try prefix search (e.g. caller passed just the host portion)
+            hits = _nb_get(session, base, "ipam/ip-addresses/", q=address)
+        results = []
+        for ip in hits:
+            obj  = ip.get("assigned_object") or {}
+            dev  = (ip.get("assigned_object_type") or "").replace("dcim.", "")
+            results.append({
+                "address":     ip.get("address"),
+                "status":      (ip.get("status") or {}).get("value"),
+                "vrf":         (ip.get("vrf") or {}).get("name"),
+                "description": ip.get("description") or "",
+                "dns_name":    ip.get("dns_name") or "",
+                "assigned_to": obj.get("name") or obj.get("display") or "",
+                "object_type": dev,
+            })
+        return {"ok": True, "results": results}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_prefixes(vrf: str = "", prefix: str = "") -> dict:
+    """
+    List IPAM prefixes (static routes are synced here).
+    Optionally filter by VRF name or prefix string.
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    params: dict[str, Any] = {"limit": 200}
+    if vrf:
+        params["vrf"] = vrf
+    if prefix:
+        params["prefix"] = prefix
+    try:
+        hits = _nb_get(session, base, "ipam/prefixes/", **params)
+        results = []
+        for p in hits:
+            results.append({
+                "prefix":      p.get("prefix"),
+                "status":      (p.get("status") or {}).get("value"),
+                "vrf":         (p.get("vrf") or {}).get("name"),
+                "description": p.get("description") or "",
+                "tags":        [t.get("name") for t in (p.get("tags") or [])],
+            })
+        return {"ok": True, "prefixes": results}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def netbox_get_vpn_tunnels(device_name: str = "") -> dict:
+    """
+    List VPN tunnels from NetBox.  Optionally filter to tunnels that
+    involve a specific device (matched against termination descriptions).
+    """
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        return {"ok": False, "error": err}
+    try:
+        params: dict[str, Any] = {"limit": 200}
+        if device_name:
+            params["q"] = device_name
+        tunnels = _nb_get(session, base, "vpn/tunnels/", **params)
+        terminations = _nb_get(session, base, "vpn/tunnel-terminations/", **params)
+        term_by_tunnel: dict[int, list[dict]] = {}
+        for t in terminations:
+            tid = (t.get("tunnel") or {}).get("id")
+            if tid:
+                obj  = t.get("termination") or {}
+                term_by_tunnel.setdefault(tid, []).append({
+                    "role":    (t.get("role") or {}).get("value"),
+                    "ip":      (t.get("outside_ip") or {}).get("address", ""),
+                    "device":  obj.get("name") or obj.get("display") or "",
+                })
+        results = []
+        for tn in tunnels:
+            results.append({
+                "name":         tn.get("name"),
+                "status":       (tn.get("status") or {}).get("value"),
+                "encapsulation": (tn.get("encapsulation") or {}).get("value")
+                                  if isinstance(tn.get("encapsulation"), dict)
+                                  else tn.get("encapsulation"),
+                "description":  tn.get("description") or "",
+                "terminations": term_by_tunnel.get(tn["id"], []),
+            })
+        return {"ok": True, "tunnels": results}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}

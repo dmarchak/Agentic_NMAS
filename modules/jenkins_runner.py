@@ -243,9 +243,24 @@ def load_results() -> Optional[dict]:
     """
     try:
         with open(_results_file(), encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
     except (FileNotFoundError, json.JSONDecodeError):
         return None
+
+    # Strip result entries for pipelines that are no longer registered to
+    # this list.  This ensures deleted jobs never show as failed in the UI
+    # even when the results file hasn't been explicitly cleaned yet.
+    registered = set(load_list_pipelines())
+    pipes = data.get("pipelines", {})
+    orphans = [name for name in pipes if name not in registered]
+    if orphans:
+        for name in orphans:
+            del pipes[name]
+        data["pipelines"] = pipes
+        data = _recompute_summary(data)
+        _save_results(data)   # persist the cleanup so it only happens once
+
+    return data
 
 
 def is_jenkins_building() -> bool:
@@ -983,7 +998,7 @@ def update_jenkins_job(config: dict, job_name: str, xml_config: str) -> None:
 
 
 def delete_jenkins_job(config: dict, job_name: str) -> None:
-    """Delete a Jenkins job permanently."""
+    """Delete a Jenkins job permanently and remove all local references to it."""
     from urllib.parse import quote
     status, body, _ = _jenkins_request(
         config, f"/job/{quote(job_name)}/doDelete", method="POST",
@@ -994,6 +1009,29 @@ def delete_jenkins_job(config: dict, job_name: str) -> None:
         )
     # Remove local Groovy cache
     delete_pipeline_script(job_name)
+    # Remove from pipeline registry so it no longer appears in pipeline lists
+    unregister_pipeline(job_name)
+    # Remove stale result entry so deleted jobs no longer show as failed
+    _remove_job_from_results(job_name)
+
+
+def _remove_job_from_results(job_name: str) -> None:
+    """Remove a single job's entry from the current list's results file."""
+    try:
+        path = _results_file()
+        if not os.path.exists(path):
+            return
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        pipes = data.get("pipelines", {})
+        if job_name not in pipes:
+            return
+        del pipes[job_name]
+        data["pipelines"] = pipes
+        _save_results(_recompute_summary(data))
+        logger.info("Removed result entry for deleted job '%s'", job_name)
+    except Exception as exc:
+        logger.debug("_remove_job_from_results(%s): %s", job_name, exc)
 
 
 def get_job_builds(config: dict, job_name: str, limit: int = 10) -> list[dict]:

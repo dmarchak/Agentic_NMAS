@@ -1,0 +1,687 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "scope": "CCIE Enterprise Infrastructure \u00e2\u20ac\u201d IGP/EGP routing",
+    "platforms": [
+      "IOS 15.x",
+      "IOS-XE 16.x+",
+      "IOS-XE 17.x+"
+    ]
+  },
+  "ospf": {
+    "description": "OSPFv2 \u00e2\u20ac\u201d link-state IGP, RFC 2328. Area 0 is mandatory backbone.",
+    "process_scope": "Process ID is locally significant \u00e2\u20ac\u201d neighbours do not need to match.",
+    "router_id_rule": "Highest loopback IP wins if no explicit router-id. Always set explicitly.",
+    "basic": {
+      "commands": [
+        "router ospf {process_id}",
+        " router-id {a.b.c.d}",
+        " network {network} {wildcard_mask} area {area_number}",
+        " passive-interface default",
+        " no passive-interface {active_interface}"
+      ],
+      "notes": "passive-interface default + no passive on active links is best practice. Wildcard = inverse of subnet mask."
+    },
+    "interface_mode": {
+      "description": "Preferred on IOS-XE \u00e2\u20ac\u201d more granular than network statements.",
+      "commands": [
+        "interface {intf}",
+        " ip ospf {process_id} area {area_number}",
+        " ip ospf priority {0-255}",
+        " ip ospf cost {1-65535}",
+        " ip ospf hello-interval {1-65535}",
+        " ip ospf dead-interval {1-65535}",
+        " ip ospf network {point-to-point|broadcast|non-broadcast|point-to-multipoint}"
+      ],
+      "notes": "Default hello/dead: broadcast=10/40, non-broadcast=30/120. Priority 0 = never DR/BDR."
+    },
+    "area_types": {
+      "stub": {
+        "commands": [
+          "router ospf {pid}",
+          " area {area} stub"
+        ],
+        "effect": "Blocks Type-4 and Type-5 LSAs. ABR injects default route (Type-3).",
+        "all_routers_must_match": true
+      },
+      "totally_stub": {
+        "commands": [
+          "router ospf {pid}",
+          " area {area} stub no-summary"
+        ],
+        "effect": "ABR only, blocks all inter-area and external LSAs. Single default from ABR.",
+        "notes": "only ABR needs 'no-summary'; other routers still use 'area X stub'"
+      },
+      "nssa": {
+        "commands": [
+          "router ospf {pid}",
+          " area {area} nssa"
+        ],
+        "effect": "Allows Type-7 LSAs (redistributed externals within NSSA). ABR converts Type-7 to Type-5."
+      },
+      "totally_nssa": {
+        "commands": [
+          "router ospf {pid}",
+          " area {area} nssa no-summary"
+        ],
+        "notes": "ABR only needs no-summary"
+      }
+    },
+    "authentication": {
+      "md5_per_interface": [
+        "interface {intf}",
+        " ip ospf authentication message-digest",
+        " ip ospf message-digest-key 1 md5 {password}"
+      ],
+      "md5_per_area": [
+        "router ospf {pid}",
+        " area {area} authentication message-digest",
+        "interface {intf}",
+        " ip ospf message-digest-key 1 md5 {password}"
+      ],
+      "sha_hmac_iosxe": [
+        "key chain OSPF_KEYS",
+        " key 1",
+        "  key-string {password}",
+        "  cryptographic-algorithm hmac-sha-256",
+        "interface {intf}",
+        " ip ospf authentication key-chain OSPF_KEYS"
+      ]
+    },
+    "redistribution": {
+      "into_ospf": [
+        "router ospf {pid}",
+        " redistribute connected subnets",
+        " redistribute static subnets",
+        " redistribute eigrp {asn} metric 100 subnets",
+        " redistribute bgp {asn} subnets metric 100 metric-type {1|2}"
+      ],
+      "default_route": [
+        "router ospf {pid}",
+        " default-information originate [always] [metric {val}] [metric-type {1|2}]"
+      ],
+      "notes": "Always use 'subnets' keyword or classful networks are not redistributed. metric-type 2 is default."
+    },
+    "route_summarization": {
+      "inter_area_on_abr": [
+        "router ospf {pid}",
+        " area {area} range {network} {mask} [cost {val}]"
+      ],
+      "external_on_asbr": [
+        "router ospf {pid}",
+        " summary-address {network} {mask}"
+      ]
+    },
+    "tuning": {
+      "lsa_throttle": [
+        "router ospf {pid}",
+        " timers throttle lsa 0 500 5000"
+      ],
+      "spf_throttle": [
+        "router ospf {pid}",
+        " timers throttle spf 50 200 5000"
+      ],
+      "bfd": [
+        "interface {intf}",
+        " bfd interval 300 min_rx 300 multiplier 3",
+        " ip ospf bfd"
+      ],
+      "fast_hellos": [
+        "interface {intf}",
+        " ip ospf dead-interval minimal hello-multiplier 4"
+      ]
+    },
+    "verification": [
+      "show ip ospf neighbor",
+      "show ip ospf neighbor detail",
+      "show ip ospf database",
+      "show ip ospf database router",
+      "show ip ospf database external",
+      "show ip ospf interface {intf}",
+      "show ip ospf border-routers",
+      "show ip route ospf",
+      "debug ip ospf adj",
+      "debug ip ospf events"
+    ],
+    "troubleshooting": {
+      "neighbors_not_forming": [
+        "Hello/dead interval mismatch \u00e2\u20ac\u201d must match on both sides",
+        "Area number mismatch",
+        "Authentication mismatch or missing key",
+        "MTU mismatch \u00e2\u20ac\u201d use 'ip ospf mtu-ignore' as workaround",
+        "Subnet mask mismatch on broadcast link",
+        "ACL blocking OSPF multicast 224.0.0.5/224.0.0.6 or protocol 89"
+      ],
+      "stuck_in_exstart": [
+        "MTU mismatch \u00e2\u20ac\u201d most common cause",
+        "Duplicate router IDs on the segment"
+      ],
+      "routes_missing": [
+        "Verify ABR has routes to both backbone and non-backbone area",
+        "Check area type \u00e2\u20ac\u201d stub/NSSA blocks certain LSA types",
+        "Check redistribution uses 'subnets' keyword",
+        "Check route-map or distribute-list filter"
+      ]
+    }
+  },
+  "ospfv3": {
+    "description": "OSPFv3 \u00e2\u20ac\u201d OSPF for IPv6 and address-family support on IOS-XE.",
+    "basic_ipv6_only": [
+      "ipv6 unicast-routing",
+      "interface {intf}",
+      " ipv6 ospf {process_id} area {area}",
+      "ipv6 router ospf {process_id}",
+      " router-id {a.b.c.d}"
+    ],
+    "address_family_iosxe": [
+      "router ospfv3 {process_id}",
+      " router-id {a.b.c.d}",
+      " address-family ipv4 unicast",
+      "  area {area} range {prefix}/{len}",
+      " address-family ipv6 unicast",
+      "  area {area} range {prefix}/{len}",
+      "interface {intf}",
+      " ospfv3 {process_id} ipv4 area {area}",
+      " ospfv3 {process_id} ipv6 area {area}"
+    ],
+    "area_types": {
+      "stub": [
+        "router ospfv3 {pid}",
+        " address-family ipv6 unicast",
+        "  area {area} stub"
+      ],
+      "nssa": [
+        "router ospfv3 {pid}",
+        " address-family ipv6 unicast",
+        "  area {area} nssa"
+      ]
+    },
+    "authentication": {
+      "ipsec": [
+        "interface {intf}",
+        " ospfv3 authentication ipsec spi {spi} sha1 {hex_key}",
+        "router ospfv3 {pid}",
+        " area {area} authentication ipsec spi {spi} sha1 {hex_key}"
+      ]
+    },
+    "redistribution": [
+      "router ospfv3 {pid}",
+      " address-family ipv6 unicast",
+      "  redistribute connected",
+      "  redistribute static",
+      "  redistribute bgp {asn}",
+      "  default-information originate [always]"
+    ],
+    "verification": [
+      "show ospfv3 neighbor",
+      "show ospfv3 database",
+      "show ipv6 route ospf",
+      "show ospfv3 interface {intf}"
+    ]
+  },
+  "bgp": {
+    "description": "Border Gateway Protocol v4 \u00e2\u20ac\u201d RFC 4271. Path-vector EGP.",
+    "key_concepts": {
+      "ibgp": "Same AS. Full mesh or route reflector required. Next-hop unchanged by default.",
+      "ebgp": "Different AS. Next-hop changed to peering interface. AD=20 vs iBGP AD=200.",
+      "synchronization": "Disabled by default since IOS 12.2(8)T. Leave off."
+    },
+    "basic_ebgp": [
+      "router bgp {local_as}",
+      " bgp router-id {a.b.c.d}",
+      " bgp log-neighbor-changes",
+      " no bgp default ipv4-unicast",
+      " neighbor {peer_ip} remote-as {remote_as}",
+      " neighbor {peer_ip} description {text}",
+      " neighbor {peer_ip} password {key}",
+      " neighbor {peer_ip} ebgp-multihop {ttl}",
+      " neighbor {peer_ip} update-source {intf}",
+      " address-family ipv4 unicast",
+      "  neighbor {peer_ip} activate",
+      "  neighbor {peer_ip} soft-reconfiguration inbound",
+      "  network {network} mask {mask}",
+      "  aggregate-address {network} {mask} [summary-only] [as-set]"
+    ],
+    "basic_ibgp": [
+      "router bgp {as}",
+      " neighbor {peer_ip} remote-as {as}",
+      " neighbor {peer_ip} update-source Loopback0",
+      " address-family ipv4 unicast",
+      "  neighbor {peer_ip} activate",
+      "  neighbor {peer_ip} next-hop-self"
+    ],
+    "route_reflector": {
+      "description": "Eliminates iBGP full mesh. RR reflects routes between RR clients.",
+      "rr_config": [
+        "router bgp {as}",
+        " neighbor {client_ip} remote-as {as}",
+        " neighbor {client_ip} update-source Loopback0",
+        " address-family ipv4 unicast",
+        "  neighbor {client_ip} activate",
+        "  neighbor {client_ip} route-reflector-client"
+      ],
+      "notes": "Cluster-id should be set when multiple RRs exist: 'bgp cluster-id {id}'"
+    },
+    "confederations": {
+      "description": "Divides AS into sub-ASes. External appearance unchanged.",
+      "commands": [
+        "router bgp {sub_as}",
+        " bgp confederation identifier {real_as}",
+        " bgp confederation peers {other_sub_as1} {other_sub_as2}",
+        " neighbor {peer} remote-as {their_sub_as}"
+      ]
+    },
+    "path_attributes": {
+      "well_known_mandatory": [
+        "ORIGIN",
+        "AS_PATH",
+        "NEXT_HOP"
+      ],
+      "well_known_discretionary": [
+        "LOCAL_PREF",
+        "ATOMIC_AGGREGATE"
+      ],
+      "optional_transitive": [
+        "AGGREGATOR",
+        "COMMUNITY",
+        "EXTENDED_COMMUNITY"
+      ],
+      "optional_non_transitive": [
+        "MED",
+        "ORIGINATOR_ID",
+        "CLUSTER_LIST"
+      ],
+      "selection_order": [
+        "1. Highest WEIGHT (Cisco proprietary, local only)",
+        "2. Highest LOCAL_PREF (iBGP only, default 100)",
+        "3. Locally originated (network/aggregate/redistribute vs learned)",
+        "4. Shortest AS_PATH",
+        "5. Lowest ORIGIN (IGP < EGP < incomplete)",
+        "6. Lowest MED (only compared if same AS advertised both paths)",
+        "7. eBGP over iBGP",
+        "8. Lowest IGP metric to NEXT_HOP",
+        "9. Oldest eBGP route (prefer established)",
+        "10. Lowest BGP router-id of peer",
+        "11. Lowest cluster-list length",
+        "12. Lowest neighbor IP"
+      ]
+    },
+    "communities": {
+      "standard": [
+        "ip community-list standard {name} permit {as}:{value}",
+        "route-map SET_COMMUNITY permit 10",
+        " set community {as}:{value} additive",
+        "router bgp {as}",
+        " neighbor {peer} send-community"
+      ],
+      "well_known": {
+        "no-advertise": "Do not advertise to any peer",
+        "no-export": "Do not advertise outside local AS or confederation",
+        "local-as": "Do not advertise outside local sub-AS in confederation"
+      },
+      "large_communities": [
+        "ip large-community-list standard {name} permit {asn}:{val1}:{val2}",
+        "route-map SET_LARGE_COMMUNITY",
+        " set large-community {asn}:{val1}:{val2} additive"
+      ]
+    },
+    "policy": {
+      "inbound_filter": [
+        "ip prefix-list FILTER seq 10 permit {prefix}/{len}",
+        "route-map FILTER_IN permit 10",
+        " match ip address prefix-list FILTER",
+        " set local-preference 200",
+        "router bgp {as}",
+        " neighbor {peer} route-map FILTER_IN in"
+      ],
+      "outbound_filter": [
+        "route-map FILTER_OUT permit 10",
+        " match ip address prefix-list ADVERTISE",
+        "router bgp {as}",
+        " neighbor {peer} route-map FILTER_OUT out"
+      ],
+      "as_path_filter": [
+        "ip as-path access-list 1 permit ^{asn}_",
+        "router bgp {as}",
+        " neighbor {peer} filter-list 1 in"
+      ]
+    },
+    "redistribution": {
+      "into_bgp": [
+        "router bgp {as}",
+        " address-family ipv4 unicast",
+        "  redistribute connected route-map CONNECTED",
+        "  redistribute ospf {pid} route-map OSPF_TO_BGP"
+      ],
+      "default_route": [
+        "router bgp {as}",
+        " address-family ipv4 unicast",
+        "  default-information originate",
+        "  neighbor {peer} default-originate [route-map CHECK_CONDITION]"
+      ]
+    },
+    "multiprotocol": {
+      "ipv6": [
+        "router bgp {as}",
+        " neighbor {peer_ipv6} remote-as {remote_as}",
+        " address-family ipv6 unicast",
+        "  neighbor {peer_ipv6} activate",
+        "  network {prefix}/{len}"
+      ],
+      "vpnv4": [
+        "router bgp {as}",
+        " neighbor {pe_ip} remote-as {as}",
+        " neighbor {pe_ip} update-source Loopback0",
+        " address-family vpnv4",
+        "  neighbor {pe_ip} activate",
+        "  neighbor {pe_ip} send-community both"
+      ],
+      "vpnv6": [
+        "router bgp {as}",
+        " address-family vpnv6",
+        "  neighbor {pe_ip} activate",
+        "  neighbor {pe_ip} send-community both"
+      ],
+      "ipv6_ibgp": [
+        "router bgp {as}",
+        " neighbor {peer_ipv6} remote-as {as}",
+        " neighbor {peer_ipv6} update-source Loopback0",
+        " address-family ipv6 unicast",
+        "  neighbor {peer_ipv6} activate",
+        "  neighbor {peer_ipv6} next-hop-self",
+        "  neighbor {peer_ipv6} send-community both"
+      ]
+    },
+    "graceful_restart": [
+      "router bgp {as}",
+      " bgp graceful-restart",
+      " bgp graceful-restart restart-time 120",
+      " bgp graceful-restart stalepath-time 360"
+    ],
+    "verification": [
+      "show bgp summary",
+      "show bgp neighbors {ip}",
+      "show bgp {prefix}/{len}",
+      "show bgp {prefix}/{len} bestpath",
+      "show bgp regexp {as-path-regex}",
+      "show bgp community {community}",
+      "show bgp paths",
+      "show ip bgp {prefix} longer-prefixes",
+      "clear bgp {ip} soft in",
+      "clear bgp {ip} soft out"
+    ],
+    "troubleshooting": {
+      "session_not_up": [
+        "Check TCP port 179 reachability",
+        "Verify remote-as matches the peer's actual AS",
+        "Check update-source matches \u00e2\u20ac\u201d loopback must be reachable via IGP",
+        "Check TTL \u00e2\u20ac\u201d ibgp needs 1 hop, ebgp multihop may need adjustment",
+        "Check authentication key matches"
+      ],
+      "routes_not_received": [
+        "Verify neighbor activated in correct address-family",
+        "Check inbound route-map or filter-list",
+        "Check 'no bgp default ipv4-unicast' \u00e2\u20ac\u201d may need explicit activation",
+        "Verify next-hop reachable \u00e2\u20ac\u201d iBGP next-hop unchanged by default"
+      ]
+    }
+  },
+  "eigrp": {
+    "description": "Enhanced IGRP \u00e2\u20ac\u201d Cisco proprietary, DUAL algorithm, AD=90 internal / 170 external.",
+    "named_mode": {
+      "description": "Preferred on IOS 15.0.1M+ / IOS-XE. Supports IPv4 and IPv6 in same process.",
+      "commands": [
+        "router eigrp {PROCESS_NAME}",
+        " address-family ipv4 unicast autonomous-system {asn}",
+        "  af-interface default",
+        "   passive-interface",
+        "  af-interface {intf}",
+        "   no passive-interface",
+        "   hello-interval {secs}",
+        "   hold-time {secs}",
+        "   authentication mode hmac-sha-256",
+        "   authentication key-chain {chain_name}",
+        "  topology base",
+        "   redistribute connected",
+        "   redistribute static",
+        "   redistribute ospf {pid} metric 10000 100 255 1 1500",
+        "   variance {multiplier}",
+        "   maximum-paths {1-32}",
+        " address-family ipv6 unicast autonomous-system {asn}",
+        "  af-interface {intf}",
+        "   no passive-interface"
+      ]
+    },
+    "classic_mode": {
+      "commands": [
+        "router eigrp {asn}",
+        " eigrp router-id {a.b.c.d}",
+        " network {network} {wildcard}",
+        " passive-interface default",
+        " no passive-interface {active_intf}",
+        " no auto-summary",
+        " variance {multiplier}",
+        " maximum-paths {1-32}"
+      ]
+    },
+    "metric": {
+      "formula": "Metric = 256 * (K1*BW + K2*BW/(256-load) + K3*delay) * K5/(reliability+K4)",
+      "defaults": "K1=1, K2=0, K3=1, K4=0, K5=0 \u00e2\u2020\u2019 Metric = 256 * (10^7/BW_kbps + delay_microsec/10)",
+      "redistribute_seed_metric": "Must provide metric when redistributing non-EIGRP routes",
+      "seed_syntax": " redistribute {protocol} metric {bw_kbps} {delay_100us} {reliability_255} {load_255} {mtu}"
+    },
+    "stub": {
+      "commands": [
+        "router eigrp {asn}",
+        " eigrp stub [connected] [static] [summary] [redistributed] [receive-only]"
+      ],
+      "notes": "Stub router will not be queried during DUAL. Connected/static most common."
+    },
+    "summarization": {
+      "interface_level": [
+        "interface {intf}",
+        " ip summary-address eigrp {asn} {network} {mask} [leak-map {name}]"
+      ]
+    },
+    "authentication": [
+      "key chain EIGRP_KEYS",
+      " key 1",
+      "  key-string {password}",
+      "  accept-lifetime {start} {end}",
+      "  send-lifetime {start} {end}",
+      "interface {intf}",
+      " ip authentication mode eigrp {asn} md5",
+      " ip authentication key-chain eigrp {asn} EIGRP_KEYS"
+    ],
+    "verification": [
+      "show ip eigrp neighbors",
+      "show ip eigrp topology",
+      "show ip eigrp topology all-links",
+      "show ip eigrp topology {prefix}/{len}",
+      "show ip eigrp interfaces",
+      "show ip eigrp traffic",
+      "show ip route eigrp"
+    ],
+    "troubleshooting": {
+      "neighbors_not_forming": [
+        "AS number mismatch (must match on both sides \u00e2\u20ac\u201d unlike OSPF process-id)",
+        "K-values mismatch \u00e2\u20ac\u201d must be identical",
+        "Authentication failure",
+        "Hello/hold timer mismatch (hold >= hello \u00c3\u2014 3 recommended)",
+        "Primary IP addresses differ \u00e2\u20ac\u201d EIGRP uses primary address by default"
+      ],
+      "routes_stuck_active": [
+        "SIA = Stuck In Active \u00e2\u20ac\u201d query not answered within active-time (3 min default)",
+        "Check for black-hole links or one-way connectivity",
+        "Increase SIA timer: 'eigrp router-id' + topology base + timers active-time {min}"
+      ]
+    },
+    "named_mode_ipv6": {
+      "description": "Full dual-stack EIGRP in named mode \u2014 single process, both AFs.",
+      "commands": [
+        "router eigrp {PROCESS_NAME}",
+        " address-family ipv6 unicast autonomous-system {asn}",
+        "  af-interface default",
+        "   passive-interface",
+        "  af-interface {intf}",
+        "   no passive-interface",
+        "   hello-interval {hello_secs}",
+        "   hold-time {hold_secs}",
+        "   authentication mode hmac-sha-256",
+        "   authentication key-chain {chain_name}",
+        "  topology base",
+        "   redistribute connected",
+        "   redistribute static",
+        "   variance {multiplier}",
+        "   maximum-paths {max_paths}"
+      ]
+    },
+    "classic_ipv6": {
+      "description": "Legacy standalone IPv6 EIGRP (deprecated \u2014 use named mode).",
+      "commands": [
+        "ipv6 unicast-routing",
+        "ipv6 router eigrp {asn}",
+        " eigrp router-id {a.b.c.d}",
+        " no shutdown",
+        "interface {intf}",
+        " ipv6 eigrp {asn}"
+      ]
+    }
+  },
+  "route_redistribution": {
+    "description": "Key rules and gotchas for multi-protocol redistribution.",
+    "rules": [
+      "Always use route-maps to control what is redistributed",
+      "Mutual redistribution between two IGPs requires loop prevention (AD manipulation or tagging)",
+      "OSPF: must use 'subnets' keyword or only classful networks redistribute",
+      "BGP: redistribute from IGP gives origin=incomplete (shown as ?) \u00e2\u20ac\u201d use network command for origin=IGP",
+      "Administrative distances: Connected=0, Static=1, eBGP=20, EIGRP=90, OSPF=110, IS-IS=115, RIP=120, iBGP=200"
+    ],
+    "loop_prevention_tagging": {
+      "ospf_to_eigrp_and_back": [
+        "route-map EIGRP_TO_OSPF permit 10",
+        " match tag 100",
+        "route-map OSPF_TO_EIGRP permit 10",
+        " match tag 200",
+        " set tag 200",
+        "router ospf {pid}",
+        " redistribute eigrp {asn} subnets route-map EIGRP_TO_OSPF tag 100",
+        "router eigrp {asn}",
+        " redistribute ospf {pid} metric 10000 100 255 1 1500 route-map OSPF_TO_EIGRP"
+      ]
+    },
+    "administrative_distance_manipulation": [
+      "router ospf {pid}",
+      " distance ospf external 250",
+      "router eigrp {asn}",
+      " distance eigrp 90 170"
+    ]
+  },
+  "policy_based_routing": {
+    "description": "PBR overrides destination-based forwarding. Applied inbound on interface.",
+    "commands": [
+      "ip access-list extended MATCH_TRAFFIC",
+      " permit ip {src} {src_wc} any",
+      "route-map PBR_MAP permit 10",
+      " match ip address MATCH_TRAFFIC",
+      " set ip next-hop {hop1} {hop2}",
+      " set ip next-hop verify-availability {hop} 10 track {obj}",
+      "interface {intf}",
+      " ip policy route-map PBR_MAP",
+      "ip local policy route-map LOCAL_PBR"
+    ],
+    "notes": "ip local policy applies to router-generated traffic. verify-availability checks reachability."
+  },
+  "isis": {
+    "description": "IS-IS \u2014 link-state IGP. Preferred for large service provider cores. Dual-stack native.",
+    "basic_dual_stack": {
+      "commands": [
+        "router isis {tag}",
+        " net {nsap_address}",
+        " is-type {level-1|level-2-only|level-1-2}",
+        " metric-style wide",
+        " log-adjacency-changes",
+        " passive-interface Loopback0",
+        "interface {intf}",
+        " ip router isis {tag}",
+        " ipv6 router isis {tag}",
+        " isis metric {metric} {level-1|level-2}",
+        " isis network point-to-point",
+        " isis authentication mode md5",
+        " isis authentication key-chain {chain_name}"
+      ],
+      "notes": "NET = Area.SystemID.SEL. Example: 49.0001.0000.0000.0001.00"
+    },
+    "ipv6_only": [
+      "ipv6 unicast-routing",
+      "router isis {tag}",
+      " net {nsap_address}",
+      " metric-style wide",
+      " address-family ipv6",
+      "  multi-topology",
+      "interface {intf}",
+      " ipv6 router isis {tag}"
+    ],
+    "authentication": [
+      "key chain ISIS_KEYS",
+      " key 1",
+      "  key-string {key}",
+      "interface {intf}",
+      " isis authentication mode md5 level-{level}",
+      " isis authentication key-chain ISIS_KEYS level-{level}"
+    ],
+    "redistribution": [
+      "router isis {tag}",
+      " redistribute ospf {pid} metric {metric} metric-type {external} level-{1_or_2}",
+      " redistribute bgp {asn} metric {metric} level-{1_or_2}",
+      " redistribute connected metric {metric} level-{1_or_2}"
+    ],
+    "verification": [
+      "show isis neighbors",
+      "show isis database",
+      "show isis database detail",
+      "show isis topology",
+      "show ip route isis",
+      "show ipv6 route isis"
+    ]
+  },
+  "ipv6_static_routes": {
+    "description": "IPv6 static routes \u2014 RFC 4291 prefix notation.",
+    "commands": [
+      "ipv6 unicast-routing",
+      "ipv6 route {prefix}/{len} {next_hop_ipv6}",
+      "ipv6 route {prefix}/{len} {exit_intf}",
+      "ipv6 route {prefix}/{len} {exit_intf} {next_hop_ipv6}",
+      "ipv6 route {prefix}/{len} {next_hop_ipv6} {admin_distance}",
+      "ipv6 route ::/0 {default_gw}"
+    ],
+    "vrf_aware": [
+      "ipv6 route vrf {vrf_name} {prefix}/{len} {next_hop_ipv6}"
+    ],
+    "verification": [
+      "show ipv6 route static",
+      "show ipv6 route {prefix}/{len}",
+      "show ipv6 route summary"
+    ]
+  },
+  "ipv6_pbr": {
+    "description": "IPv6 Policy-Based Routing \u2014 overrides destination routing for IPv6 traffic.",
+    "commands": [
+      "ipv6 access-list MATCH_V6_TRAFFIC",
+      " permit ipv6 {src_prefix}/{len} any",
+      "route-map IPv6_PBR permit 10",
+      " match ipv6 address MATCH_V6_TRAFFIC",
+      " set ipv6 next-hop {next_hop_v6}",
+      " set ipv6 next-hop verify-availability {next_hop_v6} 10 track {track_obj}",
+      "interface {intf}",
+      " ipv6 policy route-map IPv6_PBR"
+    ],
+    "local_policy": [
+      "ipv6 local policy route-map LOCAL_IPv6_PBR"
+    ],
+    "verification": [
+      "show ipv6 policy",
+      "show route-map IPv6_PBR"
+    ]
+  }
+}

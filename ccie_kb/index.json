@@ -1,0 +1,413 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "CCIE Enterprise + Automation knowledge base index. Each topic maps to a JSON file."
+  },
+  "topics": {
+    "ospf": {
+      "file": "routing.json",
+      "subtopics": [
+        "basic",
+        "interface_mode",
+        "area_types",
+        "authentication",
+        "redistribution",
+        "summarization",
+        "tuning",
+        "verification",
+        "troubleshooting"
+      ]
+    },
+    "ospfv3": {
+      "file": "routing.json",
+      "subtopics": [
+        "basic_ipv6_only",
+        "address_family_iosxe",
+        "area_types",
+        "authentication",
+        "redistribution",
+        "verification"
+      ]
+    },
+    "bgp": {
+      "file": "routing.json",
+      "subtopics": [
+        "basic_ebgp",
+        "basic_ibgp",
+        "route_reflector",
+        "confederations",
+        "path_attributes",
+        "communities",
+        "policy",
+        "redistribution",
+        "multiprotocol",
+        "graceful_restart",
+        "verification",
+        "troubleshooting",
+        "multiprotocol"
+      ]
+    },
+    "eigrp": {
+      "file": "routing.json",
+      "subtopics": [
+        "named_mode",
+        "named_mode_ipv6",
+        "classic_mode",
+        "classic_ipv6",
+        "metric",
+        "stub",
+        "summarization",
+        "authentication",
+        "verification",
+        "troubleshooting"
+      ]
+    },
+    "redistribution": {
+      "file": "routing.json",
+      "subtopics": [
+        "rules",
+        "loop_prevention_tagging",
+        "administrative_distance_manipulation"
+      ]
+    },
+    "pbr": {
+      "file": "routing.json",
+      "subtopics": [
+        "commands",
+        "notes"
+      ]
+    },
+    "vlans": {
+      "file": "switching.json",
+      "subtopics": [
+        "vlan_database",
+        "access_port",
+        "trunk_port",
+        "svi",
+        "vtp"
+      ]
+    },
+    "spanning_tree": {
+      "file": "switching.json",
+      "subtopics": [
+        "modes",
+        "enable_rapid",
+        "root_bridge",
+        "port_cost",
+        "timers",
+        "edge_ports",
+        "loop_prevention",
+        "mst_config",
+        "verification"
+      ]
+    },
+    "etherchannel": {
+      "file": "switching.json",
+      "subtopics": [
+        "lacp",
+        "pagp",
+        "static",
+        "layer3_etherchannel",
+        "load_balance",
+        "verification",
+        "troubleshooting"
+      ]
+    },
+    "dhcp_snooping": {
+      "file": "switching.json",
+      "subtopics": [
+        "dhcp_snooping",
+        "dynamic_arp_inspection",
+        "ip_source_guard"
+      ]
+    },
+    "port_security": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "commands",
+        "verification"
+      ]
+    },
+    "private_vlan": {
+      "file": "switching.json",
+      "subtopics": [
+        "commands"
+      ]
+    },
+    "gre": {
+      "file": "vpn.json",
+      "subtopics": [
+        "basic",
+        "ipv6_over_ipv4",
+        "ipv6_tunnel",
+        "dual_stack",
+        "notes"
+      ]
+    },
+    "dmvpn": {
+      "file": "vpn.json",
+      "subtopics": [
+        "phase1",
+        "phase2",
+        "phase3",
+        "with_ipsec",
+        "phase1_ipv6",
+        "verification"
+      ]
+    },
+    "ipsec": {
+      "file": "vpn.json",
+      "subtopics": [
+        "ikev1_site_to_site",
+        "ikev2_site_to_site",
+        "virtual_tunnel_interface",
+        "ikev2_ipv6",
+        "verification"
+      ]
+    },
+    "mpls_vpn": {
+      "file": "vpn.json",
+      "subtopics": [
+        "vrf_config",
+        "pe_ce_routing",
+        "pe_pe_mpls_bgp",
+        "route_target_filtering",
+        "verification"
+      ]
+    },
+    "mpls_ldp": {
+      "file": "vpn.json",
+      "subtopics": [
+        "basic",
+        "authentication",
+        "graceful_restart",
+        "verification"
+      ]
+    },
+    "acl": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "standard",
+        "extended",
+        "ipv6",
+        "verification"
+      ]
+    },
+    "zbf": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "commands",
+        "verification"
+      ]
+    },
+    "aaa": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "tacacs_plus",
+        "radius",
+        "ssh_hardening",
+        "verification"
+      ]
+    },
+    "qos": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "classification_marking",
+        "queuing_llq",
+        "policing",
+        "shaping",
+        "verification"
+      ]
+    },
+    "hsrp": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "v1",
+        "v2",
+        "v2_ipv6",
+        "verification"
+      ]
+    },
+    "vrrp": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "commands",
+        "v3_ipv4",
+        "v3_ipv6",
+        "verification"
+      ]
+    },
+    "glbp": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "commands",
+        "verification"
+      ]
+    },
+    "tracking": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "commands",
+        "verification"
+      ]
+    },
+    "ip_sla": {
+      "file": "security_qos_ha.json",
+      "subtopics": [
+        "icmp_echo",
+        "udp_jitter",
+        "verification"
+      ]
+    },
+    "ipv6": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "addressing",
+        "basic_interface",
+        "dual_stack_interface",
+        "nd_tuning",
+        "eui64_calculation",
+        "transition_mechanisms",
+        "dhcpv6",
+        "address_types_summary",
+        "verification",
+        "6in4",
+        "6to4",
+        "isatap",
+        "nat64"
+      ]
+    },
+    "multicast": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "address_ranges",
+        "pim_sparse_mode",
+        "pim_ssm",
+        "igmp",
+        "multicast_boundary",
+        "verification"
+      ]
+    },
+    "netconf": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "enable_iosxe",
+        "python_example",
+        "yang_models"
+      ]
+    },
+    "restconf": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "enable",
+        "base_url",
+        "examples",
+        "headers"
+      ]
+    },
+    "netmiko": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "connect",
+        "commands",
+        "textfsm_parsing"
+      ]
+    },
+    "napalm": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "example"
+      ]
+    },
+    "ansible": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "ios_module",
+        "ios_command",
+        "ios_facts",
+        "inventory"
+      ]
+    },
+    "eem": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "syslog_trigger",
+        "cli_trigger",
+        "timer_trigger"
+      ]
+    },
+    "sdwan": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "components",
+        "omp",
+        "verification"
+      ]
+    },
+    "isis": {
+      "file": "routing.json",
+      "subtopics": [
+        "basic_dual_stack",
+        "ipv6_only",
+        "authentication",
+        "redistribution",
+        "verification"
+      ]
+    },
+    "ipv6_static_routes": {
+      "file": "routing.json",
+      "subtopics": [
+        "commands",
+        "vrf_aware",
+        "verification"
+      ]
+    },
+    "ipv6_pbr": {
+      "file": "routing.json",
+      "subtopics": [
+        "commands",
+        "local_policy",
+        "verification"
+      ]
+    },
+    "ipv6_fhs": {
+      "file": "switching.json",
+      "subtopics": [
+        "ra_guard",
+        "dhcpv6_guard",
+        "nd_inspection",
+        "ipv6_source_guard",
+        "binding_table",
+        "verification"
+      ]
+    },
+    "6pe": {
+      "file": "vpn.json",
+      "subtopics": [
+        "pe_config",
+        "ce_facing_interface",
+        "verification"
+      ]
+    },
+    "6vpe": {
+      "file": "vpn.json",
+      "subtopics": [
+        "vrf_config",
+        "pe_bgp",
+        "verification"
+      ]
+    },
+    "ipv6_multicast": {
+      "file": "automation_ipv6_multicast.json",
+      "subtopics": [
+        "pimv6_sparse_mode",
+        "pimv6_ssm",
+        "mld",
+        "pimv6_bsr",
+        "embedded_rp",
+        "multicast_boundary_v6",
+        "verification"
+      ]
+    }
+  }
+}
