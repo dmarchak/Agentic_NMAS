@@ -4766,6 +4766,182 @@ def golden_configs_auto_create():
     return jsonify({"ok": True, "created": created, "skipped": skipped, "failed": failed})
 
 
+@app.route("/golden_configs/save_all", methods=["POST"])
+def golden_configs_save_all():
+    """
+    Fetch running-config from every online device, save as golden config,
+    stage the changes in the list's Git repository, and create a Jenkins
+    validation pipeline for this batch.
+
+    This is the 'Save All Configs' action — the frontend should call this
+    instead of /bulk_execute for write-memory-only saves.
+    """
+    from modules.ai_assistant import (
+        _save_golden_config_file,
+        _get_running_config_for_golden,
+    )
+    from modules.config_git import (
+        init_config_repo, write_and_stage,
+        has_staged_changes, create_validation_pipeline,
+        register_pending_pipeline,
+    )
+    from modules.device import load_saved_devices
+    from modules.jenkins_runner import load_config as _jcfg, _trigger_jenkins
+
+    list_name, current_list_file = get_current_device_list()
+    devices = load_saved_devices(current_list_file)
+
+    saved   = []
+    failed  = []
+
+    # Initialise git repo for this list
+    init_config_repo(list_name)
+
+    for dev in devices:
+        ip       = dev.get("ip", "")
+        hostname = dev.get("hostname", ip)
+        if not device_status_cache.get(ip, False):
+            failed.append({"ip": ip, "hostname": hostname, "reason": "offline"})
+            continue
+        try:
+            cfg = _get_running_config_for_golden(ip, hostname)
+            if not cfg:
+                failed.append({"ip": ip, "hostname": hostname, "reason": "empty config"})
+                continue
+            # Save golden config (existing behaviour)
+            _save_golden_config_file(ip, hostname, cfg)
+            # Stage in git repo
+            write_and_stage(list_name, hostname, cfg)
+            saved.append({"ip": ip, "hostname": hostname})
+        except Exception as exc:
+            app.logger.warning("save_all_configs %s: %s", hostname, exc)
+            failed.append({"ip": ip, "hostname": hostname, "reason": str(exc)})
+
+    if not saved:
+        return jsonify({"ok": False, "saved": saved, "failed": failed,
+                        "message": "No configs were saved."}), 400
+
+    # Create a validation pipeline for this batch (async trigger)
+    pipeline_name = None
+    pipeline_error = None
+    if has_staged_changes(list_name):
+        jenkins_cfg = _jcfg()
+        if jenkins_cfg.get("jenkins_url", "").strip():
+            desc = f"Validate configs for {len(saved)} device(s) in '{list_name}'"
+            pipeline_name = create_validation_pipeline(list_name, jenkins_cfg, desc)
+            if pipeline_name:
+                try:
+                    _trigger_jenkins(jenkins_cfg, pipeline_name)
+                    register_pending_pipeline(list_name, pipeline_name, desc)
+                except Exception as exc:
+                    pipeline_error = str(exc)
+                    app.logger.warning("save_all: pipeline trigger failed: %s", exc)
+
+    msg = (f"Saved {len(saved)} device config(s) and staged in git."
+           + (f" Validation pipeline '{pipeline_name}' triggered." if pipeline_name else
+              " Jenkins not configured — stage committed without CI pipeline."))
+
+    return jsonify({
+        "ok":            True,
+        "saved":         saved,
+        "failed":        failed,
+        "pipeline":      pipeline_name,
+        "pipeline_error": pipeline_error,
+        "message":       msg,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Git configuration versioning routes
+# ---------------------------------------------------------------------------
+
+@app.route("/git/status")
+def git_status():
+    """Return the git repo status for the current device list."""
+    from modules.config_git import get_repo_status
+    list_name, _ = get_current_device_list()
+    return jsonify(get_repo_status(list_name))
+
+
+@app.route("/git/log")
+def git_log():
+    """Return the commit log for the current device list."""
+    from modules.config_git import get_commit_log
+    list_name, _ = get_current_device_list()
+    limit = min(int(request.args.get("limit", 30)), 100)
+    return jsonify({"ok": True, "commits": get_commit_log(list_name, limit)})
+
+
+@app.route("/git/available_pipelines")
+def git_available_pipelines():
+    """Return pipelines registered for this list that are not yet committed."""
+    from modules.config_git import get_available_pipelines
+    list_name, _ = get_current_device_list()
+    return jsonify({"ok": True, "pipelines": get_available_pipelines(list_name)})
+
+
+@app.route("/git/commit", methods=["POST"])
+def git_commit():
+    """
+    Commit staged configs to git.
+
+    Requires:
+      - message:       commit message (non-empty)
+      - pipeline_name: a registered pending pipeline whose last run PASSED
+                       and has NOT already been linked to another commit
+    """
+    from modules.config_git import (
+        commit_configs, is_pipeline_available, has_staged_changes,
+    )
+    from modules.jenkins_runner import load_results
+
+    list_name, _ = get_current_device_list()
+    data         = request.get_json(silent=True) or {}
+    message      = (data.get("message") or "").strip()
+    pipeline     = (data.get("pipeline_name") or "").strip()
+
+    if not message:
+        return jsonify({"ok": False, "error": "Commit message is required"}), 400
+    if not pipeline:
+        return jsonify({"ok": False, "error": "Pipeline name is required"}), 400
+
+    # Validate pipeline availability
+    if not is_pipeline_available(list_name, pipeline):
+        return jsonify({
+            "ok":    False,
+            "error": f"Pipeline '{pipeline}' is already linked to a commit and cannot be reused.",
+        }), 400
+
+    # Validate pipeline has a passing last run
+    results = load_results() or {}
+    pipe_info = results.get("pipelines", {}).get(pipeline, {})
+    last_result = pipe_info.get("jenkins_result")
+    if not pipe_info.get("jenkins_ok", False) or last_result != "SUCCESS":
+        return jsonify({
+            "ok":    False,
+            "error": (
+                f"Pipeline '{pipeline}' last run was {last_result or 'not yet run'}. "
+                "The pipeline must pass before you can commit."
+            ),
+        }), 400
+
+    # Check there are staged changes
+    if not has_staged_changes(list_name):
+        return jsonify({"ok": False, "error": "No staged changes to commit."}), 400
+
+    # Commit
+    commit_hash = commit_configs(list_name, message, pipeline)
+    if not commit_hash:
+        return jsonify({"ok": False, "error": "git commit failed — check server logs"}), 500
+
+    return jsonify({
+        "ok":          True,
+        "commit_hash": commit_hash,
+        "message":     message,
+        "pipeline":    pipeline,
+    })
+
+
 @app.route("/monitoring/config", methods=["GET", "POST"])
 def monitoring_config():
     """GET: return collector config. POST: update one or more fields."""

@@ -399,6 +399,16 @@ def _save_golden_config_file(device_ip: str, hostname: str, config_text: str) ->
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(header + config_text.strip() + "\n")
 
+    # Also stage in the list's git repo — AI saves show up alongside manual saves.
+    try:
+        from modules.config_git import write_and_stage, init_config_repo
+        from modules.config    import get_current_list_name
+        list_name = get_current_list_name()
+        init_config_repo(list_name)
+        write_and_stage(list_name, hostname, config_text)
+    except Exception:
+        pass   # git staging is best-effort; never block a golden config save
+
 
 def _load_golden_config_file(device_ip: str) -> Optional[str]:
     """Load the golden config for a device by IP (scans headers)."""
@@ -2089,8 +2099,12 @@ STEP 2 — Push the config change
   - Use run_ansible_playbook (preferred) or execute_commands_on_device
   - After config is applied: run `write memory` on each modified device
 
-STEP 3 — Save golden config and update variables (do this immediately after push)
-  - save_golden_config(device_ips=[...modified IPs...])   — do NOT wait for CI first
+STEP 3 — Save golden config, stage in Git, and update variables
+  - save_golden_config(device_ips=[...modified IPs...])
+    This automatically: (a) saves the golden config file, AND
+                        (b) stages the config in the list's Git repository.
+  - Staged configs will show as uncommitted changes in the Git tab.
+    The user must commit from the Git tab once a validation pipeline passes.
   - read_golden_config for each modified device → extract ALL configured values →
     call set_variable for each one (IPs, loopbacks, OSPF IDs, BGP AS, tunnel endpoints,
     VLANs, ACLs, NTP, etc.)

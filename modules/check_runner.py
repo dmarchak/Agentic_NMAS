@@ -456,15 +456,79 @@ Examples:
   python modules\\check_runner.py --config-id cfg-xxx --function bgp
 """,
     )
-    p.add_argument("--function",   metavar="TYPE",   help="Function type: ospf, bgp, mpls, …")
-    p.add_argument("--list-slug",  metavar="SLUG",   help="Device list slug (with --function)")
-    p.add_argument("--config-id",  metavar="ID",     help="configure_apply job ID")
+    p.add_argument("--function",      metavar="TYPE", help="Function type: ospf, bgp, mpls, …")
+    p.add_argument("--list-slug",     metavar="SLUG", help="Device list slug (with --function or --validate-all)")
+    p.add_argument("--config-id",     metavar="ID",   help="configure_apply job ID")
+    p.add_argument("--validate-all",  action="store_true",
+                   help="Run every detected function for --list-slug (used by validation pipelines)")
     return p
 
 
 def main(argv=None) -> int:
     parser = _build_arg_parser()
     args   = parser.parse_args(argv)
+
+    # ── Mode 0: validate-all (used by per-commit validation pipeline) ────
+    if getattr(args, "validate_all", False) and args.list_slug:
+        list_slug = args.list_slug
+        print(f"[check_runner] validate-all  list={list_slug}")
+
+        sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
+        devices_raw = _load_devices_with_creds(list_slug)
+        if not devices_raw:
+            print(f"WARNING: no devices in list '{list_slug}' — nothing to check")
+            return 0
+
+        try:
+            from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
+        except ImportError:
+            _list_golden_configs     = lambda: []
+            _load_golden_config_file = lambda ip: None
+
+        golden  = _list_golden_configs()
+        ip_cfg  = {e["device_ip"]: _load_golden_config_file(e["device_ip"]) for e in golden}
+        dev_map = {d["ip"]: d for d in devices_raw}
+
+        # Detect every function present across all devices
+        all_failures: list[str] = []
+        functions_checked = set()
+        for ip, cfg in ip_cfg.items():
+            if ip not in dev_map or not cfg:
+                continue
+            for ftype in CHECKS:
+                params = _device_params_for(ftype, cfg)
+                # Skip if no meaningful params found (protocol not configured)
+                if not params and ftype not in ("interface", "interfaces"):
+                    continue
+                if ftype in functions_checked:
+                    continue
+                # Collect all devices with this function
+                fdevices = []
+                for dip, dcfg in ip_cfg.items():
+                    if dip not in dev_map or not dcfg:
+                        continue
+                    dp = _device_params_for(ftype, dcfg)
+                    if dp or ftype in ("interface",):
+                        d = dict(dev_map[dip])
+                        d.update(dp)
+                        fdevices.append(d)
+                if fdevices:
+                    print(f"\n── {ftype.upper()} ({len(fdevices)} device(s)) ──")
+                    _, failures = run_checks_on_devices(ftype, fdevices)
+                    all_failures.extend(failures)
+                    functions_checked.add(ftype)
+
+        print(f"\n{'─' * 50}")
+        if all_failures:
+            print(f"FAILED ({len(all_failures)} issue(s)):")
+            for f in all_failures:
+                print(f"  ✗ {f}")
+            return 1
+        if not functions_checked:
+            print("No protocol checks detected — nothing to validate")
+        else:
+            print(f"All checks passed ({len(functions_checked)} function(s) verified)")
+        return 0
 
     # ── Mode 1: function pipeline (--function + --list-slug) ─────────────
     if args.function and args.list_slug and not args.config_id:
