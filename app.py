@@ -5119,7 +5119,7 @@ if __name__ == "__main__":
     try:
         url = f"http://{'127.0.0.1' if FLASK_HOST == '0.0.0.0' else FLASK_HOST}:{FLASK_PORT}"
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
-        socketio.run(app, host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG, use_reloader=False)
+        socketio.run(app, host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG, use_reloader=False, allow_unsafe_werkzeug=TRUE)
     except Exception as e:
         print(f"\n{'='*60}")
         print(f"ERROR: {e}")
