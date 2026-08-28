@@ -118,14 +118,29 @@ def verify_device_connection(
 
 
 def is_device_online(ip: str) -> bool:
-    """Returns True if device at IP responds to ping."""
+    """Returns True if device at IP responds to ping or accepts TCP on port 22.
+
+    ping3 needs a raw ICMP socket, which requires root/CAP_NET_RAW on Linux.
+    When that's unavailable (e.g. unprivileged systemd service) every ping
+    raises PermissionError, so fall back to a plain TCP connect to the SSH
+    port, which is what this app actually needs reachable anyway.
+    """
     from ping3 import ping
 
     try:
         response = ping(ip, timeout=2, unit="ms")
-        return bool(response and response > 0)
+        if response and response > 0:
+            return True
     except Exception:
         logger.debug("Ping error for %s", ip, exc_info=True)
+
+    import socket
+
+    try:
+        with socket.create_connection((ip, 22), timeout=2):
+            return True
+    except Exception:
+        logger.debug("TCP:22 check failed for %s", ip, exc_info=True)
         return False
 
 
