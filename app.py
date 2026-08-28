@@ -120,7 +120,15 @@ else:
     with open(SECRET_KEY_FILE, "wb") as f:
         f.write(app.secret_key)
 
-socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+
+# manage_session=False: none of this app's SocketIO handlers use flask.session
+# (the terminal feature keeps its own state in terminal_sessions), and on some
+# Flask/Flask-SocketIO version combos manage_session=True's internal session
+# copy hits `AttributeError: property 'session' of 'RequestContext' object
+# has no setter`, crashing every socket event before the handler even runs.
+socketio = SocketIO(
+    app, async_mode="threading", cors_allowed_origins="*", manage_session=False
+)
 
 # Background daemons are started after all routes/functions are defined.
 # See _start_background_daemons() called at the bottom of this file.
