@@ -2,10 +2,14 @@
 # Agentic Network Management
 # Device Manager web application
 
-# Load .env file if present (sets ANTHROPIC_API_KEY etc. without needing system env vars)
+# Load .env file if present (sets ANTHROPIC_API_KEY etc. without needing system env vars).
+# Use an absolute path (matching where /settings writes it) instead of relying on
+# load_dotenv()'s cwd-based search — under systemd, the process's working directory
+# isn't necessarily the repo root, so the auto-search can silently miss the file.
 try:
+    import os as _os
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(_os.path.join(_os.path.dirname(__file__), ".env"))
 except ImportError:
     pass  # python-dotenv not installed; rely on system environment variables
 
