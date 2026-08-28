@@ -16,10 +16,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Commands that consistently cause Netmiko prompt-detection timeouts because
-# they are slow (crypto/VPN state lookups, BGP table scans, NHRP queries) or
-# produce output that confuses the prompt-regex.  These are sent via
-# send_command_timing directly — no failed-prompt-attempt overhead.
+# Commands that have historically caused Netmiko prompt-detection timeouts on
+# some platforms (crypto/VPN state lookups, BGP table scans, NHRP queries) or
+# produce output that confuses the prompt-regex.  Prompt-based send_command is
+# still tried first (it's ~2-3x faster when it works, e.g. on containerlab
+# nodes), but with a short read_timeout so a platform where it genuinely
+# fails falls back to send_command_timing quickly instead of stalling for
+# the full default read_timeout.
+_PROMPT_PROBE_TIMEOUT = 10
+
 _TIMING_PREFIXES = (
     "show crypto",
     "show ip nhrp",
@@ -49,8 +54,10 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
     paginated output (--More--) is handled automatically and the call returns
     as soon as the device prompt reappears — no fixed timer needed.
 
-    Commands in _TIMING_PREFIXES are routed directly to send_command_timing
-    to avoid Netmiko prompt-detection failures on slow or output-heavy commands.
+    Commands in _TIMING_PREFIXES are still tried prompt-based first (fast on
+    platforms where it works), but with a short probe timeout so a platform
+    where prompt detection genuinely fails falls back to send_command_timing
+    quickly instead of stalling for the full read_timeout.
 
     For config-mode commands (no recognisable prompt terminator) also uses
     send_command_timing.
@@ -68,28 +75,33 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
     cmd = command.strip()
     cmd_lower = cmd.lower()
 
-    # Commands known to cause prompt-detection failures go straight to timing.
-    use_timing_direct = any(cmd_lower.startswith(p) for p in _TIMING_PREFIXES)
+    # Commands known on some platforms to cause prompt-detection failures.
+    # Still tried prompt-based first (see use_prompt_based below), just with
+    # a short leash so a platform where it fails falls back quickly.
+    known_slow = any(cmd_lower.startswith(p) for p in _TIMING_PREFIXES)
 
-    # Prefer send_command (prompt-based, handles --More-- automatically)
-    # for remaining show/more/dir/ping/traceroute commands.
+    # Prefer send_command (prompt-based, handles --More-- automatically) for
+    # show/more/dir/ping/traceroute commands — including known_slow ones,
+    # since on many platforms (e.g. containerlab nodes) prompt detection
+    # works fine and is 2-3x faster than the fixed-delay timing path.
     use_prompt_based = (
-        not use_timing_direct
-        and (
-            cmd_lower.startswith("show")
-            or cmd_lower.startswith("more")
-            or cmd_lower.startswith("dir")
-            or cmd_lower.startswith("ping")
-            or cmd_lower.startswith("traceroute")
-            or cmd_lower.startswith("do show")
-        )
+        cmd_lower.startswith("show")
+        or cmd_lower.startswith("more")
+        or cmd_lower.startswith("dir")
+        or cmd_lower.startswith("ping")
+        or cmd_lower.startswith("traceroute")
+        or cmd_lower.startswith("do show")
     )
 
-    # Give inherently slow commands extra time.
+    # Give inherently slow commands extra time on the timing-based fallback.
     effective_timeout = max(
         read_timeout,
-        _SLOW_TIMEOUT if use_timing_direct else read_timeout,
+        _SLOW_TIMEOUT if known_slow else read_timeout,
     )
+    # known_slow commands get a short prompt-based probe timeout so a
+    # platform where prompt detection genuinely fails doesn't stall for the
+    # full read_timeout before falling back to timing-based.
+    prompt_timeout = _PROMPT_PROBE_TIMEOUT if known_slow else read_timeout
 
     try:
         if use_prompt_based:
@@ -97,12 +109,12 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
             # and never times out on continuously-streaming output.
             output = conn.send_command(
                 cmd,
-                read_timeout=read_timeout,
+                read_timeout=prompt_timeout,
                 strip_prompt=True,
                 strip_command=True,
             )
         else:
-            # Timing-based: crypto/bgp/nhrp/ospf/etc. and config commands.
+            # Timing-based: config commands (no recognisable prompt terminator).
             output = conn.send_command_timing(
                 cmd,
                 read_timeout=effective_timeout,
