@@ -114,7 +114,7 @@ PING_INTERVAL = 5
 FAST_CLI = True
 
 # Flask web server settings
-FLASK_HOST = "127.0.0.1"
+FLASK_HOST = "0.0.0.0"
 FLASK_PORT = 5000
 FLASK_DEBUG = False
 
