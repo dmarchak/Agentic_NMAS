@@ -8,6 +8,7 @@
 anthropic>=0.40.0
 openai>=1.30.0      # Used for Groq and Ollama (OpenAI-compatible API)
 groq>=0.9.0         # Optional: Groq SDK (or use openai client with GROQ_API_KEY)
+python-dotenv>=1.0.0   # Loads .env at startup; required for ANTHROPIC_API_KEY etc. to survive restarts
 
 # Web Framework
 Flask==3.0.0
