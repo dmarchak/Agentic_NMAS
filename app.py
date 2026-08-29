@@ -3260,26 +3260,60 @@ def ai_tool_cache_snapshot():
 
 @app.route("/ai/history", methods=["GET"])
 def ai_history():
-    """Return the conversation history as simplified display pairs."""
+    """Return the conversation history as simplified display items.
+
+    Items are either {"role": "user"|"assistant", "text": ...} or
+    {"role": "action", "id": ..., "label": ..., "content": ...} for a
+    tool call — reconstructed from the tool_use block (assistant message)
+    paired with its matching tool_result block (the following user
+    message), same label logic as the live tool_start event.
+    """
     session_id = request.args.get("session_id") or "main"
     raw = _ai.get_history(session_id)
     out = []
+    pending_actions = {}  # tool_use_id -> action dict in `out`, mutated once its result arrives
     for msg in raw:
         role = msg.get("role")
         if role not in ("user", "assistant"):
             continue
         content = msg.get("content", "")
         if isinstance(content, str):
-            text = content
-        elif isinstance(content, list):
-            parts = []
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    parts.append(block["text"])
-            text = "\n".join(parts)
-        else:
-            text = str(content)
-        text = text.strip()
+            text = content.strip()
+            if text:
+                out.append({"role": role, "text": text})
+            continue
+        if not isinstance(content, list):
+            text = str(content).strip()
+            if text:
+                out.append({"role": role, "text": text})
+            continue
+
+        parts = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type")
+            if btype == "text":
+                parts.append(block.get("text", ""))
+            elif btype == "tool_use" and role == "assistant":
+                text = "\n".join(parts).strip()
+                if text:
+                    out.append({"role": "assistant", "text": text})
+                parts = []
+                action = {
+                    "role":    "action",
+                    "id":      block.get("id"),
+                    "label":   _ai._tool_label(block.get("name", ""), block.get("input") or {}),
+                    "content": None,
+                }
+                out.append(action)
+                if action["id"]:
+                    pending_actions[action["id"]] = action
+            elif btype == "tool_result" and role == "user":
+                action = pending_actions.pop(block.get("tool_use_id"), None)
+                if action is not None:
+                    action["content"] = block.get("content", "")
+        text = "\n".join(parts).strip()
         if text:
             out.append({"role": role, "text": text})
     return jsonify(out)

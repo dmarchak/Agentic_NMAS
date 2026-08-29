@@ -2375,6 +2375,7 @@
         const msgs = await r.json();
         if (!Array.isArray(msgs) || msgs.length === 0) return;
         hideWelcome();
+        let histActionSeq = 0;
         for (const msg of msgs) {
           if (msg.role === 'user') {
             const row = document.createElement('div');
@@ -2385,6 +2386,13 @@
           } else if (msg.role === 'assistant') {
             const row = createAssistantRow();
             row.querySelector('.ai-msg-text').innerHTML = renderMarkdown(msg.text);
+          } else if (msg.role === 'action') {
+            // Reconstructed tool call from a past turn — render already-resolved.
+            const id = msg.id || ('hist_' + (histActionSeq++));
+            appendToolCard(id, msg.label || 'Tool action');
+            updateToolCard(id, (msg.content == null || msg.content === '')
+              ? '(no result recorded — task may have been interrupted)'
+              : msg.content);
           }
         }
         scrollBottom();
