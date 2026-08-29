@@ -3992,13 +3992,21 @@ def run_chat(
     _msg_lower = user_message.lower()
     if any(kw in _msg_lower for kw in _LONG_OUTPUT_KEYWORDS):
         max_tokens_out = 16000
+        _effort = "high"      # thorough report/full-config generation — correctness over cost
     elif any(_msg_lower.startswith(kw) or f" {kw}" in _msg_lower
              for kw in _SHORT_OUTPUT_KEYWORDS):
         # 4096 not 2048 — Sonnet/Opus now run adaptive thinking by default,
         # which shares this same max_tokens budget with the visible answer.
         max_tokens_out = 4096
+        _effort = "low"       # simple read-only status/lookup question
     else:
         max_tokens_out = provider_info.get("max_tokens_per_req", 4096)
+        _effort = "medium"    # general task (config push, troubleshoot, verify, etc.) —
+                               # lower effort means fewer/more-consolidated tool calls per
+                               # Anthropic's own guidance, directly targeting the tendency
+                               # to over-verify observed on this model tier
+    # Haiku 4.5 doesn't support output_config.effort (400 if sent) — Sonnet/Opus do.
+    effort = _effort if provider_id != "anthropic_haiku" else None
     max_history      = provider_info.get("max_history", 20)
     _inject_topo_cfg = provider_info.get("inject_topo", "first_turn")
     active_prompt    = SYSTEM_PROMPT
@@ -6435,12 +6443,20 @@ def run_chat(
                             "text": stable_context,
                             "cache_control": {"type": "ephemeral"},
                         })
-                    _resp = _get_anthropic_client().messages.create(
+                    # context_management clears stale tool_result content server-side
+                    # once a turn accumulates many tool calls (e.g. a multi-device
+                    # verification sweep) instead of letting it all ride in every
+                    # request for the rest of the turn — mitigates "context rot" on
+                    # long tool-loops without needing to change how history is stored.
+                    _resp = _get_anthropic_client().beta.messages.create(
                         model=model,
                         max_tokens=max_tokens_out,
                         system=_system_blocks,
                         messages=trimmed,
                         tools=cached_tools,
+                        betas=["context-management-2025-06-27"],
+                        context_management={"edits": [{"type": "clear_tool_uses_20250919"}]},
+                        **({"output_config": {"effort": effort}} if effort else {}),
                     )
                     break
                 except _anthropic.RateLimitError:
