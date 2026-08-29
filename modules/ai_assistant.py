@@ -98,36 +98,40 @@ _PROVIDER_CONFIG_FILE = os.path.join(
 PROVIDER_DEFAULTS = {
     "anthropic": {
         "name":              "Claude Sonnet",
-        "model":             "claude-sonnet-4-6",
-        "max_tokens_per_req": 4096,   # adaptive; bumped to 16000 for reports/generation
+        "model":             "claude-sonnet-5",
+        # Sonnet 5 runs adaptive thinking by default (shares this budget with
+        # the visible response), unlike Sonnet 4.6 which was thinking-off by
+        # default — bumped from 4096 to leave headroom against truncation.
+        "max_tokens_per_req": 8192,   # adaptive; bumped to 16000 for reports/generation
         "max_history":        12,
         "inject_topo":        "always",
         "price": {
-            "input": 3.00, "output": 15.00,
-            "cache_write": 3.75, "cache_read": 0.30,
+            "input": 2.00, "output": 10.00,
+            "cache_write": 2.50, "cache_read": 0.20,
         },
     },
     "anthropic_opus": {
         "name":              "Claude Opus",
-        "model":             "claude-opus-4-6",
-        "max_tokens_per_req": 4096,
+        "model":             "claude-opus-5",
+        # Same adaptive-thinking-by-default headroom as Sonnet above.
+        "max_tokens_per_req": 8192,
         "max_history":        12,
         "inject_topo":        "always",
         "price": {
-            "input": 15.00, "output": 75.00,
-            "cache_write": 18.75, "cache_read": 1.50,
+            "input": 5.00, "output": 25.00,
+            "cache_write": 6.25, "cache_read": 0.50,
         },
     },
     # Background agent model — cheap, fast, good enough for monitoring/triage tasks.
     "anthropic_haiku": {
         "name":              "Claude Haiku",
-        "model":             "claude-haiku-4-5-20251001",
+        "model":             "claude-haiku-4-5",
         "max_tokens_per_req": 4096,
         "max_history":        8,
         "inject_topo":        "first_turn",
         "price": {
-            "input": 0.80, "output": 4.00,
-            "cache_write": 1.00, "cache_read": 0.08,
+            "input": 1.00, "output": 5.00,
+            "cache_write": 1.25, "cache_read": 0.10,
         },
     },
 }
@@ -3958,7 +3962,9 @@ def run_chat(
         max_tokens_out = 16000
     elif any(_msg_lower.startswith(kw) or f" {kw}" in _msg_lower
              for kw in _SHORT_OUTPUT_KEYWORDS):
-        max_tokens_out = 2048
+        # 4096 not 2048 — Sonnet/Opus now run adaptive thinking by default,
+        # which shares this same max_tokens budget with the visible answer.
+        max_tokens_out = 4096
     else:
         max_tokens_out = provider_info.get("max_tokens_per_req", 4096)
     max_history      = provider_info.get("max_history", 20)
@@ -6384,7 +6390,6 @@ def run_chat(
                         system=_system_blocks,
                         messages=trimmed,
                         tools=cached_tools,
-                        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
                     )
                     break
                 except _anthropic.RateLimitError:
