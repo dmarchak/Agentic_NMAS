@@ -2626,7 +2626,11 @@ TOOLS = [
             "- Identify unauthorised or accidental changes since the last verified baseline\n"
             "- Verify that a config push actually applied correctly\n"
             "- Debug unexpected network behaviour\n\n"
-            "Devices with no golden config are reported as 'no baseline saved'."
+            "Devices with no golden config are reported as 'no baseline saved'.\n\n"
+            "IMPORTANT: this already checks every device you pass in ONE call — it is NOT "
+            "one-device-at-a-time. When checking multiple/all devices, call it ONCE with "
+            "device_ips=['all'] (or the full list of IPs you care about). Calling it "
+            "separately per device wastes calls and floods the chat with duplicate results."
         ),
         "input_schema": {
             "type": "object",

@@ -1543,14 +1543,17 @@
       const safeId = toolId.replace(/[^a-zA-Z0-9_-]/g, '_');
       const card = document.createElement('div');
       card.className = 'ai-tool-card';
+      // Collapsed by default — a task with many tool calls (drift checks,
+      // per-device verification, etc.) would otherwise stack dozens of
+      // fully-expanded cards into an unreadable wall. Click to expand.
       card.innerHTML =
-        '<div class="ai-tool-header" id="hdr_' + safeId + '">' +
+        '<div class="ai-tool-header collapsed-hdr" id="hdr_' + safeId + '">' +
           '<div class="ai-tool-spinner" id="spin_' + safeId + '"></div>' +
           '<span class="ai-tool-check" id="check_' + safeId + '" style="display:none">✓</span>' +
           '<span class="ai-tool-label">' + escHtml(label) + '</span>' +
           '<span class="ai-tool-toggle">▾</span>' +
         '</div>' +
-        '<div class="ai-tool-body" id="body_' + safeId + '">' +
+        '<div class="ai-tool-body collapsed" id="body_' + safeId + '">' +
           '<div class="ai-tool-output" id="out_' + safeId + '">Running…</div>' +
         '</div>';
       // Toggle open/collapsed by ID — avoids nextSibling text-node pitfall
