@@ -1618,10 +1618,11 @@ CONFIG PUSH triggers (fire every time you push config to any device —
            change took effect on each device (this is the verification, not optional —
            see TASK COMPLETION above for the same "prove it" standard used elsewhere)
     4. IF verification PASSES (CI passed, or your direct show-command check confirms it):
-         → save_golden_config(device_ips)          — update golden baseline
-         → read_golden_config for each device      — parse the freshly saved config
-         → set_variable for EVERY value present in the new golden config (IPs, IDs, AS, etc.)
-         → log_change(result=SUCCESS, golden_config_saved=True)
+         → finalize_verified_config_change(device_ips, verification_summary=<how you verified it>)
+           — this one call updates the golden baseline, extracts and merges variables, and
+           logs the change (result=SUCCESS, golden_config_saved=True). Do NOT separately call
+           save_golden_config / read_golden_config / set_variable / log_change for this — it
+           replaces all four.
          NO human approval is required — a passing CI run, or your own direct verification
          when Jenkins isn't configured, is sufficient authorisation to proceed either way.
     5. IF verification FAILS:
@@ -1667,7 +1668,9 @@ PIPELINE triggers:
        build_network_pipelines() once so the new function is covered.
   IF a new config type has never been added to this list before:
     → build_network_pipelines() will detect the new function from the saved golden
-       config and add its pipeline.  Call it AFTER save_golden_config completes.
+       config and add its pipeline.  Call it AFTER the golden config is saved —
+       whether via save_golden_config (first-time baseline) or
+       finalize_verified_config_change (after a verified change).
   IF you create ANY new Jenkins pipeline:
     → ALWAYS call jenkins_set_schedule immediately after creation
     → Default schedules by pipeline type:
@@ -2103,8 +2106,8 @@ Rules for using saved playbooks:
 - Only fall through to manual SSH commands if no playbook in [PLAYBOOKS] matches.
 
 Complete config-push workflow — follow this EVERY time you push config to devices
-The goal is to get correct config onto devices and document it.  CI verifies that
-nothing broke — it is advisory, not a gate.  Never block a push waiting for CI.
+The goal is to get correct config onto devices, verify it actually worked, and document it.
+This is the same sequence as CONFIG PUSH triggers above, spelled out step by step.
 
 STEP 0 — Read context (before starting)
   Everything below is ALREADY IN YOUR CONTEXT — do NOT call these tools just to read them:
@@ -2125,24 +2128,22 @@ STEP 2 — Push the config change
   - Use run_ansible_playbook (preferred) or execute_commands_on_device
   - After config is applied: run `write memory` on each modified device
 
-STEP 3 — Save golden config, stage in Git, and update variables
-  - save_golden_config(device_ips=[...modified IPs...])
-    This automatically: (a) saves the golden config file, AND
-                        (b) stages the config in the list's Git repository.
-  - Staged configs will show as uncommitted changes in the Git tab.
-    The user must commit from the Git tab once a validation pipeline passes.
-  - read_golden_config for each modified device → extract ALL configured values →
-    call set_variable for each one (IPs, loopbacks, OSPF IDs, BGP AS, tunnel endpoints,
-    VLANs, ACLs, NTP, etc.)
-  - log_change(description, devices, change_type, golden_config_saved=True)
-  Golden config is saved NOW regardless of CI.  It represents what is on the device.
+STEP 3 — Verify the change (the gate before anything is treated as done)
+  - IF Jenkins is configured (see [CI STATUS]): run_jenkins_checks → jenkins_wait_for_result
+  - IF Jenkins is NOT configured: run the specific show commands that prove the change
+    took effect on each device
+  Do NOT proceed to STEP 4 until verification actually passes. If it fails: diagnose,
+  fix, and re-verify (or restore_pre_change_snapshot and report to the user if you can't).
 
-STEP 4 — Trigger verification CI (fire-and-forget, do NOT wait)
-  - run_jenkins_checks()   — triggers all registered pipelines
-  Do NOT call jenkins_wait_for_result here.  CI runs in the background.
-  The user can see results in the Jenkins tab.
-  IF CI later fails: investigate the console, diagnose root cause, fix the issue.
-  IF CI passes: the change is fully verified — no further action needed.
+STEP 4 — Finalize (golden config, Git stage, variables, and audit log — one call)
+  - finalize_verified_config_change(device_ips=[...modified IPs...],
+      verification_summary=<how STEP 3 confirmed it worked>)
+    This one call: saves the golden config, stages it in the list's Git repository
+    (shows up in the Git tab for the user to commit), extracts and merges variables
+    from the new baseline, and logs the change — replacing separate save_golden_config /
+    read_golden_config / set_variable / log_change calls.
+  NO human approval is required — verification passing in STEP 3 is sufficient
+  authorisation to proceed automatically.
 
 Rollback (if the push itself caused a problem — not CI):
   restore_pre_change_snapshot(device_ips, reason) — exact pre-change state
@@ -2161,7 +2162,9 @@ Compliance — run after significant changes:
   Rules assert things like: OSPF neighbor count, interface descriptions, MPLS labels present
 
 Change audit log — mandatory at end of every workflow:
-  log_change(...)        — records what changed, which devices, CI result, whether golden saved
+  On success, finalize_verified_config_change already logs it — no separate call needed.
+  log_change(...)        — call this directly only for a FAILED push (result=FAILURE) or a
+                            workflow that doesn't go through finalize_verified_config_change
   read_change_log()      — review history of changes for this list
 
 Config drift detection — use proactively:
@@ -2483,14 +2486,13 @@ TOOLS = [
         "name": "save_golden_config",
         "description": (
             "SSH to one or more devices, capture their current startup-config, and save it as "
-            "the golden (known-good) config for this list. Two valid uses:\n"
-            "  1. First-time baseline — a device has no golden config yet (see [PROACTIVE "
-            "CONTEXT] MISSING GOLDEN CONFIGS). Call this directly, no CI or approval needed — "
-            "there is no prior state being protected.\n"
-            "  2. After a verified config change — call this once the change is confirmed, "
-            "either via a passing Jenkins pipeline (when configured) or your own direct "
-            "show-command verification (when Jenkins is not configured; see [CI STATUS] and "
-            "CONFIG PUSH triggers).\n\n"
+            "the golden (known-good) config for this list.\n\n"
+            "Use this directly ONLY for a first-time baseline — a device has no golden config "
+            "yet (see [PROACTIVE CONTEXT] MISSING GOLDEN CONFIGS). No CI or approval needed, "
+            "there is no prior state being protected.\n\n"
+            "After a verified config CHANGE (an existing baseline is being updated), use "
+            "finalize_verified_config_change instead — it does this plus variable extraction "
+            "and change logging in one call, instead of three separate ones.\n\n"
             "One file per device is kept (overwritten on each call). The saved config can be "
             "used to restore a device or diff against a future broken state.\n\n"
             "Call with device_ips=['all'] to snapshot every device in this list, or pass "
@@ -2509,6 +2511,59 @@ TOOLS = [
                 },
             },
             "required": ["device_ips"],
+        },
+    },
+    {
+        "name": "finalize_verified_config_change",
+        "description": (
+            "Call this ONCE, right after you have pushed a config change and confirmed it "
+            "works — either via a passing Jenkins pipeline, or your own direct show-command "
+            "verification when Jenkins is not configured (see [CI STATUS] and CONFIG PUSH "
+            "triggers). It replaces the separate save_golden_config + read_golden_config + "
+            "set_variable(...) + log_change calls with one atomic step:\n"
+            "  1. Snapshots each device's startup-config as the new golden baseline\n"
+            "  2. Extracts variables from it automatically (IPs, OSPF/BGP/EIGRP process IDs, "
+            "loopbacks, VRFs, etc.) and merges them into the variable store — manually-set "
+            "values are never overwritten, only previously auto-discovered ones refresh\n"
+            "  3. Logs the change with your verification_summary as the audit trail\n\n"
+            "Do NOT call this for a first-time baseline (no prior change to verify) — use "
+            "save_golden_config directly for that. Do NOT call this if verification failed — "
+            "diagnose and fix first; only finalize once you've actually confirmed success."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_ips": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "IPs of the devices that were changed and verified, or ['all'].",
+                },
+                "verification_summary": {
+                    "type": "string",
+                    "description": (
+                        "How you confirmed the change worked — e.g. 'Jenkins pipeline "
+                        "nmas-ospf-verify build #14 passed' or 'show ip ospf neighbor confirms "
+                        "P2 (10.0.0.11) is FULL on Gi0/1'. Stored as the change log entry."
+                    ),
+                },
+                "change_type": {
+                    "type": "string",
+                    "description": "Category of change, e.g. 'ospf', 'bgp', 'acl' (default: config_push).",
+                },
+                "jenkins_pipeline": {
+                    "type": "string",
+                    "description": "Pipeline job name, if Jenkins was used for verification.",
+                },
+                "jenkins_result": {
+                    "type": "string",
+                    "description": "'SUCCESS' if Jenkins was used, otherwise omit.",
+                },
+                "playbook_id": {
+                    "type": "string",
+                    "description": "Playbook id, if this change came from run_ansible_playbook.",
+                },
+            },
+            "required": ["device_ips", "verification_summary"],
         },
     },
     {
@@ -4956,6 +5011,77 @@ def run_chat(
 
                 return f"Golden configs saved ({len(targets)} device(s)):\n" + "\n".join(results)
 
+            elif name == "finalize_verified_config_change":
+                from modules.commands import run_device_command as _rdc
+                from modules.connection import get_persistent_connection as _gpc
+                from modules.variable_discovery import (
+                    parse_running_config as _parse_cfg,
+                    _merge_and_save as _merge_vars,
+                )
+                req_ips = args.get("device_ips", [])
+                verification_summary = args.get("verification_summary", "").strip()
+                if not verification_summary:
+                    return "Error: verification_summary is required — describe how you confirmed the change worked."
+                all_devs = devices_loader()
+                if req_ips == ["all"]:
+                    targets = [d for d in all_devs if status_cache.get(d.get("ip", ""), False)]
+                else:
+                    targets = [d for d in all_devs if d.get("ip") in req_ips]
+                if not targets:
+                    return f"No reachable devices found for IPs: {req_ips}"
+
+                from concurrent.futures import ThreadPoolExecutor as _TPEX, as_completed as _acx
+
+                def _snap_and_extract(dev):
+                    dip  = dev.get("ip", "")
+                    host = dev.get("hostname") or dip
+                    try:
+                        conn   = _gpc(dev, connections_pool, pool_lock)
+                        config = _rdc(conn, "show startup-config")
+                        _save_golden_config_file(dip, host, config)
+                        facts = _parse_cfg(config, dip)
+                        return host, dip, len(config), facts, None
+                    except Exception as exc:
+                        return host, dip, 0, {}, str(exc)
+
+                results   = []
+                all_facts = {}
+                hostnames = []
+                with _TPEX(max_workers=min(len(targets), 8)) as _px:
+                    futs = [_px.submit(_snap_and_extract, d) for d in targets]
+                    for fut in _acx(futs):
+                        host, dip, size, facts, err = fut.result()
+                        hostnames.append(host)
+                        if err:
+                            results.append(f"  ERROR  {host} ({dip}): {err}")
+                        else:
+                            all_facts.update(facts)
+                            results.append(
+                                f"  SAVED  {host} ({dip}) — {size} chars, "
+                                f"{len(facts)} variable(s) extracted"
+                            )
+
+                if all_facts:
+                    _merge_vars(all_facts)
+
+                _append_change_log({
+                    "description":         verification_summary,
+                    "devices":              hostnames,
+                    "change_type":          args.get("change_type", "config_push"),
+                    "jenkins_pipeline":     args.get("jenkins_pipeline", ""),
+                    "jenkins_result":       args.get("jenkins_result", ""),
+                    "golden_config_saved":  True,
+                    "playbook_id":          args.get("playbook_id", ""),
+                })
+
+                return (
+                    f"Finalized verified change for {len(targets)} device(s):\n"
+                    + "\n".join(results)
+                    + f"\n\n{len(all_facts)} variable(s) auto-extracted and merged "
+                      f"(manually-set values preserved)."
+                    + f"\nChange logged: {verification_summary}"
+                )
+
             elif name == "read_golden_config":
                 dip  = args.get("device_ip", "").strip()
                 cfg  = _load_golden_config_file(dip)
@@ -6253,6 +6379,7 @@ def run_chat(
         "read_global_kb":                          10000,
         "update_global_kb":                            300,
         "save_golden_config":                         2000,
+        "finalize_verified_config_change":            3000,
         "read_golden_config":                        50000,
         "list_golden_configs":                        1000,
         "restore_golden_config":                      3000,
