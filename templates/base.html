@@ -1310,7 +1310,9 @@
             for (const line of lines) {
               if (!line.startsWith('data: ')) continue;
               let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-              handleEvent(evt);
+              // Never let one bad event's render throw out of the read loop —
+              // that would silently drop every event after it for this turn.
+              try { handleEvent(evt); } catch (e) { console.error('handleEvent failed', evt, e); }
             }
           }
         } catch (err) {
@@ -1375,7 +1377,7 @@
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
             let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-            handleEvent(evt);
+            try { handleEvent(evt); } catch (e) { console.error('handleEvent failed', evt, e); }
           }
         }
       } catch (err) {
@@ -1473,7 +1475,8 @@
 
     /* ---- Markdown renderer (minimal, safe) ----------------------------- */
     function escHtml(s) {
-      return s
+      if (s == null) return '';
+      return String(s)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -1896,7 +1899,7 @@
             if (!line.startsWith('data: ')) continue;
             let evt;
             try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-            handleEvent(evt);
+            try { handleEvent(evt); } catch (e) { console.error('handleEvent failed', evt, e); }
           }
         }
 
