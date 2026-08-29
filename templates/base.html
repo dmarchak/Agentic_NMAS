@@ -895,6 +895,7 @@
     let currentAssistantRow = null;   // active assistant message row
     let currentTextBuffer   = '';     // accumulates text chunks during streaming
     let currentToolCards    = {};     // tool name -> card element
+    let liveToolCardEl      = null;   // most recent live tool card — replaced, not stacked
     let sessionCostUsd = 0;          // running cost total for this panel session
     let _pendingFiles = [];           // [{name, content}] staged for next send
 
@@ -1285,7 +1286,7 @@
       busy = true;
       setInputEnabled(false);
       appendUserMessage(displayMsg);
-      currentAssistantRow = null; currentTextBuffer = ''; currentToolCards = {};
+      currentAssistantRow = null; currentTextBuffer = ''; currentToolCards = {}; liveToolCardEl = null;
       showThinking();
       // Use fetch with run_playbook_id to directly execute the playbook
       const body = JSON.stringify({ message: displayMsg, session_id: sessionId, run_playbook_id: pbId });
@@ -1343,6 +1344,7 @@
       currentAssistantRow = null;
       currentTextBuffer   = '';
       currentToolCards    = {};
+      liveToolCardEl      = null;
       showThinking();
       const [deviceContext, topologyContext] = await Promise.all([
         getDeviceContext(),
@@ -1406,6 +1408,7 @@
       currentAssistantRow = null;
       currentTextBuffer   = '';
       currentToolCards    = {};
+      liveToolCardEl      = null;
       sessionCostUsd      = 0;
       const badge = document.getElementById('aiCostBadge');
       if (badge) badge.style.display = 'none';
@@ -1539,21 +1542,31 @@
       return row;
     }
 
-    function appendToolCard(toolId, label) {
+    function appendToolCard(toolId, label, replacePrevious) {
+      // replacePrevious (live streaming only): remove the prior live card
+      // instead of stacking — a task with many tool calls would otherwise
+      // pile up dozens of cards. History reload omits this and keeps the
+      // full list, since reviewing a past conversation is a different use
+      // case than watching a live status update.
+      if (replacePrevious && liveToolCardEl && liveToolCardEl.parentNode) {
+        liveToolCardEl.remove();
+      }
       const safeId = toolId.replace(/[^a-zA-Z0-9_-]/g, '_');
       const card = document.createElement('div');
       card.className = 'ai-tool-card';
-      // Collapsed by default — a task with many tool calls (drift checks,
-      // per-device verification, etc.) would otherwise stack dozens of
-      // fully-expanded cards into an unreadable wall. Click to expand.
+      // Expanded when it's the only card shown live (replacePrevious) so the
+      // user can actually see what's happening without clicking; collapsed
+      // by default otherwise (history reload can have dozens of these).
+      const collapsedCls = replacePrevious ? '' : ' collapsed-hdr';
+      const bodyCls      = replacePrevious ? '' : ' collapsed';
       card.innerHTML =
-        '<div class="ai-tool-header collapsed-hdr" id="hdr_' + safeId + '">' +
+        '<div class="ai-tool-header' + collapsedCls + '" id="hdr_' + safeId + '">' +
           '<div class="ai-tool-spinner" id="spin_' + safeId + '"></div>' +
           '<span class="ai-tool-check" id="check_' + safeId + '" style="display:none">✓</span>' +
           '<span class="ai-tool-label">' + escHtml(label) + '</span>' +
           '<span class="ai-tool-toggle">▾</span>' +
         '</div>' +
-        '<div class="ai-tool-body collapsed" id="body_' + safeId + '">' +
+        '<div class="ai-tool-body' + bodyCls + '" id="body_' + safeId + '">' +
           '<div class="ai-tool-output" id="out_' + safeId + '">Running…</div>' +
         '</div>';
       // Toggle open/collapsed by ID — avoids nextSibling text-node pitfall
@@ -1566,6 +1579,7 @@
       });
       messages.insertBefore(card, thinking);
       currentToolCards[toolId] = card;
+      if (replacePrevious) liveToolCardEl = card;
       scrollBottom();
       return card;
     }
@@ -1827,6 +1841,7 @@
       currentAssistantRow = null;
       currentTextBuffer   = '';
       currentToolCards    = {};
+      liveToolCardEl      = null;
 
       /* Try to answer locally before touching the API. */
       const localAnswer = tryAnswerLocally(text);
@@ -2185,7 +2200,7 @@
         if (currentAssistantRow && currentTextBuffer) {
           finaliseAssistantText();
         }
-        appendToolCard(evt.id || evt.tool, evt.label);
+        appendToolCard(evt.id || evt.tool, evt.label, /* replacePrevious */ true);
 
       } else if (evt.type === 'tool_result') {
         updateToolCard(evt.id || evt.tool, evt.content);
