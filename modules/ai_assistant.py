@@ -1611,24 +1611,33 @@ CONFIG PUSH triggers (fire every time you push config to any device —
   IF you apply any config change to a device, follow this order WITHOUT stopping for human approval:
     1. capture_pre_change_snapshot(device_ips)    — safety net before any change
     2. Push config (run_ansible_playbook or execute_commands_on_device) + write memory
-    3. run_jenkins_checks → jenkins_wait_for_result (NEVER skip the post-push verification)
-    4. IF pipeline PASSES:
+    3. Verify the change — the method depends on [CI STATUS]:
+         IF Jenkins is configured → run_jenkins_checks → jenkins_wait_for_result
+           (NEVER skip this — it is the post-push verification when CI is available)
+         IF Jenkins is NOT configured → run the specific show commands that prove the
+           change took effect on each device (this is the verification, not optional —
+           see TASK COMPLETION above for the same "prove it" standard used elsewhere)
+    4. IF verification PASSES (CI passed, or your direct show-command check confirms it):
          → save_golden_config(device_ips)          — update golden baseline
          → read_golden_config for each device      — parse the freshly saved config
          → set_variable for EVERY value present in the new golden config (IPs, IDs, AS, etc.)
          → log_change(result=SUCCESS, golden_config_saved=True)
-         NO human approval is required — CI pass is sufficient authorisation to proceed.
-    5. IF pipeline FAILS:
-         → diagnose from console, attempt fix, re-run CI (go back to step 3)
+         NO human approval is required — a passing CI run, or your own direct verification
+         when Jenkins isn't configured, is sufficient authorisation to proceed either way.
+    5. IF verification FAILS:
+         → diagnose from console, attempt fix, re-verify (go back to step 3)
          → if auto-fix is not possible: restore_pre_change_snapshot, then report to user
-         → Do NOT save golden config or update variables until CI passes
+         → Do NOT save golden config or update variables until verification passes
          → log_change(result=FAILURE, golden_config_saved=False)
     → Do NOT ask "should I save the golden config?" or "shall I update variables?" — do it automatically
+    → Jenkins not being configured is NEVER a reason to stop, skip verification, or ask the
+      user what to do — fall back to direct verification (step 3) and complete the task.
 
 GOLDEN CONFIG triggers:
   IF [PROACTIVE CONTEXT] shows a device has no golden config:
-    → At the end of the next successful CI run for that device, save one automatically
-    → If no CI has run for that device this session, note it to the user proactively
+    → This is a first-time baseline, not a change validation — call save_golden_config for
+      that device directly, right now. No CI run and no approval needed: you are recording
+      the device's current state as its starting point, there is nothing to protect yet.
   IF detect_config_drift output shows any device has drifted:
     → Do NOT call save_golden_config directly
     → Do NOT run Jenkins — drift detection is read-only, no CI is needed
@@ -2474,8 +2483,14 @@ TOOLS = [
         "name": "save_golden_config",
         "description": (
             "SSH to one or more devices, capture their current startup-config, and save it as "
-            "the golden (known-good) config for this list. Call this ONLY after a Jenkins "
-            "pipeline has passed — it represents the verified baseline for that device.\n\n"
+            "the golden (known-good) config for this list. Two valid uses:\n"
+            "  1. First-time baseline — a device has no golden config yet (see [PROACTIVE "
+            "CONTEXT] MISSING GOLDEN CONFIGS). Call this directly, no CI or approval needed — "
+            "there is no prior state being protected.\n"
+            "  2. After a verified config change — call this once the change is confirmed, "
+            "either via a passing Jenkins pipeline (when configured) or your own direct "
+            "show-command verification (when Jenkins is not configured; see [CI STATUS] and "
+            "CONFIG PUSH triggers).\n\n"
             "One file per device is kept (overwritten on each call). The saved config can be "
             "used to restore a device or diff against a future broken state.\n\n"
             "Call with device_ips=['all'] to snapshot every device in this list, or pass "
@@ -4171,6 +4186,25 @@ def run_chat(
     # Proactive context: surface pending issues
     _proactive_items: list[str] = []
 
+    # Jenkins-configured status — computed once, used below and by the
+    # [CI STATUS] block so the model knows up front whether CI-gated
+    # verification is even available this session, instead of finding out
+    # by having run_jenkins_checks fail mid-task.
+    try:
+        from modules.jenkins_runner import load_config as _ljc
+        _has_jenkins = bool(_ljc().get("jenkins_url", "").strip())
+    except Exception:
+        _has_jenkins = False
+    dynamic_parts.append(
+        "[CI STATUS]\n"
+        + ("Jenkins is configured — use the CI-gated push workflow (run_jenkins_checks → "
+           "jenkins_wait_for_result) as the verification step after a config push.\n"
+           if _has_jenkins else
+           "Jenkins is NOT configured — do not call run_jenkins_checks or jenkins_wait_for_result, "
+           "they will fail. This is expected, not an error to report or a blocker: use direct "
+           "show-command verification instead (see CONFIG PUSH triggers) and proceed normally.\n")
+    )
+
     try:
         _all_devices = devices_loader()
         _golden_ips  = {e["device_ip"] for e in _list_golden_configs()}
@@ -4179,16 +4213,16 @@ def run_chat(
             _proactive_items.append(
                 "MISSING GOLDEN CONFIGS:\n"
                 + "\n".join(f"  - {d.get('hostname', d['ip'])} ({d['ip']})" for d in _missing_gc)
-                + "\nACTION: after the next successful CI run, call save_golden_config automatically."
+                + "\nACTION: these have no baseline yet — call save_golden_config for them directly, "
+                  "right now. This is a first-time baseline capture, not a change validation, so it "
+                  "needs no CI run and no approval (see GOLDEN CONFIG triggers)."
             )
     except Exception:
         pass
 
     # Surface missing function pipelines so the AI bootstraps CI automatically.
     try:
-        from modules.jenkins_runner import load_list_pipelines as _llp, load_config as _ljc
-        _jcfg_probe = _ljc()
-        _has_jenkins = bool(_jcfg_probe.get("jenkins_url", "").strip())
+        from modules.jenkins_runner import load_list_pipelines as _llp
         _existing_pipes = set(_llp())
         _has_golden = bool(_list_golden_configs())
         # Only surface if Jenkins is configured, golden configs exist, but no

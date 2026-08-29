@@ -465,10 +465,8 @@ def _build_task_prompt(event: dict) -> Optional[str]:
         return (
             f"[AUTONOMOUS TASK] The following devices have no golden config baseline: "
             f"{', '.join(ips)}. "
-            f"First check jenkins results for this list — if the last CI run passed, "
-            f"save a golden config for each missing device now using save_golden_config. "
-            f"If CI has not passed or there are no pipelines yet, log that golden configs "
-            f"cannot be saved until CI passes and explain what pipeline would be needed. "
+            f"This is a first-time baseline capture, not a change validation — no CI run or "
+            f"approval is needed. Call save_golden_config for each missing device now. "
             f"Log the result using log_change."
         )
 
