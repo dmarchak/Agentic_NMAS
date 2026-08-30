@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 from typing import Optional
@@ -326,6 +327,34 @@ def get_commit_log(list_name: str, limit: int = 40) -> list[dict]:
         pass
 
     return entries
+
+
+def get_commit_diff(list_name: str, commit_hash: str) -> Optional[dict]:
+    """Return the changed-file list and full diff for one commit.
+
+    Returns None if the repo doesn't exist or commit_hash isn't a plausible
+    git hash (defends against argument injection into the git subprocess —
+    e.g. a hash-shaped string starting with '-' being read as an option).
+    """
+    repo = _repo_dir(list_name)
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return None
+    if not re.fullmatch(r"[0-9a-fA-F]{4,40}", commit_hash):
+        return None
+
+    rc, subject, _ = _git(repo, "show", "--no-patch", "--format=%s", commit_hash)
+    if rc != 0:
+        return None
+
+    rc2, stat_out, _ = _git(repo, "show", "--stat", "--format=", commit_hash)
+    rc3, diff_out, _ = _git(repo, "show", "--format=", commit_hash)
+
+    return {
+        "hash":    commit_hash,
+        "message": subject,
+        "stat":    stat_out if rc2 == 0 else "",
+        "diff":    diff_out if rc3 == 0 else "",
+    }
 
 
 def get_repo_status(list_name: str) -> dict:

@@ -4926,6 +4926,17 @@ def git_available_pipelines():
     return jsonify({"ok": True, "pipelines": get_available_pipelines(list_name)})
 
 
+@app.route("/git/commit/<commit_hash>")
+def git_commit_diff(commit_hash):
+    """Return the changed-file list and full diff for one commit."""
+    from modules.config_git import get_commit_diff
+    list_name, _ = get_current_device_list()
+    result = get_commit_diff(list_name, commit_hash)
+    if result is None:
+        return jsonify({"ok": False, "error": "Commit not found"}), 404
+    return jsonify({"ok": True, **result})
+
+
 @app.route("/git/commit", methods=["POST"])
 def git_commit():
     """

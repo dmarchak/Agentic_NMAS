@@ -2255,6 +2255,27 @@
 
 </div><!-- end tab-content -->
 
+<!-- Git Commit Diff Modal -->
+<div class="modal fade" id="gitDiffModal" tabindex="-1" aria-labelledby="gitDiffModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="gitDiffModalLabel">Commit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="gitDiffLoading" class="text-muted small">Loading…</div>
+        <div id="gitDiffError" class="text-danger small"></div>
+        <pre id="gitDiffStat" class="small text-muted mb-3" style="white-space:pre-wrap"></pre>
+        <pre id="gitDiffContent" class="small" style="white-space:pre-wrap;max-height:60vh;overflow-y:auto"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Create Device List Modal -->
 <div class="modal fade" id="createListModal" tabindex="-1" aria-labelledby="createListModalLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -7725,7 +7746,7 @@ ${tasks}
       const pipe    = c.pipeline
         ? `<span class="text-muted" style="font-size:.75rem">${escHtml(c.pipeline.slice(-18))}</span>`
         : '<span class="text-muted">—</span>';
-      return `<tr>
+      return `<tr style="cursor:pointer" onclick="viewGitCommit('${escHtml(c.hash)}')" title="View files changed in this commit">
         <td><code>${escHtml(c.short_hash)}</code></td>
         <td>${escHtml(c.message)}</td>
         <td>${pipe}</td>
@@ -7734,6 +7755,48 @@ ${tasks}
       </tr>`;
     }).join('');
   }
+
+  // ── view files changed in one commit ───────────────────────────────────────
+  window.viewGitCommit = async function (hash) {
+    const modalEl   = document.getElementById('gitDiffModal');
+    const titleEl   = document.getElementById('gitDiffModalLabel');
+    const loadingEl = document.getElementById('gitDiffLoading');
+    const errorEl   = document.getElementById('gitDiffError');
+    const statEl    = document.getElementById('gitDiffStat');
+    const diffEl    = document.getElementById('gitDiffContent');
+    if (!modalEl) return;
+
+    titleEl.textContent = `Commit ${hash.slice(0, 7)}`;
+    loadingEl.style.display = '';
+    errorEl.textContent = '';
+    statEl.textContent = '';
+    diffEl.innerHTML = '';
+
+    new bootstrap.Modal(modalEl).show();
+
+    try {
+      const resp = await fetch(`/git/commit/${hash}`, { cache: 'no-store' });
+      const data = await resp.json();
+      loadingEl.style.display = 'none';
+      if (!data.ok) {
+        errorEl.textContent = data.error || 'Could not load commit.';
+        return;
+      }
+      titleEl.textContent = `${hash.slice(0, 7)} — ${data.message || ''}`;
+      statEl.textContent = data.stat || '';
+      diffEl.innerHTML = (data.diff || '(no changes)').split('\n').map(line => {
+        const cls = line.startsWith('+') && !line.startsWith('+++') ? 'color:#4ade80'
+                  : line.startsWith('-') && !line.startsWith('---') ? 'color:#f87171'
+                  : line.startsWith('@@') ? 'color:#60a5fa'
+                  : line.startsWith('diff --git') || line.startsWith('index ') ? 'color:#94a3b8;font-weight:600'
+                  : '';
+        return `<div${cls ? ` style="${cls}"` : ''}>${escHtml(line) || '&nbsp;'}</div>`;
+      }).join('');
+    } catch (e) {
+      loadingEl.style.display = 'none';
+      errorEl.textContent = 'Request failed: ' + e.message;
+    }
+  };
 
   // ── perform commit ─────────────────────────────────────────────────────────
   window.gitDoCommit = async function () {
