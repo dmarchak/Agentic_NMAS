@@ -3,11 +3,12 @@
 Network topology discovery and graph construction.
 
 Discovers the network topology by querying devices in parallel via SSH.
-Builds a graph from CDP neighbor relationships (physical links), OSPF
-adjacencies, BGP peer sessions, and DMVPN/mGRE tunnel interfaces (with
-hub/spoke role detection).  Returns a unified node/edge structure consumed
-by the browser's vis.js topology visualizer, including interface labels,
-platform info, IP addresses, and protocol-specific metadata.
+Builds a graph from CDP and LLDP neighbor relationships (physical links —
+a link reported by both protocols is deduplicated into a single edge),
+OSPF adjacencies, BGP peer sessions, and DMVPN/mGRE tunnel interfaces
+(with hub/spoke role detection).  Returns a unified node/edge structure
+consumed by the browser's vis.js topology visualizer, including interface
+labels, platform info, IP addresses, and protocol-specific metadata.
 """
 
 import re
@@ -64,6 +65,57 @@ def parse_cdp_neighbors(output):
         # Platform
         match = re.search(r'Platform:\s*(.+?)(?:,|\n)', block)
         neighbor['platform'] = match.group(1).strip() if match else ''
+
+        neighbors.append(neighbor)
+
+    return neighbors
+
+
+def parse_lldp_neighbors(output):
+    """
+    Parse 'show lldp neighbors detail' output into the same neighbor-dict
+    shape as parse_cdp_neighbors(), so results from both protocols can be
+    combined into one list — build_topology()'s edge-dedup key (device pair
+    + interface pair) already collapses a link reported by both CDP and
+    LLDP into a single edge, no extra merge logic needed here.
+
+    Returns list of dicts with keys:
+        - device_id: neighbor hostname (from the System Name TLV)
+        - local_interface: local interface name
+        - remote_interface: remote (port) interface name
+        - ip_address: management IP of the neighbor
+        - platform: first line of the System Description TLV (best-effort —
+          LLDP has no direct "platform" field the way CDP does)
+    """
+    neighbors = []
+    blocks = re.split(r'-{3,}', output)
+
+    for block in blocks:
+        if not block.strip():
+            continue
+
+        neighbor = {}
+
+        # System Name is LLDP's analog of CDP's Device ID. A neighbor with
+        # no system name configured (chassis ID / MAC only) isn't useful for
+        # matching against this app's hostname-keyed device list, so skip
+        # it — same as CDP blocks skip when there's no Device ID.
+        match = re.search(r'System Name:\s*(\S+)', block)
+        if not match:
+            continue
+        neighbor['device_id'] = match.group(1).split('.')[0]
+
+        match = re.search(r'Local Intf:\s*(\S+)', block)
+        neighbor['local_interface'] = match.group(1).rstrip(',') if match else ''
+
+        match = re.search(r'Port id:\s*(\S+)', block, re.IGNORECASE)
+        neighbor['remote_interface'] = match.group(1) if match else ''
+
+        match = re.search(r'^\s*IP:\s*(\S+)', block, re.MULTILINE)
+        neighbor['ip_address'] = match.group(1) if match else ''
+
+        match = re.search(r'System Description:\s*\n\s*(.+)', block)
+        neighbor['platform'] = match.group(1).strip()[:80] if match else ''
 
         neighbors.append(neighbor)
 
@@ -147,7 +199,8 @@ def gather_device_topology(conn, hostname):
 
     Returns dict with:
         - hostname: device hostname
-        - neighbors: list of CDP neighbor dicts
+        - neighbors: list of CDP + LLDP neighbor dicts (deduplicated by
+          build_topology() when both protocols report the same link)
         - interfaces: list of interface IP dicts
     """
     result = {
@@ -156,12 +209,24 @@ def gather_device_topology(conn, hostname):
         'interfaces': []
     }
 
+    neighbors = []
     try:
         # Get CDP neighbors
         cdp_output = conn.send_command('show cdp neighbors detail', read_timeout=30)
-        result['neighbors'] = parse_cdp_neighbors(cdp_output)
+        neighbors.extend(parse_cdp_neighbors(cdp_output))
     except Exception as e:
         logger.warning(f"CDP query failed on {hostname}: {e}")
+
+    try:
+        # Get LLDP neighbors — a link both protocols report on the same
+        # local/remote interface pair is deduplicated by build_topology(),
+        # so simply appending here is safe.
+        lldp_output = conn.send_command('show lldp neighbors detail', read_timeout=30)
+        neighbors.extend(parse_lldp_neighbors(lldp_output))
+    except Exception as e:
+        logger.warning(f"LLDP query failed on {hostname}: {e}")
+
+    result['neighbors'] = neighbors
 
     try:
         # Get interface IPs
@@ -186,8 +251,8 @@ def build_topology(devices_data):
         - edges: list of edge dicts with exact interface IPs on both ends
           local_ip  = IP on the local  device's connecting interface
           remote_ip = IP on the remote device's connecting interface
-                      (NOT the management/CDP IP — looked up from remote
-                       device's own show ip interface brief data)
+                      (NOT the CDP/LLDP management IP — looked up from
+                       remote device's own show ip interface brief data)
         - interface_map: {hostname -> {interface_name -> ip}} for AI use
     """
     nodes = []
@@ -277,10 +342,10 @@ def build_topology(devices_data):
             local_ip = local_iface_map.get(local_intf.lower(), '')
 
             # Look up the remote device's interface IP from its own
-            # show ip interface brief data — NOT from CDP's management IP.
+            # show ip interface brief data — NOT from CDP/LLDP's management IP.
             remote_iface_map = hostname_iface_map.get(neighbor_id, {})
             remote_ip = remote_iface_map.get(remote_intf.lower(), '')
-            # Fall back to CDP management IP only if not found locally.
+            # Fall back to CDP/LLDP management IP only if not found locally.
             if not remote_ip:
                 remote_ip = neighbor.get('ip_address', '')
 

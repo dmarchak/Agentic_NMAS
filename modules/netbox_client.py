@@ -897,6 +897,54 @@ _RE_CDP_IP         = re.compile(r"IP(?:v4)? [Aa]ddress:\s*(\d+\.\d+\.\d+\.\d+)",
 _RE_CDP_PLATFORM   = re.compile(r"Platform:\s*([^,]+)", re.MULTILINE)
 
 
+# ---------------------------------------------------------------------------
+# show lldp neighbors detail parsing
+# ---------------------------------------------------------------------------
+_RE_LLDP_ENTRY      = re.compile(r"^-{5,}", re.MULTILINE)
+_RE_LLDP_SYSNAME    = re.compile(r"^System Name:\s*(\S+)", re.MULTILINE)
+_RE_LLDP_LOCAL_INTF = re.compile(r"^Local Intf:\s*(\S+)", re.MULTILINE)
+_RE_LLDP_PORT_ID    = re.compile(r"^Port id:\s*(\S+)", re.MULTILINE | re.IGNORECASE)
+_RE_LLDP_IP         = re.compile(r"^\s*IP:\s*(\d+\.\d+\.\d+\.\d+)", re.MULTILINE)
+_RE_LLDP_SYSDESC    = re.compile(r"System Description:\s*\n\s*(.+)", re.MULTILINE)
+
+
+def _parse_lldp_neighbors(output: str) -> list[dict]:
+    """Parse `show lldp neighbors detail` → the same shape as
+    _parse_cdp_neighbors: [{local_iface, remote_hostname, remote_iface,
+    remote_ip, remote_platform}], so both can feed the same cable-wiring
+    pass in sync_list_to_netbox — a link reported by both protocols on the
+    same interface pair is deduplicated there via _ensure_cable's dedup
+    check, same as topology.py's build_topology does for the topology tab.
+
+    A neighbor with no System Name TLV (chassis ID / MAC only) is skipped —
+    not useful for matching against this app's hostname-keyed device list,
+    same as CDP entries with no Device ID are skipped.
+    """
+    if not output:
+        return []
+    results: list[dict] = []
+    chunks = _RE_LLDP_ENTRY.split(output)
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        sys_m  = _RE_LLDP_SYSNAME.search(chunk)
+        loc_m  = _RE_LLDP_LOCAL_INTF.search(chunk)
+        port_m = _RE_LLDP_PORT_ID.search(chunk)
+        if not (sys_m and loc_m and port_m):
+            continue
+        ip_m   = _RE_LLDP_IP.search(chunk)
+        desc_m = _RE_LLDP_SYSDESC.search(chunk)
+        results.append({
+            "local_iface":      loc_m.group(1),
+            "remote_hostname":  sys_m.group(1).split(".")[0],  # strip domain
+            "remote_iface":     port_m.group(1),
+            "remote_ip":        ip_m.group(1) if ip_m else "",
+            "remote_platform":  (desc_m.group(1).strip()[:80] if desc_m else ""),
+        })
+    return results
+
+
 def _parse_cdp_neighbors(output: str) -> list[dict]:
     """Parse `show cdp neighbors detail` → [{local_iface, remote_hostname,
        remote_iface, remote_ip, remote_platform}]."""
@@ -1154,30 +1202,36 @@ def _scan_device(dev: dict) -> dict:
         return {"ip": ip, "hostname": hostname, "error": str(exc)}
 
 
-def _fetch_cdp_neighbors_live(dev: dict) -> list[dict]:
-    """Best-effort live fetch of CDP neighbors for cable-sync enrichment.
+def _fetch_neighbors_live(dev: dict) -> list[dict]:
+    """Best-effort live fetch of CDP + LLDP neighbors for cable-sync
+    enrichment.
 
-    Only called for devices status_cache already reports online — CDP
-    neighbor data is learned operational state, not something that exists in
-    a golden config, so this is the one piece of the sync that genuinely
-    needs a live session even though the rest works from saved configs.
+    Only called for devices status_cache already reports online — neighbor
+    data is learned operational state, not something that exists in a golden
+    config, so this is the one piece of the sync that genuinely needs a live
+    session even though the rest works from saved configs. A link both
+    protocols report on the same interface pair is naturally deduplicated by
+    _ensure_cable's existing get-or-create lookup in the cable-wiring pass.
     Returns [] on any failure; never raises — a device that can't be reached
-    for CDP just doesn't get its cables synced this run, same as it already
-    doesn't today.
+    just doesn't get its cables synced this run, same as it already doesn't
+    today.
     """
     from modules.connection import get_persistent_connection
     from modules.commands import run_device_command
 
     ip = dev.get("ip", "")
+    neighbors: list[dict] = []
     try:
         priv_pool: dict = {}
         priv_lock = threading.Lock()
         conn = get_persistent_connection(dev, priv_pool, priv_lock)
         show_cdp = run_device_command(conn, "show cdp neighbors detail", read_timeout=30) or ""
-        return _parse_cdp_neighbors(show_cdp)
+        neighbors.extend(_parse_cdp_neighbors(show_cdp))
+        show_lldp = run_device_command(conn, "show lldp neighbors detail", read_timeout=30) or ""
+        neighbors.extend(_parse_lldp_neighbors(show_lldp))
     except Exception as exc:
-        log.debug("netbox: live CDP fetch failed for %s: %s", ip, exc)
-        return []
+        log.debug("netbox: live neighbor fetch failed for %s: %s", ip, exc)
+    return neighbors
 
 
 # ---------------------------------------------------------------------------
@@ -2283,11 +2337,11 @@ def _scan_device_from_golden(dev: dict) -> dict:
         "interfaces":      interfaces,
         "vlans":           vlans,
         "vrfs":            vrfs,
-        # Populated separately, live, only for online devices — CDP neighbor
-        # data is learned operational state, not something that exists in a
-        # saved config file no matter how it's parsed. See the CDP enrichment
-        # pass in sync_list_to_netbox.
-        "cdp_neighbors":   [],
+        # Populated separately, live, only for online devices — CDP/LLDP
+        # neighbor data is learned operational state, not something that
+        # exists in a saved config file no matter how it's parsed. See the
+        # neighbor enrichment pass in sync_list_to_netbox.
+        "neighbors":       [],
         "running_config":  golden,
         "static_routes":   static_routes,
         "protocol_tags":   protocol_tags,
@@ -2350,9 +2404,9 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
     # Populate from golden configs — no SSH needed, works for offline devices.
     scanned: list[dict] = [_scan_device_from_golden(d) for d in devices]
 
-    # CDP neighbors are learned operational state, not something a golden
-    # config file can contain — this is the one piece of the sync that
-    # genuinely needs a live session, done only for devices status_cache
+    # CDP/LLDP neighbors are learned operational state, not something a
+    # golden config file can contain — this is the one piece of the sync
+    # that genuinely needs a live session, done only for devices status_cache
     # already reports online, in parallel like the rest of the app's
     # per-device SSH work.
     ip_to_dev = {d.get("ip", ""): d for d in devices}
@@ -2364,11 +2418,11 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
             futs = {
-                ex.submit(_fetch_cdp_neighbors_live, ip_to_dev[r["ip"]]): r
+                ex.submit(_fetch_neighbors_live, ip_to_dev[r["ip"]]): r
                 for r in online_results if r["ip"] in ip_to_dev
             }
             for fut in as_completed(futs):
-                futs[fut]["cdp_neighbors"] = fut.result()
+                futs[fut]["neighbors"] = fut.result()
 
     created = 0
     updated = 0
@@ -2414,15 +2468,15 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
             device_registry[result["hostname"]] = {
                 "device_id":    outcome["id"],
                 "nb_iface_map": outcome.get("nb_iface_map", {}),
-                "cdp_neighbors": result.get("cdp_neighbors", []),
+                "neighbors":    result.get("neighbors", []),
             }
         except Exception as exc:
             log.exception("netbox: upsert failed for %s", result["hostname"])
             failed.append({"hostname": result["hostname"], "ip": result["ip"], "error": str(exc)})
 
-    # ── CDP → cables (second pass so both endpoints exist) ────────────────
+    # ── CDP/LLDP → cables (second pass so both endpoints exist) ───────────
     for local_hostname, reg in device_registry.items():
-        for cdp in reg.get("cdp_neighbors", []):
+        for cdp in reg.get("neighbors", []):
             remote_hostname = cdp.get("remote_hostname", "")
             if remote_hostname not in device_registry:
                 continue   # remote device not in this list — skip

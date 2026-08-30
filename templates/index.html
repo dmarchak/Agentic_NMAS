@@ -399,7 +399,7 @@
 <ul class="nav nav-tabs" id="topoViewTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="topo-cdp-tab" data-bs-toggle="tab"
-            data-bs-target="#topoCdpView" type="button" role="tab">Physical (CDP)</button>
+            data-bs-target="#topoCdpView" type="button" role="tab">Physical (CDP/LLDP)</button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="topo-ospf-tab" data-bs-toggle="tab"
@@ -458,7 +458,7 @@
     <div id="topoCdpContainer" class="border rounded" style="height:620px; position:relative;">
       <div id="topoCdpPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
         <p class="mb-2" style="font-size:1.1rem;">Click <strong>Discover Topology</strong> to scan your network</p>
-        <p class="small">Uses CDP neighbor data and interface IPs from all online devices</p>
+        <p class="small">Uses CDP and LLDP neighbor data and interface IPs from all online devices</p>
       </div>
     </div>
     <div id="topoDetailsPanel" class="card mt-3" style="display:none;">
@@ -3370,7 +3370,7 @@ window.discoverTopology = function() {
         const newIds  = new Set(data.topology.nodes.map(n => n.id));
         const n = data.topology.nodes.length, e = data.topology.edges.length;
         if (n === 0)
-          showToast('No topology data found. Ensure devices are online and CDP is enabled.', 'warning');
+          showToast('No topology data found. Ensure devices are online and CDP or LLDP is enabled.', 'warning');
         else
           showToast(`Topology updated: ${n} node(s), ${e} link(s)`, 'success');
       } else {
