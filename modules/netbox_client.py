@@ -371,6 +371,87 @@ def _ensure_tag(session, base: str, name: str,
     })
 
 
+def _ensure_prefix_role(session, base: str, name: str) -> dict:
+    """Get-or-create an IPAM prefix role (e.g. Loopback, Point-to-Point, Management)."""
+    slug = _slug(name)
+    existing = _nb_first(session, base, "ipam/roles/", slug=slug)
+    if existing:
+        return existing
+    return _nb_post(session, base, "ipam/roles/", {"name": name, "slug": slug})
+
+
+def _infer_prefix_role_name(iface_name: str, prefix: str) -> Optional[str]:
+    """Heuristic prefix role from the interface it was seen on and its size —
+    matches NetBox best practice of differentiating prefix function (loopback,
+    point-to-point link, management) rather than leaving every prefix flat."""
+    name_lower = (iface_name or "").lower()
+    if name_lower.startswith("loopback"):
+        return "Loopback"
+    if name_lower.startswith(("management", "mgmt")):
+        return "Management"
+    try:
+        net = ipaddress.ip_network(prefix, strict=False)
+        if (net.version == 4 and net.prefixlen in (30, 31)) or \
+           (net.version == 6 and net.prefixlen == 127):
+            return "Point-to-Point"
+    except ValueError:
+        pass
+    return None
+
+
+# Custom field definitions this app relies on — created once per NetBox
+# instance the first time they're needed. NetBox has no stock field for
+# software/OS version; stuffing it only into free-text comments makes it
+# unfilterable and unreportable, which is exactly what custom fields exist
+# to fix (see NetBox docs — this is the documented pattern for exactly
+# this kind of "doesn't fit a stock field" data).
+_CUSTOM_FIELDS: dict = {
+    "os_version": {
+        "label":        "OS Version",
+        "type":         "text",
+        "object_types": ["dcim.device"],
+        "description":  "Software version, e.g. IOS/IOS-XE/NX-OS release string.",
+    },
+}
+_custom_fields_ensured: set = set()   # process-lifetime cache — avoid re-checking every sync
+
+
+def _ensure_custom_field(session, base: str, name: str) -> bool:
+    """Get-or-create one of the app's known custom field definitions.
+
+    Returns True if the field exists (already did, or just created) and is
+    therefore safe to set via `custom_fields` on object payloads; False if
+    creation failed (e.g. older NetBox with a different schema) — callers
+    should skip setting that custom field rather than fail the whole sync.
+    """
+    if name in _custom_fields_ensured:
+        return True
+    spec = _CUSTOM_FIELDS.get(name)
+    if not spec:
+        return False
+    try:
+        existing = _nb_first(session, base, "extras/custom-fields/", name=name)
+        if not existing:
+            payload = {
+                "name":         name,
+                "label":        spec["label"],
+                "type":         spec["type"],
+                "object_types": spec["object_types"],
+                "description":  spec.get("description", ""),
+            }
+            try:
+                _nb_post(session, base, "extras/custom-fields/", payload)
+            except RuntimeError:
+                # Older NetBox (< 4.x) used `content_types`, not `object_types`.
+                payload["content_types"] = payload.pop("object_types")
+                _nb_post(session, base, "extras/custom-fields/", payload)
+        _custom_fields_ensured.add(name)
+        return True
+    except Exception as exc:
+        log.debug("netbox: could not ensure custom field '%s': %s", name, exc)
+        return False
+
+
 _TUNNEL_MODE_TO_ENCAP: dict = {
     "gre multipoint": "gre",
     "gre ip":         "gre",
@@ -474,7 +555,9 @@ def _ensure_interface(session, base: str, device_id: int,
                       lag_id: Optional[int] = None,
                       mode: Optional[str] = None,
                       untagged_vlan_id: Optional[int] = None,
-                      tagged_vlan_ids: Optional[list] = None) -> dict:
+                      tagged_vlan_ids: Optional[list] = None,
+                      duplex: Optional[str] = None,
+                      mgmt_only: bool = False) -> dict:
     """Get-or-create a DCIM interface, updating physical attributes if changed."""
     existing = _nb_first(session, base, "dcim/interfaces/",
                          device_id=device_id, name=name)
@@ -485,6 +568,7 @@ def _ensure_interface(session, base: str, device_id: int,
         "type":        iface_type,
         "description": (description or "")[:200],
         "enabled":     enabled,
+        "mgmt_only":   mgmt_only,
     }
     if mac:
         payload["mac_address"] = mac.upper()
@@ -502,6 +586,8 @@ def _ensure_interface(session, base: str, device_id: int,
         payload["untagged_vlan"] = untagged_vlan_id
     if tagged_vlan_ids:
         payload["tagged_vlans"] = tagged_vlan_ids
+    if duplex:
+        payload["duplex"] = duplex
 
     if existing:
         update: dict = {}
@@ -515,6 +601,8 @@ def _ensure_interface(session, base: str, device_id: int,
             update["mtu"] = mtu
         if existing.get("enabled") != enabled:
             update["enabled"] = enabled
+        if existing.get("mgmt_only") != mgmt_only:
+            update["mgmt_only"] = mgmt_only
         if vrf_id and (existing.get("vrf") or {}).get("id") != vrf_id:
             update["vrf"] = vrf_id
         if lag_id and (existing.get("lag") or {}).get("id") != lag_id:
@@ -527,6 +615,8 @@ def _ensure_interface(session, base: str, device_id: int,
             existing_tagged = [v["id"] for v in (existing.get("tagged_vlans") or [])]
             if set(existing_tagged) != set(tagged_vlan_ids):
                 update["tagged_vlans"] = tagged_vlan_ids
+        if duplex and (existing.get("duplex") or {}).get("value") != duplex:
+            update["duplex"] = duplex
         if update:
             try:
                 return _nb_patch(session, base,
@@ -540,13 +630,20 @@ def _ensure_interface(session, base: str, device_id: int,
 def _ensure_prefix(session, base: str, prefix: str,
                    description: str = "",
                    site_id: Optional[int] = None,
-                   vrf_id: Optional[int] = None) -> dict:
+                   vrf_id: Optional[int] = None,
+                   role_id: Optional[int] = None) -> dict:
     """Get-or-create an IPAM prefix (network/subnet)."""
     params: dict = {"prefix": prefix}
     if vrf_id:
         params["vrf_id"] = vrf_id
     existing = _nb_first(session, base, "ipam/prefixes/", **params)
     if existing:
+        if role_id and (existing.get("role") or {}).get("id") != role_id:
+            try:
+                return _nb_patch(session, base, f"ipam/prefixes/{existing['id']}/",
+                                 {"role": role_id})
+            except RuntimeError:
+                return existing
         return existing
     payload: dict = {
         "prefix":      prefix,
@@ -557,6 +654,8 @@ def _ensure_prefix(session, base: str, prefix: str,
         payload["site"] = site_id
     if vrf_id is not None:
         payload["vrf"] = vrf_id
+    if role_id is not None:
+        payload["role"] = role_id
     return _nb_post(session, base, "ipam/prefixes/", payload)
 
 
@@ -1055,6 +1154,32 @@ def _scan_device(dev: dict) -> dict:
         return {"ip": ip, "hostname": hostname, "error": str(exc)}
 
 
+def _fetch_cdp_neighbors_live(dev: dict) -> list[dict]:
+    """Best-effort live fetch of CDP neighbors for cable-sync enrichment.
+
+    Only called for devices status_cache already reports online — CDP
+    neighbor data is learned operational state, not something that exists in
+    a golden config, so this is the one piece of the sync that genuinely
+    needs a live session even though the rest works from saved configs.
+    Returns [] on any failure; never raises — a device that can't be reached
+    for CDP just doesn't get its cables synced this run, same as it already
+    doesn't today.
+    """
+    from modules.connection import get_persistent_connection
+    from modules.commands import run_device_command
+
+    ip = dev.get("ip", "")
+    try:
+        priv_pool: dict = {}
+        priv_lock = threading.Lock()
+        conn = get_persistent_connection(dev, priv_pool, priv_lock)
+        show_cdp = run_device_command(conn, "show cdp neighbors detail", read_timeout=30) or ""
+        return _parse_cdp_neighbors(show_cdp)
+    except Exception as exc:
+        log.debug("netbox: live CDP fetch failed for %s: %s", ip, exc)
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Running-config interface parser (fallback when show ip interface is incomplete)
 # ---------------------------------------------------------------------------
@@ -1267,11 +1392,12 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                    static_routes: Optional[list] = None,
                    protocol_tags: Optional[list] = None,
                    routing_context: Optional[dict] = None,
-                   list_vrf_id: Optional[int] = None) -> dict:
+                   list_vrf_id: Optional[int] = None,
+                   status: str = "active") -> dict:
     """Create or update a device in NetBox with full DCIM + IPAM data.
 
     Syncs: device record, platform, interfaces (with MAC/MTU/speed/state),
-    VRFs, VLANs, IPAM prefixes, IP addresses (VRF-aware), primary_ip4,
+    VRFs, VLANs, IPAM prefixes, IP addresses (VRF-aware), primary_ip4/6,
     and local_context_data (sanitised running config + structured facts).
     `ipam_stats` is mutated in place with running counts.
     Returns {"action", "id", "name", "data", "nb_iface_map"}.
@@ -1307,7 +1433,16 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             log.debug("netbox: VLAN %s upsert failed: %s", vlan.get("vlan_id"), exc)
 
     # Build device payload
-    existing = _nb_first(session, base, "dcim/devices/", name=hostname, site_id=site_id)
+    # Match by serial number first when we have one — it's the actual stable
+    # hardware identifier (survives a hostname rename), falling back to
+    # name+site so devices with no readable serial still upsert correctly
+    # instead of silently creating a duplicate.
+    serial = (facts.get("serial") or "")[:50]
+    existing = None
+    if serial:
+        existing = _nb_first(session, base, "dcim/devices/", serial=serial, site_id=site_id)
+    if not existing:
+        existing = _nb_first(session, base, "dcim/devices/", name=hostname, site_id=site_id)
 
     comments = (
         f"Platform: {facts.get('platform') or 'unknown'}  |  "
@@ -1327,8 +1462,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         "name":               hostname,
         "device_type":        dev_type["id"],
         "site":               site_id,
-        "status":             "active",
-        "serial":             (facts.get("serial") or "")[:50],
+        "status":             status,
+        "serial":             serial,
         "comments":           comments,
         "role":               role_id,
         "device_role":        role_id,
@@ -1338,12 +1473,15 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         payload["platform"] = platform_id
     if config_template_id:
         payload["config_template"] = config_template_id
+    if facts.get("version") and _ensure_custom_field(session, base, "os_version"):
+        payload["custom_fields"] = {"os_version": facts["version"]}
 
     if existing:
         update = {k: v for k, v in payload.items()
-                  if k in ("serial", "comments", "device_type", "status",
+                  if k in ("name", "serial", "comments", "device_type", "status",
                             "role", "device_role", "platform",
-                            "local_context_data", "config_template")}
+                            "local_context_data", "config_template",
+                            "custom_fields")}
         try:
             device = _nb_patch(session, base, f"dcim/devices/{existing['id']}/", update)
         except RuntimeError:
@@ -1381,11 +1519,29 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
 
     # ── DCIM interfaces + IPAM ─────────────────────────────────────────────
     mgmt_ip_id: Optional[int] = None
+    mgmt_ipv6_id: Optional[int] = None
+    loopback_ipv6_id: Optional[int] = None
+    first_ipv6_id: Optional[int] = None
     nb_iface_map: dict = {}              # iface_name → nb_id
     deferred_lags: list = []             # (member_name, lag_parent_name) for second pass
+    prefix_role_id_cache: dict = {}      # role name → NetBox ipam/roles/ id, this device's sync
+
+    def _prefix_role_id(name: Optional[str]) -> Optional[int]:
+        if not name:
+            return None
+        if name not in prefix_role_id_cache:
+            try:
+                prefix_role_id_cache[name] = _ensure_prefix_role(session, base, name)["id"]
+            except Exception as exc:
+                log.debug("netbox: prefix role '%s' failed: %s", name, exc)
+                prefix_role_id_cache[name] = None
+        return prefix_role_id_cache[name]
 
     for intf in (interfaces or []):
         try:
+            # Management-only interface — same name heuristic already used for
+            # NetBox interface *type* inference, reused here for the mgmt_only flag.
+            iface_is_mgmt = intf["name"].lower().lstrip().startswith(("mgmt", "management"))
             # Resolve VRF: use interface-specific VRF if set, else the list-level VRF
             vrf_name = intf.get("vrf_name", "")
             vrf_id: Optional[int] = (vrf_id_map.get(vrf_name) if vrf_name
@@ -1436,6 +1592,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 mode=nb_mode,
                 untagged_vlan_id=untagged_vlan_id,
                 tagged_vlan_ids=tagged_vlan_ids,
+                duplex=intf.get("duplex"),
+                mgmt_only=iface_is_mgmt,
             )
             nb_iface_map[intf["name"]] = nb_intf["id"]
             ipam_stats["interfaces_synced"] = ipam_stats.get("interfaces_synced", 0) + 1
@@ -1451,12 +1609,14 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
 
             # Primary IPv4
             if intf.get("cidr"):
+                role_id_v4 = _prefix_role_id(_infer_prefix_role_name(intf["name"], intf["prefix"]))
                 _ensure_prefix(
                     session, base,
                     prefix=intf["prefix"],
                     description=f"Seen on {hostname} {intf['name']}",
                     site_id=site_id,
                     vrf_id=vrf_id,
+                    role_id=role_id_v4,
                 )
                 ipam_stats["prefixes_synced"] = ipam_stats.get("prefixes_synced", 0) + 1
 
@@ -1476,9 +1636,10 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             for sec_cidr in intf.get("secondary_ips", []):
                 try:
                     sec_prefix = str(ipaddress.ip_interface(sec_cidr).network)
+                    role_id_sec = _prefix_role_id(_infer_prefix_role_name(intf["name"], sec_prefix))
                     _ensure_prefix(session, base, prefix=sec_prefix,
                                    description=f"Seen on {hostname} {intf['name']} (secondary)",
-                                   site_id=site_id, vrf_id=vrf_id)
+                                   site_id=site_id, vrf_id=vrf_id, role_id=role_id_sec)
                     _ensure_ip_address(session, base, address_cidr=sec_cidr,
                                        interface_id=nb_intf["id"],
                                        description=f"{hostname} {intf['name']} secondary",
@@ -1488,17 +1649,25 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                     log.debug("netbox: secondary IP %s on %s/%s: %s",
                               sec_cidr, hostname, intf["name"], exc)
 
-            # IPv6 addresses
+            # IPv6 addresses — same VRF as the interface's IPv4 side (a device's
+            # dual-stack interface shares one VRF) and tracked for primary_ip6,
+            # mirroring the IPv4 mgmt_ip_id logic below.
             for v6_cidr in intf.get("ipv6_addresses", []):
                 try:
                     v6_net = str(ipaddress.ip_interface(v6_cidr).network)
+                    role_id_v6 = _prefix_role_id(_infer_prefix_role_name(intf["name"], v6_net))
                     _ensure_prefix(session, base, prefix=v6_net,
                                    description=f"Seen on {hostname} {intf['name']} (IPv6)",
-                                   site_id=site_id)
-                    _ensure_ip_address(session, base, address_cidr=v6_cidr,
+                                   site_id=site_id, vrf_id=vrf_id, role_id=role_id_v6)
+                    nb_ip6 = _ensure_ip_address(session, base, address_cidr=v6_cidr,
                                        interface_id=nb_intf["id"],
-                                       description=f"{hostname} {intf['name']} IPv6")
+                                       description=f"{hostname} {intf['name']} IPv6",
+                                       vrf_id=vrf_id)
                     ipam_stats["ips_synced"] = ipam_stats.get("ips_synced", 0) + 1
+                    if first_ipv6_id is None:
+                        first_ipv6_id = nb_ip6["id"]
+                    if "loopback0" in intf["name"].lower():
+                        loopback_ipv6_id = nb_ip6["id"]
                 except Exception as exc:
                     log.debug("netbox: IPv6 %s on %s/%s: %s",
                               v6_cidr, hostname, intf["name"], exc)
@@ -1676,6 +1845,19 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         except Exception as exc:
             log.debug("netbox: could not set primary_ip4 on %s: %s", hostname, exc)
 
+    # Set primary_ip6 the same way primary_ip4 falls back to Loopback0 (tier 2
+    # above) — no exact-SSH-match tier (this app doesn't manage over IPv6) and
+    # no synthetic-address tier (unlike v4, a device with no IPv6 configured
+    # simply has no primary_ip6, which is correct, not a gap to paper over).
+    mgmt_ipv6_id = loopback_ipv6_id or first_ipv6_id
+    if mgmt_ipv6_id and (device.get("primary_ip6") or {}).get("id") != mgmt_ipv6_id:
+        try:
+            device = _nb_patch(session, base,
+                               f"dcim/devices/{device_id}/",
+                               {"primary_ip6": mgmt_ipv6_id})
+        except Exception as exc:
+            log.debug("netbox: could not set primary_ip6 on %s: %s", hostname, exc)
+
     return {
         "action":       action,
         "id":           device_id,
@@ -1694,7 +1876,7 @@ def _parse_all_interfaces_from_config(config: str) -> list[dict]:
 
     Returns one entry per interface regardless of whether it has an IP.
     Keys: name, cidr, prefix, secondary_ips, ipv6_addresses, description,
-          mtu, mac, speed_mbps, bandwidth_kbps, admin_up, oper_up,
+          mtu, duplex, mac, speed_mbps, bandwidth_kbps, admin_up, oper_up,
           vrf_name, channel_group, switchport_mode, access_vlan,
           trunk_vlans, dot1q_tag.
     """
@@ -1773,6 +1955,13 @@ def _parse_all_interfaces_from_config(config: str) -> list[dict]:
         mtu_m    = re.search(r"^\s+mtu\s+(\d+)", body, re.MULTILINE)
         shutdown = bool(_RE_RC_SHUTDOWN.search(body))
 
+        # Duplex — only present when explicitly configured (not auto-negotiated
+        # default), same as mtu/switchport above: extractable from config text
+        # because it's a real config directive, unlike MAC/oper-speed which
+        # only exist as live hardware state and can't come from a golden config.
+        duplex_m = re.search(r"^\s+duplex\s+(full|half|auto)", body, re.MULTILINE | re.IGNORECASE)
+        duplex   = duplex_m.group(1).lower() if duplex_m else None
+
         # Tunnel-specific attributes (only populated for Tunnel interfaces)
         tunnel_source      = ""
         tunnel_destination = ""
@@ -1811,6 +2000,7 @@ def _parse_all_interfaces_from_config(config: str) -> list[dict]:
             "ipv6_addresses":     ipv6_addresses,
             "description":        raw_desc,
             "mtu":                int(mtu_m.group(1)) if mtu_m else None,
+            "duplex":             duplex,
             "mac":                None,
             "speed_mbps":         None,
             "bandwidth_kbps":     None,
@@ -2057,11 +2247,17 @@ def _scan_device_from_golden(dev: dict) -> dict:
     # IOS hostname command when the CSV entry has no hostname at all.
     csv_hostname = dev.get("hostname", "").strip()
 
+    # The app's own device-role field (router/switch/firewall) — used to give
+    # each device a matching NetBox device-role instead of one flat generic
+    # role for everything.
+    app_role = (dev.get("role") or "router").strip().lower()
+
     golden = _load_golden_config_file(ip)
     if not golden:
         return {
             "ip":       ip,
             "hostname": csv_hostname or ip,
+            "app_role": app_role,
             "error":    "No golden config saved — run 'Save Golden Config' first",
         }
 
@@ -2082,10 +2278,15 @@ def _scan_device_from_golden(dev: dict) -> dict:
     return {
         "ip":              ip,
         "hostname":        hostname,
+        "app_role":        app_role,
         "facts":           facts,
         "interfaces":      interfaces,
         "vlans":           vlans,
         "vrfs":            vrfs,
+        # Populated separately, live, only for online devices — CDP neighbor
+        # data is learned operational state, not something that exists in a
+        # saved config file no matter how it's parsed. See the CDP enrichment
+        # pass in sync_list_to_netbox.
         "cdp_neighbors":   [],
         "running_config":  golden,
         "static_routes":   static_routes,
@@ -2111,14 +2312,25 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
 
     log.info("netbox: starting sync for list '%s' (%d device(s))", list_name, len(devices))
 
-    # Build/refresh the region, site, shared device-role, and config template up-front.
+    # Build/refresh the region and site up-front. Device roles are resolved
+    # per-device below (router/switch/firewall, matching the app's own
+    # device-list role field) rather than one shared generic role for
+    # everything — role_id_cache avoids re-resolving the same role per device.
     try:
         region = _ensure_region(session, base, list_name)
         site   = _ensure_site(session, base, list_name, region["id"])
-        role   = _ensure_device_role(session, base, "Network Device")
     except Exception as exc:
-        log.exception("netbox: failed to provision region/site/role for '%s'", list_name)
+        log.exception("netbox: failed to provision region/site for '%s'", list_name)
         return {"ok": False, "error": f"Failed to set up NetBox region/site: {exc}"}
+
+    _ROLE_DISPLAY_NAMES = {"router": "Router", "switch": "Switch", "firewall": "Firewall"}
+    role_id_cache: dict = {}
+
+    def _role_id_for(app_role: str) -> int:
+        name = _ROLE_DISPLAY_NAMES.get((app_role or "").lower(), "Network Device")
+        if name not in role_id_cache:
+            role_id_cache[name] = _ensure_device_role(session, base, name)["id"]
+        return role_id_cache[name]
 
     # Config template — needed for "Render Config" in the NetBox device view.
     # Returns None gracefully on pre-3.5 NetBox instances.
@@ -2137,6 +2349,26 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
 
     # Populate from golden configs — no SSH needed, works for offline devices.
     scanned: list[dict] = [_scan_device_from_golden(d) for d in devices]
+
+    # CDP neighbors are learned operational state, not something a golden
+    # config file can contain — this is the one piece of the sync that
+    # genuinely needs a live session, done only for devices status_cache
+    # already reports online, in parallel like the rest of the app's
+    # per-device SSH work.
+    ip_to_dev = {d.get("ip", ""): d for d in devices}
+    online_results = [
+        r for r in scanned
+        if not r.get("error") and (status_cache or {}).get(r["ip"], False)
+    ]
+    if online_results:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futs = {
+                ex.submit(_fetch_cdp_neighbors_live, ip_to_dev[r["ip"]]): r
+                for r in online_results if r["ip"] in ip_to_dev
+            }
+            for fut in as_completed(futs):
+                futs[fut]["cdp_neighbors"] = fut.result()
 
     created = 0
     updated = 0
@@ -2163,7 +2395,8 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
                 facts=result["facts"],
                 interfaces=result.get("interfaces", []),
                 site_id=site["id"],
-                role_id=role["id"],
+                role_id=_role_id_for(result.get("app_role", "router")),
+                status="active" if (status_cache or {}).get(result["ip"], False) else "offline",
                 ipam_stats=ipam_stats,
                 vlans=result.get("vlans", []),
                 vrfs=result.get("vrfs", []),
