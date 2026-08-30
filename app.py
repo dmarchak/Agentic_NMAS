@@ -1944,7 +1944,14 @@ def backup_stats_route():
 
 @app.route("/topology_data")
 def topology_data():
-    """Discover and return network topology as JSON."""
+    """Discover and return network topology as JSON.
+
+    Query params: cdp=1/0, lldp=1/0 — which discovery protocols to query
+    (default both). Each additional protocol adds a sequential SSH command
+    per device, so letting the caller opt out keeps discovery fast — with
+    enough devices, querying both can push total discovery time past a
+    reverse proxy's request timeout.
+    """
     try:
         _, current_list_file = get_current_device_list()
         devices = load_saved_devices(current_list_file)
@@ -1952,13 +1959,20 @@ def topology_data():
         if not devices:
             return jsonify({"status": "success", "topology": {"nodes": [], "edges": []}})
 
+        protocols = tuple(
+            p for p in ("cdp", "lldp") if request.args.get(p, "1") != "0"
+        )
+        if not protocols:
+            return jsonify({"status": "error", "message": "Select at least one of CDP or LLDP"}), 400
+
         topology = discover_topology(
             devices=devices,
             connection_factory=get_persistent_connection,
             connections_pool=connections,
             pool_lock=lock,
             status_cache=device_status_cache,
-            max_workers=5
+            max_workers=5,
+            protocols=protocols,
         )
 
         # Persist so the diagram survives server restarts.

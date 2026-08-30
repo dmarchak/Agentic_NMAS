@@ -424,6 +424,14 @@
         <span class="btn-text">Discover Topology</span>
         <span class="spinner-border spinner-border-sm d-none" role="status"></span>
       </button>
+      <div class="form-check form-check-inline mb-0 ms-1">
+        <input class="form-check-input" type="checkbox" id="topoProtoCdp" checked onchange="updateTopoDiscoverBtn()">
+        <label class="form-check-label small" for="topoProtoCdp">CDP</label>
+      </div>
+      <div class="form-check form-check-inline mb-0">
+        <input class="form-check-input" type="checkbox" id="topoProtoLldp" checked onchange="updateTopoDiscoverBtn()">
+        <label class="form-check-label small" for="topoProtoLldp">LLDP</label>
+      </div>
       <button class="btn btn-outline-secondary btn-sm" onclick="resetTopoView('cdp')">Reset View</button>
       <div class="dropdown" id="topoHiddenDropdown" style="display:none;">
         <button class="btn btn-outline-warning btn-sm dropdown-toggle" type="button"
@@ -3338,20 +3346,32 @@ function loadSavedProtoTopology() {
 }
 
 // ── CDP Discovery ─────────────────────────────────────────────────────────
+// Keep the Discover button disabled whenever neither protocol is checked —
+// there'd be nothing for the backend to query.
+window.updateTopoDiscoverBtn = function() {
+  const btn  = document.getElementById('topoDiscoverBtn');
+  const cdp  = document.getElementById('topoProtoCdp');
+  const lldp = document.getElementById('topoProtoLldp');
+  if (!btn || !cdp || !lldp) return;
+  btn.disabled = !cdp.checked && !lldp.checked;
+};
+
 window.discoverTopology = function() {
   const btn = document.getElementById('topoDiscoverBtn');
   const btnText = btn.querySelector('.btn-text');
   const spinner = btn.querySelector('.spinner-border');
+  const cdp  = document.getElementById('topoProtoCdp')?.checked ?? true;
+  const lldp = document.getElementById('topoProtoLldp')?.checked ?? true;
   btnText.textContent = 'Discovering...';
   spinner.classList.remove('d-none');
   btn.disabled = true;
 
-  fetch('/topology_data')
+  fetch(`/topology_data?cdp=${cdp ? 1 : 0}&lldp=${lldp ? 1 : 0}`)
     .then(r => r.json())
     .then(data => {
       btnText.textContent = 'Discover Topology';
       spinner.classList.add('d-none');
-      btn.disabled = false;
+      updateTopoDiscoverBtn();
       if (data.status === 'success') {
         // Capture live positions of currently-rendered nodes before replacing data
         const mergedPositions = Object.assign({}, _topoPositions.cdp);
@@ -3380,7 +3400,7 @@ window.discoverTopology = function() {
     .catch(() => {
       btnText.textContent = 'Discover Topology';
       spinner.classList.add('d-none');
-      btn.disabled = false;
+      updateTopoDiscoverBtn();
       showToast('Failed to discover topology', 'danger');
     });
 };

@@ -193,13 +193,22 @@ def _infer_role(hostname: str) -> str:
     return 'router'
 
 
-def gather_device_topology(conn, hostname):
+def gather_device_topology(conn, hostname, protocols=('cdp', 'lldp')):
     """
     Gather topology data from a single device connection.
 
+    Args:
+        protocols: which discovery protocols to query — a subset of
+            ('cdp', 'lldp'). Both commands run sequentially on the same
+            SSH connection (Netmiko doesn't support concurrent commands on
+            one session), so each additional protocol adds real wall-clock
+            time per device — with enough devices this can push total
+            discovery past a reverse proxy's timeout. Callers should let
+            the user opt in to LLDP rather than always querying both.
+
     Returns dict with:
         - hostname: device hostname
-        - neighbors: list of CDP + LLDP neighbor dicts (deduplicated by
+        - neighbors: list of CDP and/or LLDP neighbor dicts (deduplicated by
           build_topology() when both protocols report the same link)
         - interfaces: list of interface IP dicts
     """
@@ -210,21 +219,23 @@ def gather_device_topology(conn, hostname):
     }
 
     neighbors = []
-    try:
-        # Get CDP neighbors
-        cdp_output = conn.send_command('show cdp neighbors detail', read_timeout=30)
-        neighbors.extend(parse_cdp_neighbors(cdp_output))
-    except Exception as e:
-        logger.warning(f"CDP query failed on {hostname}: {e}")
+    if 'cdp' in protocols:
+        try:
+            # Get CDP neighbors
+            cdp_output = conn.send_command('show cdp neighbors detail', read_timeout=30)
+            neighbors.extend(parse_cdp_neighbors(cdp_output))
+        except Exception as e:
+            logger.warning(f"CDP query failed on {hostname}: {e}")
 
-    try:
-        # Get LLDP neighbors — a link both protocols report on the same
-        # local/remote interface pair is deduplicated by build_topology(),
-        # so simply appending here is safe.
-        lldp_output = conn.send_command('show lldp neighbors detail', read_timeout=30)
-        neighbors.extend(parse_lldp_neighbors(lldp_output))
-    except Exception as e:
-        logger.warning(f"LLDP query failed on {hostname}: {e}")
+    if 'lldp' in protocols:
+        try:
+            # Get LLDP neighbors — a link both protocols report on the same
+            # local/remote interface pair is deduplicated by build_topology(),
+            # so simply appending here is safe.
+            lldp_output = conn.send_command('show lldp neighbors detail', read_timeout=30)
+            neighbors.extend(parse_lldp_neighbors(lldp_output))
+        except Exception as e:
+            logger.warning(f"LLDP query failed on {hostname}: {e}")
 
     result['neighbors'] = neighbors
 
@@ -1135,7 +1146,7 @@ def discover_protocol_topologies(devices, connection_factory, connections_pool, 
 
 
 def discover_topology(devices, connection_factory, connections_pool, pool_lock,
-                      status_cache=None, max_workers=5):
+                      status_cache=None, max_workers=5, protocols=('cdp', 'lldp')):
     """
     Discover network topology by querying all online devices in parallel.
 
@@ -1146,6 +1157,10 @@ def discover_topology(devices, connection_factory, connections_pool, pool_lock,
         pool_lock: threading lock for pool
         status_cache: optional dict of ip -> online status
         max_workers: max parallel connections
+        protocols: which discovery protocols to query per device — subset of
+            ('cdp', 'lldp'). Each additional protocol adds a sequential SSH
+            command per device (see gather_device_topology) — pass only what
+            the caller actually wants to keep discovery fast.
 
     Returns:
         Topology dict with nodes and edges
@@ -1166,7 +1181,7 @@ def discover_topology(devices, connection_factory, connections_pool, pool_lock,
     def query_device(dev):
         try:
             conn = connection_factory(dev, connections_pool, pool_lock)
-            result = gather_device_topology(conn, dev['hostname'])
+            result = gather_device_topology(conn, dev['hostname'], protocols=protocols)
             result['role'] = dev.get('role') or _infer_role(dev['hostname'])
             return result
         except Exception as e:
