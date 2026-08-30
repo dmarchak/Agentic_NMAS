@@ -2197,9 +2197,10 @@
   <button class="btn btn-outline-secondary btn-sm" onclick="loadGitTab()">↻ Refresh</button>
 </div>
 <p class="text-muted small mb-3">
-  Each <strong>Save All Configs</strong> stages device configs and creates a validation pipeline.
-  Once the pipeline passes, commit here to version the configs in Git.
-  Every commit maps 1-to-1 with a Jenkins pipeline run.
+  Each <strong>Save All Configs</strong> stages device configs and, if Jenkins is configured,
+  creates a validation pipeline for them. Commit here to version the configs in Git —
+  with a passing pipeline selected for CI-verified changes, or directly if Jenkins isn't
+  configured or you don't need one for this commit.
 </p>
 
 <!-- Status bar -->
@@ -2518,7 +2519,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!confirm(
       `Fetch running-config from ${onlineDeviceIps.length} online device(s), save as golden configs, and stage in Git?\n\n` +
-      `A Jenkins validation pipeline will be created. You can commit from the Git tab once it passes.`
+      `If Jenkins is configured, a validation pipeline will also be created — you can then commit ` +
+      `from the Git tab once it passes, or commit directly at any time without one.`
     )) return;
 
     const saveBtn = document.getElementById('saveAllBtn');
@@ -7664,13 +7666,13 @@ ${tasks}
     const btn   = document.getElementById('gitCommitBtn');
     if (!sel) return;
 
-    sel.innerHTML = '<option value="">— select validation pipeline —</option>';
+    // Committing without a pipeline is always allowed — Jenkins is optional,
+    // used as verification when available, never a hard requirement to commit.
+    sel.innerHTML = '<option value="">— no pipeline (commit directly) —</option>';
+    if (btn) btn.disabled = false;
+
     if (pipes.length === 0) {
-      const opt = document.createElement('option');
-      opt.disabled = true;
-      opt.textContent = '(no pending validation pipelines — save configs first)';
-      sel.appendChild(opt);
-      if (btn) btn.disabled = true;
+      if (hint) hint.innerHTML = '<span class="text-muted">No pending validation pipelines — committing directly.</span>';
       return;
     }
 
@@ -7685,10 +7687,14 @@ ${tasks}
     });
 
     sel.onchange = () => {
+      if (!sel.value) {
+        if (hint) hint.innerHTML = '<span class="text-muted">Committing without a pipeline.</span>';
+        return;
+      }
       const chosen = pipes.find(p => p.pipeline_name === sel.value);
       if (!chosen) { if (hint) hint.textContent = ''; return; }
       if (!chosen.jenkins_ok) {
-        if (hint) hint.innerHTML = `<span class="text-danger">Pipeline last run: <strong>${chosen.last_result || 'not run'}</strong>. Fix failures before committing.</span>`;
+        if (hint) hint.innerHTML = `<span class="text-danger">Pipeline last run: <strong>${chosen.last_result || 'not run'}</strong>. Fix failures before committing, or switch back to "no pipeline" to commit directly.</span>`;
       } else {
         if (hint) hint.innerHTML = `<span class="text-success">Pipeline passed ✓ — safe to commit.</span>`;
       }
@@ -7738,14 +7744,15 @@ ${tasks}
     if (errEl) errEl.textContent = '';
 
     if (!msg)  { if (errEl) errEl.textContent = 'Commit message is required.'; return; }
-    if (!pipe) { if (errEl) errEl.textContent = 'Select a validation pipeline.'; return; }
 
     if (btn) btn.disabled = true;
     try {
+      const body = { message: msg };
+      if (pipe) body.pipeline_name = pipe;
       const resp = await fetch('/git/commit', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: msg, pipeline_name: pipe }),
+        body:    JSON.stringify(body),
       });
       const data = await resp.json();
       if (data.ok) {

@@ -11,11 +11,13 @@ Workflow
 --------
 1. Configs are saved (Save All Configs / AI save).
 2. Each config is written to the repo and staged (git add).
-3. A comprehensive validation pipeline is created in Jenkins.
-4. When that pipeline passes (and all previous function pipelines pass),
-   the user can commit with a message.
-5. The commit records the pipeline name so every git commit has exactly
-   one corresponding Jenkins pipeline run.
+3. If Jenkins is configured, a comprehensive validation pipeline is created.
+4. The user can commit with a message at any time — selecting a pending
+   pipeline that has passed records it against the commit as CI evidence,
+   but Jenkins is never required to commit; it's verification when
+   available, not a gate on the feature itself.
+5. If a pipeline is selected, the commit records its name so that git
+   commit has a corresponding Jenkins pipeline run on file.
 
 A pipeline can only be linked to ONE commit.  Attempting to reuse a
 pipeline that is already linked to a commit is prevented.

@@ -4932,9 +4932,17 @@ def git_commit():
     Commit staged configs to git.
 
     Requires:
-      - message:       commit message (non-empty)
-      - pipeline_name: a registered pending pipeline whose last run PASSED
-                       and has NOT already been linked to another commit
+      - message: commit message (non-empty)
+
+    Optional:
+      - pipeline_name: a registered pending Jenkins pipeline. If given, it
+                       must have passed CI and not already be linked to
+                       another commit — this is how CI verification gets
+                       recorded when Jenkins is configured and used. If
+                       omitted (Jenkins not configured, or the user chooses
+                       to commit without one), the commit proceeds directly;
+                       committing was never meant to hard-require Jenkins,
+                       only to use it as verification when available.
     """
     from modules.config_git import (
         commit_configs, is_pipeline_available, has_staged_changes,
@@ -4948,28 +4956,28 @@ def git_commit():
 
     if not message:
         return jsonify({"ok": False, "error": "Commit message is required"}), 400
-    if not pipeline:
-        return jsonify({"ok": False, "error": "Pipeline name is required"}), 400
 
-    # Validate pipeline availability
-    if not is_pipeline_available(list_name, pipeline):
-        return jsonify({
-            "ok":    False,
-            "error": f"Pipeline '{pipeline}' is already linked to a commit and cannot be reused.",
-        }), 400
+    if pipeline:
+        # Validate pipeline availability
+        if not is_pipeline_available(list_name, pipeline):
+            return jsonify({
+                "ok":    False,
+                "error": f"Pipeline '{pipeline}' is already linked to a commit and cannot be reused.",
+            }), 400
 
-    # Validate pipeline has a passing last run
-    results = load_results() or {}
-    pipe_info = results.get("pipelines", {}).get(pipeline, {})
-    last_result = pipe_info.get("jenkins_result")
-    if not pipe_info.get("jenkins_ok", False) or last_result != "SUCCESS":
-        return jsonify({
-            "ok":    False,
-            "error": (
-                f"Pipeline '{pipeline}' last run was {last_result or 'not yet run'}. "
-                "The pipeline must pass before you can commit."
-            ),
-        }), 400
+        # Validate pipeline has a passing last run
+        results = load_results() or {}
+        pipe_info = results.get("pipelines", {}).get(pipeline, {})
+        last_result = pipe_info.get("jenkins_result")
+        if not pipe_info.get("jenkins_ok", False) or last_result != "SUCCESS":
+            return jsonify({
+                "ok":    False,
+                "error": (
+                    f"Pipeline '{pipeline}' last run was {last_result or 'not yet run'}. "
+                    "The pipeline must pass before you can commit — or commit without "
+                    "selecting a pipeline."
+                ),
+            }), 400
 
     # Check there are staged changes
     if not has_staged_changes(list_name):
