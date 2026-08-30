@@ -554,12 +554,24 @@ def _ensure_tunnel_termination(session, base: str,
 def _ensure_cable(session, base: str,
                   a_type: str, a_id: int,
                   b_type: str, b_id: int) -> Optional[dict]:
-    """Get-or-create a DCIM cable between two termination objects."""
-    # Check if a cable already exists for this interface
-    existing = _nb_first(session, base, "dcim/cables/",
-                         **{f"termination_{a_type}_id": a_id})
-    if existing:
-        return existing
+    """Get-or-create a DCIM cable between two termination objects.
+
+    Checks both endpoints as either side of an existing cable before
+    creating one. CDP/LLDP neighbor relationships are reciprocal — both
+    devices report each other — so the cable-wiring pass in
+    sync_list_to_netbox processes the same physical link once from each
+    direction. Checking only the "a" termination (as this used to) means
+    the second, reciprocal pass sees an interface that already has a cable
+    *as the b side*, misses it, and attempts a duplicate creation that
+    NetBox rejects since that interface is already cabled — a silent,
+    unnecessary failure logged on every sync rather than a clean no-op.
+    """
+    for id_ in (a_id, b_id):
+        for side in ("a", "b"):
+            existing = _nb_first(session, base, "dcim/cables/",
+                                 **{f"termination_{side}_id": id_})
+            if existing:
+                return existing
     try:
         return _nb_post(session, base, "dcim/cables/", {
             "a_terminations": [{"object_type": f"dcim.{a_type}", "object_id": a_id}],
@@ -1241,9 +1253,20 @@ def _fetch_neighbors_live(dev: dict) -> list[dict]:
     Returns [] on any failure; never raises — a device that can't be reached
     just doesn't get its cables synced this run, same as it already doesn't
     today.
+
+    Uses conn.send_command directly (not modules.commands.run_device_command)
+    — matching topology.py's gather_device_topology, which discovers this
+    exact same data reliably. run_device_command's prompt-based reader with
+    retry-to-timing fallback exists for commands prone to confusing
+    Netmiko's prompt regex (see modules/commands.py's _TIMING_PREFIXES);
+    'show cdp/lldp neighbors detail' output — long, multi-line, dash-
+    delimited — is exactly that shape, and neither is in that known-slow
+    list, so it gets the full prompt-based read path with no special
+    handling. A confused read there fails closed (empty string) rather than
+    raising, so it wouldn't show up as a sync error — it would just mean
+    silently discovering fewer neighbors than the device actually has.
     """
     from modules.connection import get_persistent_connection
-    from modules.commands import run_device_command
 
     ip = dev.get("ip", "")
     neighbors: list[dict] = []
@@ -1251,9 +1274,9 @@ def _fetch_neighbors_live(dev: dict) -> list[dict]:
         priv_pool: dict = {}
         priv_lock = threading.Lock()
         conn = get_persistent_connection(dev, priv_pool, priv_lock)
-        show_cdp = run_device_command(conn, "show cdp neighbors detail", read_timeout=30) or ""
+        show_cdp = conn.send_command("show cdp neighbors detail", read_timeout=30) or ""
         neighbors.extend(_parse_cdp_neighbors(show_cdp))
-        show_lldp = run_device_command(conn, "show lldp neighbors detail", read_timeout=30) or ""
+        show_lldp = conn.send_command("show lldp neighbors detail", read_timeout=30) or ""
         neighbors.extend(_parse_lldp_neighbors(show_lldp))
     except Exception as exc:
         log.debug("netbox: live neighbor fetch failed for %s: %s", ip, exc)
