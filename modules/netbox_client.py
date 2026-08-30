@@ -318,6 +318,32 @@ def _netbox_iface_type(iface_name: str) -> str:
     return "other"
 
 
+_IFACE_ABBREV = [
+    (re.compile(r"^GigabitEthernet", re.IGNORECASE), "Gi"),
+    (re.compile(r"^FastEthernet",    re.IGNORECASE), "Fa"),
+    (re.compile(r"^TenGigabitEthernet", re.IGNORECASE), "Te"),
+    (re.compile(r"^Serial",   re.IGNORECASE), "Se"),
+    (re.compile(r"^Loopback", re.IGNORECASE), "Lo"),
+    (re.compile(r"^Vlan",     re.IGNORECASE), "Vl"),
+    (re.compile(r"^Port-channel", re.IGNORECASE), "Po"),
+    (re.compile(r"^Ethernet", re.IGNORECASE), "Et"),
+]
+
+
+def _shorten_iface_name(name: str) -> str:
+    """Abbreviate a full Cisco interface name the same way this app's
+    topology.py display layer does (GigabitEthernet0/3 -> Gi0/3), so it can
+    be used as an alias key in nb_iface_map. Cisco LLDP commonly reports the
+    *local* interface using this abbreviated form in 'Local Intf:'/'Port
+    id:' even though the golden config (and CDP's 'Interface:' field) use
+    the full name — without this alias, LLDP-only-discovered links fail the
+    nb_iface_map lookup and their cable is silently never created."""
+    for pattern, abbrev in _IFACE_ABBREV:
+        if pattern.match(name):
+            return pattern.sub(abbrev, name)
+    return name
+
+
 def _ensure_platform(session, base: str, name: str, manufacturer_id: int) -> dict:
     """Get-or-create a DCIM Platform (OS) record."""
     slug = _slug(name)
@@ -1650,6 +1676,10 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 mgmt_only=iface_is_mgmt,
             )
             nb_iface_map[intf["name"]] = nb_intf["id"]
+            # Alias under the abbreviated form too — LLDP commonly reports
+            # local interfaces abbreviated (see _shorten_iface_name) even
+            # though the golden config and CDP both use the full name.
+            nb_iface_map[_shorten_iface_name(intf["name"])] = nb_intf["id"]
             ipam_stats["interfaces_synced"] = ipam_stats.get("interfaces_synced", 0) + 1
 
             # Queue LAG membership for deferred second pass
