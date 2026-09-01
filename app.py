@@ -3048,6 +3048,20 @@ def ai_providers():
     return jsonify({"providers": _ai.list_providers()})
 
 
+@app.route("/ai/usage_summary")
+def ai_usage_summary():
+    """Aggregated spend/token totals from the persistent server-side usage
+    log (data/ai_usage_log.jsonl) -- durable across page reloads and
+    sessions, unlike the per-turn cost badge in the chat UI."""
+    from modules.ai_usage_log import summarize
+    days_param = request.args.get("days", "30")
+    try:
+        days = min(max(int(days_param), 1), 365)
+    except ValueError:
+        days = 30
+    return jsonify(summarize(days=days))
+
+
 @app.route("/ai/provider", methods=["POST"])
 def ai_set_provider():
     """Switch the active AI provider."""

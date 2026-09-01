@@ -86,6 +86,10 @@ _AUTO_CONTINUE_RE = re.compile(
     re.DOTALL,
 )
 _MAX_AUTO_CONTINUES = 10   # cap per run_chat call
+# Minimum number of prior-task messages to keep visible even when the current
+# task's own tool-calling rounds fill the whole history window -- see the
+# history-trimming logic in run_chat().
+_MIN_PRIOR_HISTORY  = 4
 
 # ---------------------------------------------------------------------------
 # Provider configuration
@@ -103,7 +107,11 @@ PROVIDER_DEFAULTS = {
         # the visible response), unlike Sonnet 4.6 which was thinking-off by
         # default — bumped from 4096 to leave headroom against truncation.
         "max_tokens_per_req": 8192,   # adaptive; bumped to 16000 for reports/generation
-        "max_history":        12,
+        # Raised from 12 -- the messages array is now cache_control'd too (see the
+        # per-call breakpoint in run_chat), so a bigger window costs mostly cache-read
+        # price, not fresh input. A wider window means a large single task pushes out
+        # prior-task history later, and the trim logic below reserves a floor for it.
+        "max_history":        18,
         "inject_topo":        "always",
         "price": {
             "input": 2.00, "output": 10.00,
@@ -115,7 +123,7 @@ PROVIDER_DEFAULTS = {
         "model":             "claude-opus-5",
         # Same adaptive-thinking-by-default headroom as Sonnet above.
         "max_tokens_per_req": 8192,
-        "max_history":        12,
+        "max_history":        18,
         "inject_topo":        "always",
         "price": {
             "input": 5.00, "output": 25.00,
@@ -127,7 +135,7 @@ PROVIDER_DEFAULTS = {
         "name":              "Claude Haiku",
         "model":             "claude-haiku-4-5",
         "max_tokens_per_req": 4096,
-        "max_history":        8,
+        "max_history":        12,
         "inject_topo":        "first_turn",
         "price": {
             "input": 1.00, "output": 5.00,
@@ -1734,6 +1742,20 @@ KNOWLEDGE BASE triggers:
     → update_network_kb category="ansible" immediately
   IF you discover a network fact that contradicts the KB:
     → Update the KB entry — do not leave stale data
+  IF a troubleshooting or diagnostic task surfaces a durable fact NOT already in the
+  KB (a root cause, a device/interface role, a protocol quirk, why something is
+  configured the way it is, a state that won't change turn to turn):
+    → update_network_kb (or save_lab_note for a general environment quirk) BEFORE
+      you finish responding — do not wait to be asked, and do not treat this as
+      optional cleanup.
+    → Reason this matters: only [NETWORK STATE]/[VARIABLES]/[NETWORK KB]/[LAB NOTES]
+      survive into future tasks. Older conversation turns are dropped once the
+      session grows, even earlier in the SAME conversation — anything you learned
+      that lives only in chat history will be gone and you will re-diagnose it from
+      scratch next time. Write it down or lose it.
+    → Read-only/status-check facts count too, not just facts tied to a config push —
+      the VARIABLE STORE rule above already covers config-shaped values; use the KB
+      for everything else you would be annoyed to have to re-discover.
 
 PROACTIVE OBSERVATION (do this at the start of any session or when context arrives):
   - Scan [PROACTIVE CONTEXT] for: devices missing golden configs, recent CI failures,
@@ -3987,6 +4009,41 @@ def _try_local_answer(
             return "No Jenkins pipelines registered for this list yet."
 
     return None  # LLM needed
+
+
+def _log_run_usage(
+    session_id: str,
+    provider_id: str,
+    model: str,
+    usage_total: dict,
+    cost: float,
+    iteration: int,
+    total_tools_used: int,
+    status: str,
+    user_message: str,
+) -> None:
+    """Best-effort append to the persistent cross-session spend log."""
+    try:
+        from modules.ai_usage_log import log_usage as _log_usage
+        from modules.device import get_current_device_list
+        list_name, _ = get_current_device_list()
+        _log_usage(
+            session_id=session_id,
+            provider_id=provider_id,
+            model=model,
+            list_name=list_name or "",
+            input_tokens=usage_total.get("input", 0),
+            output_tokens=usage_total.get("output", 0),
+            cache_write_tokens=usage_total.get("cache_write", 0),
+            cache_read_tokens=usage_total.get("cache_read", 0),
+            cost_usd=cost,
+            iterations=iteration,
+            tool_calls=total_tools_used,
+            status=status,
+            task_preview=user_message,
+        )
+    except Exception:
+        pass
 
 
 def run_chat(
@@ -6438,6 +6495,7 @@ def run_chat(
     # -----------------------------------------------------------------
     price      = provider_info.get("price", {})
     usage_total = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
+    _run_status = "ok"   # "ok" | "interrupted" | "max_iterations" -- logged with usage
 
     api_messages    = list(history)
     max_iterations  = 50
@@ -6455,6 +6513,7 @@ def run_chat(
             iteration += 1
 
             if _is_stopped(session_id):
+                _run_status = "interrupted"
                 yield {"type": "interrupted", "content": "Stopped by user."}
                 break
 
@@ -6466,8 +6525,32 @@ def run_chat(
                 prior_msgs   = api_messages[:_session_start_idx]   # older history
 
                 if len(session_msgs) >= max_history:
-                    # Session fills the window — pin user turn + most recent rounds
-                    trimmed = [session_msgs[0]] + session_msgs[-(max_history - 1):]
+                    # The current task alone fills the window. Still reserve a small
+                    # floor for the most recent PRIOR-task messages instead of
+                    # dropping them to zero -- otherwise a single task with enough
+                    # tool-call rounds (very common; each round is 2 messages) wipes
+                    # out every earlier task in this conversation, and Claude
+                    # re-discovers facts it already found earlier the same session.
+                    # Only safe when prior_msgs ends on an assistant turn -- anything
+                    # else (e.g. a session interrupted mid tool-loop, which persists
+                    # ending on a tool_result) would put two user-role messages back
+                    # to back, which the API rejects. Fall back to the old
+                    # zero-prior-context behaviour in that edge case.
+                    _prior_floor = (
+                        min(_MIN_PRIOR_HISTORY, len(prior_msgs))
+                        if prior_msgs and prior_msgs[-1].get("role") == "assistant"
+                        else 0
+                    )
+                    if _prior_floor:
+                        prior_trim = _compress_history(prior_msgs[-_prior_floor:])
+                        _budget    = (max_history - 1) - _prior_floor
+                        trimmed    = (
+                            prior_trim + [session_msgs[0]]
+                            + (session_msgs[-_budget:] if _budget > 0 else [])
+                        )
+                    else:
+                        # Pin user turn + most recent rounds
+                        trimmed = [session_msgs[0]] + session_msgs[-(max_history - 1):]
                 else:
                     # Fill remaining slots with recent prior context.
                     # Compress only the prior (older) messages — current session
@@ -6483,6 +6566,13 @@ def run_chat(
             # Ensure no tool_use block is ever sent without a matching tool_result
             # (can happen after trimming or if max_tokens truncated a prior turn).
             trimmed = _sanitize_trailing_tool_use(trimmed)
+            # The API requires messages[0].role == "user". Slicing a suffix of
+            # prior history can start mid tool_use/tool_result pair; if
+            # _sanitize_for_api just dropped an orphaned leading tool_result,
+            # the new first element can be "assistant" — drop leading
+            # non-user messages so the array is always API-valid.
+            while trimmed and trimmed[0].get("role") != "user":
+                trimmed = trimmed[1:]
 
             # Re-inject device/topology context prefix into the current user
             # turn (always session_msgs[0] = api_messages[_session_start_idx]).
@@ -6570,6 +6660,33 @@ def run_chat(
                             "text": stable_context,
                             "cache_control": {"type": "ephemeral"},
                         })
+                    # Mark the tail of the conversation as cacheable too. Without
+                    # this, only the system prompt + tools are cached — every prior
+                    # tool_result in `trimmed` (a single "show run" can be 15-25k
+                    # tokens) gets rebilled at full input price on every iteration
+                    # of the loop, so a 10-round tool session pays for that output
+                    # ~10 times over. Moving one breakpoint to the last message each
+                    # call lets everything before it hit the ~10%-cost cache-read
+                    # rate instead. Copy-on-write: never mutate shared message/content
+                    # dicts that also live in api_messages / stored history.
+                    _cached_messages = trimmed
+                    if trimmed:
+                        _last = trimmed[-1]
+                        _content = _last.get("content")
+                        if isinstance(_content, str):
+                            _new_content = [{
+                                "type": "text",
+                                "text": _content,
+                                "cache_control": {"type": "ephemeral"},
+                            }]
+                        elif isinstance(_content, list) and _content:
+                            _new_content = [dict(b) for b in _content]
+                            _new_content[-1] = dict(
+                                _new_content[-1], cache_control={"type": "ephemeral"}
+                            )
+                        else:
+                            _new_content = _content
+                        _cached_messages = trimmed[:-1] + [dict(_last, content=_new_content)]
                     # context_management clears stale tool_result content server-side
                     # once a turn accumulates many tool calls (e.g. a multi-device
                     # verification sweep) instead of letting it all ride in every
@@ -6579,7 +6696,7 @@ def run_chat(
                         model=model,
                         max_tokens=max_tokens_out,
                         system=_system_blocks,
-                        messages=trimmed,
+                        messages=_cached_messages,
                         tools=cached_tools,
                         betas=["context-management-2025-06-27"],
                         context_management={"edits": [{"type": "clear_tool_uses_20250919"}]},
@@ -6774,10 +6891,12 @@ def run_chat(
             _save_history_to_disk(session_id, _compress_for_disk(api_messages))
 
             if _is_stopped(session_id):
+                _run_status = "interrupted"
                 yield {"type": "interrupted", "content": "Stopped by user."}
                 break
 
         if iteration >= max_iterations:
+            _run_status = "max_iterations"
             _dbg(f"  !! max_iterations ({max_iterations}) reached — loop stopped")
             yield {"type": "text", "content": f"\n\n⚠️ Reached the maximum of {max_iterations} steps. Say **continue** to resume."}
 
@@ -6799,6 +6918,8 @@ def run_chat(
             "cache_read":  usage_total["cache_read"],
             "cost_usd":    round(cost, 6),
         }
+        _log_run_usage(session_id, provider_id, model, usage_total, cost,
+                        iteration, total_tools_used, _run_status, user_message)
         yield {"type": "done"}
 
     except Exception as exc:
@@ -6811,6 +6932,12 @@ def run_chat(
             _save_history_to_disk(session_id, _compress_for_disk(repaired))
         except Exception:
             pass
+        _cost = sum(
+            (usage_total.get(k, 0) / 1_000_000) * price.get(k, 0)
+            for k in ("input", "output", "cache_write", "cache_read")
+        )
+        _log_run_usage(session_id, provider_id, model, usage_total, _cost,
+                        iteration, total_tools_used, "error", user_message)
         yield {"type": "error", "content": str(exc)}
         yield {"type": "done"}
 
