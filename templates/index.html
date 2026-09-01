@@ -99,9 +99,14 @@
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="git-tab" data-bs-toggle="tab" data-bs-target="#gitPane"
-            type="button" role="tab" aria-controls="gitPane" aria-selected="false"
-            onclick="loadGitTab()">
+            type="button" role="tab" aria-controls="gitPane" aria-selected="false">
       Git
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logsPane"
+            type="button" role="tab" aria-controls="logsPane" aria-selected="false">
+      Logs
     </button>
   </li>
 </ul>
@@ -2260,6 +2265,41 @@
 </div>
 
 </div><!-- end Git tab pane -->
+
+<!-- ================================================================== -->
+<!-- LOGS TAB -->
+<!-- ================================================================== -->
+<div class="tab-pane fade" id="logsPane" role="tabpanel" aria-labelledby="logs-tab">
+<div class="d-flex align-items-center mb-3 flex-wrap gap-2">
+  <h2 class="text-primary mb-0 me-auto">Server Logs</h2>
+  <select class="form-select form-select-sm" id="logsSource" style="width:auto">
+    <option value="server">Server log (app.py + all modules)</option>
+    <option value="ai">AI debug log</option>
+  </select>
+  <select class="form-select form-select-sm" id="logsLines" style="width:auto">
+    <option value="200">Last 200 lines</option>
+    <option value="500" selected>Last 500 lines</option>
+    <option value="2000">Last 2000 lines</option>
+  </select>
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox" id="logsAutoRefresh" role="switch">
+    <label class="form-check-label small text-muted" for="logsAutoRefresh">Auto-refresh (5s)</label>
+  </div>
+  <button class="btn btn-outline-secondary btn-sm" onclick="loadLogsTab()">↻ Refresh</button>
+</div>
+
+<div class="mb-2">
+  <input type="text" class="form-control form-control-sm" id="logsFilter"
+         placeholder="Filter lines (e.g. ERROR, config_git, a device IP)…" oninput="_renderFilteredLog()">
+</div>
+
+<div id="logsError" class="text-danger small mb-2"></div>
+<pre id="logsContent"
+     class="small p-3 mb-0"
+     style="background:#0f172a;color:#cbd5e1;border:1px solid #334155;border-radius:6px;
+            max-height:70vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">Loading…</pre>
+
+</div><!-- end Logs tab pane -->
 
 </div><!-- end tab-content -->
 
@@ -4710,6 +4750,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const agentTabBtn      = document.getElementById('agent-tab');
   const approvalsTabBtn  = document.getElementById('approvals-tab');
   const monitoringTabBtn = document.getElementById('monitoring-tab');
+  const gitTabBtn        = document.getElementById('git-tab');
 
   if (ansibleTabBtn)    ansibleTabBtn.addEventListener('shown.bs.tab', loadPlaybooks);
   if (jenkinsTabBtn)    jenkinsTabBtn.addEventListener('shown.bs.tab', loadJenkinsTab);
@@ -4723,6 +4764,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   if (approvalsTabBtn)  approvalsTabBtn.addEventListener('shown.bs.tab', loadApprovalsTab);
   if (monitoringTabBtn) monitoringTabBtn.addEventListener('shown.bs.tab', loadMonitoringTab);
+  // Unlike every other tab above, Git had no auto-load-on-switch wiring --
+  // it only ever loaded via the explicit Refresh button, so re-opening the
+  // tab after committing/saving elsewhere in the app showed stale data.
+  if (gitTabBtn)        gitTabBtn.addEventListener('shown.bs.tab', loadGitTab);
 
   // Auto-refresh Jenkins panel every 30s while tab is visible (uses /jenkins/sync — no AI)
   setInterval(function () {
@@ -7740,18 +7785,27 @@ ${tasks}
 
   // ── load tab data ──────────────────────────────────────────────────────────
   window.loadGitTab = async function () {
-    const [statusResp, logResp, pipesResp] = await Promise.all([
-      fetch('/git/status',              { cache: 'no-store' }),
-      fetch('/git/log?limit=40',        { cache: 'no-store' }),
-      fetch('/git/available_pipelines', { cache: 'no-store' }),
-    ]);
-    const [status, logData, pipesData] = await Promise.all([
-      statusResp.json(), logResp.json(), pipesResp.json(),
-    ]);
+    // A failed/rejected fetch here used to throw silently (unhandled promise
+    // rejection, nothing rendered) -- from the UI that looked exactly like
+    // "the Refresh button does nothing". Surface it instead.
+    try {
+      const [statusResp, logResp, pipesResp] = await Promise.all([
+        fetch('/git/status',              { cache: 'no-store' }),
+        fetch('/git/log?limit=40',        { cache: 'no-store' }),
+        fetch('/git/available_pipelines', { cache: 'no-store' }),
+      ]);
+      const [status, logData, pipesData] = await Promise.all([
+        statusResp.json(), logResp.json(), pipesResp.json(),
+      ]);
 
-    _renderGitStatus(status);
-    _renderGitLog(logData.commits || []);
-    _renderPipelineDropdown(pipesData.pipelines || [], status);
+      _renderGitStatus(status);
+      _renderGitLog(logData.commits || []);
+      _renderPipelineDropdown(pipesData.pipelines || [], status);
+    } catch (e) {
+      if (typeof showToast === 'function') {
+        showToast('Could not load Git tab: ' + e.message, 'danger');
+      }
+    }
   };
 
   // ── status bar ─────────────────────────────────────────────────────────────
@@ -7938,6 +7992,84 @@ ${tasks}
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
                           .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+})();
+
+/* ── Logs tab ─────────────────────────────────────────────────────────────── */
+(function () {
+  'use strict';
+  let _logsRawText = '';
+  let _logsAutoTimer = null;
+
+  window.loadLogsTab = async function () {
+    const src   = document.getElementById('logsSource')?.value || 'server';
+    const lines = document.getElementById('logsLines')?.value  || '500';
+    const url   = src === 'ai'
+      ? `/ai/debug_log?lines=${encodeURIComponent(lines)}`
+      : `/logs/server?lines=${encodeURIComponent(lines)}`;
+    const errEl = document.getElementById('logsError');
+    const pre   = document.getElementById('logsContent');
+    if (errEl) errEl.textContent = '';
+
+    try {
+      const resp = await fetch(url, { cache: 'no-store' });
+      const text = await resp.text();
+      if (!resp.ok) {
+        // Route returns 404 with a plain-text explanation when the log file
+        // doesn't exist yet (e.g. fresh install, no errors logged so far).
+        _logsRawText = '';
+        if (pre) pre.textContent = '';
+        if (errEl) errEl.textContent = text || `Request failed (${resp.status})`;
+        return;
+      }
+      _logsRawText = text;
+      _renderFilteredLog();
+    } catch (e) {
+      if (errEl) errEl.textContent = 'Could not load log: ' + e.message;
+    }
+  };
+
+  window._renderFilteredLog = function () {
+    const pre    = document.getElementById('logsContent');
+    const filter = (document.getElementById('logsFilter')?.value || '').trim().toLowerCase();
+    if (!pre) return;
+    if (!_logsRawText) {
+      pre.textContent = '(empty)';
+      return;
+    }
+    if (!filter) {
+      pre.textContent = _logsRawText;
+      pre.scrollTop = pre.scrollHeight;
+      return;
+    }
+    const filtered = _logsRawText.split('\n').filter(l => l.toLowerCase().includes(filter)).join('\n');
+    pre.textContent = filtered || '(no lines match filter)';
+  };
+
+  function _setAutoRefresh(on) {
+    if (_logsAutoTimer) { clearInterval(_logsAutoTimer); _logsAutoTimer = null; }
+    if (on) _logsAutoTimer = setInterval(loadLogsTab, 5000);
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const logsTabBtn = document.getElementById('logs-tab');
+    if (logsTabBtn) logsTabBtn.addEventListener('shown.bs.tab', loadLogsTab);
+
+    const srcSel   = document.getElementById('logsSource');
+    const linesSel = document.getElementById('logsLines');
+    const autoChk  = document.getElementById('logsAutoRefresh');
+    if (srcSel)   srcSel.addEventListener('change', loadLogsTab);
+    if (linesSel) linesSel.addEventListener('change', loadLogsTab);
+    if (autoChk)  autoChk.addEventListener('change', () => _setAutoRefresh(autoChk.checked));
+
+    // Stop polling if the user navigates to another tab, so it doesn't run
+    // forever in the background.
+    document.querySelectorAll('#mainTabs button[data-bs-toggle="tab"]').forEach(btn => {
+      if (btn.id === 'logs-tab') return;
+      btn.addEventListener('shown.bs.tab', () => {
+        if (autoChk && autoChk.checked) { autoChk.checked = false; _setAutoRefresh(false); }
+      });
+    });
+  });
 })();
 </script>
 

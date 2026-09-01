@@ -153,10 +153,18 @@ if not app.debug:
         backupCount=10
     )
     file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        '%(asctime)s %(levelname)s %(name)s: %(message)s [in %(pathname)s:%(lineno)d]'
     ))
     file_handler.setLevel(logging.INFO)
-    app.logger.addHandler(file_handler)
+    # Attach at the ROOT logger, not just app.logger. Every module uses its own
+    # logging.getLogger(__name__) (modules.config_git, modules.ai_assistant, ...)
+    # which only propagates up to root, not to app.logger specifically -- without
+    # this, every "check server logs" error message pointed at a file that never
+    # actually contained the module's log.error() call. app.logger still
+    # propagates to root by default, so this also keeps capturing its messages
+    # without needing a second handler on it directly.
+    logging.getLogger().addHandler(file_handler)
+    logging.getLogger().setLevel(logging.INFO)
 
     app.logger.setLevel(logging.INFO)
     app.logger.info('Device Manager startup')
@@ -5138,6 +5146,29 @@ def ai_debug_log():
         return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
     except FileNotFoundError:
         return "ai_debug.log not yet created (no AI requests made yet).\n", 404, {
+            "Content-Type": "text/plain; charset=utf-8"
+        }
+
+
+@app.route("/logs/server")
+def server_log():
+    """Return the last N lines of logs/device_manager.log for in-browser
+    diagnostics -- this is the file every "check server logs" error message
+    refers to. Captures app.py plus every modules/*.py logger (see the root
+    logger handler set up above)."""
+    log_path = os.path.join(BASE_DIR, "logs", "device_manager.log")
+    lines_param = request.args.get("lines", "500")
+    try:
+        n = min(max(int(lines_param), 1), 5000)
+    except ValueError:
+        n = 500
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as fh:
+            all_lines = fh.readlines()
+        tail = "".join(all_lines[-n:])
+        return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
+    except FileNotFoundError:
+        return "logs/device_manager.log not yet created.\n", 404, {
             "Content-Type": "text/plain; charset=utf-8"
         }
 

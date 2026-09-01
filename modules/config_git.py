@@ -165,7 +165,12 @@ def commit_configs(list_name: str, message: str, pipeline_name: str) -> Optional
     Commit all staged changes and record the pipeline↔commit link.
     Returns the short commit hash on success, None on failure.
     """
-    if not is_pipeline_available(list_name, pipeline_name):
+    # pipeline_name is "" when the user commits without selecting one (always
+    # allowed -- Jenkins is optional verification, not a gate). Only a named
+    # pipeline can be "already linked to a commit"; skip the check entirely
+    # for the no-pipeline case, otherwise the first no-pipeline commit
+    # permanently occupies pipeline_name="" and every commit after it fails.
+    if pipeline_name and not is_pipeline_available(list_name, pipeline_name):
         log.warning("config_git: pipeline '%s' already linked to a commit", pipeline_name)
         return None
 
@@ -183,17 +188,18 @@ def commit_configs(list_name: str, message: str, pipeline_name: str) -> Optional
     # Record the link
     pc = _load_pc(list_name)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
-    pc["pipelines"].setdefault(pipeline_name, {})["status"]       = "committed"
-    pc["pipelines"][pipeline_name]["commit_hash"]  = short_hash
-    pc["pipelines"][pipeline_name]["committed_at"] = now
-    pc["pipelines"][pipeline_name]["message"]      = message
+    if pipeline_name:
+        pc["pipelines"].setdefault(pipeline_name, {})["status"]       = "committed"
+        pc["pipelines"][pipeline_name]["commit_hash"]  = short_hash
+        pc["pipelines"][pipeline_name]["committed_at"] = now
+        pc["pipelines"][pipeline_name]["message"]      = message
     pc["commits"][short_hash] = {
-        "pipeline":     pipeline_name,
+        "pipeline":     pipeline_name or None,
         "message":      message,
         "committed_at": now,
     }
     _save_pc(list_name, pc)
-    log.info("config_git: committed %s (pipeline: %s)", short_hash, pipeline_name)
+    log.info("config_git: committed %s (pipeline: %s)", short_hash, pipeline_name or "none")
     return short_hash
 
 
@@ -233,7 +239,13 @@ def register_pending_pipeline(list_name: str, pipeline_name: str,
 
 
 def is_pipeline_available(list_name: str, pipeline_name: str) -> bool:
-    """True if the pipeline has NOT already been linked to a commit."""
+    """True if the pipeline has NOT already been linked to a commit.
+
+    No pipeline selected ("") is always available -- it isn't a real
+    pipeline identity, just "commit without one", which is unrestricted.
+    """
+    if not pipeline_name:
+        return True
     pc    = _load_pc(list_name)
     used  = {v.get("pipeline") for v in pc["commits"].values()}
     entry = pc["pipelines"].get(pipeline_name, {})
