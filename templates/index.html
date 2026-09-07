@@ -164,10 +164,10 @@
         <input type="radio" class="btn-check" name="commandMode" id="modeConfig" value="config">
         <label class="btn btn-outline-primary" for="modeConfig">Config Mode</label>
       </div>
-      <small class="text-muted ms-2" id="modeHint">Run show/exec commands (e.g., show ip int brief)</small>
+      <small class="text-muted ms-2" id="modeHint">Run show/exec commands (e.g., show ip int brief) — separate multiple with semicolons</small>
     </div>
     <div class="input-group">
-      <input type="text" class="form-control" id="bulkCommand" placeholder="Enter command to execute on selected devices">
+      <input type="text" class="form-control" id="bulkCommand" placeholder="Enter command(s) - use semicolons for multiple">
       <button class="btn btn-primary" onclick="executeBulkCommand()">Execute</button>
       <button class="btn btn-outline-secondary" onclick="clearSelection()">Clear Selection</button>
     </div>
@@ -3002,9 +3002,9 @@ document.addEventListener('DOMContentLoaded', () => {
         configHint.style.display = 'block';
         commandInput.placeholder = 'Enter config command(s) - use semicolons for multiple';
       } else {
-        modeHint.textContent = 'Run show/exec commands (e.g., show ip int brief)';
+        modeHint.textContent = 'Run show/exec commands (e.g., show ip int brief) — separate multiple with semicolons';
         configHint.style.display = 'none';
-        commandInput.placeholder = 'Enter command to execute on selected devices';
+        commandInput.placeholder = 'Enter command(s) - use semicolons for multiple';
       }
     });
   });

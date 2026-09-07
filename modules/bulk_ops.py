@@ -48,7 +48,7 @@ _SLOW_INTERACTIVE = re.compile(
 )
 
 
-def _run_enable_command(conn, command: str) -> str:
+def _run_single_enable_command(conn, command: str) -> str:
     """
     Run a single enable-mode command, automatically answering interactive
     prompts (write erase, erase nvram, reload, crypto key zeroize, …) with Enter.
@@ -67,6 +67,22 @@ def _run_enable_command(conn, command: str) -> str:
             output += conn.send_command_timing("", delay_factor=3, read_timeout=timeout)
             return output
     return run_device_command(conn, command)
+
+
+def _run_enable_command(conn, command: str) -> str:
+    """
+    Run one or more semicolon-separated enable-mode commands sequentially,
+    concatenating each command's output under a header line.
+    """
+    commands = [cmd.strip() for cmd in command.split(';') if cmd.strip()]
+    if len(commands) <= 1:
+        return _run_single_enable_command(conn, commands[0] if commands else command)
+
+    sections = []
+    for cmd in commands:
+        output = _run_single_enable_command(conn, cmd)
+        sections.append(f"--- {cmd} ---\n{output}")
+    return "\n\n".join(sections)
 
 
 class BulkOperationManager:
