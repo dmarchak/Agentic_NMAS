@@ -1776,3 +1776,120 @@ the dozen that rely on the strip.
 
 > When a seam bug appears, fix the end that can be made *independent* of the
 > assumption, not the end that currently satisfies it.
+
+---
+
+## The one that was caught: defence in depth, measured
+
+Every other entry here is a defect found by inspection, by a test, or by a dry
+run against real data. This one is different, and it is the most useful result
+in the project for the write-up, because it is the only place where the safety
+machinery was tested by an accident rather than by a test written to test it.
+
+### The defect
+
+`to_yaml()` strips the `secrets` key on the way out and recomputes
+`secret_refs` from that same key. Feed its own output back in — which is
+exactly what read-staged → write-committed does — and the key is gone, so the
+refs come back empty:
+
+```
+after one pass  : secret_refs: [snmp_community_ro, user_admin_secret]
+after two passes: secret_refs: []
+```
+
+Underneath it, a second defect: the commit route promoted the staged YAML,
+which carries refs and never values *by design*, so `store_secrets()` had
+nothing to move and the credential store stayed empty. Two independent bugs,
+both silent, both in the path from "operator reviews an extraction" to "device
+receives a config".
+
+### What should have happened next
+
+`host_vars/s4.yml` committed with `secret_refs: []`. The deploy path hydrates
+secrets by name; there were no names, so it resolved nothing. The renderer's
+fallback for an unresolvable secret is a marker string. The SNMP community
+line, the enable secret line and the local user line would each have rendered
+as:
+
+```
+snmp-server community <missing-secret:snmp_community_ro> RO
+```
+
+Merge-only then computes: these three lines are in the render and not on the
+device, so push them. The device would have received three configuration
+commands containing the literal text `<missing-secret:…>` — plausibly accepted
+by IOS as an SNMP community string, and definitely destroying the enable
+secret.
+
+### What actually happened
+
+```
+secret_refs: []   →  hydrate_secrets() resolves nothing
+                  →  render emits <missing-secret:user_admin_secret>
+                  →  assert_no_mask() raises MaskedContentError
+                  →  plan reports the error, to_add: 0, nothing pushed
+```
+
+Four layers downstream of the bug, on a **read-only plan**, one step before any
+socket opened.
+
+### Why that is the interesting part
+
+`assert_no_mask()` was not written for this. It was written in Phase 3b for a
+completely different failure: `intended/` is rendered masked for display, and
+the worry was that someone would later wire the deploy path to read that file
+and push `••••••••` to a device. The marker list was written for that:
+
+```python
+MASK_MARKERS = (MASK, "••••", "<masked>", "<missing-secret:")
+```
+
+`<missing-secret:` is in that tuple almost incidentally — it is the renderer's
+"I could not resolve this" output, included because it is *another* way a
+non-credential can end up where a credential belongs. That inclusion, made for
+tidiness against a hypothetical, is what caught a real bug two phases later
+arising from an unrelated cause.
+
+The lesson is not "we got lucky". It is that the property being guarded was
+stated correctly. `assert_no_mask()` does not check "did the preview path leak
+into deploy" — the specific scenario. It checks **"does this text contain
+something that is not a credential, in a position where a credential belongs"**
+— the invariant. A guard written against a scenario catches that scenario. A
+guard written against an invariant catches every route to violating it,
+including the ones nobody imagined.
+
+### The argument for a computed gate with no override
+
+`deployable` is a property on a frozen dataclass with no backing field. Every
+review of that design asks the same question: isn't this over-engineered for a
+school project, when a boolean would do?
+
+This is the answer, with numbers attached. The failure chain crossed four
+components — serialiser, commit route, credential store, renderer — and at no
+point did any of them *know* something was wrong. The serialiser returned valid
+YAML. The commit route returned `ok: true`. The store returned an empty list,
+correctly, because it was empty. The renderer produced a complete config. Every
+component was locally correct and the composition was catastrophic.
+
+Nothing upstream could have flagged it, because nothing upstream had the
+information. The only place the problem is visible is at the boundary where the
+text meets the device — and the only reason it was seen there is that the check
+at that boundary cannot be turned off, cannot be set, and runs on the actual
+bytes about to be sent.
+
+Compare the alternative that was nearly built: a `deployable` field set by
+whichever code path constructed the artifact. Every one of those four
+components would have set it to `True`, correctly by its own lights.
+
+> The value of a gate is not how strict it is. It is whether it is computed
+> from the thing it protects, at the moment it protects it, by code that cannot
+> be persuaded otherwise.
+
+### A smaller note in the same shape
+
+`intent_drift` reported `adds: 3, removes: 3` for this artifact — the three
+secret-bearing lines, described as drift. That reading is *correct*: intent and
+device genuinely did differ, because the render was broken. A drift report
+tells the truth about a lie, and cannot tell you which it is looking at. Drift
+is a symptom, never a diagnosis, which is the second reason it must not gate.

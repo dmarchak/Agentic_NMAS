@@ -88,6 +88,45 @@ class TestFixedPoint:
             "extract→render→extract changed the YAML — the parser and template "
             "disagree about some construct")
 
+    def test_to_yaml_is_a_fixed_point_at_its_own_boundary(self, device):
+        """The serialiser, tested where the stores actually cross it.
+
+        The test above feeds the **parser's** output in twice, and the parser
+        always produces a ``secrets`` key — so ``to_yaml`` was only ever
+        exercised on input it had not itself produced. Both host_vars stores
+        round-trip through ``from_yaml``/``to_yaml``, and on that path the key
+        is gone, which is where it silently emptied ``secret_refs``.
+
+        Any serialiser two stores round-trip through needs this asserted
+        directly, not inferred from a test of the thing that feeds it.
+        """
+        parser = get_parser(device["platform"])
+        once = hostvars.to_yaml(parser.parse(device["config"]))
+        twice = hostvars.to_yaml(hostvars.from_yaml(once))
+        assert twice == once, (
+            f"{device['hostname']}: to_yaml(from_yaml(to_yaml(x))) != to_yaml(x) "
+            "— the serialiser loses information about its own output")
+
+    def test_to_yaml_is_stable_under_repeated_passes(self, device):
+        parser = get_parser(device["platform"])
+        text = hostvars.to_yaml(parser.parse(device["config"]))
+        for _ in range(3):
+            text = hostvars.to_yaml(hostvars.from_yaml(text))
+        assert text == hostvars.to_yaml(
+            hostvars.from_yaml(hostvars.to_yaml(parser.parse(device["config"]))))
+
+    def test_secret_refs_survive_the_serialiser_boundary(self, device):
+        """Named separately because this is the field that was lost."""
+        parser = get_parser(device["platform"])
+        parsed = parser.parse(device["config"])
+        expected = sorted((parsed.get("secrets") or {}).keys())
+
+        twice = hostvars.from_yaml(
+            hostvars.to_yaml(hostvars.from_yaml(hostvars.to_yaml(parsed))))
+        assert twice["secret_refs"] == expected, (
+            f"{device['hostname']}: expected {expected}, "
+            f"got {twice['secret_refs']}")
+
     def test_second_render_is_identical(self, device):
         parser = get_parser(device["platform"])
         first = parser.parse(device["config"])
