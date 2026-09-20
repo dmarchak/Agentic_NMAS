@@ -7,6 +7,70 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Pre-run-2 corrections
+
+### Fixed — the secret check would have refused legitimate commits
+
+The value half of `assert_no_secret_values()` compared by plain substring with a
+three-character floor. A stored value of `admin` trips on `username admin
+privilege 15` — ordinary configuration, in the field it belongs in, reported as
+a leaked secret. That refusal blocks the **entire intent path**, behind an
+error that reads like a breach.
+
+Now: an 8-character floor, whole-token matching (so `Secret12` inside
+`Secret123456` is a different value, not a leak), and a refusal that names the
+line, the field, the secret, and the `secret_ref` to write instead.
+
+The check is **deliberately incomplete** and the docstring says so. A stored
+value shorter than the floor cannot be distinguished from ordinary
+configuration text; those are covered by the structural `secrets:` refusal and
+by the extractor substituting refs at extraction time, not here. A check that
+claimed to cover them would be worse than the gap.
+
+### Added — every pushed line is attributed before the confirm
+
+Merge-only pushes every line the render has and the device lacks — not only the
+line the operator changed. Anything that drifted on the device since the
+capture, or an earlier intent edit never deployed, rides along in the same push.
+Merge-only is the right safety property; this is its cost, and the cost has to
+be visible before the confirm rather than discovered in the pushed-command list.
+
+`/deploy/plan` now renders the **previous** committed intent against the same
+capture and splits `to_add`:
+
+- `from_this_edit` — lines the latest intent commit explains
+- `pre_existing` — lines that were already going to be pushed
+
+plus the intent commit sha, subject, and the YAML diff it introduced.
+Attribution is **measured, not guessed**. When it cannot be measured — the
+first intent commit for a device, an unreadable parent, a template that will
+not render — it reports `attributable: false` with a reason rather than
+claiming the lines are the operator's.
+
+### Fixed — validation and deploy read different template trees
+
+`build_artifact()` always rendered from `modules/nsot/templates/`, the built-in
+seeds, while `approval.validate_template()` rendered from
+`config_repo/templates/`, the network's own library. The two are byte-identical
+the moment seeding copies them, so nothing looked wrong — and the instant an
+operator edits a template, approval validates the edited file and deploy pushes
+the seed. **The gate would have been measuring a file the deploy never reads.**
+
+`template_root` is now carried on the artifact, every render inside
+`build_artifact()` uses it, and `prepare_device()` prefers the artifact's tree.
+A test edits a repo template and asserts the gate sees it while the seeds path
+does not.
+
+### Design rule recorded in the plan
+
+Gate on template fidelity, never on intent drift — `docs/NSOT_PLAN.md`, Phase 3
+amendment. Template fidelity answers whether the renderer can be trusted for
+this device at all; drift is the work, and a gate keyed on the work means no
+work can ever be done. Approval stays keyed on capture-parsed host_vars for the
+same reason: it is a claim about the template, not about one device's intent.
+
+---
+
 ## [Unreleased] — Intent is committed, never inferred
 
 The deploy flow was complete and its effect was structurally zero. With the

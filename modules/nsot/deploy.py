@@ -76,8 +76,11 @@ def prepare_device(artifact, template_root: str = None) -> dict:
     assert_deployable(artifact)
 
     template_name = (artifact.template or "base.j2").split("/")[-1]
+    # The artifact's own tree wins. Validation and deployment must read the
+    # same templates, or the gate measures something other than what ships.
+    root = template_root or getattr(artifact, "template_root", "") or None
     config = render_for_deploy(artifact.host_vars, artifact.platform,
-                               template_root=template_root,
+                               template_root=root,
                                template_name=template_name)
 
     # The backstop. If a secret failed to resolve, the renderer emits a

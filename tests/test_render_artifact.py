@@ -266,3 +266,104 @@ class TestUnmodeledAcknowledgement:
         restored = hostvars.from_yaml(hostvars.to_yaml(parsed))
         assert restored["unmodeled_ack"]["actor"] == "dustin"
         assert RA.acknowledgement_is_complete(restored) is True
+
+
+class TestValidationAndDeployReadTheSameTemplates:
+    """The gate must measure the thing that ships.
+
+    ``build_artifact()`` always rendered from ``modules/nsot/templates/`` — the
+    built-in seeds — while ``approval.validate_template()`` rendered from
+    ``config_repo/templates/``, the network's own library. The two are
+    byte-identical the moment seeding copies them, so nothing looked wrong; the
+    instant an operator edits a template, approval validates the edited file and
+    deploy pushes the seed. The gate would have been measuring a file the deploy
+    never reads.
+    """
+
+    def _repo(self, tmp_path):
+        from modules.nsot import templates_repo
+        repo = str(tmp_path / "config_repo")
+        os.makedirs(repo, exist_ok=True)
+        templates_repo.seed_templates(repo)
+        return repo
+
+    def test_the_artifact_records_its_template_tree(self, tmp_path):
+        from modules.nsot import templates_repo
+        repo = self._repo(tmp_path)
+        root = templates_repo.templates_dir(repo)
+        art = build_artifact("s1", _config("s1"), "cisco_ios",
+                             template="cisco_ios/base.j2", template_root=root)
+        assert art.template_root == root
+
+    def test_an_edited_repo_template_changes_the_render(self, tmp_path):
+        """The symptom the old behaviour hid."""
+        from modules.nsot import templates_repo
+        repo = self._repo(tmp_path)
+        root = templates_repo.templates_dir(repo)
+
+        original = templates_repo.read_template(repo, "cisco_ios/base.j2")
+        templates_repo.write_template(repo, "cisco_ios/base.j2",
+                                      original + "\n! EDITED-IN-REPO\n")
+
+        from_repo = build_artifact("s1", _config("s1"), "cisco_ios",
+                                   template="cisco_ios/base.j2",
+                                   template_root=root)
+        from_seeds = build_artifact("s1", _config("s1"), "cisco_ios",
+                                    template="cisco_ios/base.j2")
+
+        assert "EDITED-IN-REPO" in from_repo.rendered_masked
+        assert "EDITED-IN-REPO" not in from_seeds.rendered_masked
+
+    def test_an_unfaithful_repo_template_is_caught_by_the_gate(self, tmp_path):
+        """And it is caught because the gate now reads the repo's copy."""
+        from modules.nsot import templates_repo
+        from modules.nsot.deploy import DeployRefused, prepare_device
+
+        repo = self._repo(tmp_path)
+        root = templates_repo.templates_dir(repo)
+        original = templates_repo.read_template(repo, "cisco_ios/base.j2")
+        templates_repo.write_template(repo, "cisco_ios/base.j2",
+                                      original + "\n! EDITED-IN-REPO\n")
+
+        art = build_artifact("s1", _config("s1"), "cisco_ios",
+                             template="cisco_ios/base.j2",
+                             template_approved=True, template_root=root)
+        assert art.deployable is False
+        with pytest.raises(DeployRefused):
+            prepare_device(art)
+
+        # The same edit against the built-in seeds is invisible — which is
+        # precisely the blindness this change removes.
+        seeds = build_artifact("s1", _config("s1"), "cisco_ios",
+                               template="cisco_ios/base.j2",
+                               template_approved=True)
+        assert seeds.deployable is True
+
+    def test_deploy_renders_from_the_artifacts_tree(self, tmp_path, monkeypatch):
+        """prepare_device must pass the artifact's tree, not the default."""
+        from modules.nsot import deploy as deploy_mod
+        from modules.nsot import templates_repo
+
+        repo = self._repo(tmp_path)
+        root = templates_repo.templates_dir(repo)
+        seen = {}
+
+        real = deploy_mod.render_for_deploy
+
+        def _spy(host_vars, platform, template_root=None, template_name="base.j2"):
+            seen["template_root"] = template_root
+            return real(host_vars, platform, template_root, template_name)
+
+        monkeypatch.setattr(deploy_mod, "render_for_deploy", _spy)
+
+        art = build_artifact("s1", _config("s1"), "cisco_ios",
+                             template="cisco_ios/base.j2",
+                             template_approved=True, template_root=root)
+        deploy_mod.prepare_device(art)
+        assert seen["template_root"] == root
+
+    def test_no_template_root_still_uses_the_seeds(self, tmp_path):
+        """Existing callers keep working unchanged."""
+        art = build_artifact("s1", _config("s1"), "cisco_ios")
+        assert art.template_root == ""
+        assert art.rendered_masked

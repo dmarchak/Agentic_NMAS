@@ -132,6 +132,10 @@ class RenderArtifact:
     #: measured from committed intent and therefore moves when intent changes;
     #: this one does not, so it is the half that can gate.
     template_report: dict = field(default_factory=dict)
+    #: The template tree this artifact was rendered from. Empty means the
+    #: built-in seeds. Carried on the artifact so ``prepare_device()`` cannot
+    #: deploy from a different tree than the one that was validated.
+    template_root: str = ""
 
     # ── the gate ────────────────────────────────────────────────────────────
 
@@ -238,8 +242,8 @@ class RenderArtifact:
 
 def build_artifact(device: str, running_config: str, platform: str,
                    template: str = "", template_approved: bool = False,
-                   host_vars: dict = None, bootstrap: bool = False
-                   ) -> RenderArtifact:
+                   host_vars: dict = None, bootstrap: bool = False,
+                   template_root: str = "") -> RenderArtifact:
     """The only constructor. Always validates; always renders masked.
 
     *running_config* is a **captured** config — a golden file or a stored
@@ -277,7 +281,15 @@ def build_artifact(device: str, running_config: str, platform: str,
     # The unmasked render is a local only: it is never stored on the artifact,
     # never returned, and never written to disk. `intended/` and the preview
     # both get the masked one.
-    truthful = roundtrip.render(parsed, resolved_platform)
+    # Every render in this function goes through the SAME tree. The previous
+    # version always used the built-in seeds while approval validated the
+    # repo's own library, so an edited template was approved and a different
+    # one deployed — a gate measuring something other than what ships.
+    render_kwargs = {"template_name": (template or "base.j2").split("/")[-1]}
+    if template_root:
+        render_kwargs["template_root"] = template_root
+
+    truthful = roundtrip.render(parsed, resolved_platform, **render_kwargs)
     report = roundtrip.compare(running_config, truthful, parsed)
     del truthful
 
@@ -285,13 +297,15 @@ def build_artifact(device: str, running_config: str, platform: str,
         template_report = report
     else:
         capture_platform = from_capture.get("platform", platform)
-        capture_render = roundtrip.render(from_capture, capture_platform)
+        capture_render = roundtrip.render(from_capture, capture_platform,
+                                          **render_kwargs)
         template_report = roundtrip.compare(running_config, capture_render,
                                             from_capture)
         del capture_render
 
     rendered = roundtrip.render(parsed, resolved_platform,
-                                secret_lookup=lambda _name: MASK)
+                                secret_lookup=lambda _name: MASK,
+                                **render_kwargs)
 
     return RenderArtifact(
         device=device or parsed.get("hostname", ""),
@@ -304,6 +318,7 @@ def build_artifact(device: str, running_config: str, platform: str,
         masked_refs=masked_refs,
         bootstrap=bool(bootstrap),
         template_report=template_report,
+        template_root=template_root or "",
     )
 
 

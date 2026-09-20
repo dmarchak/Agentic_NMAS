@@ -94,7 +94,8 @@ def _bound_host_vars(repo: str, template: str, platform: str, cache: dict) -> di
             continue
         host_vars[name] = build_artifact(
             name, captured, entry.get("platform") or platform,
-            template=template).host_vars
+            template=template,
+            template_root=templates_repo.templates_dir(repo)).host_vars
 
     cache[template] = host_vars
     return host_vars
@@ -144,7 +145,8 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
 
     artifact = build_artifact(hostname, captured, platform, template=template,
                               template_approved=approved, host_vars=intent,
-                              bootstrap=bootstrap)
+                              bootstrap=bootstrap,
+                              template_root=templates_repo.templates_dir(repo))
     return (artifact, captured, device), ""
 
 
@@ -193,10 +195,13 @@ def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
         return result
 
     try:
+        render_kwargs = {
+            "template_name": (artifact.template or "base.j2").split("/")[-1]}
+        if getattr(artifact, "template_root", ""):
+            render_kwargs["template_root"] = artifact.template_root
         before = roundtrip.render(
             hostvars.hydrate_secrets(previous, hostname),
-            artifact.platform,
-            template_name=(artifact.template or "base.j2").split("/")[-1])
+            artifact.platform, **render_kwargs)
     except Exception as exc:                  # noqa: BLE001
         log.warning("deploy: could not render previous intent for %s: %s",
                     hostname, exc)
