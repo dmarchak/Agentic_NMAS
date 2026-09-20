@@ -78,6 +78,22 @@ class FakeNetBox:
                 if str(value).lower() not in str(obj.get("name", "")).lower():
                     return False
                 continue
+            if key == "device_id" and "assigned_object" in obj:
+                # NetBox supports ?device_id= on ipam/ip-addresses by joining
+                # through the assigned interface to its device.
+                assigned = obj.get("assigned_object") or {}
+                device = (assigned.get("device") or {})
+                if str(device.get("id")) != str(value):
+                    return False
+                continue
+            if key == "address":
+                # NetBox matches a bare host address against a stored address
+                # that carries a prefix length, so "203.0.113.10" finds
+                # "203.0.113.10/24".
+                stored = str(obj.get("address", ""))
+                if stored != str(value) and stored.split("/")[0] != str(value).split("/")[0]:
+                    return False
+                continue
             candidates = [key]
             if key.endswith("_id"):
                 candidates.append(key[:-3])

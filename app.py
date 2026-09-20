@@ -1072,6 +1072,31 @@ def delete_device_list_route(list_name):
     # which is off by default (see step 2).
     data = request.get_json(silent=True) or {}
 
+    # ── 0. Warn if NetBox lists inherit credentials from this one ──────────
+    # Amendment 2: credentials are inherited from ONE designated list, so
+    # deleting it strands every NetBox list pointing at it. Refuse unless the
+    # caller acknowledges, and point at the "copy into overrides" escape hatch.
+    try:
+        from modules.inventory.source_config import lists_depending_on
+        dependents = lists_depending_on(list_name)
+        if dependents and not data.get("acknowledge_credential_dependents"):
+            return jsonify({
+                "status": "error",
+                "needs_acknowledgement": True,
+                "dependents": dependents,
+                "message": (
+                    f"{len(dependents)} NetBox-sourced list(s) inherit credentials from "
+                    f"'{list_name}': {', '.join(dependents)}. Deleting it will leave those "
+                    "devices without credentials. Use 'Copy inherited credentials into "
+                    "device overrides' on each list first, or confirm to delete anyway."
+                ),
+            }), 409
+        if dependents:
+            cleanup_log.append(
+                f"Credential dependents acknowledged: {', '.join(dependents)}")
+    except Exception as exc:
+        app.logger.warning("list delete: dependent check failed: %s", exc)
+
     # ── 1. Delete Jenkins pipelines ────────────────────────────────────────
     try:
         from modules.config import get_list_data_dir

@@ -54,7 +54,7 @@ tracked in git.
 - **[modules/collector_config.py](modules/collector_config.py)** (238) — per-list
   collector settings, including trap/NetFlow ports
 
-### NSoT / Phase 0 additions
+### NSoT / Phase 0–1 additions
 - **[modules/settings_schema.py](modules/settings_schema.py)** (314) — settings
   defaults, JSON Schema validation, and forward migration
 - **[modules/netbox_guard.py](modules/netbox_guard.py)** (276) — NetBox write
@@ -63,11 +63,19 @@ tracked in git.
   encryption-at-rest for settings secrets
 - **[modules/jenkins_shell.py](modules/jenkins_shell.py)** (61) — `bat` vs `sh`
   step selection for generated pipelines
+- **[modules/netbox_authz.py](modules/netbox_authz.py)** — one-shot write
+  authorization: plan hashing and single-use tokens
+- **[modules/inventory/](modules/inventory/)** — per-list inventory source, the
+  NetBox→device-dict adapter, and the cache that makes dispatch I/O-free
+- **[modules/credentials.py](modules/credentials.py)** — encrypted credential
+  profiles and the resolver
+- **[modules/nsot/context.py](modules/nsot/context.py)** — `build_render_context()`,
+  the single way templates get data
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
-  `netbox_safety.py`
+  `netbox_safety.py`, `inventory.py`
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -127,6 +135,45 @@ Two independent conditions must both hold before any write executes:
 - Deleting a device list **no longer cascades into NetBox** unless
   `netbox_remove_on_list_delete` is on or the request opts in.
 
+### Inventory sources (Phase 1)
+
+A device list is either `local` (a CSV — the default, and what every
+pre-existing list uses) or `netbox`, set per list in
+`data/lists/{slug}/source.json`. An absent file means `local`.
+
+- **`load_saved_devices()` is the single dispatch point.** It has ~79 call
+  sites across 11 modules; routing the decision through it means bulk ops, the
+  terminal, backups, drift, topology, the connection pool and the AI tools all
+  work on a NetBox list without changes.
+- **Dispatch never performs network I/O.** A background refresh queries NetBox
+  and resolves + encrypts credentials once per refresh; dispatch serves finished
+  dicts from memory. The adapter returns credentials **still Fernet-encrypted**,
+  matching a CSV row, because callers decrypt at use.
+- The last good inventory is persisted to `netbox_inventory_cache.json` —
+  **identity only, never credentials** — so a restart during an outage still
+  yields the last known list, badged stale. Credentials are re-resolved on
+  rehydrate.
+- **Identity is read-only.** CSV writers refuse, and the UI disables Add Device,
+  Delete, Discover→Add and Refresh Hostnames with an "Edit in NetBox" tooltip.
+  Drag-and-drop ordering still works, stored in `source.json`.
+
+**Credential resolution** (`modules/credentials.py`), first match wins: device
+override → the list's *designated* `credential_list` (one list, never a scan) →
+role profile → site profile → default profile. Every device carries
+`_cred_source` so the origin is visible. Deleting a designated credential list
+warns about dependent lists; "Copy inherited credentials into device overrides"
+decouples on demand.
+
+**Incomplete NetBox data:** a device missing `primary_ip4`, an unmapped
+platform, or unresolvable credentials is **skipped with a per-device reason**,
+never failing the whole list. An unmapped *role* is only a warning — it resolves
+to `""` and topology falls back to hostname inference. Set
+`platform_default_netmiko_type` to trade a platform skip for a warning.
+
+**Stale devices:** a device that vanishes from NetBox keeps its golden configs
+and backups but becomes **inert** — the approval executor, drift checker, and AI
+tools refuse to act on it, and its pooled SSH session is closed.
+
 ### Settings
 
 All settings live in `data/user_settings.json` with a `settings_schema_version`.
@@ -170,7 +217,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 243 tests
+pytest                    # 307 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -184,6 +231,10 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_write_gate.py` | write gate, dry run, provenance-based removal |
 | `test_netbox_authz.py` | one-shot tokens, plan hashing, stale-plan abort |
 | `test_netbox_preview_fidelity.py` | preview counts == executed counts; tag scope |
+| `test_netbox_inventory.py` | NetBox-sourced lists: shape fidelity, skips, stale devices |
+| `test_device_lookup.py` | exact-name → IPAM resolution; never a fuzzy first hit |
+| `test_render_context.py` | render context, interface IPs, template rendering |
+| `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |
 | `test_integrations_base.py` | optional-integration behaviour, secret masking |
 | `test_portability.py` | Jenkins step shell, TFTP root, env overrides |
@@ -225,15 +276,10 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 Verified during Phase 0, deliberately not fixed yet. Recorded in full in
 [docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md).
 
-- `netbox_get_device()` / `netbox_get_interfaces()` fall back to a `q=` fuzzy
-  search and take the first hit, so a partial match can return the wrong device
-  (Phase 1)
 - Golden configs live in two unsynchronized stores; `config_git.write_and_stage`
   stages without committing, so "current golden" and the latest commit can
   disagree indefinitely (Phase 2)
 - The volatile-config-line prefix list is duplicated across six modules (Phase 2)
 - `_list_golden_configs` parses IPs with an IPv4-only regex, so a device reached
   over IPv6 mis-parses (Phase 2)
-- Pipeline stage 2 discards the interfaces stage 1 fetched, and the render
-  context has no `config_context` (Phase 1)
 - AI prompt examples reference another project's PE/P/MPLS topology (Phase 3)

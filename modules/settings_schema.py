@@ -128,6 +128,45 @@ DEFAULTS: dict = {
     "s3_prefix":     "",
     "s3_verify_tls": True,
 
+    # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
+    # This map is what makes multi-vendor support a configuration change rather
+    # than a code change. Seeded for the two reference platforms; the operator
+    # edits it in Settings.
+    "platform_map": {
+        "cisco-ios-xe": {
+            "netmiko_device_type": "cisco_xe",
+            "template_dir":        "cisco-ios-xe",
+            "deploy_transport":    "ssh",
+            "supports_netconf":    True,
+            "prometheus_cpu_query": "",
+        },
+        "cisco-ios": {
+            "netmiko_device_type": "cisco_ios",
+            "template_dir":        "cisco-ios",
+            "deploy_transport":    "ssh",
+            "supports_netconf":    False,
+            "prometheus_cpu_query": "",
+        },
+    },
+    # Fallback netmiko type for a platform absent from the map. Empty means
+    # "skip the device with a warning"; setting it trades a skip for a guess.
+    "platform_default_netmiko_type": "",
+
+    # ── Role map (NetBox role slug → NMAS role) ─────────────────────────────
+    # NMAS roles drive topology icons and are one of router/switch/firewall.
+    # An unmapped role resolves to "" so topology._infer_role(hostname) applies,
+    # which is the same behaviour a local list with a blank role field gets.
+    "role_map": {
+        "router": "router",
+        "core-router": "router",
+        "edge-router": "router",
+        "switch": "switch",
+        "access-switch": "switch",
+        "distribution-switch": "switch",
+        "core-switch": "switch",
+        "firewall": "firewall",
+    },
+
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
     # default so existing pipelines regenerate byte-identically.
@@ -221,6 +260,27 @@ SCHEMA: dict = {
         "s3_region": _STR,
         "s3_prefix": _STR,
         "s3_verify_tls": _BOOL,
+
+        "platform_map": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "netmiko_device_type":  {"type": "string"},
+                    "template_dir":         {"type": "string"},
+                    "deploy_transport":     {"enum": ["ssh", "netconf"]},
+                    "supports_netconf":     {"type": "boolean"},
+                    "prometheus_cpu_query": {"type": "string"},
+                },
+                "required": ["netmiko_device_type"],
+            },
+        },
+        "platform_default_netmiko_type": _STR,
+        "role_map": {
+            "type": "object",
+            # "" is allowed and means "fall back to hostname inference".
+            "additionalProperties": {"enum": ["router", "switch", "firewall", ""]},
+        },
 
         "jenkins_step_shell": {"enum": ["bat", "sh"]},
 

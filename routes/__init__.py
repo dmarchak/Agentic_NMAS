@@ -24,8 +24,9 @@ def register_blueprints(app) -> list:
 
     from routes.settings_integrations import bp as integrations_bp
     from routes.netbox_safety import bp as netbox_safety_bp
+    from routes.inventory import bp as inventory_bp
 
-    for bp in (integrations_bp, netbox_safety_bp):
+    for bp in (integrations_bp, netbox_safety_bp, inventory_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

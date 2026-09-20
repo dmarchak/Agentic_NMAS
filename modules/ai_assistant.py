@@ -351,6 +351,22 @@ def _migrate_golden_configs() -> None:
             logger.warning("golden config migration skip %s: %s", fname, exc)
 
 
+def _device_unavailable_message(ip: str) -> str:
+    """Explain why a device cannot be acted on.
+
+    A device that has disappeared from a NetBox-sourced list is *stale*: its
+    golden configs and backups stay readable, but nothing may act on it. Saying
+    only "not found" would send the agent hunting for a typo instead.
+    """
+    try:
+        from modules.inventory import is_stale, stale_message
+        if is_stale(ip):
+            return f"Error: {stale_message(ip)}"
+    except ImportError:
+        pass
+    return f"Error: device {ip} not found"
+
+
 def _find_golden_config_file(device_ip: str) -> Optional[str]:
     """
     Find the golden config file for a device by scanning headers for the IP.
@@ -3677,6 +3693,29 @@ TOOLS = [
             "required": [],
         },
     },
+    # ── NSoT tools ──────────────────────────────────────────────────────────
+    {
+        "name": "nsot_get_device_context",
+        "description": (
+            "Read the full Network Source of Truth context for a device: the NetBox "
+            "device record including its merged config_context, every interface with "
+            "its assigned IP addresses, VRF, VLAN membership and description, and the "
+            "site record. This is the intended state — what the device is supposed to "
+            "look like — as opposed to read_golden_config (last approved running "
+            "config) or a live show command (what it looks like now). "
+            "Prefer this first on a NetBox-sourced device list. Read-only."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_name": {
+                    "type": "string",
+                    "description": "Exact device name in NetBox, or an IP assigned to it",
+                },
+            },
+            "required": ["device_name"],
+        },
+    },
     # ── NetBox query tools ──────────────────────────────────────────────────
     {
         "name": "netbox_get_device",
@@ -4556,6 +4595,32 @@ def run_chat(
     )
     dynamic_parts.append("\n".join(_wf_lines))
 
+    # ── Read-first order for a NetBox-sourced list ──────────────────────────
+    # NetBox holds intent, so on those lists it comes before the golden config
+    # (last approved running config) and discovered variables. Local lists keep
+    # exactly the order they had. host_vars joins this chain in Phase 3.
+    try:
+        from modules.config import get_current_list_name
+        from modules.inventory.source_config import is_netbox_sourced
+        _active_list = get_current_list_name()
+        if is_netbox_sourced(_active_list):
+            dynamic_parts.append(
+                "[SOURCE OF TRUTH — this device list is sourced from NetBox]\n"
+                "  Read order for device facts:\n"
+                "    1. nsot_get_device_context  — intended state: NetBox device record, "
+                "merged config_context, interfaces with their IP addresses\n"
+                "    2. read_golden_config       — last approved running config\n"
+                "    3. network variables        — discovered facts\n"
+                "    4. a live show command      — only when you need what is true right now\n"
+                "  NetBox is authoritative for hostname, interface IPs, descriptions and "
+                "VLAN membership. If a device disagrees with NetBox, report the drift; "
+                "do not assume NetBox is wrong.\n"
+                "  Device identity is read-only here: devices are added and removed in "
+                "NetBox, not in NMAS."
+            )
+    except Exception:                          # noqa: BLE001 - never break prompt building
+        pass
+
     # Build final prefix strings; cap stable to prevent runaway cache-write costs
     stable_context  = _cap(
         "\n\n".join(filter(None, stable_parts)),
@@ -4620,7 +4685,7 @@ def run_chat(
                 mode    = args.get("mode", "enable")
                 device  = _find_device(ip, devices_loader())
                 if not device:
-                    return f"Error: device {ip} not found"
+                    return _device_unavailable_message(ip)
                 _attempts = 0
                 while True:
                     conn = _conn(device) if _attempts == 0 else _fresh_conn(device)
@@ -4650,7 +4715,7 @@ def run_chat(
                 mode     = args.get("mode", "enable")
                 device   = _find_device(ip, devices_loader())
                 if not device:
-                    return f"Error: device {ip} not found"
+                    return _device_unavailable_message(ip)
                 _attempts = 0
                 while True:
                     conn    = _conn(device) if _attempts == 0 else _fresh_conn(device)
@@ -4737,7 +4802,7 @@ def run_chat(
                 ip     = args["ip"]
                 device = _find_device(ip, devices_loader())
                 if not device:
-                    return f"Error: device {ip} not found"
+                    return _device_unavailable_message(ip)
                 conn = _conn(device)
                 try:
                     change_line = conn.send_command_timing(
@@ -4781,7 +4846,7 @@ def run_chat(
                 config_type = args.get("config_type", "running")
                 device      = _find_device(ip, devices_loader())
                 if not device:
-                    return f"Error: device {ip} not found"
+                    return _device_unavailable_message(ip)
                 conn = _conn(device)
                 cfg  = (_get_running_config(conn) if config_type == "running"
                         else _get_startup_config(conn))
@@ -6268,6 +6333,45 @@ def run_chat(
                     "The user will see a download link in the UI."
                 )
 
+            # ── NSoT tools ────────────────────────────────────────────────
+            elif name == "nsot_get_device_context":
+                from modules.nsot import build_render_context
+                built = build_render_context(args.get("device_name", ""))
+                if not built["ok"]:
+                    return f"NSoT error: {built['error']}"
+                context = built["context"]
+                device  = context["device"]
+                # Trimmed for the token budget: full interface records are large
+                # and templates, not the agent, need every field.
+                return json.dumps({
+                    "device": {
+                        "name":           device.get("name"),
+                        "status":         (device.get("status") or {}).get("value"),
+                        "site":           (device.get("site") or {}).get("name"),
+                        "role":           (device.get("role") or {}).get("name"),
+                        "platform":       (device.get("platform") or {}).get("name"),
+                        "device_type":    (device.get("device_type") or {}).get("model"),
+                        "primary_ip4":    (device.get("primary_ip4") or {}).get("address"),
+                        "serial":         device.get("serial", ""),
+                        "config_context": device.get("config_context") or {},
+                        "custom_fields":  device.get("custom_fields") or {},
+                    },
+                    "interfaces": [
+                        {
+                            "name":         i.get("name"),
+                            "enabled":      i.get("enabled"),
+                            "description":  i.get("description", ""),
+                            "mode":         (i.get("mode") or {}).get("value") if isinstance(i.get("mode"), dict) else i.get("mode"),
+                            "vrf":          (i.get("vrf") or {}).get("name", ""),
+                            "ip_addresses": [a["address"] for a in i.get("ip_addresses", [])],
+                        }
+                        for i in context["interfaces"]
+                    ],
+                    "site": {"name": context["site"].get("name"),
+                             "slug": context["site"].get("slug")},
+                    "vars": context["vars"],
+                }, indent=2)
+
             # ── NetBox query tools ────────────────────────────────────────
             elif name == "netbox_get_device":
                 from modules.netbox_client import netbox_get_device as _nb_dev
@@ -7116,7 +7220,7 @@ def run_ansible_direct(
                 "device_ip": device_ip,
                 "ok":        False,
                 "commands":  [],
-                "error":     f"Device {device_ip} not found in inventory",
+                "error":     _device_unavailable_message(device_ip).removeprefix("Error: "),
                 "cmd_count": len(commands),
             }
 

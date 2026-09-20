@@ -183,6 +183,17 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
         if golden_text is None:
             return
 
+        # Stale devices are inert — skip rather than open a session to a device
+        # that is no longer part of this list.
+        try:
+            from modules.inventory import is_stale
+            if is_stale(device_ip):
+                log.info("drift_check: skipping stale device %s (%s)", hostname, device_ip)
+                error_list.append((hostname, "no longer in NetBox for this list — skipped"))
+                return
+        except ImportError:
+            pass
+
         try:
             conn    = get_persistent_connection(dev, _pool, _pool_lock)
             current = run_device_command(conn, "show running-config")

@@ -179,6 +179,18 @@ def resolve(entry_id: str, action: str) -> dict:
 def _execute(entry: dict) -> dict:
     """Dispatch to the correct executor based on action_type."""
     atype = entry.get("action_type", "")
+
+    # A device that has disappeared from NetBox is inert: its artifacts stay
+    # readable, but nothing may act on it. See modules/inventory.is_stale.
+    device_ip = entry.get("device_ip", "")
+    try:
+        from modules.inventory import is_stale, stale_message
+        if device_ip and is_stale(device_ip):
+            log.info("approval_queue: refusing [%s] — %s is stale", entry.get("id"), device_ip)
+            return {"error": stale_message(device_ip)}
+    except ImportError:
+        pass
+
     try:
         if atype == "update_golden_config":
             return _exec_update_golden(entry)

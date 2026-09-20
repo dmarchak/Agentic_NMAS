@@ -46,8 +46,21 @@ def decrypt_field(value: str) -> str:
     return fernet.decrypt(value.encode()).decode()
 
 
-def load_saved_devices(filename: str | None = None) -> list[dict[str, Any]]:
-    #Load devices from CSV and return a list of dicts.
+def _list_name_for_path(filename: str) -> str:
+    """Reverse a ``data/lists/{slug}/devices.csv`` path to its list name."""
+    try:
+        slug = os.path.basename(os.path.dirname(os.path.abspath(filename)))
+        config = _load_device_lists_config()
+        for name, list_slug_value in (config.get("lists") or {}).items():
+            if list_slug_value == slug:
+                return name
+    except Exception:                          # noqa: BLE001
+        pass
+    return ""
+
+
+def _load_devices_csv(filename: str | None = None) -> list[dict[str, Any]]:
+    """Read a device CSV. Credential fields stay encrypted; callers decrypt."""
     if not filename:
         filename = DEVICES_FILE
     logger.debug("Loading devices from: %s", filename)
@@ -60,8 +73,60 @@ def load_saved_devices(filename: str | None = None) -> list[dict[str, Any]]:
         return list(csv.DictReader(f))
 
 
+def load_saved_devices(filename: str | None = None) -> list[dict[str, Any]]:
+    """Load the devices for the list owning *filename*.
+
+    The single dispatch point between a local CSV list and a NetBox-sourced one.
+    There are ~79 call sites for this function across the codebase; routing the
+    decision through here means none of them need to know which kind of list
+    they are looking at.
+
+    NetBox-sourced lists are served from a cache that a background thread keeps
+    fresh — **this function never performs network I/O**, because several of its
+    callers sit in request handlers and tight loops.
+    """
+    if not filename:
+        filename = DEVICES_FILE
+
+    list_name = _list_name_for_path(filename)
+    if list_name:
+        try:
+            from modules.inventory.source_config import is_netbox_sourced
+            if is_netbox_sourced(list_name):
+                from modules.inventory import load_netbox_devices
+                devices, _skipped, _meta = load_netbox_devices(list_name)
+                return devices
+        except Exception as exc:               # noqa: BLE001
+            # A broken NetBox path must not take down every caller of this
+            # function; fall through to whatever the CSV holds.
+            logger.error("Inventory dispatch failed for '%s': %s", list_name, exc)
+
+    return _load_devices_csv(filename)
+
+
+def _refuse_if_netbox_sourced(filename: str | None, operation: str) -> None:
+    """Raise if *filename* belongs to a NetBox-sourced list.
+
+    Identity is owned by NetBox for those lists, so NMAS never writes the CSV.
+    The UI disables these actions too; this is the backend half of that.
+    """
+    list_name = _list_name_for_path(filename or DEVICES_FILE)
+    if not list_name:
+        return
+    try:
+        from modules.inventory.source_config import is_netbox_sourced
+    except ImportError:
+        return
+    if is_netbox_sourced(list_name):
+        raise PermissionError(
+            f"'{list_name}' takes its inventory from NetBox, so NMAS cannot {operation} "
+            "a device here. Edit the device in NetBox and refresh the list."
+        )
+
+
 def save_device(device: dict, filename: str | None = None) -> None:
     #Add or update a device in the devices CSV (encrypting creds).
+    _refuse_if_netbox_sourced(filename, "add or edit")
     if not filename:
         filename = DEVICES_FILE
     fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
@@ -89,6 +154,7 @@ def save_device(device: dict, filename: str | None = None) -> None:
 
 
 def delete_device(ip: str, filename: str | None = None) -> None:
+    _refuse_if_netbox_sourced(filename, "delete")
     #Delete a device by IP from the CSV file.
     if not filename:
         filename = DEVICES_FILE
@@ -151,6 +217,7 @@ def get_device_context(dev: dict, filesystem: str | None = None):
 
 
 def write_devices_csv(devices: list[dict], filename: str | None = None) -> None:
+    _refuse_if_netbox_sourced(filename, "rewrite the device list for")
     #Write a list of device dicts to the CSV file.
     if not filename:
         filename = DEVICES_FILE

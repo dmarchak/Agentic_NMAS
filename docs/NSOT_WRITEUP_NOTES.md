@@ -237,3 +237,164 @@ safe in each direction.
 - The plan asks for `git gc --auto` after commits; worth confirming that it does
   not contend with the per-repo lock under the concurrent-write test Phase 2
   requires.
+
+---
+
+## Phase 1 — NetBox as the source of truth for inventory
+
+**Status:** complete. 307 tests passing (243 + 64 new).
+**Lab objective:** groundwork for 1.2a(ii) — the GUI now reads intent from NetBox.
+
+### The design decision that made this phase small
+
+`load_saved_devices()` has **79 call sites across 11 modules**. The obvious
+approach — teach each consumer about inventory sources — would have touched bulk
+ops, the terminal, backups, drift, topology, the connection pool, the approval
+queue and every AI tool.
+
+Instead, one dispatch point. `load_saved_devices(path)` reverses the path to a
+list name, checks that list's source, and either reads the CSV or returns
+adapted NetBox devices. The other 78 call sites did not change.
+
+What made it work is **shape fidelity**, and the detail that mattered most is
+easy to miss: `load_saved_devices` returns rows whose `password` and `secret`
+are *still Fernet-encrypted*, because callers decrypt at the point of use. An
+adapter returning plaintext would have broken every consumer in a way that only
+showed up at SSH time. There is a test asserting the adapter's output decrypts
+correctly through the same `decrypt_field` the real code uses.
+
+This is the third time in this project that a single chokepoint has been the
+right answer — the NetBox write gate, the dry-run overlay, and now inventory
+dispatch. Worth calling out in the write-up as a pattern: **find the one
+function everything already goes through, and put the new behaviour there.**
+
+### Amendment: dispatch must never do network I/O
+
+Several of those 79 call sites sit inside request handlers and per-device loops.
+A NetBox round trip in dispatch would have put remote latency on every one, and
+a NetBox outage would have hung the UI rather than degrading it.
+
+So the work is split:
+
+* **Background refresh** queries NetBox, adapts records, and resolves *and
+  encrypts* credentials — once per refresh, not once per call.
+* **Dispatch** is a deep copy out of a dict. The copy matters: a caller
+  mutating its result must not corrupt the shared cache, and there is a test
+  for exactly that.
+
+The persisted cache holds **identity fields only, never credentials**. A restart
+during an outage rehydrates the device list from disk and re-resolves
+credentials from the local store. So secrets never touch that file, and the
+operator still sees their devices — badged stale — instead of an empty list. An
+empty list would be the dangerous failure: bulk operations would silently
+no-op rather than error.
+
+### Getting the stale-device comparison wrong first
+
+The first implementation persisted the new inventory and *then* compared against
+"the previous refresh" — which it read from the file it had just overwritten.
+Every refresh compared the new list against itself, so a device could never be
+detected as departed. The test caught it immediately; the fix is to capture the
+previous IPs before persisting. A good reminder that ordering bugs in
+cache-then-compare code are invisible to reading and obvious to testing.
+
+### Stale devices are inert, not deleted
+
+A device vanishing from NetBox — deleted, or just filtered out — never destroys
+local artifacts. Golden configs, backups and history stay on disk and stay
+browsable. But the device becomes inert: the approval executor, the drift
+checker, and the AI device tools all refuse to act on it, and its pooled SSH
+session is closed.
+
+The AI-side detail worth demoing: the agent used to be told "device not found",
+which sends it hunting for a typo. It is now told the device is no longer in
+NetBox, that its configs are still readable, and how to make it active again.
+Error messages aimed at an agent need to be as actionable as ones aimed at a
+person.
+
+### Credential inheritance, and containing its risk
+
+Credentials come from one **designated** list named in `source.json`, not a scan
+of every local list. The risk raised at planning was that coupling the two modes
+makes resolution hard to reason about. Three things contain it:
+
+1. Every device records `_cred_source` — `"local-list:Lab Devices"`,
+   `"profile:default"`, `"device-override"` — shown in the UI.
+2. A device that resolves to no credentials is a **skip with a reason**, not a
+   failure inside netmiko ten minutes later.
+3. Deleting a designated credential list returns 409 naming the dependent lists,
+   and "Copy inherited credentials into device overrides" decouples on demand.
+
+`_from_credential_list` reads the CSV directly rather than going through
+dispatch, so a NetBox list can never inherit from another NetBox list and
+recurse.
+
+### Partial success is the normal case
+
+The rule throughout: **a device that cannot be represented is skipped with a
+per-device reason; the list still loads.** Nine good devices out of ten work,
+and the tenth appears in a dismissible banner with a NetBox deep link.
+
+There is a deliberate asymmetry worth explaining in the write-up:
+
+| Missing | Result | Why |
+|---|---|---|
+| `primary_ip4` | **skip** | Nothing can be done with a device you cannot reach. |
+| platform (unmapped) | **skip**, or a warning if `platform_default_netmiko_type` is set | Guessing the netmiko driver risks garbled sessions — but the operator may opt into a guess. |
+| credentials | **skip** | Would otherwise fail at SSH time, far from the cause. |
+| role (unmapped) | **warning only** | Role only drives a topology icon, and `_infer_role(hostname)` already handles a blank role for local lists. Skipping a perfectly reachable device over an icon would be absurd. |
+
+That last row is the one the amendment sharpened: the test now asserts the role
+is a *valid* value rather than merely present, and that a blank role still
+yields a usable topology icon.
+
+### The lookup fix
+
+`netbox_get_device` fell back to `q=` fuzzy search and took the first hit. Asking
+for "R1" could return "R10", and a template would be rendered against — or
+config pushed to — the wrong device. Resolution is now exact name → IPAM
+(`address=` → assigned interface → device) → a clear "not found".
+
+The test that matters seeds R1, R10 and R100 and asserts each resolves to
+itself, and that a bare "R" resolves to nothing. **Demo-worthy**, because the
+failure mode is silent and the consequence is config on the wrong box.
+
+Building it surfaced a nice point about test doubles: the first fake NetBox
+rejected `?address=203.0.113.10` against a stored `203.0.113.10/24`, and did not
+support `?device_id=` on IP addresses. Real NetBox does both. The fake was
+wrong, not the code — a reminder that a mock that is *stricter* than reality
+produces false failures just as a lenient one produces false passes.
+
+### Render context
+
+`build_render_context(device_name)` is now the only way a template gets data.
+Two defects it closes: the merged `config_context` was never exposed (only
+`local_context_data`), and pipeline stage 1 fetched interfaces that stage 2 then
+discarded, so templates never saw an interface or an IP address.
+
+`_compact_device` stays lean deliberately — it feeds AI tool payloads where
+token size matters. The full records are fetched in the context builder instead.
+`netbox` remains an alias for `device` so any template written against the old
+signature still renders, and there is a test for that.
+
+### Demo-worthy flows added
+
+1. Point a list at NetBox with a site filter; devices appear with no CSV.
+2. Remove a device's primary IP in NetBox, refresh, show the skip banner — and
+   that the other devices still work.
+3. Delete a device in NetBox; show its golden config still readable while a push
+   to it is refused as stale.
+4. Ask for "R" and get a clean "not found" instead of R1.
+5. Render a template that walks `interfaces` and their `ip_addresses` — data the
+   pipeline previously threw away.
+6. Delete the designated credential list and show the 409 naming its dependents.
+
+### Open questions for Phase 2
+
+- A NetBox-sourced list's golden commits should probably record the NetBox
+  device id in `.nsot/manifest.json`, so history survives a rename in NetBox.
+  Phase 2's `git mv`-on-rename story needs to account for renames that originate
+  *outside* NMAS.
+- Stale devices still have golden configs in the repo. Phase 2 should decide
+  whether a baseline tag includes them (arguably yes — the baseline is a
+  point-in-time network snapshot).

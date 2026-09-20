@@ -271,21 +271,28 @@ def _stage_netbox_query(ctx: PipelineContext) -> None:
     intended: dict[str, Any] = {}
     errors:   list[str]      = []
 
+    from modules.nsot import build_render_context
+
     for dev in ctx.selected_devices:
         ip       = dev["ip"]
         hostname = dev.get("hostname", ip)
         try:
-            dev_r   = netbox_get_device(hostname)
-            iface_r = netbox_get_interfaces(hostname) if dev_r["ok"] else {"ok": False}
+            # One context builder feeds the pipeline, render previews, the
+            # onboarding wizard and the AI tools — see modules/nsot/context.py.
+            built = build_render_context(hostname, params=ctx.device_params(ip))
+            context = built["context"]
             intended[ip] = {
-                "device":     dev_r.get("device")         if dev_r["ok"]   else None,
-                "interfaces": iface_r.get("interfaces", []) if iface_r["ok"] else [],
-                "error":      None if dev_r["ok"] else dev_r.get("error"),
+                "device":     context["device"] or None,
+                "interfaces": context["interfaces"],
+                "site":       context["site"],
+                "context":    context,
+                "error":      None if built["ok"] else built["error"],
             }
-            if not dev_r["ok"]:
-                errors.append(f"{hostname}: {dev_r.get('error')}")
+            if not built["ok"]:
+                errors.append(f"{hostname}: {built['error']}")
         except Exception as exc:
-            intended[ip] = {"device": None, "interfaces": [], "error": str(exc)}
+            intended[ip] = {"device": None, "interfaces": [], "site": {},
+                            "context": {}, "error": str(exc)}
             errors.append(f"{hostname}: {exc}")
 
     ctx.intended_config = {"available": True, "devices": intended}
@@ -327,13 +334,14 @@ def _stage_template_render(ctx: PipelineContext) -> None:
         ip       = dev["ip"]
         hostname = dev.get("hostname", ip)
         p        = ctx.device_params(ip)
-        nb_dev   = (ctx.intended_config
-                       .get("devices", {})
-                       .get(ip, {})
-                       .get("device")) or {}
+        per_device = (ctx.intended_config.get("devices", {}).get(ip, {}) or {})
+        nb_dev     = per_device.get("device") or {}
+        # Stage 1 fetched these; stage 2 used to read only ["device"] and throw
+        # the rest away, so templates never saw an interface or an IP address.
+        render_ctx = per_device.get("context") or {}
         try:
             if tpl_path and os.path.isfile(tpl_path):
-                cmds = _render_jinja2(tpl_path, p, nb_dev)
+                cmds = _render_jinja2(tpl_path, p, nb_dev, render_ctx)
                 log.debug("pipeline[2/template_render]: %s used Jinja2 template", hostname)
             else:
                 cmds = generate_config_commands(ctx.config_type, p)
@@ -361,12 +369,18 @@ def _config_template_path(config_type: str) -> str:
     return os.path.join(root, "config_templates", f"{config_type}.j2")
 
 
-def _render_jinja2(tpl_path: str, params: dict, nb_device: dict) -> list[str]:
+def _render_jinja2(tpl_path: str, params: dict, nb_device: dict,
+                   render_ctx: dict = None) -> list[str]:
     """
     Render a Jinja2 config template.
 
     Jinja2 is part of Flask's dependency tree — no additional install required.
-    Templates receive ``params`` (user inputs) and ``netbox`` (NetBox device record).
+
+    Templates receive the full render context (see
+    ``modules/nsot/context.py``): ``device``, ``interfaces`` (each with
+    ``ip_addresses``), ``site``, ``vars``, and ``params``. ``netbox`` is kept as
+    an alias for ``device`` so templates written against the previous signature
+    keep working.
     """
     from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -376,8 +390,16 @@ def _render_jinja2(tpl_path: str, params: dict, nb_device: dict) -> list[str]:
         trim_blocks  = True,
         lstrip_blocks= True,
     )
+    ctx = dict(render_ctx or {})
     tpl      = env.get_template(os.path.basename(tpl_path))
-    rendered = tpl.render(params=params, netbox=nb_device)
+    rendered = tpl.render(
+        params     = params,
+        netbox     = nb_device,                    # backwards-compatible alias
+        device     = ctx.get("device", nb_device),
+        interfaces = ctx.get("interfaces", []),
+        site       = ctx.get("site", {}),
+        vars       = ctx.get("vars", {}),
+    )
     return [line for line in rendered.splitlines() if line.strip()]
 
 

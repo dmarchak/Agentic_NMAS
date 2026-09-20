@@ -3104,23 +3104,56 @@ def netbox_query_devices(search: str = "", site: str = "",
         return {"ok": False, "error": str(exc)}
 
 
-def netbox_get_device(name_or_ip: str) -> dict:
+def _resolve_device(session, base: str, name_or_ip: str) -> Optional[dict]:
+    """Resolve *name_or_ip* to exactly one NetBox device, or None.
+
+    Exact name first, then IPAM: ``ipam/ip-addresses/?address=`` → the assigned
+    interface → its device.
+
+    Deliberately never falls back to a ``q=`` fuzzy search. That fallback took
+    the first hit, so asking for "R1" could return "R10" and a template would be
+    rendered against, or config pushed to, the wrong device. A clear "not found"
+    is the safe answer.
     """
-    Fetch a single device from NetBox by name or primary IP.
-    Returns a compact device dict with local_context_data included.
+    hit = _nb_first(session, base, "dcim/devices/", name=name_or_ip, limit=1)
+    if hit:
+        return hit
+
+    # Treat it as an address. Accept a bare host address or one with a prefix.
+    candidate = (name_or_ip or "").strip()
+    if not candidate:
+        return None
+
+    for query in ({"address": candidate}, {"address": candidate.split("/")[0]}):
+        try:
+            for ip_obj in _nb_get(session, base, "ipam/ip-addresses/", **query):
+                assigned = ip_obj.get("assigned_object") or {}
+                device = assigned.get("device") or {}
+                if device.get("id"):
+                    full = _nb_get(session, base, "dcim/devices/", id=device["id"])
+                    if full:
+                        return full[0]
+        except Exception as exc:               # noqa: BLE001
+            log.debug("netbox: IPAM lookup for '%s' failed: %s", candidate, exc)
+
+    return None
+
+
+def netbox_get_device(name_or_ip: str) -> dict:
+    """Fetch a single device from NetBox by exact name or by assigned IP address.
+
+    Returns a compact device dict. Never guesses: an ambiguous or partial match
+    is reported as not found rather than resolved to the first hit.
     """
     ok, err, session, base = _nb_ready()
     if not ok:
         return {"ok": False, "error": err}
     try:
-        # Try by name first
-        hit = _nb_first(session, base, "dcim/devices/", name=name_or_ip, limit=1)
+        hit = _resolve_device(session, base, name_or_ip)
         if not hit:
-            # Try by primary IP (exact address string match)
-            hit = _nb_first(session, base, "dcim/devices/",
-                            q=name_or_ip, limit=1)
-        if not hit:
-            return {"ok": False, "error": f"Device '{name_or_ip}' not found in NetBox"}
+            return {"ok": False,
+                    "error": (f"Device '{name_or_ip}' not found in NetBox by exact name "
+                              "or by assigned IP address")}
         return {"ok": True, "device": _compact_device(hit)}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
@@ -3135,11 +3168,11 @@ def netbox_get_interfaces(name_or_ip: str) -> dict:
     if not ok:
         return {"ok": False, "error": err}
     try:
-        dev = _nb_first(session, base, "dcim/devices/", name=name_or_ip, limit=1)
+        dev = _resolve_device(session, base, name_or_ip)
         if not dev:
-            dev = _nb_first(session, base, "dcim/devices/", q=name_or_ip, limit=1)
-        if not dev:
-            return {"ok": False, "error": f"Device '{name_or_ip}' not found in NetBox"}
+            return {"ok": False,
+                    "error": (f"Device '{name_or_ip}' not found in NetBox by exact name "
+                              "or by assigned IP address")}
         dev_id = dev["id"]
         ifaces = _nb_get(session, base, "dcim/interfaces/", device_id=dev_id)
         ips    = _nb_get(session, base, "ipam/ip-addresses/", device_id=dev_id)

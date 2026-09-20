@@ -7,6 +7,89 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — NSoT Phase 1: NetBox as the source of truth for inventory
+
+A device list can now take its inventory from NetBox instead of a CSV. Local
+lists remain the default and are untouched.
+
+### Added
+
+- **Per-list inventory source** (`modules/inventory/source_config.py`). An absent
+  `source.json` means `local`, so every existing list keeps its exact behaviour
+  with no migration.
+- **NetBox adapter** (`modules/inventory/netbox_source.py`) yielding the exact
+  device dict shape the rest of the codebase consumes — credentials included,
+  still Fernet-encrypted, because callers decrypt at use.
+- **Credential store and resolver** (`modules/credentials.py`). Order: device
+  override → the list's *designated* credential list → role → site → default
+  profile. Every device records `_cred_source`, so credential origin is visible
+  rather than inferred. Profiles carry `last_rotated` / `rotation_policy` as the
+  hook for Part 2's rotation.
+- **Render context builder** (`modules/nsot/context.py`) — the single way
+  templates get data: the full device including merged `config_context`,
+  interfaces **with their IP addresses**, the site, and `vars` (empty until
+  Phase 3).
+- **`nsot_get_device_context`** read-only AI tool, and a NetBox-first read order
+  in the system prompt for NetBox-sourced lists only.
+- `routes/inventory.py` and `templates/partials/inventory_source.html`.
+- Platform map and role map in Settings, plus an optional
+  `platform_default_netmiko_type`.
+- Tests: `test_netbox_inventory.py` (36), `test_device_lookup.py` (10),
+  `test_render_context.py` (15). **307 total, all passing.**
+
+### Changed
+
+- `load_saved_devices()` is now the single dispatch point between a local CSV
+  and a NetBox-sourced list. It has ~79 call sites across 11 modules; routing
+  the decision through one function means none of them changed.
+- **Dispatch never performs network I/O.** A background refresh resolves and
+  encrypts credentials once per refresh; dispatch serves finished dicts from
+  memory and returns a deep copy so a caller cannot corrupt the cache.
+- The last good inventory is persisted to
+  `data/lists/{slug}/netbox_inventory_cache.json` — **identity fields only,
+  never credentials** — so a restart during a NetBox outage still yields the
+  last known list with a stale badge. Credentials are re-resolved on rehydrate.
+- `save_device` / `delete_device` / `write_devices_csv` refuse on a NetBox
+  list; Add Device, Delete, Discover→Add and Refresh Hostnames are disabled in
+  the UI with an "Edit in NetBox" tooltip. Drag-and-drop reorder still works,
+  stored in `source.json`.
+- Deleting a list that other NetBox lists inherit credentials from now returns
+  409 with the dependent list names, unless acknowledged. "Copy inherited
+  credentials into device overrides" decouples on demand.
+- Pipeline stages 1–2 use the render context; `_render_jinja2` receives
+  `device`, `interfaces`, `site` and `vars`, keeping `netbox` as an alias so
+  existing templates render unchanged.
+
+### Fixed
+
+- **Device lookup could return the wrong device.** `netbox_get_device` and
+  `netbox_get_interfaces` fell back to a `q=` fuzzy search and took the first
+  hit, so asking for "R1" could return "R10" — and a template would be rendered
+  against, or config pushed to, the wrong device. Resolution is now exact name,
+  then IPAM (`address=` → assigned interface → device), then a clear "not
+  found". The docstring claiming an exact address match is now true.
+- **Pipeline stage 2 discarded the interfaces stage 1 fetched**, reading only
+  `["device"]`. Templates never saw an interface or an IP address.
+- The render context now carries the merged `config_context` and
+  `custom_fields`. `_compact_device` deliberately stays lean — it feeds AI tool
+  payloads where size matters.
+
+### Behaviour on incomplete NetBox data
+
+A device missing `primary_ip4`, an unmapped platform, or unresolvable
+credentials is **skipped with a per-device reason and a NetBox deep link**, and
+the rest of the list loads normally. A skip is never fatal: nine good devices
+out of ten still work. An unmapped *role* is a warning rather than a skip —
+the role resolves to "" and topology falls back to hostname inference, exactly
+as for a local list with a blank role.
+
+### Stale devices
+
+A device that disappears from NetBox drops out of the active list, but its
+golden configs, backups and history stay on disk and stay browsable. It becomes
+**inert**: the approval executor, the drift checker and the AI device tools
+refuse to act on it with a clear message, and its pooled SSH session is closed.
+
 ## [Unreleased] — Phase 0 follow-up: one-shot write authorization
 
 Hardening of the Phase 0 write gate after review. Addresses three issues, two of
