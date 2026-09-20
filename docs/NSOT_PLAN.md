@@ -589,14 +589,38 @@ is not a defect — it is drift, and the three-way relationship the plan always
 wanted becomes visible: template, committed intent, captured reality. A
 non-empty drift is work to do, and the deploy closes it.
 
-Deployability therefore cannot be judged on that comparison, or every change
-would block itself: the difference you intend to push is, by definition, a
-difference between intent and the device. The artifact carries two reports —
-`report` from intent (drift, informational) and `template_report` from the
-capture's own parse (template fidelity, gating). Approval stays keyed on
-capture-parsed host_vars, because approval is a statement about the *template*
-reproducing every bound device, and one device's intent edit must not silently
-revoke it.
+#### Design rule: gate on template fidelity, never on intent drift
+
+Not an implementation detail — a rule that governs every later gate built on
+this model.
+
+An artifact carries **two** measurements, and they answer different questions:
+
+| | measured from | question it answers |
+|---|---|---|
+| `template_report` | render of the **capture's own parse** vs the capture | *Can this template faithfully reproduce this device as it actually is?* |
+| `report` | render of **committed intent** vs the capture | *How far has intent drifted from the device?* |
+
+**Gating uses `template_report`, always.** If the template cannot reproduce the
+device as it stands, a render from intent is untrustworthy regardless of what
+the intent says — the renderer has already demonstrated it does not model this
+device. That is a statement about the tool, and it must block.
+
+**Gating on intent drift is forbidden.** Drift is the change being deployed.
+Blocking on it would make every change block itself: the difference you intend
+to push is, by definition, a difference between intent and the device. A gate
+with that property is not strict, it is inert — the same failure as a flow
+whose diff is empty by construction, arrived at from the opposite direction.
+
+The same rule fixes where **approval** is keyed. Approval is a claim about the
+*template* — that it reproduces every bound device — not about any one device's
+intent. So the binding fingerprint uses capture-parsed host_vars on both the
+approve and the deploy path, and editing one device's intent never silently
+revokes a template approval.
+
+> A gate must be keyed on the property it claims to protect. Template fidelity
+> protects against an untrustworthy renderer. Intent drift is the work, not a
+> defect, and gating on the work means no work can ever be done.
 
 **Masking contract unchanged.** Committed host_vars hold `secret_refs`; the
 credential store holds values. Preview masks; deploy resolves in memory and

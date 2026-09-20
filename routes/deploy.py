@@ -148,6 +148,68 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
     return (artifact, captured, device), ""
 
 
+def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
+                         to_add: list) -> dict:
+    """Split ``to_add`` into what this intent edit explains and what it does not.
+
+    The deploy is **merge-only**, which means it pushes every line the render
+    has and the device lacks — not only the line the operator changed. If
+    anyone touched the device since the capture, or an earlier intent edit was
+    never deployed, those lines ride along in the same push. Merge-only is the
+    right safety property and this is its cost: the change you confirm is not
+    necessarily the change you made.
+
+    Attribution is measured, not guessed: render the **previous** committed
+    intent against the same capture and diff the two addition sets. Lines
+    present in both were already going to be pushed before this edit existed.
+    """
+    from modules.nsot import hostvars, roundtrip
+    from modules.nsot.deploy import merge_diff
+
+    change = hostvars.intent_change(repo, hostname)
+    result = {"intent_commit": change.get("sha", ""),
+              "intent_subject": change.get("subject", ""),
+              "intent_diff": change.get("diff", ""),
+              "from_this_edit": list(to_add),
+              "pre_existing": [],
+              "attributable": True}
+
+    previous_sha = change.get("previous_sha") or ""
+    if not previous_sha:
+        # First intent commit for this device: there is no earlier render to
+        # compare against, so nothing can be attributed. Say so rather than
+        # claiming every line is the operator's.
+        result["attributable"] = not to_add
+        result["from_this_edit"] = []
+        result["pre_existing"] = list(to_add)
+        result["note"] = ("first committed intent for this device — no earlier "
+                          "render to attribute against")
+        return result
+
+    previous = hostvars.committed_at(repo, hostname, previous_sha)
+    if previous is None:
+        result["attributable"] = False
+        result["note"] = f"could not read host_vars at {previous_sha[:8]}"
+        return result
+
+    try:
+        before = roundtrip.render(
+            hostvars.hydrate_secrets(previous, hostname),
+            artifact.platform,
+            template_name=(artifact.template or "base.j2").split("/")[-1])
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("deploy: could not render previous intent for %s: %s",
+                    hostname, exc)
+        result["attributable"] = False
+        result["note"] = f"previous intent did not render: {exc}"
+        return result
+
+    already = set(merge_diff(before, captured)["to_add"])
+    result["from_this_edit"] = [l for l in to_add if l not in already]
+    result["pre_existing"] = [l for l in to_add if l in already]
+    return result
+
+
 @bp.route("/plan", methods=["POST"])
 def plan():
     """Per-device diff and deployability. Reads captured configs only."""
@@ -180,6 +242,10 @@ def plan():
             entry["to_add"] = diff["to_add"]
             entry["removal_warnings"] = diff["removal_warnings"]
             entry["unchanged_count"] = diff["unchanged_count"]
+            # Every pushed line, attributed — before anyone confirms.
+            entry["attribution"] = _attribute_additions(
+                _repo_for(list_name), hostname, artifact, captured,
+                diff["to_add"])
         except DeployRefused as exc:
             entry["to_add"] = []
             entry["removal_warnings"] = []

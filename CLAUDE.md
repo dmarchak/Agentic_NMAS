@@ -323,12 +323,19 @@ The only part of the NSoT work that reaches a device.
   diff empty by construction. A change is made by editing committed intent and
   committing it (`host_vars: <device> <summary>`), not by configuring the
   device and re-extracting.
-- **Two reports, one gate.** `report` measures the render from intent against
-  the capture — that is *drift*, and it is informational. `template_report`
-  measures the render from the capture's own parse — that is template fidelity,
-  and it gates. Judging deployability on the first would make every intended
-  change block itself. Approval stays keyed on capture-parsed host_vars, so one
-  device's intent edit never revokes a template approval.
+- **Design rule — gate on template fidelity, never on intent drift.**
+  `template_report` (render of the capture's own parse vs the capture) answers
+  "can this template reproduce this device as it is"; if not, a render from
+  intent is untrustworthy whatever the intent says, so it gates. `report`
+  (render of committed intent vs the capture) is *drift* — the change being
+  deployed — and gating on it would make every change block itself. Approval is
+  keyed on capture-parsed host_vars for the same reason: it is a claim about
+  the template, not about one device's intent.
+- **Every pushed line is attributed before the confirm.** Merge-only pushes
+  every line the render has and the device lacks, so anything that drifted on
+  the device since the capture rides along. The plan renders the *previous*
+  committed intent against the same capture and splits `to_add` into
+  `from_this_edit` and `pre_existing`.
 - **Secrets:** committed host_vars hold `secret_refs`; values live in the
   credential store. `write_committed()` refuses a `secrets:` mapping or any
   resolved value, checked structurally and by value. `hydrate_secrets()` is the

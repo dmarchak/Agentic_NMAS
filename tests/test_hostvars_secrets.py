@@ -204,3 +204,87 @@ class TestCommittedIntentNeverHoldsASecretValue:
         live = hostvars.hydrate_secrets(
             {"hostname": "s1", "secret_refs": ["missing_ref"]}, "s1")
         assert "missing_ref" not in live["secrets"]
+
+
+class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
+    """A false refusal blocks the entire intent path behind a scary error.
+
+    The first version compared by plain substring with a 3-character floor. A
+    stored value of ``admin`` would have refused ``username admin privilege
+    15`` — ordinary configuration, in the field it belongs in, reported as a
+    leaked secret.
+    """
+
+    @pytest.fixture
+    def short_secret(self, monkeypatch):
+        from modules import credentials
+        values = {"s1:user_admin_name": "admin"}
+        monkeypatch.setattr(credentials, "get_template_secret",
+                            lambda name: values.get(name, ""))
+        monkeypatch.setattr(credentials, "list_template_secrets",
+                            lambda: [{"name": n, "secret_kind": "plaintext",
+                                      "rotatable": True} for n in values])
+        return values
+
+    @pytest.fixture
+    def long_secret(self, monkeypatch):
+        from modules import credentials
+        values = {"s1:snmp_community_ro": "Str0ngC0mmunityValue"}
+        monkeypatch.setattr(credentials, "get_template_secret",
+                            lambda name: values.get(name, ""))
+        monkeypatch.setattr(credentials, "list_template_secrets",
+                            lambda: [{"name": n, "secret_kind": "plaintext",
+                                      "rotatable": True} for n in values])
+        return values
+
+    def test_a_short_value_does_not_refuse_ordinary_config(self, tmp_path, short_secret):
+        from modules.nsot import hostvars
+        hostvars.write_committed_text(
+            str(tmp_path), "s1",
+            "hostname: s1\nusers:\n- username admin privilege 15\n")
+
+    def test_the_floor_is_documented_not_incidental(self):
+        from modules.nsot import hostvars
+        assert hostvars.MIN_CHECKABLE_SECRET >= 8
+
+    def test_a_partial_token_match_is_not_a_leak(self, tmp_path, long_secret):
+        """Str0ngC0mmunityValue inside Str0ngC0mmunityValueExtended is a
+        different value, not this one."""
+        from modules.nsot import hostvars
+        hostvars.write_committed_text(
+            str(tmp_path), "s1",
+            "hostname: s1\nbanner: Str0ngC0mmunityValueExtended\n")
+
+    def test_a_whole_token_match_is_still_refused(self, tmp_path, long_secret):
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.SecretLeak):
+            hostvars.write_committed_text(
+                str(tmp_path), "s1",
+                f"hostname: s1\nbanner: {long_secret['s1:snmp_community_ro']}\n")
+
+    def test_the_refusal_names_the_field_and_the_secret(self, tmp_path, long_secret):
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.SecretLeak) as exc:
+            hostvars.write_committed_text(
+                str(tmp_path), "s1",
+                f"hostname: s1\nbanner: {long_secret['s1:snmp_community_ro']}\n")
+        message = str(exc.value)
+        assert "s1:snmp_community_ro" in message
+        assert "banner" in message
+        assert "line 2" in message
+
+    def test_the_refusal_says_what_to_write_instead(self, tmp_path, long_secret):
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.SecretLeak) as exc:
+            hostvars.write_committed_text(
+                str(tmp_path), "s1",
+                f"hostname: s1\nbanner: {long_secret['s1:snmp_community_ro']}\n")
+        assert "secret_ref" in str(exc.value)
+        assert "snmp_community_ro" in str(exc.value)
+
+    def test_another_devices_secret_is_not_checked(self, tmp_path, long_secret):
+        """Refs are namespaced by device; s2's store entry is not s1's business."""
+        from modules.nsot import hostvars
+        hostvars.write_committed_text(
+            str(tmp_path), "s2",
+            f"hostname: s2\nbanner: {long_secret['s1:snmp_community_ro']}\n")

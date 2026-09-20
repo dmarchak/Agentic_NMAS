@@ -213,3 +213,97 @@ class TestConcurrency:
                                             "outcome": DEPLOYED})
         assert report["total"] == 9
         assert report["workers"] == 4
+
+
+class TestEveryPushedLineIsAttributed:
+    """Merge-only pushes every line the render has and the device lacks.
+
+    Not only the line the operator changed. If anyone touched the device since
+    the capture, or an earlier intent edit was never deployed, those lines ride
+    along in the same push. Merge-only is the right safety property; this is
+    its cost, and the cost has to be visible *before* the confirm, not
+    discovered in the pushed-command list afterwards.
+    """
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars, repo as R
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                                "nsot_device_tag_retention": 50,
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(list_dir))
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        repo = str(list_dir / "config_repo")
+        R.init_repo(repo)
+        return repo, hostvars, R
+
+    def _commit(self, R, repo, hostvars, doc, subject):
+        hostvars.write_committed_text(repo, "s1", doc)
+        R.save_host_vars("Lab", ["s1"], message=f"host_vars: s1 {subject}")
+
+    def test_the_previous_intent_is_recoverable(self, lab):
+        repo, hostvars, R = lab
+        self._commit(R, repo, hostvars, "hostname: s1\nmtu: 1500\n", "initial")
+        self._commit(R, repo, hostvars, "hostname: s1\nmtu: 9000\n", "jumbo frames")
+
+        change = hostvars.intent_change(repo, "s1")
+        assert change["subject"] == "host_vars: s1 jumbo frames"
+        assert change["previous_sha"]
+        assert "9000" in change["diff"] and "1500" in change["diff"]
+
+        previous = hostvars.committed_at(repo, "s1", change["previous_sha"])
+        assert previous["mtu"] == 1500
+
+    def test_intent_commits_are_listed_newest_first(self, lab):
+        repo, hostvars, R = lab
+        self._commit(R, repo, hostvars, "hostname: s1\nmtu: 1500\n", "initial")
+        self._commit(R, repo, hostvars, "hostname: s1\nmtu: 9000\n", "jumbo frames")
+
+        commits = hostvars.intent_commits(repo, "s1")
+        assert [c["subject"] for c in commits] == [
+            "host_vars: s1 jumbo frames", "host_vars: s1 initial"]
+
+    def test_a_device_with_no_intent_has_no_history(self, lab):
+        repo, hostvars, _R = lab
+        assert hostvars.intent_commits(repo, "nosuchdevice") == []
+        assert hostvars.intent_change(repo, "nosuchdevice")["sha"] == ""
+
+    def test_the_first_intent_commit_claims_no_attribution(self, lab):
+        """Nothing to compare against, so nothing may be called the operator's."""
+        from routes.deploy import _attribute_additions
+
+        repo, hostvars, R = lab
+        self._commit(R, repo, hostvars, "hostname: s1\nmtu: 1500\n", "initial")
+
+        class _Art:
+            platform = "cisco_ios"
+            template = "cisco_ios/base.j2"
+
+        result = _attribute_additions(repo, "s1", _Art(), "hostname s1\n",
+                                      [" mtu 1500"])
+        assert result["from_this_edit"] == []
+        assert result["pre_existing"] == [" mtu 1500"]
+        assert result["attributable"] is False
+        assert "no earlier render" in result["note"]
+
+    def test_an_unreadable_previous_intent_is_reported_not_assumed(self, lab):
+        from routes.deploy import _attribute_additions
+
+        repo, hostvars, R = lab
+        self._commit(R, repo, hostvars, "hostname: s1\nmtu: 1500\n", "initial")
+        self._commit(R, repo, hostvars, "hostname: s1\nmtu: 9000\n", "jumbo")
+
+        class _Art:
+            platform = "cisco_ios"
+            template = "cisco_ios/nonexistent-template.j2"
+
+        result = _attribute_additions(repo, "s1", _Art(), "hostname s1\n",
+                                      [" mtu 9000"])
+        assert result["attributable"] is False
+        assert result["note"]
