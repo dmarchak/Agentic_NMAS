@@ -1911,6 +1911,7 @@ runs, it passes, and its passing means nothing.
 | 1 | `assert_no_negation(commands)` | the body was `return None` |
 | 2 | approval's round-trip validation | validated `config_repo/templates/`; deploy rendered from `modules/nsot/templates/` |
 | 3 | `assert_merge_only(to_push, intended)` | `to_push` *was* `intended`, so the subset test was trivially true |
+| 4 | automatic rollback | two conditions that together excluded the only scenario it exists for |
 
 Number one is the honest version — it never pretended to work, it just looked
 like it did. Numbers two and three are worse, because both are real
@@ -1933,6 +1934,75 @@ checked was "is every line of X in X".
 It would have passed on any input. Forever. Including inputs containing
 synthesised negations, because those would have had to come *from* the intended
 config to be in the list at all.
+
+### Number four, the strongest specimen
+
+The first three each have a line you can point at. This one does not, and that
+is what makes it worth recording separately.
+
+Rollback is the net: a push that fails partway is exactly what it exists for.
+It did not fire when a push failed partway. Two conditions, in two different
+functions, written at different times:
+
+```python
+# the trigger, in PipelineRunner.run()
+if on_failure == "rollback" and "deploy" in self.ctx.stages_completed:
+
+# the target list, in _stage_rollback()
+targets = [ip for ip, r in ctx.push_results.items() if r.get("ok")]
+```
+
+Read either on its own and it is defensible.
+
+The trigger says *only roll back if we actually got as far as deploying* —
+sensible, since stages 1–5 never touch the device and rolling back after them
+would be noise. The flaw is that `stages_completed` records **successful**
+stages, so the condition is false precisely when the deploy stage is the thing
+that failed. It fires for a verify failure after a clean push. It cannot fire
+for a push that died mid-stream.
+
+The target list says *restore the devices we pushed to* — also sensible, and
+the obvious reading of "we pushed to it" is `ok: True`. The flaw is that a
+device whose `send_config_set` raised had commands going down the wire when it
+gave up. It is not "a device we didn't push to". It is the **most** likely
+device to be half-configured, and it was the only one the filter removed.
+
+Neither is wrong about what it says. The defect lives in the **conjunction**:
+one excludes the failing stage, the other excludes the failing device, and the
+intersection they leave is empty for exactly one scenario — the scenario the
+whole mechanism was built for.
+
+### Why review does not find this one
+
+For #1 the question "what makes this fail?" is answerable by reading four
+lines. For #4 there is nothing to read: two correct functions, in two files,
+neither referencing the other. The only way to see it is to ask the *outcome*
+question rather than the *code* question:
+
+> For each failure mode this mechanism exists to handle, trace the path and
+> confirm it actually runs.
+
+Not "is the rollback code correct" — it was. Not "is it called" — it was, from
+the right place, under a guard that reads correctly. The question is whether
+there exists an input for which it *executes*, and for the mid-push case there
+was not.
+
+This is the same test as the other three, phrased for a mechanism rather than a
+function: **construct the scenario that triggers it; if you cannot, it is not a
+safety net.** The cost of skipping that question here was a device left in a
+half-configured state with the tool reporting only that the push had failed.
+
+### What it cost, concretely
+
+S4 ran for the length of one deploy with `description NSoT-managed b` on an
+interface — a truncated, meaningless value that no store in the system
+contained. The pipeline held an open connection to that device and reported a
+Netmiko pattern timeout. Not "the device changed"; not "rollback attempted".
+A human found it by going to look.
+
+That is the compounding: the guard that would have repaired it could not fire,
+and the report that would have revealed it did not exist. Neither gap is
+visible from inside the other.
 
 ### What makes this family hard
 
