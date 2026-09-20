@@ -1893,3 +1893,96 @@ secret-bearing lines, described as drift. That reading is *correct*: intent and
 device genuinely did differ, because the render was broken. A drift report
 tells the truth about a lie, and cannot tell you which it is looking at. Drift
 is a symptom, never a diagnosis, which is the second reason it must not gate.
+
+---
+
+## A family of its own: real checks positioned where they cannot fail
+
+Every other defect recorded here is a *transformation* bug — something correct
+in isolation destroying what a neighbour depended on. This is a different
+family, and it has now appeared three times, so it deserves naming separately.
+
+The shape: **a check that is correctly written, correctly called, and placed
+where it has nothing to check.** It is not a stub. It is not dead code. It
+runs, it passes, and its passing means nothing.
+
+| # | The check | Why it could not fail |
+|---|---|---|
+| 1 | `assert_no_negation(commands)` | the body was `return None` |
+| 2 | approval's round-trip validation | validated `config_repo/templates/`; deploy rendered from `modules/nsot/templates/` |
+| 3 | `assert_merge_only(to_push, intended)` | `to_push` *was* `intended`, so the subset test was trivially true |
+
+Number one is the honest version — it never pretended to work, it just looked
+like it did. Numbers two and three are worse, because both are real
+implementations doing real comparisons. Nothing about reading them suggests a
+problem. You have to ask a question that does not arise while writing the code:
+*what would have to be true for this to fail?*
+
+### Number three, in detail
+
+`assert_merge_only()` enforces the project's central safety property: this tool
+never synthesises a command to remove configuration a template does not
+mention. It checks provenance — every pushed command must appear in the
+intended config — which was itself a deliberate improvement over grepping for
+`no`, since a template may legitimately contain `no ip http server`.
+
+The implementation is right. The call site is right. And the pipeline was
+handed the whole intended config as its command list, so the property being
+checked was "is every line of X in X".
+
+It would have passed on any input. Forever. Including inputs containing
+synthesised negations, because those would have had to come *from* the intended
+config to be in the list at all.
+
+### What makes this family hard
+
+The transformation bugs all have a detectable signature: two components, one
+assumption, no shared owner. You can go looking for them by asking where data
+crosses a boundary.
+
+These have no signature. Each one is a single function that is correct.
+The defect is in the *relationship between the check and its input*, and that
+relationship is usually established somewhere else entirely — in number three's
+case, one line in a different module:
+
+```python
+ctx.rendered_commands = {device_ip: prepared["config"].splitlines()}
+```
+
+Nothing about that line looks like it disables a safety check three files away.
+
+### The question that finds them
+
+Not "is this check correct" — all three were. The question is:
+
+> **Construct the input that makes this check fail. If you cannot, it is not a
+> check.**
+
+For `assert_no_negation` there is no such input: the body ignores its argument.
+For the template roots there is one, but it can never be produced, because the
+two paths read different directories and only one of them is ever edited. For
+`assert_merge_only` there is none while the caller passes the config to itself.
+
+This is the same discipline as writing a test that fails before the fix. A
+check nobody has ever seen fail is indistinguishable from a check that cannot.
+
+### The cheap countermeasure
+
+Every one of the three would have been caught by a single test asserting the
+**negative**: hand the check something that must be rejected and assert it
+raises. That test is two lines and it is the only one that proves the check is
+load-bearing.
+
+```python
+def test_assert_merge_only_now_has_something_to_check(self):
+    commands = merge_commands(INTENDED, RUNNING)
+    assert_merge_only(commands, INTENDED)               # the real list passes
+    with pytest.raises(NegationSynthesised):
+        assert_merge_only(commands + ["no ip routing"], INTENDED)
+```
+
+The first line is the test everyone writes. The second is the one that matters.
+Note that the second line could not have been written at all while the caller
+passed the intended config to itself — there was no way to express a rejected
+input. **An assertion you cannot write a failing case for is telling you
+something about the code, not about your imagination.**

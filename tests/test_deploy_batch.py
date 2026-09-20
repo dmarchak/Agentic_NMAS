@@ -307,3 +307,40 @@ class TestEveryPushedLineIsAttributed:
                                       [" mtu 9000"])
         assert result["attributable"] is False
         assert result["note"]
+
+
+class TestApplyRefusesAChangedProgram:
+    """Recomputed at apply, compared, refused on mismatch.
+
+    The check lives at apply because that is where it can still prevent
+    something. A hash the client sends back proves only what the client saw;
+    the server recomputes from current state and compares.
+    """
+
+    def test_a_matching_program_is_not_refused(self):
+        from modules.nsot.deploy import command_fingerprint, merge_commands
+        intended = "interface GigabitEthernet0/1\n description x\n"
+        running = "interface GigabitEthernet0/1\n"
+        confirmed = command_fingerprint(merge_commands(intended, running))
+        now = command_fingerprint(merge_commands(intended, running))
+        assert now == confirmed
+
+    def test_an_intent_change_between_confirm_and_apply_is_caught(self):
+        from modules.nsot.deploy import command_fingerprint, merge_commands
+        running = "interface GigabitEthernet0/1\n"
+        confirmed = command_fingerprint(
+            merge_commands("interface GigabitEthernet0/1\n description x\n", running))
+        now = command_fingerprint(
+            merge_commands("interface GigabitEthernet0/1\n description y\n", running))
+        assert now != confirmed
+
+    def test_a_device_change_between_confirm_and_apply_is_caught(self):
+        """Someone configures the device after the preview and before the push."""
+        from modules.nsot.deploy import command_fingerprint, merge_commands
+        intended = ("interface GigabitEthernet0/1\n description x\n mtu 9000\n")
+        confirmed = command_fingerprint(
+            merge_commands(intended, "interface GigabitEthernet0/1\n"))
+        now = command_fingerprint(
+            merge_commands(intended,
+                           "interface GigabitEthernet0/1\n description x\n"))
+        assert now != confirmed

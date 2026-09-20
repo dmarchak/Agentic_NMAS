@@ -252,3 +252,127 @@ class TestMergeDiffPushesOnlyCommands:
         diff = merge_diff("hostname s1\n description NSoT-managed\n",
                           "hostname s1\n")
         assert diff["to_add"] == [" description NSoT-managed"]
+
+
+class TestMergeCommandsAreSendable:
+    """``merge_diff()`` answers what differs. That is not a program.
+
+    ``' description NSoT-managed'`` is an interface sub-command; sent on its
+    own it applies in global configuration mode. The pipeline hid this by
+    pushing the whole rendered config, which also made ``assert_merge_only()``
+    vacuous — ``to_push`` *was* the intended config, so it could not fail.
+    """
+
+    INTENDED = (
+        "hostname s4\n"
+        "interface GigabitEthernet0/1\n"
+        " description NSoT-managed\n"
+        " no shutdown\n"
+        "interface GigabitEthernet0/2\n"
+        " description other\n"
+        "router bgp 65001\n"
+        " address-family ipv4\n"
+        "  neighbor 10.0.0.1 activate\n"
+        "end\n"
+    )
+    RUNNING = (
+        "hostname s4\n"
+        "interface GigabitEthernet0/1\n"
+        " no shutdown\n"
+        "interface GigabitEthernet0/2\n"
+        " description other\n"
+        "router bgp 65001\n"
+        " address-family ipv4\n"
+        "end\n"
+    )
+
+    def test_a_sub_command_gets_its_parent(self):
+        from modules.nsot.deploy import merge_commands
+        commands = merge_commands(self.INTENDED, self.RUNNING)
+        index = commands.index(" description NSoT-managed")
+        assert commands[index - 1] == "interface GigabitEthernet0/1"
+
+    def test_the_full_chain_is_emitted_in_order(self):
+        """A partial chain applies the line to the wrong address family."""
+        from modules.nsot.deploy import merge_commands
+        commands = merge_commands(self.INTENDED, self.RUNNING)
+        index = commands.index("  neighbor 10.0.0.1 activate")
+        assert commands[index - 2] == "router bgp 65001"
+        assert commands[index - 1] == " address-family ipv4"
+
+    def test_each_group_is_unwound_one_exit_per_level(self):
+        from modules.nsot.deploy import merge_commands
+        commands = merge_commands(self.INTENDED, self.RUNNING)
+        assert commands == [
+            "interface GigabitEthernet0/1",
+            " description NSoT-managed",
+            "exit",
+            "router bgp 65001",
+            " address-family ipv4",
+            "  neighbor 10.0.0.1 activate",
+            "exit",
+            "exit",
+        ]
+
+    def test_end_is_never_emitted(self):
+        from modules.nsot.deploy import merge_commands
+        commands = merge_commands(self.INTENDED, self.RUNNING)
+        assert "end" not in [c.strip() for c in commands]
+
+    def test_a_top_level_line_gets_no_exit(self):
+        """An exit from global config mode leaves configuration mode."""
+        from modules.nsot.deploy import merge_commands
+        commands = merge_commands("hostname s4\nip routing\n", "hostname s4\n")
+        assert commands == ["ip routing"]
+
+    def test_nothing_to_change_is_an_empty_program(self):
+        from modules.nsot.deploy import merge_commands
+        assert merge_commands(self.RUNNING, self.RUNNING) == []
+
+    def test_contiguous_lines_share_one_header(self):
+        from modules.nsot.deploy import merge_commands
+        intended = ("interface GigabitEthernet0/1\n"
+                    " description a\n"
+                    " mtu 9000\n")
+        commands = merge_commands(intended, "interface GigabitEthernet0/1\n")
+        assert commands == ["interface GigabitEthernet0/1",
+                            " description a", " mtu 9000", "exit"]
+
+    def test_assert_merge_only_now_has_something_to_check(self):
+        """It could not fail while to_push was the whole intended config."""
+        from modules.nsot.deploy import (NegationSynthesised, assert_merge_only,
+                                         merge_commands)
+        commands = merge_commands(self.INTENDED, self.RUNNING)
+        assert_merge_only(commands, self.INTENDED)          # the real list passes
+
+        with pytest.raises(NegationSynthesised):
+            assert_merge_only(commands + ["no ip routing"], self.INTENDED)
+
+    def test_exit_is_allowed_without_provenance_but_end_is_not(self):
+        from modules.nsot.deploy import (NegationSynthesised, assert_merge_only)
+        assert_merge_only(["hostname s4", "exit"], "hostname s4\n")
+        with pytest.raises(NegationSynthesised):
+            assert_merge_only(["hostname s4", "end"], "hostname s4\n")
+
+
+class TestTheConfirmedProgramIsWhatIsSent:
+    """One-shot discipline, the same shape as the Phase 0 plan token."""
+
+    def test_the_fingerprint_is_stable(self):
+        from modules.nsot.deploy import command_fingerprint
+        assert (command_fingerprint(["interface Gi0/1", " description x"])
+                == command_fingerprint(["interface Gi0/1", " description x"]))
+
+    def test_a_changed_program_changes_the_fingerprint(self):
+        from modules.nsot.deploy import command_fingerprint
+        assert (command_fingerprint(["interface Gi0/1", " description x"])
+                != command_fingerprint(["interface Gi0/1", " description y"]))
+
+    def test_order_is_part_of_the_program(self):
+        from modules.nsot.deploy import command_fingerprint
+        assert (command_fingerprint(["a", "b"]) != command_fingerprint(["b", "a"]))
+
+    def test_an_added_exit_changes_the_fingerprint(self):
+        from modules.nsot.deploy import command_fingerprint
+        assert (command_fingerprint(["interface Gi0/1", " description x"])
+                != command_fingerprint(["interface Gi0/1", " description x", "exit"]))

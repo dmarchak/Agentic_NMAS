@@ -348,6 +348,12 @@ The only part of the NSoT work that reaches a device.
   not mention are **removal warnings**, never negated. `assert_merge_only()`
   checks provenance rather than grepping for `no`, because a template may
   legitimately contain `no ip http server`.
+- **What the operator confirms is what is sent, byte for byte** — not a
+  superset, not a safe one. `merge_commands()` builds the exact program: each
+  added line preceded by its full ancestor chain in order, one `exit` per open
+  level at the end of each contiguous group, never `end`. The list is
+  recomputed at apply and compared against the confirmed fingerprint; a
+  mismatch is refused with "the device or intent changed since you confirmed".
 - **Transport is per platform.** `supports_netconf: false` goes straight to SSH
   with no attempt — not a fallback after a timeout.
 - **Verification uses settle windows** (OSPF 45s, BGP 60s, RIP 90s) and reports

@@ -7,6 +7,65 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — The confirmed program is the sent program
+
+Found on run 2's plan, one step before the push.
+
+```
+what the plan showed the operator :   1 line
+what the pipeline would send      :  83 lines
+```
+
+`_deploy_one()` set `rendered_commands` to the entire rendered config while the
+preview showed the merge diff. Confirming "add one description" would have sent
+`hostname s4`, `no service password-encryption`, the SNMP community line, and
+eighty more.
+
+"IOS treats a re-applied identical line as a no-op" is true, and it is an
+argument about blast radius, not correctness. The confirm step makes one claim —
+*this is what will happen* — and a push exceeding its preview falsifies that
+claim whether or not the excess is harmless.
+
+### Added — `merge_commands()`
+
+`merge_diff()` answers *what differs*; that is not a program. `' description …'`
+is an interface sub-command and applies in global configuration mode if sent
+alone. `merge_commands()` answers *what to send*:
+
+- each added line preceded by its **full ancestor chain, in order** — a line
+  under `address-family ipv4` inside `router bgp 65001` gets both, because a
+  partial chain applies it to the wrong address family silently and
+  successfully
+- one `exit` per open level at the end of each contiguous group, so a
+  two-level unwind leaves the next group at the right place; a group whose
+  chain is empty emits none, since `exit` from global config leaves config mode
+- **never `end`** — it leaves configuration mode, and a list that does so
+  part-way through is a different program than the one confirmed
+
+### Added — the equality is enforced at apply
+
+`/deploy/plan` publishes the exact `commands` and a `command_hash`.
+`/deploy/apply` **recomputes** the list from current state and compares; a
+mismatch refuses that device with *"the device or intent changed since you
+confirmed — re-run the preview and confirm the new command list"*, per device
+rather than aborting the batch. Same one-shot discipline as the Phase 0 plan
+token, applied to the program. Recomputed server-side: a hash the client sends
+back proves only what the client saw.
+
+### Fixed — `assert_merge_only()` was vacuous
+
+It checks that every pushed command appears in the intended config. While
+`to_push` *was* the intended config, the test was "is every line of X in X" — it
+would have passed on any input, forever. It now receives the merge program and
+has something to check, with a test that asserts it **raises** on a synthesised
+line. `exit` is exempted as mode control, explicitly and by name; `end` is not.
+
+This is the **third** real check found positioned where it could not fail —
+after `assert_no_negation` and the two template roots — and is recorded in
+`docs/NSOT_WRITEUP_NOTES.md` as a distinct family from the transformation bugs.
+
+---
+
 ## [Unreleased] — Run 2, attempt 1: secrets lost between staging and commit
 
 Caught by running it. The deploy refused, correctly, and nothing was pushed.

@@ -132,6 +132,98 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
     }
 
 
+#: Mode control, not configuration. ``exit`` unwinds a sub-mode and cannot add
+#: or remove a line, so it carries no provenance requirement. ``end`` is
+#: deliberately **not** here and is never emitted: it drops out of config mode
+#: entirely, and a command list that ends config mode part-way through is a
+#: different program than the one the operator confirmed.
+CONTROL_WORDS = ("exit",)
+
+
+def _section_chains(config_text: str) -> list:
+    """``[(line, [ancestors, outermost first]), …]`` for a config.
+
+    IOS nests by indentation, so a line's ancestors are the nearest preceding
+    lines at each smaller indent. A partial chain is worse than none: sending
+    ``neighbor … activate`` after only ``router bgp 65001`` applies it to the
+    wrong address family, silently and successfully.
+    """
+    from modules.nsot import ifnames, normalize
+
+    out, stack = [], []
+    for raw in normalize.strip_for_roundtrip(config_text):
+        line = raw.rstrip()
+        if not line.strip() or line.strip() in ("!", "end"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        canonical = ifnames.canonicalise_line(line)
+        out.append((canonical, [entry[1] for entry in stack]))
+        stack.append((indent, canonical))
+    return out
+
+
+def merge_commands(intended_config: str, running_config: str) -> list:
+    """The exact command list to send: the merge diff, in sendable form.
+
+    ``merge_diff()`` answers *what differs*. That is not a program: a line like
+    ``` description NSoT-managed``` is an interface sub-command, and sending it
+    on its own applies it in global configuration mode. This answers *what to
+    send* — each added line preceded by its full ancestor chain, in order, with
+    each contiguous group unwound afterwards.
+
+    One ``exit`` per open level, deepest first. Requirement is "an ``exit`` at
+    the end of each contiguous group"; for the one-level case that is exactly
+    one, and for ``router bgp`` → ``address-family`` it has to be two or the
+    next group starts inside the address family. A group whose chain is empty
+    emits none — an ``exit`` from global configuration mode leaves config mode
+    altogether.
+    """
+    diff = merge_diff(intended_config, running_config)
+    wanted = list(diff["to_add"])
+    if not wanted:
+        return []
+
+    remaining = dict.fromkeys(wanted)          # preserves order, de-duplicates
+    commands, open_chain = [], []
+
+    def _close():
+        for _level in reversed(open_chain):
+            commands.append("exit")
+        open_chain.clear()
+
+    for line, chain in _section_chains(intended_config):
+        if line not in remaining:
+            continue
+        if chain != open_chain:
+            _close()
+            commands.extend(chain)
+            open_chain = list(chain)
+        commands.append(line)
+        del remaining[line]
+
+    _close()
+
+    if remaining:
+        log.warning("deploy: %d diff line(s) had no place in the intended "
+                    "config and were not sent: %s", len(remaining),
+                    ", ".join(repr(l) for l in list(remaining)[:5]))
+    return commands
+
+
+def command_fingerprint(commands: list) -> str:
+    """Stable hash of an exact command list, for the confirm-then-send check."""
+    import hashlib
+
+    payload = "\n".join(commands)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+class CommandsChanged(RuntimeError):
+    """The recomputed command list differs from the one that was confirmed."""
+
+
 class NegationSynthesised(RuntimeError):
     """Raised if a command to push did not come from the intended config."""
 
@@ -153,7 +245,8 @@ def assert_merge_only(to_push: list, intended_config: str) -> None:
     allowed = {ifnames.canonicalise_line(l.rstrip())
                for l in normalize.strip_for_roundtrip(intended_config)}
     invented = [c for c in to_push
-                if ifnames.canonicalise_line(c.rstrip()) not in allowed]
+                if c.strip() not in CONTROL_WORDS
+                and ifnames.canonicalise_line(c.rstrip()) not in allowed]
     if invented:
         raise NegationSynthesised(
             "refusing to push %d command(s) that are not in the intended "

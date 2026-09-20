@@ -622,6 +622,49 @@ revokes a template approval.
 > protects against an untrustworthy renderer. Intent drift is the work, not a
 > defect, and gating on the work means no work can ever be done.
 
+#### Design rule: what the operator confirms is what is sent, byte for byte
+
+Not a superset. Not a *safe* superset.
+
+`_deploy_one()` originally set `rendered_commands` to the entire rendered
+config, while the preview showed the merge diff. On the first real run that was
+**one line confirmed, eighty-three sent** — including `hostname s4`,
+`no service password-encryption`, and the SNMP community line.
+
+"IOS treats a re-applied identical line as a no-op" is true, and it is an
+argument about **blast radius, not correctness**. The confirm step exists to
+make one specific claim — *this is what will happen* — and a push that exceeds
+its preview falsifies that claim whether or not the excess is harmless. An
+operator who cannot trust the preview has to audit the device afterwards, which
+is the state the tool exists to remove.
+
+Two consequences followed from the same defect:
+
+- **`assert_merge_only()` was vacuous.** It checks that every pushed command
+  appears in the intended config; when `to_push` *is* the intended config it
+  cannot fail.
+- **The previewed diff was not sendable.** `' description …'` has no parent
+  line, so it would apply in global configuration mode. Pushing the whole
+  config is what hid that, which is why both defects survived together.
+
+`merge_commands()` produces the exact program: each added line preceded by its
+**full ancestor chain in order** — a line under `address-family ipv4` inside
+`router bgp 65001` gets both, because a partial chain applies it to the wrong
+address family silently and successfully — with one `exit` per open level at
+the end of each contiguous group, and **never** `end`. `end` leaves
+configuration mode, and a command list that ends config mode part-way through
+is a different program than the one confirmed.
+
+The equality is enforced **at apply**, not only in tests: the command list is
+recomputed from current state, compared against the confirmed fingerprint, and
+refused with *"the device or intent changed since you confirmed"* on mismatch.
+Same one-shot discipline as the Phase 0 plan token, applied to the program
+rather than to the plan. The hash is recomputed server-side; one supplied by
+the client proves only what the client saw.
+
+> A preview is a promise. Sending more than it showed breaks the promise even
+> when sending more is harmless.
+
 **Masking contract unchanged.** Committed host_vars hold `secret_refs`; the
 credential store holds values. Preview masks; deploy resolves in memory and
 calls `assert_no_mask()`. `write_committed()` refuses any document carrying a

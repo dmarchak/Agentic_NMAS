@@ -218,8 +218,8 @@ def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
 @bp.route("/plan", methods=["POST"])
 def plan():
     """Per-device diff and deployability. Reads captured configs only."""
-    from modules.nsot.deploy import merge_diff, prepare_device
-    from modules.nsot.deploy import DeployRefused
+    from modules.nsot.deploy import (DeployRefused, command_fingerprint,
+                                     merge_commands, merge_diff, prepare_device)
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
@@ -247,6 +247,11 @@ def plan():
             entry["to_add"] = diff["to_add"]
             entry["removal_warnings"] = diff["removal_warnings"]
             entry["unchanged_count"] = diff["unchanged_count"]
+            # The exact program, not a description of it. What the operator
+            # confirms is this list, byte for byte.
+            commands = merge_commands(prepared["config"], captured)
+            entry["commands"] = commands
+            entry["command_hash"] = command_fingerprint(commands)
             # Every pushed line, attributed — before anyone confirms.
             entry["attribution"] = _attribute_additions(
                 _repo_for(list_name), hostname, artifact, captured,
@@ -275,7 +280,9 @@ def apply():
     whose fresh capture no longer matches is skipped and reported, never
     deployed against a diff the operator did not see.
     """
-    from modules.nsot.deploy import CircuitBreaker, plan_batch, run_batch
+    from modules.nsot.deploy import (CircuitBreaker, command_fingerprint,
+                                     merge_commands, plan_batch, prepare_device,
+                                     run_batch)
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
@@ -284,7 +291,14 @@ def apply():
         return jsonify({"ok": False,
                         "error": "Nothing confirmed — deploy refused"}), 400
 
+    # One-shot discipline, the same shape as the Phase 0 plan token: the
+    # operator confirmed one exact command list, so that exact list is what
+    # may be sent. Recomputed here and compared, never trusted from the
+    # request — a hash the client supplies proves only what the client saw.
+    command_hashes = data.get("command_hashes") or {}
+
     artifacts, fresh_captures, device_rows = [], {}, {}
+    refused = []
     cache = {}
     for hostname in confirmations:
         built, error = _artifact_for(list_name, hostname, cache)
@@ -292,6 +306,27 @@ def apply():
             log.warning("deploy: %s unavailable: %s", hostname, error)
             continue
         artifact, captured, device = built
+
+        expected = command_hashes.get(hostname)
+        if expected is not None:
+            try:
+                now = command_fingerprint(
+                    merge_commands(prepare_device(artifact)["config"], captured))
+            except Exception as exc:          # noqa: BLE001
+                refused.append({"device": hostname, "outcome": "refused",
+                                "reason": f"could not recompute commands: {exc}"})
+                continue
+            if now != expected:
+                log.warning("deploy: %s refused — commands changed since "
+                            "confirmation (%s -> %s)", hostname, expected, now)
+                refused.append({"device": hostname, "outcome": "refused",
+                                "reason": ("the device or intent changed since "
+                                           "you confirmed — re-run the preview "
+                                           "and confirm the new command list"),
+                                "confirmed_hash": expected,
+                                "current_hash": now})
+                continue
+
         artifacts.append(artifact)
         device_rows[hostname] = device
         # Phase 3c reads a FRESH capture inside the pipeline (stage 4). Here the
@@ -304,6 +339,9 @@ def apply():
     report = run_batch(batch,
                        lambda entry: _deploy_one(entry, list_name, device_rows),
                        CircuitBreaker())
+    if refused:
+        report.setdefault("results", []).extend(refused)
+        report["refused"] = refused
     return jsonify({"ok": True, "list": list_name, **report})
 
 
@@ -311,7 +349,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
     """Run the pipeline for a single device. The only path that connects."""
     import threading
 
-    from modules.nsot.deploy import DEPLOYED, FAILED, prepare_device
+    from modules.nsot.deploy import (DEPLOYED, FAILED, assert_merge_only,
+                                     merge_commands, prepare_device)
     from modules.pipeline import PipelineContext, PipelineRunner
 
     artifact = entry["artifact"]
@@ -322,6 +361,21 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
         prepared = prepare_device(artifact)     # refuse → real secrets → mask check
     except Exception as exc:                    # noqa: BLE001
         return {"device": hostname, "outcome": FAILED, "stage": "prepare",
+                "reason": str(exc)}
+
+    # The merge diff in sendable form — NOT the whole rendered config. Pushing
+    # the full render made assert_merge_only() vacuous (to_push was the
+    # intended config, so it could not fail) and meant the operator confirmed
+    # one line while 83 were sent.
+    captured = entry.get("fresh") or ""
+    commands = merge_commands(prepared["config"], captured)
+    if not commands:
+        return {"device": hostname, "outcome": DEPLOYED, "stage": "",
+                "reason": "nothing to change", "commands": []}
+    try:
+        assert_merge_only(commands, prepared["config"])
+    except Exception as exc:                    # noqa: BLE001
+        return {"device": hostname, "outcome": FAILED, "stage": "merge-only",
                 "reason": str(exc)}
 
     ctx = PipelineContext(
@@ -335,7 +389,7 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
         pool_lock=threading.Lock(),
         config_id=f"tpl-{hostname}",
     )
-    ctx.rendered_commands = {device.get("ip", ""): prepared["config"].splitlines()}
+    ctx.rendered_commands = {device.get("ip", ""): commands}
 
     try:
         result = PipelineRunner(ctx).run()
