@@ -2112,3 +2112,99 @@ Note that the second line could not have been written at all while the caller
 passed the intended config to itself — there was no way to express a rejected
 input. **An assertion you cannot write a failing case for is telling you
 something about the code, not about your imagination.**
+
+---
+
+## Method, not code: a test written after the implementation encodes the implementation
+
+Every other entry here is a defect in the product. This one is a defect in how I
+was working, it happened four times in one week, and it is the most transferable
+thing in the document — the product bugs are specific to this codebase; this is
+not.
+
+### The four
+
+The rolled-back-intent block went through three wrong keys and the revert went
+through one wrong shape. In each case a test existed, passed, and was useless.
+
+| # | The requirement | What I implemented | What my test asserted |
+|---|---|---|---|
+| 1 | a rolled-back change must not be re-proposed | key the block on the intent **commit sha** | that a *new commit* lifts the block |
+| 2 | same | key on a **content hash** of host_vars | that *editing a field* lifts the block |
+| 3 | same | key on **program equality** | that a *different program* lifts the block |
+| 4 | reverting undoes the rolled-back change | restore the **previous snapshot** | that reverting the commit *at HEAD* works |
+
+Read the right-hand column on its own and every one sounds reasonable. Read it
+against the left and none of them tests the requirement. They test the
+mechanism. The mechanism was the thing in doubt.
+
+### Why it keeps happening
+
+Writing a test after the code puts you in the code's frame. You have just
+decided that the answer is "compare shas", so the question you naturally write
+down is "does it compare shas correctly?" — and it does, so the test passes, and
+the passing test becomes evidence for a decision it never examined.
+
+The tell is that all four tests were *true*. None was sloppy or wrong about what
+it asserted. A sha-keyed block really does lift when a new commit lands. The
+defect is that lifting on a new commit was never the requirement, and nothing in
+the test's own frame could reveal that.
+
+### What closed each one
+
+Not better code review, and not more tests. In every case what closed it was a
+test **specified in plain language from the requirement, before the fix
+existed**:
+
+> "an unrelated intent edit does NOT clear the block"
+>
+> "an unrelated edit that produces its own sent line"
+>
+> "unrelated commit on top → A undone, B kept"
+
+Each of those sentences is a scenario, not a mechanism. None of them mentions
+shas, hashes, fingerprints, containment, or diffs — and that is exactly why each
+one survived the implementation changing underneath it. The sentence
+"an unrelated edit does not clear the block" was written once and caught three
+different wrong implementations in a row, including one I wrote *as the fix for
+the previous failure of the same test*.
+
+### The asymmetry that makes this cheap
+
+Specifying the test first costs one sentence. Not specifying it costs a wrong
+implementation shipped, or — in three of these four — a wrong implementation
+that would have been shipped if someone had not asked the question in plain
+language from outside the code.
+
+There is a real distinction between two things that look identical in a test
+file:
+
+* **a test written from the requirement** — survives a rewrite of the
+  implementation, because it never mentions it
+* **a test written from the implementation** — is invalidated by a rewrite and,
+  worse, passes through one
+
+Both are green. Only one is evidence.
+
+### The rule
+
+> Write the assertion as a sentence about the world before writing the code that
+> makes it true. If the sentence mentions how the code works, it is not a test
+> of the requirement.
+
+And the corollary, which is the part that actually bit here:
+
+> A test written to close a failing test is at maximum risk of encoding the new
+> implementation. The second fix for the same requirement deserves *more*
+> suspicion than the first, not less.
+
+Three of these four were second or third attempts.
+
+### Worth recording honestly
+
+In none of these four cases did I notice on my own. Each was caught by someone
+reading the behaviour and asking a question from outside the implementation —
+"does this handle the case where…". The value added was not expertise in this
+codebase; it was refusing to reason in the code's frame. That is a role, and it
+can be occupied deliberately: state the requirement, state the scenario, then go
+and look at what the code does about it.
