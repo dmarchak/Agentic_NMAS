@@ -36,20 +36,80 @@ def _capture_hash(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
 
 
-def _artifact_for(list_name: str, hostname: str):
-    """Build the render artifact for one device from its captured config."""
+def _captured_config(repo: str, hostname: str) -> str:
+    """The device's captured golden config, resolved through the manifest.
+
+    Manifest first, legacy listing second. The previous version discovered the
+    device by scanning ``golden_configs/`` for a matching hostname and then fed
+    that IP to ``_load_golden_config_file()``. So identity came from the
+    deprecated store even though content came from the repo — and emptying
+    ``golden_configs/``, which the migration explicitly permits, would have
+    reported "no golden config for this device" for every device that has one.
+    """
+    from modules.nsot import manifest as _m
+
+    entry = _m.find_by_name(repo, hostname)[1]
+    if entry:
+        path = _m.golden_path_for(repo, entry)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+
     from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
+    legacy = next((e for e in _list_golden_configs()
+                   if e.get("hostname") == hostname), None)
+    if legacy is None:
+        return ""
+    return _load_golden_config_file(legacy["device_ip"]) or ""
+
+
+def _bound_host_vars(repo: str, template: str, platform: str, cache: dict) -> dict:
+    """host_vars for **every** device bound to *template*.
+
+    What ``binding_fingerprint()`` requires, and what the deploy path was not
+    supplying. The fingerprint hashes the whole bound device set by design —
+    onboarding a device must revoke approval — so a device it is not given
+    hashes to the literal string ``"unknown"``. Passing only the device being
+    deployed therefore produced a fingerprint that could never equal the one
+    approval stored, and ``is_approved()`` returned False for every template
+    bound to more than one device. Fail-closed, so nothing unsafe shipped; the
+    deploy path was simply unreachable.
+
+    Cached per request: a plan over nine devices would otherwise reparse each
+    bound set once per device.
+    """
+    from modules.nsot import templates_repo
+    from modules.nsot.render_artifact import build_artifact
+
+    if template in cache:
+        return cache[template]
+
+    host_vars = {}
+    for entry in templates_repo.devices_for_template(repo, template):
+        name = entry["device"]
+        captured = _captured_config(repo, name)
+        if not captured:
+            log.warning("deploy: %s is bound to %s but has no captured config",
+                        name, template)
+            continue
+        host_vars[name] = build_artifact(
+            name, captured, entry.get("platform") or platform,
+            template=template).host_vars
+
+    cache[template] = host_vars
+    return host_vars
+
+
+def _artifact_for(list_name: str, hostname: str, cache: dict = None):
+    """Build the render artifact for one device from its captured config."""
     from modules.device import get_current_device_list, load_saved_devices
     from modules.nsot import approval, templates_repo
     from modules.nsot.render_artifact import build_artifact
 
-    entry = next((e for e in _list_golden_configs()
-                  if e.get("hostname") == hostname), None)
-    if entry is None:
-        return None, "no golden config for this device"
-    captured = _load_golden_config_file(entry["device_ip"])
+    repo = _repo_for(list_name)
+    captured = _captured_config(repo, hostname)
     if not captured:
-        return None, "golden config is empty"
+        return None, "no golden config for this device"
 
     _name, csv_path = get_current_device_list()
     device = next((d for d in load_saved_devices(csv_path)
@@ -57,12 +117,16 @@ def _artifact_for(list_name: str, hostname: str):
     from modules.nsot.platform import platform_for_device
     platform = platform_for_device(device)
 
-    repo = _repo_for(list_name)
     template = templates_repo.template_for_device(repo, hostname, platform)
 
     artifact = build_artifact(hostname, captured, platform, template=template)
-    approved = approval.is_approved(repo, template, {hostname: artifact.host_vars})
-    if approved:
+    bound = _bound_host_vars(repo, template, platform,
+                             cache if cache is not None else {})
+    # The device being deployed uses the host_vars just built for it, so a
+    # capture newer than the cache cannot be masked by a stale bound-set entry.
+    bound = {**bound, hostname: artifact.host_vars}
+
+    if approval.is_approved(repo, template, bound):
         artifact = build_artifact(hostname, captured, platform, template=template,
                                   template_approved=True,
                                   host_vars=artifact.host_vars)
@@ -82,8 +146,9 @@ def plan():
         return jsonify({"ok": False, "error": "No devices selected"}), 400
 
     devices = []
+    cache = {}
     for hostname in hostnames:
-        built, error = _artifact_for(list_name, hostname)
+        built, error = _artifact_for(list_name, hostname, cache)
         if built is None:
             devices.append({"device": hostname, "deployable": False,
                             "blocking_reasons": [error], "to_add": [],
@@ -134,8 +199,9 @@ def apply():
                         "error": "Nothing confirmed — deploy refused"}), 400
 
     artifacts, fresh_captures, device_rows = [], {}, {}
+    cache = {}
     for hostname in confirmations:
-        built, error = _artifact_for(list_name, hostname)
+        built, error = _artifact_for(list_name, hostname, cache)
         if built is None:
             log.warning("deploy: %s unavailable: %s", hostname, error)
             continue

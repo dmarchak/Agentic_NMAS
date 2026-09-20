@@ -7,6 +7,77 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — The deploy gate could never open
+
+Found by running the first real deploy plan, not by any test.
+
+### Fixed — `is_approved()` was asked about one device at a time
+
+`binding_fingerprint()` hashes the **whole bound device set**. That is the
+design: onboarding a device must revoke approval, so a device the fingerprint
+is not given hashes to the literal string `"unknown"`.
+
+`_artifact_for()` called `approval.is_approved(repo, template, {hostname:
+artifact.host_vars})` — one device. For `cisco_ios/base.j2`, bound to s1–s4,
+that produced:
+
+```
+stored fingerprint : a7c85e85a207c52d
+full bound set     : a7c85e85a207c52d -> is_approved True
+s4 alone           : 7227fcb19aadcfc4 -> is_approved False
+   s1: unknown
+   s2: unknown
+   s3: unknown
+   s4: caae860616f18e6f
+```
+
+So **every template bound to more than one device was permanently unapprovable
+on the deploy path**, and Phase 3c was unreachable in the normal case. It failed
+closed, so nothing unsafe shipped — the flow simply could not run. Same family
+as a check that is computed and consumed by nobody: a gate structurally
+incapable of returning the answer it is asked for.
+
+`_bound_host_vars()` now builds host_vars for every bound device, cached per
+request so a plan over nine devices does not reparse each bound set nine times.
+The device being deployed always contributes its own freshly-built host_vars, so
+a newer capture cannot be masked by a stale cache entry.
+
+### Fixed — device discovery came from the deprecated store
+
+`_artifact_for()` found the device by scanning `golden_configs/` for a matching
+hostname, then fed that IP to `_load_golden_config_file()`. Identity from the
+deprecated store, content from the repo. Emptying `golden_configs/` — which the
+migration explicitly permits, since it is a read-only fallback — would have
+reported "no golden config for this device" for every device that has one.
+`_captured_config()` resolves through the manifest first and falls back to the
+legacy listing.
+
+### Not fixed — there is no path from an intended change to a render
+
+Reported rather than changed, because closing it is a design decision.
+
+`_artifact_for()` derives host_vars by parsing the device's **captured** config.
+Round-trip fidelity is 100%, so the render reproduces the capture exactly and
+the merge diff is empty. Verified on the live lab:
+
+```
+s4: deployable=True approved=True template=cisco_ios/base.j2
+   to_add=0 removal_warnings=0 unchanged=82
+```
+
+That is correct behaviour for "deploy the template as it stands". It is also
+the only behaviour available, because nothing reads an *edited* host_vars:
+
+- `routes/templatize.py` writes `.nsot/staging/host_vars/` — gitignored — and
+  reads it back only for a preview render.
+- `repo.save_host_vars()` exists, is tested, and **has no callers**.
+- `_artifact_for()` never consults either.
+
+So a per-device change like an interface description has no way to reach a
+deployed config. The deploy flow can currently only ever push zero lines.
+
+---
+
 ## [Unreleased] — Seeding: the condition was the filesystem, not the repo
 
 The seed-commit fix was right about *what* to commit and wrong about *when*.

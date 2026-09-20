@@ -170,3 +170,59 @@ class TestOrderOfOperations:
         check = source.index("assert_no_mask")
         assert refuse < render < check, \
             "prepare_device must refuse, then render, then mask-check"
+
+
+def _repo_with_templates(tmp_path, devices=("s1", "s2")):
+    """A repo with a seeded template library and *devices* in the manifest."""
+    from modules.nsot import manifest, templates_repo
+
+    repo = str(tmp_path / "config_repo")
+    os.makedirs(repo, exist_ok=True)
+    templates_repo.seed_templates(repo)
+    for index, name in enumerate(devices, start=1):
+        manifest.upsert_device(repo, f"uid:{name}", name,
+                               f"203.0.113.{20 + index}", platform="cisco_ios")
+    return repo
+
+
+class TestApprovalIsAskedTheRightQuestion:
+    """The deploy path asked ``is_approved()`` about one device at a time.
+
+    ``binding_fingerprint()`` hashes the **whole bound device set** — that is
+    the point of it, so onboarding a device revokes approval. A device it is
+    not given hashes to the literal string ``"unknown"``. Passing only the
+    device being deployed therefore produced a fingerprint that could never
+    equal the one approval stored, and every template bound to more than one
+    device was permanently unapprovable on the deploy path.
+
+    Fail-closed, so nothing unsafe shipped — the flow was simply unreachable,
+    which is the same family as a check that is reported and consumed by
+    nobody: a gate structurally incapable of returning the answer it is asked
+    for.
+    """
+
+    def test_a_partial_device_set_cannot_match_a_full_approval(self, tmp_path):
+        """The mechanism, isolated from the routes."""
+        from modules.nsot import approval
+
+        repo = _repo_with_templates(tmp_path, devices=("s1", "s2"))
+        host_vars = {"s1": {"hostname": "s1"}, "s2": {"hostname": "s2"}}
+
+        full = approval.binding_fingerprint(repo, "cisco_ios/base.j2", host_vars)
+        partial = approval.binding_fingerprint(repo, "cisco_ios/base.j2",
+                                               {"s2": host_vars["s2"]})
+
+        assert full["fingerprint"] != partial["fingerprint"]
+        assert partial["device_hashes"]["s1"] == "unknown"
+
+    def test_the_bound_set_is_what_the_fingerprint_needs(self, tmp_path):
+        from modules.nsot import approval
+
+        repo = _repo_with_templates(tmp_path, devices=("s1", "s2"))
+        host_vars = {"s1": {"hostname": "s1"}, "s2": {"hostname": "s2"}}
+        approval._save(repo, {"cisco_ios/base.j2": approval.binding_fingerprint(
+            repo, "cisco_ios/base.j2", host_vars)})
+
+        assert approval.is_approved(repo, "cisco_ios/base.j2", host_vars)
+        assert not approval.is_approved(repo, "cisco_ios/base.j2",
+                                        {"s2": host_vars["s2"]})
