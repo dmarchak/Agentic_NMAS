@@ -329,6 +329,8 @@ def _migrate_golden_configs() -> None:
     Safe to call repeatedly — already-migrated files are ignored.
     """
     import re as _re3
+    if _nsot_migrated():
+        return          # golden_configs/ is read-only after the migration
     gdir = _get_golden_configs_dir()
     ip_pattern = _re3.compile(r"^\d+_\d+_\d+_\d+\.cfg$")
     for fname in list(os.listdir(gdir)):
@@ -398,6 +400,15 @@ def _legacy_header_scan(device_ip: str) -> Optional[str]:
     return None
 
 
+def _nsot_migrated() -> bool:
+    """True once this list's repo carries the migration marker."""
+    try:
+        from modules.nsot.migrate import read_marker
+        return read_marker(_nsot_repo_dir()) is not None
+    except Exception:                          # noqa: BLE001
+        return False
+
+
 def _find_golden_config_file(device_ip: str) -> Optional[str]:
     """Locate a device's golden config. Signature unchanged.
 
@@ -406,6 +417,13 @@ def _find_golden_config_file(device_ip: str) -> Optional[str]:
       2. manifest by management IP
       3. legacy header scan in golden_configs/  (deprecated, logs a warning)
       4. None
+
+    Step 3 is the **only** remaining reason to touch ``golden_configs/``, it is
+    reached only when the manifest has no entry for the device, and it is
+    strictly read-only. Nothing writes there any more: saves go through
+    ``repo.save_golden``, and the in-place legacy rename turns itself off once
+    the migration marker exists. The old store is a fallback, not a second
+    source of truth that could drift against the repo.
     """
     repo = _nsot_repo_dir()
 

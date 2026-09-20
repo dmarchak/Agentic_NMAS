@@ -268,3 +268,245 @@ class TestBothStoresHoldTheSameDevice:
         assert report["candidates"] == 18
         assert report["device_count"] == 9
         assert report["merge_count"] == 9
+
+
+class TestMigrationMarker:
+    """``.nsot/migrated.json`` — the guard's own record, not an inference.
+
+    The first implementation computed ``already_migrated`` from
+    ``os.path.isdir(repo/golden)`` and then never consumed it. Two things were
+    wrong with that: ``golden/`` exists from ``init_repo`` onward, so the value
+    was false in meaning as well as unused; and a computed check nothing reads
+    is indistinguishable from no check at all.
+    """
+
+    def test_no_marker_before_migration(self, lab):
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        assert migrate.read_marker(str(lab / "config_repo")) is None
+        assert migrate.plan("Lab")["already_migrated"] is False
+
+    def test_golden_dir_alone_does_not_mean_migrated(self, lab):
+        """The old signal. init_repo creates golden/, so it was always true."""
+        from modules.nsot.repo import init_repo
+        init_repo(str(lab / "config_repo"))
+        assert os.path.isdir(lab / "config_repo" / "golden")
+        assert migrate.plan("Lab")["already_migrated"] is False
+
+    def test_marker_records_timestamp_and_commit(self, lab):
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        result = migrate.apply("Lab")
+        marker = migrate.read_marker(str(lab / "config_repo"))
+        assert marker is not None
+        assert marker["migrated_at"].endswith("Z")
+        assert len(marker["commit"]) == 40
+        assert marker["commit"] == result["marker"]["commit"]
+        assert marker["devices"] == ["R1"]
+
+    def test_marker_points_at_the_migration_commit(self, lab):
+        from modules.nsot.repo import git
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+        _rc, head, _ = git(repo, "rev-parse", "HEAD")
+        assert migrate.read_marker(repo)["commit"] == head.strip()
+
+    def test_marker_is_not_committed(self, lab):
+        """Local installation state, like the backup dir — the commit is the
+        version-controlled record."""
+        from modules.nsot.repo import git
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+        _rc, tracked, _ = git(repo, "ls-files", ".nsot/migrated.json")
+        assert tracked.strip() == ""
+        _rc, status, _ = git(repo, "status", "--porcelain")
+        assert "migrated.json" not in status, "marker left the worktree dirty"
+
+    def test_plan_reports_already_migrated_afterwards(self, lab):
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        report = migrate.plan("Lab")
+        assert report["already_migrated"] is True
+        assert report["marker"]["devices"] == ["R1"]
+
+
+class TestSecondRunIsRefused:
+    """The bug this closes, reproduced.
+
+    The two stores hold the same device in different shapes: ``golden_configs/``
+    keeps the NMAS header, ``config_repo/`` has it stripped. The first run moves
+    the repo copy and wins; a second run finds only the *other* copy, renders it,
+    and commits the whitespace difference — nine files changed, for nothing.
+    """
+
+    def _both_shapes(self, lab):
+        (lab / "golden_configs" / "s4.cfg").write_text(
+            "! Golden config — s4 (10.255.1.24)\n!\n!\nhostname s4\n", encoding="utf-8")
+        (lab / "config_repo" / "s4.cfg").write_text(
+            "hostname s4\n", encoding="utf-8")
+
+    def test_apply_refuses_with_the_sha(self, lab):
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        first = migrate.apply("Lab")
+        second = migrate.apply("Lab")
+        assert second["ok"] is False
+        assert second["error"] == f"already migrated at {first['marker']['commit']}"
+        assert second["already_migrated"] is True
+
+    def test_refusal_creates_no_commit(self, lab):
+        from modules.nsot.repo import git
+        self._both_shapes(lab)
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+        _rc, before, _ = git(repo, "rev-parse", "HEAD")
+        migrate.apply("Lab")
+        _rc, after, _ = git(repo, "rev-parse", "HEAD")
+        assert before == after
+
+    def test_refusal_leaves_the_golden_file_byte_identical(self, lab):
+        self._both_shapes(lab)
+        migrate.apply("Lab")
+        target = lab / "config_repo" / "golden" / "s4.cfg"
+        before = target.read_bytes()
+        migrate.apply("Lab")
+        assert target.read_bytes() == before
+
+    def test_refusal_creates_no_second_baseline_tag(self, lab):
+        from modules.nsot.repo import git
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        migrate.apply("Lab")
+        _rc, tags, _ = git(str(lab / "config_repo"), "tag", "--list", "baseline/*")
+        assert len(tags.split()) == 1
+
+    def test_golden_configs_is_no_longer_an_input(self, lab):
+        """One-directional: the old store may be read for a lookup, never as
+        migration input again."""
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        (lab / "golden_configs" / "R2.cfg").write_text(
+            "! Golden config — R2 (203.0.113.2)\nhostname R2\n", encoding="utf-8")
+        assert migrate.plan("Lab")["candidates"] == 0
+
+
+class TestNeverCommitsAnUnchangedTree:
+    """Separate from the guard, and it has to hold without it.
+
+    ``save_golden`` already refuses to rewrite a file whose content matches and
+    refuses to commit when nothing is staged. Migration now matches that, so an
+    empty commit is impossible even with the marker deleted.
+    """
+
+    def test_bypassed_guard_still_creates_no_commit(self, lab):
+        from modules.nsot.repo import git
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+        _rc, before, _ = git(repo, "rev-list", "--count", "HEAD")
+
+        os.remove(migrate.marker_path(repo))   # simulate the guard being bypassed
+        result = migrate.apply("Lab")
+
+        _rc, after, _ = git(repo, "rev-list", "--count", "HEAD")
+        assert result["committed"] is False
+        assert before == after, "an unchanged tree produced a commit"
+
+    def test_unchanged_golden_file_is_not_rewritten(self, lab):
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+        target = lab / "config_repo" / "golden" / "R1.cfg"
+        stamp = os.stat(target).st_mtime_ns
+
+        os.remove(migrate.marker_path(repo))
+        migrate.apply("Lab")
+        assert os.stat(target).st_mtime_ns == stamp
+
+    def test_allow_empty_is_never_used(self, lab):
+        """A commit that cannot be empty is stronger than a check that says so."""
+        import inspect
+        code = [ln.split("#", 1)[0] for ln in
+                inspect.getsource(migrate.apply).splitlines()]
+        assert "--allow-empty" not in "\n".join(code)
+
+
+class TestPlatformComesFromInventory:
+    """A .cfg cannot say whether the box is a C8000v or a vIOS-L2.
+
+    Migration builds its entries from config files, so before this the manifest
+    carried an empty platform for every device — and parser selection, which
+    reads it, silently fell back to the default dialect.
+    """
+
+    def _inventory(self, lab, rows):
+        header = ("hostname,device_type,ip,username,password,secret,role,"
+                  "device_uid,platform\n")
+        body = "".join(
+            f"{r['hostname']},{r.get('device_type', 'cisco_ios')},{r['ip']},"
+            f"u,p,s,,,{r.get('platform', '')}\n" for r in rows)
+        (lab / "devices.csv").write_text(header + body, encoding="utf-8")
+
+    def test_csv_platform_column_reaches_the_manifest(self, lab):
+        from modules.nsot.manifest import load
+        self._inventory(lab, [{"hostname": "R1", "ip": "203.0.113.1",
+                               "platform": "cisco_iosxe"}])
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        entry = next(iter(load(str(lab / "config_repo"))["devices"].values()))
+        assert entry["platform"] == "cisco_iosxe"
+
+    def test_platform_is_derived_when_the_column_is_blank(self, lab):
+        from modules.nsot.manifest import load
+        self._inventory(lab, [{"hostname": "S1", "ip": "203.0.113.21",
+                               "device_type": "cisco_ios"}])
+        _write(lab, "golden_configs", "S1.cfg", "S1", "203.0.113.21", "hostname S1")
+        migrate.apply("Lab")
+        entry = next(iter(load(str(lab / "config_repo"))["devices"].values()))
+        assert entry["platform"] == "cisco_ios"
+
+    def test_a_correction_reaches_the_manifest_after_migration(self, lab):
+        """The reason this cannot be migration-time only: a platform recorded
+        wrongly and fixed later must still reach the manifest, because Phase 4
+        onboarding reads it from there."""
+        from modules.nsot.manifest import load, sync_platforms
+        self._inventory(lab, [{"hostname": "R1", "ip": "203.0.113.1",
+                               "platform": "cisco_ios"}])
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+
+        self._inventory(lab, [{"hostname": "R1", "ip": "203.0.113.1",
+                               "platform": "cisco_iosxe"}])
+        result = sync_platforms(repo, "Lab")
+
+        assert result["updated"] == [{"name": "R1", "from": "cisco_ios",
+                                      "to": "cisco_iosxe"}]
+        entry = next(iter(load(repo)["devices"].values()))
+        assert entry["platform"] == "cisco_iosxe"
+
+    def test_sync_is_idempotent(self, lab):
+        from modules.nsot.manifest import sync_platforms
+        self._inventory(lab, [{"hostname": "R1", "ip": "203.0.113.1",
+                               "platform": "cisco_iosxe"}])
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+        assert sync_platforms(repo, "Lab")["updated"] == []
+
+    def test_sync_creates_no_commit(self, lab):
+        """Runs on the refresh thread — manifest only, like pending renames."""
+        from modules.nsot.manifest import sync_platforms
+        from modules.nsot.repo import git
+        self._inventory(lab, [{"hostname": "R1", "ip": "203.0.113.1",
+                               "platform": "cisco_ios"}])
+        _write(lab, "golden_configs", "R1.cfg", "R1", "203.0.113.1", "hostname R1")
+        migrate.apply("Lab")
+        repo = str(lab / "config_repo")
+        _rc, before, _ = git(repo, "rev-list", "--count", "HEAD")
+
+        self._inventory(lab, [{"hostname": "R1", "ip": "203.0.113.1",
+                               "platform": "cisco_iosxe"}])
+        sync_platforms(repo, "Lab")
+
+        _rc, after, _ = git(repo, "rev-list", "--count", "HEAD")
+        assert before == after

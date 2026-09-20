@@ -142,10 +142,8 @@ def init_repo(repo: str) -> bool:
             fh.write("*.cfg text eol=lf\n*.j2 text eol=lf\n"
                      "*.yml text eol=lf\n*.yaml text eol=lf\n*.json text eol=lf\n")
 
-    gitignore = os.path.join(repo, ".gitignore")
-    if not os.path.exists(gitignore):
-        with open(gitignore, "w", encoding="utf-8") as fh:
-            fh.write("*.swp\n*.tmp\n.nsot/migration-backup/\n.nsot/staging/\n")
+    _ensure_gitignore(repo, ["*.swp", "*.tmp", ".nsot/migration-backup/",
+                             ".nsot/staging/", ".nsot/migrated.json"])
 
     rc, out, _ = git(repo, "rev-parse", "--verify", "HEAD")
     if rc != 0:
@@ -153,6 +151,33 @@ def init_repo(repo: str) -> bool:
         git(repo, "commit", "--allow-empty", "-m",
             "Initialize NSoT configuration repository")
     return True
+
+
+def _ensure_gitignore(repo: str, lines: list) -> None:
+    """Make sure every line in *lines* is present, appending what is missing.
+
+    Writing the file only when absent left every repo created before a new
+    ignore rule existed without it — silently, since nothing reads the file
+    back. Append-if-missing is idempotent and upgrades existing repos.
+    """
+    path = os.path.join(repo, ".gitignore")
+    existing = []
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                existing = [ln.strip() for ln in fh]
+        except OSError:
+            return
+    missing = [ln for ln in lines if ln not in existing]
+    if not missing:
+        return
+    try:
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
+            if existing and existing[-1] != "":
+                fh.write("\n")
+            fh.write("\n".join(missing) + "\n")
+    except OSError as exc:
+        log.debug("repo: could not update .gitignore in %s: %s", repo, exc)
 
 
 # ---------------------------------------------------------------------------

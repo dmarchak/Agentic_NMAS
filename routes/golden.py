@@ -140,8 +140,11 @@ def migrate_apply():
         return jsonify({"ok": False,
                         "error": "Review the dry-run report and confirm first."}), 400
     try:
-        return jsonify(apply_migration(_active_list(data),
-                                       actor=data.get("actor", "user")))
+        result = apply_migration(_active_list(data),
+                                 actor=data.get("actor", "user"))
+        # A refused re-run is a conflict, not a server error and not a success.
+        # The body carries the marker, so the UI can say when it happened.
+        return jsonify(result), (409 if result.get("already_migrated") else 200)
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: migration failed")
         return jsonify({"ok": False, "error": str(exc)}), 500

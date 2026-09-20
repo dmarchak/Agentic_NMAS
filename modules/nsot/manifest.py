@@ -120,6 +120,92 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
         return entry
 
 
+# ---------------------------------------------------------------------------
+# Platform, from the inventory source
+# ---------------------------------------------------------------------------
+
+def inventory_index(list_name: str) -> dict:
+    """``{mgmt_ip | lowercase hostname: {platform, netbox_id}}`` for a list.
+
+    The inventory — a CSV ``platform`` column for local lists, the NetBox
+    platform slug for NetBox lists — is the only thing that knows which config
+    dialect a device speaks. A ``.cfg`` file cannot tell you whether the box is
+    a C8000v or a vIOS-L2, so migration must not try to infer it from one.
+
+    Reads the dispatch layer, which never does network I/O: a NetBox list is
+    served from its cache.
+    """
+    try:
+        from modules.config import get_list_data_dir
+        from modules.device import load_saved_devices
+        from modules.nsot.platform import platform_for_device
+    except ImportError:
+        return {}
+
+    try:
+        csv_path = os.path.join(get_list_data_dir(list_name), "devices.csv")
+        devices = load_saved_devices(csv_path)
+    except Exception as exc:                   # noqa: BLE001
+        log.debug("manifest: inventory unavailable for '%s': %s", list_name, exc)
+        return {}
+
+    index = {}
+    for dev in devices:
+        record = {"platform": platform_for_device(dev),
+                  "netbox_id": dev.get("_netbox_id"),
+                  "device_uid": dev.get("device_uid", "")}
+        ip = (dev.get("ip") or "").strip()
+        name = (dev.get("hostname") or "").strip().lower()
+        if ip:
+            index[ip] = record
+        if name:
+            index.setdefault(name, record)
+    return index
+
+
+def sync_platforms(repo: str, list_name: str) -> dict:
+    """Refresh every manifest entry's platform from the inventory.
+
+    Called whenever the inventory changes — a NetBox refresh, a devices.csv
+    rewrite — not only at migration time. A platform can be corrected after the
+    fact, and Phase 4 onboarding reads it from the manifest, so a stale value
+    here is a wrong answer given confidently.
+
+    Manifest-only: no repo lock, no commit. The next ``save_golden`` carries it.
+    """
+    if not os.path.isdir(repo):
+        return {"ok": True, "updated": [], "unchanged": 0}
+
+    index = inventory_index(list_name)
+    if not index:
+        return {"ok": True, "updated": [], "unchanged": 0}
+
+    updated, unchanged = [], 0
+    with _lock_for(repo):
+        data = load(repo)
+        for identity, entry in data["devices"].items():
+            record = (index.get((entry.get("mgmt_ip") or "").strip())
+                      or index.get((entry.get("name") or "").strip().lower()))
+            if not record:
+                continue
+            resolved = record.get("platform", "")
+            if not resolved:
+                continue
+            if entry.get("platform") == resolved:
+                unchanged += 1
+                continue
+            updated.append({"name": entry.get("name", ""),
+                            "from": entry.get("platform", ""), "to": resolved})
+            entry["platform"] = resolved
+        if updated:
+            save(repo, data)
+
+    if updated:
+        log.info("manifest: platform updated for %d device(s) in '%s'",
+                 len(updated), list_name)
+    return {"ok": True, "updated": updated, "unchanged": unchanged}
+
+
 def record_pending_rename(repo: str, identity: str, new_name: str) -> dict:
     """Note that a device has been renamed, without touching git.
 

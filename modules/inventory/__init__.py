@@ -163,6 +163,7 @@ def refresh_list(list_name: str, block: bool = True) -> dict:
 
     _record_stale_devices(list_name, devices, previous_ips)
     _record_renames(list_name, devices)
+    _record_platforms(list_name)
 
     log.info("inventory: refreshed '%s' — %d device(s), %d skipped, %d warning(s)",
              list_name, len(devices), len(skipped), len(warnings))
@@ -290,6 +291,32 @@ def _record_renames(list_name: str, devices: list) -> None:
         current_name = dev.get("hostname", "")
         if current_name and entry.get("name") != current_name:
             _m.record_pending_rename(repo, identity, current_name)
+
+
+def _record_platforms(list_name: str) -> None:
+    """Refresh the manifest's platform for every device — manifest only.
+
+    The inventory is the authority on config dialect, and it can be corrected
+    after migration: a device mis-recorded as ``cisco_ios`` and later fixed to
+    ``cisco_iosxe`` must reach the manifest, because Phase 4 onboarding and
+    parser selection read it from there. Runs on the refresh thread, so like
+    :func:`_record_renames` it takes no repo lock and creates no commit.
+    """
+    import os as _os
+
+    try:
+        from modules.config import get_list_data_dir
+        from modules.nsot import manifest as _m
+    except ImportError:
+        return
+
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+    if not _os.path.isdir(repo):
+        return
+    try:
+        _m.sync_platforms(repo, list_name)
+    except Exception as exc:                   # noqa: BLE001
+        log.debug("inventory: platform sync failed for '%s': %s", list_name, exc)
 
 
 def sync_device_names_to_repo(list_name: str, actor: str = "user") -> dict:

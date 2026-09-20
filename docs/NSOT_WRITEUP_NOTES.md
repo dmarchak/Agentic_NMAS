@@ -1267,3 +1267,159 @@ gap by running against production shapes instead.* Every one of these three bugs
 would have reached a real deploy, and each would have failed quietly — a
 silently wrong record, not a crash.
 
+
+---
+
+## The unconsumed check: `already_migrated`, and why it is the same bug as `assert_no_negation`
+
+Found by re-running the migration against the live lab, not by any test.
+
+### What happened
+
+`plan()` returned a field called `already_migrated`. The migration UI read it
+to decide whether to show the migration card. `apply()` — the function that
+actually writes — never looked at it.
+
+So when the migration ran a second time, it ran. Nothing stopped it, because
+nothing was asking.
+
+That alone would have been survivable if a second run were a no-op. It was not,
+and the reason is the same two-stores asymmetry that produced three earlier
+bugs. `golden_configs/r1.cfg` carries the NMAS header line; `config_repo/r1.cfg`
+has it stripped. The first run `git mv`s the repo copy into `golden/` and that
+copy wins. The second run looks for candidates, finds the repo copy gone from
+where it used to be, finds only the `golden_configs/` copy — a *different shape
+of the same config* — renders it, and commits the difference.
+
+On the live repo that was commit `e014843`: nine files changed, eighteen
+insertions, every one of them a blank line or a bare `!`. A diff that says
+nothing, on top of a baseline the whole project is anchored to.
+
+### The second signal, also wrong
+
+The value `apply()` ignored was not merely unused. It was false on its own
+terms:
+
+```python
+already_migrated = os.path.isdir(os.path.join(repo, "golden"))
+```
+
+`init_repo()` creates `golden/`, `intended/`, `.nsot/` and `infra/` on the first
+call. So this expression is true from the moment the repository exists, before
+a single device has been migrated. It never returned `False` on a real repo
+except by accident of ordering.
+
+Two failures stacked: a check that computed the wrong thing, and no caller that
+would have noticed because no caller consumed it.
+
+### The family it belongs to
+
+This is the third instance in the project of one shape, and the clearest:
+
+| Where | What it claimed | What it did |
+|---|---|---|
+| `assert_no_negation(commands)` | "raises if any command negates config" | `return None` |
+| `plan()["already_migrated"]` | "this repo has already been migrated" | computed, reported, consumed by nothing |
+| `RenderArtifact.deployable` | "this artifact is safe to push" | — a *property*, so nothing can set it |
+
+The third is in the table because it is the counterexample. `deployable` has no
+backing field: it is computed from the artifact's own contents every time it is
+read, on a frozen dataclass, so there is no code path that can make it say yes
+when the artifact says no. That is what the other two should have been.
+
+The general shape is **a safety value whose truth is never tested by the thing
+it is supposed to protect**. A stub that returns `None` and a field that no
+caller reads are indistinguishable at the call site: in both cases the guard
+appears in the source, reads correctly in review, and has no effect.
+
+### Why a grep would not have found it
+
+`already_migrated` *was* referenced — twice. Once where it was computed, once
+in the template that renders the migration card. A search shows two hits and
+looks healthy. The question that finds the bug is not "is this referenced" but
+"is this read by the function that can do the damage", and no tool asks that.
+
+### The two fixes, deliberately independent
+
+The instinct is to fix the guard and stop. That produces a system with exactly
+one thing standing between it and a bad commit, which is how the original got
+written.
+
+1. **A marker the guard can read.** `.nsot/migrated.json` holds a timestamp and
+   the commit sha. `apply()` refuses with `already migrated at <sha>`. The
+   state is recorded rather than inferred, so the check cannot be wrong about
+   what it is checking the way `isdir("golden")` was.
+
+2. **An empty commit made structurally impossible.** Independently of the
+   guard, migration now matches the discipline `save_golden` already had:
+   `_content_changed()` before rewriting any golden file, so an identical file
+   is not touched; `git diff --cached --name-only` before committing, which
+   asks the *index* what will be committed rather than asking the worktree what
+   differs; and no `--allow-empty`, so git itself refuses. A test deletes the
+   marker — simulating the guard being bypassed or removed — and asserts that
+   re-running produces no commit.
+
+The second fix is the one that matters for the write-up. A guard protects
+against the case you thought of. A structural impossibility protects against
+the case you did not, including "someone deletes the guard in six months".
+
+### Why the marker is not version-controlled
+
+It was tempting to commit it. Two reasons not to:
+
+- It has to carry the commit sha, which does not exist until after the commit
+  that would contain it. Committing it means either a second commit or a
+  deliberate lie in the file.
+- "Has this data directory been migrated" is local installation state, not
+  repository content. It belongs with `.nsot/migration-backup/` and
+  `.nsot/staging/`, both already ignored. The version-controlled record of the
+  migration already exists: the migration commit and its `baseline/` tag.
+
+### The rule
+
+> A value that names a safety property must be read by the function that can
+> violate it — and then the violation should be made impossible a second way,
+> without reference to the value.
+
+If only the first half is true, the property is documentation. If only the
+second, the guard is redundant but harmless. Both is the point.
+
+---
+
+## Platform: inferred from the wrong artifact, then never refreshed
+
+A smaller find from the same verification pass, worth recording because the fix
+location is the interesting part.
+
+Every manifest entry on the live lab had `"platform": ""` — all nine devices.
+The cause is direct: migration builds its entries by reading config files, and a
+`.cfg` file cannot tell you whether the box is a C8000v or a vIOS-L2. There was
+nothing to read it *from*.
+
+The consequence was silent. `platform_for_device()` falls back to
+`DEFAULT_PLATFORM` when nothing is recorded, so parser selection kept working
+and produced answers for every device — using the `cisco_ios` dialect for the
+IOS-XE routers, which is exactly the conflation `modules/nsot/platform.py` was
+written to end.
+
+The fix has two halves and the second is the one that was nearly missed:
+
+- Platform comes from the **inventory** — the CSV `platform` column for local
+  lists, the NetBox platform slug for NetBox lists. The inventory is the only
+  store that knows, because it is the only one a human or NetBox writes to.
+- It is refreshed **whenever the inventory changes**, not only at migration.
+  `manifest.sync_platforms()` is called from `refresh_list()` and from
+  `write_devices_csv()` — the two points where a list's inventory is rewritten.
+
+Migration-time-only would have looked correct in every test: migrate a list with
+platforms set, assert the manifest has them. It would have been wrong the first
+time an operator corrected a platform they had typed wrong, because Phase 4
+onboarding reads platform from the manifest, not from the CSV. The value would
+have been right in the place a human edits it and stale in the place the code
+reads it — the most expensive kind of wrong, because both look authoritative.
+
+The general form: **a value copied between stores needs a refresh path, not just
+an initial-population path.** Deciding where the refresh hook goes is the same
+question as "what event means this value might have changed", and answering it
+at migration time only means the answer was "the migration", which is a
+one-time event that the value's lifetime outlives.

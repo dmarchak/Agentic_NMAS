@@ -18,10 +18,28 @@ Steps:
 5. Build ``.nsot/manifest.json`` and backfill ``device_uid`` for every device in
    every local list, so identity exists immediately rather than on first save.
 6. Tag the result ``baseline/<ts>-migrated``.
+7. Write ``.nsot/migrated.json`` — the marker that says this data directory has
+   adopted the layout.
 
 Nothing is deleted. Losing copies move to ``.nsot/migration-backup/``.
+
+**One-directional.** ``golden_configs/`` is an input to the migration exactly
+once. After the marker exists, :func:`apply` refuses and ``_collect_candidates``
+stops reading that directory at all. The old store survives as a **read-only**
+fallback for one lookup — :func:`modules.ai_assistant._find_golden_config_file`
+consults it only when the manifest has no entry for a device — and is never
+again a source of repo content.
+
+The marker is deliberately **not** version-controlled. "Has this data directory
+been migrated" is local installation state, the same kind as
+``.nsot/migration-backup/`` and ``.nsot/staging/``, both already ignored. It
+also has to carry the commit sha, which does not exist until after the commit
+that would contain it. The version-controlled record of the migration is the
+migration commit and its ``baseline/`` tag; the marker just answers the guard's
+question without inferring it from directory contents.
 """
 
+import json
 import logging
 import os
 import re
@@ -36,6 +54,41 @@ log = logging.getLogger(__name__)
 
 _HEADER_RE = re.compile(r"—\s*(.+?)\s*\(([^)]+)\)")
 _BACKUP_REL = os.path.join(".nsot", "migration-backup")
+MARKER_REL = os.path.join(".nsot", "migrated.json")
+
+
+def marker_path(repo: str) -> str:
+    return os.path.join(repo, MARKER_REL)
+
+
+def read_marker(repo: str):
+    """The migration marker, or ``None`` if this repo has not been migrated."""
+    try:
+        with open(marker_path(repo), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_marker(repo: str, sha: str, devices: list, merges: list) -> dict:
+    """Record that this data directory has adopted the NSoT layout.
+
+    Written *after* the commit, so it can carry the real sha rather than a
+    promise of one.
+    """
+    marker = {
+        "migrated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "commit": sha,
+        "devices": sorted(d["hostname"] for d in devices),
+        "device_count": len(devices),
+        "merge_count": len(merges),
+    }
+    os.makedirs(os.path.dirname(marker_path(repo)), exist_ok=True)
+    with open(marker_path(repo), "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(marker, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    return marker
 
 
 def _parse_header(path: str) -> tuple:
@@ -76,9 +129,19 @@ def _case_insensitive_fs(directory: str) -> bool:
 
 
 def _collect_candidates(golden_dir: str, repo: str) -> list:
-    """Every golden file NMAS knows about, from both stores."""
+    """Every golden file NMAS knows about, from both stores.
+
+    ``golden_configs/`` is read **only until the marker exists**. Once this
+    repo has been migrated the old store is inert as far as migration is
+    concerned, whatever it still contains — so a second run cannot re-import
+    stale copies over the live goldens.
+    """
+    stores = [("config_repo", repo)]
+    if read_marker(repo) is None:
+        stores.insert(0, ("golden_configs", golden_dir))
+
     found = []
-    for source, directory in (("golden_configs", golden_dir), ("config_repo", repo)):
+    for source, directory in stores:
         if not os.path.isdir(directory):
             continue
         for name in sorted(os.listdir(directory)):
@@ -208,7 +271,11 @@ def plan(list_name: str) -> dict:
     repo = os.path.join(list_dir, "config_repo")
     golden_dir = os.path.join(list_dir, "golden_configs")
 
-    already_migrated = os.path.isdir(os.path.join(repo, "golden"))
+    # The marker, not the directory listing. ``golden/`` exists the moment
+    # init_repo() runs, so its presence never meant "migrated" — that check
+    # was computed, reported, and consumed by nothing.
+    marker = read_marker(repo)
+    already_migrated = marker is not None
     candidates = _collect_candidates(golden_dir, repo)
     groups, merges = _group_duplicates(candidates)
 
@@ -230,6 +297,7 @@ def plan(list_name: str) -> dict:
         "ok": True,
         "list": list_name,
         "already_migrated": already_migrated,
+        "marker": marker,
         "case_insensitive_fs": _case_insensitive_fs(list_dir),
         "staged_files": staged,
         "devices": sorted(to_migrate, key=lambda d: d["hostname"].lower()),
@@ -244,10 +312,24 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
     """Perform the migration. Idempotent."""
     from modules.config import get_list_data_dir
 
-    report = plan(list_name)
     list_dir = get_list_data_dir(list_name)
     repo = os.path.join(list_dir, "config_repo")
     golden_dir = os.path.join(list_dir, "golden_configs")
+
+    # Refuse before doing anything. A second run is not a harmless no-op: the
+    # two stores hold the same config in different shapes, so re-importing
+    # rewrites every golden and commits the difference.
+    marker = read_marker(repo)
+    if marker is not None:
+        sha = marker.get("commit") or "unknown"
+        log.warning("migrate: refusing to re-run '%s' — already migrated at %s",
+                    list_name, sha)
+        return {"ok": False, "list": list_name,
+                "error": f"already migrated at {sha}",
+                "already_migrated": True, "marker": marker,
+                "migrated": [], "merges": [], "committed": False}
+
+    report = plan(list_name)
 
     with _repo.repo_lock(repo):
         _repo.init_repo(repo)
@@ -267,6 +349,7 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
 
         candidates = _collect_candidates(golden_dir, repo)
         groups, merges = _group_duplicates(candidates)
+        inventory = _manifest.inventory_index(list_name)
         migrated = []
 
         for key, members in groups.items():
@@ -297,8 +380,11 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
                     if not moved:
                         log.debug("migrate: git mv %s failed: %s", source_rel, err)
 
-            with open(target_abs, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(content)
+            # Same discipline as save_golden: an unchanged file is not
+            # rewritten, so it cannot contribute a phantom diff.
+            if _repo._content_changed(target_abs, content):
+                with open(target_abs, "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write(content)
 
             # Reuse an existing identity so re-running the migration is a
             # no-op. Minting a fresh uid every run would rewrite the manifest
@@ -308,7 +394,13 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
                 identity, existing = _manifest.find_by_name(repo, hostname)
             if not identity:
                 identity = _manifest.new_device_uid()
+            # Platform comes from the inventory, never from the config file.
+            # A .cfg cannot tell you whether the box is a C8000v or a vIOS-L2;
+            # the CSV column (or the NetBox platform) can.
+            inv = inventory.get(group_ip) or inventory.get(hostname.lower()) or {}
             _manifest.upsert_device(repo, identity, hostname, group_ip,
+                                    netbox_id=inv.get("netbox_id"),
+                                    platform=inv.get("platform", ""),
                                     golden=target_rel)
 
             for loser in losers:
@@ -323,24 +415,45 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
 
         # .gitattributes and the manifest join the migration commit.
         _repo.git(repo, "add", "-A", "golden", ".nsot", ".gitattributes", ".gitignore")
-        rc, out, _ = _repo.git(repo, "status", "--porcelain")
+
+        # Ask the index what is actually staged, not the worktree what is
+        # merely different. ``status --porcelain`` also reports untracked and
+        # unstaged paths that no commit would contain, so it can say "yes"
+        # about a tree that is committed-identical.
+        rc, staged_out, _ = _repo.git(repo, "diff", "--cached", "--name-only")
+        staged_now = staged_out.splitlines() if rc == 0 else []
+
         created_commit = False
-        if out.strip():
+        sha = ""
+        if staged_now:
             message = (
                 f"migration: adopt NSoT repo layout for {len(migrated)} device(s)\n\n"
                 f"Source: migration\nActor: {actor}\n"
                 f"Devices: {','.join(m['hostname'] for m in migrated)}\n"
                 + (f"Merged-Duplicates: {len(merges)}\n" if merges else "")
             )
+            # No --allow-empty, ever: git itself then refuses a commit that
+            # would not change the tree. Belt to the guard's braces — an empty
+            # migration commit stays impossible even if the check above is
+            # wrong or removed.
             rc, _, err = _repo.git(repo, "commit", "-m", message)
             created_commit = rc == 0
             if not created_commit:
                 log.error("migrate: commit failed: %s", err)
+        else:
+            log.info("migrate: nothing staged for '%s' — no commit created", list_name)
+
+        rc, head, _ = _repo.git(repo, "rev-parse", "HEAD")
+        if rc == 0:
+            sha = head.strip()
 
         if created_commit:
             stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-            _repo.git(repo, "tag", "-a", f"baseline/{stamp}-migrated", "-m",
+            tag = _repo._unique_tag(repo, f"baseline/{stamp}-migrated", sha)
+            _repo.git(repo, "tag", "-a", tag, "-m",
                       f"migrated baseline — {len(migrated)} device(s)")
+
+        marker = _write_marker(repo, sha, migrated, merges)
 
     backfilled = backfill_device_uids()
 
@@ -348,7 +461,7 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
              list_name, len(migrated), len(merges), backfilled["updated"])
     return {"ok": True, "list": list_name, "migrated": migrated,
             "merges": merges, "device_uids": backfilled,
-            "committed": created_commit, "report": report}
+            "committed": created_commit, "marker": marker, "report": report}
 
 
 def backfill_device_uids() -> dict:

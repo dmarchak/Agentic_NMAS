@@ -175,6 +175,27 @@ def delete_device(ip: str, filename: str | None = None) -> None:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(devices)
+    _sync_manifest_platforms(filename)
+
+
+def _sync_manifest_platforms(csv_path: str) -> None:
+    """Carry the CSV ``platform`` column into the manifest.
+
+    The local-list counterpart of the NetBox refresh hook: a devices.csv
+    rewrite *is* this list's inventory refresh. Best effort — a device list
+    with no repo yet has nothing to update, and a failure here must never
+    prevent the inventory itself from being saved.
+    """
+    try:
+        from modules.nsot import manifest as _m
+        list_name = _list_name_for_path(csv_path)
+        if not list_name:
+            return
+        repo = os.path.join(os.path.dirname(os.path.abspath(csv_path)), "config_repo")
+        if os.path.isdir(repo):
+            _m.sync_platforms(repo, list_name)
+    except Exception as exc:                   # noqa: BLE001
+        logger.debug("device: manifest platform sync failed for %s: %s", csv_path, exc)
 
 
 def get_device_context(dev: dict, filesystem: str | None = None):

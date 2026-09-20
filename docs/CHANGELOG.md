@@ -7,6 +7,86 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Migration hardening, found by the first real run
+
+Three defects the test suite could not have found, because all three needed
+either a repo that had already been migrated or an inventory the fixtures did
+not have. Fixed before approving any template, so the first `template:` commit
+lands on a repo with no known write bug.
+
+### Fixed — a second migration run rewrote every golden config
+
+`plan()` computed `already_migrated` and **`apply()` never read it** — the same
+shape as the `assert_no_negation` stub found in 3c: a safety value that exists,
+is reported, and is consumed by nothing. The computed value was also wrong on
+its own terms. It tested `os.path.isdir(repo/"golden")`, and `init_repo()`
+creates that directory, so it was true from the first commit onward.
+
+Re-running was not the harmless no-op it looked like. The two stores hold the
+same device in different shapes: `golden_configs/r1.cfg` carries the NMAS
+header, `config_repo/r1.cfg` has it stripped. The first run `git mv`s the repo
+copy and wins; the second run finds only the *other* copy, renders it, and
+commits the difference. On the live lab that was `e014843` — nine files, 18
+insertions, all whitespace.
+
+Two independent fixes, because one guard is not a discipline:
+
+- **`.nsot/migrated.json`** — a marker holding the timestamp and the commit
+  sha. `apply()` reads it and refuses with `already migrated at <sha>`; the
+  route answers `409`. The guard no longer infers state from directory
+  contents. The marker is deliberately gitignored: "has this data directory
+  been migrated" is local installation state, like `.nsot/migration-backup/`,
+  and it has to carry a sha that does not exist until after the commit that
+  would contain it. The migration commit and its `baseline/` tag remain the
+  version-controlled record.
+- **An empty commit is now impossible even with the guard removed.** Migration
+  adopts `save_golden`'s discipline: `_content_changed()` before rewriting each
+  golden file, `git diff --cached --name-only` (the index, not the worktree)
+  before committing, and no `--allow-empty` — a test asserts the flag's absence
+  in code rather than trusting the check. Deleting the marker and re-running now
+  produces no commit at all.
+
+Also: the baseline tag goes through `_unique_tag()`, so two runs in the same
+second can no longer create `baseline/<ts>-migrated` twice.
+
+### Changed — `golden_configs/` is one-directional
+
+Keeping the old store after migration is the right design — it is the rollback
+if the layout is wrong. But it was still an *input*: a second migration read
+from it, and `_migrate_golden_configs()` renamed files inside it. Both are now
+closed. `_collect_candidates()` stops reading the directory once the marker
+exists, and the legacy in-place rename returns immediately. The single
+remaining reason to touch it is `_find_golden_config_file()` step 3, reached
+only when the manifest has no entry for the device, and strictly read-only.
+
+### Fixed — the manifest had no platform for any device
+
+Migration builds its entries from config files, and a `.cfg` cannot tell you
+whether the box is a C8000v or a vIOS-L2. Every entry on the live lab carried
+`"platform": ""`, so parser selection — which reads it — silently fell back to
+the default dialect for all nine devices.
+
+Platform now comes from the **inventory**, which is the only thing that knows:
+the `platform` CSV column for local lists, the NetBox platform slug for NetBox
+lists, both resolved through `platform_for_device()`. It is threaded in at
+migration time *and* refreshed whenever the inventory changes —
+`manifest.sync_platforms()` is called from `refresh_list()` for NetBox lists and
+from `write_devices_csv()` for local ones. Migration-time only would have been
+wrong: a platform can be corrected after the fact, and Phase 4 onboarding reads
+it from the manifest.
+
+Like `_record_renames()`, the sync touches the manifest only — no repo lock, no
+commit; the next `save_golden` carries it.
+
+### Changed — `.gitignore` is append-if-missing
+
+`init_repo()` wrote the file only when absent, so every repo created before a
+new ignore rule existed silently lacked it. `_ensure_gitignore()` appends what
+is missing and is idempotent, which is also how existing repos pick up the
+marker rule.
+
+---
+
 ## [Unreleased] — NSoT Phase 3c: deploy from template
 
 `PipelineRunner` is wired to the UI at last. This is the only phase of the NSoT

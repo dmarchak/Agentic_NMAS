@@ -74,11 +74,11 @@ tracked in git.
 - **[modules/nsot/repo.py](modules/nsot/repo.py)** — `save_golden()`, the one
   golden write path; trailers, tags, renames, CI notes, locking
 - **[modules/nsot/manifest.py](modules/nsot/manifest.py)** — identity map
-  (`nb:<id>` / `uid:<uuid>`), pending renames
+  (`nb:<id>` / `uid:<uuid>`), pending renames, `sync_platforms()`
 - **[modules/nsot/normalize.py](modules/nsot/normalize.py)** — every
   config-line filter, one per job
 - **[modules/nsot/migrate.py](modules/nsot/migrate.py)** — dry-run-first
-  migration with duplicate merging
+  migration with duplicate merging; one-shot, guarded by `.nsot/migrated.json`
 - **[modules/nsot/restore.py](modules/nsot/restore.py)** — baseline restore,
   skipping stale devices
 - **[modules/nsot/hooks.py](modules/nsot/hooks.py)**,
@@ -123,6 +123,16 @@ dashboard), `device.html` (1,239 — per-device page), and
 - **Data storage:** `data/lists/{slug}/` per device list — devices.csv
   (Fernet-encrypted creds), variables.json, golden_configs/, backups/,
   approval_queue.json, jenkins_pipelines.json, config_repo/
+- **Migration is one-directional and runs once.** `config_repo/golden/` is the
+  golden store; `golden_configs/` survives as a deprecated **read-only**
+  fallback, consulted by `_find_golden_config_file()` only when the manifest has
+  no entry for a device. It is never an input to migration again, and nothing
+  writes there. `apply()` refuses when `.nsot/migrated.json` exists (`409`), and
+  independently of that guard cannot produce an empty commit.
+- **Platform lives in the manifest, sourced from the inventory.** The `platform`
+  CSV column (local lists) or the NetBox platform slug (NetBox lists), resolved
+  through `platform_for_device()` and refreshed by `manifest.sync_platforms()`
+  on every inventory change — not only at migration.
 - **AI read-first:** the agent checks golden configs and variables before opening
   any SSH session
 - **Config push workflow:** backup → push → Jenkins CI → save golden → update
