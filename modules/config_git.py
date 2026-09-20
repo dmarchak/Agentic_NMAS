@@ -40,11 +40,10 @@ _GIT_AUTHOR_EMAIL = "nmas@localhost"
 _PC_FILE          = "pipeline_commits.json"   # per-list tracking file
 
 # Lines stripped before storing — avoids noise in diffs
-_VOLATILE_PREFIXES = (
-    "! Last configuration", "! NVRAM config", "! No configuration",
-    "Building configuration", "Current configuration", "ntp clock-period",
-    "! Golden config", "! Saved:", "! Source:", "! Pre-change",
-)
+# Moved to modules/nsot/normalize.py. Re-exported here because this name is
+# part of config_git's surface. The tuple is byte-identical to the one that
+# lived here — see tests/test_normalize_equivalence.py.
+from modules.nsot.normalize import REPO_PREFIXES as _VOLATILE_PREFIXES
 
 
 # ---------------------------------------------------------------------------
@@ -121,25 +120,27 @@ def _sanitise_hostname(hostname: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in hostname)
 
 
-def write_and_stage(list_name: str, hostname: str, config_text: str) -> bool:
-    """Write *config_text* for *hostname* and stage it (git add).  Returns True on success."""
-    repo = _repo_dir(list_name)
-    init_config_repo(list_name)
+def write_and_stage(list_name: str, hostname: str, config_text: str,
+                    device_ip: str = "") -> bool:
+    """Promote a golden config. Kept for compatibility; now commits immediately.
 
-    fname = f"{_sanitise_hostname(hostname)}.cfg"
-    path  = os.path.join(repo, fname)
+    This used to write a file and merely ``git add`` it, leaving the commit to
+    whenever someone remembered to press Commit in the Git tab. The current
+    golden and the latest commit could therefore disagree indefinitely, and
+    history existed only by luck. It now routes through
+    :func:`modules.nsot.repo.save_golden`, which commits in the same call.
 
-    # Strip volatile lines so diffs focus on real config changes
-    clean_lines = [
-        ln for ln in config_text.splitlines()
-        if not any(ln.startswith(p) for p in _VOLATILE_PREFIXES)
-    ]
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(clean_lines) + "\n")
+    The manual stage/commit flow in the Git tab is unaffected — it is still how
+    ``infra/`` and ad-hoc files are handled.
+    """
+    from modules.nsot.repo import GoldenItem, save_golden
 
-    rc, _, err = _git(repo, "add", fname)
-    if rc != 0:
-        log.warning("config_git: git add failed for %s/%s: %s", list_name, hostname, err)
+    result = save_golden(list_name,
+                         [GoldenItem(hostname, config_text, device_ip)],
+                         source="manual", actor="user")
+    if not result.get("ok"):
+        log.warning("config_git: golden save failed for %s/%s: %s",
+                    list_name, hostname, result.get("error"))
         return False
     return True
 

@@ -367,14 +367,24 @@ def _device_unavailable_message(ip: str) -> str:
     return f"Error: device {ip} not found"
 
 
-def _find_golden_config_file(device_ip: str) -> Optional[str]:
+def _nsot_repo_dir() -> str:
+    """The current list's NSoT repo."""
+    from modules.config import get_current_list_data_dir
+    return os.path.join(get_current_list_data_dir(), "config_repo")
+
+
+def _legacy_header_scan(device_ip: str) -> Optional[str]:
+    """Find a golden file by scanning headers for the IP — the pre-Phase-2 way.
+
+    Kept as the last link in the resolution chain for the deprecation release.
+    A device whose management IP changed outside NMAS is not in the manifest
+    under its new IP, and losing its golden config silently would be worse than
+    a slow scan.
     """
-    Find the golden config file for a device by scanning headers for the IP.
-    Returns the full file path or None if not found.
-    """
-    import re as _re4
     gdir = _get_golden_configs_dir()
-    for fname in os.listdir(gdir):
+    if not os.path.isdir(gdir):
+        return None
+    for fname in sorted(os.listdir(gdir)):
         if not fname.endswith(".cfg"):
             continue
         fpath = os.path.join(gdir, fname)
@@ -386,6 +396,58 @@ def _find_golden_config_file(device_ip: str) -> Optional[str]:
         except Exception:
             pass
     return None
+
+
+def _find_golden_config_file(device_ip: str) -> Optional[str]:
+    """Locate a device's golden config. Signature unchanged.
+
+    Resolution chain:
+      1. manifest by identity (NetBox id / device_uid)
+      2. manifest by management IP
+      3. legacy header scan in golden_configs/  (deprecated, logs a warning)
+      4. None
+    """
+    repo = _nsot_repo_dir()
+
+    try:
+        from modules.nsot import manifest as _m
+
+        identity = _identity_for_ip(device_ip)
+        if identity:
+            entry = _m.find_by_identity(repo, identity)
+            if entry:
+                path = _m.golden_path_for(repo, entry)
+                if os.path.exists(path):
+                    return path
+
+        _ident, entry = _m.find_by_ip(repo, device_ip)
+        if entry:
+            path = _m.golden_path_for(repo, entry)
+            if os.path.exists(path):
+                return path
+    except Exception as exc:                   # noqa: BLE001
+        logger.debug("golden: manifest lookup failed for %s: %s", device_ip, exc)
+
+    legacy = _legacy_header_scan(device_ip)
+    if legacy:
+        logger.warning("golden: %s resolved via the legacy header scan — "
+                    "golden_configs/ is deprecated and will be removed", device_ip)
+    return legacy
+
+
+def _identity_for_ip(device_ip: str) -> str:
+    """Stable identity for a device, from the active inventory."""
+    try:
+        from modules.device import get_current_device_list, load_saved_devices
+        from modules.nsot.manifest import identity_for
+
+        _name, csv_path = get_current_device_list()
+        for dev in load_saved_devices(csv_path):
+            if dev.get("ip") == device_ip:
+                return identity_for(dev.get("_netbox_id"), dev.get("device_uid", ""))
+    except Exception:                          # noqa: BLE001
+        pass
+    return ""
 
 
 def _golden_config_path(device_ip: str, hostname: str = "") -> str:
@@ -405,37 +467,47 @@ def _golden_config_path(device_ip: str, hostname: str = "") -> str:
     return os.path.join(gdir, f"{safe}.cfg")
 
 
-def _save_golden_config_file(device_ip: str, hostname: str, config_text: str) -> None:
-    """Write (overwrite) the golden config for one device. Filename = hostname."""
-    _migrate_golden_configs()   # ensure no legacy IP-named files exist
-    # Remove any old file for this IP (handles hostname changes)
-    old = _find_golden_config_file(device_ip)
-    if old:
-        safe_new = os.path.join(_get_golden_configs_dir(), f"{_safe_device_name(hostname)}.cfg")
-        if os.path.abspath(old) != os.path.abspath(safe_new):
-            try:
-                os.remove(old)
-            except Exception:
-                pass
-    path   = _golden_config_path(device_ip, hostname)
-    header = (
-        f"! Golden config — {hostname} ({device_ip})\n"
-        f"! Saved: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"! Source: show startup-config\n"
-        "!\n"
-    )
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(header + config_text.strip() + "\n")
+def _save_golden_config_file(device_ip: str, hostname: str, config_text: str,
+                             source: str = "ai", actor: str = "ai-agent") -> None:
+    """Promote a golden config for one device. Signature unchanged.
 
-    # Also stage in the list's git repo — AI saves show up alongside manual saves.
+    A thin wrapper over :func:`modules.nsot.repo.save_golden`, which is the one
+    write path: one call, one commit, immediately. The previous implementation
+    wrote the file and then merely *staged* a copy in the repo, so the current
+    golden and the latest commit could disagree indefinitely and history existed
+    only if someone remembered to commit from the Git tab.
+    """
+    from modules.config import get_current_list_name
+    from modules.nsot.repo import GoldenItem, save_golden
+
+    list_name = get_current_list_name()
+    netbox_id, device_uid = _identity_parts_for_ip(device_ip)
+
+    result = save_golden(
+        list_name,
+        [GoldenItem(hostname, config_text, device_ip,
+                    netbox_id=netbox_id, device_uid=device_uid)],
+        source=source, actor=actor,
+    )
+    if not result.get("ok"):
+        logger.error("golden: save failed for %s (%s): %s",
+                  hostname, device_ip, result.get("error"))
+        return
+    if result.get("unchanged"):
+        logger.info("golden: %s unchanged — no commit created", hostname)
+
+
+def _identity_parts_for_ip(device_ip: str) -> tuple:
+    """``(netbox_id, device_uid)`` for a device, from the active inventory."""
     try:
-        from modules.config_git import write_and_stage, init_config_repo
-        from modules.config    import get_current_list_name
-        list_name = get_current_list_name()
-        init_config_repo(list_name)
-        write_and_stage(list_name, hostname, config_text)
-    except Exception:
-        pass   # git staging is best-effort; never block a golden config save
+        from modules.device import get_current_device_list, load_saved_devices
+        _name, csv_path = get_current_device_list()
+        for dev in load_saved_devices(csv_path):
+            if dev.get("ip") == device_ip:
+                return dev.get("_netbox_id"), dev.get("device_uid", "")
+    except Exception:                          # noqa: BLE001
+        pass
+    return None, ""
 
 
 def _load_golden_config_file(device_ip: str) -> Optional[str]:

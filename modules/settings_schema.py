@@ -167,6 +167,12 @@ DEFAULTS: dict = {
         "firewall": "firewall",
     },
 
+    # ── NSoT repo tag retention ─────────────────────────────────────────────
+    # baseline/* tags are always kept — they are the network-wide restore points.
+    # Per-device golden/<device>/* tags are pruned beyond the last N.
+    # 0 = keep all. Commits retain full history regardless of tag pruning.
+    "nsot_device_tag_retention": 50,
+
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
     # default so existing pipelines regenerate byte-identically.
@@ -281,6 +287,8 @@ SCHEMA: dict = {
             # "" is allowed and means "fall back to hostname inference".
             "additionalProperties": {"enum": ["router", "switch", "firewall", ""]},
         },
+
+        "nsot_device_tag_retention": {"type": "integer", "minimum": 0},
 
         "jenkins_step_shell": {"enum": ["bat", "sh"]},
 

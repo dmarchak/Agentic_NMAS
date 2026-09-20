@@ -44,6 +44,11 @@ PyYAML>=6.0
 # onto the existing code without rewriting settings access as typed models.
 jsonschema>=4.20.0
 
+# S3-compatible archive for the NSoT repo (MinIO, AWS S3, ...).
+# Optional at runtime: an absent SDK degrades to "not installed" rather than
+# failing, because the archive never blocks a commit.
+minio>=7.2.0
+
 # Socket.IO
 python-socketio==5.10.0
 python-engineio==4.8.0

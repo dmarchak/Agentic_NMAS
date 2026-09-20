@@ -54,7 +54,7 @@ tracked in git.
 - **[modules/collector_config.py](modules/collector_config.py)** (238) — per-list
   collector settings, including trap/NetFlow ports
 
-### NSoT / Phase 0–1 additions
+### NSoT / Phase 0–2 additions
 - **[modules/settings_schema.py](modules/settings_schema.py)** (314) — settings
   defaults, JSON Schema validation, and forward migration
 - **[modules/netbox_guard.py](modules/netbox_guard.py)** (276) — NetBox write
@@ -71,11 +71,23 @@ tracked in git.
   profiles and the resolver
 - **[modules/nsot/context.py](modules/nsot/context.py)** — `build_render_context()`,
   the single way templates get data
+- **[modules/nsot/repo.py](modules/nsot/repo.py)** — `save_golden()`, the one
+  golden write path; trailers, tags, renames, CI notes, locking
+- **[modules/nsot/manifest.py](modules/nsot/manifest.py)** — identity map
+  (`nb:<id>` / `uid:<uuid>`), pending renames
+- **[modules/nsot/normalize.py](modules/nsot/normalize.py)** — every
+  config-line filter, one per job
+- **[modules/nsot/migrate.py](modules/nsot/migrate.py)** — dry-run-first
+  migration with duplicate merging
+- **[modules/nsot/restore.py](modules/nsot/restore.py)** — baseline restore,
+  skipping stale devices
+- **[modules/nsot/hooks.py](modules/nsot/hooks.py)**,
+  **[archive.py](modules/nsot/archive.py)** — background post-commit push/archive
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
-  `netbox_safety.py`, `inventory.py`
+  `netbox_safety.py`, `inventory.py`, `golden.py`
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -174,6 +186,40 @@ to `""` and topology falls back to hostname inference. Set
 and backups but becomes **inert** — the approval executor, drift checker, and AI
 tools refuse to act on it, and its pooled SSH session is closed.
 
+### Golden config repository (Phase 2)
+
+`data/lists/{slug}/config_repo/` is the NSoT repo: `golden/<device>.cfg`,
+`.nsot/manifest.json`, `infra/`, `.gitattributes`.
+
+- **One write path.** Everything that promotes a golden config goes through
+  `nsot.repo.save_golden()`. **One call is one commit**, even for a nine-device
+  Save All. An unchanged device creates no commit but is still reported.
+- **Timestamps live in git**, not in the file. The file keeps one stable header
+  line; `! Saved:` / `! Source:` are gone because they produced a diff on every
+  save. Commits carry `Source`, `Actor`, `Device-Id`, `Device-Name` trailers,
+  and annotated tags `golden/<device>/<UTC>` and `baseline/<UTC>`.
+- **Identity, not filename.** The manifest keys on `nb:<netbox_id>` or
+  `uid:<uuid4>`. A rename is a `git mv` committed **alone**, which is what keeps
+  `git log --follow` working across it.
+- **Refresh never writes to git.** An inventory refresh records
+  `pending_rename` in the manifest only; the `git mv` happens at the next
+  `save_golden` or via "Sync device names to repo". Both names resolve while
+  pending.
+- **Restore queues approvals**, never pushes. Stale devices are skipped and
+  **named** in the confirm dialog.
+- **Migration is dry-run by default.** It merges case-insensitive and IP-level
+  duplicates keeping the newest content, reports every merge, and backs up
+  rather than deletes.
+- Post-commit hooks (git push, S3 archive) run on a background thread with
+  short timeouts and never block a commit. Push never force-pushes.
+- `nsot_device_tag_retention` (default 50) prunes per-device tags only;
+  `baseline/*` tags and all commits are kept.
+
+**Config-line filters** live in `modules/nsot/normalize.py`. They are *not* one
+list — four different jobs, and `push_safe_lines()` filtering `end` is a
+truncation guard, not cleanup. `test_normalize_equivalence.py` pins each to its
+prior behaviour.
+
 ### Settings
 
 All settings live in `data/user_settings.json` with a `settings_schema_version`.
@@ -217,7 +263,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 307 tests
+pytest                    # 385 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -234,6 +280,10 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_inventory.py` | NetBox-sourced lists: shape fidelity, skips, stale devices |
 | `test_device_lookup.py` | exact-name → IPAM resolution; never a fuzzy first hit |
 | `test_render_context.py` | render context, interface IPs, template rendering |
+| `test_golden_repo.py` | one-call-one-commit, tags, `git log --follow` across renames |
+| `test_golden_migration.py` | dry run, duplicate merging, idempotence |
+| `test_golden_restore.py` | baseline restore, stale devices skipped and named |
+| `test_normalize_equivalence.py` | each config filter pinned to prior behaviour |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |
 | `test_integrations_base.py` | optional-integration behaviour, secret masking |
@@ -276,10 +326,4 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 Verified during Phase 0, deliberately not fixed yet. Recorded in full in
 [docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md).
 
-- Golden configs live in two unsynchronized stores; `config_git.write_and_stage`
-  stages without committing, so "current golden" and the latest commit can
-  disagree indefinitely (Phase 2)
-- The volatile-config-line prefix list is duplicated across six modules (Phase 2)
-- `_list_golden_configs` parses IPs with an IPv4-only regex, so a device reached
-  over IPv6 mis-parses (Phase 2)
 - AI prompt examples reference another project's PE/P/MPLS topology (Phase 3)

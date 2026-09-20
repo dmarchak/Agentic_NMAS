@@ -1,0 +1,297 @@
+{# Golden config repository UI: per-device timeline, network baselines, and the
+   migration report.
+
+   Included from templates/index.html. Bootstrap 5 only, matching the existing
+   card / badge / table / modal patterns.
+
+   The migration is **dry-run by default** — the report renders first and the
+   apply button stays disabled until the operator has seen it. #}
+
+<div id="goldenRepoPanel" class="mb-3" data-list-name="{{ current_list }}"></div>
+
+<div class="modal fade" id="goldenTimelineModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="goldenTimelineTitle">Golden config history</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="goldenTimelineBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function _gEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+function _gList() {
+  const el = document.getElementById('goldenRepoPanel');
+  return (el && el.dataset.listName) || '';
+}
+
+function _gWhen(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+}
+
+/* ── Per-device timeline ─────────────────────────────────────────────────── */
+let _goldenTimelineModal = null;
+
+async function showGoldenHistory(hostname) {
+  if (!_goldenTimelineModal) {
+    _goldenTimelineModal = new bootstrap.Modal(document.getElementById('goldenTimelineModal'));
+  }
+  document.getElementById('goldenTimelineTitle').textContent = `Golden config history — ${hostname}`;
+  const body = document.getElementById('goldenTimelineBody');
+  body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+  _goldenTimelineModal.show();
+
+  try {
+    const r = await fetch(`/golden/history/${encodeURIComponent(hostname)}`);
+    const d = await r.json();
+    if (!d.ok) { body.innerHTML = `<div class="alert alert-danger mb-0">${_gEsc(d.error)}</div>`; return; }
+    if (!d.history.length) {
+      body.innerHTML = '<p class="text-muted mb-0">No promotions recorded yet.</p>';
+      return;
+    }
+
+    const rows = d.history.map((h, i) => {
+      const ci = h.ci
+        ? `<span class="badge bg-${h.ci.result === 'SUCCESS' ? 'success' : 'danger'}-subtle
+             text-${h.ci.result === 'SUCCESS' ? 'success' : 'danger'}-emphasis"
+             title="${_gEsc(h.ci.job)} #${_gEsc(h.ci.build)}">${_gEsc(h.ci.result)}</span>`
+        : '<span class="text-muted small">—</span>';
+      const isRename = h.source === 'rename';
+      return `<tr class="${isRename ? 'table-light' : ''}">
+        <td class="small text-nowrap">${_gEsc(_gWhen(h.timestamp))}</td>
+        <td><span class="badge bg-secondary-subtle text-secondary-emphasis">${_gEsc(h.source)}</span></td>
+        <td class="small">${_gEsc(h.actor)}</td>
+        <td class="small">${_gEsc(h.subject)}</td>
+        <td>${ci}</td>
+        <td class="font-monospace small">${_gEsc(h.sha.slice(0, 8))}</td>
+        <td class="text-end text-nowrap">
+          <input type="radio" name="gdiffA" value="${_gEsc(h.sha)}" ${i === 1 ? 'checked' : ''} title="Compare from">
+          <input type="radio" name="gdiffB" value="${_gEsc(h.sha)}" ${i === 0 ? 'checked' : ''} title="Compare to">
+          <button class="btn btn-outline-secondary btn-sm ms-1"
+                  onclick="downloadGoldenVersion('${_gEsc(hostname)}','${_gEsc(h.sha)}')">Download</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+      <p class="small text-muted">
+        Timestamps come from the commits, not from file modification times.
+        Renames are their own commit, so history follows a device across a rename.
+      </p>
+      <div class="table-responsive"><table class="table table-sm align-middle">
+        <thead><tr><th>When</th><th>Source</th><th>Actor</th><th>Message</th>
+          <th>CI</th><th>Commit</th><th class="text-end">From / To</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      <button class="btn btn-primary btn-sm" onclick="diffGoldenVersions('${_gEsc(hostname)}')">
+        Compare selected versions
+      </button>
+      <pre id="goldenDiffOut" class="mt-3 small bg-body-tertiary p-2 rounded d-none"
+           style="max-height:420px;overflow:auto"></pre>`;
+  } catch (e) {
+    body.innerHTML = `<div class="alert alert-danger mb-0">${_gEsc(e.message)}</div>`;
+  }
+}
+
+async function diffGoldenVersions(hostname) {
+  const a = document.querySelector('input[name="gdiffA"]:checked');
+  const b = document.querySelector('input[name="gdiffB"]:checked');
+  const out = document.getElementById('goldenDiffOut');
+  if (!a || !b) { showToast('Pick two versions to compare', 'warning'); return; }
+  out.classList.remove('d-none');
+  out.textContent = 'Comparing…';
+  try {
+    const r = await fetch(`/golden/diff/${encodeURIComponent(hostname)}`
+      + `?a=${encodeURIComponent(a.value)}&b=${encodeURIComponent(b.value)}`);
+    const d = await r.json();
+    out.textContent = d.ok ? (d.diff || 'No differences between these versions.')
+                           : (d.error || 'Diff failed');
+  } catch (e) { out.textContent = e.message; }
+}
+
+async function downloadGoldenVersion(hostname, ref) {
+  try {
+    const r = await fetch(`/golden/version/${encodeURIComponent(hostname)}?ref=${encodeURIComponent(ref)}`);
+    const d = await r.json();
+    if (!d.ok) { showToast(d.error, 'danger'); return; }
+    // The viewer sandbox blocks script-driven downloads, so show the text.
+    const body = document.getElementById('goldenTimelineBody');
+    const pre = document.getElementById('goldenDiffOut');
+    pre.classList.remove('d-none');
+    pre.textContent = d.config;
+  } catch (e) { showToast(e.message, 'danger'); }
+}
+
+/* ── Baselines + migration ───────────────────────────────────────────────── */
+async function loadGoldenRepoPanel() {
+  const host = document.getElementById('goldenRepoPanel');
+  if (!host || !_gList()) return;
+  try {
+    const [bRes, mRes, rRes] = await Promise.all([
+      fetch('/golden/baselines').then(r => r.json()),
+      fetch('/golden/migrate/plan').then(r => r.json()),
+      fetch('/golden/renames').then(r => r.json()),
+    ]);
+
+    const baselines = (bRes.baselines || []).slice(0, 10);
+    const pending = (rRes.pending || []);
+    const needsMigration = mRes.ok && mRes.device_count > 0 && !mRes.already_migrated;
+
+    host.innerHTML = `
+      ${needsMigration ? _migrationCard(mRes) : ''}
+      ${pending.length ? `
+        <div class="alert alert-info py-2 px-3 d-flex align-items-center gap-2">
+          <span>${pending.length} device rename(s) noticed but not yet in the repo:
+            ${pending.map(p => `<code>${_gEsc(p.from)} → ${_gEsc(p.to)}</code>`).join(', ')}</span>
+          <button class="btn btn-outline-primary btn-sm ms-auto" onclick="syncGoldenRenames()">
+            Sync device names to repo
+          </button>
+        </div>` : ''}
+      <div class="card border-light-subtle">
+        <div class="card-body py-2 px-3">
+          <h6 class="text-primary fw-semibold mb-2">Baselines
+            <span class="text-muted fw-normal small ms-1">(network-wide restore points)</span>
+          </h6>
+          ${baselines.length ? `
+            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+              <tbody>${baselines.map(b => `
+                <tr>
+                  <td class="font-monospace small">${_gEsc(b.tag)}</td>
+                  <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
+                  <td><span class="badge bg-secondary-subtle text-secondary-emphasis">
+                    ${b.device_count} device(s)</span></td>
+                  <td class="text-end">
+                    <button class="btn btn-outline-warning btn-sm"
+                            onclick="previewBaselineRestore('${_gEsc(b.tag)}')">
+                      Restore network to this baseline
+                    </button>
+                  </td>
+                </tr>`).join('')}</tbody></table></div>`
+            : '<p class="text-muted small mb-0">No baselines yet. "Save All" creates one.</p>'}
+        </div>
+      </div>`;
+  } catch (e) { console.error('loadGoldenRepoPanel', e); }
+}
+
+function _migrationCard(m) {
+  const merges = m.merges || [];
+  return `
+    <div class="card border-warning-subtle mb-3">
+      <div class="card-body py-2 px-3">
+        <h6 class="text-warning-emphasis fw-semibold mb-2">
+          Configuration repository migration available
+        </h6>
+        <p class="small mb-2">
+          ${m.device_count} device(s) would move into the versioned <code>golden/</code>
+          layout. <strong>This is a preview — nothing has been changed.</strong>
+        </p>
+        ${merges.length ? `
+          <div class="alert alert-warning py-2 px-3 small">
+            <strong>${merges.length} duplicate device(s) would be merged.</strong>
+            Without merging, one device would end up with two golden files.
+            <div class="table-responsive mt-2">
+              <table class="table table-sm mb-0"><thead><tr>
+                <th>Keeping</th><th>Merging in</th><th>Why</th><th>Content differs</th>
+              </tr></thead><tbody>
+                ${merges.map(mg => `<tr>
+                  <td class="font-monospace small">${_gEsc(mg.winner.file)}
+                    <span class="text-muted">(${_gEsc(mg.winner.modified)})</span></td>
+                  <td class="font-monospace small">${mg.losers.map(l =>
+                      `${_gEsc(l.file)} <span class="text-muted">(${_gEsc(l.modified)})</span>`).join('<br>')}</td>
+                  <td class="small">${_gEsc(mg.reason)}</td>
+                  <td>${mg.content_differed
+                        ? '<span class="badge bg-warning text-dark">yes</span>'
+                        : '<span class="badge bg-secondary">identical</span>'}</td>
+                </tr>`).join('')}
+              </tbody></table>
+            </div>
+            <div class="form-text mb-0">
+              Nothing is deleted — merged-away copies are kept under
+              <code>.nsot/migration-backup/</code>.
+            </div>
+          </div>` : ''}
+        ${m.case_insensitive_fs ? `
+          <p class="small text-muted">
+            This filesystem folds case, so files differing only by case are already
+            the same file. Reported for accuracy rather than merged.
+          </p>` : ''}
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="goldenMigrateConfirm"
+                 onchange="document.getElementById('goldenMigrateBtn').disabled = !this.checked">
+          <label class="form-check-label small" for="goldenMigrateConfirm">
+            I have reviewed this report and want to migrate.
+          </label>
+        </div>
+        <button class="btn btn-warning btn-sm" id="goldenMigrateBtn" disabled
+                onclick="applyGoldenMigration()">Migrate repository</button>
+      </div>
+    </div>`;
+}
+
+async function applyGoldenMigration() {
+  const btn = document.getElementById('goldenMigrateBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/golden/migrate/apply', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirm: true}),
+    });
+    const d = await r.json();
+    showToast(d.ok
+      ? `Migrated ${d.migrated.length} device(s)`
+        + (d.merges.length ? `, merged ${d.merges.length} duplicate(s)` : '')
+      : `Migration failed: ${d.error}`, d.ok ? 'success' : 'danger');
+    loadGoldenRepoPanel();
+  } catch (e) { showToast(e.message, 'danger'); btn.disabled = false; }
+}
+
+async function syncGoldenRenames() {
+  try {
+    const r = await fetch('/golden/renames/sync', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({}),
+    });
+    const d = await r.json();
+    showToast(d.message || (d.ok ? 'Renames synced' : 'Sync failed'),
+              d.ok ? 'success' : 'danger');
+    loadGoldenRepoPanel();
+  } catch (e) { showToast(e.message, 'danger'); }
+}
+
+async function previewBaselineRestore(tag) {
+  try {
+    const r = await fetch('/golden/restore/preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ref: tag}),
+    });
+    const d = await r.json();
+    if (!d.ok) { showToast(d.error, 'danger'); return; }
+
+    const skipped = d.skipped || [];
+    const detail = skipped.length
+      ? '\n\nSkipped (not restored):\n' + skipped.map(s =>
+          `  • ${s.hostname} — ${s.reason}`).join('\n')
+        + '\n\nTheir golden configs at this baseline are unchanged and still downloadable.'
+      : '';
+    if (!confirm(`${d.summary}${detail}\n\n`
+        + `Each device becomes an approval item — nothing is pushed directly.\n\nContinue?`)) return;
+
+    const ar = await fetch('/golden/restore/apply', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ref: tag}),
+    });
+    const ad = await ar.json();
+    showToast(ad.message || (ad.ok ? 'Restore queued' : 'Restore failed'),
+              ad.ok ? 'success' : 'danger');
+  } catch (e) { showToast(e.message, 'danger'); }
+}
+
+document.addEventListener('DOMContentLoaded', loadGoldenRepoPanel);
+</script>

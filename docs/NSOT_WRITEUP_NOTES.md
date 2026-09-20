@@ -398,3 +398,136 @@ signature still renders, and there is a test for that.
 - Stale devices still have golden configs in the repo. Phase 2 should decide
   whether a baseline tag includes them (arguably yes — the baseline is a
   point-in-time network snapshot).
+
+---
+
+## Phase 2 — Golden config repository and version control
+
+**Status:** complete. 385 tests passing (307 + 78 new).
+**Lab objectives:** 1.1 (version control and change management), 1.4 (golden
+config saved with timestamp).
+
+### The plan was wrong about the duplicated prefix lists, and that mattered
+
+The spec said six modules carried a duplicated volatile-prefix list and asked
+for one consolidated helper. Diffing them first showed they were **four
+different jobs**:
+
+| Site | Strips | Job |
+|---|---|---|
+| drift_check, agent_runner, ai_assistant | 11 prefixes | diff normalisation |
+| pipeline | those + `! Pre-change` | it writes pre-change snapshots |
+| config_git | **no** `version ` / `upgrade fpd`, plus NMAS headers | repo storage |
+| app.py | plus `Last configuration change`, `!`, `end` | **what is safe to send to a device** |
+
+Merging them would have changed drift results — `config_git` deliberately keeps
+the IOS version line, because in a *stored* golden config the version is a real
+reviewable fact, while in a *diff* it is noise. And the app.py list is not a
+volatility filter at all: `end` mid-config silently truncates a startup-config,
+so filtering it is a safety guard. Collapsing that into "cleanup" would have
+been a genuine regression with a nasty failure mode.
+
+`normalize.py` therefore holds every tuple, named and documented, with a test
+that pins each against its pre-consolidation behaviour byte for byte — and one
+test asserting the tuples are still *different*, so a future tidy-up that merges
+them fails loudly.
+
+**Write-up angle:** "remove the duplication" is usually right, but the first job
+is checking whether it *is* duplication. Three of the six were genuinely
+identical; the other three only looked it.
+
+### Renames are the interesting problem
+
+Making `git log --follow` survive a rename turned out to depend on a detail
+that is easy to get wrong: **a rename must be its own commit**. Git has no
+rename records — it infers them by similarity — and a `git mv` bundled with
+content edits in the same commit defeats that inference. So `save_golden`
+detects a pending rename and emits it as a separate commit immediately before
+the content commit.
+
+That interacts with the deferred-rename design. An inventory refresh runs on a
+background thread and must never take the repo lock or commit, so it records
+`pending_rename` in the manifest and stops. Until the rename is applied, the
+golden file is still on disk under the *old* name while NetBox reports the
+*new* one — so the manifest resolves **both** names. Without that, a device
+would appear to lose its golden config in the window between a refresh and the
+next save.
+
+The acceptance test seeds two commits, records a rename, saves again, and
+asserts `git log --follow` returns all three plus the rename commit.
+
+### Three bugs the tests caught
+
+1. **Tag collision.** The tag stamp has one-second resolution, so two saves in
+   the same second produced the same tag name and the second silently lost its
+   tag. Colliding names now take a short-sha suffix. Found because a test did
+   six saves in a loop — faster than a human ever would, which is exactly why
+   it surfaced.
+
+2. **`git tag --format` does not expand `%x1f`.** That is a `git log` feature.
+   The baseline listing was splitting on a separator that had been passed
+   through literally, so it always returned an empty list — the feature was
+   entirely broken while looking fine in code review.
+
+3. **The migration was not idempotent.** `last_seen` lived in the
+   version-controlled manifest and was touched on every call, producing a
+   one-line diff and a fresh commit every run. The fix was conceptual rather
+   than mechanical: **freshness is runtime state and does not belong in a
+   version-controlled file.** It now lives only in the gitignored inventory
+   cache.
+
+A fourth was caught by reading rather than testing: `golden_configs_save_all`
+gated its Jenkins validation pipeline on `has_staged_changes()`. Now that saves
+commit immediately, nothing is ever staged, so that condition is permanently
+false — validation pipelines would have silently stopped being created. The
+trigger is now "did this save produce a commit".
+
+### Migration: merging duplicates
+
+The same device could exist twice — `R1.cfg` and `r1.cfg`, or two filenames
+carrying the same management IP in the header. Migrating naively would have
+produced two golden files for one device, and the drift checker would then
+report permanent false drift against whichever one it happened to find.
+
+Grouping is by management IP when present (the most reliable identity in the
+old format), otherwise by case-folded hostname. The newest content wins, and
+**every merge is reported** — both sources, the winner, the timestamps, and
+whether content actually differed. Losers are backed up rather than deleted.
+
+A nice detail: on a case-folding filesystem (Windows) `R1.cfg` and `r1.cfg` are
+*already* one file, so there is nothing to merge. The report says so rather than
+claiming a merge it did not perform.
+
+### Restore is where "stale" actually matters
+
+Baseline tags cover every device inherently — the tagged tree contains every
+`golden/*.cfg`, so there was no decision to make there. The decision is at
+restore time, and the rule is: **skip stale devices and name them**, in the
+confirm dialog *before* anything is queued and again in the result. A partial
+restore the operator did not know about is worse than a refused one. Their
+golden configs at that baseline stay downloadable — skipping a device from a
+restore must not hide its history.
+
+Restore also never pushes. It creates per-device approval items, so the existing
+human-review path still applies.
+
+### Demo-worthy flows added
+
+1. Save All across nine devices → **one** commit, nine device tags, one baseline
+   tag. Run it again unchanged → no commit at all.
+2. Rename a device in NetBox, refresh (no commit), save, then
+   `git log --follow golden/<new>.cfg` showing pre-rename history.
+3. The migration dry-run report on a repo with a `R1.cfg`/`r1.cfg` duplicate.
+4. Restore to a baseline with a stale device, showing it named as skipped.
+5. `git show --format=%B HEAD` on a golden commit, showing the trailers.
+6. Two `save_golden` calls from two threads, no `.git/index.lock` collision.
+
+### Open questions for Phase 3
+
+- The round-trip validation compares a rendered template against the normalised
+  running config. It should reuse `normalize.strip_for_diff`, but Phase 3 also
+  wants to strip crypto PKI certificate bodies and build banners — that is a
+  fifth filtering job, and the temptation will be to bolt it onto an existing
+  tuple. It should be its own.
+- `intended/<device>.cfg` lands in Phase 3. Worth deciding whether an intended
+  config change alone warrants a commit, or only alongside a golden promotion.

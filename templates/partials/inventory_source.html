@@ -8,10 +8,19 @@
    tooltip. The backend refuses them independently (device._refuse_if_netbox_sourced);
    this is the visible half so the operator is not left clicking a dead button. #}
 
-<div id="inventorySourceBanner" class="d-none mb-3"></div>
+{# The active list name is server-rendered into a data attribute. The partial
+   reads it via dataset rather than a global: `currentListName` in index.html is
+   an element id, not a function, and there is no window.CURRENT_LIST_NAME. #}
+<div id="inventorySourceBanner" class="d-none mb-3"
+     data-list-name="{{ current_list }}"></div>
 
 <script>
 let _inventoryStatus = {source: 'local'};
+
+function _inventoryListName() {
+  const host = document.getElementById('inventorySourceBanner');
+  return (host && host.dataset.listName) || '';
+}
 
 function _invEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
@@ -138,8 +147,7 @@ function renderInventoryBanner(status, staleDevices) {
 }
 
 async function loadInventorySource() {
-  const listName = (typeof currentListName === 'function')
-    ? currentListName() : (window.CURRENT_LIST_NAME || '');
+  const listName = _inventoryListName();
   if (!listName) return;
   try {
     const r = await fetch(`/inventory/source/${encodeURIComponent(listName)}`);
@@ -152,8 +160,8 @@ async function loadInventorySource() {
 }
 
 async function refreshInventory() {
-  const listName = (typeof currentListName === 'function')
-    ? currentListName() : (window.CURRENT_LIST_NAME || '');
+  const listName = _inventoryListName();
+  if (!listName) return;
   try {
     const r = await fetch(`/inventory/refresh/${encodeURIComponent(listName)}`, {method: 'POST'});
     const d = await r.json();
@@ -172,8 +180,8 @@ async function refreshInventory() {
    order lives in source.json instead. */
 async function saveInventoryOrder(hostnames) {
   if (_inventoryStatus.source !== 'netbox') return false;
-  const listName = (typeof currentListName === 'function')
-    ? currentListName() : (window.CURRENT_LIST_NAME || '');
+  const listName = _inventoryListName();
+  if (!listName) return false;
   try {
     await fetch(`/inventory/order/${encodeURIComponent(listName)}`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},

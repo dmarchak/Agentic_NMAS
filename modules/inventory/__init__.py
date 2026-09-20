@@ -162,6 +162,7 @@ def refresh_list(list_name: str, block: bool = True) -> dict:
     _persist(list_name, entry)
 
     _record_stale_devices(list_name, devices, previous_ips)
+    _record_renames(list_name, devices)
 
     log.info("inventory: refreshed '%s' — %d device(s), %d skipped, %d warning(s)",
              list_name, len(devices), len(skipped), len(warnings))
@@ -252,6 +253,78 @@ def invalidate(list_name: str = "") -> None:
             _memory.pop(list_name, None)
         else:
             _memory.clear()
+
+
+# ---------------------------------------------------------------------------
+# Renames
+# ---------------------------------------------------------------------------
+
+def _record_renames(list_name: str, devices: list) -> None:
+    """Note devices whose NetBox name changed — in the manifest only.
+
+    This runs on the background refresh thread, which must never take the repo
+    lock or create a commit. The actual ``git mv`` happens at the next
+    ``save_golden``, or when the operator runs "Sync device names to repo".
+    Until then the manifest resolves either name, so the golden config stays
+    reachable under both.
+    """
+    import os as _os
+
+    try:
+        from modules.config import get_list_data_dir
+        from modules.nsot import manifest as _m
+    except ImportError:
+        return
+
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+    if not _os.path.isdir(repo):
+        return                                 # nothing committed yet
+
+    for dev in devices:
+        identity = _m.identity_for(dev.get("_netbox_id"), dev.get("device_uid", ""))
+        if not identity:
+            continue
+        entry = _m.find_by_identity(repo, identity)
+        if entry is None:
+            continue                           # first sighting: save_golden records it
+        current_name = dev.get("hostname", "")
+        if current_name and entry.get("name") != current_name:
+            _m.record_pending_rename(repo, identity, current_name)
+
+
+def sync_device_names_to_repo(list_name: str, actor: str = "user") -> dict:
+    """Apply pending renames to the repo as their own commits.
+
+    The explicit half of the deferred-rename design: a refresh records the
+    rename, this applies it. Also runs automatically at the next save_golden.
+    """
+    import os as _os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot.repo import apply_pending_renames
+
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+    if not _os.path.isdir(repo):
+        return {"ok": True, "renamed": [], "message": "No repository yet."}
+    result = apply_pending_renames(repo, actor)
+    result["message"] = (
+        f"Renamed {len(result['renamed'])} device file(s) in the repo."
+        if result["renamed"] else "No pending renames."
+    )
+    return result
+
+
+def pending_renames(list_name: str) -> list:
+    """Renames noticed by a refresh but not yet committed."""
+    import os as _os
+
+    try:
+        from modules.config import get_list_data_dir
+        from modules.nsot.manifest import pending_renames as _pending
+    except ImportError:
+        return []
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+    return _pending(repo) if _os.path.isdir(repo) else []
 
 
 # ---------------------------------------------------------------------------

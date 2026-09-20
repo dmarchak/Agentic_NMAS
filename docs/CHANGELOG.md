@@ -7,6 +7,94 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — NSoT Phase 2: Golden config repository and version control
+
+Golden configs become a proper version-controlled store. Lab objectives 1.1
+(version control and change management) and 1.4 (golden config saved with
+timestamp).
+
+### Added
+
+- **`modules/nsot/repo.py` — the one write path.** `save_golden()` replaces six
+  separate golden-write sites. One call is **one commit**, even for a nine-device
+  "Save All". An unchanged device creates no commit but is still reported.
+- **Timestamps and metadata live in git.** Every commit carries `Source`,
+  `Actor`, `Devices`, `Device-Id`, `Device-Name` and optional `Pipeline-Id`
+  trailers, plus annotated tags: `golden/<device>/<UTC>` per changed device and
+  `baseline/<UTC>` for a Save All. **These tags are the "golden config saved
+  with timestamp" the lab asks for.**
+- **Identity-keyed manifest** (`modules/nsot/manifest.py`). Devices key on
+  `nb:<netbox_id>` or `uid:<uuid4>`, never on hostname. A rename becomes a
+  `git mv` committed **alone**, which is what keeps
+  `git log --follow -- golden/<new>.cfg` returning pre-rename commits.
+- **Deferred renames.** An inventory refresh records `pending_rename` in the
+  manifest and stops — the background thread never takes the repo lock or
+  commits. The `git mv` happens at the next `save_golden` or via "Sync device
+  names to repo". While pending, the manifest resolves **both** names so the
+  config stays reachable.
+- **CI evidence as git notes** (`refs/notes/ci`) attached to the exact commit.
+- **`modules/nsot/restore.py`.** Restore queues per-device approvals and never
+  pushes directly. Stale devices are **skipped and named** in the confirm
+  dialog and the result — no silent partial restore.
+- **`modules/nsot/migrate.py`** — dry-run by default, and the dry run is what
+  the UI shows first. Detects **case-insensitive and IP-level duplicates**,
+  merges keeping the newest content, and reports every merge with both sources,
+  the winner, and whether content actually differed. Nothing is deleted;
+  merged-away copies go to `.nsot/migration-backup/`. Backfills `device_uid`
+  for every device in every local list in one pass.
+- **`modules/nsot/hooks.py` + `modules/nsot/archive.py`** — post-commit
+  callbacks (git push, S3 archive) on a background thread with short timeouts.
+  They never hold the repo lock and never delay or roll back a commit. Push
+  never force-pushes; a non-fast-forward surfaces the conflict and stops.
+- Tag retention setting `nsot_device_tag_retention` (default 50, 0 = keep all).
+  `baseline/*` tags are **never** pruned; commits retain full history regardless.
+- `routes/golden.py`, `templates/partials/golden_repo.html`.
+- Tests: `test_normalize_equivalence.py` (16), `test_golden_repo.py` (27),
+  `test_golden_migration.py` (16), `test_golden_restore.py` (11).
+  **385 total, all passing.**
+
+### Changed
+
+- `_save_golden_config_file` is now a thin wrapper over `save_golden`, which
+  routes all six write sites at once. `config_git.write_and_stage` likewise —
+  the stage-now-commit-later gap is gone for golden saves. The manual
+  stage/commit flow in the Git tab is unchanged and still handles `infra/`.
+- The golden file keeps **one stable header line**. `! Saved:` and `! Source:`
+  are gone: they produced a diff on every save even when the config was
+  identical.
+- `_find_golden_config_file` resolves manifest-by-identity →
+  manifest-by-IP → legacy header scan → None. The legacy scan is kept for the
+  deprecation release, with a warning, so a device whose IP changed outside
+  NMAS does not silently lose its golden config.
+- `golden_configs_save_all` collects every device first and promotes them in
+  one commit, and no longer stages each config twice.
+
+### Fixed
+
+- **Two saves in the same second collided on tag names**, silently losing the
+  second one's tag. Colliding tags now get a short-sha suffix.
+- **`git tag --format` does not expand `%x1f`** (that is a `git log` feature),
+  so the baseline listing parsed nothing and always returned empty.
+- **The migration was not idempotent**: `last_seen` in the version-controlled
+  manifest produced a one-line diff on every call. Freshness is runtime state
+  and now lives only in the (gitignored) inventory cache.
+- `golden_configs_save_all` gated its Jenkins validation pipeline on
+  `has_staged_changes()`, which is always false now that saves commit — that
+  would have silently stopped creating validation pipelines.
+- The IPv4-only header regex is gone; IPv6-managed devices parse correctly.
+
+### Note on the "duplicated" volatile-prefix lists
+
+The plan called for consolidating six duplicated prefix tuples into one helper.
+They are **not duplicates** — they do four different jobs, and merging them
+would have changed drift results and broken config push. `config_git` keeps
+`version ` and `upgrade fpd` where drift strips them; `app.py` also filters `!`
+and `end`, which are not volatile at all — `end` mid-config silently truncates
+a startup-config, so that filter is a **safety guard**. `modules/nsot/normalize.py`
+holds every tuple, named and documented, and
+`tests/test_normalize_equivalence.py` pins each one against its
+pre-consolidation behaviour byte for byte.
+
 ## [Unreleased] — NSoT Phase 1: NetBox as the source of truth for inventory
 
 A device list can now take its inventory from NetBox instead of a CSV. Local

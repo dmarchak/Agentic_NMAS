@@ -144,6 +144,14 @@ try:
 except Exception as _bp_exc:                  # noqa: BLE001
     app.logger.error("Could not register blueprints: %s", _bp_exc)
 
+# Post-commit hooks for the NSoT repo (git push, S3 archive). They run on a
+# background thread and never block a commit.
+try:
+    from modules.nsot.archive import register_default_hooks
+    register_default_hooks()
+except Exception as _hook_exc:                # noqa: BLE001
+    app.logger.error("Could not register NSoT post-commit hooks: %s", _hook_exc)
+
 # Bring user_settings.json up to the current schema and encrypt any secret that
 # an older build wrote in plaintext (the NetBox token).
 try:
@@ -4938,9 +4946,7 @@ def golden_configs_save_all():
         _get_running_config_for_golden,
     )
     from modules.config_git import (
-        init_config_repo, write_and_stage,
-        has_staged_changes, create_validation_pipeline,
-        register_pending_pipeline,
+        create_validation_pipeline, register_pending_pipeline,
     )
     from modules.device import load_saved_devices
     from modules.jenkins_runner import load_config as _jcfg, _trigger_jenkins
@@ -4948,12 +4954,15 @@ def golden_configs_save_all():
     list_name, current_list_file = get_current_device_list()
     devices = load_saved_devices(current_list_file)
 
+    from modules.nsot.repo import GoldenItem, save_golden
+
     saved   = []
     failed  = []
+    items   = []
 
-    # Initialise git repo for this list
-    init_config_repo(list_name)
-
+    # Collect every device first, then promote them in ONE commit. A Save All
+    # is a network-wide consistent snapshot, not N unrelated commits — and this
+    # is also where the old code staged each config twice.
     for dev in devices:
         ip       = dev.get("ip", "")
         hostname = dev.get("hostname", ip)
@@ -4965,10 +4974,9 @@ def golden_configs_save_all():
             if not cfg:
                 failed.append({"ip": ip, "hostname": hostname, "reason": "empty config"})
                 continue
-            # Save golden config (existing behaviour)
-            _save_golden_config_file(ip, hostname, cfg)
-            # Stage in git repo
-            write_and_stage(list_name, hostname, cfg)
+            items.append(GoldenItem(hostname, cfg, ip,
+                                    netbox_id=dev.get("_netbox_id"),
+                                    device_uid=dev.get("device_uid", "")))
             saved.append({"ip": ip, "hostname": hostname})
         except Exception as exc:
             app.logger.warning("save_all_configs %s: %s", hostname, exc)
@@ -4978,10 +4986,21 @@ def golden_configs_save_all():
         return jsonify({"ok": False, "saved": saved, "failed": failed,
                         "message": "No configs were saved."}), 400
 
+    commit_result = save_golden(list_name, items, source="save_all", actor="user")
+    if not commit_result.get("ok"):
+        return jsonify({"ok": False, "saved": [], "failed": failed,
+                        "message": commit_result.get("error", "commit failed")}), 500
+    for entry in saved:
+        entry["changed"] = entry["hostname"] in commit_result.get("changed", [])
+
     # Create a validation pipeline for this batch (async trigger)
     pipeline_name = None
     pipeline_error = None
-    if has_staged_changes(list_name):
+    # Golden saves now commit immediately, so there is never anything staged
+    # here — the trigger is "did this save produce a commit", not "is anything
+    # staged". Checking has_staged_changes() would silently stop creating
+    # validation pipelines.
+    if commit_result.get("commit"):
         jenkins_cfg = _jcfg()
         if jenkins_cfg.get("jenkins_url", "").strip():
             desc = f"Validate configs for {len(saved)} device(s) in '{list_name}'"
@@ -4994,14 +5013,25 @@ def golden_configs_save_all():
                     pipeline_error = str(exc)
                     app.logger.warning("save_all: pipeline trigger failed: %s", exc)
 
-    msg = (f"Saved {len(saved)} device config(s) and staged in git."
-           + (f" Validation pipeline '{pipeline_name}' triggered." if pipeline_name else
-              " Jenkins not configured — stage committed without CI pipeline."))
+    changed_count = len(commit_result.get("changed", []))
+    unchanged_count = len(commit_result.get("unchanged", []))
+    msg = (
+        f"Saved {len(saved)} device config(s) in one commit "
+        f"{commit_result.get('commit', '')[:8]}"
+        + (f" ({unchanged_count} unchanged)" if unchanged_count else "")
+        + "."
+        + (f" Validation pipeline '{pipeline_name}' triggered." if pipeline_name else
+           " Jenkins not configured — committed without a CI pipeline.")
+    )
 
     return jsonify({
         "ok":            True,
         "saved":         saved,
         "failed":        failed,
+        "commit":        commit_result.get("commit", ""),
+        "tags":          commit_result.get("tags", []),
+        "unchanged":     commit_result.get("unchanged", []),
+        "renamed":       commit_result.get("renamed", []),
         "pipeline":      pipeline_name,
         "pipeline_error": pipeline_error,
         "message":       msg,
