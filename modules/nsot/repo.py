@@ -42,7 +42,7 @@ _repo_locks: dict = {}
 _locks_guard = threading.Lock()
 
 VALID_SOURCES = ("manual", "save_all", "pipeline", "approval", "ai",
-                 "onboarding", "migration", "rename")
+                 "onboarding", "migration", "rename", "template", "extraction")
 
 
 class GoldenItem:
@@ -358,6 +358,75 @@ def _unique_tag(repo: str, tag: str, sha: str) -> str:
     if rc != 0:
         return tag
     return f"{tag}-{sha[:7]}"
+
+
+def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
+                  source: str) -> dict:
+    """Stage and commit specific paths. Shared plumbing for non-golden commits.
+
+    Deliberately does **not** create ``golden/<device>`` or ``baseline/`` tags:
+    those mark a network snapshot, and a template or host_vars change is not
+    one. Phase 2's restore reads ``golden/*`` at a ref, so a template commit
+    must never be mistakable for a golden promotion.
+    """
+    from modules.config import get_list_data_dir
+
+    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+    with repo_lock(repo):
+        init_repo(repo)
+        for path in paths:
+            git(repo, "add", "-A", path)
+
+        rc, out, _ = git(repo, "status", "--porcelain")
+        if not out.strip():
+            return {"ok": True, "commit": "", "changed": [],
+                    "message": "No changes to commit."}
+
+        message = f"{subject}\n\n" + "\n".join(
+            trailers + [f"Source: {source}"]) + "\n"
+        rc, _, err = git(repo, "commit", "-m", message)
+        if rc != 0:
+            return {"ok": False, "error": f"commit failed: {err}"}
+        _, sha, _ = git(repo, "rev-parse", "HEAD")
+        git(repo, "gc", "--auto")
+
+    changed = [l.split()[-1] for l in out.splitlines() if l.strip()]
+    log.info("repo: %s commit %s in '%s' (%d path(s))",
+             source, sha[:8], list_name, len(changed))
+
+    from modules.nsot.hooks import run_post_commit
+    run_post_commit({"list_name": list_name, "repo": repo, "sha": sha,
+                     "source": source, "tags": [], "devices": []})
+    return {"ok": True, "commit": sha, "changed": changed}
+
+
+def save_templates(list_name: str, files: list, actor: str = "user",
+                   message: str = "") -> dict:
+    """Commit template-library changes.
+
+    Separate from :func:`save_golden` in every way that matters: its own
+    subject namespace (``template:`` rather than ``golden:``), its own
+    ``Source`` trailer, and **no tags**. They share the lock and the plumbing
+    and nothing else.
+    """
+    names = ", ".join(files) if files else "templates"
+    subject = message or f"template: update {names}"
+    trailers = [f"Actor: {actor}", f"Template-Files: {','.join(files)}"]
+    return _commit_paths(list_name, ["templates"], subject, trailers, "template")
+
+
+def save_host_vars(list_name: str, devices: list, actor: str = "user",
+                   message: str = "") -> dict:
+    """Commit extracted ``host_vars`` after human review.
+
+    Phase 3a writes extractions to a gitignored staging area precisely so that
+    this — the first commit of a device's modelled configuration — has a person
+    looking at a diff first.
+    """
+    names = ", ".join(devices) if devices else "devices"
+    subject = message or f"host_vars: commit extraction for {names}"
+    trailers = [f"Actor: {actor}", f"Devices: {','.join(devices)}"]
+    return _commit_paths(list_name, ["host_vars"], subject, trailers, "extraction")
 
 
 def _prune_device_tags(repo: str, hostnames: list) -> None:

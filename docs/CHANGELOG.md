@@ -7,6 +7,84 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — NSoT Phase 3b: template library, editor, render preview
+
+Read-mostly. **Nothing in 3b opens a socket to a device.** Every comparison is
+against a captured artifact — a golden config or a stored backup. Deploy is 3c.
+
+### The deployability gate
+
+`modules/nsot/render_artifact.py`. A frozen dataclass whose `deployable` is a
+**computed property with no backing field**, so no code path can construct a
+deployable artifact for a device the parser does not fully model. A preview
+always renders and is marked *Incomplete — not deployable*, listing the
+unmodelled constructs by name.
+
+Three tests keep it honest: a property test (unmodelled ⇒ not deployable), a
+surface test (`build_artifact` is the only public function returning a
+`RenderArtifact`, and it accepts no `skip_validation`/`force` parameter), and a
+structural test (frozen, no setter, no `rendered_unmasked` field).
+
+### The recorded escape hatch
+
+A hard block would make people fork the code on a network with constructs these
+parsers do not model. So deployability can be unblocked by an `unmodeled_ack`
+block in `host_vars` listing the **exact** unmodelled lines plus actor and
+timestamp. Acknowledged set must equal unmodelled set **exactly** — a new
+unmodelled line makes the sets differ and the block returns; a stale
+acknowledgement for a line that no longer exists also blocks. Committed to git,
+reviewable, content-bound, not click-through dismissible.
+
+### Secrets: `intended/` is masked and therefore never a deploy source
+
+Previews and anything written to `intended/` render with every secret replaced
+by `••••••••`. **Phase 3c must re-render from the template with real secrets
+resolved in memory at deploy time and must never read `intended/`.**
+`assert_no_mask()` is the backstop for that path; deploying the literal mask
+string to a device is the failure mode it guards against.
+
+Validation runs on the **truthful** render (a local inside `build_artifact`,
+never stored) — comparing a masked render against the real config would report
+every secret line as both missing and invented.
+
+### Approval is keyed on a binding fingerprint
+
+Not just template path + content hash, but **plus the sorted set of bound device
+identities, plus a hash of each device's `host_vars`**. Without the device half,
+a device onboarded in Phase 4 would silently inherit an approval for a template
+it was never validated against. Editing the template, binding or unbinding a
+device, or changing a device's `host_vars` each revoke approval, and the UI
+names which of those happened.
+
+### Added
+
+- `modules/nsot/templates_repo.py` — per-network template library, seeding
+  (copies built-ins, never overwrites), CRUD with path-traversal refusal and
+  Jinja syntax checking, and bindings.
+- `modules/nsot/approval.py` — the round-trip CI gate and fingerprinting.
+- `repo.save_templates()` / `repo.save_host_vars()` — separate commit
+  namespaces (`template:` / `host_vars:` vs `golden:`), own `Source` trailers,
+  and **no tags**: a template change is not a network snapshot.
+- `routes/templates.py`, `templates/partials/template_editor.html`.
+- Tests: `test_render_artifact.py` (36), `test_template_approval.py` (23).
+  **663 total, all passing.**
+
+### Bindings store the mapping only
+
+`bindings.yml` holds `platforms` and `overrides` and nothing else. The resolved
+device list is computed from the manifest every time it is needed — a stored
+copy drifts from the manifest and then the two disagree silently.
+
+### Not done: CodeMirror is not vendored
+
+The editor uses CodeMirror when present in `static/js/vendor/codemirror/` and
+degrades to a styled `<textarea>` when it is not. It could not be downloaded in
+the environment where the editor was written, and shipping a hand-written
+stand-in would have been worse than shipping nothing.
+`static/js/vendor/codemirror/README.md` lists the three files to drop in; no
+code change is needed. The editor is fully usable meanwhile — the fallback
+loses syntax highlighting only.
+
 ## [Unreleased] — Phase 3a follow-up: fleet verification and structural filter fix
 
 ### Fleet coverage — all nine reference devices

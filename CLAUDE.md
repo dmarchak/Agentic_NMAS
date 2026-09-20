@@ -54,7 +54,7 @@ tracked in git.
 - **[modules/collector_config.py](modules/collector_config.py)** (238) — per-list
   collector settings, including trap/NetFlow ports
 
-### NSoT / Phase 0–3a additions
+### NSoT / Phase 0–3b additions
 - **[modules/settings_schema.py](modules/settings_schema.py)** (314) — settings
   defaults, JSON Schema validation, and forward migration
 - **[modules/netbox_guard.py](modules/netbox_guard.py)** (276) — NetBox write
@@ -90,11 +90,17 @@ tracked in git.
 - **[modules/nsot/hostvars.py](modules/nsot/hostvars.py)** — YAML staging,
   secret handoff
 - **[modules/nsot/ifnames.py](modules/nsot/ifnames.py)** — canonical interface names
+- **[modules/nsot/render_artifact.py](modules/nsot/render_artifact.py)** — the
+  deployability gate; frozen, computed, no override
+- **[modules/nsot/templates_repo.py](modules/nsot/templates_repo.py)** — the
+  per-network template library and bindings
+- **[modules/nsot/approval.py](modules/nsot/approval.py)** — template approval
+  keyed on a binding fingerprint
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
-  `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`
+  `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`, `templates.py`
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -258,6 +264,30 @@ any routing/redundancy protocol in the network design.**
   under `router rip` is RIPv2. Stripping the latter from both sides of a
   comparison hid the loss entirely, so only extraction-side tests catch it.
 
+### Template library and the deploy gate (Phase 3b)
+
+`config_repo/templates/` holds the network's templates, seeded by copy from
+`modules/nsot/templates/`. Templates are **per-platform**; per-device divergence
+belongs in `host_vars`, with an explicit `bindings.yml` override as the
+exception.
+
+- **Nothing in 3b opens a socket.** Previews diff against captured artifacts
+  only — a golden config and the newest stored backup, each labelled with its
+  capture time. "Refresh capture" delegates to the existing backup route.
+- **`deployable` is a computed property on a frozen dataclass.** A device with
+  unmodelled constructs cannot reach a deployable render by any code path.
+  `build_artifact()` is the only constructor and always validates.
+- **`intended/` and previews are masked, so neither is ever a deploy source.**
+  3c must re-render from the template with real secrets in memory;
+  `assert_no_mask()` guards that path. Validation runs on the truthful render.
+- **Unmodelled constructs can be acknowledged**, not dismissed: `unmodeled_ack`
+  in `host_vars` must list the exact lines, is committed to git, and is
+  invalidated by any new or removed unmodelled line.
+- **Approval requires a clean round-trip against every bound device**, keyed on
+  a binding fingerprint (template hash + bound device set + each device's
+  `host_vars` hash). Onboarding a device revokes approval.
+- Template commits use their own namespace (`template:`) and create **no tags**.
+
 ### Settings
 
 All settings live in `data/user_settings.json` with a `settings_schema_version`.
@@ -301,7 +331,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 600 tests
+pytest                    # 663 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -328,6 +358,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_hostvars_secrets.py` | hash handling, YAML staging, no secret leakage |
 | `test_fleet_coverage.py` | all nine devices; enforces the decision rule |
 | `test_unmodeled_path.py` | the fallback path: unknown constructs, no invented lines |
+| `test_render_artifact.py` | deployability gate, masking, unmodelled acknowledgement |
+| `test_template_approval.py` | template library, bindings, binding fingerprint |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |

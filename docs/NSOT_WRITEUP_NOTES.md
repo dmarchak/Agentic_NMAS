@@ -741,3 +741,79 @@ what it believes a config contains*, and that statement could be checked. A
 tool that only ever diffs two configs can be confidently wrong forever, because
 it never has to say what it thinks it is looking at.
 
+---
+
+## A second defect of the same shape: empty-but-truthy made every optional construct mandatory
+
+Recorded alongside the drift blind spot because it is the same lesson wearing
+different clothes, and because it is the more consequential of the two.
+
+### What was wrong
+
+The parser emits a complete schema so templates can render under
+``StrictUndefined``. Optional constructs get an empty default. ``control_plane``
+defaulted to:
+
+```python
+"control_plane": {"settings": []},
+```
+
+The template guarded on presence rather than content:
+
+```jinja
+{%- if v.control_plane is defined %}control-plane
+```
+
+An empty dict is *truthy*, and ``is defined`` is true for any key that exists.
+So every rendered config gained a ``control-plane`` header — **including devices
+that never had one**.
+
+### Why it was invisible
+
+All nine devices in the reference fleet happen to configure ``control-plane``.
+So on every real input, the invented line matched a line that was genuinely
+there, and the round trip reported 100% fidelity. Nine devices, two platforms,
+zero disagreement. The bug only appeared when the ``unmodeled``-path tests fed
+the parser a **minimal** config — a hostname and nothing else — which no
+fixture resembled.
+
+### Why it is worse than a dropped line
+
+A dropped line makes a deploy incomplete. An **invented** line makes a deploy
+*wrong*: Phase 3c would have pushed ``control-plane`` to a device that had never
+been configured with it, as part of an operation the operator believed was
+reproducing existing config. The tool would have been adding configuration while
+reporting that it was matching it.
+
+And it generalises past this one key. Any optional construct whose default is an
+empty-but-truthy container — ``{}``, ``{"settings": []}``, ``[""]`` — becomes
+mandatory at render time. The fix was not to special-case ``control_plane`` but
+to make every optional block default to ``None``, with a parametrised test
+asserting that nine named constructs are absent from a minimal render.
+
+### The shared lesson
+
+Both defects are the same shape:
+
+| | Drift blind spot | Invented control-plane |
+|---|---|---|
+| Hidden by | normalisation applied to *both* sides | every fixture happening to have the construct |
+| Reported | "no drift" | "100% fidelity" |
+| Consequence | a real change invisible | a fabricated change invisible |
+| Found by | an extraction-side assertion | a minimal input no fixture resembled |
+
+Neither was findable by comparing two configs, because in both cases the two
+sides agreed. **A comparison-only tool can be confidently wrong forever**, in
+both directions: it can miss what is there, and it can manufacture what is not.
+What broke the symmetry in each case was making the tool *state what it
+believes* — a parse, a schema, a rendered artifact from a known-minimal input —
+and then checking the statement against something other than another comparison.
+
+### For the write-up
+
+These two findings together are the argument for why the NSoT conversion earned
+its keep beyond the lab objectives. The pre-NSoT tool could diff configs and
+report drift, and it did so wrongly in at least two ways for an unknown length
+of time, with no test capable of noticing. Building parsers forced the tool to
+commit to a model of the configuration, and a model can be falsified.
+

@@ -93,8 +93,13 @@ def _sections(config: str) -> dict:
 
 
 def render(host_vars: dict, platform: str, secret_lookup=None,
-           template_root: str = TEMPLATE_ROOT) -> str:
-    """Render host_vars through the platform's seed template."""
+           template_root: str = TEMPLATE_ROOT, template_name: str = "base.j2") -> str:
+    """Render host_vars through a platform template.
+
+    *template_root* lets the caller point at a network's own template library
+    in its repo instead of the built-in seeds; *template_name* selects a
+    non-default template within the platform directory.
+    """
     from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
     secrets = dict(host_vars.get("secrets") or {})
@@ -120,7 +125,7 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
 
     env.globals["secret"] = _secret
     env.filters["resolve_secrets"] = _resolve_markers
-    template = env.get_template("base.j2")
+    template = env.get_template(template_name)
     return template.render(vars=host_vars, secret=_secret)
 
 
