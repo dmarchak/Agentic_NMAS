@@ -136,6 +136,10 @@ class RenderArtifact:
     #: built-in seeds. Carried on the artifact so ``prepare_device()`` cannot
     #: deploy from a different tree than the one that was validated.
     template_root: str = ""
+    #: Set when deploying this device's *current* intent was rolled back.
+    #: Blocking: rollback restores the device and says nothing about the
+    #: intent, which still asserts the change should be there.
+    rolled_back: dict = None
     #: Lines of the truthful render carrying bytes an IOS CLI cannot accept.
     #: Measured here so ``deployable`` subsumes sendability — one answer to
     #: "can this go out", not two that disagree.
@@ -186,6 +190,14 @@ class RenderArtifact:
                            "order is significant here")
         if not self.template_approved:
             reasons.append(f"template '{self.template}' is not approved for this device")
+        if self.rolled_back:
+            reasons.append(
+                "deploying this intent was rolled back at "
+                f"{self.rolled_back.get('at', 'an earlier time')}"
+                + (f" ({self.rolled_back['reason']})"
+                   if self.rolled_back.get("reason") else "")
+                + " — revert the intent, or edit it so what is sent is not what "
+                  "failed")
         if self.unsendable:
             reasons.append(
                 f"{len(self.unsendable)} line(s) contain characters an IOS CLI "
@@ -247,6 +259,7 @@ class RenderArtifact:
             "bootstrap": self.bootstrap,
             "intent_drift": self.intent_drift,
             "unsendable": list(self.unsendable),
+            "rolled_back": self.rolled_back,
         }
 
 
@@ -274,7 +287,8 @@ def _unsendable_lines(rendered: str) -> tuple:
 def build_artifact(device: str, running_config: str, platform: str,
                    template: str = "", template_approved: bool = False,
                    host_vars: dict = None, bootstrap: bool = False,
-                   template_root: str = "") -> RenderArtifact:
+                   template_root: str = "", rolled_back: dict = None
+                   ) -> RenderArtifact:
     """The only constructor. Always validates; always renders masked.
 
     *running_config* is a **captured** config — a golden file or a stored
@@ -355,6 +369,7 @@ def build_artifact(device: str, running_config: str, platform: str,
         template_report=template_report,
         template_root=template_root or "",
         unsendable=unsendable,
+        rolled_back=rolled_back,
     )
 
 

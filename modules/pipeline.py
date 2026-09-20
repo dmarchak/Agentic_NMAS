@@ -1235,7 +1235,40 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             ctx.rollback_failures[ip] = str(exc)
             log.error("pipeline[rollback]: FAILED to restore %s: %s", hostname, exc)
 
+    # Rollback restored the DEVICE. The intent still says the change should be
+    # there, so without this the next plan proposes exactly what just failed.
+    _note_rolled_back_intent(ctx)
     ctx.rollback_performed = True
+
+
+def _note_rolled_back_intent(ctx: PipelineContext) -> None:
+    """Mark each rolled-back device's current intent, so a replan refuses."""
+    import os as _os
+
+    try:
+        from modules.config import get_current_list_name, get_list_data_dir
+        from modules.nsot import hostvars as _hv
+    except ImportError:
+        return
+
+    repo = _os.path.join(get_list_data_dir(get_current_list_name()), "config_repo")
+    if not _os.path.isdir(repo):
+        return
+    for ip in ctx.rolled_back_ips:
+        dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+        if not dev:
+            continue
+        hostname = dev.get("hostname", ip)
+        try:
+            commits = _hv.intent_commits(repo, hostname, limit=1)
+            _hv.record_rolled_back(
+                repo, hostname,
+                commits[0]["sha"] if commits else "",
+                reason=ctx.error or "deploy rolled back",
+                pipeline_id=ctx.config_id)
+        except Exception as exc:              # noqa: BLE001
+            log.error("pipeline[rollback]: could not note rolled-back intent "
+                      "for %s: %s", hostname, exc)
     ctx.final_status       = "rolled_back"
 
 

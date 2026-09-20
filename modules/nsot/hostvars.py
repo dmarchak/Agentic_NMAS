@@ -289,6 +289,94 @@ def write_committed_text(repo: str, hostname: str, text: str) -> str:
     return path
 
 
+# ---------------------------------------------------------------------------
+# Rolled-back intent
+# ---------------------------------------------------------------------------
+
+ROLLED_BACK_REL = os.path.join(".nsot", "rolled_back.json")
+
+
+def _rolled_back_path(repo: str) -> str:
+    return os.path.join(repo, ROLLED_BACK_REL)
+
+
+def _load_rolled_back(repo: str) -> dict:
+    try:
+        import json
+        with open(_rolled_back_path(repo), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record_rolled_back(repo: str, hostname: str, intent_commit: str,
+                       reason: str = "", pipeline_id: str = "") -> dict:
+    """Note that deploying this device's current intent was rolled back.
+
+    Rollback restores the *device*. It says nothing about the *intent*, which
+    still asserts the change should be there — so the next plan computes the
+    same diff and offers to push the thing that just failed verification. The
+    tool would loop, confidently, and each attempt would look like a fresh
+    proposal.
+
+    Keyed on the intent commit, so the note is self-expiring: edit the intent
+    and it no longer applies, because the thing that failed is no longer what
+    would be sent.
+
+    Local operational state, like the migration marker — gitignored. The
+    version-controlled record of what happened is the intent history itself.
+    """
+    import json
+    import time as _time
+
+    data = _load_rolled_back(repo)
+    entry = {
+        "intent_commit": intent_commit,
+        "at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+        "reason": reason,
+        "pipeline_id": pipeline_id,
+    }
+    data[hostname] = entry
+    os.makedirs(os.path.dirname(_rolled_back_path(repo)), exist_ok=True)
+    with open(_rolled_back_path(repo), "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    log.warning("hostvars: %s intent %s is marked rolled back — %s",
+                hostname, intent_commit[:8], reason or "no reason given")
+    return entry
+
+
+def rolled_back_note(repo: str, hostname: str):
+    """The standing note for *hostname*, or ``None``.
+
+    Stale notes clear themselves: if the intent has moved since the rollback,
+    what failed is not what would be sent now, so the note does not apply.
+    """
+    entry = _load_rolled_back(repo).get(hostname)
+    if not entry:
+        return None
+    current = intent_commits(repo, hostname, limit=1)
+    current_sha = current[0]["sha"] if current else ""
+    if current_sha and current_sha != entry.get("intent_commit"):
+        return None
+    return entry
+
+
+def clear_rolled_back(repo: str, hostname: str) -> bool:
+    """Drop the note — used when the intent is reverted or overridden."""
+    import json
+
+    data = _load_rolled_back(repo)
+    if hostname not in data:
+        return False
+    data.pop(hostname)
+    with open(_rolled_back_path(repo), "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    return True
+
+
 def intent_commits(repo: str, hostname: str, limit: int = 20) -> list:
     """Commits that changed this device's committed intent, newest first."""
     from modules.nsot.repo import git

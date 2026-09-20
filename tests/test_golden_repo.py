@@ -558,3 +558,73 @@ class TestTwoConsecutiveDeploysMakeOneEntry:
         self._deploy_like_save(lab, "hostname s4\n description one\n")
         self._deploy_like_save(lab, "hostname s4\n description two\n")
         assert M.load(lab)["devices"]["uid:seeded-s4"]["platform"] == "cisco_ios"
+
+
+class TestReadsNeverCommit:
+    """Hygiene appends on access; only a write path commits.
+
+    ``ensure_repo_hygiene()`` runs inside ``git()``, which every read goes
+    through. If it committed as well as appended, a read would create commits —
+    the GET-writes-to-git problem one level down, and harder to see, because it
+    would be a side effect of a *library* call rather than a route.
+
+    So the split is deliberate: append on access, commit only from
+    ``init_repo()``, which is reached solely from ``save_golden()``,
+    ``_commit_paths()``, ``apply_pending_renames()`` and ``migrate.apply()``.
+    """
+
+    def _count(self, repo):
+        rc, out, _ = R.git(repo, "rev-list", "--count", "HEAD")
+        return int(out) if rc == 0 else 0
+
+    def _degrade(self, repo):
+        with open(os.path.join(repo, ".gitignore"), "w", encoding="utf-8") as fh:
+            fh.write("*.swp\n")
+
+    def test_a_read_appends_but_does_not_commit(self, lab):
+        R.save_golden("Lab", [_item()])
+        before = self._count(lab)
+        self._degrade(lab)
+
+        R.git(lab, "status", "--porcelain")
+        R.git(lab, "log", "--oneline", "-1")
+        R.golden_history(lab, "R1")
+
+        assert self._count(lab) == before, "a read path created a commit"
+        with open(os.path.join(lab, ".gitignore"), encoding="utf-8") as fh:
+            assert ".nsot/migrated.json" in fh.read(), "hygiene did not append"
+
+    def test_hygiene_itself_never_commits(self, lab):
+        R.save_golden("Lab", [_item()])
+        before = self._count(lab)
+        self._degrade(lab)
+        R.ensure_repo_hygiene(lab)
+        assert self._count(lab) == before
+
+    def test_the_next_write_path_folds_it_in(self, lab):
+        """Left dirty by a read, committed by the next real write."""
+        R.save_golden("Lab", [_item()])
+        self._degrade(lab)
+        R.git(lab, "status", "--porcelain")
+
+        R.init_repo(lab)          # what every write path calls first
+
+        rc, status, _ = R.git(lab, "status", "--porcelain", "--", ".gitignore")
+        assert status.strip() == ""
+        rc, subject, _ = R.git(lab, "log", "-1", "--format=%s")
+        assert subject == "repo: update .gitignore"
+
+    def test_the_top_up_commit_touches_only_gitignore(self, lab):
+        R.save_golden("Lab", [_item()])
+        self._degrade(lab)
+        R.init_repo(lab)
+        rc, files, _ = R.git(lab, "show", "--name-only", "--format=", "HEAD")
+        assert files.split() == [".gitignore"]
+
+    def test_init_repo_is_idempotent_once_clean(self, lab):
+        R.save_golden("Lab", [_item()])
+        R.init_repo(lab)
+        before = self._count(lab)
+        R.init_repo(lab)
+        R.init_repo(lab)
+        assert self._count(lab) == before

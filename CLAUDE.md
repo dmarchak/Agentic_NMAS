@@ -377,6 +377,20 @@ The only part of the NSoT work that reaches a device.
   it at commit. An em dash is three UTF-8 bytes; IOS consumes the first, loses
   sync, and truncates the line, which surfaces as a Netmiko echo timeout rather
   than as an invalid character.
+- **Rollback is computed, not replayed.** `rollback_commands()` inverts exactly
+  what was pushed — re-send the old line where the pre-change config set the
+  same thing differently, negate where it did not set it at all. A replay is a
+  *merge* and cannot remove a line, so it could never undo a `shutdown`.
+  `assert_rollback_provenance()` bounds the one place this tool generates `no`.
+- **Rollback restores the device; the intent is separate.** A rollback records
+  `.nsot/rolled_back.json` against the device's current intent commit, which
+  blocks the next plan — otherwise it would propose exactly what just failed.
+  The note self-expires when the intent moves, and "Revert intent"
+  (`POST /templatize/committed/<host>/revert`) restores the previous committed
+  state as a forward commit and clears it.
+- **Reads never commit.** `ensure_repo_hygiene()` appends `.gitignore` rules on
+  every `git()` call; only `init_repo()` commits the top-up, and it is reached
+  solely from write paths.
 - **Rollback fires whenever a push was attempted**, and targets every device
   not explicitly skipped — including one whose push failed mid-stream, which is
   the state most in need of restoring.

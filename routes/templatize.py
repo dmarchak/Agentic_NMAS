@@ -315,6 +315,72 @@ def edit_committed(hostname):
                     "error": result.get("error", "")})
 
 
+@bp.route("/committed/<path:hostname>/revert", methods=["POST"])
+def revert_committed(hostname):
+    """Undo the most recent intent edit, restoring the previous committed state.
+
+    The other half of a rollback. Rollback restores the *device*; this restores
+    the *intent*, which otherwise keeps asserting that the change should be
+    there and makes the next plan propose exactly what just failed.
+
+    A forward commit, not a ``git revert``: the intent history stays linear and
+    a revert reads like any other edit, which is what it is. The rolled-back
+    note is cleared because the thing it warned about is no longer what would
+    be sent.
+    """
+    from modules.nsot import hostvars, repo as repo_service
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    repo = _repo_for(list_name)
+
+    change = hostvars.intent_change(repo, hostname)
+    if not change.get("sha"):
+        return jsonify({"ok": False, "error": (
+            f"'{hostname}' has no committed intent to revert.")}), 404
+    previous_sha = change.get("previous_sha")
+    if not previous_sha:
+        return jsonify({"ok": False, "error": (
+            f"'{hostname}' has only one intent commit, so there is no previous "
+            "state to restore. Edit the intent instead.")}), 409
+
+    previous = hostvars.committed_at(repo, hostname, previous_sha)
+    if previous is None:
+        return jsonify({"ok": False, "error": (
+            f"could not read host_vars at {previous_sha[:8]}")}), 500
+
+    try:
+        hostvars.write_committed(repo, previous)
+    except (hostvars.SecretLeak, hostvars.NonPrintableContent) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    result = repo_service.save_host_vars(
+        list_name, [hostname], actor=data.get("actor", "user"),
+        message=(f"host_vars: {hostname} revert to {previous_sha[:8]} "
+                 f"(undo {change['sha'][:8]})"))
+    cleared = hostvars.clear_rolled_back(repo, hostname)
+
+    return jsonify({"ok": result.get("ok", False), "hostname": hostname,
+                    "reverted_from": change["sha"], "restored": previous_sha,
+                    "commit": result.get("commit", ""),
+                    "rolled_back_note_cleared": cleared,
+                    "error": result.get("error", "")})
+
+
+@bp.route("/rolled-back", methods=["GET"])
+def rolled_back():
+    """Devices whose current intent was rolled back and not yet resolved."""
+    from modules.nsot import hostvars
+
+    repo = _repo_for(_active_list())
+    notes = {}
+    for hostname in hostvars.list_committed(repo):
+        note = hostvars.rolled_back_note(repo, hostname)
+        if note:
+            notes[hostname] = note
+    return jsonify({"ok": True, "rolled_back": notes})
+
+
 def _public(result: dict) -> dict:
     """Report fields for the UI — host_vars and rendered config excluded."""
     return {k: v for k, v in result.items()

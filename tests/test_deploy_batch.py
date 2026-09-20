@@ -344,3 +344,154 @@ class TestApplyRefusesAChangedProgram:
             merge_commands(intended,
                            "interface GigabitEthernet0/1\n description x\n"))
         assert now != confirmed
+
+
+class TestRolledBackIntentBlocksAReplan:
+    """Rollback restores the device. It says nothing about the intent.
+
+    Without a note, the intent still asserts the change should be there, so the
+    next plan computes the same diff and offers to push exactly what just
+    failed verification. The tool would loop, confidently, and every attempt
+    would look like a fresh proposal rather than a repeat.
+    """
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars, repo as R
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                                "nsot_device_tag_retention": 50,
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        repo = str(list_dir / "config_repo")
+        R.init_repo(repo)
+        hostvars.write_committed_text(repo, "s4", "hostname: s4\nmtu: 1500\n")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 initial")
+        hostvars.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 jumbo")
+        return repo, hostvars
+
+    def test_a_note_is_recorded_against_the_current_intent(self, lab):
+        repo, hv = lab
+        current = hv.intent_commits(repo, "s4")[0]["sha"]
+        hv.record_rolled_back(repo, "s4", current, reason="verify failed")
+
+        note = hv.rolled_back_note(repo, "s4")
+        assert note["intent_commit"] == current
+        assert note["reason"] == "verify failed"
+
+    def test_the_note_blocks_deployability(self, lab):
+        from modules.nsot.render_artifact import build_artifact
+        repo, hv = lab
+        current = hv.intent_commits(repo, "s4")[0]["sha"]
+        note = hv.record_rolled_back(repo, "s4", current, reason="verify failed")
+
+        art = build_artifact("s1", _config_text(), "cisco_ios",
+                             template="cisco_ios/base.j2",
+                             template_approved=True, rolled_back=note)
+        assert art.deployable is False
+        assert any("rolled back" in r for r in art.blocking_reasons)
+
+    def test_the_reason_says_what_to_do(self, lab):
+        from modules.nsot.render_artifact import build_artifact
+        repo, hv = lab
+        note = hv.record_rolled_back(repo, "s4", "abc123", reason="verify failed")
+        art = build_artifact("s1", _config_text(), "cisco_ios",
+                             template="cisco_ios/base.j2",
+                             template_approved=True, rolled_back=note)
+        reason = next(r for r in art.blocking_reasons if "rolled back" in r)
+        assert "revert the intent" in reason
+
+    def test_editing_the_intent_expires_the_note(self, lab):
+        """Self-expiring: what failed is no longer what would be sent."""
+        repo, hv = lab
+        current = hv.intent_commits(repo, "s4")[0]["sha"]
+        hv.record_rolled_back(repo, "s4", current, reason="verify failed")
+        assert hv.rolled_back_note(repo, "s4") is not None
+
+        from modules.nsot import repo as R
+        hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 1600\n")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 try again")
+
+        assert hv.rolled_back_note(repo, "s4") is None
+
+    def test_reverting_restores_the_previous_intent(self, lab):
+        from routes.templatize import revert_committed
+        repo, hv = lab
+        assert hv.read_committed(repo, "s4")["mtu"] == 9000
+
+        import flask
+        app = flask.Flask(__name__)
+        with app.test_request_context(json={}):
+            response = revert_committed("s4")
+        body = response[0].get_json() if isinstance(response, tuple) else response.get_json()
+
+        assert body["ok"] is True
+        assert hv.read_committed(repo, "s4")["mtu"] == 1500
+
+    def test_reverting_clears_the_note(self, lab):
+        from routes.templatize import revert_committed
+        repo, hv = lab
+        current = hv.intent_commits(repo, "s4")[0]["sha"]
+        hv.record_rolled_back(repo, "s4", current, reason="verify failed")
+
+        import flask
+        app = flask.Flask(__name__)
+        with app.test_request_context(json={}):
+            revert_committed("s4")
+
+        assert hv.rolled_back_note(repo, "s4") is None
+
+    def test_the_revert_is_a_forward_commit(self, lab):
+        from modules.nsot import repo as R
+        from routes.templatize import revert_committed
+        repo, hv = lab
+
+        import flask
+        app = flask.Flask(__name__)
+        with app.test_request_context(json={}):
+            revert_committed("s4")
+
+        rc, subject, _ = R.git(repo, "log", "-1", "--format=%s")
+        assert subject.startswith("host_vars: s4 revert to ")
+        assert len(hv.intent_commits(repo, "s4")) == 3
+
+    def test_a_single_intent_commit_cannot_be_reverted(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars, repo as R
+        from routes.templatize import revert_committed
+
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                            }.get(key, default))
+        list_dir = tmp_path / "solo"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Solo")
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        repo = str(list_dir / "config_repo")
+        R.init_repo(repo)
+        hostvars.write_committed_text(repo, "s4", "hostname: s4\n")
+        R.save_host_vars("Solo", ["s4"], message="host_vars: s4 initial")
+
+        import flask
+        app = flask.Flask(__name__)
+        with app.test_request_context(json={}):
+            response = revert_committed("s4")
+        body, status = response
+        assert status == 409
+        assert "no previous state" in body.get_json()["error"]
+
+
+def _config_text():
+    import os
+    fleet = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
+    with open(os.path.join(fleet, "s1.cfg"), encoding="utf-8") as fh:
+        return fh.read()

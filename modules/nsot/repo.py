@@ -111,7 +111,8 @@ def _git_env() -> dict:
 
 #: Ignore rules every NSoT repo must carry, whenever it was created.
 GITIGNORE_RULES = ("*.swp", "*.tmp", ".nsot/migration-backup/",
-                   ".nsot/staging/", ".nsot/migrated.json")
+                   ".nsot/staging/", ".nsot/migrated.json",
+                   ".nsot/rolled_back.json")
 
 
 def ensure_repo_hygiene(repo: str) -> None:

@@ -146,7 +146,8 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
     artifact = build_artifact(hostname, captured, platform, template=template,
                               template_approved=approved, host_vars=intent,
                               bootstrap=bootstrap,
-                              template_root=templates_repo.templates_dir(repo))
+                              template_root=templates_repo.templates_dir(repo),
+                              rolled_back=hostvars.rolled_back_note(repo, hostname))
     return (artifact, captured, device), ""
 
 
