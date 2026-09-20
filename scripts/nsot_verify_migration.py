@@ -133,23 +133,50 @@ def verify(list_name):
           " untracked path(s)")
 
     # 12 ---------------------------------------------------------------
-    drifted = []
+    # Compare the legacy copy against golden AS IT WAS AT THE MIGRATION
+    # COMMIT, not as it is now.
+    #
+    # First attempt compared against the working tree, which made the check
+    # fail the moment a deploy legitimately re-baselined a device — reporting
+    # a success as a failure. Second attempt skipped devices changed since
+    # migration, which on this repo skipped all nine and reported PASS having
+    # compared nothing: a vacuous pass, the same family as a check positioned
+    # where it cannot fail.
+    #
+    # The question is "did migration preserve content", and it has a fixed
+    # answer at a fixed commit. Reading the blob at that commit answers it
+    # permanently and cannot be invalidated by later legitimate change.
+    marker = migrate.read_marker(repo)
+    migration_sha = (marker or {}).get("commit", "")
+    drifted, compared, unreadable = [], 0, []
     for entry in devices.values():
         name = entry.get("name", "")
         legacy_path = os.path.join(legacy, f"{name}.cfg")
-        repo_path = _m.golden_path_for(repo, entry)
-        if not (os.path.exists(legacy_path) and os.path.exists(repo_path)):
+        if not os.path.exists(legacy_path) or not migration_sha:
+            continue
+        rel = os.path.relpath(_m.golden_path_for(repo, entry), repo)
+        rc, blob = _git(repo, "show", f"{migration_sha}:{rel}")
+        if rc != 0 or not blob.strip():
+            unreadable.append(name)
             continue
         with open(legacy_path, encoding="utf-8") as fh:
             a = normalize.strip_for_diff(fh.read())
-        with open(repo_path, encoding="utf-8") as fh:
-            b = normalize.strip_for_diff(fh.read())
-        if a != b:
+        if a != normalize.strip_for_diff(blob):
             drifted.append(name)
-    check(12, "migrated golden is config-equivalent to the legacy copy",
-          PASS if not drifted else FAIL,
-          "no semantic difference on any device" if not drifted
-          else f"differs on: {drifted}")
+        compared += 1
+
+    if drifted:
+        status, detail = FAIL, f"differs on: {sorted(drifted)}"
+    elif compared == 0:
+        # Never PASS on an empty comparison.
+        status, detail = WARN, "nothing could be compared"
+    else:
+        status = PASS
+        detail = f"{compared} device(s) compared at {migration_sha[:8]}, identical"
+    if unreadable:
+        detail += f"; unreadable at that commit: {sorted(unreadable)}"
+    check(12, "migration preserved content (at the migration commit)",
+          status, detail)
 
     return results
 

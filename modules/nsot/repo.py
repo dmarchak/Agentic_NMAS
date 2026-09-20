@@ -177,6 +177,20 @@ def init_repo(repo: str) -> bool:
         git(repo, "add", ".gitattributes", ".gitignore")
         git(repo, "commit", "--allow-empty", "-m",
             "Initialize NSoT configuration repository")
+        return True
+
+    # A hygiene top-up wrote to .gitignore but nothing committed it, so the
+    # tree stayed dirty forever and "no change left uncommitted" could never
+    # be true again. Its own commit, so it is never mistaken for config.
+    rc, dirty, _ = git(repo, "status", "--porcelain", "--", ".gitignore")
+    if rc == 0 and dirty.strip():
+        git(repo, "add", ".gitignore")
+        rc, _, err = git(repo, "commit", "-m",
+                         "repo: update .gitignore\n\nSource: hygiene\n")
+        if rc == 0:
+            log.info("repo: committed a .gitignore top-up in %s", repo)
+        else:
+            log.debug("repo: could not commit .gitignore: %s", err)
     return True
 
 
