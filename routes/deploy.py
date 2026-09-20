@@ -54,7 +54,8 @@ def _artifact_for(list_name: str, hostname: str):
     _name, csv_path = get_current_device_list()
     device = next((d for d in load_saved_devices(csv_path)
                    if d.get("hostname") == hostname), {})
-    platform = device.get("device_type", "cisco_ios")
+    from modules.nsot.platform import platform_for_device
+    platform = platform_for_device(device)
 
     repo = _repo_for(list_name)
     template = templates_repo.template_for_device(repo, hostname, platform)

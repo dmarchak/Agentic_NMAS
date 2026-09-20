@@ -27,14 +27,14 @@ def _active_list(payload=None) -> str:
 
 
 def _platform_for(device: dict) -> str:
-    """Resolve a device's parser platform via the Settings platform map."""
-    from modules.settings_schema import get_setting
+    """The device's config dialect.
 
-    slug = device.get("_platform", "")
-    if slug:
-        entry = (get_setting("platform_map", {}) or {}).get(slug, {})
-        return entry.get("netmiko_device_type") or device.get("device_type", "cisco_ios")
-    return device.get("device_type", "cisco_ios")
+    Previously this returned the platform map's ``netmiko_device_type``, which
+    is the session driver rather than the config dialect — the same conflation
+    corrected in modules/nsot/platform.py.
+    """
+    from modules.nsot.platform import platform_for_device
+    return platform_for_device(device)
 
 
 @bp.route("/report", methods=["GET", "POST"])

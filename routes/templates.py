@@ -66,12 +66,15 @@ def _captured_running(list_name: str, hostname: str):
 
 
 def _platform_for(hostname: str) -> str:
+    """The device's config dialect — not its Netmiko driver."""
     from modules.device import get_current_device_list, load_saved_devices
+    from modules.nsot.platform import DEFAULT_PLATFORM, platform_for_device
+
     _name, csv_path = get_current_device_list()
     for dev in load_saved_devices(csv_path):
         if dev.get("hostname") == hostname:
-            return dev.get("device_type", "cisco_ios")
-    return "cisco_ios"
+            return platform_for_device(dev)
+    return DEFAULT_PLATFORM
 
 
 # ---------------------------------------------------------------------------

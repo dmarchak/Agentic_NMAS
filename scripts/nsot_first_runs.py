@@ -58,6 +58,7 @@ def run_preview() -> int:
     from modules.config import get_current_list_name, get_list_data_dir
     from modules.device import get_current_device_list, load_saved_devices
     from modules.nsot import approval, templates_repo
+    from modules.nsot.platform import describe, platform_for_device
     from modules.nsot.render_artifact import build_artifact
 
     _rule("RUN 1 — preview only, all devices (read-only, no sessions opened)")
@@ -73,19 +74,21 @@ def run_preview() -> int:
     print(f"list: {list_name}    devices in inventory: {len(inventory)}    "
           f"golden configs: {len(goldens)}")
 
+    started = time.time()
     rows, problems = [], []
     for hostname in sorted(inventory) or ALL_DEVICES:
         entry = goldens.get(hostname)
         if entry is None:
             rows.append({"device": hostname, "template": "-", "deployable": False,
                          "why": "no golden config", "coverage": 0.0,
-                         "unmodeled": "-", "approved": False})
+                         "unmodeled": "-", "approved": False,
+                         "platform": "-", "netmiko": "-"})
             problems.append(f"{hostname}: no golden config")
             continue
 
         captured = _load_golden_config_file(entry["device_ip"]) or ""
         device = inventory.get(hostname, {})
-        platform = device.get("device_type", "cisco_ios")
+        platform = platform_for_device(device)
         template = templates_repo.template_for_device(repo, hostname, platform)
 
         artifact = build_artifact(hostname, captured, platform, template=template)
@@ -96,8 +99,12 @@ def run_preview() -> int:
                                       template=template, template_approved=True,
                                       host_vars=artifact.host_vars)
 
+        meta = describe(device)
         rows.append({
             "device": hostname,
+            "platform": meta["platform"],
+            "netmiko": meta["netmiko_device_type"],
+            "platform_source": meta["platform_source"],
             "template": template,
             "deployable": artifact.deployable,
             "why": "; ".join(artifact.blocking_reasons)[:60] or "-",
@@ -109,17 +116,22 @@ def run_preview() -> int:
             problems.append(f"{hostname}: {'; '.join(artifact.blocking_reasons)}")
 
     _rule()
-    print(f"{'device':8} {'template':26} {'deploy':>7} {'appr':>5} "
-          f"{'cover':>7} {'unmod':>6}  why")
-    print("-" * 78)
+    print(f"{'device':7} {'dialect':12} {'netmiko':11} {'template':22} "
+          f"{'depl':>5} {'appr':>5} {'cover':>7} {'unmod':>6}  why")
+    print("-" * 110)
     for row in rows:
-        print(f"{row['device']:8} {row['template'][:26]:26} "
-              f"{str(row['deployable']):>7} {str(row['approved']):>5} "
+        print(f"{row['device']:7} {row.get('platform','-'):12} "
+              f"{row.get('netmiko','-'):11} {row['template'][:22]:22} "
+              f"{str(row['deployable']):>5} {str(row['approved']):>5} "
               f"{row['coverage']:6.1f}% {str(row['unmodeled']):>6}  {row['why']}")
 
+    elapsed = time.time() - started
     deployable = sum(1 for r in rows if r["deployable"])
-    print("-" * 78)
+    print("-" * 110)
     print(f"{deployable}/{len(rows)} deployable")
+    print(f"wall clock: {elapsed:.2f}s for {len(rows)} device(s) "
+          f"({elapsed / max(len(rows), 1) * 1000:.0f}ms each) — "
+          f"{len(rows)} renders + {len(rows)} round-trip validations")
 
     if problems:
         print("\nBlocking issues:")

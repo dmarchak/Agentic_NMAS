@@ -1081,3 +1081,103 @@ Two habits fall out, and both are worth stating in the write-up:
    what the tool is allowed to *originate*, tracking origin is both simpler and
    sounder than pattern-matching the output.
 
+---
+
+## Fixtures written by the author cannot surprise the author
+
+The migration bug that a dry run against the real NMAS found, and that none of
+the tests could have.
+
+### The bug
+
+The Phase 2 migration moves golden configs from the two legacy stores into
+``config_repo/golden/``. Run against the real NMAS in report-only mode, it said:
+
+```
+candidate files     : 18
+devices after merge : 18
+duplicate merges    : 0
+```
+
+Nine devices. Eighteen "devices". Zero merges. And each pair pointed at the same
+destination:
+
+```
+r1  10.255.1.11   golden_configs/r1.cfg  -> golden/r1.cfg
+r1  (no ip)       config_repo/r1.cfg     -> golden/r1.cfg
+```
+
+Applying it would have written each device's golden file twice, the second
+silently overwriting the first, for all nine devices.
+
+### The cause
+
+The two stores hold the same device in **different formats**, and grouping used
+a single key — management IP when present, case-folded hostname otherwise:
+
+| File | Header | Parses to | Grouped as |
+|---|---|---|---|
+| ``golden_configs/s4.cfg`` | ``! Golden config — s4 (…)`` | an address | ``ip:…`` |
+| ``config_repo/s4.cfg`` | stripped by ``write_and_stage`` | nothing | ``name:s4`` |
+
+Two keys, one device. The merge detection built specifically to prevent one
+device becoming two golden files could not see the most common way that
+actually happens on a real system.
+
+### Why no test caught it
+
+There were already eight tests for duplicate detection, covering
+case-insensitive names, IP-level duplicates, newest-content-wins, backup of
+losers, and idempotence. They all passed.
+
+Every one of them wrote **both copies in the same format**. Of course they did:
+I wrote a helper, ``_write(lab, store, filename, hostname, ip, body)``, and
+called it twice with different stores. A helper produces consistent output —
+that is the point of a helper — and consistent output is exactly what the real
+system does not have.
+
+The asymmetry between the stores is not something the tests forgot to cover. It
+is something they could not express, because the fixture generator had one code
+path and the production system has two, written years apart by different
+functions with different jobs.
+
+### The generalisable point
+
+**A fixture encodes the author's model of the data. A test built on it can only
+falsify things the author already thought were possible.** It is very good at
+catching regressions and very bad at catching the case where the model itself
+is incomplete — which is most interesting bugs.
+
+That is the whole argument for the dry run being the *default* mode, and for
+running it against production shapes before anything else. It is the only step
+in this project where reality gets to disagree with me. It disagreed
+immediately.
+
+Three habits fall out:
+
+1. **Dry-run against real data before trusting a migration**, however well
+   tested. The tests tell you the code does what you meant; only real data tells
+   you whether what you meant covers what exists.
+2. **Be suspicious of fixture helpers in tests about data variation.** A helper
+   guarantees uniformity, which is precisely the property under test.
+3. **Check the arithmetic of a report, not just its status.** The dry run did
+   not error. It said "18 devices" for a nine-device network and "0 merges" for
+   a case built to produce merges, and both numbers were right there. Reading
+   "ok: true" and moving on would have missed it.
+
+### The fix, and a second bug underneath
+
+Identity became a **connected component**: two candidates are the same device if
+they share an address *or* a case-folded hostname. Union-find over both, then
+merge whole components.
+
+Fixing that surfaced another. The merge picks the newest file as the winner, and
+the header-stripped ``config_repo`` copy often *is* newer — but it has no
+management IP. The manifest entry would have been written with an empty address,
+breaking ``find_by_ip`` and therefore ``_find_golden_config_file``. The group's
+richest identity now wins regardless of which member is newest.
+
+One bug hid another, and the second was only reachable once the first was
+fixed — which is an argument for fixing and re-running rather than fixing and
+assuming.
+

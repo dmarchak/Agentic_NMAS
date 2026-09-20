@@ -27,6 +27,17 @@ logger = logging.getLogger(__name__)
 # encrypt/decrypt credential fields stored in the CSV. 
 
 
+#: Columns of ``devices.csv``, defined once.
+#:
+#: ``device_type`` is the **Netmiko driver** — how to open a session.
+#: ``platform`` is the **config dialect** — how to parse and render config.
+#: They answer different questions and must not be conflated; see
+#: modules/nsot/platform.py. Both ``platform`` and ``device_uid`` are additive
+#: and blank-tolerant, so lists written before they existed load unchanged.
+DEVICE_CSV_FIELDS = ["hostname", "device_type", "ip", "username", "password",
+                     "secret", "role", "device_uid", "platform"]
+
+
 def load_key() -> bytes:
     #Load or generate Fernet key stored at `KEY_FILE`.
 
@@ -129,7 +140,7 @@ def save_device(device: dict, filename: str | None = None) -> None:
     _refuse_if_netbox_sourced(filename, "add or edit")
     if not filename:
         filename = DEVICES_FILE
-    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
+    fieldnames = DEVICE_CSV_FIELDS
     encrypted = device.copy()
     encrypted["password"] = fernet.encrypt(device["password"].encode()).decode()
     encrypted["secret"] = fernet.encrypt(device["secret"].encode()).decode()
@@ -159,9 +170,9 @@ def delete_device(ip: str, filename: str | None = None) -> None:
     if not filename:
         filename = DEVICES_FILE
     devices = [d for d in load_saved_devices(filename) if d.get("ip") != ip]
-    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
+    fieldnames = DEVICE_CSV_FIELDS
     with open(filename, mode="w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(devices)
 
@@ -221,9 +232,9 @@ def write_devices_csv(devices: list[dict], filename: str | None = None) -> None:
     #Write a list of device dicts to the CSV file.
     if not filename:
         filename = DEVICES_FILE
-    fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
+    fieldnames = DEVICE_CSV_FIELDS
     with open(filename, mode="w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(devices)
 
@@ -308,9 +319,8 @@ def _ensure_devices_csv(list_dir: str) -> None:
     """Create an empty devices.csv with headers if it doesn't exist."""
     csv_path = os.path.join(list_dir, "devices.csv")
     if not os.path.exists(csv_path):
-        fieldnames = ["hostname", "device_type", "ip", "username", "password", "secret", "role"]
         with open(csv_path, mode="w", newline="") as f:
-            csv.DictWriter(f, fieldnames=fieldnames).writeheader()
+            csv.DictWriter(f, fieldnames=DEVICE_CSV_FIELDS).writeheader()
 
 
 def _save_device_lists_config(config: dict) -> None:
