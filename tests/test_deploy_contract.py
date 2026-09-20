@@ -226,3 +226,109 @@ class TestApprovalIsAskedTheRightQuestion:
         assert approval.is_approved(repo, "cisco_ios/base.j2", host_vars)
         assert not approval.is_approved(repo, "cisco_ios/base.j2",
                                         {"s2": host_vars["s2"]})
+
+
+class TestIntentComesFromCommittedHostVars:
+    """Intent must not be a function of current state.
+
+    Deriving host_vars by parsing the device's own capture makes the render
+    reproduce that capture exactly, so the merge diff is empty by construction
+    — the same error as validating a masked render against itself. Both sides
+    come from one source, so the comparison cannot say anything.
+    """
+
+    def _artifact(self, config, host_vars=None, bootstrap=False, approved=True):
+        return build_artifact("s1", config, "cisco_ios",
+                              template="cisco_ios/base.j2",
+                              template_approved=approved,
+                              host_vars=host_vars, bootstrap=bootstrap)
+
+    def test_no_committed_intent_is_not_deployable(self):
+        art = self._artifact(_config("s1"), bootstrap=True)
+        assert art.bootstrap is True
+        assert art.deployable is False
+        assert any("no committed intent" in r for r in art.blocking_reasons)
+
+    def test_the_refusal_says_what_to_do(self):
+        art = self._artifact(_config("s1"), bootstrap=True)
+        reason = next(r for r in art.blocking_reasons if "no committed intent" in r)
+        assert "review and commit extracted host_vars" in reason
+
+    def test_bootstrap_cannot_be_overridden(self):
+        """deployable stays a computed property with no backing field."""
+        art = self._artifact(_config("s1"), bootstrap=True)
+        with pytest.raises(Exception):
+            art.deployable = True
+
+    def test_committed_intent_equal_to_the_capture_is_deployable_and_empty(self):
+        from modules.nsot.deploy import merge_diff
+        from modules.nsot.parsers import get_parser
+
+        config = _config("s1")
+        intent = get_parser("cisco_ios").parse(config)
+        art = self._artifact(config, host_vars=intent)
+
+        assert art.deployable is True
+        assert art.intent_drift["differs"] is False
+        diff = merge_diff(prepare_device(art)["config"], config)
+        assert diff["to_add"] == []
+
+    def test_an_intent_edit_produces_exactly_that_line(self):
+        """The point of the whole mechanism."""
+        from modules.nsot.deploy import merge_diff
+        from modules.nsot.parsers import get_parser
+
+        config = _config("s1")
+        intent = get_parser("cisco_ios").parse(config)
+        target = next(i for i in intent["interfaces"] if not i.get("description"))
+        target["description"] = "NSoT-managed — test"
+
+        art = self._artifact(config, host_vars=intent)
+        diff = merge_diff(prepare_device(art)["config"], config)
+
+        assert art.deployable is True, art.blocking_reasons
+        assert diff["to_add"] == [f" description NSoT-managed — test"] or any(
+            "NSoT-managed — test" in line for line in diff["to_add"])
+        assert art.intent_drift["differs"] is True
+
+    def test_an_intent_edit_does_not_block_deployability(self):
+        """Fidelity is judged on the template, not on intent-vs-device.
+
+        Judging deployability on the intent render would make every non-empty
+        diff self-blocking: the change you want to push is, by definition, a
+        difference between intent and the device.
+        """
+        from modules.nsot.parsers import get_parser
+
+        config = _config("s1")
+        intent = get_parser("cisco_ios").parse(config)
+        target = next(i for i in intent["interfaces"] if not i.get("description"))
+        target["description"] = "NSoT-managed — test"
+
+        art = self._artifact(config, host_vars=intent)
+        assert art.deployable is True
+        assert not any("invents" in r or "does not reproduce" in r
+                       for r in art.blocking_reasons)
+
+    def test_template_infidelity_still_blocks(self):
+        """The half that must keep gating."""
+        config = _config("s1")
+        art = self._artifact(config)
+        art.report.update({"missing_from_render": 3})
+        art.template_report.update({"missing_from_render": 3})
+        assert art.deployable is False
+
+    def test_intent_drift_reports_the_three_way_relationship(self):
+        from modules.nsot.parsers import get_parser
+
+        config = _config("s1")
+        intent = get_parser("cisco_ios").parse(config)
+        target = next(i for i in intent["interfaces"] if not i.get("description"))
+        target["description"] = "NSoT-managed — test"
+
+        art = self._artifact(config, host_vars=intent)
+        drift = art.intent_drift
+        assert drift["adds"] >= 1
+        assert drift["differs"] is True
+        assert art.summary()["intent_drift"] == drift
+        assert art.summary()["bootstrap"] is False

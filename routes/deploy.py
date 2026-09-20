@@ -101,9 +101,23 @@ def _bound_host_vars(repo: str, template: str, platform: str, cache: dict) -> di
 
 
 def _artifact_for(list_name: str, hostname: str, cache: dict = None):
-    """Build the render artifact for one device from its captured config."""
+    """Build the render artifact for one device.
+
+    **Intent comes from committed host_vars, and from nowhere else.** Deriving
+    it by parsing the device's own capture makes intent a function of current
+    state, which guarantees an empty diff by construction — both sides of the
+    comparison come from one source, so it cannot say anything. A device with
+    no committed intent is marked ``bootstrap`` and refused, because treating
+    its status quo as its goal is how a tool confidently pushes nothing and
+    reports success.
+
+    Template approval stays keyed on host_vars parsed from each bound device's
+    **capture**. Approval is a statement about the template — that it faithfully
+    reproduces every bound device — and editing one device's intent must not
+    silently revoke it.
+    """
     from modules.device import get_current_device_list, load_saved_devices
-    from modules.nsot import approval, templates_repo
+    from modules.nsot import approval, hostvars, templates_repo
     from modules.nsot.render_artifact import build_artifact
 
     repo = _repo_for(list_name)
@@ -119,17 +133,18 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
 
     template = templates_repo.template_for_device(repo, hostname, platform)
 
-    artifact = build_artifact(hostname, captured, platform, template=template)
+    committed = hostvars.read_committed(repo, hostname)
+    bootstrap = committed is None
+    # Names become values here and only here, in memory, as late as possible.
+    intent = None if bootstrap else hostvars.hydrate_secrets(committed, hostname)
+
     bound = _bound_host_vars(repo, template, platform,
                              cache if cache is not None else {})
-    # The device being deployed uses the host_vars just built for it, so a
-    # capture newer than the cache cannot be masked by a stale bound-set entry.
-    bound = {**bound, hostname: artifact.host_vars}
+    approved = approval.is_approved(repo, template, bound)
 
-    if approval.is_approved(repo, template, bound):
-        artifact = build_artifact(hostname, captured, platform, template=template,
-                                  template_approved=True,
-                                  host_vars=artifact.host_vars)
+    artifact = build_artifact(hostname, captured, platform, template=template,
+                              template_approved=approved, host_vars=intent,
+                              bootstrap=bootstrap)
     return (artifact, captured, device), ""
 
 

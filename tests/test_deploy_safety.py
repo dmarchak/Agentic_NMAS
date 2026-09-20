@@ -214,3 +214,41 @@ class TestSettleWindows:
             lambda k, d=None: {"rip": {"timeout": 120}} if k == "verify_settle_windows" else d)
         assert convergence.window_for("rip")["timeout"] == 120
         assert convergence.window_for("rip")["interval"] == 15   # default kept
+
+
+class TestMergeDiffPushesOnlyCommands:
+    """A blank line is not configuration.
+
+    ``to_add`` included every blank line the render produced, so a device with
+    nothing to deploy still reported additions — "is there anything to do here"
+    answered yes for every device, permanently. ``!`` and ``end`` were already
+    excluded from removal warnings but not from additions; the filter is
+    symmetric now.
+    """
+
+    def test_identical_configs_produce_no_additions(self):
+        from modules.nsot.deploy import merge_diff
+        config = "hostname s1\n!\n\ninterface Vlan10\n description x\n!\nend\n"
+        assert merge_diff(config, config)["to_add"] == []
+
+    def test_a_blank_line_is_never_an_addition(self):
+        from modules.nsot.deploy import merge_diff
+        diff = merge_diff("hostname s1\n\n\ninterface Vlan10\n", "hostname s1\n")
+        assert "" not in diff["to_add"]
+        assert diff["to_add"] == ["interface Vlan10"]
+
+    def test_a_bang_is_never_an_addition(self):
+        from modules.nsot.deploy import merge_diff
+        diff = merge_diff("!\nhostname s1\n!\n", "hostname s1\n")
+        assert diff["to_add"] == []
+
+    def test_end_is_never_a_removal_warning(self):
+        from modules.nsot.deploy import merge_diff
+        diff = merge_diff("hostname s1\n", "hostname s1\n!\nend\n")
+        assert diff["removal_warnings"] == []
+
+    def test_a_real_addition_still_comes_through(self):
+        from modules.nsot.deploy import merge_diff
+        diff = merge_diff("hostname s1\n description NSoT-managed\n",
+                          "hostname s1\n")
+        assert diff["to_add"] == [" description NSoT-managed"]

@@ -2,10 +2,21 @@
 
 Reading and writing extracted ``host_vars`` YAML.
 
-Phase 3a is **read-only with respect to git**. Extractions land in
-``config_repo/.nsot/staging/host_vars/<device>.yml``, which is gitignored.
-Phase 3b adds "Review and commit extracted host_vars" with a diff, so the first
-commit has a human in the loop.
+Two stores, and the distinction is the whole point.
+
+``config_repo/.nsot/staging/host_vars/<device>.yml`` is **gitignored scratch**:
+what the extractor read off a captured config. It is a proposal.
+
+``config_repo/host_vars/<device>.yml`` is **committed intent**: what the network
+is supposed to look like, reviewed by a person and recorded in git. This is the
+only intent source on the deploy path.
+
+Deriving intent by parsing the device's current configuration makes intent a
+function of current state, which guarantees an empty diff by construction — the
+same error as comparing a masked render against itself. Both sides come from
+one source, so the comparison cannot say anything. A device with no committed
+intent has nothing to deploy *toward*, and is marked ``bootstrap`` and not
+deployable rather than having its status quo treated as its goal.
 
 Secrets never appear in YAML. The extractor replaces every secret value with a
 ``secret_ref`` and hands the value to the credential store. For a hashed secret
@@ -21,6 +32,13 @@ import os
 log = logging.getLogger(__name__)
 
 STAGING_REL = os.path.join(".nsot", "staging", "host_vars")
+
+#: Committed intent, version-controlled. Never gitignored.
+COMMITTED_REL = "host_vars"
+
+
+class SecretLeak(ValueError):
+    """A resolved secret value reached something that gets committed."""
 
 #: Secret kinds that must be emitted verbatim and never re-derived.
 HASH_KINDS = ("secret", "password")
@@ -87,6 +105,130 @@ def list_staged(repo: str) -> list:
     if not os.path.isdir(directory):
         return []
     return sorted(f[:-4] for f in os.listdir(directory) if f.endswith(".yml"))
+
+
+# ---------------------------------------------------------------------------
+# Committed intent
+# ---------------------------------------------------------------------------
+
+def committed_dir(repo: str) -> str:
+    path = os.path.join(repo, COMMITTED_REL)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def committed_path(repo: str, hostname: str) -> str:
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in hostname)
+    return os.path.join(committed_dir(repo), f"{safe}.yml")
+
+
+def read_committed(repo: str, hostname: str):
+    """Committed intent for *hostname*, or ``None`` if it has none.
+
+    ``None`` is meaningful and must not be papered over: it means nobody has
+    said what this device is supposed to look like.
+    """
+    path = committed_path(repo, hostname)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return from_yaml(fh.read())
+
+
+def list_committed(repo: str) -> list:
+    directory = os.path.join(repo, COMMITTED_REL)
+    if not os.path.isdir(directory):
+        return []
+    return sorted(f[:-4] for f in os.listdir(directory) if f.endswith(".yml"))
+
+
+def assert_no_secret_values(text: str, hostname: str) -> None:
+    """Refuse to write a resolved secret into something git will keep.
+
+    The masking contract in one function: committed host_vars hold
+    ``secret_refs`` — *names* — and the credential store holds values. A preview
+    masks; a deploy resolves in memory and calls ``assert_no_mask()``. Nothing
+    in between ever writes a value to disk.
+
+    Checked structurally (no ``secrets:`` mapping) **and** by value: every
+    secret this device has in the store must be absent from the text. The
+    structural check alone would miss a value pasted into an unrelated field by
+    a hand edit, which is exactly what the editor route makes possible.
+    """
+    if "\nsecrets:" in "\n" + text:
+        raise SecretLeak(
+            f"{hostname}: committed host_vars must not contain a 'secrets' "
+            "mapping — values live in the credential store, names in secret_refs")
+
+    from modules.credentials import list_template_secrets
+    prefix = f"{hostname}:"
+    for entry in list_template_secrets():
+        name = entry["name"]
+        if not name.startswith(prefix):
+            continue
+        from modules.credentials import get_template_secret
+        value = get_template_secret(name)
+        if value and len(value) > 3 and value in text:
+            raise SecretLeak(
+                f"{hostname}: the resolved value of {name} appears in the "
+                "host_vars text — commit the secret_ref, never the value")
+
+
+def write_committed(repo: str, host_vars: dict) -> str:
+    """Write committed intent. Refuses anything carrying a resolved secret."""
+    hostname = host_vars.get("hostname") or "unknown"
+    text = to_yaml(host_vars)
+    assert_no_secret_values(text, hostname)
+    path = committed_path(repo, hostname)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    log.info("hostvars: committed intent written for %s", hostname)
+    return path
+
+
+def write_committed_text(repo: str, hostname: str, text: str) -> str:
+    """Write edited YAML verbatim, after the same refusal.
+
+    The editor path. Round-tripping through ``from_yaml``/``to_yaml`` would
+    silently discard anything the model does not know about, so the operator's
+    text is kept as written — which is also why the value-level leak check
+    matters here and not only structurally.
+    """
+    parsed = from_yaml(text)
+    if not isinstance(parsed, dict):
+        raise ValueError("host_vars must be a YAML mapping")
+    if (parsed.get("hostname") or hostname) != hostname:
+        raise ValueError(
+            f"hostname in the document ({parsed.get('hostname')!r}) does not "
+            f"match {hostname!r} — a host_vars file names its own device")
+    assert_no_secret_values(text, hostname)
+    path = committed_path(repo, hostname)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text if text.endswith("\n") else text + "\n")
+    return path
+
+
+def hydrate_secrets(host_vars: dict, hostname: str) -> dict:
+    """Return a copy with ``secrets`` resolved from the credential store.
+
+    **In memory only.** The result must never be written anywhere — it is the
+    deploy-time render input, and ``assert_no_mask()`` guards the other end.
+    Committed intent carries ``secret_refs``; this is where names become values,
+    once, as late as possible.
+    """
+    from modules.credentials import get_template_secret
+
+    refs = host_vars.get("secret_refs") or sorted(
+        (host_vars.get("secrets") or {}).keys())
+    secrets = {}
+    for ref in refs:
+        value = get_template_secret(f"{hostname}:{ref}")
+        if value:
+            secrets[ref] = value
+        else:
+            log.warning("hostvars: %s references secret %r with no stored value",
+                        hostname, ref)
+    return {**host_vars, "secrets": secrets}
 
 
 def store_secrets(host_vars: dict, hostname: str, dry_run: bool = True) -> dict:

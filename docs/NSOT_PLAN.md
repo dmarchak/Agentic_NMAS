@@ -559,6 +559,52 @@ fallback for one release and log a deprecation warning.
   deploying from template changes only that line on the device. The pipeline
   audit log records the run.
 
+#### Amendment (during 3c first runs): intent is committed, never inferred
+
+The first real deploy plan returned `to_add=0, unchanged=82` for a device the
+gate reported as fully deployable. The flow was complete and its effect was
+structurally zero, because `_artifact_for()` derived `host_vars` by parsing the
+device's own captured config. Intent was a function of current state, so the
+render reproduced the capture exactly and the diff was empty **by
+construction** — the same error as validating a masked render against itself:
+both sides come from one source, so the comparison cannot say anything.
+
+- `config_repo/host_vars/<device>.yml` is **committed intent** and the only
+  intent source on the deploy path. `.nsot/staging/host_vars/` stays gitignored
+  scratch: a proposal, not a decision.
+- A device with **no committed intent** is `bootstrap` and **not deployable**,
+  reason: *"no committed intent for this device — review and commit extracted
+  host_vars first."* A device whose intent is its current state has nothing to
+  deploy toward, and treating the status quo as the goal is how a tool
+  confidently pushes nothing and reports success.
+- `repo.save_host_vars()` — built and tested in Phase 2, callerless until now —
+  is the promotion step: staged → committed.
+- A change is expressed by **editing committed intent** and committing it
+  (`host_vars: <device> <summary>`), never by configuring the device and
+  re-extracting. The render diff is then the change.
+
+**This changes what round-trip validation means.** It now measures the template
+rendered *from committed intent* against the captured config, so a difference
+is not a defect — it is drift, and the three-way relationship the plan always
+wanted becomes visible: template, committed intent, captured reality. A
+non-empty drift is work to do, and the deploy closes it.
+
+Deployability therefore cannot be judged on that comparison, or every change
+would block itself: the difference you intend to push is, by definition, a
+difference between intent and the device. The artifact carries two reports —
+`report` from intent (drift, informational) and `template_report` from the
+capture's own parse (template fidelity, gating). Approval stays keyed on
+capture-parsed host_vars, because approval is a statement about the *template*
+reproducing every bound device, and one device's intent edit must not silently
+revoke it.
+
+**Masking contract unchanged.** Committed host_vars hold `secret_refs`; the
+credential store holds values. Preview masks; deploy resolves in memory and
+calls `assert_no_mask()`. `write_committed()` refuses any document carrying a
+`secrets:` mapping or a resolved value, checked structurally *and* by value —
+the structural check alone would miss a value pasted into an unrelated field by
+a hand edit, which is exactly what the editor route makes possible.
+
 ### Phase 4: Onboarding wizard for a new device or new site (Obj 1.2a(ii))
 
 - **Wizard steps:**

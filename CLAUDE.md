@@ -316,6 +316,24 @@ exception.
 
 The only part of the NSoT work that reaches a device.
 
+- **Intent is committed, never inferred.** `config_repo/host_vars/<device>.yml`
+  is the only intent source on the deploy path; `.nsot/staging/host_vars/` is
+  gitignored scratch. A device with no committed intent is `bootstrap` and
+  **not deployable** — deriving intent from the device's own capture makes the
+  diff empty by construction. A change is made by editing committed intent and
+  committing it (`host_vars: <device> <summary>`), not by configuring the
+  device and re-extracting.
+- **Two reports, one gate.** `report` measures the render from intent against
+  the capture — that is *drift*, and it is informational. `template_report`
+  measures the render from the capture's own parse — that is template fidelity,
+  and it gates. Judging deployability on the first would make every intended
+  change block itself. Approval stays keyed on capture-parsed host_vars, so one
+  device's intent edit never revokes a template approval.
+- **Secrets:** committed host_vars hold `secret_refs`; values live in the
+  credential store. `write_committed()` refuses a `secrets:` mapping or any
+  resolved value, checked structurally and by value. `hydrate_secrets()` is the
+  only place names become values, in memory, at deploy time.
+
 - **The 3b contract, in order**: refuse a non-deployable artifact → re-render
   with **real** secrets in memory → `assert_no_mask()` → only then connect.
   `intended/` is masked and is never read on this path.

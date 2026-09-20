@@ -118,3 +118,89 @@ class TestStaging:
                  for e in hostvars.store_secrets(out, "s1")["moved"]}
         assert moved["s1:user_admin_secret"] == "hash"
         assert moved["s1:snmp_community_ro"] == "plaintext"
+
+
+class TestCommittedIntentNeverHoldsASecretValue:
+    """The masking contract, at the one place that writes to git.
+
+    Committed host_vars hold ``secret_refs`` — names. The credential store
+    holds values. A preview masks; a deploy resolves in memory and calls
+    ``assert_no_mask()``. Nothing in between ever writes a value to disk, and
+    this is the guard that makes that structural rather than aspirational.
+    """
+
+    @pytest.fixture
+    def store(self, tmp_path, monkeypatch):
+        """A credential store holding one real secret for s1."""
+        from modules import credentials
+        values = {"s1:user_admin_secret": "$9$RealHashValue$notregenerable"}
+        monkeypatch.setattr(credentials, "get_template_secret",
+                            lambda name: values.get(name, ""))
+        monkeypatch.setattr(credentials, "list_template_secrets",
+                            lambda: [{"name": n, "secret_kind": "hash",
+                                      "rotatable": False} for n in values])
+        return values
+
+    def test_to_yaml_emits_refs_not_values(self, store):
+        from modules.nsot import hostvars
+        text = hostvars.to_yaml({"hostname": "s1",
+                                 "secrets": {"user_admin_secret": store["s1:user_admin_secret"]}})
+        assert "secret_refs" in text
+        assert store["s1:user_admin_secret"] not in text
+
+    def test_write_committed_refuses_a_resolved_value(self, tmp_path, store):
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.SecretLeak):
+            hostvars.write_committed_text(
+                str(tmp_path), "s1",
+                f"hostname: s1\nbanner: {store['s1:user_admin_secret']}\n")
+
+    def test_write_committed_refuses_a_secrets_mapping(self, tmp_path, store):
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.SecretLeak):
+            hostvars.write_committed_text(
+                str(tmp_path), "s1", "hostname: s1\nsecrets:\n  a: b\n")
+
+    def test_a_clean_document_is_written(self, tmp_path, store):
+        from modules.nsot import hostvars
+        path = hostvars.write_committed_text(
+            str(tmp_path), "s1", "hostname: s1\nsecret_refs:\n- user_admin_secret\n")
+        with open(path, encoding="utf-8") as fh:
+            assert store["s1:user_admin_secret"] not in fh.read()
+
+    def test_no_committed_file_in_the_repo_holds_a_value(self, tmp_path, store):
+        """The property stated directly, over every file in the store."""
+        from modules.nsot import hostvars
+        repo = str(tmp_path)
+        hostvars.write_committed(repo, {
+            "hostname": "s1",
+            "secrets": {"user_admin_secret": store["s1:user_admin_secret"]},
+            "interfaces": [],
+        })
+        for name in hostvars.list_committed(repo):
+            with open(hostvars.committed_path(repo, name), encoding="utf-8") as fh:
+                body = fh.read()
+            for value in store.values():
+                assert value not in body, f"{name}.yml carries a resolved secret"
+
+    def test_hydration_happens_in_memory_and_is_not_written(self, tmp_path, store):
+        from modules.nsot import hostvars
+        repo = str(tmp_path)
+        hostvars.write_committed(repo, {
+            "hostname": "s1",
+            "secrets": {"user_admin_secret": store["s1:user_admin_secret"]},
+        })
+        committed = hostvars.read_committed(repo, "s1")
+        assert "secrets" not in committed
+
+        live = hostvars.hydrate_secrets(committed, "s1")
+        assert live["secrets"]["user_admin_secret"] == store["s1:user_admin_secret"]
+
+        with open(hostvars.committed_path(repo, "s1"), encoding="utf-8") as fh:
+            assert store["s1:user_admin_secret"] not in fh.read()
+
+    def test_a_reference_with_no_stored_value_is_not_silently_empty(self, tmp_path, store):
+        from modules.nsot import hostvars
+        live = hostvars.hydrate_secrets(
+            {"hostname": "s1", "secret_refs": ["missing_ref"]}, "s1")
+        assert "missing_ref" not in live["secrets"]

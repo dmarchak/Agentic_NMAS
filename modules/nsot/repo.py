@@ -160,7 +160,7 @@ def init_repo(repo: str) -> bool:
         if rc != 0:
             git(repo, "init")
 
-    for sub in ("golden", "intended", ".nsot", "infra"):
+    for sub in ("golden", "host_vars", "intended", ".nsot", "infra"):
         os.makedirs(os.path.join(repo, sub), exist_ok=True)
 
     # Windows development, Linux deployment: normalise line endings in the repo.

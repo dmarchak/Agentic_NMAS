@@ -7,6 +7,83 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Intent is committed, never inferred
+
+The deploy flow was complete and its effect was structurally zero. With the
+approval gate fixed, the first real plan returned:
+
+```
+s4: deployable=True approved=True template=cisco_ios/base.j2
+   to_add=0  removal_warnings=0  unchanged=82
+```
+
+`_artifact_for()` derived host_vars by parsing the device's own captured
+config, so intent was a function of current state: the render reproduced the
+capture exactly and the diff was empty **by construction**. The same error as
+validating a masked render against itself — both sides come from one source, so
+the comparison cannot say anything.
+
+### Added — committed intent
+
+- `config_repo/host_vars/<device>.yml` is committed intent and **the only
+  intent source on the deploy path**. `.nsot/staging/host_vars/` stays
+  gitignored scratch — a proposal, not a decision.
+- A device with no committed intent is `bootstrap` and **not deployable**:
+  *"no committed intent for this device — review and commit extracted host_vars
+  first."* A device whose intent is its current state has nothing to deploy
+  toward, and treating the status quo as the goal is how a tool confidently
+  pushes nothing and reports success. `bootstrap` blocks through
+  `blocking_reasons`, so `deployable` stays a computed property with no backing
+  field and no override.
+- `POST /templatize/commit/<host>` promotes staged → committed via
+  `repo.save_host_vars()`, which has existed and been tested since Phase 2 with
+  no caller. Secrets move into the credential store for real here, not as a dry
+  run.
+- `POST /templatize/committed/<host>` edits committed intent and commits it as
+  `host_vars: <device> <summary>`. A summary is required — `host_vars: s4` on
+  its own says nothing in a log. **This is how a change is expressed**, not by
+  configuring the device and re-extracting.
+
+### Changed — what round-trip validation means
+
+It now measures the template rendered *from committed intent* against the
+capture. A difference is not a defect; it is drift, and the three-way
+relationship the plan always wanted is visible at last: template, committed
+intent, captured reality.
+
+Deployability therefore cannot be judged on that comparison, or every change
+would block itself — the difference you intend to push is by definition a
+difference between intent and the device. The artifact carries two reports:
+
+| | measured from | used for |
+|---|---|---|
+| `report` | render of **committed intent** vs capture | drift, informational |
+| `template_report` | render of the **capture's own parse** vs capture | template fidelity, **gating** |
+
+Approval stays keyed on capture-parsed host_vars: approval is a statement about
+the template reproducing every bound device, so one device's intent edit must
+not silently revoke it.
+
+### Masking contract — unchanged, and now enforced at the write
+
+Committed host_vars hold `secret_refs`; the credential store holds values.
+`write_committed()` refuses any document carrying a `secrets:` mapping **or** a
+resolved value, checked structurally *and* by value — the structural check alone
+would miss a value pasted into an unrelated field by a hand edit, which is
+exactly what the editor route makes possible. `hydrate_secrets()` is the only
+place names become values, in memory, at deploy time; `assert_no_mask()` guards
+the other end.
+
+### Fixed — `merge_diff` proposed blank lines as commands
+
+`to_add` included every blank line the render produced, so a device with
+nothing to deploy still reported additions and "is there anything to do here"
+answered yes for every device, permanently. `!` and `end` were excluded from
+removal warnings but not from additions. Both sides are filtered symmetrically
+now: a blank line, `!` and `end` are not commands.
+
+---
+
 ## [Unreleased] — The deploy gate could never open
 
 Found by running the first real deploy plan, not by any test.

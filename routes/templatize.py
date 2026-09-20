@@ -146,6 +146,126 @@ def rendered(hostname):
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+# ---------------------------------------------------------------------------
+# Committed intent
+# ---------------------------------------------------------------------------
+
+@bp.route("/committed", methods=["GET"])
+def committed():
+    """Devices that have committed intent. The deploy path reads only these."""
+    from modules.nsot import hostvars
+
+    repo = _repo_for(_active_list())
+    return jsonify({"ok": True,
+                    "committed": hostvars.list_committed(repo),
+                    "staged": hostvars.list_staged(repo)})
+
+
+@bp.route("/committed/<path:hostname>", methods=["GET"])
+def read_committed(hostname):
+    """The committed host_vars document, verbatim, for editing."""
+    from modules.nsot import hostvars
+
+    repo = _repo_for(_active_list())
+    path = hostvars.committed_path(repo, hostname)
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "committed": False, "error": (
+            f"'{hostname}' has no committed intent. Extract it, review the "
+            "diff, and commit before it can be deployed.")}), 404
+    with open(path, encoding="utf-8") as fh:
+        return jsonify({"ok": True, "hostname": hostname, "committed": True,
+                        "yaml": fh.read()})
+
+
+@bp.route("/commit/<path:hostname>", methods=["POST"])
+def commit_extraction(hostname):
+    """Promote a staged extraction to committed intent.
+
+    The review-and-commit step Phase 3a deliberately stopped short of: staging
+    is a proposal, this is the decision. ``save_host_vars()`` has existed and
+    been tested since Phase 2 with no caller; this is its caller.
+
+    Secrets move into the credential store **for real** here, not as a dry run.
+    Committed intent references them by name, and the deploy path resolves
+    those names in memory — so a reference with nothing behind it renders as a
+    missing-secret marker rather than the value it should have had.
+    """
+    from modules.nsot import hostvars, repo as repo_service
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    repo = _repo_for(list_name)
+
+    staged_vars = hostvars.read_staged(repo, hostname)
+    if staged_vars is None:
+        return jsonify({"ok": False, "error": (
+            f"Nothing staged for '{hostname}'. Extract it first.")}), 404
+
+    secrets = hostvars.store_secrets(staged_vars, hostname, dry_run=False)
+    try:
+        path = hostvars.write_committed(repo, staged_vars)
+    except hostvars.SecretLeak as exc:
+        log.error("templatize: refused to commit host_vars for %s: %s",
+                  hostname, exc)
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    result = repo_service.save_host_vars(
+        list_name, [hostname], actor=data.get("actor", "user"),
+        message=f"host_vars: {hostname} commit reviewed extraction")
+    return jsonify({"ok": result.get("ok", False),
+                    "hostname": hostname,
+                    "committed_path": os.path.relpath(path, repo),
+                    "commit": result.get("commit", ""),
+                    "message": result.get("message", ""),
+                    "secrets": secrets,
+                    "error": result.get("error", "")})
+
+
+@bp.route("/committed/<path:hostname>", methods=["POST"])
+def edit_committed(hostname):
+    """Edit committed intent and commit the edit.
+
+    **This is how a change is expressed.** Not by configuring the device and
+    re-extracting — that makes intent a function of current state and can only
+    ever produce an empty diff. Edit what the network is supposed to be, commit
+    it, and the render diff *is* the change.
+    """
+    from modules.nsot import hostvars, repo as repo_service
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    repo = _repo_for(list_name)
+    text = data.get("yaml")
+    summary = (data.get("summary") or "").strip()
+
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({"ok": False, "error": "No host_vars document sent"}), 400
+    if not summary:
+        return jsonify({"ok": False, "error": (
+            "A one-line summary is required — it becomes the commit subject, "
+            "and 'host_vars: s4' on its own says nothing in a log.")}), 400
+    if not os.path.exists(hostvars.committed_path(repo, hostname)):
+        return jsonify({"ok": False, "error": (
+            f"'{hostname}' has no committed intent yet. Commit the extraction "
+            "first, so the edit has a reviewed baseline to diff against.")}), 404
+
+    try:
+        hostvars.write_committed_text(repo, hostname, text)
+    except hostvars.SecretLeak as exc:
+        log.error("templatize: refused host_vars edit for %s: %s", hostname, exc)
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    result = repo_service.save_host_vars(
+        list_name, [hostname], actor=data.get("actor", "user"),
+        message=f"host_vars: {hostname} {summary}")
+    return jsonify({"ok": result.get("ok", False), "hostname": hostname,
+                    "commit": result.get("commit", ""),
+                    "message": result.get("message", ""),
+                    "error": result.get("error", "")})
+
+
 def _public(result: dict) -> dict:
     """Report fields for the UI — host_vars and rendered config excluded."""
     return {k: v for k, v in result.items()

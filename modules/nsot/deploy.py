@@ -101,9 +101,17 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
     """
     from modules.nsot import ifnames, normalize
 
+    #: Neither a command nor a removal. A blank line pushed as configuration is
+    #: a no-op at best, and it made ``to_add`` non-empty for a device with
+    #: nothing to deploy — so "is there anything to do here" answered yes for
+    #: every device. ``!`` and ``end`` were already excluded from removals but
+    #: not from additions; both sides are filtered now, symmetrically.
+    _NOT_A_COMMAND = ("", "!", "end")
+
     def _norm(text):
-        return [ifnames.canonicalise_line(l.rstrip())
-                for l in normalize.strip_for_roundtrip(text)]
+        lines = [ifnames.canonicalise_line(l.rstrip())
+                 for l in normalize.strip_for_roundtrip(text)]
+        return [l for l in lines if l.strip() not in _NOT_A_COMMAND]
 
     intended = _norm(intended_config)
     running = _norm(running_config)
@@ -112,8 +120,7 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
 
     to_add = [l for l in intended if l not in running_set]
     # Section headers whose children are all present are not "additions".
-    removal_warnings = [l for l in running
-                        if l not in intended_set and l.strip() not in ("!", "end")]
+    removal_warnings = [l for l in running if l not in intended_set]
 
     return {
         "to_add": to_add,

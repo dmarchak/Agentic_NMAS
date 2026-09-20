@@ -124,14 +124,35 @@ class RenderArtifact:
     host_vars: dict
     template_approved: bool = False
     masked_refs: tuple = field(default_factory=tuple)
+    #: True when no committed intent exists and host_vars were derived from the
+    #: device's own capture. Always blocking: a device whose intent is its
+    #: current state has nothing to deploy toward.
+    bootstrap: bool = False
+    #: Template fidelity, measured from the capture's own parse. ``report`` is
+    #: measured from committed intent and therefore moves when intent changes;
+    #: this one does not, so it is the half that can gate.
+    template_report: dict = field(default_factory=dict)
 
     # ── the gate ────────────────────────────────────────────────────────────
 
     @property
     def blocking_reasons(self) -> list:
-        """Why this artifact may not be deployed. Empty means it may."""
+        """Why this artifact may not be deployed. Empty means it may.
+
+        Fidelity is judged on :attr:`template_report` — the template rendered
+        from the capture's own parse — not on :attr:`report`, which is rendered
+        from committed intent. The distinction is what makes an intended change
+        possible at all: once intent may differ from the device, a difference
+        between the intent render and the capture is *the change being
+        deployed*, not a template defect. Judging deployability on that would
+        make every non-empty diff self-blocking.
+        """
         reasons = []
-        report = self.report or {}
+        if self.bootstrap:
+            reasons.append(
+                "no committed intent for this device — review and commit "
+                "extracted host_vars first")
+        report = self.template_report or self.report or {}
 
         gap = acknowledgement_gap(self.host_vars)
         if not gap["complete"]:
@@ -167,11 +188,30 @@ class RenderArtifact:
     @property
     def complete(self) -> bool:
         """Every line accounted for, regardless of template approval."""
+        report = self.template_report or self.report or {}
         return acknowledgement_is_complete(self.host_vars) and not (
-            self.report.get("missing_from_render")
-            or self.report.get("extra_in_render")
-            or self.report.get("reordered_sections")
+            report.get("missing_from_render")
+            or report.get("extra_in_render")
+            or report.get("reordered_sections")
         )
+
+    @property
+    def intent_drift(self) -> dict:
+        """How committed intent differs from what the device actually has.
+
+        Not a failure. This is the three-way relationship the plan wanted made
+        visible: template, committed intent, captured reality. A non-empty drift
+        is work to do; the deploy diff is how it gets closed.
+        """
+        report = self.report or {}
+        return {
+            "adds": report.get("extra_in_render", 0),
+            "removes": report.get("missing_from_render", 0),
+            "reordered": report.get("reordered_sections", 0),
+            "differs": bool(report.get("extra_in_render")
+                            or report.get("missing_from_render")
+                            or report.get("reordered_sections")),
+        }
 
     def summary(self) -> dict:
         """UI payload. Never contains a secret value — the render is masked."""
@@ -189,26 +229,45 @@ class RenderArtifact:
             "stale_acknowledgements": gap["stale"],
             "masked_refs": list(self.masked_refs),
             "modeled_coverage": self.report.get("modeled_coverage", 0.0),
-            "round_trip_fidelity": self.report.get("round_trip_fidelity", 0.0),
+            "round_trip_fidelity": (self.template_report or self.report).get(
+                "round_trip_fidelity", 0.0),
+            "bootstrap": self.bootstrap,
+            "intent_drift": self.intent_drift,
         }
 
 
 def build_artifact(device: str, running_config: str, platform: str,
                    template: str = "", template_approved: bool = False,
-                   host_vars: dict = None) -> RenderArtifact:
+                   host_vars: dict = None, bootstrap: bool = False
+                   ) -> RenderArtifact:
     """The only constructor. Always validates; always renders masked.
 
     *running_config* is a **captured** config — a golden file or a stored
     backup. Nothing here opens a session to a device.
+
+    *host_vars* is **committed intent** when the caller has it. Two reports come
+    out of that:
+
+    * :attr:`RenderArtifact.report` compares the capture against the render
+      **from intent**. Once intent may differ from the device, this measures
+      drift, and a difference is the change waiting to be deployed.
+    * :attr:`RenderArtifact.template_report` compares the capture against the
+      render from the capture's own parse. That measures the *template*, is
+      unaffected by an intent edit, and is therefore the half that can gate.
+
+    When no intent is supplied the two are the same object and nothing changes
+    from the pre-intent behaviour.
     """
     from modules.nsot import roundtrip
     from modules.nsot.parsers import get_parser
 
     parser = get_parser(platform)
-    parsed = host_vars if host_vars is not None else parser.parse(running_config)
+    from_capture = parser.parse(running_config)
+    parsed = host_vars if host_vars is not None else from_capture
     resolved_platform = parsed.get("platform", platform)
 
-    masked_refs = tuple(sorted((parsed.get("secrets") or {}).keys()))
+    masked_refs = tuple(sorted((parsed.get("secrets") or {}).keys())
+                        or (parsed.get("secret_refs") or []))
 
     # Validate against the TRUE render. Masking replaces every secret with a
     # placeholder, so comparing a masked render against the real config would
@@ -222,6 +281,15 @@ def build_artifact(device: str, running_config: str, platform: str,
     report = roundtrip.compare(running_config, truthful, parsed)
     del truthful
 
+    if host_vars is None:
+        template_report = report
+    else:
+        capture_platform = from_capture.get("platform", platform)
+        capture_render = roundtrip.render(from_capture, capture_platform)
+        template_report = roundtrip.compare(running_config, capture_render,
+                                            from_capture)
+        del capture_render
+
     rendered = roundtrip.render(parsed, resolved_platform,
                                 secret_lookup=lambda _name: MASK)
 
@@ -234,6 +302,8 @@ def build_artifact(device: str, running_config: str, platform: str,
         host_vars=parsed,
         template_approved=bool(template_approved),
         masked_refs=masked_refs,
+        bootstrap=bool(bootstrap),
+        template_report=template_report,
     )
 
 
