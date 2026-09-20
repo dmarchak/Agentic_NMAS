@@ -172,3 +172,99 @@ class TestApply:
         report = migrate.plan("Lab")
         assert report["devices"][0]["mgmt_ip"] == "2001:db8::1"
         assert report["devices"][0]["hostname"] == "R9"
+
+
+class TestBothStoresHoldTheSameDevice:
+    """The real-world shape, found on the NMAS and missed by every fixture here.
+
+    A device exists in **both** stores in **different formats**:
+
+    * ``golden_configs/s4.cfg`` keeps the NMAS header, so it parses a
+      management IP and groups as ``ip:10.255.1.24``
+    * ``config_repo/s4.cfg`` was written by ``config_git.write_and_stage``,
+      which strips that header, so it has no IP and groups as ``name:s4``
+
+    Keyed separately they look like two devices. Both then migrate to
+    ``golden/s4.cfg`` and the second silently overwrites the first — the exact
+    data loss the merge detection exists to prevent.
+
+    Every fixture in this file gave both copies the same header format, so none
+    of them could catch it. These do.
+    """
+
+    HEADERED = ("! Golden config — s4 (10.255.1.24)\n"
+                "! Saved: 2026-09-15 22:36:40\n"
+                "! Source: show startup-config\n"
+                "!\n"
+                "hostname s4\n interface GigabitEthernet0/1\n")
+
+    STRIPPED = "\n!\nhostname s4\n interface GigabitEthernet0/1\n"
+
+    def _both_stores(self, lab):
+        (lab / "golden_configs" / "s4.cfg").write_text(self.HEADERED, encoding="utf-8")
+        (lab / "config_repo" / "s4.cfg").write_text(self.STRIPPED, encoding="utf-8")
+
+    def test_counted_as_one_device_not_two(self, lab):
+        self._both_stores(lab)
+        report = migrate.plan("Lab")
+        assert report["device_count"] == 1, (
+            "the same device in two stores was counted twice; both would have "
+            "migrated to the same path and one would have been overwritten")
+
+    def test_detected_as_a_merge(self, lab):
+        self._both_stores(lab)
+        report = migrate.plan("Lab")
+        assert report["merge_count"] == 1
+        assert sorted(report["merges"][0]["stores"]) == ["config_repo", "golden_configs"]
+
+    def test_reason_explains_the_format_difference(self, lab):
+        self._both_stores(lab)
+        reason = migrate.plan("Lab")["merges"][0]["reason"]
+        assert "both stores" in reason
+
+    def test_management_ip_survives_the_merge(self, lab):
+        """The stripped copy has no IP. The group's IP must still be used.
+
+        Losing it would leave a manifest entry with no address, breaking
+        ``find_by_ip`` and therefore ``_find_golden_config_file``.
+        """
+        self._both_stores(lab)
+        assert migrate.plan("Lab")["devices"][0]["mgmt_ip"] == "10.255.1.24"
+
+    def test_manifest_records_the_ip_after_apply(self, lab):
+        from modules.nsot.manifest import load
+        self._both_stores(lab)
+        migrate.apply("Lab")
+        entries = list(load(str(lab / "config_repo"))["devices"].values())
+        assert len(entries) == 1
+        assert entries[0]["mgmt_ip"] == "10.255.1.24"
+
+    def test_only_one_golden_file_results(self, lab):
+        self._both_stores(lab)
+        migrate.apply("Lab")
+        golden = list((lab / "config_repo" / "golden").glob("*.cfg"))
+        assert [p.name for p in golden] == ["s4.cfg"]
+
+    def test_the_loser_is_backed_up(self, lab):
+        self._both_stores(lab)
+        migrate.apply("Lab")
+        backup = lab / "config_repo" / ".nsot" / "migration-backup"
+        assert any("s4.cfg" in f for f in os.listdir(backup))
+
+    def test_scales_to_the_whole_fleet(self, lab):
+        """Nine devices in two stores is nine devices, not eighteen."""
+        # Real lab addressing: routers .11-.15, switches .21-.24. Deriving
+        # both from the digit alone would give r1 and s1 the same address and
+        # correctly merge them into one device.
+        for name in ("r1", "r2", "r3", "r4", "r5", "s1", "s2", "s3", "s4"):
+            base = 10 if name.startswith("r") else 20
+            ip = f"10.255.1.{base + int(name[1])}"
+            (lab / "golden_configs" / f"{name}.cfg").write_text(
+                f"! Golden config — {name} ({ip})\n!\nhostname {name}\n",
+                encoding="utf-8")
+            (lab / "config_repo" / f"{name}.cfg").write_text(
+                f"\n!\nhostname {name}\n", encoding="utf-8")
+        report = migrate.plan("Lab")
+        assert report["candidates"] == 18
+        assert report["device_count"] == 9
+        assert report["merge_count"] == 9

@@ -100,13 +100,57 @@ def _collect_candidates(golden_dir: str, repo: str) -> list:
 def _group_duplicates(candidates: list) -> tuple:
     """Group candidates by identity. Returns ``(groups, merges)``.
 
-    Grouping key is the management IP when present — the most reliable identity
-    in the old format — otherwise the case-folded hostname.
+    Two files describe the same device if they share a management IP **or** a
+    case-folded hostname. Grouping on a single key is not enough, and the
+    failure is not hypothetical: on a real NMAS the two stores hold the same
+    device in different formats.
+
+    ``golden_configs/s4.cfg`` keeps the NMAS header, so it yields an
+    address (``203.0.113.24`` in the tests). ``config_repo/s4.cfg`` was written by
+    ``config_git.write_and_stage``, which strips that header, so it yields no
+    IP at all and falls back to its filename. Keyed separately they look like
+    two devices; both then migrate to ``golden/s4.cfg`` and the second silently
+    overwrites the first.
+
+    So identity is a connected component: link every candidate to every other
+    that shares either attribute, then merge whole components.
     """
+    parent: dict = {}
+
+    def _find(x):
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(a, b):
+        root_a, root_b = _find(a), _find(b)
+        if root_a != root_b:
+            parent[root_b] = root_a
+
+    # Every candidate is its own node, linked to whichever attributes it has.
+    for index, cand in enumerate(candidates):
+        node = f"cand:{index}"
+        _find(node)
+        if cand["mgmt_ip"]:
+            _union(node, f"ip:{cand['mgmt_ip']}")
+        if cand["hostname"]:
+            _union(node, f"name:{cand['hostname'].lower()}")
+
     groups: dict = {}
-    for cand in candidates:
-        key = f"ip:{cand['mgmt_ip']}" if cand["mgmt_ip"] else f"name:{cand['hostname'].lower()}"
-        groups.setdefault(key, []).append(cand)
+    for index, cand in enumerate(candidates):
+        groups.setdefault(_find(f"cand:{index}"), []).append(cand)
+
+    # The richest identity in a group wins even if another member is newer:
+    # a header-stripped copy has no management IP, and dropping it would break
+    # manifest lookups by address.
+    for members in groups.values():
+        mgmt_ip = next((m["mgmt_ip"] for m in members if m["mgmt_ip"]), "")
+        hostname = next((m["hostname"] for m in members
+                         if m["hostname"] and not m["hostname"].startswith("unknown")), "")
+        for member in members:
+            member["group_mgmt_ip"] = mgmt_ip or member["mgmt_ip"]
+            member["group_hostname"] = hostname or member["hostname"]
 
     merges = []
     for key, members in groups.items():
@@ -117,6 +161,7 @@ def _group_duplicates(candidates: list) -> tuple:
 
         distinct_names = {m["hostname"] for m in members}
         distinct_files = {m["file"] for m in members}
+        distinct_stores = {m["store"] for m in members}
         contents = set()
         for m in members:
             try:
@@ -125,11 +170,21 @@ def _group_duplicates(candidates: list) -> tuple:
             except OSError:
                 pass
 
+        if len(distinct_stores) > 1:
+            reason = ("the same device held in both stores — the golden_configs "
+                      "copy keeps the NMAS header, the config_repo copy has it "
+                      "stripped")
+        elif len({n.lower() for n in distinct_names}) < len(distinct_names):
+            reason = "same device name under different casing"
+        elif len(distinct_files) > 1:
+            reason = "same management IP under different filenames"
+        else:
+            reason = "duplicate entries for one device"
+
         merges.append({
             "key": key,
-            "reason": ("same management IP under different filenames"
-                       if key.startswith("ip:") and len(distinct_files) > 1
-                       else "same device name under different casing"),
+            "reason": reason,
+            "stores": sorted(distinct_stores),
             "winner": {"file": winner["file"], "store": winner["store"],
                        "hostname": winner["hostname"], "size": winner["size"],
                        "modified": time.strftime("%Y-%m-%d %H:%M",
@@ -166,8 +221,8 @@ def plan(list_name: str) -> dict:
     to_migrate = []
     for key, members in groups.items():
         winner = sorted(members, key=lambda m: m["mtime"], reverse=True)[0]
-        to_migrate.append({"hostname": winner["hostname"],
-                           "mgmt_ip": winner["mgmt_ip"],
+        to_migrate.append({"hostname": winner.get("group_hostname") or winner["hostname"],
+                           "mgmt_ip": winner.get("group_mgmt_ip") or winner["mgmt_ip"],
                            "from": f"{winner['store']}/{winner['file']}",
                            "to": f"golden/{_repo._safe_name(winner['hostname'])}.cfg"})
 
@@ -217,7 +272,8 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
         for key, members in groups.items():
             ordered = sorted(members, key=lambda m: m["mtime"], reverse=True)
             winner, losers = ordered[0], ordered[1:]
-            hostname = winner["hostname"]
+            hostname = winner.get("group_hostname") or winner["hostname"]
+            group_ip = winner.get("group_mgmt_ip") or winner["mgmt_ip"]
             target_rel = f"golden/{_repo._safe_name(hostname)}.cfg"
             target_abs = os.path.join(repo, target_rel)
 
@@ -228,7 +284,7 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
                 log.warning("migrate: could not read %s: %s", winner["path"], exc)
                 continue
 
-            content = _repo.golden_body(hostname, winner["mgmt_ip"], raw)
+            content = _repo.golden_body(hostname, group_ip, raw)
 
             # git mv preserves history when the source is already tracked.
             source_rel = os.path.relpath(winner["path"], repo)
@@ -247,12 +303,12 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
             # Reuse an existing identity so re-running the migration is a
             # no-op. Minting a fresh uid every run would rewrite the manifest
             # and create a commit each time.
-            identity, existing = _manifest.find_by_ip(repo, winner["mgmt_ip"])
+            identity, existing = _manifest.find_by_ip(repo, group_ip)
             if not identity:
                 identity, existing = _manifest.find_by_name(repo, hostname)
             if not identity:
                 identity = _manifest.new_device_uid()
-            _manifest.upsert_device(repo, identity, hostname, winner["mgmt_ip"],
+            _manifest.upsert_device(repo, identity, hostname, group_ip,
                                     golden=target_rel)
 
             for loser in losers:
