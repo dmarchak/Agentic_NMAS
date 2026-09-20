@@ -57,15 +57,28 @@ an indented line unless allowlisted.
   fixture and are fully modeled, along with `netconf detailed-error` /
   `max-sessions`. The parsers had seen them before the fleet run.
 
+### Fixed — the template could invent a `control-plane` line
+
+`control_plane` defaulted to `{"settings": []}`, which is truthy, so every
+rendered config gained a `control-plane` header — **including devices that
+never had one**. Every device in the fleet happens to have it, so only a
+minimal config exposed the bug. Inventing a line is arguably worse than
+dropping one: on deploy it would push configuration to a device. Now defaults
+to `None`, with a parametrised regression test over nine optional constructs.
+
 ### Added
 
 - `tests/fixtures/configs/fleet/` — all nine devices (R1–R5, S1–S4), hashes
-  sanitized, certificate hex bodies trimmed (they are provably stripped).
+  sanitized, certificate hex bodies trimmed (they are provably stripped;
+  trustpoint blocks remain and are parsed).
+- `tests/test_unmodeled_path.py` (33 tests) exercising the fallback path with
+  constructs the parsers have never seen — flat, nested, two-level-nested, an
+  unknown child inside a known interface, and a wholly foreign config.
 - `tests/test_fleet_coverage.py` (53 tests) including
   `test_no_construct_on_two_or_more_devices_is_unmodeled`, which enforces the
   decision rule rather than restating it.
 
-**567 tests, all passing.**
+**600 tests, all passing.**
 
 ## [Unreleased] — NSoT Phase 3a: parsers → host_vars → round-trip validation
 

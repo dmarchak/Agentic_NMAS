@@ -301,7 +301,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 567 tests
+pytest                    # 600 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -327,6 +327,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_ifnames.py` | interface name canonicalization |
 | `test_hostvars_secrets.py` | hash handling, YAML staging, no secret leakage |
 | `test_fleet_coverage.py` | all nine devices; enforces the decision rule |
+| `test_unmodeled_path.py` | the fallback path: unknown constructs, no invented lines |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |

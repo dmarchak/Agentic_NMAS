@@ -651,3 +651,93 @@ ruled out in advance. ``round_trip_fidelity`` is reported separately.
 - The seven unmodeled constructs on r1 are the natural first backlog if anyone
   wants r1 at 100% — but by the agreed rule they stay unmodeled until a second
   device shows the same construct.
+
+---
+
+## A pre-existing defect the NSoT work uncovered: drift was blind to RIPv2 → RIPv1
+
+Worth recording separately from the phase notes, because it is the clearest
+example in this project of **new work finding an old bug** — and of a class of
+bug that is close to invisible by inspection.
+
+### What was wrong
+
+``modules/drift_check.py`` compares a device's running config against its golden
+config. Both sides are normalised first, to stop NTP drift and build timestamps
+showing up as false drift. The normalisation stripped any line beginning
+``version ``, on the reasoning that ``version 17.6`` is the IOS image version —
+a fact about the device, not configuration.
+
+But IOS uses ``version`` at two levels:
+
+```
+version 15.2            <- image version: a device fact
+router rip
+ version 2              <- RIPv2: actual configuration
+```
+
+The filter matched both. So ``version 2`` was stripped from the running config
+**and** from the golden config before they were compared.
+
+### Why it was invisible
+
+Because the strip ran on *both* sides, the comparison still succeeded. Drift
+reported "no drift". The round-trip validator reported 100% fidelity. Every
+test that compared two normalised configs agreed that nothing was wrong,
+because from their point of view nothing *was* wrong — the line simply did not
+exist in either input.
+
+The consequence: if someone changed a switch from RIPv2 to RIPv1, the drift
+checker would not have noticed. That is a routing-protocol version change on a
+production switch, silently invisible to the tool whose job is to notice
+exactly that.
+
+### How it surfaced
+
+Not by reading the code, and not by any comparison test. It surfaced in Phase 3a
+from an **extraction-side** assertion:
+
+```python
+def test_rip_is_parsed_with_networks_split_out(self, s1):
+    rip = s1["routing"]["rip"]
+    assert "version 2" in rip["settings"]     # <- failed
+```
+
+The parser genuinely could not see the line, because the line had been removed
+before the parser ran. Extraction cannot hide the loss the way comparison can:
+there is only one side, and the content is either there or it is not.
+
+### The generalisable lesson
+
+**A normalisation step applied to both sides of a comparison can hide exactly
+what it destroys.** Any test that compares normalised-A with normalised-B is
+structurally incapable of detecting over-normalisation. Only a test that
+inspects what survived normalisation — an extraction, a parse, a schema
+assertion — can catch it.
+
+### The structural fix
+
+Patching the one pattern would have left the next one waiting. Instead, every
+prefix pattern in ``modules/nsot/normalize.py`` now **anchors to column 0**
+unless explicitly listed in ``NESTED_OK_PREFIXES``, which is currently empty and
+carries a comment requiring a justification for any addition. A test asserts the
+property over every tuple in the module, so a future addition cannot quietly
+reintroduce the class of bug:
+
+```python
+def test_no_pattern_matches_an_indented_line_unless_allowlisted(self):
+    ...
+    assert offenders == []
+```
+
+Plus a direct regression test that ``strip_for_diff`` now distinguishes RIPv2
+from RIPv1.
+
+### For the write-up
+
+This is the strongest argument in the project for why templatisation was worth
+doing beyond the lab requirement. Building a parser forced the tool to *state
+what it believes a config contains*, and that statement could be checked. A
+tool that only ever diffs two configs can be confidently wrong forever, because
+it never has to say what it thinks it is looking at.
+

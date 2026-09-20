@@ -210,7 +210,7 @@ class BaseParser:
         "vtp": [], "platform_settings": [], "license_settings": [],
         "vrfs": [], "pki_trustpoints": [], "ip_sla": [], "ip_sla_schedules": [],
         "netconf_settings": [], "telemetry": [], "ssh": [], "http": {},
-        "forward_protocol": [], "mgcp": [], "control_plane": {"settings": []},
+        "forward_protocol": [], "mgcp": [], "control_plane": None,
         "ip_nat": [], "prefix_lists": [], "login": [], "subscriber": [],
         "multilink": [], "diagnostic": [], "memory": [],
         "redundancy": None, "call_home": None,

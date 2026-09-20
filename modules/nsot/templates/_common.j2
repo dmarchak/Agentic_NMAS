@@ -167,7 +167,7 @@ interface {{ i.name }}
 {% endfor %}
 {%- for line in v.mgcp or [] %}{{ line }}
 {% endfor %}
-{%- if v.control_plane is defined %}control-plane
+{%- if v.control_plane is not none %}control-plane
 {% for s in v.control_plane.settings %} {{ s }}
 {% endfor %}
 {%- endif %}
