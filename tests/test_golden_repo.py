@@ -162,10 +162,16 @@ class TestRenamePreservesHistory:
         subjects = out.splitlines()
         rename_subjects = [s for s in subjects if s.startswith("rename:")]
         assert len(rename_subjects) == 1
-        # The rename commit touches exactly one path pair and no content.
+        # The rename commit moves one path pair and edits no config. It also
+        # carries .nsot/manifest.json — the identity mapping has to travel with
+        # the move or a restore at this commit cannot resolve the new name.
         _rc, files, _ = R.git(lab, "show", "--name-status", "--format=",
                               f"HEAD~{subjects.index(rename_subjects[0])}")
-        assert "R" in files.split("\t")[0] or "rename" in files.lower()
+        statuses = dict(reversed(ln.split("\t", 1)) for ln in files.splitlines())
+        golden = {p: st for p, st in statuses.items() if p.startswith("golden/")}
+        assert len(golden) == 1, f"rename commit touched {golden}"
+        assert next(iter(golden.values())).startswith("R"), "not detected as a rename"
+        assert statuses.get(".nsot/manifest.json") == "M"
 
     def test_old_file_is_gone_after_rename(self, lab):
         R.save_golden("Lab", [_item("R1", "hostname R1\n")])
@@ -302,3 +308,142 @@ class TestRobustness:
         for i in range(5):
             R.save_golden("Lab", [_item("R1", f"hostname R1\n line {i}\n")])
         assert len(R.golden_history(lab, "R1")) == 5
+
+
+class TestGitignoreReachesExistingRepos:
+    """A rule added after a repo exists must still reach that repo.
+
+    The live lab repo was created with a two-line ``.gitignore`` and never got
+    ``.nsot/migration-backup/`` — because ``init_repo()`` wrote the file only
+    when absent, and later only ``init_repo()`` called the append-if-missing
+    helper. Result: nine migration backups committed into version control, and
+    ``.nsot/migrated.json`` showing as untracked. This is the fifth instance of
+    one shape in this project, so it gets a test of its own.
+    """
+
+    def _gitignore(self, repo):
+        with open(os.path.join(repo, ".gitignore"), encoding="utf-8") as fh:
+            return [ln.strip() for ln in fh if ln.strip()]
+
+    def test_a_fresh_repo_carries_every_rule(self, lab):
+        R.init_repo(lab)
+        assert set(R.GITIGNORE_RULES) <= set(self._gitignore(lab))
+
+    def test_a_stale_gitignore_is_topped_up_on_next_touch(self, lab):
+        """The live case: the repo predates the rules."""
+        R.init_repo(lab)
+        path = os.path.join(lab, ".gitignore")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("*.swp\n*.tmp\n")           # the repo as it was created
+
+        R.git(lab, "status", "--porcelain")      # any touch at all, even a read
+
+        rules = self._gitignore(lab)
+        assert ".nsot/migration-backup/" in rules
+        assert ".nsot/migrated.json" in rules
+        assert ".nsot/staging/" in rules
+
+    def test_top_up_preserves_operator_additions(self, lab):
+        R.init_repo(lab)
+        path = os.path.join(lab, ".gitignore")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("*.swp\n# my own rule\nscratch/\n")
+
+        R.git(lab, "status", "--porcelain")
+
+        rules = self._gitignore(lab)
+        assert "scratch/" in rules and "# my own rule" in rules
+        assert set(R.GITIGNORE_RULES) <= set(rules)
+
+    def test_it_is_idempotent(self, lab):
+        R.init_repo(lab)
+        R.git(lab, "status", "--porcelain")
+        first = self._gitignore(lab)
+        for _ in range(3):
+            R.git(lab, "status", "--porcelain")
+        assert self._gitignore(lab) == first
+
+    def test_a_non_repo_directory_is_left_alone(self, lab, tmp_path):
+        """Hygiene must not create files in a directory that is not a repo."""
+        plain = tmp_path / "not-a-repo"
+        plain.mkdir()
+        R.ensure_repo_hygiene(str(plain))
+        assert os.listdir(plain) == []
+
+    def test_migration_backups_are_ignored_not_committed(self, lab):
+        """What the live repo got wrong, end to end."""
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        backup = os.path.join(lab, ".nsot", "migration-backup")
+        os.makedirs(backup, exist_ok=True)
+        with open(os.path.join(backup, "golden_configs-R1.cfg"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("! backup\n")
+
+        R.save_golden("Lab", [_item("R1", "hostname R1\n ip routing\n")])
+
+        _rc, tracked, _ = R.git(lab, "ls-files", ".nsot/migration-backup")
+        assert tracked.strip() == "", "a migration backup reached version control"
+
+
+class TestManifestTravelsWithTheCommit:
+    """A clone or bundle restore must carry the identity mapping.
+
+    Without ``.nsot/manifest.json`` at the restored commit,
+    ``_find_golden_config_file()`` finds no entry and falls through to the
+    deprecated legacy header scan — which reads ``golden_configs/``, a
+    directory a restore does not recreate.
+    """
+
+    def _tracked_at_head(self, repo):
+        _rc, out, _ = R.git(repo, "show", "--name-only", "--format=", "HEAD")
+        return out.split()
+
+    def test_golden_commit_carries_the_manifest(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        assert ".nsot/manifest.json" in self._tracked_at_head(lab)
+
+    def test_rename_commit_carries_the_manifest(self, lab):
+        """The bug: the manifest was updated *after* the rename commit, so the
+        commit that moved the file did not record where it moved to."""
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        M.record_pending_rename(lab, "nb:42", "R1-CORE")
+        R.apply_pending_renames(lab)
+
+        _rc, subject, _ = R.git(lab, "log", "-1", "--format=%s")
+        assert subject.startswith("rename:")
+        assert ".nsot/manifest.json" in self._tracked_at_head(lab)
+
+    def test_the_manifest_at_the_rename_commit_names_the_new_file(self, lab):
+        import json
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        M.record_pending_rename(lab, "nb:42", "R1-CORE")
+        R.apply_pending_renames(lab)
+
+        _rc, blob, _ = R.git(lab, "show", "HEAD:.nsot/manifest.json")
+        entry = json.loads(blob)["devices"]["nb:42"]
+        assert entry["name"] == "R1-CORE"
+        assert entry["golden"] == "golden/R1-CORE.cfg"
+        assert entry["pending_rename"] is None
+
+    def test_the_manifest_is_never_left_uncommitted(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        M.record_pending_rename(lab, "nb:42", "R1-CORE")
+        R.apply_pending_renames(lab)
+        _rc, status, _ = R.git(lab, "status", "--porcelain", ".nsot/manifest.json")
+        assert status.strip() == ""
+
+    def test_a_template_commit_does_not_touch_the_manifest(self, lab):
+        """Confirming the other half: save_templates has no business changing
+        identity, so a template commit must not carry a manifest diff."""
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _rc, before, _ = R.git(lab, "rev-parse", "HEAD:.nsot/manifest.json")
+
+        os.makedirs(os.path.join(lab, "templates"), exist_ok=True)
+        with open(os.path.join(lab, "templates", "x.j2"), "w", encoding="utf-8") as fh:
+            fh.write("hostname {{ hostname }}\n")
+        R.save_templates("Lab", ["x.j2"])
+
+        _rc, after, _ = R.git(lab, "rev-parse", "HEAD:.nsot/manifest.json")
+        assert before == after
+        _rc, subject, _ = R.git(lab, "log", "-1", "--format=%s")
+        assert subject.startswith("template:")

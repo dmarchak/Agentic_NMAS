@@ -109,9 +109,37 @@ def _git_env() -> dict:
     return env
 
 
+#: Ignore rules every NSoT repo must carry, whenever it was created.
+GITIGNORE_RULES = ("*.swp", "*.tmp", ".nsot/migration-backup/",
+                   ".nsot/staging/", ".nsot/migrated.json")
+
+
+def ensure_repo_hygiene(repo: str) -> None:
+    """Bring an existing repo up to date with rules added after it was created.
+
+    ``_ensure_gitignore()`` appends what is missing — but it only ever ran from
+    ``init_repo()``, and ``init_repo()`` only ever ran on a write path. A repo
+    created before a rule existed therefore never received it, which is the
+    same failure one level up: *a rule that never reaches the artifacts that
+    already existed*. The live lab repo proved it — created with a two-line
+    ``.gitignore``, it committed nine migration backups and then showed the
+    marker as untracked.
+
+    Hooking :func:`git` instead means every repo this process touches, read or
+    write, is brought up to date on first use. Deliberately not memoised: the
+    cost is one small file read against a subprocess spawn, and a memo would
+    mean a ``.gitignore`` edited *after* first touch stayed stale for the life
+    of the process — reintroducing the bug in a smaller window.
+    """
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return                                 # not a repo yet; init_repo will
+    _ensure_gitignore(repo, list(GITIGNORE_RULES))
+
+
 def git(repo: str, *args) -> tuple:
     """Run a git command in *repo*. Returns ``(rc, stdout, stderr)``."""
     _clear_stale_lock(repo)
+    ensure_repo_hygiene(repo)
     try:
         proc = subprocess.run(
             ["git", "-C", repo, *args],
@@ -142,8 +170,7 @@ def init_repo(repo: str) -> bool:
             fh.write("*.cfg text eol=lf\n*.j2 text eol=lf\n"
                      "*.yml text eol=lf\n*.yaml text eol=lf\n*.json text eol=lf\n")
 
-    _ensure_gitignore(repo, ["*.swp", "*.tmp", ".nsot/migration-backup/",
-                             ".nsot/staging/", ".nsot/migrated.json"])
+    _ensure_gitignore(repo, list(GITIGNORE_RULES))
 
     rc, out, _ = git(repo, "rev-parse", "--verify", "HEAD")
     if rc != 0:
@@ -249,13 +276,20 @@ def apply_pending_renames(repo: str, actor: str = "nmas") -> dict:
                 f"Source: rename\n"
                 f"Actor: {actor}\n"
             )
-            git(repo, "add", "-A", "golden")
+            # Update the manifest BEFORE staging, and stage .nsot with it.
+            # Clearing the rename afterwards left the manifest out of the
+            # rename commit entirely: a clone or bundle restore at that commit
+            # got a manifest still naming the old file, so every lookup fell
+            # through to the deprecated legacy header scan. The move has
+            # already happened on disk, so the manifest is correct either way —
+            # what matters is that the commit carries it.
+            _manifest.clear_pending_rename(repo, identity, new_name, new_rel)
+            git(repo, "add", "-A", "golden", ".nsot")
             rc, _, err = git(repo, "commit", "-m", message)
             if rc != 0:
                 log.error("repo: rename commit failed: %s", err)
                 continue
 
-            _manifest.clear_pending_rename(repo, identity, new_name, new_rel)
             renamed.append({"identity": identity, "from": old_name, "to": new_name})
             log.info("repo: renamed %s → %s (history preserved via git mv)",
                      old_name, new_name)

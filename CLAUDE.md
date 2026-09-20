@@ -238,6 +238,13 @@ tools refuse to act on it, and its pooled SSH session is closed.
 - **Migration is dry-run by default.** It merges case-insensitive and IP-level
   duplicates keeping the newest content, reports every merge, and backs up
   rather than deletes.
+- **Every commit that moves a device carries `.nsot/manifest.json`.** The
+  rename commit stages `.nsot` alongside `golden`, so a clone or bundle restore
+  at that commit resolves the new name instead of falling through to the legacy
+  header scan. `save_templates()` deliberately does not touch the manifest.
+- **`.gitignore` rules are applied on repo access, not only at creation.**
+  `ensure_repo_hygiene()` runs from `git()`; `GITIGNORE_RULES` is the list. A
+  repo created before a rule existed is topped up on first touch.
 - Post-commit hooks (git push, S3 archive) run on a background thread with
   short timeouts and never block a commit. Push never force-pushes.
 - `nsot_device_tag_retention` (default 50) prunes per-device tags only;
@@ -302,6 +309,8 @@ exception.
   a binding fingerprint (template hash + bound device set + each device's
   `host_vars` hash). Onboarding a device revokes approval.
 - Template commits use their own namespace (`template:`) and create **no tags**.
+  **Seeding commits itself** (`template: seed library`), so an approval's diff
+  is the approval rather than the whole library.
 
 ### Deploy from template (Phase 3c)
 

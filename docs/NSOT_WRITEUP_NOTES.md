@@ -1423,3 +1423,169 @@ an initial-population path.** Deciding where the refresh hook goes is the same
 question as "what event means this value might have changed", and answering it
 at migration time only means the answer was "the migration", which is a
 one-time event that the value's lifetime outlives.
+
+---
+
+## Five times: a rule that never reaches what already exists
+
+Worth naming as its own pattern, because it has now happened five times in this
+project and the fifth was found by reading `git status` on a live repo rather
+than by any test.
+
+The shape is always the same. A rule is added. It is correct. It is applied at
+the point where new things are created. Everything created afterwards is fine.
+Everything that already existed never receives it — silently, because nothing
+reads the rule back to check.
+
+| # | The rule | What never received it |
+|---|---|---|
+| 1 | `DEVICE_CSV_FIELDS` gaining `platform` / `device_uid` | three of four writer copies |
+| 2 | volatile-line prefixes anchoring to column 0 | `strip_for_diff`'s existing callers |
+| 3 | `NMAS_HEADER_PREFIXES` in `strip_for_roundtrip` | every config already in the corpus |
+| 4 | the `nmas-managed` tag | every NetBox object created before it |
+| 5 | `.nsot/migration-backup/` in `.gitignore` | the one repo that predated the rule |
+
+Number five is the cleanest specimen. `init_repo()` contained this:
+
+```python
+gitignore = os.path.join(repo, ".gitignore")
+if not os.path.exists(gitignore):
+    with open(gitignore, "w", encoding="utf-8") as fh:
+        fh.write("*.swp\n*.tmp\n.nsot/migration-backup/\n.nsot/staging/\n")
+```
+
+Read on its own it is obviously right: create the file with the rules in it.
+The bug is entirely in the `if`. A repo created in week one has a `.gitignore`,
+so the branch never runs again, so a rule added in week six reaches nothing that
+was already on disk.
+
+The visible consequence was nine backup copies of the loser golden configs
+committed into the version-controlled store, plus the new migration marker
+showing up as untracked. Neither is dangerous. Both are exactly the noise the
+rule existed to prevent, sitting in the one repo the rule was written for.
+
+### Why every test passed
+
+Every test builds its repo with `init_repo()` in the same process that then
+asserts on it. The file is always absent at creation, so the branch always runs,
+so the rules are always present. There is no fixture anywhere in the suite for
+"a repo that already existed before this rule did" — because writing one means
+first knowing the rule might not have reached it, which is the thing being
+tested for.
+
+This is the same root cause recorded above under *the tool's own artifacts were
+never in the test corpus*, seen from a different angle: there, the fixtures held
+a config shape no store actually contained; here, they hold a repo *age* no real
+repo actually had.
+
+### The fix, and why it is not memoised
+
+`ensure_repo_hygiene()` runs from `git()` — the one function every path,
+read or write, goes through:
+
+```python
+def git(repo, *args):
+    _clear_stale_lock(repo)
+    ensure_repo_hygiene(repo)
+    ...
+```
+
+The obvious optimisation is a per-process memo, and it is the wrong call. A memo
+means a `.gitignore` edited after the first touch stays stale until restart —
+which is this exact bug, with a shorter fuse. The cost of not memoising is one
+small file read per `git()` invocation, against spawning a subprocess. Paying
+it is not a trade.
+
+### The general rule
+
+> Any rule about the *shape* of persistent state needs an idempotent
+> bring-up-to-date path that runs on access, not only a create path that runs
+> on creation.
+
+Creation-time application is an optimisation. It is correct only for a system
+with no history, which describes a test suite and nothing else.
+
+---
+
+## The commit that carried the move but not the map
+
+`apply_pending_renames()` did this:
+
+```python
+git(repo, "mv", "-f", old_rel, new_rel)
+git(repo, "add", "-A", "golden")
+git(repo, "commit", "-m", message)
+_manifest.clear_pending_rename(repo, identity, new_name, new_rel)
+```
+
+Read top to bottom it looks complete: move the file, commit the move, update the
+manifest. Every one of those things happens. The bug is that the last line
+happens *after* the third, so the manifest change is not in the commit — and
+`add -A golden` would not have staged it anyway.
+
+The working tree is fine. `save_golden` stages `.nsot`, so the next golden save
+sweeps the manifest update into its own commit and the live system never
+notices. What is broken is the repository **as a historical artifact**: check out
+the rename commit, or restore a bundle at it, and you get `golden/R1-CORE.cfg`
+on disk alongside a manifest that says the device's golden config is at
+`golden/R1.cfg`.
+
+`_find_golden_config_file()` then finds no manifest entry and falls through to
+step 3, the deprecated legacy header scan — which reads `golden_configs/`, a
+directory a restore does not recreate. The device resolves to nothing, and the
+failure presents as "this device has no golden config" rather than as anything
+resembling a rename problem.
+
+### Why this one is easy to write
+
+The three operations are genuinely independent in the working tree, and the code
+reads as a sequence of correct steps. Nothing about `clear_pending_rename` being
+last looks wrong until you ask a different question: *what does someone see who
+only has this commit?*
+
+That question is not natural to ask while writing, because the author always has
+the whole repo. It is the same blind spot as the fixtures one — the author's
+context is richer than the consumer's, and the difference is invisible from
+inside.
+
+### The check that generalises
+
+> For every commit a system creates, ask what a reader who has **only that
+> commit** can resolve.
+
+If the answer depends on state the commit does not contain, the commit is
+incomplete regardless of whether the running system works. Tests for this read
+blobs out of git (`git show HEAD:path`) rather than reading the working tree,
+because the working tree is exactly the thing that hides the bug.
+
+---
+
+## A commit subject that described one file while adding forty
+
+`seed_templates()` copies the built-in template library into the repo. It is
+called from the template-list route, which is a `GET`. It commits nothing.
+
+So the first thing to run `save_templates()` afterwards committed the library.
+In practice that was the **approval**, which stages `templates` and would have
+produced:
+
+```
+template: approve cisco_ios/base.j2
+  40 files changed
+```
+
+Two distinct failures in one commit. The subject is a lie about the contents —
+and every audit tool in this project, including its own `golden_history()`,
+reads subjects and trailers. And the approval becomes unreviewable: the point of
+committing an approval separately is that its diff is small enough to read, and
+here the diff is the entire library.
+
+The fix is one commit per intent — `template: seed library (N file(s))` when
+seeding actually writes something, and nothing when it does not. The test that
+matters is not "does seeding commit"; it is that an approval *after* seeding
+touches exactly `templates/.approvals.json` and nothing else.
+
+Secondary note worth recording: a `GET` route with a write side effect is how
+this stayed invisible. Listing templates seeded them, so by the time anyone
+looked at the library it already existed on disk, and the question "when was
+this committed?" never came up.

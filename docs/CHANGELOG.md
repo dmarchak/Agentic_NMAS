@@ -7,6 +7,65 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Three findings from `git status` on the live repo
+
+All three were visible only on a repo that already existed. None could have been
+found by a test that builds its repo from scratch.
+
+### Fixed — a `.gitignore` rule never reached the repo it was written for
+
+The fifth instance of one shape: *a rule added later never reaches the artifacts
+that already existed.* `_ensure_gitignore()` appends what is missing — but it
+only ran from `init_repo()`, and `init_repo()` only ran on a write path. The
+live lab repo, created with a two-line `.gitignore`, therefore committed nine
+migration backups into version control and showed `.nsot/migrated.json` as
+untracked.
+
+`ensure_repo_hygiene()` now runs from `git()` itself, so every repo this process
+touches — read or write — is topped up on first use. Deliberately **not**
+memoised: a memo would mean a `.gitignore` edited after first touch stayed stale
+for the life of the process, which is the same bug in a smaller window. The cost
+is one small file read against a subprocess spawn.
+
+`GITIGNORE_RULES` is now a named constant, so a test can assert the repo carries
+all of it rather than restating the list.
+
+### Fixed — the rename commit did not carry the manifest
+
+`apply_pending_renames()` staged `golden` only, and called
+`clear_pending_rename()` **after** the commit. So the commit that moved
+`golden/R1.cfg` → `golden/R1-CORE.cfg` recorded the move and not where the
+manifest said the file now lived.
+
+A clone or bundle restore at that commit gets a manifest still naming the old
+file. `_find_golden_config_file()` then finds no entry and falls through to the
+deprecated legacy header scan — which reads `golden_configs/`, a directory a
+restore does not recreate. The device resolves to nothing.
+
+The manifest is now updated before staging and `.nsot` is staged with `golden`.
+A test reads `.nsot/manifest.json` out of the rename commit itself and asserts
+it names the new file with `pending_rename` cleared.
+
+`save_golden()` already staged `.nsot` and still does. `save_templates()`
+deliberately does not touch the manifest — identity is not a template's
+business — and a test now pins that too, so "doesn't carry it" stays a decision
+rather than becoming an oversight.
+
+### Fixed — the seeded template library was copied in but never committed
+
+`seed_templates()` runs from the template-list route and writes files. Nothing
+committed them. The first `save_templates()` afterwards — in practice the
+**approval** — staged `templates` and swept the entire library into a commit
+subjected `template: approve <path>`.
+
+Two problems in one: a commit whose subject describes a single file while adding
+forty, and an approval that could not be reviewed as a diff because the diff was
+the whole library. Seeding now gets its own commit, `template: seed library (N
+file(s))`, and a test asserts that an approval afterwards touches exactly
+`templates/.approvals.json`.
+
+---
+
 ## [Unreleased] — Migration hardening, found by the first real run
 
 Three defects the test suite could not have found, because all three needed

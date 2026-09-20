@@ -209,3 +209,87 @@ class TestValidationUsesCapturedConfigs:
         result = approval.validate_template(repo, "cisco_ios/base.j2", devices)
         assert result["ok"] is False
         assert result["results"][0]["unmodeled_acknowledged"] is False
+
+
+class TestSeedingCommitsItself:
+    """Seeding copied files in and committed nothing.
+
+    The first ``save_templates()`` that ran afterwards — in practice the
+    approval — staged ``templates`` and swept the entire seeded library into a
+    commit subjected ``template: approve <path>``. The subject described one
+    file while the commit added the whole library, and the approval could not
+    be reviewed as a diff because the diff *was* the library.
+    """
+
+    @pytest.fixture
+    def app_repo(self, tmp_path, monkeypatch):
+        from modules.nsot import repo as R
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                                "nsot_device_tag_retention": 50,
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(list_dir))
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        path = str(list_dir / "config_repo")
+        R.init_repo(path)
+        return path
+
+    def _seed(self, list_name, repo):
+        from routes.templates import _seed_and_commit
+        return _seed_and_commit(list_name, repo)
+
+    def test_seeding_creates_its_own_commit(self, app_repo):
+        from modules.nsot import repo as R
+        result = self._seed("Lab", app_repo)
+        assert result["copied"]
+        _rc, subject, _ = R.git(app_repo, "log", "-1", "--format=%s")
+        assert subject.startswith("template: seed library")
+
+    def test_the_seeded_library_is_tracked(self, app_repo):
+        from modules.nsot import repo as R
+        self._seed("Lab", app_repo)
+        _rc, tracked, _ = R.git(app_repo, "ls-files", "templates")
+        files = tracked.splitlines()
+        assert any(f.endswith("cisco_ios/base.j2") for f in files)
+        assert any(f.endswith("cisco_iosxe/base.j2") for f in files)
+        assert any(f.endswith("bindings.yml") for f in files)
+
+    def test_nothing_is_left_untracked(self, app_repo):
+        from modules.nsot import repo as R
+        self._seed("Lab", app_repo)
+        _rc, status, _ = R.git(app_repo, "status", "--porcelain", "templates")
+        assert status.strip() == ""
+
+    def test_a_second_seed_commits_nothing(self, app_repo):
+        from modules.nsot import repo as R
+        self._seed("Lab", app_repo)
+        _rc, before, _ = R.git(app_repo, "rev-list", "--count", "HEAD")
+        result = self._seed("Lab", app_repo)
+        _rc, after, _ = R.git(app_repo, "rev-list", "--count", "HEAD")
+        assert result["copied"] == []
+        assert before == after
+
+    def test_seeding_creates_no_tags(self, app_repo):
+        """A template commit is not a network snapshot."""
+        from modules.nsot import repo as R
+        self._seed("Lab", app_repo)
+        _rc, tags, _ = R.git(app_repo, "tag", "--list")
+        assert tags.strip() == ""
+
+    def test_an_approval_after_seeding_commits_only_the_approval(self, app_repo):
+        """The point of the fix: the approval's diff is the approval."""
+        from modules.nsot import repo as R
+        self._seed("Lab", app_repo)
+        with open(os.path.join(app_repo, "templates", ".approvals.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write('{"cisco_ios/base.j2": {"approved": true}}\n')
+        R.save_templates("Lab", [".approvals.json"], actor="user",
+                         message="template: approve cisco_ios/base.j2")
+
+        _rc, files, _ = R.git(app_repo, "show", "--name-only", "--format=", "HEAD")
+        assert files.split() == ["templates/.approvals.json"]

@@ -81,12 +81,40 @@ def _platform_for(hostname: str) -> str:
 # Library
 # ---------------------------------------------------------------------------
 
+def _seed_and_commit(list_name: str, repo: str) -> dict:
+    """Seed the library, and commit what seeding actually wrote.
+
+    Seeding copies files in; it never committed them. The first thing that ran
+    ``save_templates()`` afterwards — in practice the approval — swept the whole
+    seeded library into a commit subjected ``template: approve <path>``. Two
+    problems: a commit whose subject describes one file while it adds forty,
+    and an approval that cannot be reviewed as a diff because the diff is the
+    entire library.
+
+    Seeding gets its own commit, with a subject that says what it is.
+    """
+    from modules.nsot import repo as repo_service, templates_repo
+
+    result = templates_repo.seed_templates(repo)   # idempotent; never overwrites
+    copied = result.get("copied") or []
+    if not copied:
+        return result
+    commit = repo_service.save_templates(
+        list_name, copied, actor="nmas",
+        message=f"template: seed library ({len(copied)} file(s))")
+    result["commit"] = commit.get("commit", "")
+    if not commit.get("ok"):
+        log.error("templates: seeding committed nothing: %s", commit.get("error"))
+    return result
+
+
 @bp.route("", methods=["GET"])
 def list_templates():
     from modules.nsot import templates_repo
 
-    repo = _repo_for(_active_list())
-    templates_repo.seed_templates(repo)          # idempotent; never overwrites
+    list_name = _active_list()
+    repo = _repo_for(list_name)
+    _seed_and_commit(list_name, repo)
     entries = []
     for tpl in templates_repo.list_templates(repo):
         bound = templates_repo.devices_for_template(repo, tpl["path"])
