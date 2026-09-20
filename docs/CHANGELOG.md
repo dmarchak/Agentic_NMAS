@@ -7,6 +7,35 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Run 2, attempt 2: the pipeline re-rendered over the confirmed list
+
+```
+"stage":  "template_render",
+"reason": "Unknown config type: 'template'"
+```
+
+`_deploy_one()` populates `ctx.rendered_commands` with the exact confirmed
+program, then hands the context to `PipelineRunner`. Stage 2 overwrote it
+unconditionally — `ctx.rendered_commands = rendered` at the end of the stage —
+so the confirmed list was discarded and the stage then failed on a
+`config_type` no generator knows.
+
+The failure was the *lucky* outcome. Had `config_type` been a known generator,
+stage 2 would have rendered something else and pushed **that**, silently, after
+the operator confirmed a different list. The wiring was never correct; an
+unrecognised type is the only reason it surfaced as an error rather than as a
+wrong deploy.
+
+`PipelineContext.pre_rendered` now marks a caller that has already decided what
+to send. Stage 2 passes those through and logs it. Setting the flag with no
+commands is refused outright — *"refusing to render a substitute for a list the
+operator confirmed"* — rather than falling back to rendering, because a silent
+substitution is the failure this whole mechanism exists to prevent.
+
+Stage 2 runs before anything connects, so nothing reached the device.
+
+---
+
 ## [Unreleased] — The confirmed program is the sent program
 
 Found on run 2's plan, one step before the push.

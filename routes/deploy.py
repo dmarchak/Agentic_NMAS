@@ -390,6 +390,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
         config_id=f"tpl-{hostname}",
     )
     ctx.rendered_commands = {device.get("ip", ""): commands}
+    # The pipeline must not render a substitute for the confirmed list.
+    ctx.pre_rendered = True
 
     try:
         result = PipelineRunner(ctx).run()

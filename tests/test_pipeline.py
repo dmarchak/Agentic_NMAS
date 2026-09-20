@@ -654,3 +654,63 @@ class TestTemplatePath:
     def test_path_ends_in_config_templates_dir(self):
         path = _config_template_path("bgp")
         assert "config_templates" in path.replace("\\", "/")
+
+
+class TestPreRenderedCommandsAreNotOverwritten:
+    """The NSoT deploy path decides its own command list, outside the pipeline.
+
+    It has to: the operator confirmed that exact list, and it is the only thing
+    that may be sent. Stage 2 overwrote ``ctx.rendered_commands``
+    unconditionally, so a caller that populated it beforehand had its work
+    discarded — and then failed on ``Unknown config type: 'template'``.
+
+    Re-rendering would break the confirm guarantee even if it succeeded: the
+    pipeline would decide what to send after the operator approved something
+    else.
+    """
+
+    def _ctx(self, **kw):
+        import threading
+        from modules.pipeline import PipelineContext
+        base = dict(config_type="template", device_ips=["203.0.113.24"],
+                    params={}, ip_params_map={},
+                    selected_devices=[{"ip": "203.0.113.24", "hostname": "s4"}],
+                    check_devices=[], connections_pool={},
+                    pool_lock=threading.Lock(), config_id="tpl-s4")
+        base.update(kw)
+        return PipelineContext(**base)
+
+    def test_pre_rendered_commands_survive_stage_two(self):
+        from modules.pipeline import _stage_template_render
+
+        commands = ["interface GigabitEthernet0/1", " description x", "exit"]
+        ctx = self._ctx()
+        ctx.rendered_commands = {"203.0.113.24": commands}
+        ctx.pre_rendered = True
+
+        _stage_template_render(ctx)
+        assert ctx.rendered_commands == {"203.0.113.24": commands}
+
+    def test_an_unknown_config_type_no_longer_matters(self):
+        """It was fatal only because the stage insisted on rendering."""
+        from modules.pipeline import _stage_template_render
+
+        ctx = self._ctx(config_type="not-a-real-generator")
+        ctx.rendered_commands = {"203.0.113.24": ["hostname s4"]}
+        ctx.pre_rendered = True
+        _stage_template_render(ctx)
+        assert ctx.rendered_commands == {"203.0.113.24": ["hostname s4"]}
+
+    def test_pre_rendered_with_no_commands_is_refused(self):
+        """Never quietly render a substitute for a confirmed list."""
+        from modules.pipeline import PipelineStageError, _stage_template_render
+
+        ctx = self._ctx()
+        ctx.pre_rendered = True
+        with pytest.raises(PipelineStageError) as exc:
+            _stage_template_render(ctx)
+        assert "operator confirmed" in str(exc.value)
+
+    def test_the_normal_path_still_renders(self):
+        """pre_rendered defaults off; existing callers are untouched."""
+        assert self._ctx().pre_rendered is False

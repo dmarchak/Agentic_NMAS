@@ -121,6 +121,9 @@ class PipelineContext:
     # ---- Populated by stages ---------------------------------------------
     intended_config:   dict = field(default_factory=dict)  # Stage 1: NetBox data
     rendered_commands: dict = field(default_factory=dict)  # Stage 2: ip -> [str]
+    #: Set by a caller that has already decided the exact commands to send.
+    #: Stage 2 then passes them through instead of rendering its own.
+    pre_rendered: bool = False
     ci_passed:         bool = False                         # Stage 3
     pre_snapshots:     dict = field(default_factory=dict)  # Stage 4: ip -> snapshot
     diff_summary:      dict = field(default_factory=dict)  # Stage 5: ip -> summary
@@ -344,8 +347,28 @@ def _stage_template_render(ctx: PipelineContext) -> None:
     renders it via Jinja2 (already available as a Flask dependency — no new
     package needed).  Falls back to the existing Python generators in
     ``modules.configure`` when no template file is found.
+
+    **Pre-rendered commands are passed through untouched.** The NSoT deploy
+    path (Phase 3c) computes its command list outside the pipeline entirely —
+    it has to, because the whole point is that the operator confirmed that
+    exact list and it is the only thing that may be sent. This stage used to
+    overwrite ``ctx.rendered_commands`` unconditionally, so a caller that
+    populated it beforehand had its work discarded and then failed on an
+    unknown ``config_type``. Re-rendering here would also break the confirm
+    guarantee even if it succeeded: the pipeline would be deciding what to
+    send, after the operator had approved something else.
     """
     from modules.configure import generate_config_commands
+
+    if ctx.pre_rendered:
+        if not ctx.rendered_commands:
+            raise PipelineStageError(
+                "pre_rendered was set but no commands were supplied — refusing "
+                "to render a substitute for a list the operator confirmed")
+        log.info("pipeline[2/template_render]: using %d pre-rendered command "
+                 "list(s) — not re-rendering",
+                 len(ctx.rendered_commands))
+        return
 
     tpl_path = _config_template_path(ctx.config_type)
     rendered: dict[str, list[str]] = {}
