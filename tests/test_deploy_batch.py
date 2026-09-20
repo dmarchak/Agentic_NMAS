@@ -507,25 +507,27 @@ def _config_text():
         return fh.read()
 
 
-class TestTheBlockLiftsOnTheProgramNotOnACommit:
-    """An unrelated intent edit must NOT clear the block.
+class TestTheBlockIsContainmentNotEquality:
+    """Three keys were tried. The first two lift the block while the failing
+    change is still in intent; the third does too, in a narrower case.
 
-    Two weaker keys were tried first, and both lift the block while the failing
-    change is still in intent:
+    * intent **commit sha** — any later commit clears it
+    * **content hash** of the host_vars document — any edit clears it
+    * program **equality** — an edit that adds its own sent line makes the
+      program different, so the failed ``shutdown`` goes out bundled with it
 
-    * the intent **commit sha** — any later commit clears it, including one
-      that does not touch the rolled-back setting
-    * a **content hash of the whole host_vars document** — editing an unrelated
-      field changes the hash, so the same ``shutdown`` is offered again
+    The third is the subtle one, and the test that should have caught it passed
+    for the wrong reason: it supplied the failed program by hand instead of
+    deriving it, so the bundled case was never exercised.
 
-    The second was written as the fix for the first and failed this test, which
-    is the only reason it was not shipped.
-
-    The key is the **command program**: what would actually be sent. Same
-    program, still blocked; different program, different proposal.
+    Containment is the answer: block while the failed lines are still among the
+    lines that would be sent.
     """
 
-    PUSHED = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+    FAILED = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+    BUNDLED = ["interface GigabitEthernet0/1", " shutdown", "exit",
+               "interface GigabitEthernet0/2", " description uplink", "exit"]
+    OTHER_ONLY = ["interface GigabitEthernet0/2", " description uplink", "exit"]
 
     @pytest.fixture
     def lab(self, tmp_path, monkeypatch):
@@ -543,65 +545,81 @@ class TestTheBlockLiftsOnTheProgramNotOnACommit:
         monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
         repo = str(list_dir / "config_repo")
         R.init_repo(repo)
-        hostvars.write_committed_text(repo, "s4", "hostname: s4\nmtu: 1500\n")
+        hostvars.write_committed_text(repo, "s4", "hostname: s4\n")
         R.save_host_vars("Lab", ["s4"], message="host_vars: s4 shut Gi0/1")
         note = hostvars.record_rolled_back(
             repo, "s4", hostvars.intent_commits(repo, "s4")[0]["sha"],
-            reason="verify failed: intf_up 7->6", commands=self.PUSHED)
+            reason="verify failed: intf_up 7->6", commands=self.FAILED)
         return repo, hostvars, R, note
 
-    def test_the_block_stands_for_the_same_program(self, lab):
+    # (a) ------------------------------------------------------------------
+    def test_an_unrelated_edit_that_adds_a_sent_line_stays_blocked(self, lab):
+        """The bundled case: a DIFFERENT program that still sends the failure."""
         repo, hv, _R, _note = lab
-        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None
+        assert hv.rolled_back_note(repo, "s4", self.BUNDLED) is not None, (
+            "an unrelated edit bundled the rolled-back change back out")
 
-    def test_an_unrelated_edit_does_not_clear_the_block(self, lab):
-        """The case both weaker keys got wrong.
+    def test_the_bundled_program_really_is_different(self, lab):
+        """Guards the test above from passing for the reason the old one did."""
+        from modules.nsot.deploy import command_fingerprint
+        assert command_fingerprint(self.BUNDLED) != command_fingerprint(self.FAILED)
 
-        The intent document changed and a new commit exists, but the program a
-        fresh plan would send is byte-identical to the one that failed.
-        """
-        repo, hv, R, _note = lab
+    # (b) ------------------------------------------------------------------
+    def test_removing_the_failed_line_lifts_it_even_with_other_edits(self, lab):
+        repo, hv, _R, _note = lab
+        assert hv.rolled_back_note(repo, "s4", self.OTHER_ONLY) is None
 
-        hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 jumbo frames")
-
-        assert len(hv.intent_commits(repo, "s4")) == 2, "a new commit exists"
-        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None, (
-            "an unrelated edit lifted the block while the same program would "
-            "still be sent")
-
-    def test_an_empty_program_clears_it(self, lab):
-        """The setting was removed from intent; nothing would be sent."""
+    def test_an_empty_program_lifts_it(self, lab):
         repo, hv, _R, _note = lab
         assert hv.rolled_back_note(repo, "s4", []) is None
 
-    def test_a_different_program_clears_it(self, lab):
+    def test_the_same_program_stays_blocked(self, lab):
         repo, hv, _R, _note = lab
-        other = ["interface GigabitEthernet0/1", " description x", "exit"]
-        assert hv.rolled_back_note(repo, "s4", other) is None
+        assert hv.rolled_back_note(repo, "s4", self.FAILED) is not None
 
-    def test_reordering_is_a_different_program(self, lab):
-        """Order is part of a program; a reordered one has not been tried."""
+    def test_reordering_does_not_lift_it(self, lab):
+        """Order-insensitive: the same lines under the same headers."""
         repo, hv, _R, _note = lab
-        assert hv.rolled_back_note(
-            repo, "s4", list(reversed(self.PUSHED))) is None
+        reordered = ["interface GigabitEthernet0/2", " description uplink", "exit",
+                     "interface GigabitEthernet0/1", " shutdown", "exit"]
+        assert hv.rolled_back_note(repo, "s4", reordered) is not None
 
-    def test_no_commit_at_all_leaves_the_block(self, lab):
-        """The block must not depend on whether a commit happened."""
-        repo, hv, R, _note = lab
-        before = len(hv.intent_commits(repo, "s4"))
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 no-op")
-        assert len(hv.intent_commits(repo, "s4")) == before
-        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None
-
-    def test_the_note_records_the_program_verbatim(self, lab):
-        repo, hv, _R, note = lab
-        assert note["commands"] == self.PUSHED
-        assert note["command_fingerprint"]
-
-    def test_listing_a_note_needs_no_program(self, lab):
+    def test_the_same_text_under_a_different_header_is_not_the_same_line(self, lab):
+        """`shutdown` on Gi0/2 is not the `shutdown` that failed on Gi0/1."""
         repo, hv, _R, _note = lab
-        assert hv.rolled_back_note(repo, "s4")["reason"].startswith("verify failed")
+        elsewhere = ["interface GigabitEthernet0/2", " shutdown", "exit"]
+        assert hv.rolled_back_note(repo, "s4", elsewhere) is None
+
+    # (c) ------------------------------------------------------------------
+    def test_an_explicit_retry_lifts_the_block(self, lab):
+        repo, hv, _R, _note = lab
+        result = hv.authorise_retry(repo, "s4", actor="dustin",
+                                    reason="link confirmed unused")
+        assert result["ok"] is True
+        assert hv.rolled_back_note(repo, "s4", self.FAILED) is None
+
+    def test_the_retry_is_recorded(self, lab):
+        repo, hv, _R, _note = lab
+        hv.authorise_retry(repo, "s4", actor="dustin", reason="link confirmed unused")
+        entries = hv.retry_log(repo)
+        assert len(entries) == 1
+        assert entries[0]["device"] == "s4"
+        assert entries[0]["actor"] == "dustin"
+        assert entries[0]["reason"] == "link confirmed unused"
+        assert entries[0]["note"]["commands"] == self.FAILED
+
+    def test_a_retry_route_requires_a_reason(self):
+        import flask
+        from routes.templatize import retry_rolled_back
+
+        app = flask.Flask(__name__)
+        with app.test_request_context(json={}):
+            _body, status = retry_rolled_back("s4")
+        assert status == 400
+
+    def test_retrying_a_device_with_no_note_is_refused(self, lab):
+        repo, hv, _R, _note = lab
+        assert hv.authorise_retry(repo, "s9", reason="x")["ok"] is False
 
     def test_a_legacy_note_without_a_program_falls_back_to_the_sha(self, lab):
         import json
@@ -609,11 +627,10 @@ class TestTheBlockLiftsOnTheProgramNotOnACommit:
 
         path = hv._rolled_back_path(repo)
         data = json.load(open(path, encoding="utf-8"))
-        data["s4"].pop("command_fingerprint")
         data["s4"].pop("commands")
         json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
 
-        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None
+        assert hv.rolled_back_note(repo, "s4", self.FAILED) is not None
         hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
         R.save_host_vars("Lab", ["s4"], message="host_vars: s4 edit")
-        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is None
+        assert hv.rolled_back_note(repo, "s4", self.FAILED) is None

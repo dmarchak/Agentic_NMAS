@@ -322,6 +322,50 @@ def rollback_commands(pushed: list, pre_config: str) -> list:
     return commands
 
 
+def program_lines(commands: list) -> frozenset:
+    """``{(header chain, line)}`` for every configuration line in a program.
+
+    A program is a sequence with context — the same text means different things
+    under different headers — so a line is identified by its chain, not on its
+    own. Control words carry no configuration and are dropped.
+    """
+    from modules.nsot import ifnames
+
+    chain, pairs = [], set()
+    for raw in commands:
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        if line.strip() in CONTROL_WORDS:
+            if chain:
+                chain.pop()
+            continue
+        indent = len(line) - len(line.lstrip())
+        while chain and (len(chain[-1]) - len(chain[-1].lstrip())) >= indent:
+            chain.pop()
+        canonical = ifnames.canonicalise_line(line)
+        pairs.add((tuple(ifnames.canonicalise_line(c) for c in chain), canonical))
+        chain.append(line)
+    return frozenset(pairs)
+
+
+def program_contains(new_commands: list, failed_commands: list) -> bool:
+    """True if *new_commands* still sends everything *failed_commands* did.
+
+    **Containment, not equality.** Equality lifts the block whenever the
+    program merely *grows*: an unrelated edit that adds its own sent line — a
+    description on another interface — makes the program different, so an
+    equality test says "new proposal" and the failed ``shutdown`` goes out
+    again bundled with it.
+
+    Order-insensitive, because the same set of lines under the same headers is
+    the same change however ``merge_commands`` happens to sequence it.
+    """
+    if not failed_commands:
+        return False
+    return program_lines(failed_commands) <= program_lines(new_commands)
+
+
 class RollbackNotInverse(RuntimeError):
     """A rollback negation does not correspond to anything this deploy pushed."""
 

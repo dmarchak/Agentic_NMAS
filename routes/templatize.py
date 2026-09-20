@@ -367,6 +367,39 @@ def revert_committed(hostname):
                     "error": result.get("error", "")})
 
 
+@bp.route("/rolled-back/<path:hostname>/retry", methods=["POST"])
+def retry_rolled_back(hostname):
+    """Deliberately allow a rolled-back change to be attempted again.
+
+    The only way the block lifts while the failed change is still in intent,
+    and it is an explicit action with a recorded reason. A retry that happened
+    as a side effect of editing something else would be indistinguishable, in
+    the log, from never having been blocked.
+    """
+    from modules.nsot import hostvars
+
+    data = request.get_json(silent=True) or {}
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"ok": False, "error": (
+            "A reason is required. This re-authorises a change that was rolled "
+            "back after failing verification.")}), 400
+
+    repo = _repo_for(_active_list(data))
+    result = hostvars.authorise_retry(repo, hostname,
+                                      actor=data.get("actor", "user"),
+                                      reason=reason)
+    return jsonify(result), (200 if result.get("ok") else 404)
+
+
+@bp.route("/rolled-back/retries", methods=["GET"])
+def rolled_back_retries():
+    """Every authorised retry, for audit."""
+    from modules.nsot import hostvars
+    return jsonify({"ok": True,
+                    "retries": hostvars.retry_log(_repo_for(_active_list()))})
+
+
 @bp.route("/rolled-back", methods=["GET"])
 def rolled_back():
     """Devices whose current intent was rolled back and not yet resolved."""

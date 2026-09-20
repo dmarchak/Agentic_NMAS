@@ -385,7 +385,11 @@ The only part of the NSoT work that reaches a device.
 - **Rollback restores the device; the intent is separate.** A rollback records
   `.nsot/rolled_back.json` against the device's current intent commit, which
   blocks the next plan — otherwise it would propose exactly what just failed.
-  The note self-expires when the intent moves, and "Revert intent"
+  The block is **containment, not equality**: it stands while the failed lines
+  (each within its header chain) are still among the lines that would be sent,
+  so an unrelated edit that adds its own sent line cannot bundle the failed
+  change back out. Lifting it deliberately is `authorise_retry()`, an explicit
+  recorded action. "Revert intent"
   (`POST /templatize/committed/<host>/revert`) restores the previous committed
   state as a forward commit and clears it.
 - **Reads never commit.** `ensure_repo_hygiene()` appends `.gitignore` rules on

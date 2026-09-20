@@ -330,8 +330,14 @@ def record_rolled_back(repo: str, hostname: str, intent_commit: str,
     * a **content hash of the whole host_vars document** — editing an unrelated
       field changes the hash, so the same ``shutdown`` is offered again
 
-    The program is what would be sent. Same program, still blocked; different
-    program, including an empty one, and this is a different proposal.
+    The test is **containment**, not equality: the block stands while the failed
+    lines are still among the lines that would be sent. Equality lifts whenever
+    the program merely grows — an unrelated edit that adds its own sent line
+    bundles the failed change back out with it.
+
+    Lifting is therefore only ever "the failed change is genuinely absent". A
+    deliberate retry is :func:`authorise_retry`, an explicit recorded action,
+    never a side effect of editing something else.
 
     Local operational state, like the migration marker — gitignored. The
     version-controlled record of what happened is the intent history itself.
@@ -379,17 +385,72 @@ def rolled_back_note(repo: str, hostname: str, current_commands: list = None):
     if current_commands is None:
         return entry
 
-    recorded = entry.get("command_fingerprint")
-    if recorded:
-        from modules.nsot.deploy import command_fingerprint
-        return entry if command_fingerprint(list(current_commands)) == recorded \
-            else None
+    failed = entry.get("commands")
+    if failed:
+        from modules.nsot.deploy import program_contains
+        return entry if program_contains(list(current_commands), failed) else None
 
     current = intent_commits(repo, hostname, limit=1)
     current_sha = current[0]["sha"] if current else ""
     if current_sha and current_sha != entry.get("intent_commit"):
         return None
     return entry
+
+
+RETRY_LOG_REL = os.path.join(".nsot", "retry_log.json")
+
+
+def authorise_retry(repo: str, hostname: str, actor: str = "user",
+                    reason: str = "") -> dict:
+    """Deliberately allow a rolled-back change to be attempted again.
+
+    The only way a block lifts while the failed change is still in intent. It
+    is an action someone takes and it is recorded, because "we tried this, it
+    was rolled back, and we chose to try it again" is exactly the sequence an
+    audit needs to see — and exactly the sequence that disappears if a retry is
+    a side effect of an unrelated edit.
+    """
+    import json
+    import time as _time
+
+    note = _load_rolled_back(repo).get(hostname)
+    if not note:
+        return {"ok": False, "error": f"'{hostname}' has no rolled-back note"}
+
+    path = os.path.join(repo, RETRY_LOG_REL)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            log_entries = json.load(fh)
+    except (OSError, ValueError):
+        log_entries = []
+    if not isinstance(log_entries, list):
+        log_entries = []
+
+    record = {"device": hostname, "actor": actor, "reason": reason,
+              "at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+              "note": note}
+    log_entries.append(record)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(log_entries, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+
+    clear_rolled_back(repo, hostname)
+    log.warning("hostvars: retry of a rolled-back change authorised for %s by "
+                "%s — %s", hostname, actor, reason or "no reason given")
+    return {"ok": True, "device": hostname, "record": record}
+
+
+def retry_log(repo: str) -> list:
+    """Every authorised retry, newest last."""
+    import json
+
+    try:
+        with open(os.path.join(repo, RETRY_LOG_REL), encoding="utf-8") as fh:
+            entries = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    return entries if isinstance(entries, list) else []
 
 
 def clear_rolled_back(repo: str, hostname: str) -> bool:
