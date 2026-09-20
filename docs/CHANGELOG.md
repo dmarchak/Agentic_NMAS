@@ -7,6 +7,56 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Run 2 landed, and the deploy that minted a device
+
+Run 2 succeeded: `1f0140a5`, tag `golden/s4/20260920T231156Z`, verify converged
+(OSPF 5→5 neighbours), `write memory` confirmed on the device, golden byte-identical
+to what was sent. It also introduced a regression, which is a pointed place for
+one to appear.
+
+### Fixed — `save_golden()` minted an identity instead of failing
+
+```python
+identity = item.identity or _manifest.new_device_uid()
+```
+
+One line. A caller that simply *forgot* to pass an identity got a brand-new
+device rather than an error, and stage 8.5 forgot: the inventory row carries a
+`device_uid` only if the CSV has one, and s4's did not. The first successful
+deploy gave s4 a **second manifest entry**, with an empty platform, for a device
+the manifest had known since migration. Verification check 3 — "no duplicate
+device entries" — went red.
+
+**A function that creates identity when none is supplied will always mask a
+caller that forgot to supply it.** Same shape as intent derived from current
+state: the fallback is indistinguishable from the correct answer, so the bug
+cannot surface.
+
+Two fixes, deliberately independent:
+
+- `resolve_identity()` takes the item's identity, else the manifest by IP, else
+  by name, and mints **only** when `allow_new=True`.
+- Stage 8.5 resolves the existing identity from the manifest itself and passes
+  it into `GoldenItem`, and calls `save_golden(..., allow_new=False)` — a
+  deploy targets a device the inventory already knows.
+
+Minting now happens in exactly one place and only when asked for, so Phase 4's
+onboarding wizard does not inherit the trap.
+
+### Changed — `deployable` subsumes sendability
+
+The ASCII guard refused an em dash before connecting, but only *after* the
+artifact had already reported `deployable: True`. Two answers to "can this go
+out" that disagree is worse than either alone, because the reassuring one comes
+first and the operator reads that one.
+
+`build_artifact()` now measures non-printable bytes on the **truthful** render
+— never the masked one, since the mask is U+2022 and a masked render is
+non-ASCII by construction — and `blocking_reasons` carries them with line
+numbers. One answer.
+
+---
+
 ## [Unreleased] — Run 2, attempt 3: a corrupted partial write, and the net that did not catch it
 
 The first deploy to reach a device. It left this on S4:

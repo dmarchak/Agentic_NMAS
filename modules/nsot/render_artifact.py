@@ -136,6 +136,10 @@ class RenderArtifact:
     #: built-in seeds. Carried on the artifact so ``prepare_device()`` cannot
     #: deploy from a different tree than the one that was validated.
     template_root: str = ""
+    #: Lines of the truthful render carrying bytes an IOS CLI cannot accept.
+    #: Measured here so ``deployable`` subsumes sendability — one answer to
+    #: "can this go out", not two that disagree.
+    unsendable: tuple = field(default_factory=tuple)
 
     # ── the gate ────────────────────────────────────────────────────────────
 
@@ -182,6 +186,11 @@ class RenderArtifact:
                            "order is significant here")
         if not self.template_approved:
             reasons.append(f"template '{self.template}' is not approved for this device")
+        if self.unsendable:
+            reasons.append(
+                f"{len(self.unsendable)} line(s) contain characters an IOS CLI "
+                "cannot accept: " + "; ".join(self.unsendable[:2])
+                + ("…" if len(self.unsendable) > 2 else ""))
         return reasons
 
     @property
@@ -237,7 +246,29 @@ class RenderArtifact:
                 "round_trip_fidelity", 0.0),
             "bootstrap": self.bootstrap,
             "intent_drift": self.intent_drift,
+            "unsendable": list(self.unsendable),
         }
+
+
+def _unsendable_lines(rendered: str) -> tuple:
+    """Lines of a render carrying bytes an IOS CLI cannot accept.
+
+    The em dash on the first real deploy reached the device as
+    ``description NSoT-managed b`` — three UTF-8 bytes, the first consumed, the
+    rest of the line lost. ``merge_commands()`` refuses it before connecting,
+    but only *after* an artifact has already reported ``deployable: True``. Two
+    answers to "can this go out" that disagree is worse than either answer:
+    the operator reads the first and the second only fires later.
+    """
+    from modules.nsot import normalize
+
+    flagged = []
+    for number, line in enumerate(rendered.splitlines(), 1):
+        found = normalize.find_non_printable(line)
+        if found:
+            flagged.append(f"line {number}: "
+                           f"{normalize.describe_non_printable(found)}")
+    return tuple(flagged)
 
 
 def build_artifact(device: str, running_config: str, platform: str,
@@ -291,6 +322,10 @@ def build_artifact(device: str, running_config: str, platform: str,
 
     truthful = roundtrip.render(parsed, resolved_platform, **render_kwargs)
     report = roundtrip.compare(running_config, truthful, parsed)
+    # Measured on the TRUTHFUL render, never the masked one: the mask is U+2022,
+    # so a masked render is non-ASCII by construction and would report every
+    # secret line as unsendable.
+    unsendable = _unsendable_lines(truthful)
     del truthful
 
     if host_vars is None:
@@ -319,6 +354,7 @@ def build_artifact(device: str, running_config: str, platform: str,
         bootstrap=bool(bootstrap),
         template_report=template_report,
         template_root=template_root or "",
+        unsendable=unsendable,
     )
 
 

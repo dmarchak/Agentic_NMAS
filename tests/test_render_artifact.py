@@ -367,3 +367,58 @@ class TestValidationAndDeployReadTheSameTemplates:
         art = build_artifact("s1", _config("s1"), "cisco_ios")
         assert art.template_root == ""
         assert art.rendered_masked
+
+
+class TestDeployableSubsumesSendability:
+    """One answer to "can this go out", not two that disagree.
+
+    ``merge_commands()`` refuses an unsendable command before connecting — but
+    only *after* the artifact has already reported ``deployable: True``. The
+    operator reads the first answer; the second fires later, in a different
+    place, phrased differently. Two guards that disagree about the same
+    question is worse than either alone, because the reassuring one comes
+    first.
+    """
+
+    def _artifact(self, description):
+        from modules.nsot.parsers import get_parser
+
+        config = _config("s1")
+        intent = get_parser("cisco_ios").parse(config)
+        target = next(i for i in intent["interfaces"] if not i.get("description"))
+        target["description"] = description
+        return build_artifact("s1", config, "cisco_ios",
+                              template="cisco_ios/base.j2",
+                              template_approved=True, host_vars=intent)
+
+    def test_an_em_dash_makes_the_artifact_undeployable(self):
+        art = self._artifact("NSoT-managed — CSCI 5840 Lab 4")
+        assert art.unsendable
+        assert art.deployable is False
+
+    def test_the_reason_names_the_character_and_the_line(self):
+        art = self._artifact("NSoT-managed — CSCI 5840 Lab 4")
+        reason = next(r for r in art.blocking_reasons if "IOS CLI cannot accept" in r)
+        assert "U+2014" in reason
+        assert "line " in reason
+
+    def test_an_ascii_description_stays_deployable(self):
+        art = self._artifact("NSoT-managed - CSCI 5840 Lab 4")
+        assert art.unsendable == ()
+        assert art.deployable is True
+
+    def test_the_mask_itself_is_not_reported_as_unsendable(self):
+        """The mask is U+2022, so a masked render is non-ASCII by construction.
+
+        Measuring sendability on the masked render would report every secret
+        line as unsendable — the same one-sided-transformation error as
+        validating a masked render against the real config.
+        """
+        art = build_artifact("s1", _config("s1"), "cisco_ios")
+        assert MASK in art.rendered_masked, "fixture must actually carry a mask"
+        assert art.unsendable == ()
+
+    def test_summary_exposes_it(self):
+        art = self._artifact("NSoT-managed — x")
+        assert art.summary()["unsendable"]
+        assert art.summary()["deployable"] is False

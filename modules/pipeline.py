@@ -1233,8 +1233,13 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
     their golden saved even when siblings failed. Losing a good record because
     another device failed would be the worst outcome here.
     """
+    import os as _os
+
+    from modules.config import get_current_list_name, get_list_data_dir
+    from modules.nsot import manifest as _manifest
     from modules.nsot.repo import GoldenItem, save_golden
 
+    repo = _os.path.join(get_list_data_dir(get_current_list_name()), "config_repo")
     rolled_back = set(ctx.rolled_back_ips or [])
     failed_ips = {f.get("ip") for f in (ctx.deploy_failures or [])
                   if isinstance(f, dict)}
@@ -1256,9 +1261,25 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
                             "reason": "no post-deploy config captured"})
             continue
 
+        # Resolve the identity the manifest already holds. The inventory row
+        # carries one only if the CSV has a device_uid or NetBox supplied an
+        # id; when it does not, save_golden used to mint a fresh uid and the
+        # device silently acquired a SECOND manifest entry. A deploy is never
+        # an onboarding.
+        netbox_id = dev.get("_netbox_id")
+        device_uid = dev.get("device_uid", "")
+        if not _manifest.identity_for(netbox_id, device_uid):
+            existing, _entry = _manifest.find_by_ip(repo, ip)
+            if not existing:
+                existing, _entry = _manifest.find_by_name(repo, hostname)
+            if existing and existing.startswith("uid:"):
+                device_uid = existing.split(":", 1)[1]
+            elif existing and existing.startswith("nb:"):
+                netbox_id = existing.split(":", 1)[1]
+
         items.append(GoldenItem(hostname, config, ip,
-                                netbox_id=dev.get("_netbox_id"),
-                                device_uid=dev.get("device_uid", "")))
+                                netbox_id=netbox_id,
+                                device_uid=device_uid))
 
     ctx.golden_skipped = skipped
     if not items:
@@ -1267,9 +1288,11 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
         ctx.golden_result = {"ok": True, "commit": "", "changed": []}
         return
 
-    from modules.config import get_current_list_name
+    # allow_new=False: a pipeline deploy targets a device the inventory
+    # already knows. Reaching here with no identity is a bug, not a new device.
     result = save_golden(get_current_list_name(), items, source="pipeline",
-                         actor="pipeline", pipeline_id=ctx.config_id)
+                         actor="pipeline", pipeline_id=ctx.config_id,
+                         allow_new=False)
     ctx.golden_result = result
 
     if not result.get("ok"):

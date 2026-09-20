@@ -305,8 +305,46 @@ def _safe_name(hostname: str) -> str:
 # The one write path
 # ---------------------------------------------------------------------------
 
+class IdentityRequired(ValueError):
+    """A save reached the repo with no identity for a device the manifest knows."""
+
+
+def resolve_identity(repo: str, item, allow_new: bool):
+    """The identity this item's device already has, or a new one if permitted.
+
+    Minting happens in exactly one place, and this is it — gated. The previous
+    behaviour was ``identity = item.identity or _manifest.new_device_uid()``,
+    one line, and it meant a caller that simply *forgot* to pass an identity
+    got a brand-new device instead of an error. The first successful deploy did
+    exactly that: s4 gained a second manifest entry, with an empty platform,
+    for a device the manifest had known since migration.
+
+    A function that creates identity when none is supplied will always mask a
+    caller that forgot to supply it. Same shape as intent derived from current
+    state: the fallback is indistinguishable from the correct answer, so the
+    bug cannot surface.
+    """
+    if item.identity:
+        return item.identity
+
+    identity, _entry = _manifest.find_by_ip(repo, item.mgmt_ip)
+    if not identity:
+        identity, _entry = _manifest.find_by_name(repo, item.hostname)
+    if identity:
+        return identity
+
+    if allow_new:
+        return _manifest.new_device_uid()
+
+    raise IdentityRequired(
+        f"{item.hostname} ({item.mgmt_ip or 'no ip'}) reached save_golden with "
+        "no identity and is not in the manifest. Pass the device's identity, or "
+        "call with allow_new=True if this really is a device being onboarded "
+        "for the first time.")
+
+
 def save_golden(list_name: str, items: list, source: str = "manual",
-                actor: str = "nmas", message: str = "",
+                actor: str = "nmas", message: str = "", allow_new: bool = True,
                 pipeline_id: str = None) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
@@ -327,7 +365,13 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         os.makedirs(os.path.join(repo, "golden"), exist_ok=True)
 
         for item in items:
-            identity = item.identity or _manifest.new_device_uid()
+            try:
+                identity = resolve_identity(repo, item, allow_new)
+            except IdentityRequired as exc:
+                log.error("repo: %s", exc)
+                return {"ok": False, "error": str(exc), "changed": [],
+                        "unchanged": unchanged, "tags": [],
+                        "renamed": rename_result["renamed"]}
             rel = f"golden/{_safe_name(item.hostname)}.cfg"
             abs_path = os.path.join(repo, rel)
             content = golden_body(item.hostname, item.mgmt_ip, item.config_text)

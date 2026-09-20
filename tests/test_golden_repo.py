@@ -447,3 +447,114 @@ class TestManifestTravelsWithTheCommit:
         assert before == after
         _rc, subject, _ = R.git(lab, "log", "-1", "--format=%s")
         assert subject.startswith("template:")
+
+
+class TestIdentityIsResolvedNotMinted:
+    """``save_golden`` minted an identity when handed an item without one.
+
+    One line — ``identity = item.identity or _manifest.new_device_uid()`` — and
+    it meant a caller that simply *forgot* to pass an identity got a brand-new
+    device instead of an error. The first successful deploy did exactly that:
+    s4 gained a second manifest entry, with an empty platform, for a device the
+    manifest had known since migration.
+
+    A function that creates identity when none is supplied will always mask a
+    caller that forgot to supply it. Same shape as intent derived from current
+    state — the fallback is indistinguishable from the correct answer, so the
+    bug cannot surface.
+    """
+
+    def _entries(self, repo):
+        return M.load(repo)["devices"]
+
+    def test_a_second_save_without_identity_reuses_the_first(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        assert len(self._entries(lab)) == 1
+
+        R.save_golden("Lab", [R.GoldenItem("R1", "hostname R1\n ip routing\n",
+                                           "203.0.113.1")])
+        assert len(self._entries(lab)) == 1, "a second entry was minted"
+
+    def test_it_matches_on_management_ip(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        identity = next(iter(self._entries(lab)))
+        R.save_golden("Lab", [R.GoldenItem("R1-renamed-in-csv", "hostname R1\n x\n",
+                                           "203.0.113.1")])
+        assert list(self._entries(lab)) == [identity]
+
+    def test_it_matches_on_hostname_when_the_ip_is_absent(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        identity = next(iter(self._entries(lab)))
+        R.save_golden("Lab", [R.GoldenItem("R1", "hostname R1\n y\n")])
+        assert list(self._entries(lab)) == [identity]
+
+    def test_allow_new_false_refuses_an_unknown_device(self, lab):
+        result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n",
+                                                    "203.0.113.99")],
+                               allow_new=False)
+        assert result["ok"] is False
+        assert "no identity" in result["error"]
+        assert self._entries(lab) == {}
+
+    def test_the_refusal_says_what_to_do(self, lab):
+        result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n")],
+                               allow_new=False)
+        assert "allow_new=True" in result["error"]
+        assert "onboarded" in result["error"]
+
+    def test_allow_new_true_still_onboards(self, lab):
+        """Minting happens in exactly one place, and it still happens there."""
+        result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n",
+                                                    "203.0.113.99")],
+                               allow_new=True)
+        assert result["ok"] is True
+        assert len(self._entries(lab)) == 1
+
+    def test_an_explicit_identity_always_wins(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n", nb_id=42)])
+        R.save_golden("Lab", [_item("R1", "hostname R1\n z\n", nb_id=42)])
+        assert list(self._entries(lab)) == ["nb:42"]
+
+
+class TestTwoConsecutiveDeploysMakeOneEntry:
+    """The regression the first successful deploy introduced, pinned.
+
+    Verification check 3 — "no duplicate device entries in the manifest" —
+    went red after a deploy succeeded, which is a pointed place for it to
+    appear.
+    """
+
+    def _deploy_like_save(self, lab, body):
+        """What stage 8.5 does: an inventory row with no device_uid."""
+        from modules.nsot import manifest as _m
+
+        netbox_id, device_uid = None, ""
+        if not _m.identity_for(netbox_id, device_uid):
+            existing, _e = _m.find_by_ip(lab, "203.0.113.24")
+            if not existing:
+                existing, _e = _m.find_by_name(lab, "s4")
+            if existing and existing.startswith("uid:"):
+                device_uid = existing.split(":", 1)[1]
+        return R.save_golden("Lab", [R.GoldenItem("s4", body, "203.0.113.24",
+                                                  netbox_id=netbox_id,
+                                                  device_uid=device_uid)],
+                             source="pipeline", allow_new=False)
+
+    def test_one_entry_after_two_deploys(self, lab):
+        # Migration-equivalent first record, with a platform.
+        M.upsert_device(lab, "uid:seeded-s4", "s4", "203.0.113.24",
+                        platform="cisco_ios", golden="golden/s4.cfg")
+
+        first = self._deploy_like_save(lab, "hostname s4\n description one\n")
+        second = self._deploy_like_save(lab, "hostname s4\n description two\n")
+
+        assert first["ok"] and second["ok"]
+        entries = M.load(lab)["devices"]
+        assert list(entries) == ["uid:seeded-s4"], f"duplicated: {list(entries)}"
+
+    def test_the_platform_survives_the_deploys(self, lab):
+        M.upsert_device(lab, "uid:seeded-s4", "s4", "203.0.113.24",
+                        platform="cisco_ios", golden="golden/s4.cfg")
+        self._deploy_like_save(lab, "hostname s4\n description one\n")
+        self._deploy_like_save(lab, "hostname s4\n description two\n")
+        assert M.load(lab)["devices"]["uid:seeded-s4"]["platform"] == "cisco_ios"

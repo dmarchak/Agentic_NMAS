@@ -281,14 +281,14 @@ class TestIntentComesFromCommittedHostVars:
         config = _config("s1")
         intent = get_parser("cisco_ios").parse(config)
         target = next(i for i in intent["interfaces"] if not i.get("description"))
-        target["description"] = "NSoT-managed — test"
+        target["description"] = "NSoT-managed - test"
 
         art = self._artifact(config, host_vars=intent)
         diff = merge_diff(prepare_device(art)["config"], config)
 
         assert art.deployable is True, art.blocking_reasons
-        assert diff["to_add"] == [f" description NSoT-managed — test"] or any(
-            "NSoT-managed — test" in line for line in diff["to_add"])
+        assert diff["to_add"] == [f" description NSoT-managed - test"] or any(
+            "NSoT-managed - test" in line for line in diff["to_add"])
         assert art.intent_drift["differs"] is True
 
     def test_an_intent_edit_does_not_block_deployability(self):
@@ -303,7 +303,7 @@ class TestIntentComesFromCommittedHostVars:
         config = _config("s1")
         intent = get_parser("cisco_ios").parse(config)
         target = next(i for i in intent["interfaces"] if not i.get("description"))
-        target["description"] = "NSoT-managed — test"
+        target["description"] = "NSoT-managed - test"
 
         art = self._artifact(config, host_vars=intent)
         assert art.deployable is True
@@ -324,7 +324,7 @@ class TestIntentComesFromCommittedHostVars:
         config = _config("s1")
         intent = get_parser("cisco_ios").parse(config)
         target = next(i for i in intent["interfaces"] if not i.get("description"))
-        target["description"] = "NSoT-managed — test"
+        target["description"] = "NSoT-managed - test"
 
         art = self._artifact(config, host_vars=intent)
         drift = art.intent_drift

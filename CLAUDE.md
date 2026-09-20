@@ -222,6 +222,12 @@ tools refuse to act on it, and its pooled SSH session is closed.
 - **One write path.** Everything that promotes a golden config goes through
   `nsot.repo.save_golden()`. **One call is one commit**, even for a nine-device
   Save All. An unchanged device creates no commit but is still reported.
+- **Identity is resolved, never minted by accident.** `resolve_identity()` takes
+  the item's identity, else the manifest by IP, else by name — and mints only
+  when `allow_new=True`. The pipeline passes `allow_new=False`: a deploy targets
+  a device the inventory already knows, so arriving with no identity is a bug,
+  not an onboarding. A function that creates identity when none is supplied
+  always masks a caller that forgot to supply it.
 - **Timestamps live in git**, not in the file. The file keeps one stable header
   line; `! Saved:` / `! Source:` are gone because they produced a diff on every
   save. Commits carry `Source`, `Actor`, `Device-Id`, `Device-Name` trailers,
@@ -361,6 +367,11 @@ The only part of the NSoT work that reaches a device.
   the list the plan published.
 - **Transport is per platform.** `supports_netconf: false` goes straight to SSH
   with no attempt — not a fallback after a timeout.
+- **`deployable` subsumes sendability.** `build_artifact()` measures
+  non-printable bytes on the truthful render (never the masked one — the mask
+  is U+2022) and `blocking_reasons` carries them, so there is one answer to
+  "can this go out" rather than an artifact saying yes and `merge_commands()`
+  saying no later.
 - **Commands must be sendable.** `assert_sendable()` refuses any byte outside
   printable ASCII before connecting, and `hostvars.assert_printable()` refuses
   it at commit. An em dash is three UTF-8 bytes; IOS consumes the first, loses
