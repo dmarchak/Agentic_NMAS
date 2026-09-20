@@ -311,7 +311,8 @@ def _load_rolled_back(repo: str) -> dict:
 
 
 def record_rolled_back(repo: str, hostname: str, intent_commit: str,
-                       reason: str = "", pipeline_id: str = "") -> dict:
+                       reason: str = "", pipeline_id: str = "",
+                       commands: list = None) -> dict:
     """Note that deploying this device's current intent was rolled back.
 
     Rollback restores the *device*. It says nothing about the *intent*, which
@@ -320,9 +321,17 @@ def record_rolled_back(repo: str, hostname: str, intent_commit: str,
     tool would loop, confidently, and each attempt would look like a fresh
     proposal.
 
-    Keyed on the intent commit, so the note is self-expiring: edit the intent
-    and it no longer applies, because the thing that failed is no longer what
-    would be sent.
+    Keyed on **the command program that failed**, which is the only thing that
+    answers the question the note asks. Two weaker keys were tried first and
+    both lift the block while the failing change is still in intent:
+
+    * the intent **commit sha** — any later commit clears it, including one
+      that does not touch the rolled-back setting at all
+    * a **content hash of the whole host_vars document** — editing an unrelated
+      field changes the hash, so the same ``shutdown`` is offered again
+
+    The program is what would be sent. Same program, still blocked; different
+    program, including an empty one, and this is a different proposal.
 
     Local operational state, like the migration marker — gitignored. The
     version-controlled record of what happened is the intent history itself.
@@ -330,9 +339,14 @@ def record_rolled_back(repo: str, hostname: str, intent_commit: str,
     import json
     import time as _time
 
+    from modules.nsot.deploy import command_fingerprint
+
+    commands = list(commands or [])
     data = _load_rolled_back(repo)
     entry = {
         "intent_commit": intent_commit,
+        "commands": commands,
+        "command_fingerprint": command_fingerprint(commands) if commands else "",
         "at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
         "reason": reason,
         "pipeline_id": pipeline_id,
@@ -347,15 +361,30 @@ def record_rolled_back(repo: str, hostname: str, intent_commit: str,
     return entry
 
 
-def rolled_back_note(repo: str, hostname: str):
+def rolled_back_note(repo: str, hostname: str, current_commands: list = None):
     """The standing note for *hostname*, or ``None``.
 
-    Stale notes clear themselves: if the intent has moved since the rollback,
-    what failed is not what would be sent now, so the note does not apply.
+    *current_commands* is the program a fresh plan would send. The note stands
+    while that program matches the one that failed, and lifts when it does not
+    — an unrelated edit leaves the program identical and therefore leaves the
+    block in place, which is the whole point.
+
+    Called without *current_commands* it reports the raw note, for listing.
+    A note with no recorded program falls back to the commit sha rather than
+    being silently ignored.
     """
     entry = _load_rolled_back(repo).get(hostname)
     if not entry:
         return None
+    if current_commands is None:
+        return entry
+
+    recorded = entry.get("command_fingerprint")
+    if recorded:
+        from modules.nsot.deploy import command_fingerprint
+        return entry if command_fingerprint(list(current_commands)) == recorded \
+            else None
+
     current = intent_commits(repo, hostname, limit=1)
     current_sha = current[0]["sha"] if current else ""
     if current_sha and current_sha != entry.get("intent_commit"):

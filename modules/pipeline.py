@@ -1265,7 +1265,8 @@ def _note_rolled_back_intent(ctx: PipelineContext) -> None:
                 repo, hostname,
                 commits[0]["sha"] if commits else "",
                 reason=ctx.error or "deploy rolled back",
-                pipeline_id=ctx.config_id)
+                pipeline_id=ctx.config_id,
+                commands=ctx.rendered_commands.get(ip, []))
         except Exception as exc:              # noqa: BLE001
             log.error("pipeline[rollback]: could not note rolled-back intent "
                       "for %s: %s", hostname, exc)

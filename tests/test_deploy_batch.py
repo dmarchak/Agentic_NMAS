@@ -408,18 +408,28 @@ class TestRolledBackIntentBlocksAReplan:
         reason = next(r for r in art.blocking_reasons if "rolled back" in r)
         assert "revert the intent" in reason
 
-    def test_editing_the_intent_expires_the_note(self, lab):
-        """Self-expiring: what failed is no longer what would be sent."""
+    def test_a_different_program_expires_the_note(self, lab):
+        """Self-expiring on the PROGRAM, not on an edit.
+
+        This test asserted the opposite until the program key replaced the
+        commit-sha key: editing the intent used to clear the block, which is
+        wrong whenever the edit leaves the failing change in place.
+        """
         repo, hv = lab
         current = hv.intent_commits(repo, "s4")[0]["sha"]
-        hv.record_rolled_back(repo, "s4", current, reason="verify failed")
-        assert hv.rolled_back_note(repo, "s4") is not None
+        pushed = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+        hv.record_rolled_back(repo, "s4", current, reason="verify failed",
+                              commands=pushed)
+
+        assert hv.rolled_back_note(repo, "s4", pushed) is not None
 
         from modules.nsot import repo as R
         hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 1600\n")
         R.save_host_vars("Lab", ["s4"], message="host_vars: s4 try again")
 
-        assert hv.rolled_back_note(repo, "s4") is None
+        # An edit alone changes nothing; a different program does.
+        assert hv.rolled_back_note(repo, "s4", pushed) is not None
+        assert hv.rolled_back_note(repo, "s4", []) is None
 
     def test_reverting_restores_the_previous_intent(self, lab):
         from routes.templatize import revert_committed
@@ -495,3 +505,115 @@ def _config_text():
     fleet = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
     with open(os.path.join(fleet, "s1.cfg"), encoding="utf-8") as fh:
         return fh.read()
+
+
+class TestTheBlockLiftsOnTheProgramNotOnACommit:
+    """An unrelated intent edit must NOT clear the block.
+
+    Two weaker keys were tried first, and both lift the block while the failing
+    change is still in intent:
+
+    * the intent **commit sha** — any later commit clears it, including one
+      that does not touch the rolled-back setting
+    * a **content hash of the whole host_vars document** — editing an unrelated
+      field changes the hash, so the same ``shutdown`` is offered again
+
+    The second was written as the fix for the first and failed this test, which
+    is the only reason it was not shipped.
+
+    The key is the **command program**: what would actually be sent. Same
+    program, still blocked; different program, different proposal.
+    """
+
+    PUSHED = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars, repo as R
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                                "nsot_device_tag_retention": 50,
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        repo = str(list_dir / "config_repo")
+        R.init_repo(repo)
+        hostvars.write_committed_text(repo, "s4", "hostname: s4\nmtu: 1500\n")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 shut Gi0/1")
+        note = hostvars.record_rolled_back(
+            repo, "s4", hostvars.intent_commits(repo, "s4")[0]["sha"],
+            reason="verify failed: intf_up 7->6", commands=self.PUSHED)
+        return repo, hostvars, R, note
+
+    def test_the_block_stands_for_the_same_program(self, lab):
+        repo, hv, _R, _note = lab
+        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None
+
+    def test_an_unrelated_edit_does_not_clear_the_block(self, lab):
+        """The case both weaker keys got wrong.
+
+        The intent document changed and a new commit exists, but the program a
+        fresh plan would send is byte-identical to the one that failed.
+        """
+        repo, hv, R, _note = lab
+
+        hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 jumbo frames")
+
+        assert len(hv.intent_commits(repo, "s4")) == 2, "a new commit exists"
+        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None, (
+            "an unrelated edit lifted the block while the same program would "
+            "still be sent")
+
+    def test_an_empty_program_clears_it(self, lab):
+        """The setting was removed from intent; nothing would be sent."""
+        repo, hv, _R, _note = lab
+        assert hv.rolled_back_note(repo, "s4", []) is None
+
+    def test_a_different_program_clears_it(self, lab):
+        repo, hv, _R, _note = lab
+        other = ["interface GigabitEthernet0/1", " description x", "exit"]
+        assert hv.rolled_back_note(repo, "s4", other) is None
+
+    def test_reordering_is_a_different_program(self, lab):
+        """Order is part of a program; a reordered one has not been tried."""
+        repo, hv, _R, _note = lab
+        assert hv.rolled_back_note(
+            repo, "s4", list(reversed(self.PUSHED))) is None
+
+    def test_no_commit_at_all_leaves_the_block(self, lab):
+        """The block must not depend on whether a commit happened."""
+        repo, hv, R, _note = lab
+        before = len(hv.intent_commits(repo, "s4"))
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 no-op")
+        assert len(hv.intent_commits(repo, "s4")) == before
+        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None
+
+    def test_the_note_records_the_program_verbatim(self, lab):
+        repo, hv, _R, note = lab
+        assert note["commands"] == self.PUSHED
+        assert note["command_fingerprint"]
+
+    def test_listing_a_note_needs_no_program(self, lab):
+        repo, hv, _R, _note = lab
+        assert hv.rolled_back_note(repo, "s4")["reason"].startswith("verify failed")
+
+    def test_a_legacy_note_without_a_program_falls_back_to_the_sha(self, lab):
+        import json
+        repo, hv, R, _note = lab
+
+        path = hv._rolled_back_path(repo)
+        data = json.load(open(path, encoding="utf-8"))
+        data["s4"].pop("command_fingerprint")
+        data["s4"].pop("commands")
+        json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+
+        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is not None
+        hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 edit")
+        assert hv.rolled_back_note(repo, "s4", self.PUSHED) is None

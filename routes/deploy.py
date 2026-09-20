@@ -143,12 +143,41 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
                              cache if cache is not None else {})
     approved = approval.is_approved(repo, template, bound)
 
-    artifact = build_artifact(hostname, captured, platform, template=template,
-                              template_approved=approved, host_vars=intent,
-                              bootstrap=bootstrap,
-                              template_root=templates_repo.templates_dir(repo),
-                              rolled_back=hostvars.rolled_back_note(repo, hostname))
+    common = dict(template=template, template_approved=approved,
+                  host_vars=intent, bootstrap=bootstrap,
+                  template_root=templates_repo.templates_dir(repo))
+    artifact = build_artifact(hostname, captured, platform, **common)
+
+    # A standing rolled-back note blocks only while the program a fresh plan
+    # would send is the one that failed. Computing it needs a rendered
+    # artifact, so the artifact is built once to get the program and rebuilt
+    # carrying the note — a second render on the plan path, which is not hot,
+    # in exchange for a block that cannot be lifted by an unrelated edit.
+    if hostvars.rolled_back_note(repo, hostname) is not None:
+        note = hostvars.rolled_back_note(
+            repo, hostname, _current_program(artifact, captured))
+        if note is not None:
+            artifact = build_artifact(hostname, captured, platform,
+                                      rolled_back=note, **common)
     return (artifact, captured, device), ""
+
+
+def _current_program(artifact, captured: str) -> list:
+    """What a fresh plan would send, or ``[]`` if it cannot be computed."""
+    from modules.nsot.deploy import merge_commands, render_for_deploy
+
+    try:
+        rendered = render_for_deploy(
+            artifact.host_vars, artifact.platform,
+            template_root=getattr(artifact, "template_root", "") or None,
+            template_name=(artifact.template or "base.j2").split("/")[-1])
+        return merge_commands(rendered, captured)
+    except Exception as exc:                  # noqa: BLE001
+        # Cannot tell whether this is the failed program. Keep the block:
+        # an unreadable answer is not a clean bill of health.
+        log.warning("deploy: could not recompute %s's program to test the "
+                    "rolled-back note (%s) — keeping the block", artifact.device, exc)
+        return list((artifact.rolled_back or {}).get("commands") or [])
 
 
 def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
