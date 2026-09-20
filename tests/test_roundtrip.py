@@ -194,3 +194,75 @@ class TestInterfaceNameNormalisation:
         a = "router rip\n passive-interface Gi0/2\n"
         b = "router rip\n passive-interface GigabitEthernet0/2\n"
         assert roundtrip.compare(a, b)["ok"] is True
+
+
+class TestRealNmasGoldenShape:
+    """A golden file as NMAS actually writes it, not as the device prints it.
+
+    Every fixture in this repo was built from raw device output. A golden file
+    on a real NMAS has three extra header lines NMAS adds itself, plus the two
+    lines IOS prints above `show running-config`:
+
+        ! Golden config — s4 (203.0.113.24)
+        ! Saved: 2026-09-15 22:36:40
+        ! Source: show startup-config
+        Building configuration...
+        Current configuration : 4240 bytes
+
+    None of those can be rendered from a template, and `strip_for_roundtrip`
+    was not removing them — so the first run against the real fleet reported
+    exactly five unreproducible lines on all nine devices. The fixtures could
+    not have caught it, because the fixtures were the wrong shape.
+    """
+
+    NMAS_HEADER = (
+        "! Golden config — s4 (203.0.113.24)\n"
+        "! Saved: 2026-09-15 22:36:40\n"
+        "! Source: show startup-config\n"
+        "!\n"
+        "Building configuration...\n"
+        "\n"
+        "Current configuration : 4240 bytes\n"
+    )
+
+    def _as_nmas_golden(self, raw: str) -> str:
+        """Wrap raw device output the way NMAS stores it."""
+        return self.NMAS_HEADER + raw
+
+    @pytest.mark.parametrize("filename,platform,hostname", DEVICES,
+                             ids=[d[2] for d in DEVICES])
+    def test_round_trips_with_the_nmas_header(self, filename, platform, hostname):
+        wrapped = self._as_nmas_golden(_config(filename))
+        report = roundtrip.validate_device(wrapped, platform)
+        assert report["missing_from_render"] == 0, (
+            "lines NMAS adds to a golden file were treated as config: "
+            + "; ".join(m["line"] for m in report["details"]["missing"][:5]))
+        assert report["extra_in_render"] == 0
+
+    @pytest.mark.parametrize("filename,platform,hostname", DEVICES,
+                             ids=[d[2] for d in DEVICES])
+    def test_header_does_not_change_the_verdict(self, filename, platform, hostname):
+        """Wrapping a config must not alter what the validator concludes."""
+        raw = _config(filename)
+        bare = roundtrip.validate_device(raw, platform)
+        wrapped = roundtrip.validate_device(self._as_nmas_golden(raw), platform)
+        assert wrapped["round_trip_fidelity"] == bare["round_trip_fidelity"]
+        assert wrapped["modeled_coverage"] == bare["modeled_coverage"]
+
+    def test_each_header_line_is_stripped(self):
+        from modules.nsot.normalize import strip_for_roundtrip
+
+        out = strip_for_roundtrip(self._as_nmas_golden("hostname s4\n"))
+        joined = "\n".join(out)
+        for line in ("! Golden config", "! Saved:", "! Source:",
+                     "Building configuration", "Current configuration"):
+            assert line not in joined, f"{line!r} survived stripping"
+        assert "hostname s4" in joined
+
+    def test_byte_count_line_is_not_mistaken_for_config(self):
+        """`Current configuration : N bytes` varies with the config itself."""
+        from modules.nsot.normalize import strip_for_roundtrip
+
+        for size in (4240, 8905, 1):
+            out = strip_for_roundtrip(f"Current configuration : {size} bytes\nhostname x\n")
+            assert out == ["hostname x"]

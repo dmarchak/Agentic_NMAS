@@ -166,7 +166,16 @@ UNRENDERABLE_BLOCK_PREFIXES = (
 )
 
 #: Single lines that cannot come from intent.
-UNRENDERABLE_LINE_PREFIXES = (
+#:
+#: Includes NMAS's own golden header and the two lines IOS prints above a
+#: `show running-config` / `show startup-config`. Those five were the entire
+#: gap between a real NMAS golden file and the fixtures here: every fixture was
+#: built from raw device output, so none of them carried the header NMAS itself
+#: writes, and the round trip reported five unreproducible lines on all nine
+#: devices. A template cannot emit "Current configuration : 4240 bytes".
+UNRENDERABLE_LINE_PREFIXES = NMAS_HEADER_PREFIXES + (
+    "Building configuration",
+    "Current configuration",
     "boot-start-marker",
     "boot-end-marker",
     "! Call-home is enabled",
