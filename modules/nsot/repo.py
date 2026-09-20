@@ -460,18 +460,23 @@ def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
 
 
 def save_templates(list_name: str, files: list, actor: str = "user",
-                   message: str = "") -> dict:
+                   message: str = "", paths: list = None) -> dict:
     """Commit template-library changes.
 
     Separate from :func:`save_golden` in every way that matters: its own
     subject namespace (``template:`` rather than ``golden:``), its own
     ``Source`` trailer, and **no tags**. They share the lock and the plumbing
     and nothing else.
+
+    *files* names the change for the subject and trailer. *paths* is what gets
+    staged, defaulting to the whole ``templates`` tree; pass specific paths when
+    a commit must not sweep in unrelated work sitting in the same directory.
     """
     names = ", ".join(files) if files else "templates"
     subject = message or f"template: update {names}"
     trailers = [f"Actor: {actor}", f"Template-Files: {','.join(files)}"]
-    return _commit_paths(list_name, ["templates"], subject, trailers, "template")
+    return _commit_paths(list_name, paths or ["templates"], subject,
+                         trailers, "template")
 
 
 def save_host_vars(list_name: str, devices: list, actor: str = "user",

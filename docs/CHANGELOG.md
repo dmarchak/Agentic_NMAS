@@ -7,6 +7,59 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Seeding: the condition was the filesystem, not the repo
+
+The seed-commit fix was right about *what* to commit and wrong about *when*.
+It fired when ``seed_templates()`` reported having copied something:
+
+```python
+copied = result.get("copied") or []
+if not copied:
+    return result            # nothing happened this run, so nothing to commit
+```
+
+``copied`` is ``shutil``'s answer to "did anything happen this run". The
+question is the repository's: "is anything missing". On the live box the old
+GET-side-effect code had already copied the library in and committed nothing,
+so seeding found every file present, returned ``copied == []``, and the fix
+returned early. The files stayed untracked indefinitely — the exact state the
+fix existed to end.
+
+Sixth instance of one shape in this project: the fixture builds from scratch,
+the real system has a history, and the code keys off *this run* rather than
+*current state*.
+
+``_seed_and_commit()`` now reads ``git status --porcelain -uall -- templates``.
+``-uall`` matters — without it git reports a wholly-untracked directory as a
+single ``?? templates/`` entry rather than the files inside it.
+
+Only **untracked** paths are staged, and ``save_templates()`` gained a
+``paths=`` argument so the commit stages those specific paths instead of the
+whole tree. A tracked-but-modified template is someone's in-progress edit —
+seeding never overwrites, so it cannot be seeding's doing — and sweeping it
+into a commit labelled "seed library" would mislabel a commit exactly the way
+this function exists to prevent. Modified paths are reported and left for
+their own commit.
+
+### Fixed — a porcelain parse that ate the first character of a path
+
+Found by the new test, not by reading. ``git status --porcelain`` pads the
+status field to two characters, so a tracked-but-modified file is `` M`` with a
+**leading space** — and ``git()`` strips its stdout, so the first line loses
+that space and a fixed ``line[3:]`` slice takes the path one character short.
+It produced ``emplates/cisco_ios/base.j2``, which would have read as a path
+that simply matched nothing. Parsed by whitespace now, with the rename form
+(``old -> new``) handled.
+
+### Deferred
+
+Seeding still runs from ``GET /templates``. A read that writes to git is how
+this stayed invisible for two rounds — the library was always already on disk
+by the time anyone looked, so "when was this committed?" never came up. Moving
+it to ``POST /templates/seed`` is queued, not done.
+
+---
+
 ## [Unreleased] — Three findings from `git status` on the live repo
 
 All three were visible only on a repo that already existed. None could have been

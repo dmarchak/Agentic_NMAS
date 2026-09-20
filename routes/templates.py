@@ -81,8 +81,43 @@ def _platform_for(hostname: str) -> str:
 # Library
 # ---------------------------------------------------------------------------
 
+def _untracked_templates(repo: str) -> tuple:
+    """``(untracked, modified)`` paths under ``templates/``.
+
+    ``-uall`` matters: without it git reports a wholly-untracked directory as
+    one entry (``?? templates/``) rather than the files inside it.
+
+    Parsed by splitting on whitespace, not by column offset. Porcelain pads the
+    status field to two characters — a tracked-but-modified file is `` M`` with
+    a *leading* space — and ``git()`` strips its stdout, so the first line loses
+    that space and a fixed ``line[3:]`` slice eats the first character of the
+    path. It produced ``emplates/...``, which would have looked like a path that
+    simply did not match anything.
+    """
+    from modules.nsot import repo as repo_service
+
+    rc, out, _ = repo_service.git(repo, "status", "--porcelain", "-uall",
+                                  "--", "templates")
+    untracked, modified = [], []
+    if rc != 0:
+        return untracked, modified
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        code, _sep, rest = line.strip().partition(" ")
+        path = rest.strip()
+        if " -> " in path:                      # a rename reports both sides
+            path = path.split(" -> ", 1)[1].strip()
+        if path.startswith('"') and path.endswith('"'):
+            path = path[1:-1]
+        if not path:
+            continue
+        (untracked if code == "??" else modified).append(path)
+    return untracked, modified
+
+
 def _seed_and_commit(list_name: str, repo: str) -> dict:
-    """Seed the library, and commit what seeding actually wrote.
+    """Seed the library, and commit whatever the repo is still missing.
 
     Seeding copies files in; it never committed them. The first thing that ran
     ``save_templates()`` afterwards — in practice the approval — swept the whole
@@ -91,17 +126,34 @@ def _seed_and_commit(list_name: str, repo: str) -> dict:
     and an approval that cannot be reviewed as a diff because the diff is the
     entire library.
 
-    Seeding gets its own commit, with a subject that says what it is.
+    **The condition is repo state, not this run's filesystem activity.** Keying
+    the commit off ``seed_templates()["copied"]`` was wrong in the one shape
+    that matters: on a box where the old code had already copied the library in
+    and committed nothing, ``copied`` comes back empty and the files stay
+    untracked forever. ``copied`` describes what ``shutil`` did; ``git status``
+    describes what the repository lacks, and only the second is the question.
+
+    Only **untracked** paths are staged. A tracked-but-modified template is
+    someone's in-progress edit — seeding never overwrites, so it cannot be
+    seeding's doing — and sweeping it into a commit labelled "seed library"
+    would mislabel it exactly the way this function exists to prevent.
     """
     from modules.nsot import repo as repo_service, templates_repo
 
     result = templates_repo.seed_templates(repo)   # idempotent; never overwrites
-    copied = result.get("copied") or []
-    if not copied:
+    untracked, modified = _untracked_templates(repo)
+    result["untracked"] = untracked
+    result["uncommitted_edits"] = modified
+    if modified:
+        log.info("templates: leaving %d modified template(s) for their own "
+                 "commit: %s", len(modified), ", ".join(modified))
+    if not untracked:
         return result
+
     commit = repo_service.save_templates(
-        list_name, copied, actor="nmas",
-        message=f"template: seed library ({len(copied)} file(s))")
+        list_name, untracked, actor="nmas",
+        message=f"template: seed library ({len(untracked)} file(s))",
+        paths=untracked)
     result["commit"] = commit.get("commit", "")
     if not commit.get("ok"):
         log.error("templates: seeding committed nothing: %s", commit.get("error"))

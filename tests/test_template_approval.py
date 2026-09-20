@@ -293,3 +293,109 @@ class TestSeedingCommitsItself:
 
         _rc, files, _ = R.git(app_repo, "show", "--name-only", "--format=", "HEAD")
         assert files.split() == ["templates/.approvals.json"]
+
+
+class TestSeedCommitKeysOffRepoState:
+    """The live shape: the library is already on disk and has never been committed.
+
+    The first version of this fix committed when ``seed_templates()`` reported
+    it had copied something. That is the filesystem's answer to "did anything
+    happen this run", not the repository's answer to "is anything missing". On
+    a box where the old GET-side-effect code had already copied the library in,
+    ``copied`` comes back empty, ``_seed_and_commit`` returns early, and the
+    files stay untracked indefinitely — which is exactly what happened.
+
+    Sixth instance of one shape: the fixture builds from scratch, the real
+    system has a history, and the code keys off this run instead of the current
+    state.
+    """
+
+    @pytest.fixture
+    def already_seeded(self, tmp_path, monkeypatch):
+        """A repo whose templates/ is populated on disk and uncommitted."""
+        from modules.nsot import repo as R, templates_repo as T
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                                "nsot_device_tag_retention": 50,
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(list_dir))
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        path = str(list_dir / "config_repo")
+        R.init_repo(path)
+        T.seed_templates(path)              # copied in, deliberately not committed
+        _rc, tracked, _ = R.git(path, "ls-files", "templates")
+        assert tracked.strip() == "", "fixture must start with templates/ untracked"
+        return path
+
+    def _seed(self, list_name, repo):
+        from routes.templates import _seed_and_commit
+        return _seed_and_commit(list_name, repo)
+
+    def test_a_second_seed_still_commits_the_untracked_library(self, already_seeded):
+        from modules.nsot import repo as R
+        result = self._seed("Lab", already_seeded)
+
+        assert result["copied"] == [], "fixture premise: shutil copies nothing"
+        assert result["untracked"], "repo state says the files are missing"
+        _rc, subject, _ = R.git(already_seeded, "log", "-1", "--format=%s")
+        assert subject.startswith("template: seed library")
+
+    def test_nothing_is_left_untracked_afterwards(self, already_seeded):
+        from modules.nsot import repo as R
+        self._seed("Lab", already_seeded)
+        _rc, status, _ = R.git(already_seeded, "status", "--porcelain", "-uall",
+                               "--", "templates")
+        assert status.strip() == ""
+
+    def test_the_whole_library_is_tracked(self, already_seeded):
+        from modules.nsot import repo as R
+        self._seed("Lab", already_seeded)
+        _rc, tracked, _ = R.git(already_seeded, "ls-files", "templates")
+        files = tracked.splitlines()
+        assert any(f.endswith("cisco_ios/base.j2") for f in files)
+        assert any(f.endswith("cisco_iosxe/base.j2") for f in files)
+        assert any(f.endswith("bindings.yml") for f in files)
+
+    def test_it_settles_and_stops_committing(self, already_seeded):
+        from modules.nsot import repo as R
+        self._seed("Lab", already_seeded)
+        _rc, before, _ = R.git(already_seeded, "rev-list", "--count", "HEAD")
+        self._seed("Lab", already_seeded)
+        _rc, after, _ = R.git(already_seeded, "rev-list", "--count", "HEAD")
+        assert before == after
+
+    def test_an_in_progress_edit_is_not_swept_into_the_seed_commit(self, already_seeded):
+        """A tracked-but-modified template is someone's work, not seeding's.
+
+        Seeding never overwrites, so it cannot have caused the modification;
+        labelling it "seed library" would mislabel a commit exactly the way
+        this function exists to prevent.
+        """
+        from modules.nsot import repo as R, templates_repo as T
+        self._seed("Lab", already_seeded)                  # everything tracked
+
+        T.write_template(already_seeded, "cisco_ios/base.j2", "{# mine #}\n")
+        extra = os.path.join(already_seeded, "templates", "cisco_ios", "new.j2")
+        with open(extra, "w", encoding="utf-8") as fh:
+            fh.write("{# added #}\n")
+
+        result = self._seed("Lab", already_seeded)
+
+        assert result["uncommitted_edits"] == ["templates/cisco_ios/base.j2"]
+        _rc, files, _ = R.git(already_seeded, "show", "--name-only", "--format=",
+                              "HEAD")
+        assert files.split() == ["templates/cisco_ios/new.j2"]
+        assert T.read_template(already_seeded, "cisco_ios/base.j2") == "{# mine #}\n"
+
+    def test_untracked_files_inside_an_untracked_directory_are_found(self, already_seeded):
+        """Without -uall, git reports '?? templates/' as one entry."""
+        from routes.templates import _untracked_templates
+        untracked, _modified = _untracked_templates(already_seeded)
+        assert len(untracked) > 1
+        assert all(p.startswith("templates/") for p in untracked)
+        assert any(p.endswith(".j2") for p in untracked)

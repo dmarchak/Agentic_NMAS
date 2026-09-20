@@ -1589,3 +1589,91 @@ Secondary note worth recording: a `GET` route with a write side effect is how
 this stayed invisible. Listing templates seeded them, so by the time anyone
 looked at the library it already existed on disk, and the question "when was
 this committed?" never came up.
+
+---
+
+## Sixth instance: the condition described the filesystem, not the repository
+
+The fix for the uncommitted template library was right about what to commit and
+wrong about when. One line decided:
+
+```python
+copied = result.get("copied") or []
+if not copied:
+    return result
+```
+
+`copied` is what `shutil` did during this call. The question the function
+actually needed answered is what the repository is missing. Those coincide on a
+machine with no history and diverge everywhere else.
+
+On the live box the old code had already copied the library onto disk and
+committed nothing. So the new code ran, `seed_templates()` found every file
+already present, returned `copied == []`, and the fix returned early — leaving
+the library untracked exactly as before. The fix was deployed, correct in
+isolation, and inert.
+
+### The tell
+
+The test that "proved" the fix used a fixture that ran `init_repo()` into an
+empty directory and then seeded. In that world `copied` is always non-empty on
+the first call, so the branch always ran. Nothing in the suite had a repo where
+seeding had *already happened without a commit*, because constructing that
+fixture requires already suspecting the bug.
+
+This is the same failure as the `.gitignore` one directly above it, and as the
+fixtures lesson before that. The suite keeps testing the system's first five
+minutes.
+
+### The rule, sharpened
+
+Earlier this was written as *"any rule about the shape of persistent state needs
+a bring-up-to-date path that runs on access"*. This instance sharpens the
+operative half:
+
+> The condition for a repair action must be a **property of current state**, not
+> a **record of this run's activity**.
+
+`copied` is activity. `git status --porcelain` is state. Both are one line of
+code; only one of them is idempotent in the sense that matters — able to finish
+a job a previous, differently-versioned run left half done.
+
+A useful test for which one you have written: *if this code had crashed halfway
+through last time, would running it again finish the job?* Activity-based
+conditions answer no, and they answer it silently.
+
+### Two details worth keeping
+
+**`-uall`.** `git status --porcelain` collapses a wholly-untracked directory to
+a single `?? templates/` entry. Without `-uall` the repair sees one path where
+there are forty, and staging that one entry happens to work while the count in
+the commit subject is a lie.
+
+**Stage paths, not trees.** The repair stages the specific untracked paths
+rather than `add -A templates`. A tracked-but-modified template is an
+operator's in-progress edit — seeding never overwrites, so it cannot be
+seeding's doing — and sweeping it into a commit subjected "seed library" would
+mislabel a commit in precisely the way this whole function exists to prevent.
+The narrower fix would have been to widen the staging; the correct one was to
+narrow it.
+
+### A defect the test found that reading would not have
+
+The status parser used fixed column offsets, `line[:2]` and `line[3:]`.
+Porcelain pads the status field to two characters, so a tracked-but-modified
+file is `` M`` — leading space — and `git()` strips its stdout, so the *first*
+line loses that space and the slice takes the path one character short. The
+assertion failure read:
+
+```
+assert ['emplates/cisco_ios/base.j2'] == ['templates/cisco_ios/base.j2']
+```
+
+In production this would not have raised. It would have produced a path that
+matched nothing, and the file would have been quietly excluded from the
+category it belonged to — a silent miscategorisation, which is this codebase's
+signature failure mode. The only reason it surfaced is that the test asserted
+on the *exact path list* rather than on a count or a boolean.
+
+> Assert on the values, not on how many of them there are. A count is right
+> for the wrong reasons more often than a value is.
