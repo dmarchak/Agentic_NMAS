@@ -1,32 +1,40 @@
-# CodeMirror (vendored) — files to add
+# CodeMirror 5.65.16 (vendored)
 
-The template editor uses CodeMirror when it is present here and falls back to a
-styled `<textarea>` when it is not. The editor is fully usable either way; the
-fallback loses syntax highlighting and bracket matching only.
+**Vendored and in use.** The template editor uses CodeMirror for syntax
+highlighting of Jinja2 templates.
 
-**This directory is intentionally empty of library code.** It was not possible
-to download CodeMirror in the environment where the editor was written, and
-shipping a hand-written stand-in would have been worse than shipping nothing.
+    codemirror.js              402 KB   CodeMirror 5.65.16 core
+    codemirror.css             8.7 KB   base stylesheet
+    mode/jinja2/jinja2.js      5.9 KB   Jinja2 mode (defines the "jinja2" mode)
 
 ## Why vendored rather than a CDN
 
-The tool must work on air-gapped management networks. No `<script src="https://…">`.
+The tool has to work on air-gapped management networks. No `<script src="https://…">`.
 
-## Drop in these files
+## Load order matters
 
-CodeMirror 5 (simplest — single file, no bundler):
+`mode/jinja2/jinja2.js` calls `CodeMirror.defineMode("jinja2", …)`, so it must
+load **after** `codemirror.js`. `templates/partials/template_editor.html` loads
+them in that order.
 
-    static/js/vendor/codemirror/codemirror.js
-    static/js/vendor/codemirror/codemirror.css
-    static/js/vendor/codemirror/mode/jinja2/jinja2.js
+A missing or misplaced mode file is **not** an error in CodeMirror — the editor
+initialises with an unknown mode and renders as plain text, which looks
+identical to the library being absent. The partial therefore checks
+`CodeMirror.modes.jinja2` explicitly and reports the two failure cases
+differently, and `tests/test_codemirror_assets.py` asserts that every script
+path in the partial resolves to a file that exists.
 
-From <https://codemirror.net/5/> — download the ZIP, copy `lib/codemirror.js`,
-`lib/codemirror.css`, and `mode/jinja2/jinja2.js`.
+## Verifying highlighting
 
-The partial detects them at load:
+Highlighting was verified by executing the library in a JS engine and
+tokenising a real template line, rather than by assuming the files load:
 
-```js
-const hasCodeMirror = typeof window.CodeMirror !== 'undefined';
-```
+    {% for i in vars.interfaces %} ip address {{ i.ipv4 }}
 
-No other change is needed — add the files and reload.
+    '{%'  -> tag        ' for' -> keyword    'i'   -> variable
+    '%}'  -> tag        ' in'  -> keyword    '{{'  -> tag
+
+## Upgrading
+
+Download from <https://codemirror.net/5/>, then copy `lib/codemirror.js`,
+`lib/codemirror.css`, and `mode/jinja2/jinja2.js` preserving that last path.

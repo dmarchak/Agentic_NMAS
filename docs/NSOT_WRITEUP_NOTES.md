@@ -817,3 +817,75 @@ report drift, and it did so wrongly in at least two ways for an unknown length
 of time, with no test capable of noticing. Building parsers forced the tool to
 commit to a model of the configuration, and a model can be falsified.
 
+---
+
+## A third of the same family: masking applied to one side only
+
+The two earlier findings were about a transformation applied to **both** sides
+of a comparison. This one is the mirror image — a transformation applied to
+**one** side — and it is just as dangerous, which is the point worth recording.
+
+### What happened
+
+Phase 3b renders previews with every secret replaced by ``••••••••``, so that
+neither the screen nor ``intended/`` ever holds a credential. The first version
+then validated that same masked render against the device's real config:
+
+```python
+rendered = roundtrip.render(parsed, platform, secret_lookup=lambda _: MASK)
+report   = roundtrip.compare(running_config, rendered, parsed)   # wrong
+```
+
+Every line containing a secret then differed. ``username admin secret 5 $1$…``
+in the real config versus ``username admin secret 5 ••••••••`` in the render.
+The comparison dutifully reported each one as **both missing and invented**:
+
+```
+blocking: ['3 line(s) the template does not reproduce',
+           '3 line(s) the template invents', ...]
+```
+
+### Why it matters more than it looks
+
+Those counts feed the deployability gate. A correct template on a correct device
+would have been reported as broken, in proportion to how many secrets the device
+had. Worse, the numbers were *plausible* — three secrets, three "missing", three
+"invented" — so they read like a real template defect rather than an artefact of
+the measurement. Someone would have spent an afternoon editing a template that
+was already right.
+
+### The fix
+
+Validate the **truthful** render; display the masked one.
+
+```python
+truthful = roundtrip.render(parsed, resolved_platform)    # real secrets
+report   = roundtrip.compare(running_config, truthful, parsed)
+del truthful                                              # never stored
+
+rendered = roundtrip.render(parsed, resolved_platform,
+                            secret_lookup=lambda _: MASK) # the only field
+```
+
+The unmasked render is a local. It is never a dataclass field, never returned,
+never written. A test asserts ``RenderArtifact`` has no ``rendered`` or
+``rendered_unmasked`` attribute, so it cannot quietly become one.
+
+### The family
+
+| | ``version 2`` | invented ``control-plane`` | masked validation |
+|---|---|---|---|
+| Transformation | strip, **both** sides | default, **neither** side | mask, **one** side |
+| Symptom | real change invisible | fabricated line invisible | correct template reported broken |
+| Hidden by | both sides agreeing | every fixture having the line | plausible-looking counts |
+
+All three are failures of the same discipline: **whatever you transform before
+comparing, you have to be able to say what the comparison is now measuring.**
+Strip from both sides and you measure less than you think. Default a value and
+you measure something that was never there. Transform one side and you measure
+the transformation instead of the thing.
+
+The rule that falls out, and the one worth putting in the write-up: *compare
+like with like, and validate against truth — then mask for display, never
+before.*
+

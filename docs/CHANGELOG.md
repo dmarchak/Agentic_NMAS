@@ -67,7 +67,7 @@ names which of those happened.
   and **no tags**: a template change is not a network snapshot.
 - `routes/templates.py`, `templates/partials/template_editor.html`.
 - Tests: `test_render_artifact.py` (36), `test_template_approval.py` (23).
-  **663 total, all passing.**
+  **672 total, all passing.**
 
 ### Bindings store the mapping only
 
@@ -75,15 +75,23 @@ names which of those happened.
 device list is computed from the manifest every time it is needed — a stored
 copy drifts from the manifest and then the two disagree silently.
 
-### Not done: CodeMirror is not vendored
+### CodeMirror 5.65.16 vendored
 
-The editor uses CodeMirror when present in `static/js/vendor/codemirror/` and
-degrades to a styled `<textarea>` when it is not. It could not be downloaded in
-the environment where the editor was written, and shipping a hand-written
-stand-in would have been worse than shipping nothing.
-`static/js/vendor/codemirror/README.md` lists the three files to drop in; no
-code change is needed. The editor is fully usable meanwhile — the fallback
-loses syntax highlighting only.
+`codemirror.js`, `codemirror.css`, and `mode/jinja2/jinja2.js`, loaded in that
+order — the mode calls `CodeMirror.defineMode` and must follow the library.
+
+A misplaced mode file is **not** an error in CodeMirror: the editor initialises
+with an unknown mode and renders plain text, indistinguishable from the library
+being absent. That is exactly what happened first — the script tag pointed at
+the vendor root while the file lives under `mode/jinja2/`. So:
+
+- the partial checks `CodeMirror.modes.jinja2` explicitly and reports the two
+  failure cases differently;
+- `tests/test_codemirror_assets.py` asserts every referenced asset resolves to
+  a real file, that the mode loads after the library, and that no CDN is used;
+- highlighting was verified by **executing** the library in a JS engine and
+  tokenising a real template line, not by assuming the files load:
+  `{%`/`%}`/`{{`/`}}` → `tag`, `for`/`in` → `keyword`.
 
 ## [Unreleased] — Phase 3a follow-up: fleet verification and structural filter fix
 

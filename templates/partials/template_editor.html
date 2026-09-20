@@ -12,6 +12,12 @@
       onerror="this.remove()">
 <script src="{{ url_for('static', filename='js/vendor/codemirror/codemirror.js') }}"
         onerror="window._cmMissing = true"></script>
+{# The jinja2 mode calls CodeMirror.defineMode, so it MUST load after the
+   library. Without it CodeMirror initialises with an unknown mode and renders
+   as plain text — the editor still works, but silently loses highlighting,
+   which looks identical to the library being absent. #}
+<script src="{{ url_for('static', filename='js/vendor/codemirror/mode/jinja2/jinja2.js') }}"
+        onerror="window._cmModeMissing = true"></script>
 
 <div id="templateLibrary" class="mb-3" data-list-name="{{ current_list }}"></div>
 
@@ -144,9 +150,18 @@ async function openTemplate(path) {
 
     if (typeof window.CodeMirror !== 'undefined') {
       if (_cmInstance) { _cmInstance.toTextArea(); _cmInstance = null; }
+      // A missing mode is not an error in CodeMirror — it just renders plain
+      // text. Check explicitly so the two failure modes are distinguishable.
+      const modeReady = !!(CodeMirror.modes && CodeMirror.modes.jinja2);
       _cmInstance = CodeMirror.fromTextArea(area, {
-        lineNumbers: true, mode: 'jinja2', lineWrapping: true, viewportMargin: Infinity,
+        lineNumbers: true, mode: modeReady ? 'jinja2' : null,
+        lineWrapping: true, viewportMargin: Infinity,
       });
+      if (!modeReady) {
+        status.className = 'form-text text-warning';
+        status.textContent = 'CodeMirror loaded but the jinja2 mode did not — '
+          + 'highlighting is off. Check static/js/vendor/codemirror/jinja2.js.';
+      }
     } else {
       status.textContent = 'Plain editor — CodeMirror is not vendored '
         + '(see static/js/vendor/codemirror/README.md). Editing works normally.';
