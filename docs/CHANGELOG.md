@@ -7,6 +7,72 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Run 2, attempt 3: a corrupted partial write, and the net that did not catch it
+
+The first deploy to reach a device. It left this on S4:
+
+```
+interface GigabitEthernet0/1
+ description NSoT-managed b        ← intended: NSoT-managed — CSCI 5840 Lab 4
+```
+
+### Fixed — nothing checked that a command could be sent
+
+The em dash is U+2014, three UTF-8 bytes. The IOS CLI consumed the first, lost
+sync, and discarded the rest of the line. Netmiko could then not match its echo
+and raised a *pattern timeout* — an error naming a regex, not a character.
+
+Every guard built to this point validated a command list's **provenance and
+identity**: where it came from, that it equalled what was confirmed, that
+nothing was synthesised. None asked whether the bytes could be sent.
+
+`assert_sendable()` refuses any command containing a byte outside printable
+ASCII (0x20–0x7E), **before connecting**, naming the character, its codepoint
+and its column:
+
+```
+command 2 of 3 cannot be sent — '—' (U+2014) at column 27.
+The IOS CLI accepts printable ASCII only.
+```
+
+Guarded at **both** boundaries: `hostvars.assert_printable()` refuses at
+commit, so the character never reaches a plan and nobody confirms a list that
+cannot be sent; `merge_commands()` refuses before connecting, because a value
+an operator types needs a guard where the typing happens *and* where the
+sending happens.
+
+### Fixed — rollback did not fire on a mid-push failure
+
+Two independent bugs, both excluding exactly the case rollback exists for.
+
+**The trigger** required `"deploy" in self.ctx.stages_completed` — false
+precisely when the deploy stage is the thing that failed. It now fires whenever
+a push was *attempted*, which is what `push_results` being non-empty means.
+
+**The target list** was `push_results` filtered to `ok` — so a device whose
+push died mid-stream was excluded, though a partial push is the state most in
+need of restoring. It is now every device not explicitly skipped.
+
+Together: a push that failed halfway rolled back nothing, which is what
+happened on S4.
+
+### Added — a failed push reports what actually landed
+
+`send_config_set` raising means something was **already sent**. Reporting only
+"the push failed" conflates that with "the device is unchanged", and the
+difference is the entire question an operator has afterwards. The corruption on
+S4 was found by a human going to look, with the pipeline's own connection still
+open.
+
+`_capture_failure_state()` reads each attempted device back and diffs it
+against the pre-change snapshot, recording `landed`, `lost` and
+`device_changed`. It runs **before** rollback, so the repair does not destroy
+the evidence, and a device it cannot read reports `device_changed: None` —
+unknown never reads as unchanged. The deploy result carries it, alongside the
+exact `commands` that were sent.
+
+---
+
 ## [Unreleased] — The confirmed list is derived, and the seam is tested
 
 ### Changed — `rendered_commands` derives from `confirmed_commands`

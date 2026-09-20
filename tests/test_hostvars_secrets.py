@@ -344,3 +344,41 @@ class TestToYamlIsAFixedPointOverItsOwnOutput:
         hostvars.write_committed(repo, first)
         second = hostvars.read_committed(repo, "s4")
         assert second["secret_refs"] == ["snmp_community_ro", "user_admin_secret"]
+
+
+class TestCommittedIntentMustBePrintableAscii:
+    """The first of the two boundaries.
+
+    Catching it at commit means the character never reaches a plan, so nobody
+    confirms a command list that cannot be sent. The deploy path checks again
+    before connecting: this is a value an operator types, and a guard on typed
+    input belongs where the typing happens *and* where the sending happens.
+    """
+
+    def test_an_em_dash_is_refused_at_commit(self, tmp_path):
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.NonPrintableContent):
+            hostvars.write_committed_text(
+                str(tmp_path), "s4",
+                "hostname: s4\ndescription: NSoT-managed — CSCI 5840 Lab 4\n")
+
+    def test_the_error_names_character_codepoint_and_column(self, tmp_path):
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.NonPrintableContent) as exc:
+            hostvars.write_committed_text(
+                str(tmp_path), "s4", "hostname: s4\ndescription: a — b\n")
+        message = str(exc.value)
+        assert "U+2014" in message and "column" in message
+
+    def test_the_ascii_version_is_accepted(self, tmp_path):
+        from modules.nsot import hostvars
+        hostvars.write_committed_text(
+            str(tmp_path), "s4",
+            "hostname: s4\ndescription: NSoT-managed - CSCI 5840 Lab 4\n")
+
+    def test_write_committed_refuses_it_too(self, tmp_path):
+        """Both entry points, not just the editor."""
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.NonPrintableContent):
+            hostvars.write_committed(str(tmp_path),
+                                     {"hostname": "s4", "banner": "a — b"})

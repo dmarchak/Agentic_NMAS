@@ -361,6 +361,18 @@ The only part of the NSoT work that reaches a device.
   the list the plan published.
 - **Transport is per platform.** `supports_netconf: false` goes straight to SSH
   with no attempt — not a fallback after a timeout.
+- **Commands must be sendable.** `assert_sendable()` refuses any byte outside
+  printable ASCII before connecting, and `hostvars.assert_printable()` refuses
+  it at commit. An em dash is three UTF-8 bytes; IOS consumes the first, loses
+  sync, and truncates the line, which surfaces as a Netmiko echo timeout rather
+  than as an invalid character.
+- **Rollback fires whenever a push was attempted**, and targets every device
+  not explicitly skipped — including one whose push failed mid-stream, which is
+  the state most in need of restoring.
+- **A failed push reports what landed.** `_capture_failure_state()` reads each
+  attempted device back and diffs against the pre-change snapshot before any
+  rollback. "The push failed" and "the device is unchanged" are different
+  claims; a device that cannot be read reports `device_changed: None`.
 - **Verification uses settle windows** (OSPF 45s, BGP 60s, RIP 90s) and reports
   *not yet converged* distinctly from *failed*. RIP is checked via the Routing
   Information Sources table; it was previously not checked at all.

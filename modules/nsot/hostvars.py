@@ -40,6 +40,10 @@ COMMITTED_REL = "host_vars"
 class SecretLeak(ValueError):
     """A resolved secret value reached something that gets committed."""
 
+
+class NonPrintableContent(ValueError):
+    """Committed intent contains a character an IOS CLI cannot accept."""
+
 #: Secret kinds that must be emitted verbatim and never re-derived.
 HASH_KINDS = ("secret", "password")
 
@@ -229,11 +233,32 @@ def assert_no_secret_values(text: str, hostname: str) -> None:
                 "the credential store.")
 
 
+def assert_printable(text: str, hostname: str) -> None:
+    """Refuse intent containing anything an IOS CLI cannot accept.
+
+    The first boundary. Catching it here means the character never reaches a
+    plan, so nobody confirms a command list that cannot be sent. The deploy
+    path checks again before connecting — this is a value an operator types,
+    and a guard on typed input belongs where the typing happens *and* where the
+    sending happens.
+    """
+    from modules.nsot import normalize
+
+    found = normalize.find_non_printable(text.replace("\n", ""))
+    if found:
+        raise NonPrintableContent(
+            f"{hostname}: host_vars contains {len(found)} character(s) an IOS "
+            f"CLI cannot accept — {normalize.describe_non_printable(found)}. "
+            "Use printable ASCII (0x20-0x7E); an em dash or a smart quote "
+            "desynchronises the device's line parser and truncates the command.")
+
+
 def write_committed(repo: str, host_vars: dict) -> str:
     """Write committed intent. Refuses anything carrying a resolved secret."""
     hostname = host_vars.get("hostname") or "unknown"
     text = to_yaml(host_vars)
     assert_no_secret_values(text, hostname)
+    assert_printable(text, hostname)
     path = committed_path(repo, hostname)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
@@ -249,6 +274,7 @@ def write_committed_text(repo: str, hostname: str, text: str) -> str:
     text is kept as written — which is also why the value-level leak check
     matters here and not only structurally.
     """
+    assert_printable(text, hostname)
     parsed = from_yaml(text)
     if not isinstance(parsed, dict):
         raise ValueError("host_vars must be a YAML mapping")

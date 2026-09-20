@@ -139,6 +139,9 @@ class PipelineContext:
     post_snapshots:    dict = field(default_factory=dict)  # Stage 7: ip -> snapshot
     verify_result:     dict = field(default_factory=dict)  # Stage 8: ip -> result
     rollback_performed: bool = False
+    #: ip -> what the device actually looked like after a failed push, diffed
+    #: against the pre-change snapshot. Populated before any rollback runs.
+    failure_state: dict = field(default_factory=dict)
 
     # ---- Phase 3c: convergence and golden-save state ---------------------
     convergence:         dict = field(default_factory=dict)  # Stage 8: ip -> checks
@@ -277,7 +280,20 @@ class PipelineRunner:
                         continue
                     self.ctx.error        = str(exc)
                     self.ctx.final_status = "failed"
-                    if on_failure == "rollback" and "deploy" in self.ctx.stages_completed:
+                    # Record what actually landed BEFORE rolling back, or the
+                    # evidence is destroyed by the repair. "The push failed"
+                    # and "the device is unchanged" are different claims.
+                    if on_failure == "rollback":
+                        _capture_failure_state(self.ctx)
+                    # A push was ATTEMPTED if any device has a push result —
+                    # including a failed one. The old condition required
+                    # "deploy" in stages_completed, which is false precisely
+                    # when the deploy stage is the thing that failed: a
+                    # mid-push failure, the case rollback exists for, rolled
+                    # back nothing.
+                    attempted = (bool(self.ctx.push_results)
+                                 or "deploy" in self.ctx.stages_completed)
+                    if on_failure == "rollback" and attempted:
                         log.warning("pipeline: initiating rollback after stage '%s' failure", name)
                         _stage_rollback(self.ctx)
                     break
@@ -1103,6 +1119,54 @@ def _stage_verify(ctx: PipelineContext) -> None:
 # Rollback (called by PipelineRunner on stage 6-8 failure)
 # ---------------------------------------------------------------------------
 
+def _capture_failure_state(ctx: PipelineContext) -> None:
+    """Read each attempted device back and diff it against the pre-snapshot.
+
+    ``send_config_set`` raising means something was *already sent*. Reporting
+    only "the push failed" conflates that with "the device is unchanged", and
+    the difference is the whole question an operator has after a failure. The
+    corrupted description on the first real run was found by a human going and
+    looking; the pipeline had the connection and did not look.
+
+    Runs before rollback, so the record survives the repair.
+    """
+    from modules.ai_assistant import _load_pre_change_file
+    from modules.connection import get_persistent_connection
+
+    for ip, result in ctx.push_results.items():
+        if result.get("skipped"):
+            continue
+        dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+        if not dev:
+            continue
+        hostname = dev.get("hostname", ip)
+        entry = {"device": hostname, "ip": ip, "push_ok": bool(result.get("ok"))}
+        try:
+            conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+            post = conn.send_command("show running-config")
+            pre = _load_pre_change_file(ip) or ""
+            pre_lines = [l.rstrip() for l in pre.splitlines()]
+            post_lines = [l.rstrip() for l in post.splitlines()]
+            pre_set, post_set = set(pre_lines), set(post_lines)
+            entry.update({
+                "landed": [l for l in post_lines if l and l not in pre_set],
+                "lost": [l for l in pre_lines if l and l not in post_set],
+                "have_pre_snapshot": bool(pre),
+            })
+            entry["device_changed"] = bool(entry["landed"] or entry["lost"])
+            if entry["device_changed"]:
+                log.warning("pipeline[failure-state]: %s CHANGED despite a failed "
+                            "push — %d line(s) landed, %d lost", hostname,
+                            len(entry["landed"]), len(entry["lost"]))
+            else:
+                log.info("pipeline[failure-state]: %s unchanged", hostname)
+        except Exception as exc:               # noqa: BLE001
+            entry.update({"error": str(exc), "device_changed": None})
+            log.error("pipeline[failure-state]: could not read %s back: %s",
+                      hostname, exc)
+        ctx.failure_state[ip] = entry
+
+
 def _stage_rollback(ctx: PipelineContext) -> None:
     """
     Restore the pre-change running-config on every device that was successfully pushed.
@@ -1111,7 +1175,11 @@ def _stage_rollback(ctx: PipelineContext) -> None:
     from modules.ai_assistant  import _load_pre_change_file
     from modules.connection    import get_persistent_connection
 
-    targets = [ip for ip, r in ctx.push_results.items() if r.get("ok")]
+    # Every device a push was ATTEMPTED on, not only the ones that succeeded.
+    # A failed send_config_set means commands were already going down the wire
+    # when it gave up — that device is *more* likely to need restoring than one
+    # that completed cleanly, and it was the only one the old filter excluded.
+    targets = [ip for ip, r in ctx.push_results.items() if not r.get("skipped")]
     log.warning("pipeline[rollback]: restoring %d device(s): %s", len(targets), targets)
 
     for ip in targets:

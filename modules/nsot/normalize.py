@@ -248,3 +248,38 @@ def strip_for_roundtrip(text: str) -> list:
 def has_nmas_header(text: str) -> bool:
     first = (text or "").split("\n", 1)[0]
     return first.startswith("! Golden config")
+
+
+# ---------------------------------------------------------------------------
+# Sendability
+# ---------------------------------------------------------------------------
+
+#: The IOS CLI accepts printable ASCII. Anything else is not "unusual input" —
+#: it desynchronises the parser. An em dash (U+2014) is three UTF-8 bytes; the
+#: device consumed the first, lost the rest of the line, and stored
+#: ``description NSoT-managed b``. Netmiko then could not match its echo, so
+#: the failure surfaced as a timeout rather than as "that character is invalid".
+PRINTABLE_MIN, PRINTABLE_MAX = 0x20, 0x7E
+
+
+def find_non_printable(text: str) -> list:
+    """Every character outside printable ASCII: ``[(column, char, codepoint)]``.
+
+    Column is 1-based, counting characters, so it points at what a person sees
+    in an editor. Tabs and newlines are reported too — a tab inside a config
+    line is a real source of silent difference.
+    """
+    found = []
+    for index, char in enumerate(text or ""):
+        if not (PRINTABLE_MIN <= ord(char) <= PRINTABLE_MAX):
+            found.append((index + 1, char, ord(char)))
+    return found
+
+
+def describe_non_printable(found: list, limit: int = 3) -> str:
+    """Human-readable summary of :func:`find_non_printable` output."""
+    parts = [f"{char!r} (U+{code:04X}) at column {column}"
+             for column, char, code in found[:limit]]
+    if len(found) > limit:
+        parts.append(f"and {len(found) - limit} more")
+    return ", ".join(parts)

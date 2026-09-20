@@ -726,3 +726,149 @@ class TestPreRenderedCommandsAreNotOverwritten:
         with pytest.raises(ConfirmedCommandsOverwritten):
             ctx.rendered_commands = {"203.0.113.24": ["something else"]}
         assert ctx.rendered_commands == {"203.0.113.24": ["interface Gi0/1"]}
+
+
+class TestRollbackFiresOnAMidPushFailure:
+    """The net itself, which did not fire when it was needed.
+
+    Two independent bugs, both of which excluded exactly the case rollback
+    exists for:
+
+    * the trigger required ``"deploy" in stages_completed`` — false precisely
+      when the *deploy stage* is the thing that failed
+    * the target list was ``push_results`` filtered to ``ok`` — so a device
+      whose push died mid-stream was excluded, though a partial push is the
+      state most in need of restoring
+    """
+
+    def _ctx_with_push(self, ok, skipped=False):
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": ok, "skipped": skipped}}
+        return ctx
+
+    def test_a_failed_push_is_a_rollback_target(self):
+        from modules.pipeline import _stage_rollback
+
+        ctx = self._ctx_with_push(ok=False)
+        restored = []
+        import modules.pipeline as P
+        original = P._restore_config
+        P._restore_config = lambda conn, cfg: restored.append(cfg)
+        try:
+            import modules.ai_assistant as A
+            orig_load = A._load_pre_change_file
+            A._load_pre_change_file = lambda ip: "hostname R1\n"
+            import modules.connection as C
+            orig_conn = C.get_persistent_connection
+            C.get_persistent_connection = lambda dev, pool, lock: object()
+            try:
+                _stage_rollback(ctx)
+            finally:
+                A._load_pre_change_file = orig_load
+                C.get_persistent_connection = orig_conn
+        finally:
+            P._restore_config = original
+
+        assert restored == ["hostname R1\n"], (
+            "a device whose push failed mid-stream was not restored")
+        assert ctx.rollback_performed is True
+
+    def test_a_skipped_device_is_not_a_rollback_target(self):
+        from modules.pipeline import _stage_rollback
+
+        ctx = self._ctx_with_push(ok=True, skipped=True)
+        import modules.pipeline as P
+        restored = []
+        original = P._restore_config
+        P._restore_config = lambda conn, cfg: restored.append(cfg)
+        try:
+            _stage_rollback(ctx)
+        finally:
+            P._restore_config = original
+        assert restored == []
+
+    def test_the_trigger_no_longer_requires_a_completed_deploy(self):
+        """The condition that made a mid-push failure roll back nothing."""
+        import inspect
+        from modules.pipeline import PipelineRunner
+
+        source = inspect.getsource(PipelineRunner.run)
+        assert 'on_failure == "rollback" and "deploy" in self.ctx.stages_completed' \
+            not in source
+        assert "attempted" in source
+
+
+class TestFailureStateIsCaptured:
+    """"The push failed" and "the device is unchanged" are different claims.
+
+    ``send_config_set`` raising means something was already sent. The first
+    real deploy left ``description NSoT-managed b`` on a device and reported
+    only a Netmiko pattern timeout; a human found the corruption by going and
+    looking, with the pipeline's own connection still open.
+    """
+
+    def _run_capture(self, running_after, pre="hostname R1\n"):
+        from modules.pipeline import _capture_failure_state
+        import modules.ai_assistant as A
+        import modules.connection as C
+
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": False, "error": "boom"}}
+
+        class _Conn:
+            def send_command(self, _cmd):
+                return running_after
+
+        orig_load, orig_conn = A._load_pre_change_file, C.get_persistent_connection
+        A._load_pre_change_file = lambda ip: pre
+        C.get_persistent_connection = lambda dev, pool, lock: _Conn()
+        try:
+            _capture_failure_state(ctx)
+        finally:
+            A._load_pre_change_file = orig_load
+            C.get_persistent_connection = orig_conn
+        return ctx.failure_state["10.0.0.1"]
+
+    def test_a_partial_write_is_reported_as_a_change(self):
+        entry = self._run_capture("hostname R1\n description NSoT-managed b\n")
+        assert entry["device_changed"] is True
+        assert entry["landed"] == [" description NSoT-managed b"]
+        assert entry["push_ok"] is False
+
+    def test_an_untouched_device_is_reported_as_unchanged(self):
+        entry = self._run_capture("hostname R1\n")
+        assert entry["device_changed"] is False
+        assert entry["landed"] == []
+
+    def test_a_removed_line_is_reported_too(self):
+        entry = self._run_capture("", pre="hostname R1\nip routing\n")
+        assert sorted(entry["lost"]) == ["hostname R1", "ip routing"]
+
+    def test_an_unreadable_device_says_so_rather_than_unchanged(self):
+        from modules.pipeline import _capture_failure_state
+        import modules.connection as C
+
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": False}}
+        orig = C.get_persistent_connection
+
+        def _boom(dev, pool, lock):
+            raise OSError("unreachable")
+
+        C.get_persistent_connection = _boom
+        try:
+            _capture_failure_state(ctx)
+        finally:
+            C.get_persistent_connection = orig
+
+        entry = ctx.failure_state["10.0.0.1"]
+        assert entry["device_changed"] is None, "unknown must not read as unchanged"
+        assert "unreachable" in entry["error"]
+
+    def test_capture_runs_before_rollback(self):
+        """Or the repair destroys the evidence."""
+        import inspect
+        from modules.pipeline import PipelineRunner
+
+        source = inspect.getsource(PipelineRunner.run)
+        assert source.index("_capture_failure_state") < source.index("_stage_rollback")

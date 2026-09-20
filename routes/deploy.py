@@ -401,10 +401,15 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
                 "reason": str(exc)}
 
     failed_stage = result.stages_failed[-1] if result.stages_failed else ""
+    # What actually landed. A failed push does not mean an unchanged device.
+    failure_state = list((result.failure_state or {}).values())
     outcome = DEPLOYED if result.final_status == "success" else FAILED
     return {
         "device": hostname,
         "outcome": outcome,
+        "commands": commands,
+        "failure_state": failure_state,
+        "device_changed": any(e.get("device_changed") for e in failure_state),
         "stage": failed_stage,
         "reason": result.error or "",
         "rolled_back": result.rollback_performed,

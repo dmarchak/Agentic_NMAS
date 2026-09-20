@@ -205,6 +205,11 @@ def merge_commands(intended_config: str, running_config: str) -> list:
 
     _close()
 
+    # Before anything connects. A command list that cannot be sent is a defect
+    # in the intent, not a transport problem, and it should never become
+    # something an operator confirms.
+    assert_sendable(commands)
+
     if remaining:
         log.warning("deploy: %d diff line(s) had no place in the intended "
                     "config and were not sent: %s", len(remaining),
@@ -222,6 +227,35 @@ def command_fingerprint(commands: list) -> str:
 
 class CommandsChanged(RuntimeError):
     """The recomputed command list differs from the one that was confirmed."""
+
+
+class UnsendableCommand(RuntimeError):
+    """A command contains a character an IOS CLI cannot accept."""
+
+
+def assert_sendable(commands: list) -> None:
+    """Refuse a command list the device's line parser cannot read.
+
+    The second boundary, and the one that matters: every check built before
+    this validated a command list's *provenance* and *identity* — where it came
+    from, that it matched what was confirmed, that nothing was synthesised.
+    None of them asked whether the bytes could be sent.
+
+    An em dash reached a device as ``description NSoT-managed b``: three UTF-8
+    bytes, the first consumed, the rest of the line lost. The push then failed
+    on an echo mismatch, so the error named a timeout rather than the
+    character. Refusing before connecting turns that into a message that says
+    what is wrong.
+    """
+    from modules.nsot import normalize
+
+    for index, command in enumerate(commands, 1):
+        found = normalize.find_non_printable(command)
+        if found:
+            raise UnsendableCommand(
+                f"command {index} of {len(commands)} cannot be sent — "
+                f"{normalize.describe_non_printable(found)}. The IOS CLI "
+                f"accepts printable ASCII only. Command: {command!r}")
 
 
 class NegationSynthesised(RuntimeError):

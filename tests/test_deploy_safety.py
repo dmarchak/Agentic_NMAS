@@ -376,3 +376,58 @@ class TestTheConfirmedProgramIsWhatIsSent:
         from modules.nsot.deploy import command_fingerprint
         assert (command_fingerprint(["interface Gi0/1", " description x"])
                 != command_fingerprint(["interface Gi0/1", " description x", "exit"]))
+
+
+class TestCommandsMustBeSendable:
+    """Every guard built before this validated provenance and identity.
+
+    Where a command came from, that it matched what was confirmed, that nothing
+    was synthesised. None of them asked whether the bytes could be *sent*. An
+    em dash reached a device as ``description NSoT-managed b`` — three UTF-8
+    bytes, the first consumed, the rest of the line lost — and the failure
+    surfaced as a Netmiko echo timeout, naming a pattern rather than the
+    character.
+    """
+
+    def test_an_em_dash_is_refused_before_connecting(self):
+        from modules.nsot.deploy import UnsendableCommand, merge_commands
+        with pytest.raises(UnsendableCommand):
+            merge_commands("interface Gi0/1\n description a — b\n",
+                           "interface Gi0/1\n")
+
+    def test_the_error_names_character_codepoint_and_column(self):
+        from modules.nsot.deploy import UnsendableCommand, merge_commands
+        with pytest.raises(UnsendableCommand) as exc:
+            merge_commands("interface Gi0/1\n description a — b\n",
+                           "interface Gi0/1\n")
+        message = str(exc.value)
+        assert "U+2014" in message
+        assert "column" in message
+        assert "—" in message
+
+    def test_a_smart_quote_is_refused_too(self):
+        from modules.nsot.deploy import UnsendableCommand, merge_commands
+        with pytest.raises(UnsendableCommand):
+            merge_commands("interface Gi0/1\n description “x”\n",
+                           "interface Gi0/1\n")
+
+    def test_plain_ascii_passes(self):
+        from modules.nsot.deploy import merge_commands
+        commands = merge_commands(
+            "interface Gi0/1\n description NSoT-managed - CSCI 5840 Lab 4\n",
+            "interface Gi0/1\n")
+        assert commands == ["interface GigabitEthernet0/1",
+                            " description NSoT-managed - CSCI 5840 Lab 4",
+                            "exit"]
+
+    def test_a_tab_is_refused(self):
+        """A tab inside a config line is a real source of silent difference."""
+        from modules.nsot.deploy import UnsendableCommand, assert_sendable
+        with pytest.raises(UnsendableCommand):
+            assert_sendable(["interface Gi0/1", " description a\tb"])
+
+    def test_the_position_is_the_command_index(self):
+        from modules.nsot.deploy import UnsendableCommand, assert_sendable
+        with pytest.raises(UnsendableCommand) as exc:
+            assert_sendable(["hostname s4", "interface Gi0/1", " description —"])
+        assert "command 3 of 3" in str(exc.value)
