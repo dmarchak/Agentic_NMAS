@@ -58,13 +58,23 @@ def window_for(check: str) -> dict:
     return base
 
 
-def wait_for(check: str, probe, is_converged, sleep=time.sleep) -> dict:
+#: Consecutive probe errors before giving up early. A device that cannot be
+#: reached after a deploy is a failure *now* — waiting out a 90-second RIP
+#: window to say so is just a slow way to report the same thing.
+MAX_CONSECUTIVE_ERRORS = 3
+
+
+def wait_for(check: str, probe, is_converged, sleep=time.sleep,
+             max_consecutive_errors: int = MAX_CONSECUTIVE_ERRORS) -> dict:
     """Poll *probe* until *is_converged* or the window expires.
 
     ``probe()`` returns the current observation; ``is_converged(observation)``
     says whether it is settled. Neither is called before ``initial_wait``
     elapses, because the first poll after a change is the one most likely to be
     misleading.
+
+    A probe that raises repeatedly short-circuits: an unreachable device is a
+    result, not something to wait out.
 
     Returns ``{"state", "attempts", "elapsed", "observation", "window"}``.
     """
@@ -79,10 +89,12 @@ def wait_for(check: str, probe, is_converged, sleep=time.sleep) -> dict:
         sleep(timing["initial_wait"])
         started += timing["initial_wait"]
 
+    consecutive_errors = 0
     while True:
         attempts += 1
         try:
             observation = probe()
+            consecutive_errors = 0
             if is_converged(observation):
                 log.info("convergence[%s]: converged after %.0fs (%d poll(s))",
                          check, started, attempts)
@@ -91,7 +103,15 @@ def wait_for(check: str, probe, is_converged, sleep=time.sleep) -> dict:
                         "window": timing}
         except Exception as exc:               # noqa: BLE001
             last_error = str(exc)
-            log.debug("convergence[%s]: probe error: %s", check, exc)
+            consecutive_errors += 1
+            log.debug("convergence[%s]: probe error (%d consecutive): %s",
+                      check, consecutive_errors, exc)
+            if consecutive_errors >= max_consecutive_errors:
+                log.warning("convergence[%s]: giving up after %d consecutive "
+                            "probe errors: %s", check, consecutive_errors, last_error)
+                return {"state": FAILED, "attempts": attempts, "elapsed": started,
+                        "observation": observation, "window": timing,
+                        "error": last_error}
 
         if started >= deadline:
             break

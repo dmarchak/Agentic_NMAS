@@ -54,7 +54,7 @@ tracked in git.
 - **[modules/collector_config.py](modules/collector_config.py)** (238) — per-list
   collector settings, including trap/NetFlow ports
 
-### NSoT / Phase 0–3b additions
+### NSoT / Phase 0–3c additions
 - **[modules/settings_schema.py](modules/settings_schema.py)** (314) — settings
   defaults, JSON Schema validation, and forward migration
 - **[modules/netbox_guard.py](modules/netbox_guard.py)** (276) — NetBox write
@@ -96,11 +96,16 @@ tracked in git.
   per-network template library and bindings
 - **[modules/nsot/approval.py](modules/nsot/approval.py)** — template approval
   keyed on a binding fingerprint
+- **[modules/nsot/deploy.py](modules/nsot/deploy.py)** — the deploy contract,
+  merge-only diff, transport, circuit breaker, batch orchestration
+- **[modules/nsot/convergence.py](modules/nsot/convergence.py)** — per-protocol
+  settle windows
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
-  `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`, `templates.py`
+  `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`,
+  `templates.py`, `deploy.py`
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -288,6 +293,29 @@ exception.
   `host_vars` hash). Onboarding a device revokes approval.
 - Template commits use their own namespace (`template:`) and create **no tags**.
 
+### Deploy from template (Phase 3c)
+
+The only part of the NSoT work that reaches a device.
+
+- **The 3b contract, in order**: refuse a non-deployable artifact → re-render
+  with **real** secrets in memory → `assert_no_mask()` → only then connect.
+  `intended/` is masked and is never read on this path.
+- **Merge-only.** Missing lines are added; lines on the device the template does
+  not mention are **removal warnings**, never negated. `assert_merge_only()`
+  checks provenance rather than grepping for `no`, because a template may
+  legitimately contain `no ip http server`.
+- **Transport is per platform.** `supports_netconf: false` goes straight to SSH
+  with no attempt — not a fallback after a timeout.
+- **Verification uses settle windows** (OSPF 45s, BGP 60s, RIP 90s) and reports
+  *not yet converged* distinctly from *failed*. RIP is checked via the Routing
+  Information Sources table; it was previously not checked at all.
+- **Stage 8.5 saves golden** after verify, on partial success, from the
+  post-deploy config stage 7 now captures.
+- **Batch**: sequential by default, circuit breaker on repeated *verify*
+  failures, drift skips rather than aborts, every device accounted for.
+
+`/configure/apply` is untouched and remains the quick path.
+
 ### Settings
 
 All settings live in `data/user_settings.json` with a `settings_schema_version`.
@@ -331,7 +359,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 718 tests
+pytest                    # 756 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -363,6 +391,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_codemirror_assets.py` | vendored asset paths, load order, no CDN |
 | `test_deploy_contract.py` | refuse → real secrets → mask check, before any socket |
 | `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
+| `test_deploy_batch.py` | drift skip, breaker, every device accounted for |
+| `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |

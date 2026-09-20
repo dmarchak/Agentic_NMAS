@@ -889,3 +889,96 @@ The rule that falls out, and the one worth putting in the write-up: *compare
 like with like, and validate against truth — then mask for display, never
 before.*
 
+---
+
+## Stage 7 captured metrics, not config — the silent-wrong-record bug
+
+Same family as the drift blind spot and the invented ``control-plane``, and
+found the same way: by asking what a thing actually does rather than what its
+name suggests.
+
+### What happened
+
+Phase 3c added stage 8.5, which commits the post-deploy config as the new
+golden baseline. Containerlab nodes are ephemeral, so that commit is the only
+durable record of what was pushed.
+
+Stage 7 is called ``post_snapshot``, and stage 4 is ``pre_snapshot``. Stage 4
+captures a running config — stage 5 diffs against
+``ctx.pre_snapshots[ip]["running_config"]``. The symmetry of the names made it
+natural to assume stage 7 captured one too.
+
+It did not. ``_capture_operational_snapshot`` collects **operational metrics**:
+routing neighbours, interface up/down counts, route totals. It exists to diff
+pre-versus-post for convergence checking, and a config never enters it.
+
+So stage 8.5 would have found no post-deploy config and fallen back to the only
+one available — stage 4's **pre-deploy** copy. Every golden commit would have
+recorded the configuration the device had *before* the deploy, labelled as what
+was just pushed.
+
+### Why it would have been hard to notice
+
+The commit would exist. The tags would be right. The timeline in the Golden tab
+would show a promotion at the right moment with the right actor and source. The
+diff against the previous golden would even look plausible, because most of the
+config genuinely had not changed.
+
+The only symptom would be that the thing you just deployed was missing from the
+record of the deploy — and you would most likely discover that after a
+containerlab redeploy wiped the device and the golden config turned out not to
+contain the change you were restoring.
+
+### The fix
+
+Stage 7 now captures the post-deploy running config on the session it already
+holds, and stage 8.5 commits that. If the capture fails, the device is listed
+in ``golden_skipped`` with a reason and **no golden is written** — recording
+nothing is better than recording the wrong thing.
+
+### The pattern, now three deep
+
+| | Hidden by | Would have reported |
+|---|---|---|
+| ``version 2`` stripped | both sides agreeing | "no drift" on a real change |
+| invented ``control-plane`` | every fixture having it | "100% fidelity" on a fabricated line |
+| masked validation | plausible counts | "template broken" on a correct one |
+| stage 7 metrics | symmetrical stage names | "golden saved" on the wrong config |
+
+Every one is a **silently wrong record** rather than a crash. None would have
+been caught by a test comparing two artifacts, because in each case the two
+artifacts agreed. What caught them was asking, separately, what each side
+actually contained.
+
+## Why ``write memory`` runs before verify, not after
+
+A deliberate asymmetry worth defending in the write-up, because the safer-looking
+option is the wrong one.
+
+``_push_via_netmiko`` calls ``conn.save_config()`` immediately after
+``send_config_set``, so the new config is in startup **before** verification
+runs. If verify then fails, rollback restores the previous config and saves
+again.
+
+The obvious objection: for the duration of verification, a bad config is in
+startup, and a reload in that window boots the device into it.
+
+The alternative — save only after a successful verify — has the mirror problem,
+and it is worse:
+
+| | Save early (current) | Save late |
+|---|---|---|
+| Reload during verify | boots the **bad** config | boots the **old** config, losing a good change |
+| Bounded by | rollback, seconds later | nothing — the change is simply gone |
+| Recovery | automatic | re-deploy, if anyone notices |
+
+Saving early risks a bad startup config for a few seconds, with rollback already
+committed to fixing it. Saving late risks silently losing a *good* change, with
+nothing at all committed to noticing. A bounded, self-correcting risk beats an
+unbounded, silent one.
+
+The window is also narrower than it looks: verification is the only thing
+between the two saves, and a device reloading spontaneously during a
+verification the operator is watching is a much rarer event than a deploy whose
+result quietly fails to persist.
+

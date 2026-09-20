@@ -232,3 +232,137 @@ def max_workers() -> int:
         return max(1, min(16, int(get_setting("deploy_max_workers", 1))))
     except (TypeError, ValueError):
         return 1
+
+
+# ---------------------------------------------------------------------------
+# Batch orchestration
+# ---------------------------------------------------------------------------
+
+#: Per-device outcomes. Every device in a batch ends as exactly one of these —
+#: a device can never simply fail to appear in the report.
+DEPLOYED = "deployed"
+SKIPPED_DRIFTED = "skipped_drifted"
+SKIPPED_NOT_SELECTED = "skipped_not_selected"
+REFUSED = "refused"
+FAILED = "failed"
+UNATTEMPTED = "unattempted"
+
+
+def plan_batch(artifacts: list, confirmed: dict, fresh_captures: dict) -> dict:
+    """Decide what each device gets before anything connects.
+
+    *confirmed* maps device → the capture hash the operator confirmed against.
+    *fresh_captures* maps device → the config read at deploy time.
+
+    A device whose fresh capture no longer matches what was confirmed is
+    **skipped, not aborted**: aborting is not atomic either. Stopping at device
+    four leaves three deployed and six untouched, which is exactly as mixed a
+    state as skipping one — abort prevents further change, it restores nothing.
+    """
+    import hashlib
+
+    plan = {"to_deploy": [], "skipped": []}
+    for artifact in artifacts:
+        device = artifact.device
+
+        if device not in confirmed:
+            plan["skipped"].append({"device": device, "outcome": SKIPPED_NOT_SELECTED,
+                                    "reason": "not selected for this deploy"})
+            continue
+
+        if not artifact.deployable:
+            plan["skipped"].append({
+                "device": device, "outcome": REFUSED,
+                "reason": "; ".join(artifact.blocking_reasons)})
+            continue
+
+        fresh = fresh_captures.get(device)
+        if fresh is None:
+            plan["skipped"].append({"device": device, "outcome": FAILED,
+                                    "reason": "no fresh capture at deploy time"})
+            continue
+
+        fresh_hash = hashlib.sha256(fresh.encode("utf-8")).hexdigest()[:16]
+        if fresh_hash != confirmed[device]:
+            plan["skipped"].append({
+                "device": device, "outcome": SKIPPED_DRIFTED,
+                "reason": ("the device configuration changed since you confirmed "
+                           "the diff — re-preview to see what it looks like now"),
+                "fresh_capture": fresh})
+            continue
+
+        plan["to_deploy"].append({"artifact": artifact, "fresh": fresh})
+
+    return plan
+
+
+def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None) -> dict:
+    """Deploy each planned device, honouring the circuit breaker.
+
+    *deploy_one(entry)* performs one device and returns
+    ``{"outcome", "verified", ...}``. It is injected so this function has no
+    device dependency and can be tested without a network.
+
+    Concurrency is capped — sequential by default — because vIOS-L2 has limited
+    vty lines and Oxidized, the drift checker, the ping worker and a nine-device
+    batch can all want the same device at once.
+    """
+    breaker = breaker or CircuitBreaker()
+    results = list(plan.get("skipped", []))
+    queue = list(plan.get("to_deploy", []))
+    workers = max_workers()
+
+    def _record(entry, outcome):
+        results.append(outcome)
+        if outcome.get("outcome") == FAILED and outcome.get("stage") == "verify":
+            breaker.record_verify_failure(outcome["device"])
+
+    if workers <= 1:
+        for entry in queue:
+            device = entry["artifact"].device
+            if breaker.is_tripped:
+                results.append({"device": device, "outcome": UNATTEMPTED,
+                                "reason": breaker.reason()})
+                continue
+            _record(entry, deploy_one(entry))
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {}
+            for entry in queue:
+                if breaker.is_tripped:
+                    results.append({"device": entry["artifact"].device,
+                                    "outcome": UNATTEMPTED,
+                                    "reason": breaker.reason()})
+                    continue
+                futures[pool.submit(deploy_one, entry)] = entry
+            for future in as_completed(futures):
+                _record(futures[future], future.result())
+
+    accounted = {r["device"] for r in results}
+    expected = ({e["artifact"].device for e in plan.get("to_deploy", [])}
+                | {s["device"] for s in plan.get("skipped", [])})
+    missing = expected - accounted
+    if missing:
+        # Should be unreachable. If it ever happens, say so loudly rather than
+        # let a device vanish from the report.
+        log.error("deploy: %d device(s) missing from the batch report: %s",
+                  len(missing), sorted(missing))
+        results.extend({"device": d, "outcome": UNATTEMPTED,
+                        "reason": "not accounted for — this is a bug"}
+                       for d in sorted(missing))
+
+    by_outcome = {}
+    for result in results:
+        by_outcome.setdefault(result["outcome"], []).append(result["device"])
+
+    return {
+        "results": sorted(results, key=lambda r: r["device"]),
+        "by_outcome": by_outcome,
+        "deployed": by_outcome.get(DEPLOYED, []),
+        "breaker_tripped": breaker.is_tripped,
+        "breaker_reason": breaker.reason() if breaker.is_tripped else "",
+        "total": len(results),
+        "workers": workers,
+    }

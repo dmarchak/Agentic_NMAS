@@ -129,6 +129,18 @@ class PipelineContext:
     verify_result:     dict = field(default_factory=dict)  # Stage 8: ip -> result
     rollback_performed: bool = False
 
+    # ---- Phase 3c: convergence and golden-save state ---------------------
+    convergence:         dict = field(default_factory=dict)  # Stage 8: ip -> checks
+    pending_convergence: list = field(default_factory=list)  # not-yet-converged notes
+    golden_result:       dict = field(default_factory=dict)  # Stage 8.5
+    golden_skipped:      list = field(default_factory=list)
+    warnings:            list = field(default_factory=list)
+    rolled_back_ips:     list = field(default_factory=list)
+    deploy_failures:     list = field(default_factory=list)
+    #: Sleep function used by the verify settle windows. Tests pass a no-op;
+    #: a caller could pass one that shortens the wait. Defaults to real sleep.
+    settle_sleep:        Any = None
+
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
     stages_failed:    list[str] = field(default_factory=list)
@@ -224,7 +236,6 @@ class PipelineRunner:
                         # The config is already on the device. Failing to
                         # *record* it is worth reporting, not worth rolling a
                         # successful deploy back over.
-                        self.ctx.warnings = getattr(self.ctx, "warnings", [])
                         self.ctx.warnings.append(f"{name}: {exc}")
                         self._next_expected = idx + 1
                         continue
@@ -813,6 +824,80 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
 # Stage 8 — Verify
 # ---------------------------------------------------------------------------
 
+from modules.nsot.convergence import (
+    CONVERGED as _CONVERGED, FAILED as _FAILED, NOT_YET as _NOT_YET,
+    SKIPPED as _SKIPPED, wait_for as _wait_for, window_for as _window_for,
+)
+
+
+def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
+                                 pre_count: int) -> dict:
+    """Re-poll a device's neighbour count within the protocol's settle window.
+
+    Returns ``{"state", "count", "elapsed", "window"}``. Three outcomes:
+
+    * ``converged``          — the count recovered
+    * ``not_yet_converged``  — still short, but the protocol is alive and
+                               updating, so this very likely is not a failure
+    * ``failed``             — still short with no sign of life
+
+    For RIP, "sign of life" is a recent entry in the Routing Information
+    Sources table: updates arriving means convergence is in progress.
+    """
+    from modules.connection import get_persistent_connection
+
+    dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+    window = _window_for(protocol)
+    if dev is None:
+        return {"state": _FAILED, "count": -1, "elapsed": 0.0, "window": window}
+
+    latest = {"count": -1, "snapshot": {}}
+
+    def _probe():
+        conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+        snapshot = _detect_routing_neighbors(conn)
+        latest["count"] = snapshot.get("count", -1)
+        latest["snapshot"] = snapshot
+        return snapshot
+
+    # ctx.settle_sleep lets a caller run verification without real delays —
+    # tests pass a no-op, and it is the seam for a future "verify now, do not
+    # wait" mode. Defaults to real sleeping.
+    result = _wait_for(
+        protocol, _probe,
+        lambda snap: (snap.get("count", -1) - pre_count) >= -_NEIGHBOR_DROP_TOLERANCE,
+        sleep=ctx.settle_sleep or time.sleep,
+    )
+
+    count = latest["count"]
+    if result["state"] == _CONVERGED:
+        state = _CONVERGED
+    elif _protocol_shows_progress(latest["snapshot"], count):
+        state = _NOT_YET
+    else:
+        state = _FAILED
+
+    return {"state": state, "count": count, "elapsed": result["elapsed"],
+            "window": window, "attempts": result["attempts"]}
+
+
+def _protocol_shows_progress(snapshot: dict, count: int) -> bool:
+    """Is the protocol still doing something, or has it simply stopped?
+
+    A partial recovery counts. For RIP, so does a recent update from any
+    remaining source — the gateway is still talking, the table is just not
+    complete yet.
+    """
+    if count > 0:
+        return True
+    for source in snapshot.get("sources", []) or []:
+        stamp = source.get("last_update", "")
+        # "00:00:12" — anything under a minute means updates are flowing.
+        if re.match(r"^00:00:\d{2}$", stamp):
+            return True
+    return False
+
+
 def _stage_verify(ctx: PipelineContext) -> None:
     """
     Diff pre vs post snapshots using protocol-agnostic convergence checks.
@@ -851,16 +936,47 @@ def _stage_verify(ctx: PipelineContext) -> None:
         if pre_count >= 0 and post_count >= 0:
             drop = pre_count - post_count
             if drop > _NEIGHBOR_DROP_TOLERANCE:
-                issues.append(
-                    f"{pre_proto} neighbors dropped: {pre_count} → {post_count} "
-                    f"(tolerance={_NEIGHBOR_DROP_TOLERANCE})"
-                )
+                # Do not call it a failure on the first look. A protocol that
+                # has just had its config changed needs time: RIP sends updates
+                # every 30 seconds, so a neighbour check run two seconds after a
+                # RIP change reports a drop that is not real.
+                settled = _await_neighbour_convergence(
+                    ctx, ip, hostname, pre_proto, pre_count)
+                ctx.convergence.setdefault(ip, {})["neighbors"] = settled
+
+                if settled["state"] == _CONVERGED:
+                    log.info("pipeline[8/verify]: %s %s neighbours recovered "
+                             "(%d) after %.0fs", hostname, pre_proto,
+                             settled["count"], settled["elapsed"])
+                elif settled["state"] == _NOT_YET:
+                    # Reported, not counted against the deploy. Calling a slow
+                    # protocol a failure is what makes an operator distrust the
+                    # verifier and start skipping it.
+                    log.warning("pipeline[8/verify]: %s %s not yet converged "
+                                "(%d → %d after %.0fs)", hostname, pre_proto,
+                                pre_count, settled["count"], settled["elapsed"])
+                    ctx.pending_convergence.append(
+                        f"{hostname}: {pre_proto} {pre_count} → {settled['count']} "
+                        f"(still converging after {settled['elapsed']:.0f}s)")
+                else:
+                    issues.append(
+                        f"{pre_proto} neighbors dropped: {pre_count} → "
+                        f"{settled['count']} and did not recover within "
+                        f"{settled['window']['timeout']}s "
+                        f"(tolerance={_NEIGHBOR_DROP_TOLERANCE})")
         elif pre_count >= 0 and post_count < 0:
             # Protocol was present before but not detected after — treat as full loss.
             issues.append(
                 f"{pre_proto} neighbor table unreadable after deploy "
                 f"(pre={pre_count}, post=unavailable)"
             )
+        elif pre_count < 0:
+            # No routing protocol detected at all. Record it explicitly so a
+            # device that checked nothing cannot look the same as one that
+            # checked something and passed.
+            ctx.convergence.setdefault(ip, {})["neighbors"] = {
+                "state": _SKIPPED, "protocol": "none",
+                "reason": "no routing protocol detected on this device"}
 
         # ── Route table size ──────────────────────────────────────────────
         # Skip for routing-protocol config types: the table is expected to grow
@@ -992,8 +1108,8 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
     """
     from modules.nsot.repo import GoldenItem, save_golden
 
-    rolled_back = set(getattr(ctx, "rolled_back_ips", []) or [])
-    failed_ips = {f.get("ip") for f in (getattr(ctx, "deploy_failures", []) or [])
+    rolled_back = set(ctx.rolled_back_ips or [])
+    failed_ips = {f.get("ip") for f in (ctx.deploy_failures or [])
                   if isinstance(f, dict)}
 
     items, skipped = [], []
@@ -1026,7 +1142,7 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
 
     from modules.config import get_current_list_name
     result = save_golden(get_current_list_name(), items, source="pipeline",
-                         actor="pipeline", pipeline_id=getattr(ctx, "config_id", None))
+                         actor="pipeline", pipeline_id=ctx.config_id)
     ctx.golden_result = result
 
     if not result.get("ok"):
@@ -1172,6 +1288,45 @@ def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
     return snap
 
 
+def _parse_rip_sources(show_ip_protocols: str):
+    """Gateways RIP is hearing routes from, with the age of the last update.
+
+    Parses the ``Routing Information Sources`` table that appears under the RIP
+    section of ``show ip protocols``::
+
+        Routing Information Sources:
+          Gateway         Distance      Last Update
+          10.255.2.10          120      00:00:12
+
+    Returns a list of ``{"gateway", "distance", "last_update"}``, or None when
+    the section is absent. An empty list is a real answer — RIP is configured
+    but hearing from nobody — and is distinct from None, which means RIP was
+    not found at all.
+    """
+    lines = (show_ip_protocols or "").splitlines()
+    sources = []
+    in_section = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("Routing Information Sources"):
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if stripped.startswith("Gateway"):
+            continue
+        # The section ends at the next unindented line or a new heading.
+        if stripped.startswith("Distance:") or (stripped and not line.startswith(" ")):
+            break
+        match = re.match(r"^(\d[\d.]+)\s+(\d+)\s+(\S+)", stripped)
+        if match:
+            sources.append({"gateway": match.group(1),
+                            "distance": int(match.group(2)),
+                            "last_update": match.group(3)})
+    return sources if in_section else None
+
+
 def _detect_routing_neighbors(conn) -> dict:
     """
     Probe for active routing protocols and return the neighbor/adjacency count
@@ -1236,6 +1391,27 @@ def _detect_routing_neighbors(conn) -> dict:
                 and not ln.strip().startswith("IS-IS")
             ]
             return {"protocol": "isis", "count": len(rows), "output": out[:2000]}
+    except Exception:
+        pass
+
+    # ── RIP ───────────────────────────────────────────────────────────────
+    # RIP is distance-vector: it has no adjacencies, so there is no
+    # `show ip rip neighbor` to read. Its equivalent is the "Routing
+    # Information Sources" table in `show ip protocols`, which lists each
+    # gateway RIP is hearing from and how long ago.
+    #
+    # Probed last so a device running OSPF *and* RIP keeps its existing primary
+    # protocol. Before this, a RIP-only device (S1/S2) matched nothing, returned
+    # count -1, and the verify stage skipped the neighbour check entirely — so
+    # it reported "verified" having checked no neighbour state at all. A verify
+    # that silently checks nothing is worse than no verify.
+    try:
+        out = run_device_command(conn, "show ip protocols")
+        if "rip" in out.lower():
+            sources = _parse_rip_sources(out)
+            if sources is not None:
+                return {"protocol": "rip", "count": len(sources),
+                        "sources": sources, "output": out[:2000]}
     except Exception:
         pass
 

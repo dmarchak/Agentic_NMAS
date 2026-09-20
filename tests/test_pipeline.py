@@ -34,7 +34,12 @@ from modules.pipeline import (
 # ---------------------------------------------------------------------------
 
 def _ctx(**overrides) -> PipelineContext:
-    """Return a minimal PipelineContext suitable for unit tests."""
+    """Return a minimal PipelineContext suitable for unit tests.
+
+    ``settle_sleep`` is a no-op here. Phase 3c gave the verify stage real
+    settle windows — up to 90 seconds for RIP — and a unit test has no device
+    to converge, so without this the suite would spend its time asleep.
+    """
     defaults = dict(
         config_type      = "interface",
         device_ips       = ["10.0.0.1"],
@@ -46,6 +51,7 @@ def _ctx(**overrides) -> PipelineContext:
         connections_pool = {},
         pool_lock        = threading.Lock(),
         config_id        = "test-cfg-001",
+        settle_sleep     = lambda _seconds: None,
     )
     defaults.update(overrides)
     return PipelineContext(**defaults)

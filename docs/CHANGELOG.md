@@ -7,11 +7,11 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
-## [Unreleased] — NSoT Phase 3c (in progress): deploy contract and pipeline wiring
+## [Unreleased] — NSoT Phase 3c: deploy from template
 
-The safety layer between Phase 3b and a device. Deploy orchestration and the UI
-are the remaining work; what lands here is everything that must be right
-*before* a socket opens.
+`PipelineRunner` is wired to the UI at last. This is the only phase of the NSoT
+work that reaches a device, and everything built before it exists to make that
+reach refusable.
 
 ### Answered from the code: what gets saved, and when
 
@@ -110,10 +110,59 @@ stages still abort. One existing test pinned `audit_log` to index 8 — it now
 asserts the *invariant* (audit runs last) rather than the index, which is what
 it existed to protect.
 
+### RIP verification — a verify that checked nothing
+
+`_detect_routing_neighbors` probed BGP → OSPF → EIGRP → IS-IS and **never RIP**.
+S1 and S2 are the RIPv2 devices, so they matched nothing, returned a neighbour
+count of −1, and the verify stage skipped the check entirely — reporting
+"verified" having checked no neighbour state at all. False confidence in the one
+phase where confidence matters.
+
+RIP is distance-vector and has no adjacencies, so there is no
+`show ip rip neighbor` to read. The equivalent is the **Routing Information
+Sources** table in `show ip protocols`, which lists every gateway RIP is hearing
+from and how long ago. That table now drives the check, reusing the 90-second
+RIP settle window.
+
+Three real outcomes, never a vacuous pass:
+- **converged** — the count recovered within tolerance
+- **not yet converged** — still short, but updates are arriving (a source
+  updated within the last minute), so very likely not a failure
+- **failed** — still short with no sign of life
+
+A device with no routing protocol at all is now recorded explicitly as
+`skipped`, so it cannot look the same as one that checked something and passed.
+
+### Batch orchestration
+
+Mid-batch drift **skips and continues**. Aborting is not atomic either: stopping
+at device four leaves three deployed and six untouched, exactly as mixed a state
+as skipping one. Abort prevents further change; it restores nothing. The drifted
+device carries its fresh capture into a one-click re-preview.
+
+Every device ends as exactly one of `deployed`, `skipped_drifted`, `refused`,
+`failed`, `unattempted`, or `skipped_not_selected` — with a final reconciliation
+that logs loudly if any device is missing from the report.
+
+### Added
+
+- `modules/nsot/deploy.py` gains `plan_batch()` and `run_batch()`.
+- `routes/deploy.py` — plan (read-only) and apply. `templates/partials/deploy_wizard.html`.
+- `PipelineContext` gains real fields for convergence, golden results, warnings
+  and `settle_sleep`, replacing the `getattr` shims the first cut used.
+
 ### Tests
 
-`test_deploy_contract.py` (14), `test_deploy_safety.py` (28), plus updated
-pipeline contract tests. **718 total, all passing.** No test opens a socket.
+`test_deploy_contract.py` (14), `test_deploy_safety.py` (28),
+`test_deploy_batch.py` (17), `test_rip_verify.py` (20), plus updated pipeline
+contract tests. **756 total, all passing.** No test opens a socket.
+
+A note on test speed: giving verify real settle windows made the pipeline suite
+take 60 seconds, because a unit test has no device to converge and the probe
+failure was being waited out. Two fixes — `wait_for` now gives up after three
+consecutive probe errors (an unreachable device is a result, not something to
+wait out), and `PipelineContext.settle_sleep` lets tests pass a no-op. Back to
+0.09 seconds.
 
 ## [Unreleased] — NSoT Phase 3b: template library, editor, render preview
 
