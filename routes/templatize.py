@@ -106,21 +106,20 @@ def _captured_config(repo: str, hostname: str):
     return _load_golden_config_file(legacy["device_ip"]) or "", legacy["device_ip"]
 
 
-@bp.route("/extract/<path:hostname>", methods=["POST"])
-def extract(hostname):
-    """Extract one device's host_vars to the staging area. Commits nothing."""
+def _extract(repo: str, hostname: str):
+    """Parse a device's captured config. ``(result, error, status)``.
+
+    Shared by extract and commit. The commit route **re-runs** this rather than
+    reading the staged YAML back, because secret *values* exist only here: the
+    staged file carries ``secret_refs`` by design, so promoting from it can
+    never move a value into the credential store.
+    """
     from modules.device import get_current_device_list, load_saved_devices
-    from modules.nsot import hostvars
     from modules.nsot.roundtrip import validate_device
 
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-
-    repo = _repo_for(list_name)
     config, device_ip = _captured_config(repo, hostname)
     if not config:
-        return jsonify({"ok": False,
-                        "error": f"No golden config for '{hostname}'"}), 404
+        return None, f"No golden config for '{hostname}'", 404
 
     _name, csv_path = get_current_device_list()
     device = next((d for d in load_saved_devices(csv_path)
@@ -128,7 +127,22 @@ def extract(hostname):
 
     result = validate_device(config, _platform_for(device))
     if result.get("error"):
-        return jsonify({"ok": False, "error": result["error"]}), 500
+        return None, result["error"], 500
+    return result, "", 200
+
+
+@bp.route("/extract/<path:hostname>", methods=["POST"])
+def extract(hostname):
+    """Extract one device's host_vars to the staging area. Commits nothing."""
+    from modules.nsot import hostvars
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+
+    repo = _repo_for(list_name)
+    result, error, _status = _extract(repo, hostname)
+    if error:
+        return jsonify({"ok": False, "error": error}), _status
 
     path = hostvars.write_staged(repo, result["host_vars"])
     secrets = hostvars.store_secrets(result["host_vars"], hostname,
@@ -215,14 +229,30 @@ def commit_extraction(hostname):
     list_name = _active_list(data)
     repo = _repo_for(list_name)
 
-    staged_vars = hostvars.read_staged(repo, hostname)
-    if staged_vars is None:
+    staged_path = hostvars.staging_path(repo, hostname)
+    if not os.path.exists(staged_path):
         return jsonify({"ok": False, "error": (
             f"Nothing staged for '{hostname}'. Extract it first.")}), 404
 
-    secrets = hostvars.store_secrets(staged_vars, hostname, dry_run=False)
+    # Re-derive from the capture: the staged YAML has refs, never values, so
+    # promoting from it would commit an intent whose secrets resolve to
+    # nothing — a render full of <missing-secret:…> that only the deploy
+    # backstop would catch.
+    fresh, error, status = _extract(repo, hostname)
+    if error:
+        return jsonify({"ok": False, "error": error}), status
+
+    with open(staged_path, encoding="utf-8") as fh:
+        reviewed = fh.read()
+    if hostvars.to_yaml(fresh["host_vars"]) != reviewed:
+        return jsonify({"ok": False, "error": (
+            f"The captured config for '{hostname}' has changed since it was "
+            "staged, so committing now would commit something nobody "
+            "reviewed. Extract again and review the new diff.")}), 409
+
+    secrets = hostvars.store_secrets(fresh["host_vars"], hostname, dry_run=False)
     try:
-        path = hostvars.write_committed(repo, staged_vars)
+        path = hostvars.write_committed(repo, fresh["host_vars"])
     except hostvars.SecretLeak as exc:
         log.error("templatize: refused to commit host_vars for %s: %s",
                   hostname, exc)

@@ -288,3 +288,59 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
         hostvars.write_committed_text(
             str(tmp_path), "s2",
             f"hostname: s2\nbanner: {long_secret['s1:snmp_community_ro']}\n")
+
+
+class TestToYamlIsAFixedPointOverItsOwnOutput:
+    """``to_yaml`` destroyed every ``secret_ref`` on a second pass.
+
+    It strips ``secrets`` on the way out and recomputes ``secret_refs`` *from
+    that key*. Feed its own output back in — which is exactly what
+    read-staged → write-committed does — and the key is gone, so the refs come
+    back empty.
+
+    The existing fixed-point test could not see this. It runs parse → render →
+    parse and compares ``to_yaml`` of both; both inputs come from the parser
+    and therefore always carry ``secrets``. The *parser* was tested for a fixed
+    point; the *serialiser* never was.
+    """
+
+    def _doc(self):
+        return {"hostname": "s4",
+                "secrets": {"snmp_community_ro": "abc", "user_admin_secret": "xyz"},
+                "interfaces": []}
+
+    def test_a_second_pass_preserves_the_refs(self):
+        from modules.nsot import hostvars
+        once = hostvars.to_yaml(self._doc())
+        twice = hostvars.to_yaml(hostvars.from_yaml(once))
+        assert once == twice
+
+    def test_a_third_pass_is_still_stable(self):
+        from modules.nsot import hostvars
+        text = hostvars.to_yaml(self._doc())
+        for _ in range(3):
+            text_next = hostvars.to_yaml(hostvars.from_yaml(text))
+            assert text_next == text
+            text = text_next
+
+    def test_the_refs_survive_by_name(self):
+        from modules.nsot import hostvars
+        twice = hostvars.from_yaml(
+            hostvars.to_yaml(hostvars.from_yaml(hostvars.to_yaml(self._doc()))))
+        assert twice["secret_refs"] == ["snmp_community_ro", "user_admin_secret"]
+
+    def test_an_empty_secrets_mapping_still_means_no_refs(self):
+        """Present-but-empty is a real answer and must not fall back."""
+        from modules.nsot import hostvars
+        doc = hostvars.from_yaml(hostvars.to_yaml(
+            {"hostname": "s4", "secrets": {}, "secret_refs": ["stale"]}))
+        assert doc["secret_refs"] == []
+
+    def test_round_tripping_through_the_committed_store_keeps_refs(self, tmp_path):
+        from modules.nsot import hostvars
+        repo = str(tmp_path)
+        hostvars.write_committed(repo, self._doc())
+        first = hostvars.read_committed(repo, "s4")
+        hostvars.write_committed(repo, first)
+        second = hostvars.read_committed(repo, "s4")
+        assert second["secret_refs"] == ["snmp_community_ro", "user_admin_secret"]

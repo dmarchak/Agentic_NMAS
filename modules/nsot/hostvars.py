@@ -72,7 +72,17 @@ def to_yaml(host_vars: dict) -> str:
         {k: v for k, v in entry.items() if k != "lineno"}
         for entry in host_vars.get("unmodeled", [])
     ]
-    payload["secret_refs"] = sorted((host_vars.get("secrets") or {}).keys())
+    # Idempotent over its own output. ``secrets`` is stripped on the way out,
+    # so recomputing the refs from it on a second pass yielded an empty list
+    # and silently destroyed them: to_yaml(from_yaml(to_yaml(x))) lost every
+    # secret_ref. The existing fixed-point test could not see this — it runs
+    # parse → render → parse, and both of those inputs come from the parser
+    # and therefore always carry ``secrets``. The serialiser's own round trip
+    # was never exercised.
+    if "secrets" in host_vars:
+        payload["secret_refs"] = sorted((host_vars.get("secrets") or {}).keys())
+    else:
+        payload["secret_refs"] = sorted(host_vars.get("secret_refs") or [])
     return yaml.safe_dump(payload, sort_keys=True, default_flow_style=False,
                           allow_unicode=True, width=10000)
 

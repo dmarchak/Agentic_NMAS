@@ -7,6 +7,63 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Run 2, attempt 1: secrets lost between staging and commit
+
+Caught by running it. The deploy refused, correctly, and nothing was pushed.
+
+### Fixed — `to_yaml()` destroyed every `secret_ref` on a second pass
+
+`to_yaml()` strips `secrets` on the way out and recomputes `secret_refs` *from
+that key*. Feed its own output back in — which is exactly what read-staged →
+write-committed does — and the key is gone, so the refs come back empty:
+
+```
+after one pass  : secret_refs:
+                  - snmp_community_ro
+                  - user_admin_secret
+after two passes: secret_refs: []
+```
+
+**The existing fixed-point test could not see this.** It runs parse → render →
+parse and compares `to_yaml()` of both; both inputs come from the parser and
+therefore always carry `secrets`. The *parser* was tested for a fixed point.
+The *serialiser* never was — and it is the serialiser that both stores round
+trip through.
+
+### Fixed — promotion could never move a secret value into the store
+
+`commit_extraction()` read the staged YAML back and promoted that. But the
+staged file carries `secret_refs` and never values, **by design** — so
+`store_secrets()` found nothing to move and reported `count: 0` where the
+extraction had reported two. The credential store stayed empty.
+
+Secret values exist at exactly one moment: extraction. The commit route now
+re-runs the extraction, compares `to_yaml()` of the fresh result against the
+reviewed staged file, and **refuses with 409** if they differ — committing
+something nobody reviewed is the failure that guard exists to prevent. Only
+then does it store the values and write committed intent from the in-memory
+extraction.
+
+### What the failure actually looked like
+
+Every layer downstream failed closed, in order:
+
+```
+secret_refs: []          →  hydrate_secrets() resolves nothing
+                         →  render emits <missing-secret:user_admin_secret>
+                         →  assert_no_mask() raises MaskedContentError
+                         →  plan reports error, to_add: 0, nothing pushed
+```
+
+`<missing-secret:` is in `MASK_MARKERS`, so the backstop written for a
+different failure — a masked preview reaching the deploy path — caught this one
+too. `intent_drift` reported `adds: 3, removes: 3`: the three secret-bearing
+lines, correctly described as drift by a render that was broken.
+
+The stop happened one step before the push, on a read-only plan.
+
+---
+
 ## [Unreleased] — Pre-run-2 corrections
 
 ### Fixed — the secret check would have refused legitimate commits
