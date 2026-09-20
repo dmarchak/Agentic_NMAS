@@ -7,6 +7,66 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Phase 3a follow-up: fleet verification and structural filter fix
+
+### Fleet coverage — all nine reference devices
+
+| Device | Platform | Modeled | Fidelity | Unmodeled |
+|---|---|---|---|---|
+| r1–r5 | C8000v IOS-XE 17.6 | **100.0%** | 100.0% | 0 |
+| s1–s4 | vIOS-L2 IOS 15.2 | **100.0%** | 100.0% | 0 |
+
+Mean **100.0%** modeled, **100.0%** fidelity. Zero missing, zero extra, zero
+reordered sections. **No construct appearing on 2+ devices is unmodeled.**
+
+The two-fixture run reported 93.7% mean; the fleet run found the gaps. Nine
+fixtures were worth the cost.
+
+### Fixed — volatile patterns now anchor to column 0
+
+The `version 2` bug got a structural fix rather than a patch. Every prefix
+pattern in `normalize.py` anchors to column 0 unless listed in the new
+`NESTED_OK_PREFIXES` allowlist (currently empty). `version 17.6` is the image
+version; `  version 2` under `router rip` is RIPv2.
+
+This also closes a **drift blind spot**: `strip_for_diff` was stripping nested
+`version 2` from *both* sides, so a RIPv2→RIPv1 change would have gone
+undetected. A normalisation step applied to both sides of a comparison can hide
+exactly what it destroys, so only an extraction-side test catches it.
+`test_normalize_equivalence.py` now asserts that no pattern in any tuple matches
+an indented line unless allowlisted.
+
+### Parser gaps found by the fleet run
+
+- `snmp ifmib` was handled only by the IOS parser — all five routers have it.
+- `ip sla` was handled only by IOS-XE — s3 has it too. Both promoted to the base.
+- Newly modeled per the amended decision rule (2+ devices, or a
+  routing/redundancy protocol in the design): `ip nat` (top-level and
+  interface-level), `ip prefix-list` (grouped by name, sequence order
+  preserved), `login`, `subscriber`, `multilink`, `diagnostic`, `memory`,
+  `redundancy`, `call-home`.
+
+### Verified
+
+- **`unmodeled` captures full nested blocks.** `call-home` is preserved whole,
+  including its two-level-deep `profile "CiscoTAC-1"` children, byte-identical
+  to source, and it round-trips. A truncated call-home block has silently eaten
+  config in this stack before, so it is now parsed as a verbatim body rather
+  than restructured.
+- **IOS-XE telemetry subscriptions 101/102 were present** in the original r1
+  fixture and are fully modeled, along with `netconf detailed-error` /
+  `max-sessions`. The parsers had seen them before the fleet run.
+
+### Added
+
+- `tests/fixtures/configs/fleet/` — all nine devices (R1–R5, S1–S4), hashes
+  sanitized, certificate hex bodies trimmed (they are provably stripped).
+- `tests/test_fleet_coverage.py` (53 tests) including
+  `test_no_construct_on_two_or_more_devices_is_unmodeled`, which enforces the
+  decision rule rather than restating it.
+
+**567 tests, all passing.**
+
 ## [Unreleased] — NSoT Phase 3a: parsers → host_vars → round-trip validation
 
 Read-only. No template UI, no deploy, **no commits** — extractions land in a

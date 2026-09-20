@@ -232,8 +232,12 @@ prior behaviour.
 Config → `host_vars` YAML → render → compare. **Read-only**: extractions go to
 `config_repo/.nsot/staging/host_vars/` (gitignored); 3b adds the reviewed commit.
 
-Current coverage against the reference configs: **s1 100% modeled, r1 92.2%,
-both 100% round-trip fidelity.**
+Current coverage across all nine reference devices (R1–R5, S1–S4):
+**100% modeled, 100% round-trip fidelity, zero unmodeled constructs.**
+
+Decision rule for what to model: **any construct appearing on 2+ devices, or
+any routing/redundancy protocol in the network design.**
+`test_fleet_coverage.py` enforces it.
 
 - **One parser module per platform** (`cisco_ios`, `cisco_iosxe`). A new vendor
   is a new module plus a template directory — that is the multi-vendor story.
@@ -248,8 +252,11 @@ both 100% round-trip fidelity.**
 - **Coverage is reported honestly**: `modeled_coverage` counts `unmodeled`
   against it; `round_trip_fidelity` is separate.
 - `strip_for_roundtrip()` removes what a template *cannot render* — distinct
-  from volatile. Note it is top-level only for `version `, since an indented
-  `version 2` under `router rip` is RIPv2.
+  from volatile.
+- **Every volatile pattern anchors to column 0** unless listed in
+  `NESTED_OK_PREFIXES`. `version 17.6` is the image version; `  version 2`
+  under `router rip` is RIPv2. Stripping the latter from both sides of a
+  comparison hid the loss entirely, so only extraction-side tests catch it.
 
 ### Settings
 
@@ -294,7 +301,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 507 tests
+pytest                    # 567 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -319,7 +326,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_parsers_cisco_ios.py` | both platform parsers against real fixtures |
 | `test_ifnames.py` | interface name canonicalization |
 | `test_hostvars_secrets.py` | hash handling, YAML staging, no secret leakage |
-| `tests/fixtures/configs/` | two sanitized real golden configs |
+| `test_fleet_coverage.py` | all nine devices; enforces the decision rule |
+| `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |
 | `test_integrations_base.py` | optional-integration behaviour, secret masking |

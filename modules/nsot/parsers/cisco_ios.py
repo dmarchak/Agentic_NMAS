@@ -17,15 +17,11 @@ class CiscoIosParser(BaseParser):
         # Prepended so they win over the base patterns.
         return [
             (re.compile(r"^vtp\s+(.*)$"),            self._h_vtp_generic),
-            (re.compile(r"^snmp ifmib\s+(.*)$"),     self._h_snmp_ifmib),
             (re.compile(r"^netconf-yang\s*$"),       self._h_netconf_yang),
         ] + handlers
 
     def _h_vtp_generic(self, block, out, m):
         out.setdefault("vtp", []).append(block.stripped)
-
-    def _h_snmp_ifmib(self, block, out, m):
-        out["snmp"].setdefault("settings", []).append(block.stripped)
 
     def _h_netconf_yang(self, block, out, m):
         # Present on vIOS-L2 images but non-functional; still part of the config.

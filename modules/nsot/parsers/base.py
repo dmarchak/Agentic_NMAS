@@ -131,6 +131,21 @@ class BaseParser:
             (re.compile(r"^control-plane\s*$"),              self._h_control_plane),
             (re.compile(r"^mgcp\s+(.*)$"),                   self._h_mgcp),
             (re.compile(r"^(no )?logging console\s*$"),      self._h_logging_console),
+            # Promoted to the base after the fleet run: `snmp ifmib` appears on
+            # all five routers, and `ip sla` on an IOS switch as well as IOS-XE.
+            (re.compile(r"^snmp ifmib\s+(.*)$"),             self._h_snmp_ifmib),
+            (re.compile(r"^ip sla\s+(\d+)\s*$"),             self._h_ip_sla),
+            (re.compile(r"^ip sla schedule\s+(.*)$"),        self._h_ip_sla_schedule),
+            # Present on 2+ devices, so modelled per the decision rule.
+            (re.compile(r"^ip nat\s+(.*)$"),                 self._h_ip_nat),
+            (re.compile(r"^ip prefix-list\s+(\S+)\s+(.*)$"), self._h_prefix_list),
+            (re.compile(r"^login\s+(.*)$"),                  self._h_login),
+            (re.compile(r"^subscriber\s+(.*)$"),             self._h_subscriber),
+            (re.compile(r"^multilink\s+(.*)$"),              self._h_multilink),
+            (re.compile(r"^diagnostic\s+(.*)$"),             self._h_diagnostic),
+            (re.compile(r"^memory\s+(.*)$"),                 self._h_memory),
+            (re.compile(r"^redundancy\s*$"),                 self._h_redundancy),
+            (re.compile(r"^call-home\s*$"),                  self._h_call_home),
         ]
 
     # ── entry point ─────────────────────────────────────────────────────────
@@ -196,6 +211,9 @@ class BaseParser:
         "vrfs": [], "pki_trustpoints": [], "ip_sla": [], "ip_sla_schedules": [],
         "netconf_settings": [], "telemetry": [], "ssh": [], "http": {},
         "forward_protocol": [], "mgcp": [], "control_plane": {"settings": []},
+        "ip_nat": [], "prefix_lists": [], "login": [], "subscriber": [],
+        "multilink": [], "diagnostic": [], "memory": [],
+        "redundancy": None, "call_home": None,
     }
 
     #: The same, per interface.
@@ -206,6 +224,7 @@ class BaseParser:
         "switchport_trunk_encapsulation": "",
         "no_switchport": False, "shutdown": False, "no_shutdown": False,
         "ipv6_enable": False, "no_ip_address": False, "vrrp_groups": [],
+        "ip_nat": [],
         "ipv6": [], "switchport": [], "switchport_trunk_vlans": [],
         "helper_addresses": [], "dhcpv6_relay": [], "ipv6_nd": [],
         "ospf": [], "ospfv3": [], "ripng": [], "vrrp": [], "mop": [],
@@ -356,6 +375,65 @@ class BaseParser:
     def _h_logging_console(self, block, out, m):
         out["logging"]["console"] = not bool(m.group(1))
 
+    def _h_snmp_ifmib(self, block, out, m):
+        out["snmp"].setdefault("settings", []).append(block.stripped)
+
+    def _h_ip_sla(self, block, out, m):
+        # Probe sub-commands nest (`frequency` sits under `icmp-echo`), so the
+        # body is kept in order, indentation included.
+        out.setdefault("ip_sla", []).append({
+            "id": m.group(1),
+            "settings": [c.rstrip() for c in block.children],
+        })
+
+    def _h_ip_sla_schedule(self, block, out, m):
+        out.setdefault("ip_sla_schedules", []).append(m.group(1).strip())
+
+    def _h_ip_nat(self, block, out, m):
+        out.setdefault("ip_nat", []).append(
+            ifnames.canonicalise_line(m.group(1).strip()))
+
+    def _h_prefix_list(self, block, out, m):
+        """``ip prefix-list NAME seq N ...`` — flat lines, not a block.
+
+        Grouped by name and kept in document order. The sequence number is in
+        the line itself, but order is preserved anyway: a prefix-list is
+        evaluated in sequence order and a reorder changes what matches first.
+        """
+        entry = next((p for p in out.setdefault("prefix_lists", [])
+                      if p["name"] == m.group(1)), None)
+        if entry is None:
+            entry = {"name": m.group(1), "entries": []}
+            out["prefix_lists"].append(entry)
+        entry["entries"].append(m.group(2).strip())
+
+    def _h_login(self, block, out, m):
+        out.setdefault("login", []).append(m.group(1).strip())
+
+    def _h_subscriber(self, block, out, m):
+        out.setdefault("subscriber", []).append(m.group(1).strip())
+
+    def _h_multilink(self, block, out, m):
+        out.setdefault("multilink", []).append(m.group(1).strip())
+
+    def _h_diagnostic(self, block, out, m):
+        out.setdefault("diagnostic", []).append(m.group(1).strip())
+
+    def _h_memory(self, block, out, m):
+        out.setdefault("memory", []).append(m.group(1).strip())
+
+    def _h_redundancy(self, block, out, m):
+        out["redundancy"] = {"settings": [c.strip() for c in block.children]}
+
+    def _h_call_home(self, block, out, m):
+        """Keep the body verbatim, indentation included.
+
+        A call-home block nests two levels (``profile`` has its own children)
+        and a truncated one has silently eaten config in this stack before, so
+        the raw body is preserved rather than restructured.
+        """
+        out["call_home"] = {"body": [c.rstrip() for c in block.children]}
+
     def _h_snmp(self, block, out, m):
         rest = m.group(1).strip()
         community = re.match(r"community\s+(\S+)\s*(\S*)$", rest)
@@ -479,13 +557,17 @@ class BaseParser:
             (r"^mtu\s+(\d+)",                            "mtu"),
             (r"^channel-group\s+(.+)$",                  "channel_group"),
             (r"^encapsulation\s+(.+)$",                  "encapsulation"),
+            # Interface-level NAT, distinct from the top-level
+            # `ip nat inside source list ...` rule that _h_ip_nat handles.
+            (r"^ip nat\s+(inside|outside)\s*$",           "ip_nat"),
         )
         for pattern, key in patterns:
             match = re.match(pattern, text)
             if match:
                 value = match.group(1) if match.groups() else True
                 if key in ("helper_addresses", "ipv6", "switchport", "ipv6_nd",
-                           "vrrp", "dhcpv6_relay", "ospf", "ospfv3", "ripng"):
+                           "vrrp", "dhcpv6_relay", "ospf", "ospfv3", "ripng",
+                           "ip_nat"):
                     entry.setdefault(key, []).append(value)
                 else:
                     entry[key] = value

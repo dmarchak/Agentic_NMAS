@@ -86,8 +86,40 @@ PUSH_SKIP_PREFIXES = (
 )
 
 
+#: Prefixes that may match an **indented** line. Everything else anchors to
+#: column 0.
+#:
+#: This default exists because of a real bug: ``version 17.6`` at column 0 is
+#: the device's image version and is not renderable, but ``  version 2`` inside
+#: ``router rip`` is RIPv2 — actual configuration. Matching it as "volatile"
+#: stripped RIPv2 from every switch, and because the strip was applied to *both*
+#: sides of the comparison, the round trip still reported success. A
+#: normalisation step can hide exactly what it destroys, so patterns are
+#: top-level-only by default and nesting is opt-in.
+NESTED_OK_PREFIXES = frozenset({
+    # Nothing yet. Add a prefix here only with a comment explaining why a nested
+    # occurrence is genuinely volatile rather than configuration.
+})
+
+
+def _matches(stripped: str, line: str, prefixes) -> bool:
+    """True if *line* should be stripped.
+
+    A prefix only matches an indented line when it is in
+    :data:`NESTED_OK_PREFIXES`.
+    """
+    indented = line[:1] in (" ", "\t")
+    for prefix in prefixes:
+        if not stripped.startswith(prefix):
+            continue
+        if indented and prefix not in NESTED_OK_PREFIXES:
+            continue
+        return True
+    return False
+
+
 def _strip(text, prefixes, drop_blank=True, drop_bang=False) -> list:
-    """Return *text*'s lines with any line starting with *prefixes* removed."""
+    """Return *text*'s lines with any top-level line starting with *prefixes* removed."""
     out = []
     for line in (text or "").splitlines():
         stripped = line.strip()
@@ -95,7 +127,7 @@ def _strip(text, prefixes, drop_blank=True, drop_bang=False) -> list:
             continue
         if drop_bang and stripped == "!":
             continue
-        if any(stripped.startswith(p) for p in prefixes):
+        if _matches(stripped, line, prefixes):
             continue
         out.append(line)
     return out
@@ -148,13 +180,12 @@ UNRENDERABLE_LINE_PREFIXES = (
     "! VTP:",
     "! Cisco IOS",
     "! Last configuration change",
-)
-
-#: Unrenderable only at the top level. ``version 17.6`` is the image version;
-#: an indented ``version 2`` inside ``router rip`` is RIPv2 and must be kept.
-UNRENDERABLE_TOPLEVEL_ONLY = (
     "version ",
 )
+
+#: Folded into UNRENDERABLE_LINE_PREFIXES now that every pattern is
+#: top-level-anchored by default.
+UNRENDERABLE_TOPLEVEL_ONLY = ()
 
 #: Banner delimiters. A banner body is operator text the device echoes back
 #: verbatim; the delimiter is a literal ^C control sequence in the config.
@@ -197,12 +228,7 @@ def strip_for_roundtrip(text: str) -> list:
             in_block = True
             continue
 
-        if any(stripped.startswith(p) for p in UNRENDERABLE_LINE_PREFIXES):
-            continue
-
-        indented = line[:1] in (" ", "\t")
-        if not indented and any(stripped.startswith(p)
-                                for p in UNRENDERABLE_TOPLEVEL_ONLY):
+        if _matches(stripped, line, UNRENDERABLE_LINE_PREFIXES):
             continue
 
         out.append(line)

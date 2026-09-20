@@ -21,8 +21,6 @@ class CiscoIosXeParser(BaseParser):
             (re.compile(r"^netconf-yang\s*$"),                self._h_mgmt_flag),
             (re.compile(r"^restconf\s*$"),                    self._h_mgmt_flag),
             (re.compile(r"^netconf\s+(.*)$"),                 self._h_netconf_setting),
-            (re.compile(r"^ip sla\s+(\d+)\s*$"),              self._h_ip_sla),
-            (re.compile(r"^ip sla schedule\s+(.*)$"),         self._h_ip_sla_schedule),
             (re.compile(r"^crypto pki trustpoint\s+(\S+)"),   self._h_trustpoint),
             (re.compile(r"^platform\s+(.*)$"),                self._h_platform),
             (re.compile(r"^license\s+(.*)$"),                 self._h_license),
@@ -65,16 +63,6 @@ class CiscoIosXeParser(BaseParser):
 
     def _h_netconf_setting(self, block, out, m):
         out.setdefault("netconf_settings", []).append(m.group(1).strip())
-
-    def _h_ip_sla(self, block, out, m):
-        out.setdefault("ip_sla", []).append({
-            "id": m.group(1),
-            # Probe sub-commands are ordered: `frequency` nests under the probe.
-            "settings": [c.rstrip() for c in block.children],
-        })
-
-    def _h_ip_sla_schedule(self, block, out, m):
-        out.setdefault("ip_sla_schedules", []).append(m.group(1).strip())
 
     def _h_trustpoint(self, block, out, m):
         out.setdefault("pki_trustpoints", []).append({

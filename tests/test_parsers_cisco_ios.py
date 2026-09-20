@@ -200,10 +200,26 @@ class TestDecisionRule:
             assert parsed["http"], "ip http appears on both devices"
             assert parsed["forward_protocol"]
 
-    def test_device_unique_lines_stay_unmodeled(self, r1):
-        unmodeled = {u["line"].strip() for u in r1["unmodeled"]}
-        assert "subscriber templating" in unmodeled
-        assert "redundancy" in unmodeled
+    def test_fleet_run_promoted_shared_constructs(self, r1):
+        """These were unmodeled until the fleet run showed them on 5 devices.
+
+        The amended rule models any construct on 2+ devices, or any
+        routing/redundancy protocol in the network design.
+        """
+        assert r1["subscriber"] == ["templating"]
+        assert r1["multilink"] == ["bundle-name authenticated"]
+        assert r1["redundancy"] is not None
+        assert r1["call_home"] is not None
+        assert r1["login"] == ["on-success log"]
+
+    def test_call_home_keeps_its_full_nested_body(self, r1):
+        """A truncated call-home block has silently eaten config before."""
+        body = r1["call_home"]["body"]
+        assert any("contact-email-addr" in l for l in body)
+        assert any('profile "CiscoTAC-1"' in l for l in body)
+        # Two levels deep: `profile` has its own children.
+        assert any(l.startswith("  active") for l in body)
+        assert any("destination transport-method http" in l for l in body)
 
     def test_switch_is_fully_modelled(self, s1):
         assert s1["unmodeled"] == []

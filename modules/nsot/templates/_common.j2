@@ -19,6 +19,20 @@
 {% endif %}
 {%- for line in (v.spanning_tree or {}).get('lines', []) %}{{ line }}
 {% endfor %}
+{%- for x in v.login or [] %}login {{ x }}
+{% endfor %}
+{%- for x in v.subscriber or [] %}subscriber {{ x }}
+{% endfor %}
+{%- for x in v.multilink or [] %}multilink {{ x }}
+{% endfor %}
+{%- for x in v.diagnostic or [] %}diagnostic {{ x }}
+{% endfor %}
+{%- for x in v.memory or [] %}memory {{ x }}
+{% endfor %}
+{%- if v.redundancy is not none %}redundancy
+{% for s in v.redundancy.settings %} {{ s }}
+{% endfor %}
+{%- endif %}
 {%- for line in v.platform_settings or [] %}{{ line }}
 {% endfor %}
 {%- for line in v.license_settings or [] %}{{ line }}
@@ -68,6 +82,8 @@ interface {{ i.name }}
 {%- if i.ipv4 %} ip address {{ i.ipv4 }}
 {% endif %}
 {%- for h in i.helper_addresses or [] %} ip helper-address {{ h }}
+{% endfor %}
+{%- for x in i.ip_nat or [] %} ip nat {{ x }}
 {% endfor %}
 {%- for x in i.ospf or [] %} ip ospf {{ x }}
 {% endfor %}
@@ -172,6 +188,31 @@ interface {{ i.name }}
 {% endfor %}
 {%- for n in v.ntp_servers %}ntp server {{ n }}
 {% endfor %}
+{%- endmacro -%}
+
+{%- macro nat_and_prefix_lists(v) -%}
+{% for x in v.ip_nat or [] %}ip nat {{ x }}
+{% endfor %}
+{%- for pl in v.prefix_lists or [] %}
+{%- for e in pl.entries %}ip prefix-list {{ pl.name }} {{ e }}
+{% endfor %}
+{%- endfor %}
+{%- endmacro -%}
+
+{%- macro ip_sla(v) -%}
+{% for s in v.ip_sla or [] %}ip sla {{ s.id }}
+{% for line in s.settings %}{{ line }}
+{% endfor %}
+{%- endfor %}
+{%- for s in v.ip_sla_schedules or [] %}ip sla schedule {{ s }}
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro call_home(v) -%}
+{% if v.call_home is not none %}call-home
+{% for line in v.call_home.body %}{{ line }}
+{% endfor %}
+{%- endif %}
 {%- endmacro -%}
 
 {%- macro routes_and_acls(v) -%}
