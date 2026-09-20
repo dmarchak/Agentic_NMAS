@@ -317,16 +317,19 @@ def edit_committed(hostname):
 
 @bp.route("/committed/<path:hostname>/revert", methods=["POST"])
 def revert_committed(hostname):
-    """Undo the most recent intent edit, restoring the previous committed state.
+    """Undo one intent commit's change, keeping every later one.
 
     The other half of a rollback. Rollback restores the *device*; this restores
-    the *intent*, which otherwise keeps asserting that the change should be
-    there and makes the next plan propose exactly what just failed.
+    the *intent*, which otherwise keeps asserting the change should be there
+    and makes the next plan propose exactly what just failed.
 
-    A forward commit, not a ``git revert``: the intent history stays linear and
-    a revert reads like any other edit, which is what it is. The rolled-back
-    note is cleared because the thing it warned about is no longer what would
-    be sent.
+    Targeted, not a snapshot restore: with an unrelated commit on top,
+    restoring "the previous committed intent" would either bring the
+    rolled-back change back or discard the unrelated one. Pass ``sha`` to undo
+    a specific commit; the default is the most recent.
+
+    A forward commit, so intent history stays linear and a revert reads like
+    any other edit, which is what it is.
     """
     from modules.nsot import hostvars, repo as repo_service
 
@@ -334,34 +337,26 @@ def revert_committed(hostname):
     list_name = _active_list(data)
     repo = _repo_for(list_name)
 
-    change = hostvars.intent_change(repo, hostname)
-    if not change.get("sha"):
-        return jsonify({"ok": False, "error": (
-            f"'{hostname}' has no committed intent to revert.")}), 404
-    previous_sha = change.get("previous_sha")
-    if not previous_sha:
-        return jsonify({"ok": False, "error": (
-            f"'{hostname}' has only one intent commit, so there is no previous "
-            "state to restore. Edit the intent instead.")}), 409
-
-    previous = hostvars.committed_at(repo, hostname, previous_sha)
-    if previous is None:
-        return jsonify({"ok": False, "error": (
-            f"could not read host_vars at {previous_sha[:8]}")}), 500
-
     try:
-        hostvars.write_committed(repo, previous)
+        outcome = hostvars.revert_intent_change(repo, hostname,
+                                                sha=data.get("sha", ""))
+    except hostvars.RevertConflict as exc:
+        return jsonify({"ok": False, "conflict": True, "error": str(exc)}), 409
     except (hostvars.SecretLeak, hostvars.NonPrintableContent) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    if not outcome.get("ok"):
+        return jsonify(outcome), 409
 
+    target = outcome["target"]
     result = repo_service.save_host_vars(
         list_name, [hostname], actor=data.get("actor", "user"),
-        message=(f"host_vars: {hostname} revert to {previous_sha[:8]} "
-                 f"(undo {change['sha'][:8]})"))
+        message=f"host_vars: {hostname} revert {target[:8]}")
     cleared = hostvars.clear_rolled_back(repo, hostname)
 
     return jsonify({"ok": result.get("ok", False), "hostname": hostname,
-                    "reverted_from": change["sha"], "restored": previous_sha,
+                    "reverted": target,
+                    "reverted_paths": outcome["reverted_paths"],
+                    "kept_later_commits": outcome["kept_later_commits"],
                     "commit": result.get("commit", ""),
                     "rolled_back_note_cleared": cleared,
                     "error": result.get("error", "")})

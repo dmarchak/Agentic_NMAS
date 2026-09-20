@@ -390,8 +390,11 @@ The only part of the NSoT work that reaches a device.
   so an unrelated edit that adds its own sent line cannot bundle the failed
   change back out. Lifting it deliberately is `authorise_retry()`, an explicit
   recorded action. "Revert intent"
-  (`POST /templatize/committed/<host>/revert`) restores the previous committed
-  state as a forward commit and clears it.
+  (`POST /templatize/committed/<host>/revert`) applies the **inverse of that
+  commit's own diff** onto current intent as a forward commit — keeping later
+  unrelated commits, and refusing with the paths named when a later commit
+  touched the same settings. A snapshot restore would either bring the
+  rolled-back change back or discard the unrelated edit.
 - **Reads never commit.** `ensure_repo_hygiene()` appends `.gitignore` rules on
   every `git()` call; only `init_repo()` commits the top-up, and it is reached
   solely from write paths.

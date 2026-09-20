@@ -431,85 +431,10 @@ class TestRolledBackIntentBlocksAReplan:
         assert hv.rolled_back_note(repo, "s4", pushed) is not None
         assert hv.rolled_back_note(repo, "s4", []) is None
 
-    def test_reverting_restores_the_previous_intent(self, lab):
-        from routes.templatize import revert_committed
-        repo, hv = lab
-        assert hv.read_committed(repo, "s4")["mtu"] == 9000
-
-        import flask
-        app = flask.Flask(__name__)
-        with app.test_request_context(json={}):
-            response = revert_committed("s4")
-        body = response[0].get_json() if isinstance(response, tuple) else response.get_json()
-
-        assert body["ok"] is True
-        assert hv.read_committed(repo, "s4")["mtu"] == 1500
-
-    def test_reverting_clears_the_note(self, lab):
-        from routes.templatize import revert_committed
-        repo, hv = lab
-        current = hv.intent_commits(repo, "s4")[0]["sha"]
-        hv.record_rolled_back(repo, "s4", current, reason="verify failed")
-
-        import flask
-        app = flask.Flask(__name__)
-        with app.test_request_context(json={}):
-            revert_committed("s4")
-
-        assert hv.rolled_back_note(repo, "s4") is None
-
-    def test_the_revert_is_a_forward_commit(self, lab):
-        from modules.nsot import repo as R
-        from routes.templatize import revert_committed
-        repo, hv = lab
-
-        import flask
-        app = flask.Flask(__name__)
-        with app.test_request_context(json={}):
-            revert_committed("s4")
-
-        rc, subject, _ = R.git(repo, "log", "-1", "--format=%s")
-        assert subject.startswith("host_vars: s4 revert to ")
-        assert len(hv.intent_commits(repo, "s4")) == 3
-
-    def test_a_single_intent_commit_cannot_be_reverted(self, tmp_path, monkeypatch):
-        from modules.nsot import hostvars, repo as R
-        from routes.templatize import revert_committed
-
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda key, default=None: {
-                                "nsot_git_author_name": "NMAS",
-                                "nsot_git_author_email": "nmas@localhost",
-                            }.get(key, default))
-        list_dir = tmp_path / "solo"
-        list_dir.mkdir()
-        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
-        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Solo")
-        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
-        repo = str(list_dir / "config_repo")
-        R.init_repo(repo)
-        hostvars.write_committed_text(repo, "s4", "hostname: s4\n")
-        R.save_host_vars("Solo", ["s4"], message="host_vars: s4 initial")
-
-        import flask
-        app = flask.Flask(__name__)
-        with app.test_request_context(json={}):
-            response = revert_committed("s4")
-        body, status = response
-        assert status == 409
-        assert "no previous state" in body.get_json()["error"]
-
-
-def _config_text():
-    import os
-    fleet = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
-    with open(os.path.join(fleet, "s1.cfg"), encoding="utf-8") as fh:
-        return fh.read()
-
 
 class TestTheBlockIsContainmentNotEquality:
-    """Three keys were tried. The first two lift the block while the failing
-    change is still in intent; the third does too, in a narrower case.
+    """Three keys were tried, and each lifts the block while the failing change
+    is still in intent:
 
     * intent **commit sha** — any later commit clears it
     * **content hash** of the host_vars document — any edit clears it
@@ -518,7 +443,7 @@ class TestTheBlockIsContainmentNotEquality:
 
     The third is the subtle one, and the test that should have caught it passed
     for the wrong reason: it supplied the failed program by hand instead of
-    deriving it, so the bundled case was never exercised.
+    deriving it, so the program never grew.
 
     Containment is the answer: block while the failed lines are still among the
     lines that would be sent.
@@ -634,3 +559,157 @@ class TestTheBlockIsContainmentNotEquality:
         hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
         R.save_host_vars("Lab", ["s4"], message="host_vars: s4 edit")
         assert hv.rolled_back_note(repo, "s4", self.FAILED) is None
+
+
+class TestRevertUndoesOneCommitNotASnapshot:
+    """Restoring the previous snapshot is the obvious implementation, and it is
+    wrong as soon as the commit to undo is not at HEAD.
+
+    With ``A`` shutdown Gi0/1 (rolled back) then ``B`` describe Gi0/2
+    (unrelated), "restore the previous committed intent" either restores ``A``
+    — which still contains the shutdown — or walks back past it and silently
+    discards ``B``. Neither is a revert of ``A``.
+
+    Every revert test written before this had the rolled-back commit at HEAD,
+    so none of them could see it.
+    """
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars, repo as R
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                                "nsot_device_tag_retention": 50,
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        repo = str(list_dir / "config_repo")
+        R.init_repo(repo)
+        return repo, hostvars, R
+
+    def _doc(self, gi01_shutdown=False, gi02_description=""):
+        import yaml
+        return yaml.safe_dump({
+            "hostname": "s4",
+            "interfaces": [
+                {"name": "GigabitEthernet0/1", "shutdown": gi01_shutdown},
+                {"name": "GigabitEthernet0/2", "description": gi02_description},
+            ],
+        }, sort_keys=True)
+
+    def _commit(self, repo, hv, R, doc, subject):
+        hv.write_committed_text(repo, "s4", doc)
+        R.save_host_vars("Lab", ["s4"], message=f"host_vars: s4 {subject}")
+
+    # (a) ------------------------------------------------------------------
+    def test_the_rolled_back_commit_at_head_is_reverted(self, lab):
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut Gi0/1")
+
+        outcome = hv.revert_intent_change(repo, "s4")
+        assert outcome["ok"] is True
+
+        current = hv.read_committed(repo, "s4")
+        gi01 = next(i for i in current["interfaces"] if i["name"].endswith("0/1"))
+        assert gi01["shutdown"] is False
+
+    # (b) ------------------------------------------------------------------
+    def test_an_unrelated_commit_on_top_is_kept(self, lab):
+        """A undone, B kept — the case a snapshot restore cannot express."""
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut Gi0/1")
+        a_sha = hv.intent_commits(repo, "s4")[0]["sha"]
+        self._commit(repo, hv, R,
+                     self._doc(gi01_shutdown=True, gi02_description="uplink"),
+                     "describe Gi0/2")
+
+        outcome = hv.revert_intent_change(repo, "s4", sha=a_sha)
+        assert outcome["ok"] is True
+
+        current = hv.read_committed(repo, "s4")
+        gi01 = next(i for i in current["interfaces"] if i["name"].endswith("0/1"))
+        gi02 = next(i for i in current["interfaces"] if i["name"].endswith("0/2"))
+        assert gi01["shutdown"] is False, "the rolled-back change was not undone"
+        assert gi02["description"] == "uplink", "the unrelated edit was discarded"
+
+    def test_it_names_what_it_reverted(self, lab):
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut Gi0/1")
+        a_sha = hv.intent_commits(repo, "s4")[0]["sha"]
+        self._commit(repo, hv, R,
+                     self._doc(gi01_shutdown=True, gi02_description="uplink"),
+                     "describe Gi0/2")
+
+        outcome = hv.revert_intent_change(repo, "s4", sha=a_sha)
+        assert outcome["reverted_paths"] == [
+            "interfaces.GigabitEthernet0/1.shutdown"]
+        assert len(outcome["kept_later_commits"]) == 1
+
+    # (c) ------------------------------------------------------------------
+    def test_a_conflicting_later_edit_is_refused(self, lab):
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut Gi0/1")
+        a_sha = hv.intent_commits(repo, "s4")[0]["sha"]
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=False), "unshut by hand")
+
+        with pytest.raises(hv.RevertConflict) as exc:
+            hv.revert_intent_change(repo, "s4", sha=a_sha)
+        assert "GigabitEthernet0/1.shutdown" in str(exc.value)
+
+    def test_the_conflict_says_what_to_do(self, lab):
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut Gi0/1")
+        a_sha = hv.intent_commits(repo, "s4")[0]["sha"]
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=False), "unshut")
+
+        with pytest.raises(hv.RevertConflict) as exc:
+            hv.revert_intent_change(repo, "s4", sha=a_sha)
+        assert "make that edit explicitly" in str(exc.value)
+
+    def test_a_conflict_writes_nothing(self, lab):
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut")
+        a_sha = hv.intent_commits(repo, "s4")[0]["sha"]
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=False), "unshut")
+        before = hv.read_committed(repo, "s4")
+
+        with pytest.raises(hv.RevertConflict):
+            hv.revert_intent_change(repo, "s4", sha=a_sha)
+        assert hv.read_committed(repo, "s4") == before
+
+    def test_the_first_intent_commit_cannot_be_reverted(self, lab):
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        outcome = hv.revert_intent_change(repo, "s4")
+        assert outcome["ok"] is False
+        assert "first intent commit" in outcome["error"]
+
+    def test_the_revert_is_a_forward_commit(self, lab):
+        from modules.nsot import repo as R2
+        repo, hv, R = lab
+        self._commit(repo, hv, R, self._doc(), "baseline")
+        self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut Gi0/1")
+
+        hv.revert_intent_change(repo, "s4")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert")
+
+        assert len(hv.intent_commits(repo, "s4")) == 3
+
+
+def _config_text():
+    """A real fleet config, for artifacts that only need to render."""
+    import os
+    fleet = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
+    with open(os.path.join(fleet, "s1.cfg"), encoding="utf-8") as fh:
+        return fh.read()

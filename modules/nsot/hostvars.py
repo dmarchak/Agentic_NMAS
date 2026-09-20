@@ -397,6 +397,142 @@ def rolled_back_note(repo: str, hostname: str, current_commands: list = None):
     return entry
 
 
+# ---------------------------------------------------------------------------
+# Targeted revert
+# ---------------------------------------------------------------------------
+
+_MISSING = object()
+
+
+def _walk(doc, path=()):
+    """``{path: leaf}`` for a host_vars document.
+
+    A list whose items all carry a ``name`` is keyed by that name rather than
+    by index, so ``interfaces`` survives insertion and reordering: the path to
+    Gi0/1's description stays the same when Gi0/2 gains one. Any other list is
+    a single leaf, because nothing identifies its items.
+    """
+    if isinstance(doc, dict):
+        out = {}
+        for key, value in doc.items():
+            out.update(_walk(value, path + (key,)))
+        return out
+    if isinstance(doc, list) and doc and all(
+            isinstance(i, dict) and i.get("name") for i in doc):
+        out = {}
+        for item in doc:
+            out.update(_walk(item, path + (item["name"],)))
+        return out
+    return {path: doc}
+
+
+def _set_path(doc, path, value):
+    """Set *path* in *doc*, mirroring :func:`_walk`'s keying. Deletes on _MISSING."""
+    node = doc
+    for index, key in enumerate(path[:-1]):
+        if isinstance(node, dict):
+            if key not in node:
+                return False
+            node = node[key]
+        elif isinstance(node, list):
+            match = next((i for i in node
+                          if isinstance(i, dict) and i.get("name") == key), None)
+            if match is None:
+                return False
+            node = match
+        else:
+            return False
+
+    leaf = path[-1]
+    if isinstance(node, dict):
+        if value is _MISSING:
+            node.pop(leaf, None)
+        else:
+            node[leaf] = value
+        return True
+    if isinstance(node, list):
+        match = next((i for i in node
+                      if isinstance(i, dict) and i.get("name") == leaf), None)
+        if match is None:
+            return False
+        return True
+    return False
+
+
+class RevertConflict(ValueError):
+    """A later commit changed the same lines this revert would undo."""
+
+
+def revert_intent_change(repo: str, hostname: str, sha: str = "") -> dict:
+    """Undo one intent commit's change, keeping every later one.
+
+    Restoring the previous *snapshot* is the obvious implementation and it is
+    wrong as soon as the commit to undo is not at HEAD. With
+
+    ``A`` shutdown Gi0/1 (rolled back) then ``B`` describe Gi0/2 (unrelated),
+    restoring "the previous committed intent" either restores ``A`` — which
+    still contains the shutdown — or walks back past it and silently discards
+    ``B``. Neither is a revert of ``A``.
+
+    This applies the inverse of ``A``'s own diff onto current intent: every
+    path ``A`` changed goes back to what it was *before* ``A``, and nothing
+    else is touched. A path that a later commit also changed is a genuine
+    conflict and is **refused with the paths named**, because guessing which
+    edit wins is the operator's call.
+    """
+    commits = intent_commits(repo, hostname, limit=50)
+    if not commits:
+        return {"ok": False, "error": f"'{hostname}' has no committed intent."}
+
+    target = sha or commits[0]["sha"]
+    position = next((i for i, c in enumerate(commits)
+                     if c["sha"].startswith(target)), None)
+    if position is None:
+        return {"ok": False,
+                "error": f"{target[:8]} is not an intent commit for {hostname}"}
+    target = commits[position]["sha"]
+
+    if position + 1 >= len(commits):
+        return {"ok": False, "error": (
+            f"{target[:8]} is the first intent commit for '{hostname}', so "
+            "there is no earlier state for its change to be undone to. Edit "
+            "the intent instead.")}
+
+    before = committed_at(repo, hostname, commits[position + 1]["sha"])
+    after = committed_at(repo, hostname, target)
+    current = read_committed(repo, hostname)
+    if before is None or after is None or current is None:
+        return {"ok": False, "error": "could not read intent around that commit"}
+
+    flat_before, flat_after = _walk(before), _walk(after)
+    flat_current = _walk(current)
+
+    changed = [p for p in set(flat_before) | set(flat_after)
+               if flat_before.get(p, _MISSING) != flat_after.get(p, _MISSING)]
+    if not changed:
+        return {"ok": False,
+                "error": f"{target[:8]} changed nothing to undo"}
+
+    conflicts = [p for p in changed
+                 if flat_current.get(p, _MISSING) != flat_after.get(p, _MISSING)]
+    if conflicts:
+        named = ", ".join(".".join(str(part) for part in p)
+                          for p in sorted(conflicts)[:5])
+        raise RevertConflict(
+            f"refusing to revert {target[:8]}: a later commit changed the same "
+            f"setting(s) — {named}. Decide which edit should win and make that "
+            "edit explicitly.")
+
+    reverted = []
+    for path in sorted(changed):
+        if _set_path(current, path, flat_before.get(path, _MISSING)):
+            reverted.append(".".join(str(part) for part in path))
+
+    write_committed(repo, current)
+    return {"ok": True, "target": target, "reverted_paths": reverted,
+            "kept_later_commits": [c["sha"] for c in commits[:position]]}
+
+
 RETRY_LOG_REL = os.path.join(".nsot", "retry_log.json")
 
 
