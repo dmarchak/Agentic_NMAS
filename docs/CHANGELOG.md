@@ -7,6 +7,44 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — The confirmed list is derived, and the seam is tested
+
+### Changed — `rendered_commands` derives from `confirmed_commands`
+
+The pass-through flag added in the previous entry worked, and it was still a
+**convention** — and conventions are what failed here twice. `PipelineContext`
+now carries `confirmed_commands` (default `None`), and `rendered_commands` is a
+property:
+
+- when a confirmed list exists, it is what the property returns
+- **assigning over it raises** `ConfirmedCommandsOverwritten`
+
+Stage 2's early return is still the intended path; the assignment at the end of
+that function is now refused by the setter as well, so deleting the return
+would raise rather than quietly substitute. Same shape as
+`RenderArtifact.deployable`: the safe answer wins by construction, not by
+everyone remembering to check a flag.
+
+### Added — a test of the handoff, not the stages
+
+Every pipeline test asserted on a stage's *output*. Both wiring failures lived
+in the handoff **between** stages: `_deploy_one()` set `rendered_commands` and
+stage 2 overwrote it, so the list the plan published and the list that would
+have reached the wire were different objects and nothing compared them.
+
+`TestTheConfirmedListReachesTheTransport` runs the full `PipelineRunner` with a
+spy in place of `_push_config` and asserts the command list arriving at the
+transport equals the list the plan published, by value and by fingerprint.
+
+Both historical bugs were reintroduced to confirm it catches them:
+
+```
+with stage 2 re-rendering : 1 failed
+with the whole config sent: 5 failed
+```
+
+---
+
 ## [Unreleased] — Run 2, attempt 2: the pipeline re-rendered over the confirmed list
 
 ```

@@ -685,8 +685,7 @@ class TestPreRenderedCommandsAreNotOverwritten:
 
         commands = ["interface GigabitEthernet0/1", " description x", "exit"]
         ctx = self._ctx()
-        ctx.rendered_commands = {"203.0.113.24": commands}
-        ctx.pre_rendered = True
+        ctx.confirmed_commands = {"203.0.113.24": commands}
 
         _stage_template_render(ctx)
         assert ctx.rendered_commands == {"203.0.113.24": commands}
@@ -696,8 +695,7 @@ class TestPreRenderedCommandsAreNotOverwritten:
         from modules.pipeline import _stage_template_render
 
         ctx = self._ctx(config_type="not-a-real-generator")
-        ctx.rendered_commands = {"203.0.113.24": ["hostname s4"]}
-        ctx.pre_rendered = True
+        ctx.confirmed_commands = {"203.0.113.24": ["hostname s4"]}
         _stage_template_render(ctx)
         assert ctx.rendered_commands == {"203.0.113.24": ["hostname s4"]}
 
@@ -706,11 +704,25 @@ class TestPreRenderedCommandsAreNotOverwritten:
         from modules.pipeline import PipelineStageError, _stage_template_render
 
         ctx = self._ctx()
-        ctx.pre_rendered = True
+        ctx.confirmed_commands = {}
         with pytest.raises(PipelineStageError) as exc:
             _stage_template_render(ctx)
         assert "operator confirmed" in str(exc.value)
 
     def test_the_normal_path_still_renders(self):
-        """pre_rendered defaults off; existing callers are untouched."""
-        assert self._ctx().pre_rendered is False
+        """confirmed_commands defaults to None; existing callers are untouched."""
+        ctx = self._ctx()
+        assert ctx.confirmed_commands is None
+        ctx.rendered_commands = {"203.0.113.24": ["hostname s4"]}
+        assert ctx.rendered_commands == {"203.0.113.24": ["hostname s4"]}
+
+    def test_assigning_over_a_confirmed_list_raises(self):
+        """The reason this is derived rather than a pass-through flag: a flag
+        is a convention, and the convention is what failed twice."""
+        from modules.pipeline import ConfirmedCommandsOverwritten
+
+        ctx = self._ctx()
+        ctx.confirmed_commands = {"203.0.113.24": ["interface Gi0/1"]}
+        with pytest.raises(ConfirmedCommandsOverwritten):
+            ctx.rendered_commands = {"203.0.113.24": ["something else"]}
+        assert ctx.rendered_commands == {"203.0.113.24": ["interface Gi0/1"]}

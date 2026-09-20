@@ -389,9 +389,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
         pool_lock=threading.Lock(),
         config_id=f"tpl-{hostname}",
     )
-    ctx.rendered_commands = {device.get("ip", ""): commands}
-    # The pipeline must not render a substitute for the confirmed list.
-    ctx.pre_rendered = True
+    # Confirmed, not merely pre-populated: rendered_commands derives from this,
+    # so stage 2 cannot overwrite it and an attempt to do so raises.
+    ctx.confirmed_commands = {device.get("ip", ""): commands}
 
     try:
         result = PipelineRunner(ctx).run()

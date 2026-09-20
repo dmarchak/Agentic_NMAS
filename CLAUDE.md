@@ -354,6 +354,11 @@ The only part of the NSoT work that reaches a device.
   level at the end of each contiguous group, never `end`. The list is
   recomputed at apply and compared against the confirmed fingerprint; a
   mismatch is refused with "the device or intent changed since you confirmed".
+  `PipelineContext.rendered_commands` **derives** from `confirmed_commands`
+  when one is set — assigning over it raises `ConfirmedCommandsOverwritten`, so
+  no stage can substitute its own render. `test_deploy_contract.py` runs the
+  full pipeline with a spy transport and asserts the list reaching the wire is
+  the list the plan published.
 - **Transport is per platform.** `supports_netconf: false` goes straight to SSH
   with no attempt — not a fallback after a timeout.
 - **Verification uses settle windows** (OSPF 45s, BGP 60s, RIP 90s) and reports

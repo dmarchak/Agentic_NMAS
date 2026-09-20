@@ -95,6 +95,10 @@ class PipelineOrderError(PipelineError):
     """Raised when a stage is invoked out of the required sequence."""
 
 
+class ConfirmedCommandsOverwritten(PipelineError):
+    """Something tried to render a substitute for a confirmed command list."""
+
+
 class PipelineStageError(PipelineError):
     """Raised by a stage handler to signal failure and halt the pipeline."""
 
@@ -120,10 +124,14 @@ class PipelineContext:
 
     # ---- Populated by stages ---------------------------------------------
     intended_config:   dict = field(default_factory=dict)  # Stage 1: NetBox data
-    rendered_commands: dict = field(default_factory=dict)  # Stage 2: ip -> [str]
-    #: Set by a caller that has already decided the exact commands to send.
-    #: Stage 2 then passes them through instead of rendering its own.
-    pre_rendered: bool = False
+    #: Set by a caller that has already decided the exact commands to send —
+    #: the NSoT deploy path, where the operator confirmed this exact list.
+    #: ``None`` means "nobody has decided yet, stage 2 should render".
+    #: A non-None value makes :attr:`rendered_commands` *derive* from it, so
+    #: stage 2 cannot overwrite the confirmed list even by assigning to it.
+    confirmed_commands: dict = None
+    #: Stage 2's own output. Reached only when nothing was confirmed.
+    _rendered: dict = field(default_factory=dict, init=False, repr=False)
     ci_passed:         bool = False                         # Stage 3
     pre_snapshots:     dict = field(default_factory=dict)  # Stage 4: ip -> snapshot
     diff_summary:      dict = field(default_factory=dict)  # Stage 5: ip -> summary
@@ -160,6 +168,31 @@ class PipelineContext:
     def fleet_ips(self) -> list[str]:
         """Remaining devices pushed only after canary succeeds."""
         return self.device_ips[1:]
+
+    # ── the command list ───────────────────────────────────────────────────
+    #
+    # Derived, not assigned. A pass-through flag would still be a convention,
+    # and conventions are what failed here twice: stage 2 ended with
+    # ``ctx.rendered_commands = rendered``, discarding a list the operator had
+    # already confirmed. Making the confirmed list win *by construction* means
+    # no later edit to stage 2 can reintroduce that, and an attempt to assign
+    # over it raises rather than silently succeeding.
+
+    @property
+    def rendered_commands(self) -> dict:
+        """The commands to send. A confirmed list wins and cannot be replaced."""
+        if self.confirmed_commands is not None:
+            return self.confirmed_commands
+        return self._rendered
+
+    @rendered_commands.setter
+    def rendered_commands(self, value: dict) -> None:
+        if self.confirmed_commands is not None:
+            raise ConfirmedCommandsOverwritten(
+                "refusing to replace a confirmed command list: the operator "
+                f"approved {len(self.confirmed_commands)} device list(s) and "
+                "something tried to render a substitute")
+        self._rendered = value
 
     def device_params(self, ip: str) -> dict:
         return self.ip_params_map.get(ip, self.params)
@@ -348,26 +381,29 @@ def _stage_template_render(ctx: PipelineContext) -> None:
     package needed).  Falls back to the existing Python generators in
     ``modules.configure`` when no template file is found.
 
-    **Pre-rendered commands are passed through untouched.** The NSoT deploy
-    path (Phase 3c) computes its command list outside the pipeline entirely —
-    it has to, because the whole point is that the operator confirmed that
-    exact list and it is the only thing that may be sent. This stage used to
-    overwrite ``ctx.rendered_commands`` unconditionally, so a caller that
-    populated it beforehand had its work discarded and then failed on an
-    unknown ``config_type``. Re-rendering here would also break the confirm
-    guarantee even if it succeeded: the pipeline would be deciding what to
-    send, after the operator had approved something else.
+    **A confirmed command list is never re-rendered.** The NSoT deploy path
+    (Phase 3c) computes its command list outside the pipeline entirely — it has
+    to, because the operator confirmed that exact list and it is the only thing
+    that may be sent. This stage used to end with ``ctx.rendered_commands =
+    rendered`` unconditionally, so a caller that populated it beforehand had
+    its work discarded and then failed on an unknown ``config_type``.
+    Re-rendering would have broken the confirm guarantee even if it *succeeded*:
+    the pipeline would decide what to send after the operator approved
+    something else.
+
+    The early return below is the intended path. The assignment at the end of
+    this function is also refused by the setter now, so deleting the return
+    would raise rather than quietly substitute.
     """
     from modules.configure import generate_config_commands
 
-    if ctx.pre_rendered:
-        if not ctx.rendered_commands:
+    if ctx.confirmed_commands is not None:
+        if not ctx.confirmed_commands:
             raise PipelineStageError(
-                "pre_rendered was set but no commands were supplied — refusing "
+                "a confirmed command list was declared but is empty — refusing "
                 "to render a substitute for a list the operator confirmed")
-        log.info("pipeline[2/template_render]: using %d pre-rendered command "
-                 "list(s) — not re-rendering",
-                 len(ctx.rendered_commands))
+        log.info("pipeline[2/template_render]: %d confirmed command list(s) — "
+                 "not rendering", len(ctx.confirmed_commands))
         return
 
     tpl_path = _config_template_path(ctx.config_type)

@@ -332,3 +332,106 @@ class TestIntentComesFromCommittedHostVars:
         assert drift["differs"] is True
         assert art.summary()["intent_drift"] == drift
         assert art.summary()["bootstrap"] is False
+
+
+class TestTheConfirmedListReachesTheTransport:
+    """The seam, not the stages.
+
+    Every other pipeline test asserts on a stage's output. Both wiring failures
+    lived in the handoff *between* stages: ``_deploy_one()`` set
+    ``rendered_commands`` and stage 2 overwrote it, so the list the plan
+    published and the list that would have reached the wire were different
+    objects and no test compared them.
+
+    This runs the whole pipeline with a spy in place of the transport and
+    asserts that what arrives at the transport equals what the plan published.
+    """
+
+    CONFIRMED = ["interface GigabitEthernet0/1",
+                 " description NSoT-managed — CSCI 5840 Lab 4",
+                 "exit"]
+
+    @pytest.fixture
+    def spy(self, monkeypatch):
+        """Records every command list handed to the push transport."""
+        from modules import pipeline as P
+
+        seen = []
+
+        def _fake_push(dev, cmds, pool, lock):
+            seen.append({"ip": dev.get("ip"), "commands": list(cmds)})
+            return "spy: accepted"
+
+        monkeypatch.setattr(P, "_push_config", _fake_push)
+
+        # Neutralise everything that would touch a network or a repo, so the
+        # only thing under test is the command list's journey.
+        monkeypatch.setattr(P, "_stage_netbox_query", lambda ctx: None)
+        monkeypatch.setattr(P, "_stage_ci_gate", lambda ctx: None)
+        monkeypatch.setattr(P, "_stage_pre_snapshot", lambda ctx: None)
+        monkeypatch.setattr(P, "_stage_config_diff", lambda ctx: None)
+        monkeypatch.setattr(P, "_stage_post_snapshot", lambda ctx: None)
+        monkeypatch.setattr(P, "_stage_verify", lambda ctx: None)
+        monkeypatch.setattr(P, "_stage_save_golden", lambda ctx: None)
+        return seen
+
+    def _ctx(self):
+        import threading
+        from modules.pipeline import PipelineContext
+
+        ctx = PipelineContext(
+            config_type="template",
+            device_ips=["203.0.113.24"],
+            params={}, ip_params_map={},
+            selected_devices=[{"ip": "203.0.113.24", "hostname": "s4"}],
+            check_devices=[], connections_pool={},
+            pool_lock=threading.Lock(), config_id="tpl-s4",
+            settle_sleep=lambda _s: None,
+        )
+        ctx.confirmed_commands = {"203.0.113.24": list(self.CONFIRMED)}
+        return ctx
+
+    def test_the_transport_receives_exactly_the_confirmed_list(self, spy):
+        from modules.pipeline import PipelineRunner
+
+        PipelineRunner(self._ctx()).run()
+
+        assert len(spy) == 1, f"expected one push, got {len(spy)}"
+        assert spy[0]["ip"] == "203.0.113.24"
+        assert spy[0]["commands"] == self.CONFIRMED, (
+            "the list that reached the transport is not the list that was "
+            f"confirmed: {spy[0]['commands']}")
+
+    def test_no_extra_commands_are_appended_anywhere(self, spy):
+        from modules.pipeline import PipelineRunner
+
+        PipelineRunner(self._ctx()).run()
+        assert len(spy[0]["commands"]) == 3
+        assert "end" not in [c.strip() for c in spy[0]["commands"]]
+
+    def test_the_whole_rendered_config_is_not_what_arrives(self, spy):
+        """The 83-line bug, asserted directly."""
+        from modules.pipeline import PipelineRunner
+
+        PipelineRunner(self._ctx()).run()
+        arrived = spy[0]["commands"]
+        assert not any(c.startswith("hostname ") for c in arrived)
+        assert not any("snmp-server community" in c for c in arrived)
+
+    def test_a_stage_that_tries_to_re_render_raises(self, spy, monkeypatch):
+        """The convention failed twice; this is the structural backstop."""
+        from modules.pipeline import ConfirmedCommandsOverwritten
+
+        ctx = self._ctx()
+        with pytest.raises(ConfirmedCommandsOverwritten):
+            ctx.rendered_commands = {"203.0.113.24": ["hostname substituted"]}
+        assert ctx.rendered_commands == {"203.0.113.24": self.CONFIRMED}
+
+    def test_the_plan_and_the_transport_agree(self, spy):
+        """End to end: fingerprint what the plan publishes, run, compare."""
+        from modules.nsot.deploy import command_fingerprint
+        from modules.pipeline import PipelineRunner
+
+        published = command_fingerprint(self.CONFIRMED)
+        PipelineRunner(self._ctx()).run()
+        assert command_fingerprint(spy[0]["commands"]) == published
