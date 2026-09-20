@@ -1181,3 +1181,89 @@ One bug hid another, and the second was only reachable once the first was
 fixed — which is an argument for fixing and re-running rather than fixing and
 assuming.
 
+---
+
+## The most repeatable lesson: the tool's own artifacts were never in the test corpus
+
+Three separate bugs in this project share one root cause, and stating it
+generally is more useful than any of the three individually.
+
+### The three
+
+| Bug | Symptom on real data |
+|---|---|
+| Migration counted one device as two | 18 "devices" for a nine-device fleet, 0 merges, both copies writing to the same path |
+| Merge discarded the management IP | manifest entry with no address, breaking `find_by_ip` |
+| Five unreproducible lines per device | `strip_for_roundtrip` never removed NMAS's own golden header |
+
+Each had tests. The migration had eight duplicate-detection tests. The round
+trip had a nine-device fleet at 100% fidelity. All passed.
+
+### The single cause
+
+**Every fixture was built from raw device output. None carried the artifacts
+NMAS itself produces.**
+
+A config fixture in this repo is what a device prints. A golden config on a real
+NMAS is that, plus three header lines NMAS writes onto it:
+
+```
+! Golden config — s4 (10.255.1.24)
+! Saved: 2026-09-15 22:36:40
+! Source: show startup-config
+```
+
+And the second store, `config_repo/`, holds the same config with that header
+*stripped* by `config_git.write_and_stage`. So a real device exists in two
+formats, neither of which is "what the device printed", and the fixtures had
+only the third form that no store actually contains.
+
+Every one of the three bugs lives precisely in that gap:
+
+* the migration could not group two formats as one device, because no fixture
+  had two formats;
+* the merge lost the IP, because no fixture had a copy *without* one;
+* the round trip could not strip the header, because no fixture *had* one.
+
+### Why it is easy to do and hard to notice
+
+A fixture is written by reading the source of truth — a device — and capturing
+what it says. That feels like the most faithful thing available, and for parser
+tests it is. The mistake is assuming it stays faithful once the tool has
+touched the data.
+
+Everything the tool writes is a **transformation** of that input: a header
+added, a header stripped, a normalisation applied, a byte count prefixed. Those
+transformed forms are what the next stage actually reads, and they are what
+production is full of. A corpus of pristine device output tests the first stage
+and nothing after it.
+
+The failure is silent in every case, because a fixture that is the wrong shape
+does not error — it simply exercises a path production never takes, and reports
+success.
+
+### The rule
+
+**Test fixtures must include the artifacts the tool itself produces, not only
+the inputs it consumes.** For each store the system writes, there should be a
+fixture in that store's format, produced the way the system produces it.
+
+Concretely, what this project now has:
+
+* `TestRealNmasGoldenShape` wraps each fleet fixture in the header NMAS writes
+  and asserts the round-trip verdict is identical with and without it;
+* `TestBothStoresHoldTheSameDevice` builds one device in *both* stored formats —
+  one headered, one stripped — and asserts it counts as one device;
+* and the general habit: **dry-run against production data before trusting a
+  migration**, because it is the only step where reality gets to disagree with
+  the author's model. It disagreed three times.
+
+### For the write-up
+
+This is the strongest methodological point the project produced. "We wrote
+tests" is not the claim worth making. The claim worth making is: *we discovered
+that our tests could only falsify what we had already imagined, and we found the
+gap by running against production shapes instead.* Every one of these three bugs
+would have reached a real deploy, and each would have failed quietly — a
+silently wrong record, not a crash.
+
