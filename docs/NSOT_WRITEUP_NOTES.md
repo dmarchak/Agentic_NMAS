@@ -100,6 +100,73 @@ claim without touching NetBox at all.
 Remove, and show the modal reporting them as skipped — "not tracked as
 NMAS-created, treated as yours."
 
+
+### Phase 0 follow-up: one-shot authorization (post-review)
+
+Review of the Phase 0 gate raised three questions. Two found real defects — a
+good illustration for the write-up that "the tests pass" is not the same as
+"the design is right".
+
+**1. The confirmation was persistent, not one-shot.** Confirming an import
+called `set_user_setting("netbox_allow_writes", True)`. The checkbox said
+"remember this choice", which was at least honest, but it meant the *second*
+import needed no confirmation at all. The gate degraded to a one-time
+formality — exactly the failure mode the design was supposed to avoid.
+
+The fix separates two concepts that had been conflated:
+
+| | Means | Lifetime |
+|---|---|---|
+| `netbox_allow_writes` | "this instance may write to NetBox at all" | persistent, set deliberately in Settings |
+| Authorization token | "these specific changes are approved" | single use, 5 minutes |
+
+The preview issues a token bound to a SHA-256 of the plan. Execute consumes it,
+**recomputes the plan**, and aborts if the hash differs. So approving a preview
+of seven devices cannot result in nine being created because someone else
+touched NetBox in the meantime.
+
+Details that mattered:
+- The hash ignores synthetic placeholder ids (they depend on thread-pool visit
+  order) but preserves real ids, so a delete of object 5 is not interchangeable
+  with a delete of object 6.
+- Entries are sorted before hashing — the plan is built concurrently, so the
+  same NetBox state must always produce the same hash.
+- A token is burned even when validation fails, so there is no retry loop.
+- The master switch is checked **before** the token is consumed, so an
+  unauthorized instance cannot waste the operator's approval.
+
+**2. Dry-run fidelity was broken for shared objects.** Asked to confirm that the
+preview counts dependent objects, I tested it rather than reasoning about it —
+and found a real over-count. Get-or-create helpers issue a real GET, find
+nothing (the dry run created nothing), and plan another create. A three-device
+import previewed **three** manufacturers, three platforms, and three device
+types, and created one of each.
+
+The fix gives the dry-run plan a virtual overlay of what it pretended to create,
+which `_nb_get` and `_nb_first` consult. Preview now equals execution exactly,
+verified at 1, 3, and 5 devices.
+
+Testing this surfaced a second defect: `_nb_patch` returned a *synthetic* id for
+an object that already exists. Callers chain child objects off that id, so
+re-importing an unchanged device planned a spurious interface create. A PATCH
+path embeds the real id (`dcim/devices/42/`), so the dry run now returns it.
+
+It also produced a pleasing false alarm worth retelling: the first multi-device
+test gave all three devices the serial `ABC123`, and the preview collapsed them
+into one device. That was the overlay working correctly — `_upsert_device`
+matches on serial before name, exactly as NetBox-backed de-duplication should.
+The test data was wrong, not the code.
+
+**3. Tag scope was already correct.** `nmas-managed` is injected in `_nb_post`
+only, never `_nb_patch`, so an object NMAS updates but did not create stays
+untagged and is therefore ineligible for deletion. It now has three tests,
+including a structural one asserting that no PATCH payload anywhere carries the
+tag — that one will catch a future regression that a behavioural test might miss.
+
+**Demo-worthy addition:** confirm an import, then click confirm again from the
+same stale modal. The second attempt is refused with "This confirmation has
+expired or was already used", and the UI automatically re-runs the preview.
+
 ### Other decisions
 
 **`jsonschema` over `pydantic`.** Settings are plain dicts round-tripped through

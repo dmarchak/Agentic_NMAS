@@ -100,13 +100,27 @@ dashboard), `device.html` (1,239 — per-device page), and
 NetBox reads are unrestricted. **Writes are fail-closed** and go through exactly
 three chokepoints in `netbox_client.py`: `_nb_post`, `_nb_patch`, `_nb_delete`.
 
-- `netbox_allow_writes` defaults to **off**. With it off, no write can be issued.
+Two independent conditions must both hold before any write executes:
+
+1. `netbox_allow_writes` — the **master switch**, meaning "this instance may
+   write to NetBox at all". Defaults off. A persistent operator decision; it is
+   never flipped as a side effect of confirming an operation.
+2. A **single-use authorization token** (`modules/netbox_authz.py`) issued by a
+   preview and bound to a hash of that exact plan.
+
 - **Import and Remove still work.** Clicking either runs a read-only dry run
-  (allowed regardless of the gate, since it writes nothing), shows a preview of
-  every object that would be created, updated, or deleted, and the confirm button
-  is what grants consent — it enables writes and proceeds in one step.
-- Every object NMAS creates is tagged `nmas-managed` and its id recorded in
-  `data/netbox_created_ids.json`.
+  (allowed regardless of the gate, since it writes nothing) and shows a preview
+  of every object that would change.
+- **Confirming is one-shot.** Execute consumes the token, recomputes the plan,
+  and aborts with "NetBox changed since preview" if the hash differs. Tokens
+  expire in 5 minutes and are burned even on a failed validation, so they cannot
+  be replayed.
+- **The preview count is the executed count**, including dependent objects under
+  a device that does not exist yet (placeholder ids) and shared objects counted
+  once rather than once per device.
+- Every object NMAS **creates** is tagged `nmas-managed` and its id recorded in
+  `data/netbox_created_ids.json`. Objects NMAS merely updates are never tagged —
+  the tag is injected in `_nb_post` only, never `_nb_patch`.
 - **Removal deletes only the intersection** of those two: tagged *and* in NMAS's
   own record. A region, site, VRF, or device a human curated is reported as
   skipped. Removal previously deleted everything in the site regardless of origin.
@@ -156,7 +170,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 209 tests
+pytest                    # 243 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -168,6 +182,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_pipeline.py` | 9-stage pipeline, stage ordering, CI gate |
 | `test_pipeline_builder.py` | Jenkins pipeline XML generation |
 | `test_netbox_write_gate.py` | write gate, dry run, provenance-based removal |
+| `test_netbox_authz.py` | one-shot tokens, plan hashing, stale-plan abort |
+| `test_netbox_preview_fidelity.py` | preview counts == executed counts; tag scope |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |
 | `test_integrations_base.py` | optional-integration behaviour, secret masking |
 | `test_portability.py` | Jenkins step shell, TFTP root, env overrides |

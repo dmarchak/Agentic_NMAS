@@ -178,7 +178,11 @@ def _slug(name: str) -> str:
 
 
 def _nb_get(session: requests.Session, base: str, path: str, **params) -> list[dict]:
-    """GET a NetBox list endpoint, following pagination. Returns all results."""
+    """GET a NetBox list endpoint, following pagination. Returns all results.
+
+    During a dry run the results also include objects the dry run has already
+    pretended to create, so get-or-create behaves as it would in a real run.
+    """
     results: list[dict] = []
     url: Optional[str] = f"{base}/api/{path.lstrip('/')}"
     first = True
@@ -189,15 +193,27 @@ def _nb_get(session: requests.Session, base: str, path: str, **params) -> list[d
         results.extend(data.get("results", []))
         url = data.get("next")
         first = False
+
+    from modules import netbox_guard as _guard
+    if _guard.is_dry_run():
+        results.extend(_guard.current_plan().find_virtual(path, params))
     return results
 
 
 def _nb_first(session: requests.Session, base: str, path: str, **params) -> Optional[dict]:
-    """Return the first matching result from a NetBox list query, or None."""
+    """Return the first matching result from a NetBox list query, or None.
+
+    During a dry run, falls back to objects the dry run already pretended to
+    create — see :func:`_nb_get`.
+    """
     r = session.get(f"{base}/api/{path.lstrip('/')}", params=params, timeout=15)
     r.raise_for_status()
     data = r.json()
     hits = data.get("results", [])
+    if not hits:
+        from modules import netbox_guard as _guard
+        if _guard.is_dry_run():
+            hits = _guard.current_plan().find_virtual(path, params)
     return hits[0] if hits else None
 
 
@@ -258,8 +274,12 @@ def _nb_post(session: requests.Session, base: str, path: str, payload: dict) -> 
     endpoint = path.strip("/")
     if _guard.is_dry_run():
         _guard.record_intent("creates", endpoint, payload, name=_object_label(payload))
-        # Synthetic id so callers that chain on result["id"] keep working.
-        return {**payload, "id": _guard.current_plan().synthetic_id(), "_dry_run": True}
+        # Synthetic id so callers that chain on result["id"] keep working, and
+        # the object is remembered so a later get-or-create for the same thing
+        # finds it instead of planning a duplicate.
+        obj = {**payload, "id": _guard.current_plan().synthetic_id(), "_dry_run": True}
+        _guard.current_plan().add_virtual(endpoint, obj)
+        return obj
 
     _guard.assert_writes_allowed(f"POST {endpoint}")
     payload = _with_managed_tag(session, base, path, payload)
@@ -282,10 +302,19 @@ def _nb_patch(session: requests.Session, base: str, path: str, payload: dict) ->
     """
     from modules import netbox_guard as _guard
 
-    endpoint = path.strip("/")
+    # PATCH paths embed the object id: "dcim/devices/42/".
+    parts    = path.strip("/").split("/")
+    obj_id   = int(parts[-1]) if parts[-1].isdigit() else None
+    endpoint = "/".join(parts[:-1]) if obj_id is not None else path.strip("/")
+
     if _guard.is_dry_run():
-        _guard.record_intent("updates", endpoint, payload, name=_object_label(payload))
-        return {**payload, "id": _guard.current_plan().synthetic_id(), "_dry_run": True}
+        _guard.record_intent("updates", endpoint, payload, obj_id=obj_id,
+                             name=_object_label(payload))
+        # Return the object's REAL id, not a synthetic one. An update targets
+        # something that already exists, and callers chain child objects off the
+        # returned id — handing back a placeholder would orphan them and make the
+        # preview plan creates that execution would not perform.
+        return {**payload, "id": obj_id, "_dry_run": True}
 
     _guard.assert_writes_allowed(f"PATCH {endpoint}")
     r = session.patch(f"{base}/api/{path.lstrip('/')}", json=payload, timeout=20)

@@ -7,13 +7,17 @@ Flow for both buttons:
 
 1. Click → ``/preview`` runs a **read-only** dry run. Because it issues no
    writes it is allowed regardless of the gate, and because it runs the real
-   sync code path against the real NetBox the preview is accurate.
+   sync code path against the real NetBox the preview is accurate. The preview
+   returns a short-lived, single-use token bound to a hash of that exact plan.
 2. The modal shows what would be created, updated, or deleted.
-3. Confirm → ``/apply`` flips the gate if the operator ticked the box in the
-   modal, then performs the write.
+3. Confirm → ``/apply`` consumes the token, **recomputes the plan**, and aborts
+   if the hash differs — NetBox changed since the preview, so the approval no
+   longer describes what would happen.
 
-So the operator never meets a disabled button with no explanation, and no write
-reaches NetBox without someone seeing the object list first.
+Authorization is therefore one-shot: confirming authorizes *that* operation and
+nothing else. ``netbox_allow_writes`` is a separate, persistent operator
+decision meaning "writes are permitted at all"; it is never flipped as a side
+effect of confirming, and both it and a valid token are required.
 """
 
 import logging
@@ -24,6 +28,29 @@ from flask import Blueprint, jsonify, request
 log = logging.getLogger(__name__)
 
 bp = Blueprint("netbox_safety", __name__, url_prefix="/netbox/safety")
+
+#: Pseudo-list name for the all-lists import, so a token issued for it cannot
+#: be replayed against a single named list.
+_ALL_LISTS = "__all_lists__"
+
+
+def _authorization_for(operation: str, list_name: str, plan: dict) -> dict:
+    """Fields every preview returns: the master-switch state and a one-shot token.
+
+    The token is bound to a hash of *this* plan. Confirming authorizes only this
+    operation; it does not open NetBox for writes generally.
+    """
+    from modules.netbox_authz import compute_plan_hash, issue_token
+    from modules.netbox_guard import writes_allowed
+
+    plan_hash = compute_plan_hash(plan)
+    issued = issue_token(operation, list_name, plan_hash)
+    return {
+        "writes_allowed": writes_allowed(),
+        "token":          issued["token"],
+        "expires_in":     issued["expires_in"],
+        "plan_hash":      plan_hash,
+    }
 
 
 def _load_list_devices(list_name: str):
@@ -46,6 +73,64 @@ def _load_list_devices(list_name: str):
 
     name, csv_path = get_current_device_list()
     return name, load_saved_devices(csv_path)
+
+
+
+def _maybe_permit_writes(data: dict) -> None:
+    """Honour an explicit request to turn on the master write switch.
+
+    This is a deliberate, separately-labelled operator decision — "writes are
+    permitted at all" — not the confirmation of the operation. The operation
+    itself is still authorized one-shot by a token.
+    """
+    from modules.config import set_user_setting
+    if data.get("permit_writes"):
+        set_user_setting("netbox_allow_writes", True)
+        log.info("netbox_safety: operator turned on the NetBox master write switch")
+
+
+def _authorize(data: dict, operation: str, list_name: str, recompute) -> tuple:
+    """Check the master switch, consume the token, and re-verify the plan.
+
+    Returns ``(True, None, 0)`` when the write may proceed, otherwise
+    ``(False, error_payload, http_status)``.
+    """
+    from modules.netbox_authz import consume_token, verify_plan_unchanged
+    from modules.netbox_guard import writes_allowed
+
+    # 1. Master switch — a persistent operator decision, checked first so an
+    #    unauthorized instance cannot burn a token.
+    if not writes_allowed():
+        return False, {
+            "ok": False, "blocked": True,
+            "error": "NetBox writes are not permitted for this instance. Turn on "
+                     "'Allow writes to NetBox' in Settings → Integrations.",
+        }, 403
+
+    # 2. One-shot token from the preview.
+    token = (data.get("token") or "").strip()
+    if not token:
+        return False, {"ok": False, "stale": True,
+                       "error": "Missing confirmation. Run the preview again."}, 400
+
+    ok, err, approved_hash = consume_token(token, operation, list_name)
+    if not ok:
+        return False, {"ok": False, "stale": True, "error": err}, 409
+
+    # 3. Recompute the plan and compare — NetBox may have changed since preview.
+    try:
+        current_plan = recompute()
+    except Exception as exc:                  # noqa: BLE001
+        log.exception("netbox_safety: could not recompute the plan for '%s'", list_name)
+        return False, {"ok": False, "error": f"Could not re-verify the plan: {exc}"}, 500
+
+    unchanged, err = verify_plan_unchanged(approved_hash, current_plan)
+    if not unchanged:
+        log.warning("netbox_safety: plan hash mismatch for %s on '%s' — aborted",
+                    operation, list_name)
+        return False, {"ok": False, "stale": True, "error": err}, 409
+
+    return True, None, 0
 
 
 @bp.route("/import/preview", methods=["POST"])
@@ -72,41 +157,46 @@ def preview_import():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
     plan = result.get("plan", {})
-    from modules.netbox_guard import writes_allowed
     return jsonify({
         "ok": True,
         "list": list_name,
         "device_count": len(devices),
-        "writes_allowed": writes_allowed(),
         "plan": plan,
         "summary": _describe_plan(plan),
+        **_authorization_for("import", list_name, plan),
     })
 
 
 @bp.route("/import/apply", methods=["POST"])
 def apply_import():
-    """Perform the import, optionally enabling writes as the confirming action."""
+    """Execute a previously previewed import.
+
+    Requires the single-use token from ``/import/preview`` and re-verifies that
+    NetBox still matches the previewed plan.
+    """
+    import threading
+
     from modules.netbox_client import get_netbox_config, set_sync_running, sync_list_to_netbox
-    from modules.config import set_user_setting
 
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
         return jsonify({"ok": False, "error": "NetBox is not configured"}), 400
 
     data = request.get_json(silent=True) or {}
-    if data.get("enable_writes"):
-        # Ticking the box in the confirm modal is the consent; persist it so
-        # later imports do not re-prompt.
-        set_user_setting("netbox_allow_writes", True)
-        log.info("netbox_safety: writes enabled by operator from the import modal")
-
     list_name, devices = _load_list_devices((data.get("list_name") or "").strip())
     if list_name is None:
         return jsonify({"ok": False, "error": "Device list not found"}), 404
     if not devices:
         return jsonify({"ok": False, "error": f"List '{list_name}' has no devices"}), 400
 
-    import threading
+    _maybe_permit_writes(data)
+
+    authorized, err, status = _authorize(
+        data, "import", list_name,
+        recompute=lambda: sync_list_to_netbox(list_name, devices, dry_run=True).get("plan", {}),
+    )
+    if not authorized:
+        return jsonify(err), status
 
     def _run(name=list_name, devs=devices):
         try:
@@ -116,13 +206,6 @@ def apply_import():
             log.error("netbox_safety: import thread failed: %s", exc, exc_info=True)
         finally:
             set_sync_running(name, False)
-
-    from modules.netbox_guard import writes_allowed
-    if not writes_allowed():
-        return jsonify({"ok": False, "blocked": True,
-                        "error": "NetBox writes are still disabled — confirm the import "
-                                 "with 'Enable writes' ticked, or turn them on in "
-                                 "Settings → Integrations."}), 403
 
     threading.Thread(target=_run, daemon=True, name=f"netbox-import-{list_name}").start()
     set_sync_running(list_name, True)
@@ -168,11 +251,11 @@ def preview_import_all():
     plan = result.get("plan", {})
     return jsonify({
         "ok": True,
-        "list": f"{len(payload)} list(s)",
+        "list": _ALL_LISTS,
         "device_count": sum(len(d) for _, d in payload),
-        "writes_allowed": writes_allowed(),
         "plan": plan,
         "summary": _describe_plan(plan),
+        **_authorization_for("import_all", _ALL_LISTS, plan),
     })
 
 
@@ -184,26 +267,23 @@ def apply_import_all():
     from modules.netbox_client import (
         get_netbox_config, set_sync_running, sync_all_lists_to_netbox,
     )
-    from modules.netbox_guard import writes_allowed
-    from modules.config import set_user_setting
-
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
         return jsonify({"ok": False, "error": "NetBox is not configured"}), 400
 
     data = request.get_json(silent=True) or {}
-    if data.get("enable_writes"):
-        set_user_setting("netbox_allow_writes", True)
-        log.info("netbox_safety: writes enabled by operator from the import-all modal")
-
-    if not writes_allowed():
-        return jsonify({"ok": False, "blocked": True,
-                        "error": "NetBox writes are still disabled — confirm with "
-                                 "'Enable writes' ticked."}), 403
-
     payload = _all_lists_with_devices()
     if not payload:
         return jsonify({"ok": False, "error": "No device lists have any devices"}), 400
+
+    _maybe_permit_writes(data)
+
+    authorized, err, status = _authorize(
+        data, "import_all", _ALL_LISTS,
+        recompute=lambda: sync_all_lists_to_netbox(payload, dry_run=True).get("plan", {}),
+    )
+    if not authorized:
+        return jsonify(err), status
 
     def _run(items=payload):
         names = [n for n, _ in items]
@@ -243,8 +323,9 @@ def preview_removal():
         log.exception("netbox_safety: removal preview failed for '%s'", list_name)
         return jsonify({"ok": False, "error": str(exc)}), 500
 
-    from modules.netbox_guard import writes_allowed
-    result["writes_allowed"] = writes_allowed()
+    plan = {"deletes": [{"endpoint": o["endpoint"], "name": o.get("name", ""),
+                         "id": o.get("id")} for o in result.get("deleted", [])]}
+    result.update(_authorization_for("remove", list_name, plan))
     return jsonify(result)
 
 
@@ -252,20 +333,26 @@ def preview_removal():
 def apply_removal():
     """Remove NMAS-created objects, or just drop NMAS's record of them."""
     from modules.netbox_client import remove_list_from_netbox
-    from modules.config import set_user_setting
 
     data = request.get_json(silent=True) or {}
     list_name = (data.get("list_name") or "").strip()
     if not list_name:
         return jsonify({"ok": False, "error": "list_name is required"}), 400
 
-    # "Forget" needs no write gate — it deletes nothing from NetBox.
+    # "Forget" needs neither the switch nor a token — it deletes nothing.
     if data.get("forget_only"):
         return jsonify(remove_list_from_netbox(list_name, forget_only=True))
 
-    if data.get("enable_writes"):
-        set_user_setting("netbox_allow_writes", True)
-        log.info("netbox_safety: writes enabled by operator from the removal modal")
+    _maybe_permit_writes(data)
+
+    def _recompute():
+        preview = remove_list_from_netbox(list_name, dry_run=True)
+        return {"deletes": [{"endpoint": o["endpoint"], "name": o.get("name", ""),
+                             "id": o.get("id")} for o in preview.get("deleted", [])]}
+
+    authorized, err, status = _authorize(data, "remove", list_name, recompute=_recompute)
+    if not authorized:
+        return jsonify(err), status
 
     try:
         return jsonify(remove_list_from_netbox(list_name))

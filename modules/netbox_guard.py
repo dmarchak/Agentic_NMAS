@@ -80,19 +80,66 @@ def assert_writes_allowed(operation: str = "write") -> None:
 # Dry run
 # ---------------------------------------------------------------------------
 
+#: Endpoints excluded from a plan: NMAS's own bookkeeping, not network
+#: inventory. The ``nmas-managed`` tag object is created at most once per
+#: NetBox and would only be noise in a preview of what is about to change.
+PLAN_EXCLUDED_ENDPOINTS = ("extras/tags",)
+
+
+def params_match(obj: dict, params: dict) -> bool:
+    """Approximate NetBox's list filtering against a locally-held object.
+
+    Only needs to be good enough for the get-or-create pattern, which filters on
+    ``slug``, ``name``, or a foreign key like ``device_id``.
+    """
+    for key, value in (params or {}).items():
+        if key in ("limit", "offset", "brief", "depth"):
+            continue
+        candidates = [key]
+        if key.endswith("_id"):
+            candidates.append(key[:-3])
+        for cand in candidates:
+            if cand in obj:
+                actual = obj[cand]
+                if isinstance(actual, dict):
+                    actual = actual.get("id", actual.get("name"))
+                if str(actual) != str(value):
+                    return False
+                break
+        else:
+            return False        # filtered on a field the object does not carry
+    return True
+
+
 class _DryRunPlan:
-    """Collects the operations a dry run would have performed."""
+    """Collects the operations a dry run would have performed.
+
+    Also holds a **virtual store** of the objects it pretended to create. Without
+    it, a get-or-create helper called once per device would miss the object the
+    dry run "created" for the previous device and plan a duplicate — so a
+    three-device import would preview three manufacturers instead of one.
+    """
 
     def __init__(self):
         self.creates: list = []
         self.updates: list = []
         self.deletes: list = []
+        self.virtual: dict = {}
         self._next_id = -1
 
     def synthetic_id(self) -> int:
         """A negative placeholder id, so callers chaining on ``result['id']`` work."""
         self._next_id -= 1
         return self._next_id
+
+    def add_virtual(self, endpoint: str, obj: dict) -> None:
+        """Remember an object this dry run pretended to create."""
+        self.virtual.setdefault(endpoint.strip("/"), []).append(obj)
+
+    def find_virtual(self, endpoint: str, params: dict) -> list:
+        """Objects this dry run already pretended to create that match *params*."""
+        return [o for o in self.virtual.get(endpoint.strip("/"), [])
+                if params_match(o, params)]
 
     def summary(self) -> dict:
         def _counts(items):
@@ -145,6 +192,8 @@ def record_intent(kind: str, endpoint: str, payload: dict = None,
     """Record an operation a dry run would have performed."""
     plan = current_plan()
     if plan is None:
+        return
+    if endpoint.strip("/") in PLAN_EXCLUDED_ENDPOINTS:
         return
     entry = {"endpoint": endpoint.strip("/"), "name": name, "id": obj_id,
              "payload": payload or {}}

@@ -7,6 +7,61 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Phase 0 follow-up: one-shot write authorization
+
+Hardening of the Phase 0 write gate after review. Addresses three issues, two of
+which were real defects.
+
+### Security
+
+- **Confirming an operation no longer opens NetBox for writes.** The import and
+  removal confirm actions previously called
+  `set_user_setting("netbox_allow_writes", True)` — a *persistent* change
+  smuggled in under a checkbox labelled "remember this choice". Authorization is
+  now one-shot:
+  - A preview issues a single-use token (`modules/netbox_authz.py`) bound to a
+    SHA-256 hash of that exact plan, valid for 5 minutes.
+  - Execute consumes the token, **recomputes the plan**, and aborts with
+    "NetBox changed since preview" if the hash differs.
+  - A token is burned even on a failed validation, so it can never be replayed.
+  - `netbox_allow_writes` now means only "writes are permitted at all". It is a
+    separate, explicitly-labelled operator decision, checked *before* the token
+    is consumed so an unauthorized instance cannot burn one.
+
+### Fixed
+
+- **The dry run over-counted shared objects.** Get-or-create helpers could not
+  see objects the dry run had already planned, so each device planned its own
+  manufacturer, platform, and device type. A three-device import previewed three
+  manufacturers and created one. The dry-run plan now keeps a virtual overlay of
+  what it pretended to create, and `_nb_get` / `_nb_first` consult it — so
+  preview counts equal executed counts exactly.
+- **`_nb_patch` returned a synthetic id for objects that already exist.** Callers
+  chain child objects off the returned id, so re-importing an unchanged device
+  planned a spurious interface create. The dry run now returns the real id
+  parsed from the PATCH path.
+- `updates` entries in a plan now record the endpoint and object id separately,
+  so `updates_by_type` groups by object type rather than by individual object.
+
+### Verified (no change needed)
+
+- **The `nmas-managed` tag is only applied to created objects.** Injection
+  happens in `_nb_post` only, never `_nb_patch`, so an object NMAS updates but
+  did not create stays untagged and therefore ineligible for deletion by Remove.
+  Now covered by three tests including a structural check that no PATCH payload
+  anywhere carries the tag.
+- **Dependent objects are counted through placeholder ids.** Interfaces and IP
+  addresses under a not-yet-created device appear in the preview, confirmed at
+  1, 3, and 5 devices.
+
+### Added
+
+- `modules/netbox_authz.py` — plan hashing and single-use tokens.
+- `tests/fake_netbox.py` — in-memory NetBox API for comparing a dry run against
+  a real execution from identical starting state.
+- `tests/test_netbox_authz.py` (23 tests), `tests/test_netbox_preview_fidelity.py`
+  (11 tests). **243 tests total, all passing.**
+
 ## [Unreleased] — NSoT Phase 0: Foundation, portability, and safety
 
 Phase 0 adds no user-facing features. It makes the codebase safe to build the

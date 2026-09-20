@@ -3,8 +3,12 @@
 
    The dry run behind this modal is read-only, so it runs regardless of the
    write gate. That is what lets the Import and Remove buttons stay clickable
-   while `netbox_allow_writes` defaults to off: the operator clicks, sees the
-   real object list, and the confirm button is what grants consent. #}
+   while `netbox_allow_writes` defaults to off.
+
+   Confirming is one-shot: the preview returns a short-lived, single-use token
+   bound to a hash of that exact plan. Execute consumes it, recomputes the plan,
+   and aborts if NetBox changed in the meantime. Confirming authorizes *that*
+   operation only — it never leaves NetBox open for writes. #}
 
 <div class="modal fade" id="netboxSafetyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -21,11 +25,18 @@
         <div id="netboxSafetyBody" class="d-none"></div>
       </div>
       <div class="modal-footer d-block">
-        <div id="netboxSafetyConsent" class="form-check mb-2 d-none">
-          <input class="form-check-input" type="checkbox" id="netboxSafetyEnableWrites">
-          <label class="form-check-label small" for="netboxSafetyEnableWrites">
-            Enable writes to NetBox and remember this choice
-          </label>
+        <div id="netboxSafetyConsent" class="alert alert-warning py-2 px-3 mb-2 d-none">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="netboxSafetyEnableWrites">
+            <label class="form-check-label small" for="netboxSafetyEnableWrites">
+              <strong>Permit NetBox writes from this instance</strong> — a saved
+              setting, equivalent to the switch in Settings → Integrations.
+            </label>
+          </div>
+          <div class="form-text small mb-0">
+            This permits writes at all. It does not approve this operation:
+            Confirm below authorizes only the changes listed above, once.
+          </div>
         </div>
         <div class="text-end">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -43,7 +54,8 @@
 
 <script>
 let _netboxSafetyModal = null;
-let _netboxSafetyState = {mode: 'import', list: '', writesAllowed: false};
+let _netboxSafetyState = {mode: 'import', list: '', writesAllowed: false,
+                          token: '', expiresIn: 0};
 
 function _nbSafetyModal() {
   if (!_netboxSafetyModal) {
@@ -101,6 +113,8 @@ async function netboxPreviewImport(listName, allLists) {
 
     _netboxSafetyState.list = d.list;
     _netboxSafetyState.writesAllowed = d.writes_allowed;
+    _netboxSafetyState.token = d.token || '';
+    _netboxSafetyState.expiresIn = d.expires_in || 0;
     const p = d.plan || {};
 
     body.innerHTML = `
@@ -112,6 +126,11 @@ async function netboxPreviewImport(listName, allLists) {
       <p class="small text-muted mt-3 mb-0">
         This preview was read-only. Everything NMAS creates is tagged
         <code>nmas-managed</code> so it can be told apart from records you curated by hand.
+      </p>
+      <p class="small text-muted mb-0">
+        Confirmation is valid for ${Math.round((d.expires_in || 300) / 60)} minute(s) and
+        applies only to these changes. If NetBox changes in the meantime the import is
+        refused and you will be asked to preview again.
       </p>`;
 
     if (!d.writes_allowed) {
@@ -159,6 +178,8 @@ async function netboxPreviewRemoval(listName) {
     }
 
     _netboxSafetyState.writesAllowed = d.writes_allowed;
+    _netboxSafetyState.token = d.token || '';
+    _netboxSafetyState.expiresIn = d.expires_in || 0;
     const deleted = d.deleted || [];
     const skipped = d.skipped || [];
 
@@ -219,7 +240,8 @@ async function netboxSafetyApply(forgetOnly) {
     import_all: '/netbox/safety/import_all/apply',
     remove:     '/netbox/safety/remove/apply',
   }[mode];
-  const payload = {list_name: list, enable_writes: enable};
+  const payload = {list_name: list, permit_writes: enable,
+                   token: _netboxSafetyState.token};
   if (forgetOnly) payload.forget_only = true;
 
   try {
@@ -234,6 +256,12 @@ async function netboxSafetyApply(forgetOnly) {
         || (mode === 'remove'
             ? `Removed ${(d.deleted || []).length} object(s) from NetBox`
             : `Import started for ${_nbEscape(d.list)} (${d.device_count} device(s))`), 'success');
+    } else if (d.stale) {
+      // The plan changed, the token expired, or it was already used.
+      showToast(d.error || 'Confirmation no longer valid — preview again', 'warning');
+      if (mode === 'remove') netboxPreviewRemoval(list);
+      else netboxPreviewImport(mode === 'import_all' ? '' : list, mode === 'import_all');
+      return;
     } else {
       showToast(d.error || 'Operation failed', 'danger');
     }
