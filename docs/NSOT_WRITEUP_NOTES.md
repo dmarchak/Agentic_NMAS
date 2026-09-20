@@ -1912,6 +1912,7 @@ runs, it passes, and its passing means nothing.
 | 2 | approval's round-trip validation | validated `config_repo/templates/`; deploy rendered from `modules/nsot/templates/` |
 | 3 | `assert_merge_only(to_push, intended)` | `to_push` *was* `intended`, so the subset test was trivially true |
 | 4 | automatic rollback | two conditions that together excluded the only scenario it exists for |
+| 5 | `_restore_config` | replayed a config through config mode — a *merge*, which cannot remove a line |
 
 Number one is the honest version — it never pretended to work, it just looked
 like it did. Numbers two and three are worse, because both are real
@@ -2003,6 +2004,61 @@ A human found it by going to look.
 That is the compounding: the guard that would have repaired it could not fire,
 and the report that would have revealed it did not exist. Neither gap is
 visible from inside the other.
+
+### Number five, where the docstring said it outright
+
+```python
+def _restore_config(conn, config_text: str) -> None:
+    """Replace running config with the saved pre-change text via Netmiko config mode."""
+    ...
+    conn.send_config_set(lines, read_timeout=120)
+```
+
+The docstring says **replace**. `send_config_set` **merges**. Both statements
+are on the screen at once, four lines apart, and they contradict each other.
+
+This one is different from the first four in a way worth naming: the evidence
+was not hidden in a seam, a conjunction, or another file. It was in the
+function's own first line. The word "Replace" described what the author
+intended; the body implemented what Netmiko does; nobody ever read the two
+together, because reading a docstring *is* how you avoid reading the body.
+
+The consequence is specific and it was about to be demonstrated live. IOS does
+not print `no shutdown` in an up interface's running config — an interface is
+up by default, so there is nothing to record. A pre-change snapshot of a
+healthy interface therefore contains no line describing its up-ness. Replay
+that snapshot after pushing `shutdown` and every line in it re-applies
+successfully, `save_config()` runs, and the log reads `restored successfully`
+while the interface stays down and the state survives a reload.
+
+The planned demo was: shut an interface, watch verify fail, watch rollback
+restore it. It would have produced a green rollback and a dead interface.
+
+### Why a docstring is not a weaker signal than a test — it is a different one
+
+The instinct after finding this is "the docstring lied". That is the wrong
+lesson, because it suggests trusting docstrings less. The useful reading is the
+opposite: **the docstring was the only correct statement of intent anywhere in
+the system**, and the defect is that nothing ever compared it to the
+implementation.
+
+`send_config_set` merging is not obscure — it is the documented behaviour of
+the most-used function in the library. The author knew what they wanted
+("replace") and reached for the tool they already had. The gap between those is
+exactly where this whole family lives.
+
+> When a docstring states a property the body does not obviously provide, that
+> is a claim awaiting a test — not a description.
+
+The test that closes it is two lines and names the case the merge cannot
+handle:
+
+```python
+def test_shutdown_is_undone_with_no_shutdown(self):
+    undo = rollback_commands(["interface GigabitEthernet0/1", " shutdown", "exit"],
+                             "interface GigabitEthernet0/1\n description old text\n")
+    assert undo == ["interface GigabitEthernet0/1", " no shutdown", "exit"]
+```
 
 ### What makes this family hard
 

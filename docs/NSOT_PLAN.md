@@ -665,6 +665,38 @@ the client proves only what the client saw.
 > A preview is a promise. Sending more than it showed breaks the promise even
 > when sending more is harmless.
 
+#### The bounded exception: rollback generates negations
+
+"This tool never synthesises a `no` command" is the merge-only rule, and
+rollback is its **one** exception. Recording it as such, with its bounds:
+
+A config-mode replay of the pre-change snapshot cannot undo a change. It is a
+merge — it re-applies lines and removes none. IOS omits `no shutdown` from an
+up interface's running config, so a snapshot taken before a `shutdown` contains
+no line to re-apply: the replay leaves the interface down, saves the config,
+and reports success. Rollback would demonstrate itself working on the one
+change it cannot reverse, and then persist it.
+
+`rollback_commands(pushed, pre_config)` computes the inverse of **exactly what
+was pushed**, inside each line's own header chain:
+
+- the pre-change config set the same thing to a different value → re-send the
+  old line
+- it did not set it at all → negate the pushed line
+
+Same `exit`-per-level and never-`end` rules as `merge_commands()`, and the
+rollback program passes `assert_sendable()` too.
+
+**Bounded means checkable.** `assert_rollback_provenance()` requires every `no
+X` in a rollback to correspond to an `X` in the pushed list. A negation that
+undoes nothing this deploy did is removing configuration nobody asked to
+remove, and is refused. Merge-only's other half is unchanged: lines on the
+device the template does not mention remain **warnings**, never actions.
+
+The rollback program is reported verbatim in the deploy result, for the same
+reason the forward program is — what was sent is not a summary of what was
+sent.
+
 **Masking contract unchanged.** Committed host_vars hold `secret_refs`; the
 credential store holds values. Preview masks; deploy resolves in memory and
 calls `assert_no_mask()`. `write_committed()` refuses any document carrying a

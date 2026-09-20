@@ -431,3 +431,209 @@ class TestCommandsMustBeSendable:
         with pytest.raises(UnsendableCommand) as exc:
             assert_sendable(["hostname s4", "interface Gi0/1", " description —"])
         assert "command 3 of 3" in str(exc.value)
+
+
+class TestIosRejectionsAreDetected:
+    """A cleanly rejected command was invisible.
+
+    Netmiko does not treat ``% Invalid input detected`` as an error by default,
+    so the rejection returns in the output and nothing reads it. The push logs
+    "pushed — N command(s)", verify passes because nothing changed and
+    therefore nothing broke, and stage 8.5 commits a golden that correctly
+    records a device which was never configured. A successful deploy that
+    configured nothing is the quietest failure available — drift will not catch
+    it either, because golden matches the device exactly.
+
+    The em dash surfaced only because it desynchronised the CLI and broke the
+    echo match. A well-formed-but-rejected command had no detection at all.
+    """
+
+    REJECTIONS = [
+        "% Invalid input detected at '^' marker.",
+        "% Incomplete command.",
+        "% Ambiguous command: \"des\"",
+        "% Unrecognized host or address.",
+    ]
+
+    class _Conn:
+        """Netmiko-shaped enough for the code under test."""
+
+        def __init__(self, output, expect_pattern=True):
+            self.output = output
+            self.expect_pattern = expect_pattern
+            self.saved = False
+            self.seen_pattern = None
+
+        def enable(self):
+            pass
+
+        def send_config_set(self, cmds, read_timeout=60, error_pattern=None,
+                            cmd_verify=True):
+            self.seen_pattern = error_pattern
+            import re
+            if error_pattern and re.search(error_pattern, self.output):
+                raise ValueError(f"Pattern detected: {error_pattern}")
+            return self.output
+
+        def save_config(self):
+            self.saved = True
+
+    @pytest.mark.parametrize("rejection", REJECTIONS)
+    def test_each_rejection_raises_on_the_forward_push(self, rejection):
+        from modules.pipeline import _push_via_netmiko
+        import modules.connection as C
+
+        conn = self._Conn(f"s4(config-if)#des x\n{rejection}\ns4(config-if)#")
+        original = C.get_persistent_connection
+        C.get_persistent_connection = lambda dev, pool, lock: conn
+        try:
+            with pytest.raises(ValueError):
+                _push_via_netmiko({"ip": "203.0.113.24"}, ["des x"], {}, None)
+        finally:
+            C.get_persistent_connection = original
+
+    @pytest.mark.parametrize("rejection", REJECTIONS)
+    def test_each_rejection_raises_on_the_rollback(self, rejection):
+        """A rejected rollback reported as success is the worse of the two."""
+        from modules.pipeline import _restore_config
+
+        conn = self._Conn(f"s4(config)#bad\n{rejection}\n")
+        with pytest.raises(ValueError):
+            _restore_config(conn, "hostname s4\nbad\n")
+        assert conn.saved is False, "save_config ran after a rejected rollback"
+
+    def test_a_clean_push_still_returns_its_output(self):
+        from modules.pipeline import _push_via_netmiko
+        import modules.connection as C
+
+        conn = self._Conn("s4(config-if)# description ok\ns4(config-if)#")
+        original = C.get_persistent_connection
+        C.get_persistent_connection = lambda dev, pool, lock: conn
+        try:
+            out = _push_via_netmiko({"ip": "203.0.113.24"},
+                                    [" description ok"], {}, None)
+        finally:
+            C.get_persistent_connection = original
+        assert "description ok" in out
+
+    def test_the_pattern_is_actually_passed(self):
+        """The defect was an argument that was never supplied."""
+        from modules.pipeline import IOS_ERROR_PATTERN, _restore_config
+
+        conn = self._Conn("s4(config)#hostname s4\n")
+        _restore_config(conn, "hostname s4\n")
+        assert conn.seen_pattern == IOS_ERROR_PATTERN
+
+    def test_a_plain_percent_sign_is_not_a_rejection(self):
+        """`% ` appears in banners and descriptions; only the four words count."""
+        from modules.pipeline import _restore_config
+
+        conn = self._Conn("s4(config)#banner motd 100% authorised use only\n")
+        _restore_config(conn, "banner motd 100% authorised use only\n")
+        assert conn.saved is True
+
+
+class TestRollbackIsComputedNotReplayed:
+    """A config-mode replay cannot undo a change — it is a merge.
+
+    ``_restore_config`` was named "replace" and documented as "Replace running
+    config with the saved pre-change text". It called ``send_config_set``,
+    which re-applies lines and removes none. IOS omits ``no shutdown`` from an
+    up interface's running config, so a snapshot taken before a ``shutdown``
+    contains no line to re-apply: the replay would leave the interface down,
+    call ``save_config()``, and log "restored successfully".
+
+    Rollback would have demonstrated itself working on the one change it cannot
+    reverse, and then persisted it. Fifth instance of a real mechanism
+    positioned where it cannot do what it claims — and the only one where the
+    docstring and the body disagreed in plain sight.
+    """
+
+    IFACE_PRE = ("interface GigabitEthernet0/1\n"
+                 " description old text\n"
+                 " negotiation auto\n")
+
+    def test_shutdown_is_undone_with_no_shutdown(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " shutdown", "exit"], self.IFACE_PRE)
+        assert undo == ["interface GigabitEthernet0/1", " no shutdown", "exit"]
+
+    def test_a_changed_description_is_restored_not_negated(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " description new text", "exit"],
+            self.IFACE_PRE)
+        assert undo == ["interface GigabitEthernet0/1",
+                        " description old text", "exit"]
+
+    def test_an_added_description_is_negated(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " description added", "exit"],
+            "interface GigabitEthernet0/1\n negotiation auto\n")
+        assert undo == ["interface GigabitEthernet0/1",
+                        " no description added", "exit"]
+
+    def test_a_changed_value_restores_the_old_value(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/2", " switchport access vlan 200", "exit"],
+            "interface GigabitEthernet0/2\n switchport access vlan 100\n")
+        assert undo == ["interface GigabitEthernet0/2",
+                        " switchport access vlan 100", "exit"]
+
+    def test_a_nested_section_gets_its_full_chain_and_exits(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["router bgp 65001", " address-family ipv4",
+             "  neighbor 10.0.0.1 activate", "exit", "exit"],
+            "router bgp 65001\n address-family ipv4\n")
+        assert undo == ["router bgp 65001", " address-family ipv4",
+                        "  no neighbor 10.0.0.1 activate", "exit", "exit"]
+
+    def test_end_is_never_emitted(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " shutdown", "exit"],
+            self.IFACE_PRE + "end\n")
+        assert "end" not in [c.strip() for c in undo]
+
+    def test_a_line_already_present_needs_no_undo(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " negotiation auto", "exit"],
+            self.IFACE_PRE)
+        assert undo == []
+
+    def test_the_rollback_program_is_sendable(self):
+        from modules.nsot.deploy import UnsendableCommand, rollback_commands
+        with pytest.raises(UnsendableCommand):
+            rollback_commands(["interface GigabitEthernet0/1",
+                               " description new", "exit"],
+                              "interface GigabitEthernet0/1\n description — old\n")
+
+
+class TestRollbackNegationsAreBounded:
+    """The one place this tool generates a ``no``, and it is checkable."""
+
+    def test_the_real_inverse_passes(self):
+        from modules.nsot.deploy import (assert_rollback_provenance,
+                                         rollback_commands)
+        pushed = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+        undo = rollback_commands(pushed, "interface GigabitEthernet0/1\n")
+        assert_rollback_provenance(undo, pushed)
+
+    def test_a_negation_undoing_nothing_is_refused(self):
+        from modules.nsot.deploy import (RollbackNotInverse,
+                                         assert_rollback_provenance)
+        pushed = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+        with pytest.raises(RollbackNotInverse):
+            assert_rollback_provenance(
+                pushed[:1] + [" no ip routing", "exit"], pushed)
+
+    def test_restoring_an_old_value_is_not_a_negation(self):
+        from modules.nsot.deploy import assert_rollback_provenance
+        pushed = ["interface GigabitEthernet0/1", " description new", "exit"]
+        assert_rollback_provenance(
+            ["interface GigabitEthernet0/1", " description old", "exit"], pushed)

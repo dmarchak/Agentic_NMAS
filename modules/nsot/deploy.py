@@ -217,6 +217,142 @@ def merge_commands(intended_config: str, running_config: str) -> list:
     return commands
 
 
+def _command_keys(line: str) -> tuple:
+    """``(precise, broad)`` keys identifying *which setting* a line sets.
+
+    Two keys, because one cannot cover both shapes:
+
+    * ``switchport access vlan 10`` — the value is the last token, so the
+      precise key ``switchport access vlan`` matches a line setting the same
+      thing to a different value.
+    * ``description some free text`` — the value is *everything* after the
+      first word, so the precise key would be ``description some free`` and
+      would never match ``description other text``. The broad key
+      ``description`` does.
+
+    The broad key is used only when a section contains exactly one line
+    starting with that word; otherwise it is ambiguous (``ip address`` primary
+    and secondary, several ``switchport`` lines) and the precise key decides.
+    """
+    words = line.strip().split()
+    if not words:
+        return "", ""
+    if words[0] == "no":
+        words = words[1:]
+    if not words:
+        return "", ""
+    precise = words[0] if len(words) == 1 else " ".join(words[:-1])
+    return precise, words[0]
+
+
+def rollback_commands(pushed: list, pre_config: str) -> list:
+    """The inverse of exactly what was pushed, and nothing else.
+
+    A config-mode replay of the pre-change snapshot cannot undo a change. It is
+    a **merge**: it re-applies lines and removes none. IOS omits ``no shutdown``
+    from an up interface's running config, so a snapshot taken before a
+    ``shutdown`` contains no line to re-apply — replay leaves the interface
+    down, calls ``save_config()``, and reports success. Rollback would have
+    demonstrated itself working on the one change it cannot reverse, then
+    persisted it.
+
+    For each pushed line, inside its own header chain:
+
+    * the pre-change config had a line setting the same thing → re-send that
+      line, which restores the old value
+    * it did not → negate the pushed line
+
+    **This is the one place the tool generates a ``no`` command**, and it is
+    bounded: every negation corresponds to a line this deploy added, verified by
+    :func:`assert_rollback_provenance`. It is not "remove what the template does
+    not mention" — that remains a warning, never an action.
+    """
+    from modules.nsot import ifnames
+
+    precise_index, broad_index = {}, {}
+    for line, chain in _section_chains(pre_config):
+        precise, broad = _command_keys(line)
+        precise_index.setdefault((tuple(chain), precise), line)
+        broad_index.setdefault((tuple(chain), broad), []).append(line)
+
+    def _previous(chain, line):
+        precise, broad = _command_keys(line)
+        hit = precise_index.get((tuple(chain), precise))
+        if hit is not None:
+            return hit
+        candidates = broad_index.get((tuple(chain), broad), [])
+        return candidates[0] if len(candidates) == 1 else None
+
+    # Recover each pushed line's chain from the pushed program itself: the
+    # headers are in it, which is the point of merge_commands().
+    chain, commands, open_chain = [], [], []
+    pending = []
+    for raw in pushed:
+        line = raw.rstrip()
+        if line.strip() in CONTROL_WORDS:
+            if chain:
+                chain.pop()
+            continue
+        indent = len(line) - len(line.lstrip())
+        while chain and (len(chain[-1]) - len(chain[-1].lstrip())) >= indent:
+            chain.pop()
+        canonical = ifnames.canonicalise_line(line)
+        previous = _previous(chain, canonical)
+        if previous is not None and previous != canonical:
+            pending.append((list(chain), previous))
+        elif previous is None:
+            pending.append((list(chain), f"{' ' * indent}no {line.strip()}"))
+        # previous == canonical: the pushed line was already there, nothing to do
+        chain.append(line)
+
+    def _close():
+        for _level in reversed(open_chain):
+            commands.append("exit")
+        open_chain.clear()
+
+    for line_chain, command in pending:
+        if line_chain != open_chain:
+            _close()
+            commands.extend(line_chain)
+            open_chain = list(line_chain)
+        commands.append(command)
+    _close()
+
+    assert_sendable(commands)
+    return commands
+
+
+class RollbackNotInverse(RuntimeError):
+    """A rollback negation does not correspond to anything this deploy pushed."""
+
+
+def assert_rollback_provenance(rollback: list, pushed: list) -> None:
+    """Every ``no X`` in a rollback must answer an ``X`` in the pushed list.
+
+    The bounded exception to "this tool never synthesises a negation". Bounded
+    means checkable: a negation that does not undo something this deploy did is
+    removing configuration nobody asked to remove.
+    """
+    from modules.nsot import ifnames
+
+    pushed_keys = set()
+    for command in pushed:
+        if command.strip() in CONTROL_WORDS:
+            continue
+        pushed_keys.update(_command_keys(ifnames.canonicalise_line(command)))
+    orphans = []
+    for command in rollback:
+        stripped = command.strip()
+        if stripped in CONTROL_WORDS or not stripped.startswith("no "):
+            continue
+        if not set(_command_keys(ifnames.canonicalise_line(command))) & pushed_keys:
+            orphans.append(command)
+    if orphans:
+        raise RollbackNotInverse(
+            "refusing to roll back %d negation(s) that undo nothing this "
+            "deploy pushed: %s" % (len(orphans), ", ".join(repr(o) for o in orphans[:5])))
+
+
 def command_fingerprint(commands: list) -> str:
     """Stable hash of an exact command list, for the confirm-then-send check."""
     import hashlib

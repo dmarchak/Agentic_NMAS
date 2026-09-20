@@ -747,31 +747,36 @@ class TestRollbackFiresOnAMidPushFailure:
         return ctx
 
     def test_a_failed_push_is_a_rollback_target(self):
+        """And it is sent the INVERSE of what was pushed, not a replay."""
         from modules.pipeline import _stage_rollback
 
         ctx = self._ctx_with_push(ok=False)
-        restored = []
+        ctx.confirmed_commands = {"10.0.0.1": ["interface GigabitEthernet0/0",
+                                               " shutdown", "exit"]}
+        sent = []
+        import modules.ai_assistant as A
+        import modules.connection as C
         import modules.pipeline as P
-        original = P._restore_config
-        P._restore_config = lambda conn, cfg: restored.append(cfg)
+
+        original, orig_load, orig_conn = (P._restore_config,
+                                          A._load_pre_change_file,
+                                          C.get_persistent_connection)
+        P._restore_config = lambda conn, cmds: sent.extend(cmds)
+        A._load_pre_change_file = lambda ip: (
+            "interface GigabitEthernet0/0\n description core\n")
+        C.get_persistent_connection = lambda dev, pool, lock: object()
         try:
-            import modules.ai_assistant as A
-            orig_load = A._load_pre_change_file
-            A._load_pre_change_file = lambda ip: "hostname R1\n"
-            import modules.connection as C
-            orig_conn = C.get_persistent_connection
-            C.get_persistent_connection = lambda dev, pool, lock: object()
-            try:
-                _stage_rollback(ctx)
-            finally:
-                A._load_pre_change_file = orig_load
-                C.get_persistent_connection = orig_conn
+            _stage_rollback(ctx)
         finally:
             P._restore_config = original
+            A._load_pre_change_file = orig_load
+            C.get_persistent_connection = orig_conn
 
-        assert restored == ["hostname R1\n"], (
-            "a device whose push failed mid-stream was not restored")
+        assert sent == ["interface GigabitEthernet0/0", " no shutdown", "exit"], (
+            f"a replay cannot undo a shutdown; got {sent}")
         assert ctx.rollback_performed is True
+        assert ctx.rolled_back_ips == ["10.0.0.1"]
+        assert ctx.rollback_commands["10.0.0.1"] == sent
 
     def test_a_skipped_device_is_not_a_rollback_target(self):
         from modules.pipeline import _stage_rollback
@@ -872,3 +877,83 @@ class TestFailureStateIsCaptured:
 
         source = inspect.getsource(PipelineRunner.run)
         assert source.index("_capture_failure_state") < source.index("_stage_rollback")
+
+
+class TestGoldenIsNeverSavedForARolledBackChange:
+    """A rolled-back device must not have the rolled-back config committed.
+
+    Two independent mechanisms have to hold: stage 8.5 must not RUN when a
+    rollback-class stage failed, and if it did run it must skip the devices
+    that were rolled back. Either alone would be a single point of failure for
+    "the repo records what the device actually has".
+    """
+
+    def test_a_failed_rollback_stage_breaks_out_before_save_golden(self):
+        """run() breaks on a non-continue failure; 8.5 is after 8."""
+        from modules.pipeline import _STAGE_TABLE
+
+        names = [name for name, _on_failure in _STAGE_TABLE]
+        assert names.index("verify") < names.index("save_golden")
+        assert dict(_STAGE_TABLE)["verify"] == "rollback"
+        assert dict(_STAGE_TABLE)["save_golden"] == "continue"
+
+    def test_save_golden_skips_a_rolled_back_device(self):
+        from modules.pipeline import _stage_save_golden
+
+        ctx = _ctx()
+        ctx.rolled_back_ips = ["10.0.0.1"]
+        ctx.post_snapshots = {"10.0.0.1": {"running_config": "hostname R1\n"}}
+        _stage_save_golden(ctx)
+
+        assert ctx.golden_result["commit"] == ""
+        assert [s["hostname"] for s in ctx.golden_skipped] == ["R1"]
+        assert "not deployed successfully" in ctx.golden_skipped[0]["reason"]
+
+    def test_save_golden_skips_a_failed_device(self):
+        from modules.pipeline import _stage_save_golden
+
+        ctx = _ctx()
+        ctx.deploy_failures = [{"ip": "10.0.0.1", "reason": "boom"}]
+        ctx.post_snapshots = {"10.0.0.1": {"running_config": "hostname R1\n"}}
+        _stage_save_golden(ctx)
+
+        assert ctx.golden_result["commit"] == ""
+        assert ctx.golden_skipped[0]["reason"] == "not deployed successfully"
+
+    def test_save_golden_refuses_without_a_post_deploy_capture(self):
+        """Never commit the pre-deploy config and claim it is what is there."""
+        from modules.pipeline import _stage_save_golden
+
+        ctx = _ctx()
+        ctx.post_snapshots = {}
+        _stage_save_golden(ctx)
+        assert ctx.golden_skipped[0]["reason"] == "no post-deploy config captured"
+
+    def test_a_verify_failure_never_reaches_save_golden(self):
+        """End to end through the runner, with a spy on the golden stage."""
+        import modules.pipeline as P
+        from modules.pipeline import PipelineRunner, PipelineStageError
+
+        ran = []
+        originals = {name: getattr(P, f"_stage_{name}") for name in
+                     ("netbox_query", "template_render", "ci_gate",
+                      "pre_snapshot", "config_diff", "deploy", "post_snapshot",
+                      "verify", "save_golden", "rollback")}
+        for name in ("netbox_query", "template_render", "ci_gate",
+                     "pre_snapshot", "config_diff", "deploy", "post_snapshot"):
+            setattr(P, f"_stage_{name}", lambda ctx: None)
+        setattr(P, "_stage_verify",
+                lambda ctx: (_ for _ in ()).throw(PipelineStageError("verify failed")))
+        setattr(P, "_stage_save_golden", lambda ctx: ran.append("save_golden"))
+        setattr(P, "_stage_rollback", lambda ctx: ran.append("rollback"))
+        try:
+            ctx = _ctx()
+            ctx.push_results = {"10.0.0.1": {"ok": True}}
+            result = PipelineRunner(ctx).run()
+        finally:
+            for name, fn in originals.items():
+                setattr(P, f"_stage_{name}", fn)
+
+        assert "rollback" in ran, "rollback did not fire on a verify failure"
+        assert "save_golden" not in ran, "a rolled-back change reached golden"
+        assert result.final_status == "failed"

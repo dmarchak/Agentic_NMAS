@@ -142,6 +142,10 @@ class PipelineContext:
     #: ip -> what the device actually looked like after a failed push, diffed
     #: against the pre-change snapshot. Populated before any rollback runs.
     failure_state: dict = field(default_factory=dict)
+    #: ip -> the exact rollback program sent, reported verbatim.
+    rollback_commands: dict = field(default_factory=dict)
+    #: ip -> why a rollback could not complete.
+    rollback_failures: dict = field(default_factory=dict)
 
     # ---- Phase 3c: convergence and golden-save state ---------------------
     convergence:         dict = field(default_factory=dict)  # Stage 8: ip -> checks
@@ -823,12 +827,22 @@ def _push_via_netconf(dev: dict, cmds: list[str]) -> str:
         return f"NETCONF edit-config OK: {reply}"
 
 
+#: IOS rejects a malformed command by printing this and moving on. Netmiko does
+#: not treat it as an error by default, so a cleanly rejected line returns
+#: normally with the rejection sitting unread in the output: the push logs
+#: "pushed — N command(s)", verify passes because nothing changed, and stage 8.5
+#: commits a golden that correctly records a device which was never configured.
+#: A successful deploy that configured nothing is the quietest failure available.
+IOS_ERROR_PATTERN = r"% (Invalid|Incomplete|Ambiguous|Unrecognized)"
+
+
 def _push_via_netmiko(dev: dict, cmds: list[str], pool: dict, lock: Any) -> str:
     """Push config via Netmiko SSH (existing connection pool)."""
     from modules.connection import get_persistent_connection
     conn = get_persistent_connection(dev, pool, lock)
     conn.enable()
-    output = conn.send_config_set(cmds, read_timeout=60)
+    output = conn.send_config_set(cmds, read_timeout=60,
+                                  error_pattern=IOS_ERROR_PATTERN)
     conn.save_config()
     return output
 
@@ -1182,6 +1196,9 @@ def _stage_rollback(ctx: PipelineContext) -> None:
     targets = [ip for ip, r in ctx.push_results.items() if not r.get("skipped")]
     log.warning("pipeline[rollback]: restoring %d device(s): %s", len(targets), targets)
 
+    from modules.nsot.deploy import (assert_rollback_provenance,
+                                     rollback_commands)
+
     for ip in targets:
         dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
         if not dev:
@@ -1194,26 +1211,54 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                     "pipeline[rollback]: no pre-change file for %s — cannot restore", hostname
                 )
                 continue
+
+            # Merge-computed, not replayed. Replaying the pre-change snapshot
+            # is a MERGE: it re-applies lines and removes none. IOS omits
+            # "no shutdown" from an up interface, so a snapshot taken before a
+            # shutdown has no line to re-apply — the replay would leave the
+            # interface down, save the config, and report success.
+            pushed = ctx.rendered_commands.get(ip, [])
+            undo = rollback_commands(pushed, pre_cfg)
+            assert_rollback_provenance(undo, pushed)
+            ctx.rollback_commands[ip] = undo
+
+            if not undo:
+                log.info("pipeline[rollback]: %s — nothing to undo", hostname)
+                continue
+
             conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-            _restore_config(conn, pre_cfg)
-            log.info("pipeline[rollback]: %s restored successfully", hostname)
+            _restore_config(conn, undo)
+            ctx.rolled_back_ips.append(ip)
+            log.info("pipeline[rollback]: %s restored with %d command(s): %s",
+                     hostname, len(undo), undo)
         except Exception as exc:
+            ctx.rollback_failures[ip] = str(exc)
             log.error("pipeline[rollback]: FAILED to restore %s: %s", hostname, exc)
 
     ctx.rollback_performed = True
     ctx.final_status       = "rolled_back"
 
 
-def _restore_config(conn, config_text: str) -> None:
-    """Replace running config with the saved pre-change text via Netmiko config mode."""
-    lines = [
-        line for line in config_text.splitlines()
-        if line.strip()
-        and not any(line.startswith(s) for s in _SKIP_STARTSWITH)
-    ]
+def _restore_config(conn, commands) -> None:
+    """Send an already-computed rollback program through config mode.
+
+    Takes a **command list**, not a config to replay. The name and the previous
+    docstring both said "replace"; ``send_config_set`` merges, and nobody
+    compared the two. See :func:`modules.nsot.deploy.rollback_commands`.
+    """
+    if isinstance(commands, str):
+        lines = [line for line in commands.splitlines()
+                 if line.strip()
+                 and not any(line.startswith(s) for s in _SKIP_STARTSWITH)]
+    else:
+        lines = list(commands)
     if lines:
         conn.enable()
-        conn.send_config_set(lines, read_timeout=120)
+        # The same guard on the rollback path. A rejected rollback line
+        # reported as a successful rollback is worse than a rejected forward
+        # push: the forward failure at least leaves someone looking at it.
+        conn.send_config_set(lines, read_timeout=120,
+                             error_pattern=IOS_ERROR_PATTERN)
         conn.save_config()
 
 

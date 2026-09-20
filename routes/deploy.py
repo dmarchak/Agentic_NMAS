@@ -409,6 +409,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
         "outcome": outcome,
         "commands": commands,
         "failure_state": failure_state,
+        "rollback_commands": list(
+            (result.rollback_commands or {}).get(device.get("ip", ""), [])),
+        "rollback_failures": dict(result.rollback_failures or {}),
         "device_changed": any(e.get("device_changed") for e in failure_state),
         "stage": failed_stage,
         "reason": result.error or "",
