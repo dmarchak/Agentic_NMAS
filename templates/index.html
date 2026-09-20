@@ -779,22 +779,27 @@
 <div id="netboxSyncControls" class="card mb-3 d-none" style="background:#1e293b;border:1px solid #334155">
   <div class="card-body">
     <div class="d-flex align-items-center mb-3">
-      <h6 class="text-primary mb-0 me-auto">Sync</h6>
+      <h6 class="text-primary mb-0 me-auto">Import to NetBox (discovery)</h6>
       <button class="btn btn-outline-primary btn-sm me-2" onclick="netboxSyncCurrent()" id="netboxSyncBtn">
         <span id="netboxSyncSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
-        Sync Current List
+        Import Current List
       </button>
       <button class="btn btn-primary btn-sm" onclick="netboxSyncAll()" id="netboxSyncAllBtn">
         <span id="netboxSyncAllSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
-        Sync All Lists
+        Import All Lists
       </button>
     </div>
     <p class="text-muted small mb-0">
-      Syncing connects to every online device in the selected list(s), pulls
+      Importing connects to every online device in the selected list(s), pulls
       <code>show version</code>, <code>show inventory</code>, and
-      <code>show ip interface</code>, then pushes the results into NetBox DCIM
+      <code>show ip interface</code>, then writes the results into NetBox DCIM
       + IPAM. Each list becomes its own region. Unreachable devices are
       reported but not created in NetBox.
+    </p>
+    <p class="text-muted small mb-0 mt-2">
+      You will see a read-only preview of every object to be created or updated
+      before anything is written. Objects NMAS creates are tagged
+      <code>nmas-managed</code>, and Remove only ever deletes those.
     </p>
   </div>
 </div>
@@ -5027,77 +5032,23 @@ async function netboxTestFromSettings() {
 }
 
 async function netboxSyncCurrent() {
-  const btn     = document.getElementById('netboxSyncBtn');
-  const spinner = document.getElementById('netboxSyncSpinner');
-  if (btn) btn.disabled = true;
-  if (spinner) spinner.classList.remove('d-none');
-  try {
-    const r = await fetch('/netbox/sync', { method: 'POST' });
-    const data = await r.json();
-    showToast(data.message || (r.ok ? 'Sync started' : 'Failed to start sync'),
-              r.ok ? 'info' : 'danger');
-    loadNetboxTab();
-  } catch (e) {
-    showToast('Error: ' + e.message, 'danger');
-  } finally {
-    if (btn) btn.disabled = false;
-    if (spinner) spinner.classList.add('d-none');
-  }
+  // Shows a read-only preview first, then asks for confirmation.
+  // See templates/partials/netbox_safety_modal.html.
+  netboxPreviewImport('');
 }
 
 async function netboxSyncList(listName) {
-  try {
-    const r = await fetch('/netbox/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ list_name: listName }),
-    });
-    const data = await r.json();
-    showToast(data.message || (r.ok ? 'Sync started' : 'Failed to start sync'),
-              r.ok ? 'info' : 'danger');
-    loadNetboxTab();
-  } catch (e) {
-    showToast('Error: ' + e.message, 'danger');
-  }
+  netboxPreviewImport(listName);
 }
 
 async function netboxSyncAll() {
-  const btn     = document.getElementById('netboxSyncAllBtn');
-  const spinner = document.getElementById('netboxSyncAllSpinner');
-  if (btn) btn.disabled = true;
-  if (spinner) spinner.classList.remove('d-none');
-  try {
-    const r = await fetch('/netbox/sync_all', { method: 'POST' });
-    const data = await r.json();
-    showToast(data.message || (r.ok ? 'Sync started' : 'Failed to start sync'),
-              r.ok ? 'info' : 'danger');
-    loadNetboxTab();
-  } catch (e) {
-    showToast('Error: ' + e.message, 'danger');
-  } finally {
-    if (btn) btn.disabled = false;
-    if (spinner) spinner.classList.add('d-none');
-  }
+  netboxPreviewImport('', true);
 }
 
 async function netboxRemoveList(listName) {
-  if (!confirm(`Remove "${listName}" from NetBox?\n\nThis will permanently delete all devices, interfaces, and IP addresses for this list from NetBox. The region and site will also be removed.\n\nThis cannot be undone.`)) return;
-  try {
-    const r = await fetch('/netbox/remove', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({list_name: listName}),
-    });
-    const d = await r.json();
-    if (d.ok) {
-      showToast(`Removed "${listName}" from NetBox — ${d.deleted_devices} device(s) deleted.`, 'success');
-    } else {
-      showToast('Remove failed: ' + (d.error || 'unknown error'), 'danger');
-    }
-    loadNetboxTab();
-  } catch (e) {
-    showToast('Error: ' + e.message, 'danger');
-  }
+  // Replaces the old blind confirm(): the modal lists exactly which objects
+  // are eligible for deletion and which are left alone.
+  netboxPreviewRemoval(listName);
 }
 
 function _esc(s) {
@@ -6002,6 +5953,8 @@ function askAiAboutSelection() {
 <!-- ================================================================== -->
 <!-- SETTINGS MODAL                                                       -->
 <!-- ================================================================== -->
+{% include 'partials/netbox_safety_modal.html' %}
+
 <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -6189,6 +6142,8 @@ function askAiAboutSelection() {
           </div>
         </div>
 
+        {% include 'partials/settings_integrations.html' %}
+
         <hr>
 
         <!-- AI Workflow -->
@@ -6323,6 +6278,10 @@ window.openSettingsModal = function() {
         ? '••••••••  (already set — enter new token to change)'
         : 'nbt_…';
       document.getElementById('settingsNetboxVerifyTls').checked = s.netbox_verify_tls !== false;
+      const nbAllow = document.getElementById('settingsNetboxAllowWrites');
+      if (nbAllow) nbAllow.checked = s.netbox_allow_writes === true;
+      const nbRemove = document.getElementById('settingsNetboxRemoveOnListDelete');
+      if (nbRemove) nbRemove.checked = s.netbox_remove_on_list_delete === true;
       const nbStatus = document.getElementById('settingsNetboxTestStatus');
       if (nbStatus) {
         if (s.netbox_url && s.netbox_token_set) {
@@ -6344,6 +6303,9 @@ window.openSettingsModal = function() {
     })
     .catch(() => showToast('Could not load settings', 'danger'));
   loadUsageSummary();
+  // Integrations panel (routes/settings_integrations.py)
+  if (typeof loadIntegrationSettings === 'function') loadIntegrationSettings();
+  if (typeof loadGeneralIntegrationSettings === 'function') loadGeneralIntegrationSettings();
   _settingsModal.show();
 };
 
@@ -6429,6 +6391,13 @@ window.saveSettings = function() {
   payload.netbox_verify_tls = document.getElementById('settingsNetboxVerifyTls').checked;
   const nbTokVal = document.getElementById('settingsNetboxToken').value.trim();
   if (nbTokVal) payload.netbox_token = nbTokVal;
+  const nbAllowEl = document.getElementById('settingsNetboxAllowWrites');
+  if (nbAllowEl) payload.netbox_allow_writes = nbAllowEl.checked;
+  const nbRemoveEl = document.getElementById('settingsNetboxRemoveOnListDelete');
+  if (nbRemoveEl) payload.netbox_remove_on_list_delete = nbRemoveEl.checked;
+
+  // Server / collector / monitoring settings have their own blueprint endpoint.
+  if (typeof saveGeneralIntegrationSettings === 'function') saveGeneralIntegrationSettings();
 
   fetch('/settings', {
     method: 'POST',

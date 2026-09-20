@@ -49,25 +49,42 @@ _status_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 
 def get_netbox_config() -> dict:
-    """Return the stored NetBox configuration."""
+    """Return the stored NetBox configuration.
+
+    The token is decrypted on read. Values written by builds that predate
+    :mod:`modules.secrets_store` were plaintext and are returned as-is until the
+    settings migration upgrades them.
+    """
+    from modules.secrets_store import get_secret
     return {
         "url":        (get_user_setting("netbox_url", "") or "").rstrip("/"),
-        "token":      get_user_setting("netbox_token", "") or "",
+        "token":      get_secret("netbox_token"),
         "verify_tls": bool(get_user_setting("netbox_verify_tls", True)),
         # Auth header NetBox accepts: "Bearer" (docs format) or "Token" (legacy).
         # Discovered during test_connection() and cached here.
         "auth_scheme": (get_user_setting("netbox_auth_scheme", "Bearer") or "Bearer"),
+        # Fail-closed write gate — see modules/netbox_guard.py.
+        "allow_writes": bool(get_user_setting("netbox_allow_writes", False)),
     }
 
 
 def save_netbox_config(url: str, token: str, verify_tls: bool = True,
-                       auth_scheme: Optional[str] = None) -> None:
-    """Persist NetBox URL, token, TLS verification flag, and (optional) auth scheme."""
+                       auth_scheme: Optional[str] = None,
+                       allow_writes: Optional[bool] = None) -> None:
+    """Persist NetBox URL, token, TLS flag, auth scheme, and the write gate.
+
+    The token is encrypted at rest. An empty *token* leaves the stored one
+    untouched, so saving the form without re-typing the token does not wipe it.
+    """
+    from modules.secrets_store import set_secret
     set_user_setting("netbox_url", (url or "").rstrip("/"))
-    set_user_setting("netbox_token", token or "")
+    if token:
+        set_secret("netbox_token", token)
     set_user_setting("netbox_verify_tls", bool(verify_tls))
     if auth_scheme:
         set_user_setting("netbox_auth_scheme", auth_scheme)
+    if allow_writes is not None:
+        set_user_setting("netbox_allow_writes", bool(allow_writes))
 
 
 # ---------------------------------------------------------------------------
@@ -184,18 +201,93 @@ def _nb_first(session: requests.Session, base: str, path: str, **params) -> Opti
     return hits[0] if hits else None
 
 
+def _object_label(payload: dict) -> str:
+    """Best human-readable name from a NetBox payload, for previews and logs."""
+    for key in ("name", "address", "prefix", "display"):
+        if payload.get(key):
+            return str(payload[key])
+    return ""
+
+
+# Managed-tag id cache, keyed by NetBox base URL.
+_managed_tag_ids: dict = {}
+
+
+def _managed_tag_id(session: requests.Session, base: str):
+    """Get-or-create the ``nmas-managed`` tag, caching its id per NetBox."""
+    from modules.netbox_guard import MANAGED_TAG, MANAGED_TAG_SLUG
+    if base in _managed_tag_ids:
+        return _managed_tag_ids[base]
+    try:
+        tag = _ensure_tag(session, base, MANAGED_TAG, MANAGED_TAG_SLUG, "00bcd4")
+        _managed_tag_ids[base] = tag.get("id")
+    except Exception as exc:
+        # Tagging is provenance, not correctness — never fail a write over it.
+        log.warning("netbox: could not ensure '%s' tag: %s", MANAGED_TAG, exc)
+        _managed_tag_ids[base] = None
+    return _managed_tag_ids[base]
+
+
+def _with_managed_tag(session: requests.Session, base: str,
+                      path: str, payload: dict) -> dict:
+    """Add ``nmas-managed`` to *payload* when the endpoint supports tags.
+
+    This is how removal later tells NMAS-created objects apart from records a
+    human curated by hand.
+    """
+    from modules.netbox_guard import is_taggable
+    if not is_taggable(path):
+        return payload
+    tag_id = _managed_tag_id(session, base)
+    if tag_id is None:
+        return payload
+    tags = list(payload.get("tags") or [])
+    if tag_id not in tags:
+        tags.append(tag_id)
+    return {**payload, "tags": tags}
+
+
 def _nb_post(session: requests.Session, base: str, path: str, payload: dict) -> dict:
-    """POST a payload to a NetBox endpoint and return the JSON response."""
+    """POST a payload to a NetBox endpoint and return the JSON response.
+
+    One of three write chokepoints. Every write is gated on
+    ``netbox_allow_writes`` and recorded so removal can tell what NMAS created.
+    """
+    from modules import netbox_guard as _guard
+
+    endpoint = path.strip("/")
+    if _guard.is_dry_run():
+        _guard.record_intent("creates", endpoint, payload, name=_object_label(payload))
+        # Synthetic id so callers that chain on result["id"] keep working.
+        return {**payload, "id": _guard.current_plan().synthetic_id(), "_dry_run": True}
+
+    _guard.assert_writes_allowed(f"POST {endpoint}")
+    payload = _with_managed_tag(session, base, path, payload)
+
     r = session.post(f"{base}/api/{path.lstrip('/')}", json=payload, timeout=20)
     if not r.ok:
         raise RuntimeError(
             f"POST {path} failed ({r.status_code}): {r.text[:300]}"
         )
-    return r.json()
+    obj = r.json()
+    _guard.record_created(_guard.get_current_list(), endpoint,
+                          obj.get("id"), _object_label(obj) or _object_label(payload))
+    return obj
 
 
 def _nb_patch(session: requests.Session, base: str, path: str, payload: dict) -> dict:
-    """PATCH a payload to a NetBox endpoint (id embedded in path)."""
+    """PATCH a payload to a NetBox endpoint (id embedded in path).
+
+    One of three write chokepoints — see :func:`_nb_post`.
+    """
+    from modules import netbox_guard as _guard
+
+    endpoint = path.strip("/")
+    if _guard.is_dry_run():
+        _guard.record_intent("updates", endpoint, payload, name=_object_label(payload))
+        return {**payload, "id": _guard.current_plan().synthetic_id(), "_dry_run": True}
+
+    _guard.assert_writes_allowed(f"PATCH {endpoint}")
     r = session.patch(f"{base}/api/{path.lstrip('/')}", json=payload, timeout=20)
     if not r.ok:
         raise RuntimeError(
@@ -2408,8 +2500,40 @@ def _scan_device_from_golden(dev: dict) -> dict:
 
 def sync_list_to_netbox(list_name: str, devices: list[dict],
                         status_cache: Optional[dict] = None,
-                        max_workers: int = 6) -> dict:
-    """Sync a single device list to NetBox. Returns a summary dict."""
+                        max_workers: int = 6,
+                        dry_run: bool = False) -> dict:
+    """Import a device list into NetBox. Returns a summary dict.
+
+    With ``dry_run=True`` no write is issued: reads still hit NetBox, so the
+    same code path runs and reports exactly what it *would* create and update.
+    That preview is what the confirm modal shows before asking the operator to
+    enable writes.
+
+    Writes are attributed to *list_name* so removal can later tell which objects
+    NMAS created — see :mod:`modules.netbox_guard`.
+    """
+    from modules import netbox_guard as _guard
+
+    if dry_run:
+        with _guard.dry_run() as plan, _guard.for_list(list_name):
+            result = _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers)
+        result["dry_run"] = True
+        result["plan"] = plan.summary()
+        return result
+
+    if not _guard.writes_allowed():
+        return {"ok": False, "blocked": True,
+                "error": "NetBox writes are disabled. Review the import preview and "
+                         "confirm, or enable writes in Settings → Integrations."}
+
+    with _guard.for_list(list_name):
+        return _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers)
+
+
+def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
+                              status_cache: Optional[dict] = None,
+                              max_workers: int = 6) -> dict:
+    """The sync itself. Always call through :func:`sync_list_to_netbox`."""
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
         return {"ok": False, "error": "NetBox URL and API token are not configured"}
@@ -2592,203 +2716,240 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
 
 
 def _nb_delete(session, base: str, path: str, obj_id: int) -> bool:
-    """DELETE one NetBox object; return True on success or already-gone (404)."""
+    """DELETE one NetBox object; return True on success or already-gone (404).
+
+    One of three write chokepoints — see :func:`_nb_post`. Callers are also
+    responsible for checking provenance before asking for a delete; this only
+    enforces the global gate.
+    """
+    from modules import netbox_guard as _guard
+
+    endpoint = path.strip("/")
+    if _guard.is_dry_run():
+        _guard.record_intent("deletes", endpoint, obj_id=obj_id)
+        return True
+
+    try:
+        _guard.assert_writes_allowed(f"DELETE {endpoint}")
+    except _guard.NetBoxWriteBlocked as exc:
+        log.warning("netbox: %s", exc)
+        return False
+
     try:
         r = session.delete(f"{base}/api/{path.lstrip('/')}{obj_id}/", timeout=15)
-        return r.ok or r.status_code == 404
+        ok = r.ok or r.status_code == 404
+        if ok:
+            _guard.forget_created(_guard.get_current_list(), endpoint, obj_id)
+        return ok
     except Exception as exc:
         log.debug("netbox _nb_delete %s/%s: %s", path, obj_id, exc)
         return False
 
 
-def remove_list_from_netbox(list_name: str) -> dict:
-    """Delete every NetBox object created for a device list.
+def _nb_get_by_id(session, base: str, endpoint: str, obj_id: int) -> Optional[dict]:
+    """Fetch one object by id. Returns None if it is gone or unreadable."""
+    try:
+        r = session.get(f"{base}/api/{endpoint.strip('/')}/{obj_id}/", timeout=15)
+        if r.status_code == 404:
+            return None
+        if not r.ok:
+            log.debug("netbox: GET %s/%s returned %s", endpoint, obj_id, r.status_code)
+            return None
+        return r.json()
+    except Exception as exc:
+        log.debug("netbox: GET %s/%s failed: %s", endpoint, obj_id, exc)
+        return None
 
-    Deletion order (respects referential integrity):
-      1. VPN tunnel terminations + tunnels
-      2. IPAM prefixes scoped to the site or list VRF
-      3. VLANs scoped to the site
-      4. Devices (NetBox cascades → interfaces, IP-address assignments)
-      5. Per-interface VRFs that are now empty (no IPs, no prefixes)
-      6. Site → region → list-level VRF
+
+#: Removal order, chosen so referential integrity holds: terminations before
+#: tunnels, contained objects before containers, site and region last.
+_REMOVAL_ORDER = (
+    "vpn/tunnels",
+    "ipam/ip-addresses",
+    "ipam/prefixes",
+    "ipam/vlans",
+    "dcim/interfaces",
+    "dcim/devices",
+    "ipam/vrfs",
+    "dcim/sites",
+    "dcim/regions",
+)
+
+
+def remove_list_from_netbox(list_name: str, dry_run: bool = False,
+                            forget_only: bool = False) -> dict:
+    """Remove a device list's objects from NetBox — NMAS-created objects only.
+
+    An object is deleted only when **both** are true:
+
+    * NMAS's own created-id record (``data/netbox_created_ids.json``) says it
+      created it for this list, and
+    * the object still carries the ``nmas-managed`` tag in NetBox.
+
+    Anything else — a region, site, VRF, or device a human curated by hand — is
+    reported as skipped and left alone.
+
+    This previously collected devices with ``site_id=`` and deleted everything
+    in the site regardless of origin, then removed the site, region and VRF.
+    Against a NetBox populated by hand from a design document that is
+    unrecoverable data loss, so provenance is now required.
+
+    Args:
+        dry_run: report what would be deleted without deleting anything.
+        forget_only: delete nothing; just drop NMAS's record of the list, so
+            NetBox keeps every object and NMAS stops claiming ownership.
     """
+    from modules import netbox_guard as _guard
+
+    if forget_only:
+        _guard.forget_created(list_name)
+        _clear_sync_status(list_name)
+        log.info("netbox: forgot created-object record for list '%s' (nothing deleted)", list_name)
+        return {"ok": True, "list": list_name, "forget_only": True,
+                "devices": 0, "deleted_devices": 0,
+                "message": "NMAS no longer tracks these objects. Nothing was deleted from NetBox."}
+
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
         return {"ok": False, "error": "NetBox URL and API token are not configured"}
 
+    if not dry_run and not _guard.writes_allowed():
+        return {"ok": False, "blocked": True,
+                "error": "NetBox writes are disabled. Review the removal preview and "
+                         "confirm, or enable writes in Settings → Integrations."}
+
     session = _session_from_config(cfg)
     base    = cfg["url"]
-    slug    = _slug(list_name)
 
-    counts: dict[str, int] = {
-        "devices": 0, "tunnels": 0, "prefixes": 0,
-        "vlans": 0, "vrfs": 0,
-    }
-    flags: dict[str, bool] = {
-        "site": False, "region": False, "list_vrf": False,
-    }
+    created = _guard.get_created(list_name)
+    if not created:
+        return {"ok": True, "list": list_name, "devices": 0, "deleted_devices": 0,
+                "deleted": [], "skipped": [], "counts": {},
+                "message": "NMAS has no record of creating anything in NetBox for this "
+                           "list, so there is nothing safe to remove. Objects created "
+                           "before this safeguard existed must be removed in NetBox."}
+
+    deleted: list = []
+    skipped: list = []
+    counts:  dict = {}
+
+    def _run() -> None:
+        for endpoint in _REMOVAL_ORDER:
+            for entry in list(created.get(endpoint, [])):
+                obj_id = entry.get("id")
+                name   = entry.get("name", "")
+                obj    = _nb_get_by_id(session, base, endpoint, obj_id)
+
+                if obj is None:
+                    # Already gone, or cascaded by an earlier device delete.
+                    _guard.forget_created(list_name, endpoint, obj_id)
+                    continue
+
+                if not _guard.has_managed_tag(obj):
+                    skipped.append({"endpoint": endpoint, "id": obj_id,
+                                    "name": obj.get("name") or name,
+                                    "reason": "no nmas-managed tag — treated as "
+                                              "operator-owned"})
+                    continue
+
+                if _nb_delete(session, base, f"{endpoint}/", obj_id):
+                    deleted.append({"endpoint": endpoint, "id": obj_id,
+                                    "name": obj.get("name") or name})
+                    counts[endpoint] = counts.get(endpoint, 0) + 1
+                else:
+                    skipped.append({"endpoint": endpoint, "id": obj_id,
+                                    "name": obj.get("name") or name,
+                                    "reason": "delete failed"})
 
     try:
-        # ── Resolve site and list VRF ────────────────────────────────────────
-        site         = _nb_first(session, base, "dcim/sites/",  slug=slug)
-        list_vrf_obj = _nb_first(session, base, "ipam/vrfs/",   name=list_name)
-        site_id      = site["id"]         if site         else None
-        list_vrf_id  = list_vrf_obj["id"] if list_vrf_obj else None
-
-        # ── Collect devices in the site ────────────────────────────────────────
-        site_devices: list[dict] = (
-            _nb_get(session, base, "dcim/devices/", site_id=site_id) if site_id else []
-        )
-        site_device_ids: set[int] = {d["id"] for d in site_devices}
-
-        # ── Collect ALL VRF IDs used by this list's devices ─────────────────
-        # Query dcim/interfaces for each device and record the VRF assigned to
-        # each interface.  This is the only reliably supported filter — the
-        # ipam/ip-addresses/?site_id= filter is not guaranteed across NetBox
-        # versions and was the root cause of VRFs being left behind.
-        per_intf_vrf_ids: set[int] = set()
-        for dev_id in site_device_ids:
-            try:
-                for iface in _nb_get(session, base, "dcim/interfaces/", device_id=dev_id):
-                    vrf_obj = iface.get("vrf")
-                    if isinstance(vrf_obj, dict) and vrf_obj.get("id"):
-                        candidate = vrf_obj["id"]
-                        if candidate != list_vrf_id:
-                            per_intf_vrf_ids.add(candidate)
-            except Exception as exc:
-                log.debug("netbox remove: interface VRF scan for device %s: %s", dev_id, exc)
-
-        # All VRF IDs to sweep for prefixes (list-level + per-interface)
-        all_vrf_ids: set[int] = {v for v in (per_intf_vrf_ids | ({list_vrf_id} if list_vrf_id else set()))}
-
-        # ── 1. VPN tunnels ────────────────────────────────────────────────────
-        if site_device_ids:
-            try:
-                for tun in _nb_get(session, base, "vpn/tunnels/"):
-                    try:
-                        terms = _nb_get(session, base, "vpn/tunnel-terminations/",
-                                        tunnel_id=tun["id"])
-                        belongs = False
-                        for t in terms:
-                            obj    = t.get("termination") or {}
-                            dev_id = (obj.get("device") or {}).get("id")
-                            if dev_id in site_device_ids:
-                                belongs = True
-                                _nb_delete(session, base, "vpn/tunnel-terminations/", t["id"])
-                        if belongs and _nb_delete(session, base, "vpn/tunnels/", tun["id"]):
-                            counts["tunnels"] += 1
-                    except Exception as exc:
-                        log.debug("netbox remove: tunnel %s: %s", tun.get("name"), exc)
-            except Exception as exc:
-                log.debug("netbox remove: tunnel sweep failed: %s", exc)
-
-        # ── 2. IPAM prefixes ──────────────────────────────────────────────────
-        # Collect by site (catches all site-scoped prefixes regardless of VRF)
-        # and by each VRF used by this list (catches VRF-scoped prefixes that
-        # may not carry a site field).
-        seen_prefix_ids: set[int] = set()
-
-        def _delete_prefixes_by(**params) -> int:
-            deleted = 0
-            for pf in _nb_get(session, base, "ipam/prefixes/", **params):
-                pid = pf["id"]
-                if pid not in seen_prefix_ids:
-                    seen_prefix_ids.add(pid)
-                    if _nb_delete(session, base, "ipam/prefixes/", pid):
-                        deleted += 1
-            return deleted
-
-        if site_id:
-            counts["prefixes"] += _delete_prefixes_by(site_id=site_id)
-        for vrf_id in all_vrf_ids:
-            counts["prefixes"] += _delete_prefixes_by(vrf_id=vrf_id)
-
-        # ── 3. VLANs ─────────────────────────────────────────────────────────
-        if site_id:
-            for vlan in _nb_get(session, base, "ipam/vlans/", site_id=site_id):
-                if _nb_delete(session, base, "ipam/vlans/", vlan["id"]):
-                    counts["vlans"] += 1
-
-        # ── 4. Devices ────────────────────────────────────────────────────────
-        # NetBox cascades device deletion to interfaces and their IP assignments.
-        for dev in site_devices:
-            if _nb_delete(session, base, "dcim/devices/", dev["id"]):
-                counts["devices"] += 1
-
-        # ── 5. Per-interface VRFs ─────────────────────────────────────────────
-        # Devices are gone so their IPs were cascaded.  Only delete a VRF when
-        # nothing else remains in it — guards against deleting a VRF shared
-        # across multiple device lists (e.g. a global "MGMT" VRF).
-        for vrf_id in per_intf_vrf_ids:
-            try:
-                if (not _nb_get(session, base, "ipam/ip-addresses/", vrf_id=vrf_id)
-                        and not _nb_get(session, base, "ipam/prefixes/", vrf_id=vrf_id)):
-                    if _nb_delete(session, base, "ipam/vrfs/", vrf_id):
-                        counts["vrfs"] += 1
-                        log.debug("netbox remove: deleted empty per-interface VRF id=%s", vrf_id)
-            except Exception as exc:
-                log.debug("netbox remove: per-intf VRF %s cleanup: %s", vrf_id, exc)
-
-        # ── 6. Site → region → list-level VRF ────────────────────────────────
-        if site_id:
-            flags["site"] = _nb_delete(session, base, "dcim/sites/", site_id)
-
-        region = _nb_first(session, base, "dcim/regions/", slug=slug)
-        if region:
-            flags["region"] = _nb_delete(session, base, "dcim/regions/", region["id"])
-
-        if list_vrf_id:
-            # One final sweep — delete any prefixes still in the list VRF that
-            # were not caught by the site filter (e.g. prefixes with no site field).
-            for pf in _nb_get(session, base, "ipam/prefixes/", vrf_id=list_vrf_id):
-                _nb_delete(session, base, "ipam/prefixes/", pf["id"])
-            flags["list_vrf"] = _nb_delete(session, base, "ipam/vrfs/", list_vrf_id)
-
-        # ── Clear local sync status ───────────────────────────────────────────
-        with _status_lock:
-            data = load_sync_status()
-            data.get("lists",   {}).pop(list_name, None)
-            data.get("running", {}).pop(list_name, None)
-            try:
-                os.makedirs(DATA_DIR, exist_ok=True)
-                tmp = _SYNC_STATUS_FILE + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as fh:
-                    json.dump(data, fh, indent=2)
-                os.replace(tmp, _SYNC_STATUS_FILE)
-            except Exception as exc:
-                log.warning("netbox remove: could not update sync status: %s", exc)
-
-        log.info(
-            "netbox: removed list '%s' — devices=%d tunnels=%d prefixes=%d "
-            "vlans=%d vrfs=%d site=%s region=%s list_vrf=%s",
-            list_name, counts["devices"], counts["tunnels"], counts["prefixes"],
-            counts["vlans"], counts["vrfs"],
-            flags["site"], flags["region"], flags["list_vrf"],
-        )
-        return {
-            "ok":      True,
-            "list":    list_name,
-            **counts,
-            **{f"deleted_{k}": v for k, v in flags.items()},
-        }
-
+        if dry_run:
+            with _guard.dry_run(), _guard.for_list(list_name):
+                _run()
+        else:
+            with _guard.for_list(list_name):
+                _run()
+                _clear_sync_status(list_name)
     except Exception as exc:
         log.exception("netbox: remove_list_from_netbox failed for '%s'", list_name)
         return {"ok": False, "error": str(exc)}
 
+    device_count = counts.get("dcim/devices", 0)
+    log.info("netbox: removal for list '%s'%s — %d deleted, %d skipped (devices=%d)",
+             list_name, " (dry run)" if dry_run else "",
+             len(deleted), len(skipped), device_count)
+
+    return {
+        "ok": True,
+        "list": list_name,
+        "dry_run": dry_run,
+        "deleted": deleted,
+        "skipped": skipped,
+        "counts": counts,
+        # Kept for the existing NetBox tab, which reads both of these.
+        "devices": device_count,
+        "deleted_devices": device_count,
+    }
+
+
+def _clear_sync_status(list_name: str) -> None:
+    """Drop a list's entry from the persisted sync-status file."""
+    with _status_lock:
+        data = load_sync_status()
+        data.get("lists",   {}).pop(list_name, None)
+        data.get("running", {}).pop(list_name, None)
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            tmp = _SYNC_STATUS_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=2)
+            os.replace(tmp, _SYNC_STATUS_FILE)
+        except Exception as exc:
+            log.warning("netbox remove: could not update sync status: %s", exc)
+
 
 def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
-                             status_cache: Optional[dict] = None) -> dict:
-    """Sync multiple device lists sequentially. Each list becomes its own region."""
+                             status_cache: Optional[dict] = None,
+                             dry_run: bool = False) -> dict:
+    """Import multiple device lists sequentially. Each list becomes its own region.
+
+    Inherits the write gate and dry-run behaviour of :func:`sync_list_to_netbox`.
+    """
     results = []
     overall_ok = True
     for name, devs in lists_with_devices:
-        res = sync_list_to_netbox(name, devs, status_cache=status_cache)
+        res = sync_list_to_netbox(name, devs, status_cache=status_cache, dry_run=dry_run)
         results.append(res)
         if not res.get("ok"):
             overall_ok = False
-    return {"ok": overall_ok, "results": results,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
+    out = {"ok": overall_ok, "results": results,
+           "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
+    if dry_run:
+        out["dry_run"] = True
+        out["plan"] = _merge_plans(r.get("plan") for r in results)
+    return out
+
+
+def _merge_plans(plans) -> dict:
+    """Combine per-list dry-run plans into one summary."""
+    creates, updates, deletes = [], [], []
+    for plan in plans:
+        if not plan:
+            continue
+        creates.extend(plan.get("creates", []))
+        updates.extend(plan.get("updates", []))
+        deletes.extend(plan.get("deletes", []))
+
+    def _counts(items):
+        out: dict = {}
+        for it in items:
+            out[it["endpoint"]] = out.get(it["endpoint"], 0) + 1
+        return out
+
+    return {"creates": creates, "updates": updates, "deletes": deletes,
+            "create_count": len(creates), "update_count": len(updates),
+            "delete_count": len(deletes),
+            "creates_by_type": _counts(creates), "updates_by_type": _counts(updates),
+            "deletes_by_type": _counts(deletes)}
 
 
 # ---------------------------------------------------------------------------

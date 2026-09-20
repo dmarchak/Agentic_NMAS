@@ -1,0 +1,247 @@
+{# NetBox import / removal confirmation.
+   Included from templates/index.html.
+
+   The dry run behind this modal is read-only, so it runs regardless of the
+   write gate. That is what lets the Import and Remove buttons stay clickable
+   while `netbox_allow_writes` defaults to off: the operator clicks, sees the
+   real object list, and the confirm button is what grants consent. #}
+
+<div class="modal fade" id="netboxSafetyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="netboxSafetyTitle">NetBox</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="netboxSafetyLoading" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="small text-muted mt-2">Running a read-only preview against NetBox…</div>
+        </div>
+        <div id="netboxSafetyBody" class="d-none"></div>
+      </div>
+      <div class="modal-footer d-block">
+        <div id="netboxSafetyConsent" class="form-check mb-2 d-none">
+          <input class="form-check-input" type="checkbox" id="netboxSafetyEnableWrites">
+          <label class="form-check-label small" for="netboxSafetyEnableWrites">
+            Enable writes to NetBox and remember this choice
+          </label>
+        </div>
+        <div class="text-end">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary d-none"
+                  id="netboxSafetyForgetBtn" onclick="netboxSafetyApply(true)">
+            Just stop tracking
+          </button>
+          <button type="button" class="btn btn-primary" id="netboxSafetyConfirmBtn"
+                  onclick="netboxSafetyApply(false)" disabled>Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let _netboxSafetyModal = null;
+let _netboxSafetyState = {mode: 'import', list: '', writesAllowed: false};
+
+function _nbSafetyModal() {
+  if (!_netboxSafetyModal) {
+    _netboxSafetyModal = new bootstrap.Modal(document.getElementById('netboxSafetyModal'));
+  }
+  return _netboxSafetyModal;
+}
+
+function _nbEscape(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+function _nbGroupTable(title, byType, emptyMsg) {
+  const rows = Object.entries(byType || {});
+  if (!rows.length) return `<p class="small text-muted mb-2">${emptyMsg}</p>`;
+  return `<h6 class="fw-semibold mt-3 mb-1">${title}</h6>
+    <div class="table-responsive"><table class="table table-sm mb-1">
+      <tbody>${rows.map(([ep, n]) =>
+        `<tr><td class="font-monospace small">${_nbEscape(ep)}</td>
+             <td class="text-end"><span class="badge bg-primary-subtle text-primary-emphasis">${n}</span></td></tr>`
+      ).join('')}</tbody></table></div>`;
+}
+
+/* ── Import ─────────────────────────────────────────────────────────────── */
+async function netboxPreviewImport(listName, allLists) {
+  _netboxSafetyState = {mode: allLists ? 'import_all' : 'import',
+                        list: listName || '', writesAllowed: false};
+  document.getElementById('netboxSafetyTitle').textContent =
+    allLists ? 'Import all device lists to NetBox' : 'Import to NetBox (discovery)';
+  document.getElementById('netboxSafetyBody').classList.add('d-none');
+  document.getElementById('netboxSafetyLoading').classList.remove('d-none');
+  document.getElementById('netboxSafetyConfirmBtn').disabled = true;
+  document.getElementById('netboxSafetyForgetBtn').classList.add('d-none');
+  document.getElementById('netboxSafetyConsent').classList.add('d-none');
+  _nbSafetyModal().show();
+
+  try {
+    const previewUrl = allLists
+      ? '/netbox/safety/import_all/preview'
+      : '/netbox/safety/import/preview';
+    const r = await fetch(previewUrl, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({list_name: listName || ''}),
+    });
+    const d = await r.json();
+    const body = document.getElementById('netboxSafetyBody');
+    document.getElementById('netboxSafetyLoading').classList.add('d-none');
+    body.classList.remove('d-none');
+
+    if (!d.ok) {
+      body.innerHTML = `<div class="alert alert-danger mb-0">${_nbEscape(d.error)}</div>`;
+      return;
+    }
+
+    _netboxSafetyState.list = d.list;
+    _netboxSafetyState.writesAllowed = d.writes_allowed;
+    const p = d.plan || {};
+
+    body.innerHTML = `
+      <p class="mb-2">Importing <strong>${_nbEscape(d.list)}</strong>
+         (${d.device_count} device(s)) would:</p>
+      <div class="alert alert-info py-2 px-3 small">${_nbEscape(d.summary)}</div>
+      ${_nbGroupTable('Create', p.creates_by_type, 'Nothing new to create.')}
+      ${_nbGroupTable('Update', p.updates_by_type, 'Nothing to update.')}
+      <p class="small text-muted mt-3 mb-0">
+        This preview was read-only. Everything NMAS creates is tagged
+        <code>nmas-managed</code> so it can be told apart from records you curated by hand.
+      </p>`;
+
+    if (!d.writes_allowed) {
+      document.getElementById('netboxSafetyConsent').classList.remove('d-none');
+      document.getElementById('netboxSafetyEnableWrites').checked = false;
+      const confirmBtn = document.getElementById('netboxSafetyConfirmBtn');
+      confirmBtn.disabled = true;
+      document.getElementById('netboxSafetyEnableWrites').onchange = e => {
+        confirmBtn.disabled = !e.target.checked;
+      };
+    } else {
+      document.getElementById('netboxSafetyConfirmBtn').disabled = false;
+    }
+  } catch (e) {
+    document.getElementById('netboxSafetyLoading').classList.add('d-none');
+    const body = document.getElementById('netboxSafetyBody');
+    body.classList.remove('d-none');
+    body.innerHTML = `<div class="alert alert-danger mb-0">${_nbEscape(e.message)}</div>`;
+  }
+}
+
+/* ── Removal ────────────────────────────────────────────────────────────── */
+async function netboxPreviewRemoval(listName) {
+  _netboxSafetyState = {mode: 'remove', list: listName, writesAllowed: false};
+  document.getElementById('netboxSafetyTitle').textContent = `Remove "${listName}" from NetBox`;
+  document.getElementById('netboxSafetyBody').classList.add('d-none');
+  document.getElementById('netboxSafetyLoading').classList.remove('d-none');
+  document.getElementById('netboxSafetyConfirmBtn').disabled = true;
+  document.getElementById('netboxSafetyConsent').classList.add('d-none');
+  _nbSafetyModal().show();
+
+  try {
+    const r = await fetch('/netbox/safety/remove/preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({list_name: listName}),
+    });
+    const d = await r.json();
+    const body = document.getElementById('netboxSafetyBody');
+    document.getElementById('netboxSafetyLoading').classList.add('d-none');
+    body.classList.remove('d-none');
+
+    if (!d.ok) {
+      body.innerHTML = `<div class="alert alert-danger mb-0">${_nbEscape(d.error)}</div>`;
+      return;
+    }
+
+    _netboxSafetyState.writesAllowed = d.writes_allowed;
+    const deleted = d.deleted || [];
+    const skipped = d.skipped || [];
+
+    if (d.message && !deleted.length) {
+      body.innerHTML = `<div class="alert alert-secondary mb-0">${_nbEscape(d.message)}</div>`;
+      document.getElementById('netboxSafetyForgetBtn').classList.remove('d-none');
+      return;
+    }
+
+    body.innerHTML = `
+      <div class="alert alert-danger py-2 px-3 small">
+        <strong>${deleted.length} object(s) would be permanently deleted.</strong>
+        Only objects NMAS created and tagged <code>nmas-managed</code> are eligible.
+      </div>
+      <div class="table-responsive"><table class="table table-sm">
+        <thead><tr><th>Type</th><th>Name</th></tr></thead>
+        <tbody>${deleted.map(o =>
+          `<tr><td class="font-monospace small">${_nbEscape(o.endpoint)}</td>
+               <td>${_nbEscape(o.name || o.id)}</td></tr>`).join('')}</tbody>
+      </table></div>
+      ${skipped.length ? `
+        <h6 class="fw-semibold mt-3 mb-1">Left alone (${skipped.length})</h6>
+        <p class="small text-muted">These are not tracked as NMAS-created, so they are
+           treated as yours and will not be touched.</p>
+        <ul class="small text-muted">${skipped.slice(0, 20).map(o =>
+          `<li>${_nbEscape(o.endpoint)} — ${_nbEscape(o.name || o.id)}
+             <em>(${_nbEscape(o.reason)})</em></li>`).join('')}</ul>` : ''}`;
+
+    document.getElementById('netboxSafetyForgetBtn').classList.remove('d-none');
+    if (!d.writes_allowed) {
+      document.getElementById('netboxSafetyConsent').classList.remove('d-none');
+      document.getElementById('netboxSafetyEnableWrites').checked = false;
+      const confirmBtn = document.getElementById('netboxSafetyConfirmBtn');
+      confirmBtn.disabled = true;
+      document.getElementById('netboxSafetyEnableWrites').onchange = e => {
+        confirmBtn.disabled = !e.target.checked;
+      };
+    } else {
+      document.getElementById('netboxSafetyConfirmBtn').disabled = false;
+    }
+  } catch (e) {
+    document.getElementById('netboxSafetyLoading').classList.add('d-none');
+    const body = document.getElementById('netboxSafetyBody');
+    body.classList.remove('d-none');
+    body.innerHTML = `<div class="alert alert-danger mb-0">${_nbEscape(e.message)}</div>`;
+  }
+}
+
+/* ── Apply ──────────────────────────────────────────────────────────────── */
+async function netboxSafetyApply(forgetOnly) {
+  const {mode, list} = _netboxSafetyState;
+  const enable = document.getElementById('netboxSafetyEnableWrites').checked;
+  const btn = document.getElementById('netboxSafetyConfirmBtn');
+  btn.disabled = true;
+
+  const url = {
+    import:     '/netbox/safety/import/apply',
+    import_all: '/netbox/safety/import_all/apply',
+    remove:     '/netbox/safety/remove/apply',
+  }[mode];
+  const payload = {list_name: list, enable_writes: enable};
+  if (forgetOnly) payload.forget_only = true;
+
+  try {
+    const r = await fetch(url, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    _nbSafetyModal().hide();
+    if (d.ok) {
+      showToast(d.message
+        || (mode === 'remove'
+            ? `Removed ${(d.deleted || []).length} object(s) from NetBox`
+            : `Import started for ${_nbEscape(d.list)} (${d.device_count} device(s))`), 'success');
+    } else {
+      showToast(d.error || 'Operation failed', 'danger');
+    }
+    if (typeof loadNetboxTab === 'function') loadNetboxTab();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>

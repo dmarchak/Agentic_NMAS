@@ -43,6 +43,12 @@ import re
 import textwrap
 import time
 import xml.sax.saxutils as _sax
+
+from modules.jenkins_shell import (
+    install_deps_step as _install_deps_step,
+    python_step as _python_step,
+    step_shell as _step_shell,
+)
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -527,12 +533,12 @@ def _build_pipeline_xml(
             stages {{
                 stage('Install deps') {{
                     steps {{
-                        bat 'pip install netmiko --quiet 2>NUL || echo netmiko already installed'
+                        {_install_deps_step()}
                     }}
                 }}
                 stage('Verify: {_sax.escape(function_type.upper())}') {{
                     steps {{
-                        bat 'python modules\\\\check_runner.py --function {_sax.escape(function_type)} --list-slug {_sax.escape(list_slug)}'
+                        {_python_step('modules/check_runner.py', '--function ' + _sax.escape(function_type) + ' --list-slug ' + _sax.escape(list_slug))}
                     }}
                 }}
             }}

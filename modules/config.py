@@ -113,22 +113,73 @@ def set_user_setting(key: str, value) -> bool:
 PING_INTERVAL = 5
 FAST_CLI = True
 
+
+# ---------------------------------------------------------------------------
+# Portability
+# ---------------------------------------------------------------------------
+# Development is on Windows 11; the deployment target is headless Ubuntu. These
+# resolve in the order: environment variable → user setting → OS-appropriate
+# default, so neither platform needs a code change.
+#
+# Settings are read with get_user_setting rather than modules.settings_schema:
+# settings_schema imports this module, so importing it here would be circular.
+
+def _env_or_setting(env_key: str, setting_key: str, default):
+    """Resolve a setting: environment wins, then user settings, then *default*."""
+    raw = os.environ.get(env_key)
+    if raw not in (None, ""):
+        if isinstance(default, bool):
+            return raw.strip().lower() in ("1", "true", "yes", "on")
+        if isinstance(default, int):
+            try:
+                return int(raw)
+            except ValueError:
+                pass
+            return default
+        return raw
+    value = get_user_setting(setting_key, None)
+    return default if value is None else value
+
+
+IS_WINDOWS = os.name == "nt"
+
 # Flask web server settings
-FLASK_HOST = "0.0.0.0"
-FLASK_PORT = 5000
+FLASK_HOST  = _env_or_setting("NMAS_HOST", "flask_host", "0.0.0.0")
+FLASK_PORT  = _env_or_setting("NMAS_PORT", "flask_port", 5000)
 FLASK_DEBUG = False
 
+# Open a browser at startup. Historically unconditional, which is wrong for a
+# headless systemd unit; NMAS_HEADLESS=1 forces it off.
+_HEADLESS = os.environ.get("NMAS_HEADLESS", "").strip().lower() in ("1", "true", "yes", "on")
+AUTO_OPEN_BROWSER = False if _HEADLESS else bool(
+    _env_or_setting("NMAS_AUTO_OPEN_BROWSER", "auto_open_browser", True)
+)
+
 # File transfer settings
-# TFTP settings for file upload functionality
-# Update these values to match your TFTP server configuration
-TFTP_ROOT = "C:/TFTP-Root"  # Local TFTP root directory
+# The historical default was the Windows path "C:/TFTP-Root". Combined with the
+# import-time makedirs below, that created a literal directory named "C:" in the
+# project root on Linux.
+_DEFAULT_TFTP_ROOT = "C:/TFTP-Root" if IS_WINDOWS else "/srv/tftp"
+TFTP_ROOT = _env_or_setting("NMAS_TFTP_ROOT", "tftp_root", _DEFAULT_TFTP_ROOT)
 
-# Default TFTP server IP - can be overridden by user settings
-_DEFAULT_TFTP_SERVER_IP = "192.168.0.30"
-TFTP_SERVER_IP = get_user_setting("tftp_server_ip", _DEFAULT_TFTP_SERVER_IP)
+# TFTP server IP — no default address: a hardcoded one is wrong on every network
+# but the one it came from. Set it in Settings.
+TFTP_SERVER_IP = get_user_setting("tftp_server_ip", "")
 
-# Ensure TFTP root exists
-os.makedirs(TFTP_ROOT, exist_ok=True)
+
+def ensure_tftp_root() -> str:
+    """Create the TFTP root on first use and return it.
+
+    Deliberately not done at import time: importing a config module should not
+    create directories, least of all from a path belonging to another OS.
+    """
+    try:
+        os.makedirs(TFTP_ROOT, exist_ok=True)
+    except OSError as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "config: could not create TFTP root '%s': %s", TFTP_ROOT, exc)
+    return TFTP_ROOT
 
 # File transfer method: 'tftp' or 'scp'
 # SCP is more reliable and secure but requires SCP to be enabled on the device

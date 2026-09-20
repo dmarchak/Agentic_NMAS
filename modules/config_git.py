@@ -406,6 +406,11 @@ def create_validation_pipeline(list_name: str, jenkins_cfg: dict,
     job_name  = f"nmas-{slug}-validation-{timestamp}"
 
     import xml.sax.saxutils as _sax
+    from modules.jenkins_shell import (
+        install_deps_step as _install_deps_step,
+        python_step as _python_step,
+        step_shell as _step_shell,
+    )
     import textwrap
 
     groovy = textwrap.dedent(f"""\
@@ -418,12 +423,12 @@ def create_validation_pipeline(list_name: str, jenkins_cfg: dict,
             stages {{
                 stage('Install deps') {{
                     steps {{
-                        bat 'pip install netmiko --quiet 2>NUL || echo netmiko already installed'
+                        {_install_deps_step()}
                     }}
                 }}
                 stage('Validate All Configs') {{
                     steps {{
-                        bat 'python modules\\\\check_runner.py --validate-all --list-slug {_sax.escape(slug)}'
+                        {_python_step('modules/check_runner.py', '--validate-all --list-slug ' + _sax.escape(slug))}
                     }}
                 }}
             }}

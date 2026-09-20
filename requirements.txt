@@ -28,6 +28,22 @@ pysnmp>=6.2.0           # SNMP v1/v2c polling (pure Python, async API in v6+)
 # Security & Encryption
 cryptography==41.0.7
 
+# HTTP client
+# Already imported at module level by modules/netbox_client.py but was never
+# declared — a clean install per README crashed on every NetBox code path.
+requests>=2.31.0
+
+# Configuration / data formats
+# PyYAML already arrives transitively via netmiko; pinned explicitly because the
+# NSoT work (host_vars / group_vars) makes it load-bearing rather than incidental.
+PyYAML>=6.0
+
+# Settings schema validation.
+# Chosen over pydantic: settings are plain dicts round-tripped through
+# config.load_user_settings/save_user_settings, so a declarative schema layers
+# onto the existing code without rewriting settings access as typed models.
+jsonschema>=4.20.0
+
 # Socket.IO
 python-socketio==5.10.0
 python-engineio==4.8.0

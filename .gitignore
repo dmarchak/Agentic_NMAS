@@ -59,3 +59,6 @@ FEATURES_PHASE4.md
 IMPROVEMENTS.md
 SHORT_TERM_IMPROVEMENTS.md
 UI_IMPROVEMENTS.md
+
+# Windows TFTP root accidentally created on Linux (see modules/config.py)
+C:/

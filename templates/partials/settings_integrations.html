@@ -1,0 +1,394 @@
+{# Settings → Integrations.
+   Included from templates/index.html's settings modal. Bootstrap 5 only, using
+   the same card / form-label / form-text / badge patterns as the rest of that
+   modal — no new CSS framework.
+
+   Cards are rendered from INTEGRATION_SPEC below rather than written out nine
+   times; every field is user-supplied, so nothing here hardcodes an endpoint,
+   credential, or query. #}
+
+<hr>
+
+<h6 class="text-primary fw-semibold mb-2">
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor"
+       class="me-1" viewBox="0 0 16 16">
+    <path d="M4.5 1a2.5 2.5 0 0 0 0 5H6V4.5A2.5 2.5 0 0 0 3.5 2zm6 0A2.5 2.5 0 0 0 10 4.5V6h1.5a2.5 2.5 0 0 0 0-5zM6 10v1.5A2.5 2.5 0 1 1 3.5 9H6zm4 0h1.5A2.5 2.5 0 1 1 10 11.5z"/>
+  </svg>
+  Integrations
+  <span class="text-muted fw-normal small ms-1">(all optional — unconfigured tools are simply hidden)</span>
+</h6>
+
+<div id="integrationStatusStrip" class="d-flex flex-wrap gap-2 mb-3"></div>
+
+<div id="integrationCards" class="row g-3 mb-3"></div>
+
+<hr>
+
+{# ── NetBox write safety ──────────────────────────────────────────────────── #}
+<h6 class="text-primary fw-semibold mb-2">NetBox write safety</h6>
+<div class="alert alert-warning py-2 px-3 small mb-3">
+  <strong>Writes are off by default.</strong> NMAS reads NetBox freely; creating,
+  updating, or deleting objects requires this switch. Import shows a preview and
+  can enable writes from its confirm dialog, so you do not have to set this first.
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="settingsNetboxAllowWrites" role="switch">
+      <label class="form-check-label fw-semibold" for="settingsNetboxAllowWrites">
+        Allow writes to NetBox
+      </label>
+    </div>
+    <div class="form-text">
+      NMAS tags everything it creates <code>nmas-managed</code> and records its IDs.
+      Removal only ever touches objects matching both.
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="settingsNetboxRemoveOnListDelete" role="switch">
+      <label class="form-check-label fw-semibold" for="settingsNetboxRemoveOnListDelete">
+        Remove from NetBox when a device list is deleted
+      </label>
+    </div>
+    <div class="form-text">
+      Off by default. When off, deleting a list leaves every NetBox object in place.
+    </div>
+  </div>
+</div>
+
+<hr>
+
+{# ── Server / portability ─────────────────────────────────────────────────── #}
+<h6 class="text-primary fw-semibold mb-2">Server &amp; portability</h6>
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <label class="form-label fw-semibold">Bind address</label>
+    <input type="text" class="form-control" id="settingsFlaskHost" placeholder="0.0.0.0">
+    <div class="form-text">Restart required. <code>NMAS_HOST</code> overrides this.</div>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label fw-semibold">Port</label>
+    <input type="number" class="form-control" id="settingsFlaskPort" min="1" max="65535" placeholder="5000">
+  </div>
+  <div class="col-md-3 d-flex align-items-end">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="settingsAutoOpenBrowser" role="switch">
+      <label class="form-check-label" for="settingsAutoOpenBrowser">Open browser at startup</label>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label fw-semibold">Jenkins step shell</label>
+    <select class="form-select" id="settingsJenkinsStepShell">
+      <option value="bat">bat (Windows)</option>
+      <option value="sh">sh (Linux)</option>
+    </select>
+    <div class="form-text">Applies to newly generated pipelines.</div>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label fw-semibold">TFTP root</label>
+    <input type="text" class="form-control" id="settingsTftpRoot" placeholder="/srv/tftp">
+    <div class="form-text">Created on first use. <code>NMAS_TFTP_ROOT</code> overrides this.</div>
+  </div>
+</div>
+
+<hr>
+
+{# ── Collectors ───────────────────────────────────────────────────────────── #}
+<h6 class="text-primary fw-semibold mb-2">
+  Built-in collectors
+  <span class="text-muted fw-normal small ms-1">(turn off if an external collector owns the port)</span>
+</h6>
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="settingsCollectorTrap" role="switch">
+      <label class="form-check-label" for="settingsCollectorTrap">SNMP trap receiver</label>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="settingsCollectorNetflow" role="switch">
+      <label class="form-check-label" for="settingsCollectorNetflow">NetFlow collector</label>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="settingsCollectorSyslog" role="switch">
+      <label class="form-check-label" for="settingsCollectorSyslog">Syslog monitor</label>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+{# ── Monitoring identity + query templates ────────────────────────────────── #}
+<h6 class="text-primary fw-semibold mb-2">
+  Monitoring identity
+  <span class="text-muted fw-normal small ms-1">(how a device matches its series in Prometheus/Loki)</span>
+</h6>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <label class="form-label fw-semibold">Match devices by</label>
+    <select class="form-select" id="settingsMonIdentityMode">
+      <option value="ip">Management IP</option>
+      <option value="hostname">Hostname</option>
+      <option value="netbox_custom_field">NetBox custom field</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label fw-semibold">Custom field name</label>
+    <input type="text" class="form-control" id="settingsMonIdentityField" placeholder="monitoring_id">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label fw-semibold">Prometheus label</label>
+    <input type="text" class="form-control" id="settingsMonPromLabel" placeholder="instance">
+  </div>
+  <div class="col-md-3 d-flex align-items-end">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="settingsMonStripPort" role="switch">
+      <label class="form-check-label" for="settingsMonStripPort">Strip port suffix</label>
+    </div>
+  </div>
+  <div class="col-12">
+    <label class="form-label fw-semibold">PromQL: device up</label>
+    <input type="text" class="form-control font-monospace" id="settingsPromqlDeviceUp"
+           placeholder='{% raw %}up{{label}="{target}"}{% endraw %}'>
+    <div class="form-text">
+      Placeholders <code>{label}</code> and <code>{target}</code>. Different exporters and
+      MIBs need different queries, so these are settings rather than code.
+    </div>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label fw-semibold">PromQL: CPU</label>
+    <input type="text" class="form-control font-monospace" id="settingsPromqlCpu">
+  </div>
+  <div class="col-md-6">
+    <label class="form-label fw-semibold">PromQL: interface oper status</label>
+    <input type="text" class="form-control font-monospace" id="settingsPromqlInterfaceOper">
+  </div>
+</div>
+
+<script>
+/* Field spec for the integration cards. Phase 0 ships connection tests only;
+   Phase 5 adds the read clients behind the same settings. */
+const INTEGRATION_SPEC = {
+  prometheus: {icon: '📈', fields: [
+    {key: 'prometheus_url', label: 'URL', type: 'url', help: 'Prometheus or Thanos Query base URL.'},
+    {key: 'prometheus_auth_mode', label: 'Auth', type: 'select', options: ['none', 'basic', 'bearer']},
+    {key: 'prometheus_username', label: 'Username', type: 'text'},
+    {key: 'prometheus_password', label: 'Password', type: 'secret'},
+    {key: 'prometheus_bearer_token', label: 'Bearer token', type: 'secret'},
+    {key: 'prometheus_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+  grafana: {icon: '📊', fields: [
+    {key: 'grafana_url', label: 'Base URL', type: 'url'},
+    {key: 'grafana_token', label: 'API token', type: 'secret'},
+    {key: 'grafana_device_dashboard_url', label: 'Device dashboard URL', type: 'text',
+     help: 'Supports {hostname} and {ip} placeholders.'},
+    {key: 'grafana_embed_mode', label: 'Embed mode', type: 'select', options: ['link', 'iframe'],
+     help: 'Links are default: embedding needs allow_embedding, and auth proxies often block iframes.'},
+    {key: 'grafana_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+  loki: {icon: '📜', fields: [
+    {key: 'loki_url', label: 'URL', type: 'url'},
+    {key: 'loki_auth_mode', label: 'Auth', type: 'select', options: ['none', 'basic', 'bearer']},
+    {key: 'loki_username', label: 'Username', type: 'text'},
+    {key: 'loki_password', label: 'Password', type: 'secret'},
+    {key: 'loki_bearer_token', label: 'Bearer token', type: 'secret'},
+    {key: 'loki_selector_template', label: 'LogQL selector', type: 'text',
+     help: 'Supports {ip} and {hostname} placeholders.'},
+    {key: 'loki_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+  oxidized: {icon: '🗄️', fields: [
+    {key: 'oxidized_url', label: 'oxidized-web URL', type: 'url'},
+    {key: 'oxidized_username', label: 'Username', type: 'text'},
+    {key: 'oxidized_password', label: 'Password', type: 'secret'},
+    {key: 'oxidized_node_identity', label: 'Node identity', type: 'select', options: ['hostname', 'ip']},
+    {key: 'oxidized_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+  kea: {icon: '🌐', fields: [
+    {key: 'kea_url', label: 'Control Agent URL', type: 'url'},
+    {key: 'kea_username', label: 'Username', type: 'text'},
+    {key: 'kea_password', label: 'Password', type: 'secret'},
+    {key: 'kea_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+  topology_service: {icon: '🕸️', fields: [
+    {key: 'topology_service_url', label: 'URL', type: 'url',
+     help: 'Optional. The built-in CDP/LLDP topology is unaffected.'},
+    {key: 'topology_service_type', label: 'Type', type: 'select', options: ['json', 'svg', 'iframe']},
+    {key: 'topology_service_token', label: 'Token', type: 'secret'},
+    {key: 'topology_service_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+  nsot_git: {icon: '🔀', fields: [
+    {key: 'nsot_git_repo_path', label: 'Local repo path', type: 'text',
+     help: 'Blank uses each list’s data/lists/{slug}/config_repo.'},
+    {key: 'nsot_git_remote_url', label: 'Remote URL', type: 'text', help: 'Optional — a local repo is a complete VCS.'},
+    {key: 'nsot_git_branch', label: 'Branch', type: 'text'},
+    {key: 'nsot_git_author_name', label: 'Author name', type: 'text'},
+    {key: 'nsot_git_author_email', label: 'Author email', type: 'text'},
+    {key: 'nsot_git_auth_mode', label: 'Auth', type: 'select', options: ['ssh_key', 'token']},
+    {key: 'nsot_git_token', label: 'Token', type: 'secret'},
+    {key: 'nsot_git_auto_push', label: 'Auto-push after commit', type: 'switch'}]},
+  s3: {icon: '🪣', fields: [
+    {key: 's3_endpoint', label: 'Endpoint', type: 'url', help: 'Any S3-compatible endpoint (MinIO, AWS S3, …).'},
+    {key: 's3_bucket', label: 'Bucket', type: 'text'},
+    {key: 's3_access_key', label: 'Access key', type: 'secret'},
+    {key: 's3_secret_key', label: 'Secret key', type: 'secret'},
+    {key: 's3_region', label: 'Region', type: 'text'},
+    {key: 's3_prefix', label: 'Prefix', type: 'text'},
+    {key: 's3_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+};
+
+function _intField(f, cfg) {
+  const id = 'int_' + f.key;
+  const val = cfg[f.key];
+  const help = f.help ? `<div class="form-text">${f.help}</div>` : '';
+  if (f.type === 'switch') {
+    return `<div class="col-md-6"><div class="form-check form-switch mt-4">
+      <input class="form-check-input" type="checkbox" role="switch" id="${id}" ${val ? 'checked' : ''}>
+      <label class="form-check-label" for="${id}">${f.label}</label></div>${help}</div>`;
+  }
+  if (f.type === 'select') {
+    const opts = f.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('');
+    return `<div class="col-md-6"><label class="form-label fw-semibold">${f.label}</label>
+      <select class="form-select form-select-sm" id="${id}">${opts}</select>${help}</div>`;
+  }
+  if (f.type === 'secret') {
+    const isSet = (cfg._secrets || {})[f.key];
+    const badge = isSet
+      ? '<span class="badge bg-success-subtle text-success-emphasis ms-1">set</span>'
+      : '<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">not set</span>';
+    return `<div class="col-md-6"><label class="form-label fw-semibold">${f.label}${badge}</label>
+      <input type="password" class="form-control form-control-sm" id="${id}" autocomplete="off"
+             placeholder="${isSet ? 'Leave blank to keep' : ''}">
+      <div class="form-text">Encrypted at rest; never shown or logged.</div></div>`;
+  }
+  return `<div class="col-md-6"><label class="form-label fw-semibold">${f.label}</label>
+    <input type="${f.type}" class="form-control form-control-sm" id="${id}" value="${val == null ? '' : String(val).replace(/"/g, '&quot;')}">${help}</div>`;
+}
+
+async function loadIntegrationSettings() {
+  try {
+    const r = await fetch('/settings/integrations');
+    const d = await r.json();
+    if (!d.ok) return;
+
+    const host = document.getElementById('integrationCards');
+    host.innerHTML = Object.entries(INTEGRATION_SPEC).map(([name, spec]) => {
+      const cfg = d.integrations[name] || {};
+      const fields = spec.fields.map(f => _intField(f, cfg)).join('');
+      return `<div class="col-12"><div class="card border-light-subtle">
+        <div class="card-body py-2 px-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">${spec.icon} ${cfg.label || name}</span>
+            <span>
+              <span id="intStatus_${name}" class="small text-muted me-2"></span>
+              <button type="button" class="btn btn-outline-secondary btn-sm"
+                      onclick="testIntegration('${name}')">Test</button>
+              <button type="button" class="btn btn-outline-primary btn-sm"
+                      onclick="saveIntegration('${name}')">Save</button>
+            </span>
+          </div>
+          <div class="row g-2">${fields}</div>
+        </div></div></div>`;
+    }).join('');
+
+    loadIntegrationStatus();
+  } catch (e) { console.error('loadIntegrationSettings', e); }
+}
+
+async function loadIntegrationStatus() {
+  try {
+    const r = await fetch('/settings/integrations/status');
+    const d = await r.json();
+    if (!d.ok) return;
+    const cls = {up: 'bg-success', down: 'bg-danger', not_configured: 'bg-secondary'};
+    document.getElementById('integrationStatusStrip').innerHTML = d.statuses.map(s =>
+      `<span class="badge ${cls[s.state] || 'bg-secondary'}" title="${(s.message || '').replace(/"/g, '&quot;')}">
+         ${s.label}</span>`).join('');
+  } catch (e) { console.error('loadIntegrationStatus', e); }
+}
+
+function _collectIntegration(name) {
+  const out = {};
+  for (const f of INTEGRATION_SPEC[name].fields) {
+    const el = document.getElementById('int_' + f.key);
+    if (!el) continue;
+    if (f.type === 'switch') out[f.key] = el.checked;
+    else if (f.type === 'secret') { if (el.value) out[f.key] = el.value; }
+    else out[f.key] = el.value;
+  }
+  return out;
+}
+
+async function saveIntegration(name) {
+  const el = document.getElementById('intStatus_' + name);
+  try {
+    const r = await fetch(`/settings/integrations/${name}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(_collectIntegration(name)),
+    });
+    const d = await r.json();
+    el.className = 'small me-2 ' + (d.ok ? 'text-success' : 'text-danger');
+    el.textContent = d.ok ? 'Saved' : (d.error || 'Save failed');
+    if (d.ok) { loadIntegrationSettings(); }
+  } catch (e) { el.className = 'small me-2 text-danger'; el.textContent = e.message; }
+}
+
+async function testIntegration(name) {
+  const el = document.getElementById('intStatus_' + name);
+  el.className = 'small me-2 text-muted';
+  el.textContent = 'Testing…';
+  try {
+    const r = await fetch(`/settings/integrations/${name}/test`, {method: 'POST'});
+    const d = await r.json();
+    el.className = 'small me-2 ' + (d.ok ? 'text-success' : 'text-danger');
+    el.textContent = d.ok ? (d.message || 'OK') : (d.error || 'Failed');
+  } catch (e) { el.className = 'small me-2 text-danger'; el.textContent = e.message; }
+  loadIntegrationStatus();
+}
+
+const _GENERAL_MAP = {
+  flask_host: 'settingsFlaskHost', flask_port: 'settingsFlaskPort',
+  auto_open_browser: 'settingsAutoOpenBrowser', tftp_root: 'settingsTftpRoot',
+  jenkins_step_shell: 'settingsJenkinsStepShell',
+  collector_trap_enabled: 'settingsCollectorTrap',
+  collector_netflow_enabled: 'settingsCollectorNetflow',
+  collector_syslog_enabled: 'settingsCollectorSyslog',
+  monitoring_identity_mode: 'settingsMonIdentityMode',
+  monitoring_identity_field: 'settingsMonIdentityField',
+  monitoring_prom_label: 'settingsMonPromLabel',
+  monitoring_strip_port: 'settingsMonStripPort',
+  promql_device_up: 'settingsPromqlDeviceUp', promql_cpu: 'settingsPromqlCpu',
+  promql_interface_oper: 'settingsPromqlInterfaceOper',
+};
+
+async function loadGeneralIntegrationSettings() {
+  try {
+    const r = await fetch('/settings/integrations/general');
+    const d = await r.json();
+    if (!d.ok) return;
+    for (const [key, id] of Object.entries(_GENERAL_MAP)) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      if (el.type === 'checkbox') el.checked = !!d.settings[key];
+      else el.value = d.settings[key] == null ? '' : d.settings[key];
+    }
+  } catch (e) { console.error('loadGeneralIntegrationSettings', e); }
+}
+
+/* Called from saveSettings() in index.html so the existing Save button
+   persists these alongside the settings it already owns. */
+async function saveGeneralIntegrationSettings() {
+  const payload = {};
+  for (const [key, id] of Object.entries(_GENERAL_MAP)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (el.type === 'checkbox') payload[key] = el.checked;
+    else if (el.type === 'number') payload[key] = parseInt(el.value, 10) || undefined;
+    else payload[key] = el.value;
+  }
+  try {
+    const r = await fetch('/settings/integrations/general', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    return await r.json();
+  } catch (e) { return {ok: false, error: e.message}; }
+}
+</script>

@@ -61,6 +61,8 @@ from modules.config import (
     FLASK_HOST,
     FLASK_PORT,
     FLASK_DEBUG,
+    AUTO_OPEN_BROWSER,
+    ensure_tftp_root,
     set_user_setting,
     get_user_setting,
     load_user_settings,
@@ -133,6 +135,22 @@ else:
 socketio = SocketIO(
     app, async_mode="threading", cors_allowed_origins="*", manage_session=False
 )
+
+# New routes live in Flask blueprints under routes/ rather than growing this
+# file further. Registered here, immediately after the app exists.
+try:
+    from routes import register_blueprints
+    register_blueprints(app)
+except Exception as _bp_exc:                  # noqa: BLE001
+    app.logger.error("Could not register blueprints: %s", _bp_exc)
+
+# Bring user_settings.json up to the current schema and encrypt any secret that
+# an older build wrote in plaintext (the NetBox token).
+try:
+    from modules.settings_schema import migrate as _migrate_settings
+    _migrate_settings()
+except Exception as _mig_exc:                 # noqa: BLE001
+    app.logger.error("Settings migration failed: %s", _mig_exc)
 
 # Background daemons are started after all routes/functions are defined.
 # See _start_background_daemons() called at the bottom of this file.
@@ -704,8 +722,8 @@ def upload_file(ip):
             # TFTP transfer - requires external TFTP server
             app.logger.info(f'Using TFTP to upload {file.filename} to {ip}')
 
-            # Save to local TFTP root (configured in modules.config)
-            local_path = os.path.join(TFTP_ROOT, file.filename)
+            # Save to local TFTP root (configured in Settings; created on first use)
+            local_path = os.path.join(ensure_tftp_root(), file.filename)
             file.save(local_path)
 
             def execute_tftp(conn):
@@ -1050,6 +1068,9 @@ def create_device_list_route():
 def delete_device_list_route(list_name):
     """Delete a device list and all associated external data."""
     cleanup_log = []
+    # Optional body: {"remove_from_netbox": true} opts into the NetBox cascade,
+    # which is off by default (see step 2).
+    data = request.get_json(silent=True) or {}
 
     # ── 1. Delete Jenkins pipelines ────────────────────────────────────────
     try:
@@ -1082,21 +1103,40 @@ def delete_device_list_route(list_name):
         app.logger.warning("list delete: Jenkins cleanup failed: %s", exc)
         cleanup_log.append(f"Jenkins cleanup skipped: {exc}")
 
-    # ── 2. Remove from NetBox ──────────────────────────────────────────────
+    # ── 2. Remove from NetBox (opt-in) ─────────────────────────────────────
+    # This cascade used to run silently on every list delete and removed the
+    # site, region, VRF and every device in the site — including records NMAS
+    # never created. It is now off by default and requires either the
+    # `remove_from_netbox` flag on this request or the
+    # `netbox_remove_on_list_delete` setting. Even then it only deletes objects
+    # NMAS created and tagged; see modules/netbox_guard.py.
     try:
         from modules.netbox_client import remove_list_from_netbox, get_netbox_config
-        nbcfg = get_netbox_config()
-        if nbcfg.get("url") and nbcfg.get("token"):
+        from modules.settings_schema import get_setting
+
+        requested = bool(data.get("remove_from_netbox"))
+        opt_in    = requested or bool(get_setting("netbox_remove_on_list_delete", False))
+        nbcfg     = get_netbox_config()
+
+        if not nbcfg.get("url") or not nbcfg.get("token"):
+            cleanup_log.append("NetBox: not configured — skipped")
+        elif not opt_in:
+            # Stop claiming ownership, but leave every NetBox object in place.
+            remove_list_from_netbox(list_name, forget_only=True)
+            cleanup_log.append(
+                "NetBox: objects left in place (enable 'Remove from NetBox when a "
+                "device list is deleted' in Settings, or use Remove on the NetBox tab)"
+            )
+        else:
             nb_result = remove_list_from_netbox(list_name)
             if nb_result.get("ok"):
                 cleanup_log.append(
-                    f"NetBox: removed {nb_result.get('deleted_devices', 0)} device(s), "
-                    f"site={nb_result.get('deleted_site')}, region={nb_result.get('deleted_region')}"
+                    f"NetBox: deleted {len(nb_result.get('deleted', []))} NMAS-created "
+                    f"object(s), skipped {len(nb_result.get('skipped', []))} "
+                    f"operator-owned object(s)"
                 )
             else:
                 cleanup_log.append(f"NetBox removal partial: {nb_result.get('error', 'unknown')}")
-        else:
-            cleanup_log.append("NetBox: not configured — skipped")
     except Exception as exc:
         app.logger.warning("list delete: NetBox cleanup failed: %s", exc)
         cleanup_log.append(f"NetBox cleanup skipped: {exc}")
@@ -1247,6 +1287,9 @@ def get_settings():
         "netbox_token_set":   bool(nbcfg.get("token")),
         "netbox_verify_tls":  bool(nbcfg.get("verify_tls", True)),
         "netbox_auth_scheme": nbcfg.get("auth_scheme", "Bearer"),
+        "netbox_allow_writes": bool(nbcfg.get("allow_writes", False)),
+        "netbox_remove_on_list_delete": bool(
+            get_user_setting("netbox_remove_on_list_delete", False)),
         "ai_enabled":              _ai_enabled(),
         "background_agent_enabled": bool(load_user_settings().get("background_agent_enabled", True)),
     }
@@ -1327,10 +1370,17 @@ def save_settings():
             if not token:
                 token = existing.get("token", "")
             verify_tls = data.get("netbox_verify_tls", existing.get("verify_tls", True))
+            # Fail-closed write gate; absent from the payload means "leave as is".
+            allow_writes = data.get("netbox_allow_writes")
+            if "netbox_remove_on_list_delete" in data:
+                set_user_setting("netbox_remove_on_list_delete",
+                                 bool(data["netbox_remove_on_list_delete"]))
             if url and not token:
                 errors.append("NetBox token is required the first time you save a URL.")
             else:
-                save_netbox_config(url, token, bool(verify_tls))
+                save_netbox_config(url, token, bool(verify_tls),
+                                   allow_writes=None if allow_writes is None
+                                   else bool(allow_writes))
         except Exception as exc:
             errors.append(f"NetBox settings failed: {exc}")
 
@@ -2645,8 +2695,8 @@ def bulk_tftp_upload():
         if not file or not file.filename:
             return jsonify({"status": "error", "message": "No file selected"}), 400
 
-        # Save file to TFTP root
-        local_path = os.path.join(TFTP_ROOT, file.filename)
+        # Save file to TFTP root (created on first use)
+        local_path = os.path.join(ensure_tftp_root(), file.filename)
         file.save(local_path)
         app.logger.info(f"Saved {file.filename} to TFTP root for bulk upload")
 
@@ -5234,7 +5284,11 @@ if __name__ == "__main__":
     import sys
     try:
         url = f"http://{'127.0.0.1' if FLASK_HOST == '0.0.0.0' else FLASK_HOST}:{FLASK_PORT}"
-        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+        # Off for a headless deployment (NMAS_HEADLESS=1 or the setting).
+        if AUTO_OPEN_BROWSER:
+            threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+        else:
+            print(f"NMAS listening on {url}")
         socketio.run(app, host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG, use_reloader=False, allow_unsafe_werkzeug=True)
     except Exception as e:
         print(f"\n{'='*60}")

@@ -16,6 +16,12 @@ import textwrap
 import time
 import xml.sax.saxutils as _sax
 
+from modules.jenkins_shell import (
+    install_deps_step as _install_deps_step,
+    python_step as _python_step,
+    step_shell as _step_shell,
+)
+
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -1053,18 +1059,18 @@ def generate_pipeline_xml(
             stages {{
                 stage('Install deps') {{
                     steps {{
-                        bat 'pip install netmiko --quiet 2>NUL || echo netmiko already installed'
+                        {_install_deps_step()}
                     }}
                 }}
                 stage('Verify Configuration') {{
                     steps {{
-                        bat 'python modules\\\\check_runner.py --config-id {_sax.escape(config_id)}'
+                        {_python_step('modules/check_runner.py', '--config-id ' + _sax.escape(config_id))}
                     }}
                 }}
             }}
             post {{
                 success {{
-                    bat 'curl -s -X POST "{_sax.escape(nmas_callback_url)}" -H "Content-Type: application/json" -d "{{\\"config_id\\": \\"{_sax.escape(config_id)}\\", \\"token\\": \\"{_sax.escape(token)}\\"}}"'
+                    {_step_shell()} 'curl -s -X POST "{_sax.escape(nmas_callback_url)}" -H "Content-Type: application/json" -d "{{\\"config_id\\": \\"{_sax.escape(config_id)}\\", \\"token\\": \\"{_sax.escape(token)}\\"}}"'
                 }}
                 always {{
                     echo "Pipeline finished: ${{currentBuild.currentResult}}"
