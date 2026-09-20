@@ -81,10 +81,34 @@ def report():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+def _captured_config(repo: str, hostname: str):
+    """``(config_text, mgmt_ip)`` for a device, resolved through the manifest.
+
+    Same correction as on the deploy path: discovering the device by scanning
+    ``golden_configs/`` took identity from the deprecated store while content
+    came from the repo, so emptying that directory — which the migration
+    permits — would report "no golden config" for a device that has one.
+    """
+    from modules.nsot import manifest as _m
+
+    entry = _m.find_by_name(repo, hostname)[1]
+    if entry:
+        path = _m.golden_path_for(repo, entry)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                return fh.read(), entry.get("mgmt_ip", "")
+
+    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
+    legacy = next((e for e in _list_golden_configs()
+                   if e.get("hostname") == hostname), None)
+    if legacy is None:
+        return "", ""
+    return _load_golden_config_file(legacy["device_ip"]) or "", legacy["device_ip"]
+
+
 @bp.route("/extract/<path:hostname>", methods=["POST"])
 def extract(hostname):
     """Extract one device's host_vars to the staging area. Commits nothing."""
-    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
     from modules.device import get_current_device_list, load_saved_devices
     from modules.nsot import hostvars
     from modules.nsot.roundtrip import validate_device
@@ -92,25 +116,20 @@ def extract(hostname):
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
 
-    entry = next((e for e in _list_golden_configs()
-                  if e.get("hostname") == hostname), None)
-    if entry is None:
+    repo = _repo_for(list_name)
+    config, device_ip = _captured_config(repo, hostname)
+    if not config:
         return jsonify({"ok": False,
                         "error": f"No golden config for '{hostname}'"}), 404
 
-    config = _load_golden_config_file(entry["device_ip"])
-    if not config:
-        return jsonify({"ok": False, "error": "Golden config is empty"}), 400
-
     _name, csv_path = get_current_device_list()
     device = next((d for d in load_saved_devices(csv_path)
-                   if d.get("ip") == entry["device_ip"]), {})
+                   if d.get("ip") == device_ip or d.get("hostname") == hostname), {})
 
     result = validate_device(config, _platform_for(device))
     if result.get("error"):
         return jsonify({"ok": False, "error": result["error"]}), 500
 
-    repo = _repo_for(list_name)
     path = hostvars.write_staged(repo, result["host_vars"])
     secrets = hostvars.store_secrets(result["host_vars"], hostname,
                                      dry_run=not data.get("store_secrets"))
