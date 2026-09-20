@@ -613,10 +613,33 @@ with that property is not strict, it is inert — the same failure as a flow
 whose diff is empty by construction, arrived at from the opposite direction.
 
 The same rule fixes where **approval** is keyed. Approval is a claim about the
-*template* — that it reproduces every bound device — not about any one device's
-intent. So the binding fingerprint uses capture-parsed host_vars on both the
-approve and the deploy path, and editing one device's intent never silently
-revokes a template approval.
+*template*, not about any one device's state.
+
+**Correction to the 3b amendment (made during run 3A).** The original
+amendment specified a binding fingerprint of *template hash + bound device set
++ a hash of each device's host_vars*. That third term keys the gate on the
+**result of the work**: a successful deploy changes the device's captured
+config, so its hash moves and the approval is revoked — by the very change it
+authorised. On the live lab, deploying one interface description to s4 revoked
+`cisco_ios/base.j2` for s1, s2 and s3, which had received nothing. It is this
+section's own rule, broken in this section's own design.
+
+The division of labour, corrected:
+
+| | claim | revoked by | when measured |
+|---|---|---|---|
+| **approval** | validated against **this device set** | a template edit, or a device joining or leaving the set | once, recorded |
+| **`template_report`** | reproduces **this device now** | nothing — it is recomputed | live, per device, every plan |
+
+Drift is caught by the second, which already runs on every plan and already
+gates, and which names the lines. The first answers a question that has a
+durable answer, so freezing it is legitimate.
+
+Fingerprint scheme 2 = `template_hash` + sorted bound **identities** (a rename
+is the same device; onboarding is not). Records carry a `scheme` number and an
+older one is **not** silently honoured — its fingerprint answered a different
+question, and accepting it would be a gate that passes because nobody migrated
+it. Re-approval after a scheme change is explicit and its own commit.
 
 > A gate must be keyed on the property it claims to protect. Template fidelity
 > protects against an untrustworthy renderer. Intent drift is the work, not a

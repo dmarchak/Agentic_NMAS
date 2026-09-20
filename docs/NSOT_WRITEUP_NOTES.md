@@ -2208,3 +2208,81 @@ reading the behaviour and asking a question from outside the implementation —
 codebase; it was refusing to reason in the code's frame. That is a role, and it
 can be occupied deliberately: state the requirement, state the scenario, then go
 and look at what the code does about it.
+
+---
+
+## The rule broken by its own author, in the section that states it
+
+`docs/NSOT_PLAN.md` carries a design rule written during Phase 3c:
+
+> A gate must be keyed on the property it claims to protect. Template fidelity
+> protects against an untrustworthy renderer. Intent drift is the work, not a
+> defect, and gating on the work means no work can ever be done.
+
+Four paragraphs below it, the same section specified the template approval
+fingerprint as **template hash + bound device set + a hash of each bound
+device's host_vars**.
+
+That third term keys the gate on the result of the work. A deploy changes the
+device's captured configuration; the captured configuration is what the hash is
+taken over; so a successful deploy revokes the approval that authorised it.
+
+### What it looked like on real hardware
+
+Run 3A stopped at its second step:
+
+```
+deployable: False
+blocking:   ["template 'cisco_ios/base.j2' is not approved for this device"]
+
+stored fingerprint   a7c85e85a207c52d
+current fingerprint  9e0bdcf33fc37976
+  s1: 1ed91501dfca55ab    unchanged
+  s2: 1fe21b7db7570742    unchanged
+  s3: ec058ccf8f66851b    unchanged
+  s4: caae860616f18e6f → d5ebbe3e10899b42    CHANGED
+
+template hash same?     True
+bound device set same?  True
+template still reproduces s4?  missing 0, extra 0, fidelity 100.0%
+```
+
+Everything the approval claims was still true. One interface description had
+been deployed to s4 forty minutes earlier, and that revoked the template for
+s1, s2 and s3 as well — three devices that had received nothing.
+
+### Why this specimen is worth keeping
+
+The other entries in this document are defects found in code. This one was
+specified — deliberately, in a design amendment, by the person who a day later
+wrote the rule it violates. It survived design review, implementation, a test
+suite written around it, and an explicit approval step, because at every point
+it reads as *more* rigour rather than less. "The approval records exactly what
+was validated" is a sentence nobody argues with.
+
+The tell is available without running anything, and it is the same question the
+rest of this document keeps arriving at:
+
+> For each thing this gate is meant to stop, and each thing it is meant to
+> allow, trace whether it does. If a *successful* use of the system trips it,
+> it is keyed on the wrong property.
+
+A gate that fires after every success is not strict. It is noise, and its real
+effect is to train the operator to clear it without reading — which leaves the
+system in the state it would be in with no gate at all, plus a ritual.
+
+### The correction
+
+| | claim | revoked by | measured |
+|---|---|---|---|
+| approval | validated against **this device set** | template edit, device joining or leaving | once, recorded |
+| `template_report` | reproduces **this device now** | nothing — recomputed | live, per device, every plan |
+
+The second question was already being answered on every plan, by code that
+already gated, and which names the offending lines. The approval fingerprint
+was duplicating it in frozen form — and a frozen answer to a live question is
+wrong the moment anything moves, which is the general form of the error.
+
+Scheme 1 records are not silently accepted under scheme 2. A stored gate whose
+meaning has changed is worse than no gate: it passes for a reason nobody
+holds any more.

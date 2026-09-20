@@ -136,64 +136,101 @@ class TestApprovalGate:
 
 
 class TestBindingFingerprint:
-    @pytest.fixture
-    def approved(self, repo):
-        devices = _devices(["s1", "s2", "s3"])
-        approval.approve(repo, "cisco_ios/base.j2", devices, actor="dustin")
-        host_vars = approval.validate_template(
-            repo, "cisco_ios/base.j2", devices)["host_vars_by_device"]
-        return repo, host_vars
+    """Template hash + bound device set. Scheme 2.
 
-    def test_approved_state_holds_when_nothing_changes(self, approved):
-        repo, host_vars = approved
-        assert approval.is_approved(repo, "cisco_ios/base.j2", host_vars) is True
+    Scheme 1 added a hash of each bound device's parsed host_vars. That is what
+    a template was validated *against*, so freezing it looked right — and it
+    keyed the gate on the result of the work, revoking approval every time a
+    deploy succeeded. The division is now explicit:
 
-    def test_editing_the_template_revokes(self, approved):
-        repo, host_vars = approved
-        text = templates_repo.read_template(repo, "cisco_ios/base.j2")
-        templates_repo.write_template(repo, "cisco_ios/base.j2", text + "\n{# x #}\n")
-        status = approval.approval_status(repo, "cisco_ios/base.j2", host_vars)
-        assert status["approved"] is False
-        assert "the template was edited" in status["changes"]
+    * **approval** — validated against this device set; revoked by a template
+      edit or a change to the set
+    * **template_report** — reproduces this device now; live, per device, every
+      plan, gating there
+    """
 
-    def test_onboarding_a_device_revokes(self, approved):
-        """Amendment 2: a Phase 4 device must not inherit an approval."""
-        repo, host_vars = approved
-        manifest.upsert_device(repo, "uid:s4", "s4", "203.0.113.24",
+    def test_a_template_edit_revokes(self, repo):
+        before = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        templates_repo.write_template(repo, "cisco_ios/base.j2", "{# edited #}\n")
+        after = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        assert before["fingerprint"] != after["fingerprint"]
+
+    def test_onboarding_a_device_revokes(self, repo):
+        approval._save(repo, {"cisco_ios/base.j2":
+                              approval.binding_fingerprint(repo, "cisco_ios/base.j2")})
+        assert approval.is_approved(repo, "cisco_ios/base.j2")
+
+        manifest.upsert_device(repo, "uid:s9", "s9", "203.0.113.29",
                                platform="cisco-ios")
-        status = approval.approval_status(repo, "cisco_ios/base.j2", host_vars)
+        assert not approval.is_approved(repo, "cisco_ios/base.j2")
+
+    def test_removing_a_device_revokes(self, repo):
+        before = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        data = manifest.load(repo)
+        data["devices"].pop("uid:s3")
+        manifest.save(repo, data)
+        after = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        assert before["fingerprint"] != after["fingerprint"]
+
+    def test_a_devices_config_changing_does_not_revoke(self, repo):
+        """The correction. A deploy is not an approval question."""
+        approval._save(repo, {"cisco_ios/base.j2":
+                              approval.binding_fingerprint(repo, "cisco_ios/base.j2")})
+        assert approval.is_approved(
+            repo, "cisco_ios/base.j2",
+            {"s1": {"hostname": "s1", "totally": "different"}})
+
+    def test_the_fingerprint_covers_template_and_device_set(self, repo):
+        payload = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        assert payload["template_hash"]
+        assert payload["devices"] == ["s1", "s2", "s3"]
+        assert payload["device_identities"] == ["uid:s1", "uid:s2", "uid:s3"]
+        assert "device_hashes" not in payload
+
+    def test_identities_not_names_define_the_set(self, repo):
+        """A rename is the same device; onboarding is not."""
+        payload = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        assert all(i.startswith("uid:") for i in payload["device_identities"])
+
+
+class TestFingerprintSchemeMigration:
+    """A v1 record is not silently honoured.
+
+    Its fingerprint answered a different question. Accepting it would be a gate
+    that passes because nobody migrated it — which is the same failure as a
+    check positioned where it cannot fail, arrived at by leaving old data in
+    place.
+    """
+
+    def test_a_v1_record_is_not_valid_under_v2(self, repo):
+        current = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        approval._save(repo, {"cisco_ios/base.j2": {
+            **current, "scheme": 1, "device_hashes": {"s1": "abc"}}})
+        assert not approval.is_approved(repo, "cisco_ios/base.j2")
+
+    def test_a_record_with_no_scheme_at_all_is_not_valid(self, repo):
+        current = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        record = {k: v for k, v in current.items() if k != "scheme"}
+        approval._save(repo, {"cisco_ios/base.j2": record})
+        assert not approval.is_approved(repo, "cisco_ios/base.j2")
+
+    def test_the_status_explains_the_scheme_change(self, repo):
+        current = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        approval._save(repo, {"cisco_ios/base.j2": {**current, "scheme": 1}})
+        status = approval.approval_status(repo, "cisco_ios/base.j2", {})
         assert status["approved"] is False
-        assert any("s4" in c and "now bound" in c for c in status["changes"])
+        assert "scheme" in status["reason"]
+        assert any("re-approve" in c for c in status["changes"])
 
-    def test_unbinding_a_device_revokes(self, approved):
-        repo, host_vars = approved
-        templates_repo.save_bindings(repo, {
-            "platforms": {"cisco_ios": "cisco_ios/base.j2"},
-            "overrides": {"s3": "cisco_ios/other.j2"}})
-        status = approval.approval_status(repo, "cisco_ios/base.j2", host_vars)
-        assert status["approved"] is False
-        assert any("s3" in c and "no longer bound" in c for c in status["changes"])
-
-    def test_changing_host_vars_revokes(self, approved):
-        repo, host_vars = approved
-        host_vars["s2"]["hostname"] = "s2-renamed"
-        status = approval.approval_status(repo, "cisco_ios/base.j2", host_vars)
-        assert status["approved"] is False
-        assert any("host_vars for 's2' changed" in c for c in status["changes"])
-
-    def test_fingerprint_covers_all_three_inputs(self, repo):
-        devices = _devices(["s1", "s2"])
-        host_vars = approval.validate_template(
-            repo, "cisco_ios/base.j2", devices)["host_vars_by_device"]
-        fp = approval.binding_fingerprint(repo, "cisco_ios/base.j2", host_vars)
-        assert fp["template_hash"]
-        assert fp["devices"] == ["s1", "s2", "s3"]      # from the manifest
-        assert set(fp["device_hashes"]) == {"s1", "s2", "s3"}
-
-    def test_unknown_device_hash_is_marked(self, repo):
-        """A bound device with no captured config cannot be silently ignored."""
-        fp = approval.binding_fingerprint(repo, "cisco_ios/base.j2", {})
-        assert set(fp["device_hashes"].values()) == {"unknown"}
+    def test_re_approving_writes_the_current_scheme(self, repo):
+        approval._save(repo, {"cisco_ios/base.j2": {
+            **approval.binding_fingerprint(repo, "cisco_ios/base.j2"), "scheme": 1}})
+        result = approval.approve(repo, "cisco_ios/base.j2",
+                                  _devices(["s1", "s2", "s3"]), actor="dustin")
+        assert result["ok"] is True
+        assert approval._load(repo)["cisco_ios/base.j2"]["scheme"] == \
+            approval.FINGERPRINT_SCHEME
+        assert approval.is_approved(repo, "cisco_ios/base.j2")
 
 
 class TestValidationUsesCapturedConfigs:

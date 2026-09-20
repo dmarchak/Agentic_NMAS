@@ -422,3 +422,71 @@ class TestDeployableSubsumesSendability:
         art = self._artifact("NSoT-managed — x")
         assert art.summary()["unsendable"]
         assert art.summary()["deployable"] is False
+
+
+class TestDriftBlocksAtTemplateReportNotAtApproval:
+    """The division of labour, asserted from both sides.
+
+    Approval answers "validated against this device set" — a question about the
+    *template*, settled once and revoked only by a template edit or a change to
+    the set. Whether the template still reproduces a device *now* is measured
+    live on every plan.
+
+    Putting the second question inside the first is what made a successful
+    deploy revoke its own template's approval.
+    """
+
+    #: A construct no parser models. A static route, a tracked object and an
+    #: `ip sla` block all round-trip cleanly on this fleet, so none of them is
+    #: drift — checked rather than assumed, because a "drift" fixture that does
+    #: not drift makes the whole test vacuous.
+    DRIFT = "wibble frobnicate 42"
+
+    def test_the_drift_fixture_really_drifts(self):
+        """Guards every test below from passing on an unchanged device."""
+        clean = build_artifact("s1", _config("s1"), "cisco_ios",
+                               template="cisco_ios/base.j2", template_approved=True)
+        drifted = build_artifact("s1", _config("s1") + f"\n{self.DRIFT}\n",
+                                 "cisco_ios", template="cisco_ios/base.j2",
+                                 template_approved=True)
+        assert clean.deployable is True
+        assert drifted.deployable is False
+
+    def test_a_drifted_device_is_blocked_with_the_line_named(self):
+        """Approval is intact; the live check refuses, naming the line."""
+        art = build_artifact("s1", _config("s1") + f"\n{self.DRIFT}\n",
+                             "cisco_ios", template="cisco_ios/base.j2",
+                             template_approved=True)
+
+        assert art.deployable is False
+        assert not any("not approved" in r for r in art.blocking_reasons)
+        reason = next(r for r in art.blocking_reasons if "unmodelled" in r)
+        assert self.DRIFT in reason
+
+    def test_the_drifted_line_is_reported_to_the_operator(self):
+        art = build_artifact("s1", _config("s1") + f"\n{self.DRIFT}\n",
+                             "cisco_ios", template="cisco_ios/base.j2",
+                             template_approved=True)
+        summary = art.summary()
+        assert summary["deployable"] is False
+        assert self.DRIFT in summary["unacknowledged"]
+
+    def test_an_undrifted_device_with_the_same_approval_passes(self):
+        art = build_artifact("s1", _config("s1"), "cisco_ios",
+                             template="cisco_ios/base.j2", template_approved=True)
+        assert art.template_report["missing_from_render"] == 0
+        assert art.deployable is True
+
+    def test_approval_and_fidelity_are_independent_reasons(self):
+        """Neither substitutes for the other."""
+        unapproved_clean = build_artifact("s1", _config("s1"), "cisco_ios",
+                                          template="cisco_ios/base.j2",
+                                          template_approved=False)
+        approved_drifted = build_artifact("s1", _config("s1") + f"\n{self.DRIFT}\n",
+                                          "cisco_ios", template="cisco_ios/base.j2",
+                                          template_approved=True)
+
+        assert any("not approved" in r for r in unapproved_clean.blocking_reasons)
+        assert not any("not approved" in r for r in approved_drifted.blocking_reasons)
+        assert unapproved_clean.deployable is False
+        assert approved_drifted.deployable is False

@@ -312,8 +312,13 @@ exception.
   in `host_vars` must list the exact lines, is committed to git, and is
   invalidated by any new or removed unmodelled line.
 - **Approval requires a clean round-trip against every bound device**, keyed on
-  a binding fingerprint (template hash + bound device set + each device's
-  `host_vars` hash). Onboarding a device revokes approval.
+  a binding fingerprint of **template hash + sorted bound identities**
+  (scheme 2). Revoked by a template edit or a change to the device set —
+  onboarding or removal. A device's *configuration* changing does not revoke
+  it: that is `template_report`, live on every plan, per device, gating there
+  with the lines named. Scheme 1 also hashed each device's host_vars, which
+  meant a successful deploy revoked its own template's approval. Records carry
+  a `scheme`; an older one is never silently honoured.
 - Template commits use their own namespace (`template:`) and create **no tags**.
   **Seeding commits itself** (`template: seed library`), so an approval's diff
   is the approval rather than the whole library.

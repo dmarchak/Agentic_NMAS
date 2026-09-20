@@ -44,29 +44,49 @@ def content_hash(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
 
 
-def binding_fingerprint(repo: str, rel_path: str, host_vars_by_device: dict) -> dict:
-    """Everything an approval is bound to.
+#: Bumped when the fingerprint's *meaning* changes. A stored record from an
+#: older scheme is not silently honoured: its number says it was answering a
+#: different question, and accepting it would be a gate that passes because
+#: nobody updated it.
+FINGERPRINT_SCHEME = 2
 
-    *host_vars_by_device* maps device name → parsed host_vars for each bound
-    device, so the fingerprint moves when a device's configuration model moves.
+
+def binding_fingerprint(repo: str, rel_path: str,
+                        host_vars_by_device: dict = None) -> dict:
+    """Everything an approval is bound to: the template, and the devices it covers.
+
+    Approval claims **"this template was validated against this device set"**.
+    It does not claim anything about those devices' current configuration —
+    that is ``template_report``, computed live on every plan, per device, and
+    gating there.
+
+    Scheme 1 also hashed each bound device's parsed host_vars. That keyed the
+    gate on the *result of the work*: a successful deploy changes the device's
+    captured config, so the hash moves and the approval is revoked — by the
+    very change it authorised. On a four-device template, deploying to one
+    revoked approval for the other three, which had received nothing. It is
+    the rule recorded in NSOT_PLAN.md ("gate on template fidelity, never on
+    intent drift") broken in its own implementation, and the only visible
+    symptom is a gate that is red so routinely it teaches you to clear it.
+
+    *host_vars_by_device* is accepted and ignored, so callers that have it
+    need not change; it is no longer part of the hash.
     """
     from modules.nsot import templates_repo
-    from modules.nsot.render_artifact import host_vars_fingerprint
 
     template_text = templates_repo.read_template(repo, rel_path) or ""
     bound = templates_repo.devices_for_template(repo, rel_path)
-
-    device_hashes = {}
-    for entry in bound:
-        name = entry["device"]
-        host_vars = host_vars_by_device.get(name)
-        device_hashes[name] = host_vars_fingerprint(host_vars) if host_vars else "unknown"
+    # Stable identities, not names: a rename is the same device, onboarding is
+    # not. Falls back to the name when a device has no manifest identity.
+    identities = sorted(entry.get("identity") or entry["device"]
+                        for entry in bound)
 
     payload = {
+        "scheme": FINGERPRINT_SCHEME,
         "template": rel_path,
         "template_hash": content_hash(template_text),
-        "devices": sorted(device_hashes),
-        "device_hashes": {k: device_hashes[k] for k in sorted(device_hashes)},
+        "devices": sorted(entry["device"] for entry in bound),
+        "device_identities": identities,
     }
     payload["fingerprint"] = hashlib.sha256(
         json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
@@ -98,10 +118,20 @@ def _save(repo: str, data: dict) -> None:
     os.replace(tmp, path)
 
 
-def is_approved(repo: str, rel_path: str, host_vars_by_device: dict) -> bool:
-    """True only if a stored approval matches the current binding fingerprint."""
+def is_approved(repo: str, rel_path: str, host_vars_by_device: dict = None) -> bool:
+    """True only if a stored approval matches the current binding fingerprint.
+
+    A record written under an older scheme is **not** accepted. Its fingerprint
+    answered a different question, and honouring it would be a gate that passes
+    because nobody migrated it.
+    """
     record = _load(repo).get(rel_path)
     if not record:
+        return False
+    if record.get("scheme") != FINGERPRINT_SCHEME:
+        log.warning("approval: '%s' was approved under fingerprint scheme %s, "
+                    "current is %s — treating as unapproved until re-approved",
+                    rel_path, record.get("scheme", 1), FINGERPRINT_SCHEME)
         return False
     current = binding_fingerprint(repo, rel_path, host_vars_by_device)
     return record.get("fingerprint") == current["fingerprint"]
@@ -115,6 +145,15 @@ def approval_status(repo: str, rel_path: str, host_vars_by_device: dict) -> dict
     if not record:
         return {"approved": False, "reason": "never approved",
                 "fingerprint": current["fingerprint"], "changes": []}
+    if record.get("scheme") != FINGERPRINT_SCHEME:
+        return {"approved": False,
+                "reason": (f"approved under fingerprint scheme "
+                           f"{record.get('scheme', 1)}, current is "
+                           f"{FINGERPRINT_SCHEME}"),
+                "fingerprint": current["fingerprint"],
+                "changes": ["the approval scheme changed — re-approve once, "
+                            "explicitly, so the record says what it now means"],
+                "previously_approved_at": record.get("approved_at")}
     if record.get("fingerprint") == current["fingerprint"]:
         return {"approved": True, "approved_at": record.get("approved_at"),
                 "actor": record.get("actor"),
@@ -130,9 +169,9 @@ def approval_status(repo: str, rel_path: str, host_vars_by_device: dict) -> dict
         changes.append(f"device '{added}' is now bound to this template")
     for removed in sorted(old_devices - new_devices):
         changes.append(f"device '{removed}' is no longer bound")
-    for name in sorted(new_devices & old_devices):
-        if record.get("device_hashes", {}).get(name) != current["device_hashes"][name]:
-            changes.append(f"host_vars for '{name}' changed")
+    # Deliberately no per-device config comparison here. A device's
+    # configuration changing is not an approval question — it is answered live
+    # by template_report on every plan, per device, with the lines named.
 
     return {"approved": False, "reason": "approval is stale",
             "fingerprint": current["fingerprint"], "changes": changes,
@@ -206,8 +245,7 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user") -> dic
             f"{len(failed)} of {validation['device_count']} bound device(s) "
             "do not round-trip cleanly"), "validation": validation}
 
-    fingerprint = binding_fingerprint(repo, rel_path,
-                                      validation["host_vars_by_device"])
+    fingerprint = binding_fingerprint(repo, rel_path)
     data = _load(repo)
     data[rel_path] = {**fingerprint,
                       "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
