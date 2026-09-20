@@ -178,6 +178,38 @@ def _from_credential_list(credential_list: str, mgmt_ip: str):
     return None
 
 
+def set_template_secret(name: str, value: str, secret_kind: str = "plaintext") -> dict:
+    """Store a named secret referenced by a template.
+
+    ``secret_kind`` is ``hash`` for an IOS password hash, which must be emitted
+    verbatim and can never be re-derived — Part 2's rotation must skip those,
+    because "rotating" one means asking the device to generate a new hash.
+    """
+    with _lock:
+        data = _load()
+        data.setdefault("template_secrets", {})[name] = {
+            "value": encrypt_value(value),
+            "secret_kind": secret_kind,
+            "last_rotated": time.time() if secret_kind != "hash" else None,
+        }
+        _save(data)
+    log.info("credentials: stored template secret '%s' (kind=%s)", name, secret_kind)
+    return {"ok": True}
+
+
+def get_template_secret(name: str) -> str:
+    """Decrypt a named template secret. Empty if unknown."""
+    entry = _load().get("template_secrets", {}).get(name)
+    return decrypt_value(entry.get("value", "")) if entry else ""
+
+
+def list_template_secrets() -> list:
+    """Names and kinds only — never values."""
+    return [{"name": name, "secret_kind": entry.get("secret_kind", "plaintext"),
+             "rotatable": entry.get("secret_kind") != "hash"}
+            for name, entry in sorted(_load().get("template_secrets", {}).items())]
+
+
 def resolve(mgmt_ip: str, role: str = "", site: str = "",
             credential_list: str = "") -> dict:
     """Resolve credentials for one device.

@@ -531,3 +531,123 @@ human-review path still applies.
   tuple. It should be its own.
 - `intended/<device>.cfg` lands in Phase 3. Worth deciding whether an intended
   config change alone warrants a commit, or only alongside a golden promotion.
+
+---
+
+## Phase 3a — parsers → host_vars → round-trip validation
+
+**Status:** complete. 507 tests passing (385 + 122 new).
+**Lab objective:** 1.3 (templatize existing config), plus the multi-vendor
+extra credit via per-platform parser modules.
+
+### The headline number
+
+| Device | Platform | Modeled coverage | Round-trip fidelity |
+|---|---|---|---|
+| s1 | vIOS-L2, IOS 15.2 | **100.0%** | 100.0% |
+| r1 | C8000v, IOS-XE 17.6 | **92.2%** | 100.0% |
+
+Zero missing lines, zero invented lines, zero reordered sections on both. The
+12 unmodeled lines on r1 are seven device-unique constructs — `redundancy`,
+`subscriber templating`, `call-home`, `memory free low-watermark` — each on one
+device, left unmodeled by the agreed rule.
+
+Comfortably past the 80% bar, so 3b proceeds rather than 3a extending.
+
+### Real configs changed the work
+
+Building against the two sanitized fixtures rather than synthetic snippets
+caught things I would not have invented:
+
+- **VRRPv3 address-family blocks nest three levels deep.** ``vrrp 10
+  address-family ipv4`` has its own indented settings under an interface, which
+  is already indented. The first block splitter handled two levels and scattered
+  ``priority 110`` / ``address … primary`` / ``exit-vrrp`` into ``unmodeled`` as
+  orphans. Modelling it properly took s1 from 87% to 100%.
+- **``exit-address-family``** is not decoration — IOS-XE emits it and a config
+  without it does not parse on the device. The first VRF parser dropped it.
+- **A secret appears twice.** The SNMP community is in ``snmp-server community
+  public RO`` *and* inside ``snmp-server host … version 2c public``. Capturing
+  only the first left ``public`` sitting in plaintext YAML — a leak that a
+  synthetic fixture with one occurrence would never have shown.
+
+### The bug that would have quietly broken every switch
+
+``strip_for_roundtrip`` removes ``version `` because the image version is a
+device fact, not intent. But an **indented** ``version 2`` inside ``router rip``
+is RIPv2 — core to the lab topology. The filter was eating it.
+
+The failure mode is the nasty kind: the round trip still "passed", because the
+line was stripped from *both* sides before comparison. Only a parser test
+asserting ``"version 2" in rip["settings"]`` caught it. Version stripping is now
+top-level only.
+
+**Write-up angle:** a normalisation step applied to both sides of a comparison
+can hide the very thing it destroys. Comparison tests cannot catch that;
+extraction tests can.
+
+### The fixed-point test earned its place immediately
+
+``extract → render → extract`` must produce byte-identical YAML. It failed on
+the first run and found two asymmetries that every fidelity test was happy with:
+
+1. **Routing blocks kept a redundant ``raw`` list** alongside the split
+   ``settings``/``networks``. ``raw`` preserved document order; the template
+   emits settings-then-networks. Same config, different YAML, so the model was
+   carrying information the template could not reproduce.
+2. **``unmodeled`` entries carried ``lineno``** — a pointer into the source
+   document. Rendering moves lines, so the second extraction recorded different
+   numbers.
+
+Neither affects whether the config round-trips. Both mean the model is not a
+faithful representation of intent, which is what 3b's editor will depend on.
+
+### Design decisions worth defending
+
+**Secrets are hashes, and that is not a workaround.** ``enable secret 9 $9$…``
+uses a per-hash salt. There is no operation that turns a plaintext password into
+*that* hash. So the store holds the hash string and the template emits it
+verbatim. A design that stored plaintext would fail those lines on every round
+trip forever, and no amount of parser work would fix it. The store records
+``secret_kind: hash`` so Part 2's rotation skips them — "rotating" a hash means
+asking the device to generate a new one, which is a different operation.
+
+**Ordered by default.** The unordered allowlist has five entries and each has a
+reason. BGP neighbors, OSPF/RIP networks, SNMP/NTP/logging hosts: the device
+treats them as a set. Interface bodies: IOS reorders sub-commands itself, so the
+order in ``show running-config`` is the device's, not the operator's. Everything
+else — ACLs, prefix-lists, route-maps, ``ip sla`` probes — is ordered, because a
+reorder there changes what matches first. There is a test that reorders an ACL
+and asserts failure, and one that reorders BGP neighbors and asserts success.
+
+**No raw copies in interface entries.** An early version kept every claimed line
+alongside the structured fields. A template emitting those would have scored
+100% fidelity while modelling nothing. Structured keys and ``unmodeled``
+partition the body between them, so the coverage number cannot be gamed.
+
+**Coverage counts ``unmodeled`` against it.** A line in a pass-through block
+round-trips perfectly and is not modelled at all. Reporting one number would
+have let ``unmodeled`` inflate it — which is precisely the padding that was
+ruled out in advance. ``round_trip_fidelity`` is reported separately.
+
+### Demo-worthy flows added
+
+1. Extract s1 → 100% modeled, and show the generated YAML with ``secret_ref``
+   placeholders where the hashes were.
+2. Extract r1 → 92.2%, and show the ranked unmodeled list as the "what to model
+   next" backlog.
+3. Reorder two ACL entries and watch validation fail; reorder two BGP neighbors
+   and watch it pass.
+4. Compare ``Gi0/2`` against ``GigabitEthernet0/2`` — identical.
+5. Run the fixed-point test and explain what a failure would mean.
+
+### For 3b
+
+- The seed templates live in ``modules/nsot/templates/``. 3b copies them into
+  the list's repo for editing, which is the first time templates become
+  per-network rather than built-in.
+- The staging area is gitignored and the extractor commits nothing. 3b's
+  "Review and commit extracted host_vars" is where a human first sees a diff.
+- The seven unmodeled constructs on r1 are the natural first backlog if anyone
+  wants r1 at 100% — but by the agreed rule they stay unmodeled until a second
+  device shows the same construct.

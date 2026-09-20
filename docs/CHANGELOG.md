@@ -7,6 +7,81 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — NSoT Phase 3a: parsers → host_vars → round-trip validation
+
+Read-only. No template UI, no deploy, **no commits** — extractions land in a
+gitignored staging area. Lab objective 1.3 (templatize existing config).
+
+### Coverage, measured against real sanitized configs
+
+| Device | Platform | Modeled coverage | Round-trip fidelity | Unmodeled |
+|---|---|---|---|---|
+| s1 | vIOS-L2, IOS 15.2 | **100.0%** | 100.0% | 0 |
+| r1 | C8000v, IOS-XE 17.6 | **92.2%** | 100.0% | 12 |
+
+Mean modeled coverage **96.1%**, mean fidelity **100.0%**. Zero missing, zero
+extra, zero reordered sections on both devices. The 12 remaining unmodeled
+lines on r1 are seven device-unique constructs (`redundancy`,
+`subscriber templating`, `call-home`, …), each appearing on one device — left
+unmodeled per the agreed rule.
+
+### Added
+
+- `modules/nsot/parsers/` — `base.py` plus `cisco_ios.py` (IOS 15.x, vIOS-L2)
+  and `cisco_iosxe.py` (17.x, C8000v) sharing a base class. **A new vendor is a
+  new module plus a template directory**, not a change to the extraction engine.
+- `modules/nsot/ifnames.py` — canonical interface names in both directions from
+  one shared table, so the two pre-existing display maps cannot drift from it.
+- `modules/nsot/hostvars.py` — deterministic YAML, staging-area writes, and the
+  secret handoff.
+- `modules/nsot/roundtrip.py` — hierarchical comparison, the ordering policy,
+  and the coverage report.
+- `modules/nsot/templates/` — seed templates per platform, rendering from
+  structured fields only.
+- `normalize.strip_for_roundtrip()` — the fifth filter job: removes what a
+  template **cannot render** (certificate bodies, banners, boot markers, the
+  show-version preamble), as distinct from what is merely volatile.
+- `credentials.set_template_secret()` with a `secret_kind`, so a hash is never
+  offered for rotation.
+- `routes/templatize.py` — report, extract, staged, rendered. All read-only.
+- Fixtures: `tests/fixtures/configs/` — two sanitized real golden configs.
+- Tests: `test_roundtrip.py` (31), `test_parsers_cisco_ios.py` (33),
+  `test_ifnames.py` (25), `test_hostvars_secrets.py` (18).
+  **507 total, all passing.**
+
+### Design decisions
+
+- **Secrets are hashes.** `enable secret 9 $9$…` carries a per-hash salt and
+  cannot be regenerated. The store holds the **hash string** and templates emit
+  it verbatim. Holding plaintext would fail those lines on every round trip,
+  permanently.
+- **Ordered comparison by default.** A reordered ACL is a traffic-behaviour
+  change, so it is reported as a failure, distinctly from missing/extra. The
+  unordered allowlist is short and justified per entry: BGP neighbors, OSPF/RIP
+  networks, SNMP/NTP/logging hosts (the device treats them as a set) and
+  interface bodies (IOS reorders sub-commands itself).
+- **Coverage counts `unmodeled` against it.** A line parked in a pass-through
+  block round-trips but is not modelled. `round_trip_fidelity` is reported
+  separately because "does it reproduce" and "do we understand it" are
+  different questions.
+- Interface entries keep **no raw copy** of claimed lines — a template
+  re-emitting them would score a perfect round trip while modelling nothing.
+
+### Fixed during 3a
+
+- **`strip_for_roundtrip` ate `version 2` inside `router rip`.** The image
+  version is unrenderable; RIPv2's version statement is real config. Version
+  stripping is now top-level only. This would have silently dropped RIPv2 from
+  every switch.
+- **SNMP community strings leaked into YAML.** A community appears twice in an
+  IOS config — in `snmp-server community` and again inside `snmp-server host …
+  public`. Echoed secret values are now replaced with a reference before
+  serialisation.
+- **The fixed-point test caught two parser/template asymmetries** that the
+  comparison normalisation was hiding: routing blocks kept a redundant `raw`
+  list carrying document order the template does not reproduce, and `unmodeled`
+  entries carried a `lineno` that shifts when lines move.
+
 ## [Unreleased] — NSoT Phase 2: Golden config repository and version control
 
 Golden configs become a proper version-controlled store. Lab objectives 1.1

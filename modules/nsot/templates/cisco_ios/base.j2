@@ -1,0 +1,15 @@
+{% import '_common.j2' as c %}
+{{ c.globals(vars) }}
+{{- c.users(vars) }}
+{{- c.vlans(vars) }}
+{{- c.tracks(vars) }}
+{%- for i in vars.interfaces %}
+{{ c.interface(i) }}
+{%- endfor %}
+{{ c.routing(vars) }}
+{{- c.services_block(vars) }}
+{{- c.routes_and_acls(vars) }}
+{{- c.management(vars) }}
+{{- c.lines_block(vars) }}
+{{- c.unmodeled_block(vars) }}
+end

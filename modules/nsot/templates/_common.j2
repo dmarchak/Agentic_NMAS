@@ -1,0 +1,198 @@
+{# Shared macros. Every emitted line comes from a structured host_vars field —
+   never from a stored copy of the original line, which would make the round
+   trip pass while modelling nothing. #}
+
+{%- macro globals(v) -%}
+{% for s in v.services %}{{ s }}
+{% endfor %}
+{%- if v.hostname %}hostname {{ v.hostname }}
+{% endif %}
+{%- if v.domain_name %}ip domain{{ ' name ' if v.platform == 'cisco_iosxe' else '-name ' }}{{ v.domain_name }}
+{% endif %}
+{%- for key, on in (v.flags or {}).items() %}{{ '' if on else 'no ' }}{{ key }}
+{% endfor %}
+{%- if v.vtp_mode %}vtp mode {{ v.vtp_mode }}
+{% endif %}
+{%- for line in v.vtp or [] %}{{ line }}
+{% endfor %}
+{%- if v.fhrp_version_vrrp %}fhrp version vrrp {{ v.fhrp_version_vrrp }}
+{% endif %}
+{%- for line in (v.spanning_tree or {}).get('lines', []) %}{{ line }}
+{% endfor %}
+{%- for line in v.platform_settings or [] %}{{ line }}
+{% endfor %}
+{%- for line in v.license_settings or [] %}{{ line }}
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro users(v) -%}
+{% for u in v.users %}username {{ u.name }}{% if u.privilege is defined %} privilege {{ u.privilege }}{% endif %}{% if u.secret_ref %} {{ u.secret_kind }} {{ secret(u.secret_ref) }}{% endif %}
+
+{% endfor %}
+{%- if v.enable_secret_ref %}enable {{ v.enable_secret_keyword }} {{ secret(v.enable_secret_ref) }}
+{% endif %}
+{%- endmacro -%}
+
+{%- macro vlans(v) -%}
+{% for vl in v.vlans %}vlan {{ vl.id }}
+{% if vl.name %} name {{ vl.name }}
+{% endif %}
+{%- for e in vl.extra or [] %} {{ e }}
+{% endfor %}
+{%- endfor %}
+{%- endmacro -%}
+
+{%- macro tracks(v) -%}
+{% for t in v.tracks %}track {{ t.id }} {{ t.spec }}
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro interface(i) -%}
+interface {{ i.name }}
+{% if i.description %} description {{ i.description }}
+{% endif %}
+{%- if i.no_switchport %} no switchport
+{% endif %}
+{%- if i.switchport_mode %} switchport mode {{ i.switchport_mode }}
+{% endif %}
+{%- if i.switchport_access_vlan %} switchport access vlan {{ i.switchport_access_vlan }}
+{% endif %}
+{%- for x in i.switchport_trunk_vlans or [] %} switchport trunk allowed vlan {{ x }}
+{% endfor %}
+{%- if i.switchport_trunk_encapsulation %} switchport trunk encapsulation {{ i.switchport_trunk_encapsulation }}
+{% endif %}
+{%- for x in i.switchport or [] %} switchport {{ x }}
+{% endfor %}
+{%- if i.vrf %} vrf forwarding {{ i.vrf }}
+{% endif %}
+{%- if i.ipv4 %} ip address {{ i.ipv4 }}
+{% endif %}
+{%- for h in i.helper_addresses or [] %} ip helper-address {{ h }}
+{% endfor %}
+{%- for x in i.ospf or [] %} ip ospf {{ x }}
+{% endfor %}
+{%- if i.mtu %} mtu {{ i.mtu }}
+{% endif %}
+{%- if i.negotiation %} negotiation {{ i.negotiation }}
+{% endif %}
+{%- if i.encapsulation %} encapsulation {{ i.encapsulation }}
+{% endif %}
+{%- if i.channel_group %} channel-group {{ i.channel_group }}
+{% endif %}
+{%- for a in i.ipv6 or [] %} ipv6 address {{ a }}
+{% endfor %}
+{%- if i.ipv6_enable %} ipv6 enable
+{% endif %}
+{%- for x in i.ipv6_nd or [] %} ipv6 nd {{ x }}
+{% endfor %}
+{%- for x in i.ospfv3 or [] %} ipv6 ospf {{ x }}
+{% endfor %}
+{%- for x in i.ripng or [] %} ipv6 rip {{ x }}
+{% endfor %}
+{%- for x in i.dhcpv6_relay or [] %} ipv6 dhcp relay destination {{ x }}
+{% endfor %}
+{%- if i.no_ip_address %} no ip address
+{% endif %}
+{%- for x in i.vrrp or [] %} vrrp {{ x }}
+{% endfor %}
+{%- for g in i.vrrp_groups or [] %} vrrp {{ g.group }} address-family {{ g.family }}
+{% for s in g.settings %}  {{ s }}
+{% endfor %}
+{%- if g.terminator %}  {{ g.terminator }}
+{% endif %}
+{%- endfor %}
+{%- for x in i.mop or [] %} {{ x }}
+{% endfor %}
+{%- if i.shutdown %} shutdown
+{% endif %}
+{%- if i.no_shutdown %} no shutdown
+{% endif %}
+{%- for line in i.unmodeled or [] %} {{ line }}
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro routing(v) -%}
+{% for o in (v.routing or {}).get('ospf', []) %}router ospf {{ o.process }}
+{% for s in o.settings %} {{ s }}
+{% endfor %}
+{%- for n in o.networks %} {{ n }}
+{% endfor %}
+{%- endfor %}
+{%- if (v.routing or {}).rip %}router rip
+{% for s in v.routing.rip.settings %} {{ s }}
+{% endfor %}
+{%- for n in v.routing.rip.networks %} {{ n }}
+{% endfor %}
+{%- endif %}
+{%- if (v.routing or {}).bgp %}router bgp {{ v.routing.bgp.asn }}
+{% for s in v.routing.bgp.settings %} {{ s }}
+{% endfor %}
+{%- for n in v.routing.bgp.neighbors %} {{ n }}
+{% endfor %}
+{%- for n in v.routing.bgp.networks %} {{ n }}
+{% endfor %}
+{%- endif %}
+{%- for o in (v.routing or {}).get('ospfv3', []) %}ipv6 router ospf {{ o.process }}
+{% for s in o.raw %} {{ s }}
+{% endfor %}
+{%- endfor %}
+{%- for r in (v.routing or {}).get('ripng', []) %}ipv6 router rip {{ r.name }}
+{% for s in r.raw %} {{ s }}
+{% endfor %}
+{%- endfor %}
+{%- endmacro -%}
+
+{%- macro services_block(v) -%}
+{% for s in v.ssh or [] %}ip ssh {{ s }}
+{% endfor %}
+{%- for key, on in (v.http or {}).items() %}{{ '' if on else 'no ' }}ip http {{ key.replace('_', '-') }}
+{% endfor %}
+{%- for f in v.forward_protocol or [] %}ip forward-protocol {{ f }}
+{% endfor %}
+{%- for line in v.mgcp or [] %}{{ line }}
+{% endfor %}
+{%- if v.control_plane is defined %}control-plane
+{% for s in v.control_plane.settings %} {{ s }}
+{% endfor %}
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro management(v) -%}
+{% if v.logging.console is defined %}{{ '' if v.logging.console else 'no ' }}logging console
+{% endif %}
+{%- for s in (v.logging or {}).get('settings', []) %}logging {{ s }}
+{% endfor %}
+{%- for h in (v.logging or {}).get('hosts', []) %}logging host {{ h }}
+{% endfor %}
+{%- for c in (v.snmp or {}).get('communities', []) %}snmp-server community {{ secret(c.ref) }} {{ c.access }}
+{% endfor %}
+{%- for s in (v.snmp or {}).get('settings', []) %}{{ ('snmp-server ' ~ s if not s.startswith('snmp ') else s) | resolve_secrets }}
+{% endfor %}
+{%- for h in (v.snmp or {}).get('hosts', []) %}snmp-server host {{ h.address }} {{ h.options | resolve_secrets }}
+{% endfor %}
+{%- for n in v.ntp_servers %}ntp server {{ n }}
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro routes_and_acls(v) -%}
+{% for r in v.static_routes %}{{ 'ip' if r.family == 'ipv4' else 'ipv6' }} route {{ r.spec }}
+{% endfor %}
+{%- for a in v.acls %}ip access-list {{ a.type }} {{ a.name }}
+{% for e in a.entries %} {{ e }}
+{% endfor %}
+{%- endfor %}
+{%- endmacro -%}
+
+{%- macro lines_block(v) -%}
+{% for l in v.lines %}line {{ l.spec }}
+{% for s in l.settings %} {{ s }}
+{% endfor %}
+{%- endfor %}
+{%- endmacro -%}
+
+{%- macro unmodeled_block(v) -%}
+{% for u in v.unmodeled %}{{ u.line }}
+{% for c in u.children %}{{ c }}
+{% endfor %}
+{%- endfor %}
+{%- endmacro -%}

@@ -1,0 +1,47 @@
+{% import '_common.j2' as c %}
+{{ c.globals(vars) }}
+{%- for v in vars.vrfs or [] %}
+vrf definition {{ v.name }}
+{% for s in v.settings %} {{ s }}
+{% endfor %}
+{%- for af in v.address_families %} address-family {{ af.family }}
+{% for s in af.settings %}  {{ s }}
+{% endfor %}
+{%- if af.terminator %} {{ af.terminator }}
+{% endif %}
+{%- endfor %}
+{%- endfor %}
+{{- c.users(vars) }}
+{{- c.vlans(vars) }}
+{{- c.tracks(vars) }}
+{%- for t in vars.pki_trustpoints or [] %}
+crypto pki trustpoint {{ t.name }}
+{% for s in t.settings %} {{ s }}
+{% endfor %}
+{%- endfor %}
+{%- for i in vars.interfaces %}
+{{ c.interface(i) }}
+{%- endfor %}
+{{ c.routing(vars) }}
+{{- c.services_block(vars) }}
+{{- c.routes_and_acls(vars) }}
+{%- for s in vars.ip_sla or [] %}
+ip sla {{ s.id }}
+{% for line in s.settings %}{{ line }}
+{% endfor %}
+{%- endfor %}
+{%- for s in vars.ip_sla_schedules or [] %}
+ip sla schedule {{ s }}
+{% endfor %}
+{{ c.management(vars) }}
+{{- c.lines_block(vars) }}
+{%- for s in vars.netconf_settings or [] %}
+netconf {{ s }}
+{% endfor %}
+{%- for t in vars.telemetry or [] %}
+telemetry ietf subscription {{ t.subscription }}
+{% for line in t.settings %} {{ line }}
+{% endfor %}
+{%- endfor %}
+{{- c.unmodeled_block(vars) }}
+end

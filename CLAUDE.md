@@ -54,7 +54,7 @@ tracked in git.
 - **[modules/collector_config.py](modules/collector_config.py)** (238) — per-list
   collector settings, including trap/NetFlow ports
 
-### NSoT / Phase 0–2 additions
+### NSoT / Phase 0–3a additions
 - **[modules/settings_schema.py](modules/settings_schema.py)** (314) — settings
   defaults, JSON Schema validation, and forward migration
 - **[modules/netbox_guard.py](modules/netbox_guard.py)** (276) — NetBox write
@@ -83,11 +83,18 @@ tracked in git.
   skipping stale devices
 - **[modules/nsot/hooks.py](modules/nsot/hooks.py)**,
   **[archive.py](modules/nsot/archive.py)** — background post-commit push/archive
+- **[modules/nsot/parsers/](modules/nsot/parsers/)** — config → host_vars, one
+  module per platform (`cisco_ios.py`, `cisco_iosxe.py`)
+- **[modules/nsot/roundtrip.py](modules/nsot/roundtrip.py)** — render vs. real,
+  ordering policy, coverage report
+- **[modules/nsot/hostvars.py](modules/nsot/hostvars.py)** — YAML staging,
+  secret handoff
+- **[modules/nsot/ifnames.py](modules/nsot/ifnames.py)** — canonical interface names
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
-  `netbox_safety.py`, `inventory.py`, `golden.py`
+  `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -220,6 +227,30 @@ list — four different jobs, and `push_safe_lines()` filtering `end` is a
 truncation guard, not cleanup. `test_normalize_equivalence.py` pins each to its
 prior behaviour.
 
+### Templatization (Phase 3a)
+
+Config → `host_vars` YAML → render → compare. **Read-only**: extractions go to
+`config_repo/.nsot/staging/host_vars/` (gitignored); 3b adds the reviewed commit.
+
+Current coverage against the reference configs: **s1 100% modeled, r1 92.2%,
+both 100% round-trip fidelity.**
+
+- **One parser module per platform** (`cisco_ios`, `cisco_iosxe`). A new vendor
+  is a new module plus a template directory — that is the multi-vendor story.
+- **Secrets are hashes.** `enable secret 9 $9$…` has a per-hash salt and cannot
+  be regenerated; the store holds the hash string and templates emit it
+  verbatim. `secret_kind: hash` marks values Part 2's rotation must skip.
+- **Ordered comparison by default.** Reordered ACLs / prefix-lists / route-maps
+  / `ip sla` fail. The unordered allowlist covers only what the device treats
+  as a set, plus interface bodies (IOS reorders those itself).
+- **Interface names are canonicalized** on both sides (`Gi0/0` →
+  `GigabitEthernet0/0`), including references inside lines.
+- **Coverage is reported honestly**: `modeled_coverage` counts `unmodeled`
+  against it; `round_trip_fidelity` is separate.
+- `strip_for_roundtrip()` removes what a template *cannot render* — distinct
+  from volatile. Note it is top-level only for `version `, since an indented
+  `version 2` under `router rip` is RIPv2.
+
 ### Settings
 
 All settings live in `data/user_settings.json` with a `settings_schema_version`.
@@ -263,7 +294,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 385 tests
+pytest                    # 507 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -284,6 +315,11 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_golden_migration.py` | dry run, duplicate merging, idempotence |
 | `test_golden_restore.py` | baseline restore, stale devices skipped and named |
 | `test_normalize_equivalence.py` | each config filter pinned to prior behaviour |
+| `test_roundtrip.py` | fidelity, fixed point, ordering policy, coverage maths |
+| `test_parsers_cisco_ios.py` | both platform parsers against real fixtures |
+| `test_ifnames.py` | interface name canonicalization |
+| `test_hostvars_secrets.py` | hash handling, YAML staging, no secret leakage |
+| `tests/fixtures/configs/` | two sanitized real golden configs |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |
 | `test_integrations_base.py` | optional-integration behaviour, secret masking |

@@ -145,7 +145,7 @@ def init_repo(repo: str) -> bool:
     gitignore = os.path.join(repo, ".gitignore")
     if not os.path.exists(gitignore):
         with open(gitignore, "w", encoding="utf-8") as fh:
-            fh.write("*.swp\n*.tmp\n.nsot/migration-backup/\n")
+            fh.write("*.swp\n*.tmp\n.nsot/migration-backup/\n.nsot/staging/\n")
 
     rc, out, _ = git(repo, "rev-parse", "--verify", "HEAD")
     if rc != 0:

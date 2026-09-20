@@ -18,8 +18,12 @@ Four jobs:
 * :func:`push_safe_lines` — decide which lines may be **sent to a device**. This
   is a safety filter, not cleanup: ``end`` mid-config silently truncates a
   startup-config, and a bare ``!`` is noise that breaks some parsers.
-* :func:`strip_all` — both of the first two, for comparing a golden file with a
-  running config.
+* :func:`strip_for_roundtrip` — remove what a template **cannot render**, before
+  comparing a rendered config with the real one. Distinct from
+  :func:`strip_for_diff`: these lines are unrenderable, not volatile. A
+  certificate body and a device-inserted banner are perfectly stable — they just
+  cannot be reproduced from intent, so counting them as "missing from render"
+  would understate coverage for a reason that has nothing to do with modelling.
 """
 
 import logging
@@ -121,6 +125,89 @@ def push_safe_lines(text: str) -> list:
     and a bare ``!`` is dropped as noise.
     """
     return _strip(text, PUSH_SKIP_PREFIXES, drop_blank=True)
+
+
+#: Block openers whose entire indented body is unrenderable.
+UNRENDERABLE_BLOCK_PREFIXES = (
+    "crypto pki certificate chain",   # hex certificate bodies
+    "license udi",                    # per-chassis serial, set at manufacture
+)
+
+#: Single lines that cannot come from intent.
+UNRENDERABLE_LINE_PREFIXES = (
+    "boot-start-marker",
+    "boot-end-marker",
+    "! Call-home is enabled",
+    "! Image:",
+    "! Chassis type:",
+    "! Processor ID:",
+    "! CPU:",
+    "! Memory:",
+    "! NAME:",
+    "! PID:",
+    "! VTP:",
+    "! Cisco IOS",
+    "! Last configuration change",
+)
+
+#: Unrenderable only at the top level. ``version 17.6`` is the image version;
+#: an indented ``version 2`` inside ``router rip`` is RIPv2 and must be kept.
+UNRENDERABLE_TOPLEVEL_ONLY = (
+    "version ",
+)
+
+#: Banner delimiters. A banner body is operator text the device echoes back
+#: verbatim; the delimiter is a literal ^C control sequence in the config.
+_BANNER_OPENERS = ("banner motd", "banner login", "banner exec", "banner incoming")
+
+
+def strip_for_roundtrip(text: str) -> list:
+    """Remove lines a template cannot render, for round-trip comparison.
+
+    Removes certificate chains and their hex bodies, banner blocks, boot
+    markers, licence UDI lines, and the ``show version`` preamble NMAS prefixes
+    to a golden config. Everything else is left alone — including lines the
+    parser does not yet model, which must stay visible so coverage is honest.
+    """
+    out = []
+    in_block = False
+    in_banner = False
+
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+
+        if in_banner:
+            # A banner ends at the closing delimiter, which IOS writes as ^C.
+            if "^C" in line or stripped == "!":
+                in_banner = False
+            continue
+
+        if any(stripped.startswith(p) for p in _BANNER_OPENERS):
+            # A single-line banner opens and closes on the same line.
+            in_banner = line.count("^C") < 2
+            continue
+
+        if in_block:
+            # Indented body, or the "quit" terminator of a certificate.
+            if line.startswith((" ", "\t")) or stripped == "quit":
+                continue
+            in_block = False
+
+        if any(stripped.startswith(p) for p in UNRENDERABLE_BLOCK_PREFIXES):
+            in_block = True
+            continue
+
+        if any(stripped.startswith(p) for p in UNRENDERABLE_LINE_PREFIXES):
+            continue
+
+        indented = line[:1] in (" ", "\t")
+        if not indented and any(stripped.startswith(p)
+                                for p in UNRENDERABLE_TOPLEVEL_ONLY):
+            continue
+
+        out.append(line)
+
+    return out
 
 
 def has_nmas_header(text: str) -> bool:
