@@ -1677,3 +1677,102 @@ on the *exact path list* rather than on a count or a boolean.
 
 > Assert on the values, not on how many of them there are. A count is right
 > for the wrong reasons more often than a value is.
+
+---
+
+## `git()` stripping stdout, and the column-position parser downstream
+
+Small, and the clearest single specimen of the pattern the whole project keeps
+running into, so it gets its own entry.
+
+`git()` is the subprocess wrapper every git call in the codebase goes through:
+
+```python
+proc = subprocess.run([...], capture_output=True, text=True, ...)
+return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+```
+
+The `.strip()` is entirely reasonable. Git output ends with a newline; every
+caller that reads a sha, a branch name, a tag list or a status summary wants it
+gone. It has been there since the module was written and has never caused a
+problem, because every consumer up to now split on newlines and stripped each
+line anyway.
+
+Then a consumer arrived that reads by **column position**:
+
+```python
+code, path = line[:2], line[3:].strip()
+```
+
+That matches `git status --porcelain`, whose format is a two-character status
+field, a space, then the path. For an untracked file the field is `??`, both
+characters present, and the slice is correct. For a tracked-but-modified file
+the field is `` M`` — a **leading space** and then `M` — and `stdout.strip()`
+has already removed that leading space from the *first line of the output*. The
+line becomes `M templates/cisco_ios/base.j2`, `line[3:]` starts one character
+late, and the parser returns:
+
+```
+emplates/cisco_ios/base.j2
+```
+
+### Why this is the same bug as the rest
+
+Every ingredient is individually correct:
+
+* stripping trailing whitespace from subprocess output is good hygiene
+* porcelain's format really is two columns then a space
+* slicing at fixed offsets is the obvious way to read a fixed-width format
+
+The defect exists only in the *seam*, and only for one of the two status codes,
+and only on the first line. Nothing raises. The function returns a list of
+strings that look like paths. In production the file would simply have been
+absent from the category it belonged to — silently miscategorised, which is
+this codebase's signature failure, shared with the drift blind spot, the masked
+validation, and the invented `control-plane`.
+
+The general form has now appeared often enough to state flatly:
+
+> A transformation that is correct in isolation can destroy exactly the
+> information a downstream consumer depends on, and neither end looks wrong on
+> its own.
+
+`strip()` removes leading whitespace; a fixed-offset parser depends on leading
+whitespace. Neither knows about the other. The seam has no owner.
+
+### What actually caught it
+
+Not review — I wrote both halves and read both. The test:
+
+```python
+assert result["uncommitted_edits"] == ["templates/cisco_ios/base.j2"]
+```
+
+```
+E  assert ['emplates/cisco_ios/base.j2'] == ['templates/cisco_ios/base.j2']
+```
+
+The assertion compares the **exact path list**. Had it asserted
+`len(result["uncommitted_edits"]) == 1`, or `result["uncommitted_edits"] != []`,
+it would have passed — the list has one element, and that element is a string.
+Every weaker form of the same test is green on corrupt data.
+
+> Assert on values, not on how many of them there are. A count is right for the
+> wrong reasons far more often than a value is.
+
+### The fix, and the better habit
+
+Parse by splitting on whitespace rather than by offset, and handle porcelain's
+rename form (`old -> new`) while there:
+
+```python
+code, _sep, rest = line.strip().partition(" ")
+```
+
+This is robust to the wrapper's stripping, to padding changes, and to being
+handed already-stripped lines by some future caller. The narrow fix — stop
+stripping in `git()` — would have been worse: it fixes this consumer and breaks
+the dozen that rely on the strip.
+
+> When a seam bug appears, fix the end that can be made *independent* of the
+> assumption, not the end that currently satisfies it.
