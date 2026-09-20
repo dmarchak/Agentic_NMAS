@@ -1646,8 +1646,8 @@ conditions answer no, and they answer it silently.
 
 **`-uall`.** `git status --porcelain` collapses a wholly-untracked directory to
 a single `?? templates/` entry. Without `-uall` the repair sees one path where
-there are forty, and staging that one entry happens to work while the count in
-the commit subject is a lie.
+there are several, and staging that one entry happens to work while the count
+in the commit subject is a lie.
 
 **Stage paths, not trees.** The repair stages the specific untracked paths
 rather than `add -A templates`. A tracked-but-modified template is an

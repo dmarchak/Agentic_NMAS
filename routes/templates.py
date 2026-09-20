@@ -122,9 +122,9 @@ def _seed_and_commit(list_name: str, repo: str) -> dict:
     Seeding copies files in; it never committed them. The first thing that ran
     ``save_templates()`` afterwards — in practice the approval — swept the whole
     seeded library into a commit subjected ``template: approve <path>``. Two
-    problems: a commit whose subject describes one file while it adds forty,
-    and an approval that cannot be reviewed as a diff because the diff is the
-    entire library.
+    problems: a commit whose subject describes one file while it adds the whole
+    library, and an approval that cannot be reviewed as a diff because the diff
+    is that library.
 
     **The condition is repo state, not this run's filesystem activity.** Keying
     the commit off ``seed_templates()["copied"]`` was wrong in the one shape

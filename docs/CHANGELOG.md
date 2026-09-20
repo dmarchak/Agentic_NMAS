@@ -112,8 +112,8 @@ committed them. The first `save_templates()` afterwards — in practice the
 subjected `template: approve <path>`.
 
 Two problems in one: a commit whose subject describes a single file while adding
-forty, and an approval that could not be reviewed as a diff because the diff was
-the whole library. Seeding now gets its own commit, `template: seed library (N
+the entire library, and an approval nobody could review as a diff, because that
+diff was the library. Seeding now gets its own commit, `template: seed library (N
 file(s))`, and a test asserts that an approval afterwards touches exactly
 `templates/.approvals.json`.
 
