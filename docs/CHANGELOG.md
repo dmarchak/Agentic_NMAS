@@ -7,6 +7,114 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — NSoT Phase 3c (in progress): deploy contract and pipeline wiring
+
+The safety layer between Phase 3b and a device. Deploy orchestration and the UI
+are the remaining work; what lands here is everything that must be right
+*before* a socket opens.
+
+### Answered from the code: what gets saved, and when
+
+- **`write memory` does happen.** `_push_via_netmiko` calls
+  `conn.save_config()` immediately after `send_config_set`, which for a Cisco
+  driver issues `copy running-config startup-config`. Rollback does the same.
+  A reload does not lose the change, so the golden commit records something the
+  device still has after a restart.
+- **Stage 7 captured no config at all.** `_capture_operational_snapshot`
+  collects neighbours, interface counts and route totals — operational metrics
+  for convergence checking. Stage 8.5 would therefore have had nothing to
+  commit but stage 4's *pre-deploy* copy, recording the wrong thing entirely.
+  Stage 7 now captures the post-deploy running config on the session it already
+  holds.
+- Note: `write memory` runs at push time, **before** verify. If verify fails,
+  rollback also saves, so startup ends up matching the rolled-back state. There
+  is a window where a bad config is in startup — deferring the save until after
+  verify would leave a device that reloads mid-verify with an unsaved *good*
+  config, which is worse. Reported rather than changed.
+
+### Added — `modules/nsot/deploy.py`
+
+The 3b contract, enforced: refuse a non-deployable artifact → re-render with
+**real** secrets in memory → `assert_no_mask()` → only then may a caller
+connect. `prepare_device()` does them in that order and a test asserts the
+order, because getting it wrong is silent.
+
+`intended/` is never opened: a test walks the module's AST for file reads and
+for path-shaped string literals rather than grepping prose, since the
+docstrings discuss `intended/` at length.
+
+### Merge-only, enforced by provenance
+
+`merge_diff()` returns lines to add and **removal warnings** — lines on the
+device that the template does not mention. Nothing is ever negated.
+
+`assert_merge_only()` checks that every pushed command appears verbatim in the
+intended config, rather than grepping for `no`. That distinction matters: a
+template may legitimately contain `no ip http server`, which is real
+configuration. What must never happen is the tool *synthesising* a negation,
+and a synthesised one is by definition absent from the intended config.
+
+### Per-platform transport short-circuit
+
+`_push_config` gated NETCONF on one **global** setting and fell back to SSH only
+*after* a failed attempt. On a batch containing vIOS-L2, which has no NETCONF at
+all, that is one socket timeout per device before anything happens — a deploy
+that looks hung.
+
+Transport now comes from the platform map, per device. `supports_netconf: false`
+goes straight to SSH with no attempt. The global setting survives as a master
+off-switch only: it can disable NETCONF everywhere, never enable it on a
+platform that lacks it.
+
+### Settle windows for verification
+
+`modules/nsot/convergence.py`. Verifying immediately after a change produces
+spurious failures: RIP updates every 30 s, so a neighbour check two seconds
+after a RIP change reliably reports a drop that is not real.
+
+Per-check windows, configurable: OSPF 45 s, BGP 60 s, RIP 90 s (more than two
+update cycles), interfaces 20 s — each with an initial wait before the first
+poll. Three outcomes, not two: **converged**, **not yet converged**, and
+**failed**. Reporting the middle one as a failure is what makes an operator
+distrust the verifier and start skipping it.
+
+Note: `_detect_routing_neighbors` probes BGP → OSPF → EIGRP → IS-IS and **never
+RIP**, so S1/S2 skip the neighbour check entirely today. Recorded, not yet
+fixed.
+
+### Batch control
+
+- **Sequential by default** (`deploy_max_workers`, capped at 16). vIOS-L2 has
+  limited vty lines, and Oxidized, the drift checker, the ping worker and a
+  nine-device batch can all want the same device at once.
+- **Circuit breaker** (`deploy_verify_failure_limit`, default 2), distinct from
+  drift: one drifted device means someone touched a box and the batch carries
+  on without it; repeated *verify* failures mean something systemic, and
+  continuing turns one mistake into nine. Unattempted devices are reported as
+  unattempted.
+
+### Stage 8.5 — save golden
+
+Part of the flow, between verify and audit. Runs **after** verify so it never
+records config about to be rolled back, and on **partial success** so a device
+that deployed cleanly is recorded even when a sibling failed. A failure here is
+a warning, not a rollback: the config is on the device either way.
+
+Every device is accounted for — deployed, or skipped with a reason.
+
+### Pipeline stage table: 9 → 10
+
+The count was descriptive; the invariants were not. `audit_log` is still last,
+the rollback stages are still deploy/post_snapshot/verify, and the pre-deploy
+stages still abort. One existing test pinned `audit_log` to index 8 — it now
+asserts the *invariant* (audit runs last) rather than the index, which is what
+it existed to protect.
+
+### Tests
+
+`test_deploy_contract.py` (14), `test_deploy_safety.py` (28), plus updated
+pipeline contract tests. **718 total, all passing.** No test opens a socket.
+
 ## [Unreleased] — NSoT Phase 3b: template library, editor, render preview
 
 Read-mostly. **Nothing in 3b opens a socket to a device.** Every comparison is

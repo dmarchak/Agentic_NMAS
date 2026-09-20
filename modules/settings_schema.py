@@ -167,6 +167,26 @@ DEFAULTS: dict = {
         "firewall": "firewall",
     },
 
+    # ── Deploy verification ─────────────────────────────────────────────────
+    # Per-check settle windows, in seconds. Verifying immediately after a
+    # change produces spurious failures: RIP updates every 30s, so its window
+    # spans more than two update cycles. OSPF settles in seconds.
+    "verify_settle_windows": {
+        "ospf":       {"initial_wait": 5,  "timeout": 45, "interval": 5},
+        "rip":        {"initial_wait": 15, "timeout": 90, "interval": 15},
+        "bgp":        {"initial_wait": 10, "timeout": 60, "interval": 10},
+        "interfaces": {"initial_wait": 2,  "timeout": 20, "interval": 4},
+    },
+
+    # ── Deploy concurrency and safety ───────────────────────────────────────
+    # Sequential by default. vIOS-L2 has limited vty lines, and Oxidized, the
+    # drift checker, the ping worker and a nine-device batch can all want the
+    # same device at once.
+    "deploy_max_workers": 1,
+    # Stop attempting after this many VERIFY failures. One drifted device means
+    # someone touched a box; three verify failures means something systemic.
+    "deploy_verify_failure_limit": 2,
+
     # ── NSoT repo tag retention ─────────────────────────────────────────────
     # baseline/* tags are always kept — they are the network-wide restore points.
     # Per-device golden/<device>/* tags are pruned beyond the last N.
@@ -289,6 +309,19 @@ SCHEMA: dict = {
         },
 
         "nsot_device_tag_retention": {"type": "integer", "minimum": 0},
+        "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
+        "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
+        "verify_settle_windows": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "initial_wait": {"type": "integer", "minimum": 0},
+                    "timeout":      {"type": "integer", "minimum": 0},
+                    "interval":     {"type": "integer", "minimum": 1},
+                },
+            },
+        },
 
         "jenkins_step_shell": {"enum": ["bat", "sh"]},
 

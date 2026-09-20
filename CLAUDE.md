@@ -331,7 +331,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
-pytest                    # 672 tests
+pytest                    # 718 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
 
@@ -361,6 +361,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_render_artifact.py` | deployability gate, masking, unmodelled acknowledgement |
 | `test_template_approval.py` | template library, bindings, binding fingerprint |
 | `test_codemirror_assets.py` | vendored asset paths, load order, no CDN |
+| `test_deploy_contract.py` | refuse → real secrets → mask check, before any socket |
+| `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |

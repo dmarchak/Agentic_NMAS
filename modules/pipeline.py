@@ -164,6 +164,7 @@ _STAGE_TABLE: list[tuple[str, str]] = [
     ("deploy",          "rollback"),  # 6
     ("post_snapshot",   "rollback"),  # 7
     ("verify",          "rollback"),  # 8
+    ("save_golden",     "continue"),  # 8.5 records what was actually pushed
     ("audit_log",       "abort"),     # 9  always runs
 ]
 
@@ -206,6 +207,7 @@ class PipelineRunner:
             _stage_deploy,
             _stage_post_snapshot,
             _stage_verify,
+            _stage_save_golden,
         ]
         try:
             for idx, handler in enumerate(_handlers):
@@ -217,9 +219,17 @@ class PipelineRunner:
                     self._next_expected = idx + 1
                 except PipelineStageError as exc:
                     self.ctx.stages_failed.append(name)
+                    log.error("pipeline: stage '%s' FAILED: %s", name, exc)
+                    if on_failure == "continue":
+                        # The config is already on the device. Failing to
+                        # *record* it is worth reporting, not worth rolling a
+                        # successful deploy back over.
+                        self.ctx.warnings = getattr(self.ctx, "warnings", [])
+                        self.ctx.warnings.append(f"{name}: {exc}")
+                        self._next_expected = idx + 1
+                        continue
                     self.ctx.error        = str(exc)
                     self.ctx.final_status = "failed"
-                    log.error("pipeline: stage '%s' FAILED: %s", name, exc)
                     if on_failure == "rollback" and "deploy" in self.ctx.stages_completed:
                         log.warning("pipeline: initiating rollback after stage '%s' failure", name)
                         _stage_rollback(self.ctx)
@@ -662,26 +672,34 @@ def _push_config(dev: dict, cmds: list[str], pool: dict, lock: Any) -> str:
     """
     Push ``cmds`` to the device.
 
-    Uses Netmiko SSH by default.  NETCONF (ncclient) is only attempted when
-    the ``netconf_enabled`` user setting is explicitly set to True — standard
-    Cisco IOS devices do not have netconf-yang enabled, and attempting a
-    connection to port 830 wastes time before the socket timeout.
+    Transport comes from the platform map, per device: a platform whose
+    ``supports_netconf`` is false goes straight to SSH with **no NETCONF
+    attempt at all**, rather than falling back after a socket timeout.
 
-    To enable NETCONF: set ``netconf_enabled = true`` in Settings.
+    ``netconf_enabled`` survives as a master off-switch only — it can disable
+    NETCONF everywhere, never enable it on a platform that lacks it.
     """
+    # Transport is decided PER PLATFORM, before anything connects. The previous
+    # behaviour gated NETCONF on one global setting and fell back to SSH only
+    # after a failed attempt — on a batch containing vIOS-L2, which has no
+    # NETCONF at all, that is one socket timeout per device before anything
+    # happens, and a deploy that looks hung.
     try:
-        from modules.config import get_user_setting
-        if get_user_setting("netconf_enabled", False):
-            try:
-                import ncclient  # noqa: F401 — availability probe
-                return _push_via_netconf(dev, cmds)
-            except ImportError:
-                log.debug("pipeline: ncclient not installed — using Netmiko SSH")
-            except Exception as nc_exc:
-                log.warning("pipeline: NETCONF push failed (%s) — falling back to SSH", nc_exc)
-    except Exception:
-        pass
+        from modules.nsot.deploy import transport_for
+        transport = transport_for(dev.get("_platform", "") or dev.get("platform", ""))
+    except Exception:                          # noqa: BLE001
+        transport = "ssh"
 
+    if transport != "netconf":
+        return _push_via_netmiko(dev, cmds, pool, lock)
+
+    try:
+        import ncclient  # noqa: F401 — availability probe
+        return _push_via_netconf(dev, cmds)
+    except ImportError:
+        log.debug("pipeline: ncclient not installed — using Netmiko SSH")
+    except Exception as nc_exc:
+        log.warning("pipeline: NETCONF push failed (%s) — falling back to SSH", nc_exc)
     return _push_via_netmiko(dev, cmds, pool, lock)
 
 
@@ -763,7 +781,22 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
         hostname = dev.get("hostname", ip)
         try:
             conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-            ctx.post_snapshots[ip] = _capture_operational_snapshot(conn, ip, hostname)
+            snap = _capture_operational_snapshot(conn, ip, hostname)
+
+            # The operational snapshot is metrics only — neighbours, interface
+            # counts. Stage 8.5 needs the post-deploy CONFIG to commit as
+            # golden; without this it would commit stage 4's pre-deploy copy
+            # and record the wrong thing entirely.
+            try:
+                from modules.commands import run_device_command
+                snap["running_config"] = run_device_command(
+                    conn, "show running-config")
+            except Exception as cfg_exc:
+                log.warning("pipeline[7/post_snapshot]: %s config capture failed: %s",
+                            hostname, cfg_exc)
+                snap["running_config"] = ""
+
+            ctx.post_snapshots[ip] = snap
             log.info("pipeline[7/post_snapshot]: %s OK", hostname)
         except Exception as exc:
             errors.append(f"{hostname}: {exc}")
@@ -939,6 +972,70 @@ def _restore_config(conn, config_text: str) -> None:
         conn.enable()
         conn.send_config_set(lines, read_timeout=120)
         conn.save_config()
+
+
+# ---------------------------------------------------------------------------
+# Stage 8.5 — Save golden
+# ---------------------------------------------------------------------------
+
+def _stage_save_golden(ctx: PipelineContext) -> None:
+    """Commit the post-deploy config as the new golden baseline.
+
+    Part of the flow, not a callback afterwards. Containerlab nodes are
+    ephemeral: pushed config does not survive a redeploy, so the golden commit
+    is the durable record of what was actually put on the device.
+
+    Runs **after verify**, so it never records config that is about to be rolled
+    back, and on **partial success**: devices that deployed and verified get
+    their golden saved even when siblings failed. Losing a good record because
+    another device failed would be the worst outcome here.
+    """
+    from modules.nsot.repo import GoldenItem, save_golden
+
+    rolled_back = set(getattr(ctx, "rolled_back_ips", []) or [])
+    failed_ips = {f.get("ip") for f in (getattr(ctx, "deploy_failures", []) or [])
+                  if isinstance(f, dict)}
+
+    items, skipped = [], []
+    for dev in ctx.selected_devices:
+        ip = dev["ip"]
+        hostname = dev.get("hostname", ip)
+
+        if ip in rolled_back or ip in failed_ips:
+            skipped.append({"hostname": hostname, "reason": "not deployed successfully"})
+            continue
+
+        config = (ctx.post_snapshots.get(ip) or {}).get("running_config", "")
+        if not config:
+            # No post-deploy capture: record nothing rather than commit the
+            # pre-deploy config and claim it is what the device now has.
+            skipped.append({"hostname": hostname,
+                            "reason": "no post-deploy config captured"})
+            continue
+
+        items.append(GoldenItem(hostname, config, ip,
+                                netbox_id=dev.get("_netbox_id"),
+                                device_uid=dev.get("device_uid", "")))
+
+    ctx.golden_skipped = skipped
+    if not items:
+        log.info("pipeline[8.5/save_golden]: nothing to record (%d skipped)",
+                 len(skipped))
+        ctx.golden_result = {"ok": True, "commit": "", "changed": []}
+        return
+
+    from modules.config import get_current_list_name
+    result = save_golden(get_current_list_name(), items, source="pipeline",
+                         actor="pipeline", pipeline_id=getattr(ctx, "config_id", None))
+    ctx.golden_result = result
+
+    if not result.get("ok"):
+        raise PipelineStageError(
+            f"golden save failed: {result.get('error')} — the config IS on the "
+            "device, but was not recorded")
+
+    log.info("pipeline[8.5/save_golden]: recorded %d device(s) in %s (%d skipped)",
+             len(result.get("changed", [])), result.get("commit", "")[:8], len(skipped))
 
 
 # ---------------------------------------------------------------------------

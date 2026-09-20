@@ -125,16 +125,23 @@ class TestPipelineOrderEnforcement:
 # ---------------------------------------------------------------------------
 
 class TestStageTableContract:
-    """The stage table must contain exactly 9 entries in the required order."""
+    """The stage table must contain the required stages in the required order.
 
-    def test_exactly_nine_stages(self):
-        assert len(_STAGE_TABLE) == 9
+    Phase 3c added ``save_golden`` between verify and audit_log: recording what
+    was actually pushed is part of the flow, not a callback afterwards, because
+    containerlab nodes are ephemeral and the golden commit is the only durable
+    record. The count changed; every ordering and failure-mode invariant below
+    did not.
+    """
+
+    def test_stage_count(self):
+        assert len(_STAGE_TABLE) == 10
 
     def test_stage_names_cover_all_required_stages(self):
         required = {
             "netbox_query", "template_render", "ci_gate",
             "pre_snapshot", "config_diff", "deploy",
-            "post_snapshot", "verify", "audit_log",
+            "post_snapshot", "verify", "save_golden", "audit_log",
         }
         assert set(STAGE_NAMES) == required
 
@@ -147,7 +154,8 @@ class TestStageTableContract:
         assert STAGE_NAMES[5] == "deploy"
         assert STAGE_NAMES[6] == "post_snapshot"
         assert STAGE_NAMES[7] == "verify"
-        assert STAGE_NAMES[8] == "audit_log"
+        assert STAGE_NAMES[8] == "save_golden"
+        assert STAGE_NAMES[9] == "audit_log"
 
     def test_audit_log_is_last(self):
         assert STAGE_NAMES[-1] == "audit_log"
@@ -163,6 +171,19 @@ class TestStageTableContract:
 
     def test_stage_table_length_matches_stage_names(self):
         assert len(_STAGE_TABLE) == len(STAGE_NAMES)
+
+    def test_golden_save_follows_verify(self):
+        """It must never record config that is about to be rolled back."""
+        assert STAGE_NAMES.index("save_golden") > STAGE_NAMES.index("verify")
+
+    def test_golden_save_does_not_roll_back(self):
+        """The config is on the device either way.
+
+        Failing to *record* a successful deploy is worth reporting; it is not
+        worth rolling that deploy back over.
+        """
+        on_failure = next(f for n, f in _STAGE_TABLE if n == "save_golden")
+        assert on_failure == "continue"
 
 
 # ---------------------------------------------------------------------------
@@ -420,8 +441,14 @@ class TestSafetyConstants:
 class TestAuditLogGuarantee:
     """audit_log must be the last stage and must always appear in the sequence."""
 
-    def test_audit_log_is_index_8(self):
-        assert STAGE_NAMES.index("audit_log") == 8
+    def test_audit_log_is_always_the_final_stage(self):
+        """The invariant is that audit runs last, not that it sits at index 8.
+
+        Pinning the index made this test fail when save_golden was inserted
+        before it, even though the guarantee it exists to protect was untouched.
+        """
+        assert STAGE_NAMES[-1] == "audit_log"
+        assert STAGE_NAMES.index("audit_log") == len(STAGE_NAMES) - 1
 
     def test_all_other_stages_precede_audit_log(self):
         audit_idx = STAGE_NAMES.index("audit_log")
