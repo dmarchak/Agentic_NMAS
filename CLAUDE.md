@@ -362,6 +362,13 @@ exception.
   with the lines named. Scheme 1 also hashed each device's host_vars, which
   meant a successful deploy revoked its own template's approval. Records carry
   a `scheme`; an older one is never silently honoured.
+- **Revocation is a recorded finding, not a deletion.** `approval.revoke()`
+  requires a reason and writes a tombstone carrying it, the actor, and what was
+  withdrawn. Popping the record made a withdrawal indistinguishable from "never
+  approved" — both block a deploy, so the gate was never wrong, but the finding
+  was thrown away. `is_approved()` refuses a `revoked` record **first**, ahead
+  of the scheme and fingerprint checks, so no later computation can overturn
+  the decision. `POST /templates/revoke/<path>` is the reachable path.
 - Template commits use their own namespace (`template:`) and create **no tags**.
   **Seeding commits itself** (`template: seed library`), so an approval's diff
   is the approval rather than the whole library.

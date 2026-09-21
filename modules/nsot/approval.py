@@ -128,6 +128,12 @@ def is_approved(repo: str, rel_path: str, host_vars_by_device: dict = None) -> b
     record = _load(repo).get(rel_path)
     if not record:
         return False
+    if record.get("revoked"):
+        # First, and unconditionally. A revocation is a decision about this
+        # template; nothing computed afterwards may overturn it.
+        log.warning("approval: '%s' is revoked — %s", rel_path,
+                    record.get("reason", "(no reason recorded)"))
+        return False
     if record.get("scheme") != FINGERPRINT_SCHEME:
         log.warning("approval: '%s' was approved under fingerprint scheme %s, "
                     "current is %s — treating as unapproved until re-approved",
@@ -145,6 +151,15 @@ def approval_status(repo: str, rel_path: str, host_vars_by_device: dict) -> dict
     if not record:
         return {"approved": False, "reason": "never approved",
                 "fingerprint": current["fingerprint"], "changes": []}
+    if record.get("revoked"):
+        return {"approved": False, "revoked": True,
+                "reason": f"REVOKED: {record.get('reason', '')}",
+                "revoked_at": record.get("revoked_at"),
+                "actor": record.get("actor"),
+                "fingerprint": current["fingerprint"],
+                "changes": ["re-approval must validate against every bound "
+                            "device before this template can deploy again"],
+                "previously_approved_at": record.get("previously_approved_at")}
     if record.get("scheme") != FINGERPRINT_SCHEME:
         return {"approved": False,
                 "reason": (f"approved under fingerprint scheme "
@@ -258,8 +273,42 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user") -> dic
             "fingerprint": fingerprint["fingerprint"]}
 
 
-def revoke(repo: str, rel_path: str) -> dict:
+def revoke(repo: str, rel_path: str, reason: str = "", actor: str = "") -> dict:
+    """Withdraw an approval and record **why**.
+
+    Popping the record made a revocation indistinguishable from "never
+    approved". Both block a deploy, so the gate behaved correctly either way —
+    but the next person sees an unapproved template with no indication that
+    somebody withdrew it deliberately, or what they must check before granting
+    it again. A revocation is a finding; deleting it throws the finding away.
+
+    The tombstone is *not* an approval and can never be read as one:
+    :func:`is_approved` refuses anything carrying ``revoked``, ahead of every
+    other check, so a revoked record cannot pass even if a later scheme or
+    fingerprint happened to line up.
+    """
+    if not reason.strip():
+        return {"ok": False, "error": (
+            "A revocation needs a reason. It is the only record of why this "
+            "template must be re-validated, and 'unapproved' on its own says "
+            "nothing to whoever finds it.")}
+
     data = _load(repo)
-    data.pop(rel_path, None)
+    previous = data.get(rel_path) or {}
+    data[rel_path] = {
+        "revoked": True,
+        "reason": reason.strip(),
+        "revoked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "actor": actor or "operator",
+        # Kept so the record says what was withdrawn, not merely that something
+        # was. Never consulted by the gate.
+        "previous_fingerprint": previous.get("fingerprint", ""),
+        "previously_approved_at": previous.get("approved_at", ""),
+        "previously_approved_by": previous.get("actor", ""),
+        "previous_devices": previous.get("devices", []),
+    }
     _save(repo, data)
-    return {"ok": True}
+    log.warning("approval: '%s' REVOKED by %s — %s", rel_path,
+                actor or "operator", reason.strip())
+    return {"ok": True, "template": rel_path, "reason": reason.strip(),
+            "was_approved": bool(previous.get("fingerprint"))}

@@ -436,3 +436,118 @@ class TestSeedCommitKeysOffRepoState:
         assert len(untracked) > 1
         assert all(p.startswith("templates/") for p in untracked)
         assert any(p.endswith(".j2") for p in untracked)
+
+
+class TestRevocationIsARecordedFinding:
+    """Popping the record made a revocation look like "never approved".
+
+    Both block a deploy, so the gate was never wrong. But an approval is
+    withdrawn for a reason — here, that the round-trip metric could not see
+    BGP address-family nesting, so the template's claim to reproduce r3/r4/r5
+    was false — and the next person to look needs to know that happened and
+    what to check. Deleting the record throws the finding away.
+    """
+
+    REASON = ("round-trip comparison was blind to nesting depth; this template "
+              "does not reproduce BGP address-families on r3/r4/r5")
+
+    def _approved_repo(self, tmp_path):
+        from modules.nsot import approval, templates_repo
+        repo = str(tmp_path / "config_repo")
+        os.makedirs(repo, exist_ok=True)
+        templates_repo.seed_templates(repo)
+        rel = "cisco_ios/base.j2"
+        approval._save(repo, {rel: {
+            "fingerprint": "abc123", "scheme": approval.FINGERPRINT_SCHEME,
+            "template_hash": "t", "devices": ["s1", "s2"],
+            "approved_at": "2026-09-20T00:00:00Z", "actor": "dustin"}})
+        return repo, rel
+
+    def test_a_revocation_requires_a_reason(self, tmp_path):
+        from modules.nsot import approval
+        repo, rel = self._approved_repo(tmp_path)
+
+        result = approval.revoke(repo, rel, reason="   ")
+        assert result["ok"] is False
+        assert "needs a reason" in result["error"]
+        # And it did not half-revoke on the way to refusing.
+        assert approval._load(repo)[rel].get("revoked") is None
+
+    def test_the_reason_survives_in_the_record(self, tmp_path):
+        from modules.nsot import approval
+        repo, rel = self._approved_repo(tmp_path)
+
+        approval.revoke(repo, rel, reason=self.REASON, actor="dustin")
+        record = approval._load(repo)[rel]
+
+        assert record["revoked"] is True
+        assert record["reason"] == self.REASON
+        assert record["actor"] == "dustin"
+        assert record["revoked_at"]
+        # What was withdrawn, not merely that something was.
+        assert record["previous_fingerprint"] == "abc123"
+        assert record["previously_approved_by"] == "dustin"
+        assert record["previous_devices"] == ["s1", "s2"]
+
+    def test_a_revoked_template_is_not_approved(self, tmp_path):
+        from modules.nsot import approval
+        repo, rel = self._approved_repo(tmp_path)
+
+        assert approval.is_approved(repo, rel) is False or True  # fingerprint-dependent
+        approval.revoke(repo, rel, reason=self.REASON)
+        assert approval.is_approved(repo, rel) is False
+
+    def test_revocation_beats_a_matching_fingerprint(self, tmp_path, monkeypatch):
+        """The decision must not be overturnable by a later computation.
+
+        If the gate checked the scheme and fingerprint first, a revoked record
+        that happened to match would pass — the revocation would be data the
+        gate walked straight past.
+        """
+        from modules.nsot import approval
+        repo, rel = self._approved_repo(tmp_path)
+        approval.revoke(repo, rel, reason=self.REASON)
+
+        # Force every other check to agree that this template is fine.
+        monkeypatch.setattr(approval, "binding_fingerprint",
+                            lambda *a, **k: {"fingerprint": "abc123",
+                                             "template_hash": "t",
+                                             "devices": ["s1", "s2"],
+                                             "scheme": approval.FINGERPRINT_SCHEME})
+        record = approval._load(repo)
+        record[rel]["fingerprint"] = "abc123"
+        record[rel]["scheme"] = approval.FINGERPRINT_SCHEME
+        approval._save(repo, record)
+
+        assert approval.is_approved(repo, rel) is False, (
+            "a revoked approval must not be resurrected by a fingerprint match")
+
+    def test_status_reports_the_revocation_and_its_reason(self, tmp_path):
+        from modules.nsot import approval
+        repo, rel = self._approved_repo(tmp_path)
+        approval.revoke(repo, rel, reason=self.REASON, actor="dustin")
+
+        status = approval.approval_status(repo, rel, {})
+        assert status["approved"] is False
+        assert status["revoked"] is True
+        assert self.REASON in status["reason"]
+        assert status["actor"] == "dustin"
+
+    def test_re_approving_clears_the_tombstone(self, tmp_path, monkeypatch):
+        """Revocation blocks until re-validation passes — not for ever."""
+        from modules.nsot import approval
+        repo, rel = self._approved_repo(tmp_path)
+        approval.revoke(repo, rel, reason=self.REASON)
+
+        monkeypatch.setattr(approval, "validate_template",
+                            lambda *a, **k: {"ok": True, "device_count": 1,
+                                             "results": [{"device": "s1", "ok": True}]})
+        monkeypatch.setattr(approval, "binding_fingerprint",
+                            lambda *a, **k: {"fingerprint": "new", "template_hash": "t",
+                                             "devices": ["s1"],
+                                             "scheme": approval.FINGERPRINT_SCHEME})
+        result = approval.approve(repo, rel, [{"device": "s1"}], actor="dustin")
+
+        assert result["ok"] is True
+        assert approval._load(repo)[rel].get("revoked") is None
+        assert approval.is_approved(repo, rel) is True

@@ -203,14 +203,46 @@ def write_template(rel_path):
         return jsonify(result), 400
 
     # Editing changes the content hash, so the stored approval no longer
-    # matches its fingerprint. Dropping the record makes that explicit.
-    approval.revoke(repo, rel_path)
+    # matches its fingerprint. Recording WHY makes that explicit — an edit is
+    # a reason, and "unapproved" on its own does not say an edit caused it.
+    approval.revoke(repo, rel_path,
+                    reason="the template was edited; re-approval must "
+                           "validate the new content against every bound "
+                           "device",
+                    actor=data.get("actor", "user"))
 
     commit = repo_service.save_templates(
         list_name, [rel_path], actor=data.get("actor", "user"),
         message=data.get("message", ""))
     return jsonify({"ok": True, "path": rel_path, "commit": commit.get("commit", ""),
                     "approval_revoked": True})
+
+
+@bp.route("/revoke/<path:rel_path>", methods=["POST"])
+def revoke_approval(rel_path):
+    """Withdraw a template's approval, recording why.
+
+    Separate from editing. An approval is withdrawn when the *claim* it makes
+    stops being true — which can happen without the template changing at all,
+    as when a defect is found in what validated it.
+    """
+    from modules.nsot import approval, repo as repo_service
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    repo = _repo_for(list_name)
+    reason = (data.get("reason") or "").strip()
+
+    result = approval.revoke(repo, rel_path, reason=reason,
+                             actor=data.get("actor", "user"))
+    if not result.get("ok"):
+        return jsonify(result), 400
+
+    commit = repo_service.save_templates(
+        list_name, [".approvals.json"], actor=data.get("actor", "user"),
+        message=f"template: revoke approval for {rel_path}",
+        paths=[os.path.join("templates", ".approvals.json")])
+    return jsonify({**result, "commit": commit.get("commit", "")})
 
 
 @bp.route("/bindings", methods=["POST"])
