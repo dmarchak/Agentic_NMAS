@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""Update exactly one row of Oxidized's router.db. Root-owned helper.
+
+    sudo /usr/local/sbin/nmas-oxidized-cred --file <router.db> --ip <device-ip>
+    (credentials arrive as JSON on STDIN: {"username": …, "password": …})
+
+WHY THIS EXISTS AS A SEPARATE, ROOT-OWNED SCRIPT
+    router.db is 0600 oxidized:oxidized and holds every device's password. The
+    NMAS app runs as an ordinary user, so it cannot write the file — and
+    granting it read access would hand it every password in there, which is
+    strictly more than "change this one device's row".
+
+    One fully-qualified sudoers entry lets it change one row and learn nothing:
+
+        dmarchak ALL=(root) NOPASSWD: /usr/local/sbin/nmas-oxidized-cred
+
+    Install root-owned and not writable by the calling user:
+
+        sudo install -o root -g root -m 0755 nmas-oxidized-cred \
+             /usr/local/sbin/nmas-oxidized-cred
+
+    **This file must not import anything from a user-writable path.** A root
+    script that imports from a user's home is a privilege escalation with extra
+    steps, which is why the row-editing logic lives here rather than in
+    `modules/` — and why the tests drive this script as a subprocess instead.
+
+WHY THE PASSWORD IS ON STDIN
+    argv is world-readable in /proc for the lifetime of the process. A password
+    passed as a command-line argument is visible to every user on the box.
+
+WHAT IT GUARANTEES
+    Backup, then parse, then change only the target row, then write a temp file,
+    then VALIDATE it, then replace atomically. A validation failure leaves the
+    original untouched. Nothing is printed except a JSON result that contains no
+    credential.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import stat
+import sys
+import tempfile
+import time
+
+FIELDS = 4
+IPV4 = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
+
+def _fail(message, **extra):
+    print(json.dumps({"ok": False, "error": message, **extra}))
+    raise SystemExit(1)
+
+
+def parse_rows(text):
+    """``[(ip, model, username, password)]``. Raises on a malformed file.
+
+    A malformed row is refused rather than skipped: this file is the only thing
+    standing between Oxidized and every device, and quietly dropping a line
+    would remove a device from the harvest with no error anywhere.
+    """
+    rows = []
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(":")
+        if len(parts) != FIELDS:
+            raise ValueError(
+                f"line {lineno}: expected {FIELDS} colon-separated fields, "
+                f"found {len(parts)}")
+        if not IPV4.match(parts[0]):
+            raise ValueError(f"line {lineno}: {parts[0]!r} is not an IPv4 address")
+        if not parts[1] or not parts[2]:
+            raise ValueError(f"line {lineno}: empty model or username")
+        rows.append(tuple(parts))
+    if not rows:
+        raise ValueError("no rows found")
+    return rows
+
+
+def render(rows):
+    return "\n".join(":".join(r) for r in rows) + "\n"
+
+
+def validate(before, after, target_ip):
+    """Every way this edit could have gone wrong, checked before it lands."""
+    if len(after) != len(before):
+        raise ValueError(f"row count changed: {len(before)} -> {len(after)}")
+
+    before_ips = [r[0] for r in before]
+    after_ips = [r[0] for r in after]
+    if before_ips != after_ips:
+        raise ValueError("the set or order of device addresses changed")
+
+    for row in after:
+        if len(row) != FIELDS:
+            raise ValueError(f"row for {row[0]} has {len(row)} fields")
+        if any(":" in field for field in row):
+            raise ValueError(f"row for {row[0]} contains a colon inside a field")
+        if not row[3]:
+            raise ValueError(f"row for {row[0]} has an empty password")
+
+    differing = [b[0] for b, a in zip(before, after) if b != a]
+    if differing != [target_ip]:
+        raise ValueError(
+            f"expected exactly one changed row ({target_ip}), "
+            f"changed: {differing or 'none'}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--file", required=True)
+    ap.add_argument("--ip", required=True)
+    ap.add_argument("--no-backup", action="store_true",
+                    help="tests only; the real path always backs up")
+    args = ap.parse_args()
+
+    try:
+        payload = json.load(sys.stdin)
+        username = payload["username"]
+        password = payload["password"]
+    except Exception as exc:                  # noqa: BLE001
+        _fail(f"could not read credentials from stdin: {type(exc).__name__}")
+    if not username or not password:
+        _fail("username and password must both be non-empty")
+    if any(":" in v or "\n" in v for v in (username, password)):
+        _fail("username and password must not contain ':' or a newline — "
+              "router.db is colon-delimited and one would split the row")
+
+    path = args.file
+    if not os.path.exists(path):
+        _fail(f"{path} does not exist")
+
+    original = open(path, encoding="utf-8").read()
+    try:
+        before = parse_rows(original)
+    except ValueError as exc:
+        _fail(f"refusing to edit a malformed router.db: {exc}")
+
+    if args.ip not in [r[0] for r in before]:
+        _fail(f"{args.ip} is not in router.db", known=len(before))
+
+    after = [(r[0], r[1], username, password) if r[0] == args.ip else r
+             for r in before]
+    try:
+        validate(before, after, args.ip)
+    except ValueError as exc:
+        _fail(f"validation failed, nothing written: {exc}")
+
+    backup = ""
+    if not args.no_backup:
+        backup = f"{path}.nmas-bak-{time.strftime('%Y%m%d-%H%M%S')}"
+        shutil.copy2(path, backup)
+        os.chmod(backup, stat.S_IRUSR | stat.S_IWUSR)
+
+    st = os.stat(path)
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".router.db.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(render(after))
+        # Re-read what was actually written, and validate THAT — not the list
+        # we intended to write. A short write or an encoding surprise is
+        # exactly the failure this ordering catches.
+        written = parse_rows(open(tmp, encoding="utf-8").read())
+        validate(before, written, args.ip)
+        os.chmod(tmp, stat.S_IMODE(st.st_mode))
+        os.chown(tmp, st.st_uid, st.st_gid)
+        os.replace(tmp, path)
+    except Exception as exc:                  # noqa: BLE001
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        _fail(f"write failed, original untouched: {type(exc).__name__}: {exc}")
+
+    print(json.dumps({"ok": True, "ip": args.ip, "rows": len(after),
+                      "backup": backup, "changed": 1}))
+
+
+if __name__ == "__main__":
+    main()

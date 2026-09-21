@@ -81,8 +81,18 @@ _POSITIONAL = (
         r"(?i)\b(snmp-server\s+community\s+)" + _VALUE + r"()")),
     ("snmp_community", re.compile(
         r"(?i)\b(snmp-server\s+host\s+\S+(?:\s+version\s+\S+)?\s+)" + _VALUE + r"()")),
+    # `privilege N` and `algorithm-type X` are both optional, may appear in
+    # either order, and either may be absent. The first version allowed only
+    # `privilege N`, so
+    #     username admin privilege 15 algorithm-type scrypt secret <pw>
+    # — the exact line the credential rotation sends — matched nothing and the
+    # live password would have reached the log in clear. Caught by a test that
+    # generates a password and asserts the redactor can mask it, before any
+    # device was touched.
     ("user_password", re.compile(
-        r"(?i)\b(username\s+\S+(?:\s+privilege\s+\d+)?\s+(?:password|secret)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+        r"(?i)\b(username\s+\S+"
+        r"(?:\s+(?:privilege\s+\d+|algorithm-type\s+\S+))*"
+        r"\s+(?:password|secret)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     ("enable_secret", re.compile(
         r"(?i)^(\s*enable\s+(?:password|secret)\s+(?:\d+\s+)?)" + _VALUE + r"()",
         re.M)),

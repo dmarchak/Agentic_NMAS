@@ -687,6 +687,75 @@ and compare), rather than trusting that a pattern matched.
 
 ---
 
+## GAP 4 — Writing Oxidized's router.db (amendments 1 and 2)
+
+`router.db` is now `0600 oxidized:oxidized`; the NMAS app runs as `dmarchak`.
+So step 6b-vii would fail with a permission error **after the device had
+rotated and committed** — the worst place for it, and precisely the case
+amendment 3 exists to handle.
+
+### The helper, and why it is a separate root-owned script
+
+`scripts/nmas-oxidized-cred` updates **exactly one row**:
+
+```
+sudo /usr/local/sbin/nmas-oxidized-cred --file <router.db> --ip <device-ip>
+     # credentials arrive as JSON on STDIN
+```
+
+**Install:**
+
+```
+sudo install -o root -g root -m 0755 \
+     scripts/nmas-oxidized-cred /usr/local/sbin/nmas-oxidized-cred
+```
+
+**Sudoers — one fully-qualified entry:**
+
+```
+dmarchak ALL=(root) NOPASSWD: /usr/local/sbin/nmas-oxidized-cred
+```
+
+Preferred over a shared group because a group would let the app **read every
+password in the file**, which is far more than "change this one device's row".
+The helper takes an IP and a credential and returns a JSON result containing
+neither.
+
+Three properties, each pinned by a test:
+
+- **The password is never in argv.** `/proc/<pid>/cmdline` is world-readable
+  for the life of the process; a password passed as an argument is visible to
+  every user on the box. It arrives on stdin.
+- **The helper imports nothing from the repository.** A root script that
+  imports from a user-writable path is a privilege escalation with extra steps,
+  which is why the row-editing logic lives in the helper and the tests drive it
+  as a subprocess rather than importing it.
+- **Install it root-owned and not writable by the caller**, or the sudoers
+  entry becomes a root shell.
+
+### The edit itself (amendment 2)
+
+This is the **fifth** scripted edit in this project, and four have destroyed
+something. So it is a tested function with the sequence:
+
+```
+backup (0600) → parse by IP → change only the target row → temp file
+  → re-read and validate WHAT WAS WRITTEN → atomic replace → reload
+```
+
+Validating the re-read file rather than the list we intended to write is the
+part that catches a short write or an encoding surprise.
+
+Refusals, all tested: target IP absent, a malformed row (**refused, not
+skipped** — a dropped line silently removes a device from the harvest), wrong
+field count, non-IPv4 first field, a colon or newline in the credential, an
+empty password, a missing file. Every refusal leaves the file byte-identical.
+
+A re-run with an unchanged password is also refused: "exactly one row differs"
+is false, and refusing is better than reporting work that did not happen.
+
+---
+
 ## 10. Still open
 
 1. **Per-consumer account split** (GAP 1 option b) — recommended as its own
