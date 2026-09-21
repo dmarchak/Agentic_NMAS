@@ -222,9 +222,12 @@ async function loadRemotePanel() {
           <div>alias <code>${_gEsc(s.ssh_alias)}</code> ·
                branch <code>${_gEsc(s.branch)}</code> ·
                ${s.managed_by_nmas ? 'managed by NMAS' : 'adopted (NMAS does not edit ~/.ssh/config)'}</div>
-          <div>verified: ${s.verified_at
+          <div>read-only checks: ${s.read_verified_at
+                ? `<span class="text-success">${_gEsc(s.read_verified_at)}</span>`
+                : '<span class="text-muted">not yet</span>'}</div>
+          <div>write probe: ${s.verified_at
                 ? `<span class="text-success">${_gEsc(s.verified_at)}</span>`
-                : '<span class="text-warning">not yet</span>'}</div>
+                : '<span class="text-warning">not yet — required before Push</span>'}</div>
           <div>last push: ${s.last_push ? _gEsc(s.last_push.at) : 'never'}</div>
           <div>auto-push: ${s.auto_push
                 ? '<span class="badge bg-success-subtle text-success-emphasis">on</span>'
@@ -237,7 +240,9 @@ async function loadRemotePanel() {
                       Re-acknowledge to resume.</div>` : ''}
         </div>
         <div class="mt-2 d-flex gap-2 flex-wrap">
-          <button class="btn btn-outline-secondary btn-sm" onclick="remoteVerify()">Verify</button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="remoteVerify()">Verify (read-only)</button>
+          <button class="btn btn-outline-warning btn-sm" onclick="remoteVerifyWrite()"
+                  title="Pushes an orphan commit with an empty tree, then removes the ref. It publishes no content, but it IS a write to the remote.">Write probe…</button>
           <button class="btn btn-outline-secondary btn-sm" onclick="remotePreview()">Preview what would publish</button>
           <button class="btn btn-outline-warning btn-sm" onclick="remoteAcknowledge()">Acknowledge…</button>
           <button class="btn btn-outline-danger btn-sm" onclick="remotePush()"
@@ -261,7 +266,25 @@ window.remoteVerify = async function () {
                  : '<span class="text-danger">[XX]</span>'}
        <code>${_gEsc(c.name)}</code> ${_gEsc(c.detail || '')}
        ${c.ok ? '' : `<div class="text-danger ms-4">${_gEsc(c.fix || '')}</div>`}</div>`
-  ).join('') + `<div class="mt-1"><strong>${d.ok ? 'all checks pass' : 'REFUSED'}</strong></div>`);
+  ).join('') + `<div class="mt-1"><strong>${d.ok ? 'read-only checks pass' : 'REFUSED'}</strong>
+     <span class="text-muted">— ${_gEsc(d.note || '')}</span></div>`);
+  loadRemotePanel();
+};
+
+window.remoteVerifyWrite = async function () {
+  if (!confirm('The write probe pushes to the remote.\n\n' +
+               'It publishes no content — an orphan commit with an empty ' +
+               'tree, whose ref is removed afterwards — but it is a real ' +
+               'write to GitHub. Proceed?')) return;
+  _remoteOut('<span class="text-muted">probing write access…</span>');
+  const d = await (await fetch('/remote/verify-write', {method: 'POST'})).json();
+  _remoteOut((d.checks || []).map(c =>
+    `<div>${c.ok ? '<span class="text-success">[ok]</span>'
+                 : '<span class="text-danger">[XX]</span>'}
+       <code>${_gEsc(c.name)}</code> ${_gEsc(c.detail || '')}
+       ${c.ok ? '' : `<div class="text-danger ms-4">${_gEsc(c.fix || '')}</div>`}</div>`
+  ).join('') + `<div class="mt-1"><strong>${
+    d.ready_to_push ? 'all five pass — ready to push' : 'REFUSED'}</strong></div>`);
   loadRemotePanel();
 };
 

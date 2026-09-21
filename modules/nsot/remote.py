@@ -322,8 +322,28 @@ def check_right_repository(config: dict, list_name: str, repo_dir: str) -> dict:
                    "this list. Pushing would interleave two histories."}
 
 
-def verify(list_name: str, repo_dir: str = "") -> dict:
-    """All five checks. Every one must pass."""
+def verify(list_name: str, repo_dir: str = "",
+           with_write_probe: bool = False) -> dict:
+    """The pre-push checks. The write probe is OPT-IN, and gated above here.
+
+    Four of the five only read: an SSH greeting, a ``ls-remote``, two
+    anonymous HTTPS requests. Those can run unauthenticated, because they are
+    how somebody decides whether to publish at all, and gating them would mean
+    authorising the thing being evaluated.
+
+    The write probe is not one of them. It **pushes to GitHub** — an orphan
+    commit with an empty tree, publishing no content, but a write to an
+    external system all the same. "Reads may be ungated" does not extend to
+    it, and bundling it into a read-only-sounding endpoint was the mistake:
+    the argument was about reads and the endpoint was not.
+
+    ``verified_at`` is set only when all five pass, so it keeps meaning "this
+    remote is ready to be pushed to". The read-only pass records
+    ``read_verified_at`` instead, which is a weaker claim and is named like
+    one.
+    """
+    from datetime import datetime, timezone
+
     from modules.config import get_list_data_dir
 
     config = load_remote(list_name)
@@ -335,17 +355,24 @@ def verify(list_name: str, repo_dir: str = "") -> dict:
     checks = [check_key_scope(config)]
     if checks[0]["ok"]:
         checks.append(check_read(config))
-        checks.append(check_write_probe(config))
         checks.append(check_private(config))
         checks.append(check_right_repository(config, list_name, repo_dir))
+        if with_write_probe:
+            checks.append(check_write_probe(config))
 
     ok = all(c["ok"] for c in checks)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if ok:
-        from datetime import datetime, timezone
-        config["verified_at"] = datetime.now(timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ")
+        config["read_verified_at"] = stamp
+        if with_write_probe:
+            config["verified_at"] = stamp
         save_remote(list_name, config)
-    return {"ok": ok, "checks": checks, "remote": remote_url(config)}
+    return {"ok": ok, "checks": checks, "remote": remote_url(config),
+            "write_probe_run": bool(with_write_probe),
+            "ready_to_push": bool(ok and with_write_probe),
+            "note": ("" if with_write_probe else
+                     "the write probe was NOT run — it pushes to the remote, "
+                     "so it is a separate, gated step")}
 
 
 # ---------------------------------------------------------------------------

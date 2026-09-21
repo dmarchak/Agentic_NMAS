@@ -4647,3 +4647,51 @@ RW community would have been a configuration-write path into every device that
 no confirm hash, deploy gate or approval queue covers — which is why it was
 worth measuring across history rather than only at HEAD, since a push
 publishes every commit.
+
+## An argument about reads, applied to a write
+
+`/remote/verify` was left ungated, with a reason that sounded right:
+verification is how somebody decides whether to publish, and gating it would
+mean asking them to authorise the thing they are trying to evaluate.
+
+That is true of four of the five checks — an SSH greeting, a `ls-remote`, two
+anonymous HTTPS requests. The fifth **pushes to GitHub**. It publishes no
+content, by design: an orphan commit with an empty tree, whose ref is removed
+afterwards. But it is a write to an external system, and it sat behind an
+endpoint whose justification was entirely about reads.
+
+The bundling is what did it. Once the five were one call, one sentence covered
+all of them, and the sentence was written while thinking about the four.
+
+Split: `/remote/verify` runs the read-only checks ungated, and
+`/remote/verify-write` runs the probe behind `publish_remote`. `verified_at`
+still means "all five passed, ready to push"; the read-only pass records
+`read_verified_at`, which is a weaker claim and is named like one.
+
+> A justification attaches to a specific property, and a call that bundles
+> several properties inherits the weakest justification anyone wrote for it.
+
+## Removing a fallback that had never yet been wrong
+
+`push_hook()` read the list's `remote.json`, and fell back to the global
+`nsot_git_remote_url` for a list that had none — so that an installation which
+had not adopted yet kept working.
+
+Harmless today: the global is empty. But a global URL cannot express one
+repository per network, which is the entire reason for per-list configuration.
+A second list without its own `remote.json` would have pushed into whatever
+repository the global happened to name — one network's history landing in
+another's, silently. The fallback reintroduced the failure the design exists
+to prevent, for precisely the lists that were not yet configured.
+
+The rule is now unconditional: **no `remote.json`, no push.** The setting key
+is not deleted — settings keys never are — it is simply not read. A test sets
+a non-empty global, gives the list no `remote.json`, and asserts the hook does
+not reach `git` at all; another asserts structurally that the hook's source
+mentions none of the global keys.
+
+Worth noticing what made the fallback attractive: it was written to avoid
+breaking something, and the thing it avoided breaking did not exist. There is
+no installation with a configured global and an unconfigured list. It was
+compatibility with a hypothetical, bought at the price of the property the
+whole phase is for.

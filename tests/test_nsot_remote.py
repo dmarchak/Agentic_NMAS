@@ -710,3 +710,151 @@ class TestPushRefusesUntilItMay:
         out = R.push("default", actor="a@b")
         assert out["ok"] is False
         assert out["needs"] == "acknowledgement"
+
+
+class TestTheWriteProbeIsNotAReadOnlyCheck:
+    """It pushes to GitHub. "Reads may be ungated" does not stretch over it.
+
+    The read-only checks — an SSH greeting, a ls-remote, two anonymous HTTPS
+    requests — are how somebody decides whether to publish, so gating them
+    would mean authorising the thing being evaluated. The write probe is not
+    one of them: it publishes no CONTENT, but it is a write to an external
+    system, and bundling it into a read-only-sounding endpoint made the
+    argument about reads cover a write.
+    """
+
+    def _config(self, lab):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+
+    def test_verify_does_not_probe_by_default(self, lab, monkeypatch):
+        self._config(lab)
+        monkeypatch.setattr(R, "check_key_scope",
+                            lambda c: {"ok": True, "name": "key"})
+        monkeypatch.setattr(R, "check_read", lambda c: {"ok": True, "name": "read"})
+        monkeypatch.setattr(R, "check_private",
+                            lambda c: {"ok": True, "name": "private"})
+        monkeypatch.setattr(R, "check_right_repository",
+                            lambda c, l, r: {"ok": True, "name": "right"})
+
+        def _forbidden(config):
+            raise AssertionError("the default verify must not write")
+
+        monkeypatch.setattr(R, "check_write_probe", _forbidden)
+        out = R.verify("default", "/tmp/x")
+
+        assert out["ok"] is True
+        assert out["write_probe_run"] is False
+        assert out["ready_to_push"] is False
+        assert "separate, gated step" in out["note"]
+
+    def test_read_only_success_does_not_make_it_pushable(self, lab, monkeypatch):
+        """verified_at keeps meaning "ready to push", so it is not set."""
+        self._config(lab)
+        for name in ("check_key_scope", "check_read", "check_private"):
+            monkeypatch.setattr(R, name, lambda *a, **k: {"ok": True, "name": name})
+        monkeypatch.setattr(R, "check_right_repository",
+                            lambda *a, **k: {"ok": True, "name": "right"})
+        R.verify("default", "/tmp/x")
+
+        saved = R.load_remote("default")
+        assert saved.get("read_verified_at")
+        assert not saved.get("verified_at"), "a read-only pass is a weaker claim"
+
+        out = R.push("default", actor="a@b")
+        assert out["ok"] is False
+        assert "not passed verification" in out["error"]
+
+    def test_the_probe_runs_only_when_asked(self, lab, monkeypatch):
+        self._config(lab)
+        for name in ("check_key_scope", "check_read", "check_private"):
+            monkeypatch.setattr(R, name, lambda *a, **k: {"ok": True, "name": name})
+        monkeypatch.setattr(R, "check_right_repository",
+                            lambda *a, **k: {"ok": True, "name": "right"})
+        ran = []
+        monkeypatch.setattr(R, "check_write_probe",
+                            lambda c: ran.append(1) or {"ok": True, "name": "write"})
+
+        out = R.verify("default", "/tmp/x", with_write_probe=True)
+        assert ran == [1]
+        assert out["ready_to_push"] is True
+        assert R.load_remote("default")["verified_at"]
+
+    def test_the_write_probe_route_is_gated(self):
+        import ast
+        import io as _io
+
+        tree = ast.parse(_io.open("routes/remote.py", encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "verify_write":
+                assert "publish_remote" in ast.dump(node)
+                break
+        else:
+            raise AssertionError("no verify_write route")
+
+    def test_the_ungated_verify_route_does_not_probe(self):
+        import ast
+        import io as _io
+
+        tree = ast.parse(_io.open("routes/remote.py", encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "verify":
+                dumped = ast.dump(node)
+                assert "publish_remote" not in dumped
+                assert "with_write_probe" in dumped and "False" in dumped
+                break
+        else:
+            raise AssertionError("no verify route")
+
+
+class TestNoRemoteJsonMeansNoPush:
+    """There is no fallback to the global setting, deliberately.
+
+    A global URL cannot express one repository per network. A second list
+    without its own remote.json would push into whatever repository the global
+    names — one network's history landing in another's, silently. That is the
+    exact failure the per-list design exists to prevent, so leaving a fallback
+    would have reintroduced it for precisely the lists not yet configured.
+    """
+
+    def test_a_list_without_remote_json_pushes_nothing(self, lab, monkeypatch):
+        """Even with a non-empty global setting."""
+        from modules.nsot import archive
+
+        monkeypatch.setattr(
+            "modules.settings_schema.get_setting",
+            lambda key, default=None: {
+                "nsot_git_remote_url": "git@github.com:someone/else.git",
+                "nsot_git_auto_push": True,
+                "nsot_git_branch": "main",
+            }.get(key, default))
+
+        def _forbidden(*a, **k):
+            raise AssertionError("a list with no remote.json must not push")
+
+        monkeypatch.setattr("modules.nsot.repo.git", _forbidden)
+        out = archive.push_hook({"repo": "/tmp/x", "list_name": "default"})
+
+        assert out["ok"] is True
+        assert "no remote configured" in out["message"]
+
+    def test_the_hook_reads_no_global_git_setting(self):
+        """Structural: the fallback cannot creep back in."""
+        import inspect
+
+        from modules.nsot import archive
+
+        source = inspect.getsource(archive.push_hook)
+        code = "\n".join(l for l in source.splitlines()
+                         if not l.strip().startswith("#"))
+        for key in ("nsot_git_remote_url", "nsot_git_auto_push",
+                    "nsot_git_branch"):
+            assert key not in code, f"{key} is read again"
+
+    def test_an_unknown_list_name_pushes_nothing(self, lab, monkeypatch):
+        from modules.nsot import archive
+
+        monkeypatch.setattr("modules.nsot.repo.git", lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not push")))
+        out = archive.push_hook({"repo": "/tmp/x"})
+        assert out["ok"] is True
+        assert "nothing pushed" in out["message"]

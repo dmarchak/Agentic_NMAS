@@ -35,32 +35,39 @@ def push_hook(context: dict) -> dict:
     """
     from modules.nsot import remote as R
     from modules.nsot.repo import git
-    from modules.settings_schema import get_setting
 
+    # NO remote.json, NO push. There is deliberately no fallback to the global
+    # `nsot_git_remote_url`.
+    #
+    # A global URL cannot express one repository per network, so a second list
+    # without its own remote.json would push into whatever repository the
+    # global happens to name — one network's history landing in another's,
+    # silently. That is the exact failure the per-list design exists to
+    # prevent, and leaving a fallback in place would have reintroduced it for
+    # precisely the lists that had not been configured yet.
+    #
+    # The setting key is not deleted (settings keys never are); it is simply
+    # no longer read here.
     list_name = context.get("list_name", "")
     config = R.load_remote(list_name) if list_name else None
-
     if config is None:
-        # Fall back to the global setting for a list with no remote.json, so
-        # an installation that has not adopted yet keeps its old behaviour.
-        remote = (get_setting("nsot_git_remote_url", "") or "").strip()
-        if not remote or not get_setting("nsot_git_auto_push", False):
-            return {"ok": True, "message": "push not configured"}
-        branch = get_setting("nsot_git_branch", "main") or "main"
-    else:
-        decision = R.auto_push_decision(list_name, context.get("repo", ""))
-        if not decision["push"]:
-            if decision.get("held"):
-                log.warning("archive: auto-push HELD for '%s': %s", list_name,
-                            decision["reason"])
-                return {"ok": False, "held": True, "error": (
-                    f"auto-push held — {decision['reason']}. A person must "
-                    f"re-acknowledge publication in the UI before this "
-                    f"commit is pushed.")}
-            return {"ok": True, "message": decision["reason"]}
-        remote = R.remote_url(config)
-        branch = config.get("branch", "main") or "main"
+        return {"ok": True, "message": (
+            f"no remote configured for '{list_name or '(unknown list)'}' — "
+            f"nothing pushed")}
 
+    decision = R.auto_push_decision(list_name, context.get("repo", ""))
+    if not decision["push"]:
+        if decision.get("held"):
+            log.warning("archive: auto-push HELD for '%s': %s", list_name,
+                        decision["reason"])
+            return {"ok": False, "held": True, "error": (
+                f"auto-push held — {decision['reason']}. A person must "
+                f"re-acknowledge publication in the UI before this commit "
+                f"is pushed.")}
+        return {"ok": True, "message": decision["reason"]}
+
+    remote = R.remote_url(config)
+    branch = config.get("branch", "main") or "main"
     repo = context["repo"]
 
     rc, _, _ = git(repo, "remote", "get-url", "origin")

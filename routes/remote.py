@@ -43,6 +43,7 @@ def status():
         "owner_repo": f"{config['owner']}/{config['repo']}",
         "ssh_alias": config["ssh_alias"], "branch": config.get("branch"),
         "managed_by_nmas": config.get("managed_by_nmas"),
+        "read_verified_at": config.get("read_verified_at"),
         "verified_at": config.get("verified_at"),
         "auto_push": config.get("auto_push"),
         "last_push": config.get("last_push"),
@@ -71,8 +72,29 @@ def adopt():
 
 @bp.route("/verify", methods=["POST"])
 def verify():
-    """All five pre-push checks. Not gated: this is how you decide."""
-    out = R.verify(_list_name())
+    """The READ-ONLY pre-push checks. Ungated: this is how you decide.
+
+    An SSH greeting, a ls-remote, two anonymous HTTPS requests. The write
+    probe is deliberately not among them — see /remote/verify-write.
+    """
+    out = R.verify(_list_name(), with_write_probe=False)
+    return jsonify(out)
+
+
+@bp.route("/verify-write", methods=["POST"])
+def verify_write():
+    """The write probe. GATED, because it writes to an external system.
+
+    It publishes no content — an orphan commit with an empty tree, whose ref
+    is then removed — but it is a push to GitHub, and "reads may be ungated"
+    does not stretch to cover a write just because what it writes is small.
+    """
+    ident, refusal = identity.require(request, "publish_remote")
+    if refusal:
+        return refusal
+    out = R.verify(_list_name(), with_write_probe=True)
+    log.info("remote: write probe for '%s' by %s (%s) — ok=%s",
+             _list_name(), ident.actor, ident.kind, out.get("ok"))
     return jsonify(out)
 
 
