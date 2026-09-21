@@ -26,6 +26,7 @@ background thread and never hold the lock.
 
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -450,10 +451,83 @@ def adopt_identity(repo: str, item) -> str:
     return identity
 
 
+#: Structural section kinds counted before a golden is overwritten. Each is a
+#: top-level construct whose disappearance means the capture is not the same
+#: device — not a config change, a different KIND of document.
+SECTION_KINDS = {
+    "interface": re.compile(r"^interface \S", re.M),
+    "routing": re.compile(r"^router \S", re.M),
+    "vrf": re.compile(r"^(?:vrf definition|ip vrf) \S", re.M),
+    "line": re.compile(r"^line \S", re.M),
+    "acl": re.compile(r"^ip access-list \S", re.M),
+}
+
+
+def section_counts(text: str) -> dict:
+    """How many of each structural kind a config holds."""
+    return {kind: len(rx.findall(text or "")) for kind, rx in SECTION_KINDS.items()}
+
+
+def lost_sections(previous: str, incoming: str) -> dict:
+    """Kinds the incoming config has FEWER of than the one it replaces.
+
+    Returns ``{kind: (before, after)}``, empty when nothing was lost.
+    """
+    before, after = section_counts(previous), section_counts(incoming)
+    return {kind: (before[kind], after[kind])
+            for kind in SECTION_KINDS
+            if after[kind] < before[kind]}
+
+
+class GoldenWouldLoseSections(Exception):
+    """A save that would drop structural sections from a device's record."""
+
+
+def _guard_content(abs_path: str, hostname: str, incoming: str,
+                   acknowledge: bool) -> None:
+    """Refuse a save that silently shrinks a device's configuration.
+
+    The chokepoint, not the caller. The credential rotation replaced r1's and
+    r2's goldens with a two-line fragment — the output of
+    ``show running-config | include ^username``, stored by mistake as a whole
+    configuration — and every existing guard passed it, because all of them
+    are about identity, emptiness, encoding and commit shape. None of them
+    asked whether the content is plausibly the same device.
+
+    Putting the check in ``save_golden`` means the next caller to make that
+    mistake is refused without having to know the mistake exists. A guard that
+    lives in one caller protects one caller.
+
+    The comparison is against the PREVIOUS golden for this device, in the same
+    spirit as the clab-sync truncation guard: counts of interfaces, routing
+    processes, VRFs, lines and ACLs must not go DOWN. A genuine structural
+    change — decommissioning interfaces, removing a routing process — is a
+    real thing that must remain possible, so it is allowed with
+    ``acknowledge_structural_change=True``. Explicit, recorded in the call,
+    and impossible to reach by accident.
+    """
+    if acknowledge or not os.path.exists(abs_path):
+        return
+    with open(abs_path, encoding="utf-8") as fh:
+        previous = fh.read()
+
+    lost = lost_sections(previous, incoming)
+    if not lost:
+        return
+    detail = ", ".join(f"{kind} {before}->{after}"
+                       for kind, (before, after) in sorted(lost.items()))
+    raise GoldenWouldLoseSections(
+        f"{hostname}: the incoming config has fewer structural sections than "
+        f"the golden it would replace ({detail}). This is what a filtered or "
+        f"truncated capture looks like. If the device really did change "
+        f"structurally, pass acknowledge_structural_change=True.")
+
+
 def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = True,
                 pipeline_id: str = None, baseline: bool = None,
-                extra_trailers: list = None, extra_paths: list = None) -> dict:
+                extra_trailers: list = None, extra_paths: list = None,
+                acknowledge_structural_change: bool = False) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
     Returns ``{"ok", "commit", "changed", "unchanged", "tags", "renamed", "error"}``.
@@ -467,7 +541,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
 
     rename_result = apply_pending_renames(repo, actor)
 
-    changed, unchanged = [], []
+    changed, unchanged, pending = [], [], []
     with repo_lock(repo):
         init_repo(repo)
         os.makedirs(os.path.join(repo, "golden"), exist_ok=True)
@@ -498,6 +572,26 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 unchanged.append(item.hostname)
                 continue
 
+            pending.append((item, identity, rel, abs_path, content))
+
+        # Validate EVERY pending write before performing ANY of them.
+        #
+        # Refusing mid-loop would leave the devices already written sitting on
+        # disk, uncommitted, in the live repo — the same dirty-working-tree
+        # failure the extra_paths handling below was fixed for. A Save All is
+        # one commit over nine devices; a ninth device failing the guard must
+        # not leave eight rewritten.
+        try:
+            for _item, _identity, _rel, abs_path, content in pending:
+                _guard_content(abs_path, _item.hostname, content,
+                               acknowledge_structural_change)
+        except GoldenWouldLoseSections as exc:
+            log.error("repo: %s", exc)
+            return {"ok": False, "error": str(exc), "changed": [],
+                    "unchanged": unchanged, "tags": [],
+                    "renamed": rename_result["renamed"]}
+
+        for item, identity, rel, abs_path, content in pending:
             with open(abs_path, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(content)
             changed.append({"hostname": item.hostname, "identity": identity,

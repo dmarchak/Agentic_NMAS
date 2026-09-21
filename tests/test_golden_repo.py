@@ -724,3 +724,151 @@ class TestMintingIsNotReachableFromTheResolver:
         R.save_golden("Lab", [_item("R1", "hostname R1\n", nb_id=42)])
         R.save_golden("Lab", [_item("R1", "hostname R1\n z\n", nb_id=42)])
         assert list(self._entries(lab)) == ["nb:42"]
+
+class TestSaveGoldenRefusesToLoseSections:
+    """The content guard, at the chokepoint rather than in one caller.
+
+    The credential rotation replaced r1's and r2's goldens with a two-line
+    fragment — the output of `show running-config | include ^username`, stored
+    by mistake as a whole configuration. 8879 bytes and 337 lines became 136
+    and 2, in a commit that was otherwise perfect: right identity, right
+    trailers, right tag, intent updated in the same commit.
+
+    Every existing guard passed it, because all of them are about identity,
+    emptiness, encoding and commit shape. None asked whether the content is
+    plausibly still the same device.
+
+    Fixing the rotation alone would protect the rotation. This lives in
+    save_golden(), so the next caller to make the same mistake is refused
+    without having to know the mistake exists.
+    """
+
+    FULL = (
+        "version 17.6\nhostname r1\n!\n"
+        "username admin privilege 15 password 0 admin\n!\n"
+        "vrf definition MGMT\n address-family ipv4\n!\n"
+        "interface GigabitEthernet1\n ip address 203.0.113.1 255.255.255.0\n"
+        "interface GigabitEthernet2\n ip address 203.0.113.5 255.255.255.0\n"
+        "interface Loopback0\n ip address 203.0.113.9 255.255.255.255\n!\n"
+        "router ospf 1\n network 203.0.113.0 0.0.0.255 area 0\n!\n"
+        "router bgp 65001\n neighbor 203.0.113.5 remote-as 65002\n!\n"
+        "ip access-list extended MGMT-IN\n permit ip any any\n!\n"
+        "line con 0\n!\nline vty 0 4\n transport input ssh\n!\nend\n")
+
+    # Exactly what the rotation stored.
+    FILTERED = "username admin privilege 15 secret 9 $9$salt$hash\n"
+
+    def _save(self, repo_path, text, **kw):
+        """`lab` yields the repo path; the list name resolves through the
+        patched get_list_data_dir, so any name reaches the same directory."""
+        from modules.nsot.repo import GoldenItem, save_golden
+        return save_golden("lab",
+                           [GoldenItem("r1", text, "203.0.113.1")],
+                           source="manual", actor="test", **kw)
+
+    def test_a_filtered_capture_is_refused(self, lab):
+        assert self._save(lab, self.FULL)["ok"] is True
+
+        out = self._save(lab, self.FILTERED)
+        assert out["ok"] is False
+        assert "fewer structural sections" in out["error"]
+        assert "interface 3->0" in out["error"]
+
+    def test_the_refusal_leaves_the_golden_intact(self, lab):
+        self._save(lab, self.FULL)
+        path = os.path.join(lab, "golden", "r1.cfg")
+        before = open(path, encoding="utf-8").read()
+
+        self._save(lab, self.FILTERED)
+        assert open(path, encoding="utf-8").read() == before
+
+    def test_a_genuine_structural_change_is_accepted_with_acknowledgement(
+            self, lab):
+        """Decommissioning is real and must stay possible."""
+        self._save(lab, self.FULL)
+        smaller = self.FULL.replace(
+            "interface GigabitEthernet2\n ip address 203.0.113.5 255.255.255.0\n",
+            "")
+
+        refused = self._save(lab, smaller)
+        assert refused["ok"] is False, "it must not pass silently"
+
+        allowed = self._save(lab, smaller,
+                             acknowledge_structural_change=True)
+        assert allowed["ok"] is True
+        assert allowed["changed"]
+
+    def test_an_ordinary_edit_needs_no_acknowledgement(self, lab):
+        """The guard must not make normal saves require a flag."""
+        self._save(lab, self.FULL)
+        edited = self.FULL.replace("transport input ssh",
+                                   "transport input ssh telnet")
+        out = self._save(lab, edited)
+        assert out["ok"] is True
+
+    def test_growth_is_never_refused(self, lab):
+        self._save(lab, self.FULL)
+        grown = self.FULL.replace(
+            "!\nend\n",
+            "interface GigabitEthernet3\n ip address 203.0.113.13 "
+            "255.255.255.0\n!\nend\n")
+        assert self._save(lab, grown)["ok"] is True
+
+    def test_a_first_save_has_nothing_to_compare_against(self, lab):
+        """Onboarding must not need an acknowledgement."""
+        assert self._save(lab, self.FULL)["ok"] is True
+
+    def test_fault_injection_truncation_at_the_first_router_block(self, lab):
+        """The clab-sync guard's own fault-injection case, applied here.
+
+        A capture cut at the first `router` line keeps every interface and
+        still loses the routing processes — the failure a length check or a
+        byte-count would wave through.
+        """
+        self._save(lab, self.FULL)
+        truncated = self.FULL[:self.FULL.index("router ospf 1")]
+
+        out = self._save(lab, truncated)
+        assert out["ok"] is False
+        assert "routing 2->0" in out["error"]
+
+    def test_a_refusal_writes_NOTHING_even_for_earlier_devices(self, lab):
+        """A Save All is one commit over nine devices.
+
+        Refusing mid-loop would leave the devices already written sitting on
+        disk uncommitted, in the live repo — a dirty working tree, and a
+        partial rewrite nobody asked for. Every pending write is validated
+        before any of them happens.
+        """
+        from modules.nsot.repo import GoldenItem, save_golden
+
+        good = self.FULL.replace("hostname r1", "hostname r9")
+        assert save_golden("lab",
+                           [GoldenItem("r1", self.FULL, "203.0.113.1"),
+                            GoldenItem("r9", good, "203.0.113.9")],
+                           source="manual", actor="test")["ok"] is True
+
+        before = {h: open(os.path.join(lab, "golden", f"{h}.cfg"),
+                          encoding="utf-8").read() for h in ("r1", "r9")}
+
+        # r1 grows (fine); r9 is a filtered capture (refused). r1 must not be
+        # written, because the commit as a whole does not happen.
+        grown = self.FULL.replace("!\nend\n",
+                                  "interface GigabitEthernet9\n!\nend\n")
+        out = save_golden("lab",
+                          [GoldenItem("r1", grown, "203.0.113.1"),
+                           GoldenItem("r9", self.FILTERED, "203.0.113.9")],
+                          source="manual", actor="test")
+
+        assert out["ok"] is False
+        assert "r9" in out["error"]
+        for host, text in before.items():
+            assert open(os.path.join(lab, "golden", f"{host}.cfg"),
+                        encoding="utf-8").read() == text, f"{host} was rewritten"
+
+    def test_the_guard_counts_every_kind_it_claims_to(self):
+        from modules.nsot.repo import section_counts
+        counts = section_counts(self.FULL)
+        assert counts == {"interface": 3, "routing": 2, "vrf": 1,
+                          "line": 2, "acl": 1}
+

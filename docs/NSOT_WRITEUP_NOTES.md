@@ -4102,3 +4102,75 @@ And the check that found it was not a test at all. It was a table printed while
 answering a different question, with r3/r4/r5 in it as a control. Nothing in
 the r1 or r2 runs looked wrong on its own; the defect was only visible next to
 a device that had not been rotated.
+
+## Repairing the goldens: what the damage did and did not reach
+
+Four checks, before rotating anything else.
+
+**The devices were never affected.** The startup files on the clab host are
+full length and unchanged — r1 153 lines, r2 147 — so a redeploy would boot
+correct, rotated configs. The damage is confined to the NSoT's record.
+
+**Nothing acted on the damaged goldens.** The approval queue is empty, and the
+only `detect_config_drift` activity in the log is from three weeks earlier. Had
+the drift checker run in that window it would have reported the whole of each
+device as drift, and `revert_to_golden` is an offered action on such an item —
+which now hands off to the confirmed restore path, so a human would have seen
+a program that removed nothing and added everything. Still: the window existed
+for roughly an hour and nothing was there to close it.
+
+**The tags asserted something false.** `golden/r1/20260921T094202Z` and
+`golden/r2/20260921T085555Z` claim "this commit's golden is that device's
+configuration", pointing at 136 bytes. They are relabelled
+`damaged/<device>/<ts>` with an annotated reason naming the byte count, the
+command whose output was stored, and the fix — the same treatment as
+`baseline/20260921T015446Z` becoming `batch/…`. The commits are untouched:
+they are accurate history of when the credential rotated, and the credential
+change they carry is correct.
+
+### The guard belongs at the chokepoint
+
+Fixing the rotation protects the rotation. `save_golden()` is the single write
+path for every golden this system stores, so that is where a content guard has
+to live — the next caller to make the same mistake is then refused without
+having to know the mistake exists.
+
+Modelled on the clab-sync truncation guard: count structural sections —
+interfaces, routing processes, VRFs, lines, ACLs — and refuse a save that has
+*fewer* of any kind than the golden it would replace. A genuine structural
+change is a real thing, so `acknowledge_structural_change=True` allows it:
+explicit, visible in the call, unreachable by accident.
+
+The fault-injection case is borrowed directly: a capture truncated at the
+first `router` block keeps every interface and loses the routing processes.
+Byte counts and line counts wave it through; the section guard refuses it.
+
+### Where the guard had to go inside that function
+
+The first version checked each device as the loop reached it. That is wrong
+for the operation this exists to protect: a Save All is **one commit over nine
+devices**, and refusing at the ninth would leave the first eight rewritten on
+disk and uncommitted — a dirty working tree in the live repo, and a partial
+rewrite nobody asked for. It is the same failure the `extra_paths` handling was
+already fixed for, reintroduced by a guard added to prevent a different one.
+
+Every pending write is now validated before any of them is performed.
+
+> A check added to a loop inherits the loop's partial-failure behaviour. If the
+> operation is atomic, the check has to run before the operation starts, not
+> inside it.
+
+### The repair path, verified before running it
+
+Save All reads `show running-config` — unfiltered — for every online device and
+promotes all of them through `save_golden()` in one commit, with no
+acknowledgement flag, so the new guard applies to it. Simulated against the
+real repository, comparing each device's current golden with the newest
+pre-rotation version of itself, all nine pass: r1 and r2 *gain* sections
+(0 → 13 and 0 → 12), which is growth and never refused, and the other seven are
+unchanged.
+
+Worth stating because it is the reason this cannot wait: the only whole-fleet
+baseline predates the rotations, so restoring to it today would reinstate r1's
+and r2's old plaintext passwords on devices that no longer use them. The
+repair and the new baseline are the same action.
