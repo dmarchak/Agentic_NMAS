@@ -217,8 +217,29 @@ def generate_password(hostname: str = "device", length: int = LENGTH) -> str:
 CONFIRM_PROMPT = r"\[confirm\]|\[yes/no\]"
 
 
-def rotation_commands(username: str, privilege, password: str) -> list[str]:
-    """The program sent to the device. TWO commands, and it has to be two.
+def entry_kind(line: str) -> str:
+    """Does this ``username`` line hold a ``secret`` or a ``password``?
+
+    The answer decides the whole program, because the device's refusal is
+    asymmetric: measured on IOS-XE 17.06 a secret over a PASSWORD entry is
+    refused, and measured on vIOS-L2 15.2 a secret over a SECRET entry
+    replaces cleanly with no complaint at all.
+
+    Returns ``""`` when it cannot tell, which callers must treat as "assume
+    the worst and send the two-command form".
+    """
+    parts = (line or "").split()
+    if parts[:1] != ["username"]:
+        return ""
+    for keyword in ("secret", "password"):
+        if keyword in parts:
+            return keyword
+    return ""
+
+
+def rotation_commands(username: str, privilege, password: str,
+                      current_kind: str = "") -> list[str]:
+    """The program sent to the device. One command or two, per MEASUREMENT.
 
     The original one-liner could never have worked on any device in this
     fleet. Measured on r2 (IOS-XE 17.06.01a), pushing a secret at a username
@@ -235,8 +256,15 @@ def rotation_commands(username: str, privilege, password: str) -> list[str]:
     ``secret 0`` without ``algorithm-type`` is refused identically, which is
     what rules out the keyword as the cause rather than the coexistence.
 
-    So the password entry must go first. Two ways were measured, and the
-    choice between them is about the failure window, not elegance:
+    Measured on vIOS-L2 15.2, where the account already holds a ``secret 5``,
+    the same push is accepted silently and replaces it: the config becomes
+    ``secret 9``, the new password authenticates and the old one stops. So the
+    deletion is required by the PASSWORD case and by nothing else, and sending
+    it anyway would delete and recreate an account for no reason.
+
+    When the existing entry IS a password, it must go first. Two ways were
+    measured, and the choice between them is about the failure window, not
+    elegance:
 
     ``no username`` then set          the account is briefly ABSENT -> logins
                                       fail. **Chosen.**
@@ -249,10 +277,19 @@ def rotation_commands(username: str, privilege, password: str) -> list[str]:
     established sessions when a username is removed.
     """
     priv = f" privilege {privilege}" if privilege not in (None, "") else ""
-    return [
-        f"no username {username}",
-        f"username {username}{priv} algorithm-type scrypt secret {password}",
-    ]
+    setter = (f"username {username}{priv} "
+              f"algorithm-type scrypt secret {password}")
+
+    # A secret over a SECRET is accepted, so the deletion is not merely
+    # unnecessary — it is harmful. It opens a window in which the account does
+    # not exist and raises a [confirm] prompt, both for nothing.
+    if current_kind == "secret":
+        return [setter]
+
+    # A secret over a PASSWORD is refused, and an unknown kind is treated as a
+    # password: the two-command form works in BOTH states (measured on IOS-XE
+    # 17.06 and vIOS-L2 15.2), so it is the safe answer when we cannot tell.
+    return [f"no username {username}", setter]
 
 
 def rotation_command(username: str, privilege, password: str) -> str:
@@ -267,9 +304,29 @@ def rotation_command(username: str, privilege, password: str) -> str:
     return f"username {username}{priv} algorithm-type scrypt secret {password}"
 
 
-def masked_commands(username: str, privilege) -> list[str]:
-    """Exactly what the operator confirms — including the deletion."""
-    return rotation_commands(username, privilege, "<generated>")
+def masked_commands(username: str, privilege, current_kind: str = "") -> list[str]:
+    """Exactly what the operator confirms — the program chosen for THIS device."""
+    return rotation_commands(username, privilege, "<generated>", current_kind)
+
+
+def revert_commands(username: str, original_line: str,
+                    current_kind: str = "secret") -> list[str]:
+    """Putting *original_line* back, conditional for the same reason.
+
+    After a rotation the account holds a ``secret``. Restoring a line that
+    sets a ``password`` hits the refusal mirrored, so it needs the deletion
+    first. Restoring a line that sets a ``secret`` — which is every switch,
+    whose original is a pasted ``secret 5 $1$…`` hash — does not.
+
+    Both forms were measured restoring a type-5 hash over a type-9 secret on
+    vIOS-L2: the line comes back byte-identical and the old password
+    authenticates again. Restoring a pasted hash is a different operation from
+    typing a plaintext password, and it is the stage 2 lockout defence, so it
+    was measured rather than assumed.
+    """
+    if entry_kind(original_line) == "secret" and current_kind == "secret":
+        return [original_line]
+    return [f"no username {username}", original_line]
 
 
 def masked_command(username: str, privilege) -> str:
@@ -278,7 +335,8 @@ def masked_command(username: str, privilege) -> str:
 
 
 def operation_fingerprint(*, device_identity: str, username: str,
-                          privilege, capture_hash: str) -> str:
+                          privilege, capture_hash: str,
+                          entry_kind: str = "") -> str:
     """What the operator confirms: every property except the random value.
 
     Deliberately excludes the password — they cannot confirm bytes they are not
@@ -286,6 +344,12 @@ def operation_fingerprint(*, device_identity: str, username: str,
     the charset and length, and the capture the plan was computed against, so a
     confirmation cannot be replayed against a different device or a changed
     device.
+
+    It also binds ``entry_kind``, because the program is now conditional on
+    it: one command over an existing secret, two over a password. The
+    commands are a pure function of the bound inputs only while that is one
+    of them — otherwise a device whose entry kind changed between plan and
+    apply would receive a program the operator never saw.
     """
     import hashlib
     import json
@@ -298,6 +362,7 @@ def operation_fingerprint(*, device_identity: str, username: str,
         "charset": hashlib.sha256(CHARSET.encode()).hexdigest()[:12],
         "length": LENGTH,
         "capture_hash": capture_hash,
+        "entry_kind": entry_kind,
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
@@ -795,6 +860,35 @@ def preflight(list_name: str, hostname: str) -> dict:
     _check("current_user_line_found", bool(line),
            line and "found" or f"no 'username {username}' line in the capture")
 
+    # THE LIVE READ LIVES HERE, not in plan().
+    #
+    # `rotate()` calls preflight() itself rather than reusing plan()'s result,
+    # so anything computed only in plan() is invisible to the thing that
+    # actually sends commands. The program is conditional on the entry kind,
+    # which means the kind has to be established where both paths can see it.
+    live = live_user_line(device, username)
+    out["live_read_ok"] = live["ok"]
+    out["live_line"] = live["line"]
+    out["entry_kind"] = live["kind"]
+    if live["ok"]:
+        # Restoring the line the DEVICE has, not the one the golden stored. A
+        # revert re-sends this verbatim, and for a switch it is a hash: a
+        # stale golden would restore a credential nobody holds.
+        out["original_line"] = live["line"]
+        if entry_kind(line) != live["kind"]:
+            out["discrepancy"] = (
+                f"the golden records a '{entry_kind(line) or 'unknown'}' entry, "
+                f"the device has a '{live['kind']}' one — the DEVICE decides "
+                f"the program, and this device's golden is stale")
+        else:
+            out["discrepancy"] = ""
+    else:
+        out["original_line"] = line
+        out["discrepancy"] = (
+            f"the device could not be read ({live.get('error', '')}) — falling "
+            f"back to the two-command form, which is correct in either state")
+    _check("live_user_line_read", live["ok"], live.get("error", live["kind"]))
+
     out["privilege"] = ""
     if line:
         import re
@@ -809,6 +903,51 @@ def preflight(list_name: str, hostname: str) -> dict:
     return out
 
 
+def live_user_line(device: dict, username: str) -> dict:
+    """Read this device's CURRENT ``username`` line, from the device.
+
+    The golden is a stored capture, and the program now depends on whether the
+    account holds a secret or a password — a fact about the device now, not
+    about the last time it was captured. A stale golden would pick the wrong
+    program, and on the password path the wrong program is the one that gets
+    silently refused.
+    """
+    from netmiko import ConnectHandler
+
+    from modules.connection import connection_params
+    from modules.device import decrypt_field
+
+    try:
+        password = decrypt_field(device.get("password", ""))
+    except Exception:                          # noqa: BLE001
+        password = device.get("password", "")
+
+    conn = None
+    try:
+        conn = ConnectHandler(**connection_params(
+            device, password=password, secret=enable_secret(device)))
+        conn.enable()
+        out = conn.send_command(
+            f"show running-config | include ^username {username}",
+            read_timeout=60) or ""
+    except Exception as exc:                   # noqa: BLE001
+        return {"ok": False, "line": "", "kind": "",
+                "error": f"{type(exc).__name__}: {exc}"[:160]}
+    finally:
+        if conn is not None:
+            try:
+                conn.disconnect()
+            except Exception:                  # noqa: BLE001
+                pass
+
+    for line in out.splitlines():
+        if line.strip().startswith(f"username {username}"):
+            return {"ok": True, "line": line.strip(),
+                    "kind": entry_kind(line.strip())}
+    return {"ok": False, "line": "", "kind": "",
+            "error": f"no 'username {username}' line on the device"}
+
+
 def plan(list_name: str, hostname: str) -> dict:
     """What the operator is shown, and the fingerprint they confirm."""
     pre = preflight(list_name, hostname)
@@ -819,9 +958,15 @@ def plan(list_name: str, hostname: str) -> dict:
 
     import hashlib
     capture_hash = hashlib.sha256(pre["capture"].encode()).hexdigest()[:16]
+
+    # preflight() did the live read; plan only surfaces it.
+    kind = pre.get("entry_kind", "")
+    disagreement = pre.get("discrepancy", "")
+
     fingerprint = operation_fingerprint(
         device_identity=pre["identity"], username=pre["username"],
-        privilege=pre["privilege"], capture_hash=capture_hash)
+        privilege=pre["privilege"], capture_hash=capture_hash,
+        entry_kind=kind)
 
     return {
         "ok": True, "device": hostname, "mgmt_ip": pre["mgmt_ip"],
@@ -836,7 +981,10 @@ def plan(list_name: str, hostname: str) -> dict:
         #
         # Not a fingerprint change: both commands are a pure function of
         # username and privilege, and the fingerprint already binds those.
-        "new_program": masked_commands(pre["username"], pre["privilege"]),
+        "new_program": masked_commands(pre["username"], pre["privilege"], kind),
+        "entry_kind": kind,
+        "live_read_ok": pre.get("live_read_ok", False),
+        "discrepancy": disagreement,
         "new_form": masked_command(pre["username"], pre["privilege"]),
         "capture_hash": capture_hash, "fingerprint": fingerprint,
         "length": LENGTH, "charset_size": len(CHARSET),
@@ -954,7 +1102,9 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
 
     device, repo = pre["device_row"], pre["repo"]
     username, privilege = pre["username"], pre["privilege"]
-    original_line = pre["current_line"]
+    # The line the DEVICE has, falling back to the golden when it could not be
+    # read. This is what a revert re-sends verbatim.
+    original_line = pre.get("original_line") or pre["current_line"]
 
     # ---- generate, then stage BEFORE anything is pushed ------------------
     try:
@@ -974,8 +1124,13 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     invalidate_cache()
     _step("invalidate_redaction_cache", True)
 
-    commands = rotation_commands(username, privilege, password)
-    for masked in masked_commands(username, privilege):
+    # The kind the PLAN was confirmed against. The program is a pure function
+    # of it, so it is bound into the fingerprint; re-deriving it from the held
+    # session below is what stops a device that changed since the confirm from
+    # receiving a program nobody saw.
+    confirmed_kind = pre.get("entry_kind", "")
+    commands = rotation_commands(username, privilege, password, confirmed_kind)
+    for masked in masked_commands(username, privilege, confirmed_kind):
         log.info("rotate %s: sending %s", hostname, masked)
 
     # ---- the original session: opened, proven, and held open -------------
@@ -991,6 +1146,38 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     _step("original_session", True, "open and proven")
 
     try:
+        # ---- the device has the last word on which program is correct ----
+        #
+        # The plan read the entry kind live, and the operator confirmed a
+        # program derived from it. If the device disagrees NOW, the right
+        # answer is not to quietly send a different program: it is to stop,
+        # because what was confirmed would no longer be what is sent.
+        live_now = ""
+        try:
+            out = session.send_command(
+                f"show running-config | include ^username {username}",
+                read_timeout=60) or ""
+            for line in out.splitlines():
+                if line.strip().startswith(f"username {username}"):
+                    live_now = entry_kind(line.strip())
+                    break
+        except Exception as exc:               # noqa: BLE001
+            _step("recheck_entry_kind", False, f"{type(exc).__name__}"[:80])
+        if live_now and live_now != confirmed_kind:
+            _step("recheck_entry_kind", False,
+                  f"confirmed against a '{confirmed_kind or 'unknown'}' entry, "
+                  f"the device now has a '{live_now}' one")
+            clear_staged(repo, hostname)
+            result["state"] = NOT_STARTED
+            result["reason"] = (
+                f"the device's credential entry changed between the plan and "
+                f"now ('{confirmed_kind or 'unknown'}' -> '{live_now}'), so the "
+                f"program you confirmed is not the program that would be sent "
+                f"— re-run the plan")
+            return result
+        if live_now:
+            _step("recheck_entry_kind", True, f"still a '{live_now}' entry")
+
         # ---- push --------------------------------------------------------
         try:
             push_rotation(session, commands)
@@ -1114,8 +1301,14 @@ def _revert(result, _step, session, device, username, original_line, repo,
     # password — "Can not have both a user password and a user secret" is
     # symmetric. A one-line revert would be declined, and the failure that the
     # revert exists to recover from would become a real lockout.
+    # Conditional for the same reason the push is. After a successful push the
+    # account holds a secret; restoring a line that sets a PASSWORD hits the
+    # refusal mirrored and needs the deletion first, while restoring a line
+    # that sets a secret — every switch, whose original is a pasted
+    # `secret 5 $1$…` — does not. Both forms were measured on vIOS-L2.
     try:
-        push_rotation(session, [f"no username {username}", original_line])
+        push_rotation(session, revert_commands(username, original_line,
+                                               current_kind="secret"))
     except Exception as exc:                   # noqa: BLE001
         _step("revert", False, f"{type(exc).__name__}: {exc}"[:160])
         result["state"] = REVERT_FAILED
@@ -1453,8 +1646,57 @@ def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
                                 "attempts": attempt + 1}
         except Exception as exc:               # noqa: BLE001
             last = {"error": f"{type(exc).__name__}"}
+    # Name the cause when Oxidized knows it. `PromptUndetect` means it
+    # authenticated fine and then failed to match its prompt regexp — a
+    # known intermittent on this fleet, affecting the switches equally and
+    # predating the rotations. It is emphatically NOT a sign that the
+    # rotation went wrong, and an operator who cannot tell those apart will
+    # go looking at the device instead of re-running the persist-only
+    # command, which is all this needs.
+    detail = _fetch_failure_detail(rest, mgmt_ip)
     return {"ok": False, "attempts": attempts, "last": last,
-            "error": "no successful fetch after the rotation"}
+            "cause": detail.get("cause", ""),
+            "error": detail.get("error", "no successful fetch after the "
+                                         "rotation")}
+
+
+#: Oxidized failure classes worth telling the operator apart. The value is
+#: what to DO, because that is the part they need and the part a class name
+#: does not carry.
+_FETCH_CAUSES = {
+    "PromptUndetect": (
+        "Oxidized authenticated but could not match its prompt "
+        "(Oxidized::PromptUndetect). This is a known intermittent on this "
+        "fleet, unrelated to the credential — the rotation itself succeeded. "
+        "Re-run the persist-only command; do not investigate the device."),
+    "AuthenticationFailed": (
+        "Oxidized could not authenticate. That IS credential-related: check "
+        "the router.db row for this device before re-running."),
+}
+
+
+def _fetch_failure_detail(rest: str, mgmt_ip: str) -> dict:
+    """Ask Oxidized why its last attempt on this device failed."""
+    import json
+    import urllib.request
+
+    generic = {"cause": "", "error": "no successful fetch after the rotation"}
+    if not rest:
+        return generic
+    try:
+        raw = urllib.request.urlopen(f"{rest}/nodes.json", timeout=10).read()
+        for node in json.loads(raw):
+            if node.get("name") != mgmt_ip:
+                continue
+            blob = json.dumps(node.get("last") or {})
+            for marker, advice in _FETCH_CAUSES.items():
+                if marker.lower() in blob.lower():
+                    return {"cause": marker,
+                            "error": f"no successful fetch after the "
+                                     f"rotation — {advice}"}
+    except Exception:                          # noqa: BLE001
+        return generic
+    return generic
 
 
 def run_sync(script: str = "") -> dict:

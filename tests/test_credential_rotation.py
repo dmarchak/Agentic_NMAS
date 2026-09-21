@@ -199,6 +199,8 @@ class TestPersistenceFailureIsNotRotationFailure:
 
 ORIGINAL_LINE = "username admin privilege 15 password OldPlaintext"
 ORIGINAL_PLAINTEXT = "OldPlaintext"
+#: A stored type-5 hash, as a switch's original line carries.
+ORIGINAL_HASH = "$1$salt$hash"
 POST_CONFIG = "username admin privilege 15 secret 9 $9$saltsalt$hashhash"
 
 
@@ -232,6 +234,12 @@ class _Router:
         self.dead = False           # refuses every credential
         self.local_fault = None     # raised before any "connection" happens
         self.awaiting_confirm = False
+        # hash token -> the plaintext that produced it. A `secret 5 $1$…`
+        # line does not CONTAIN a password, it names one. The fake used to
+        # treat the token after `secret` as the plaintext, so re-sending a
+        # stored hash set the password to the type digit. That made the
+        # switch revert — which restores exactly such a line — untestable.
+        self.hashes = {ORIGINAL_HASH: ORIGINAL_PLAINTEXT}
 
     def login(self, **kwargs):
         if self.local_fault is not None:
@@ -300,6 +308,19 @@ class _Router:
             return ""
 
         value = parts[parts.index(keyword) + 1]
+
+        # `secret <digit> <hash>`: a stored hash being pasted back, not a
+        # plaintext. The accepted password is whatever produced that hash.
+        if keyword == "secret" and value.isdigit() and len(parts) > \
+                parts.index(keyword) + 2:
+            token = parts[parts.index(keyword) + 2]
+            if self.exists and self.entry == "password":
+                return self.REFUSAL
+            self.exists, self.entry = True, "secret"
+            self.running = line
+            self.password = self.hashes.get(token, "\0unknown-hash")
+            return ""
+
         if keyword == "password":
             # Symmetric: the device refuses a password over a secret entry for
             # the same reason it refuses a secret over a password one. This is
@@ -318,10 +339,15 @@ class _Router:
         if "algorithm-type" in parts:
             # IOS hashes it: the running config never shows the plaintext
             # again, which is why the verify must carry the value from memory.
+            token = f"$9${abs(hash(value)) % 10**8}$hashhash"
+            self.hashes[token] = value
             self.running = (f"username {parts[1]} privilege 15 "
-                            f"secret {self.stores} $9$saltsalt$hashhash")
+                            f"secret {self.stores} {token}")
         else:
-            self.running = line
+            token = f"$1${abs(hash(value)) % 10**8}$md5"
+            self.hashes[token] = value
+            self.running = (f"username {parts[1]} privilege 15 "
+                            f"secret 5 {token}")
         if self.honours_new_secret:
             self.password = value
         return ""
@@ -401,6 +427,28 @@ class _Session:
         self.disconnected = True
 
 
+def _live_fields(state):
+    """What preflight() derives from the live read, mirrored for the fake."""
+    live = state.get("live_override")
+    if live is not None:
+        ok, line = live["ok"], live.get("line", "")
+    else:
+        ok, line = True, state["router"].running
+    kind = cr.entry_kind(line) if ok else ""
+    golden_kind = cr.entry_kind(state["golden_line"])
+    if not ok:
+        note = "the device could not be read — falling back to the two-command form"
+    elif golden_kind != kind:
+        note = (f"the golden records a '{golden_kind or 'unknown'}' entry, the "
+                f"device has a '{kind}' one — the DEVICE decides the program, "
+                f"and this device's golden is stale")
+    else:
+        note = ""
+    return {"live_read_ok": ok, "live_line": line, "entry_kind": kind,
+            "original_line": line if ok else state["golden_line"],
+            "discrepancy": note}
+
+
 @pytest.fixture
 def wired(monkeypatch, tmp_path):
     """Everything around the device replaced; the sequence itself is real."""
@@ -412,7 +460,7 @@ def wired(monkeypatch, tmp_path):
 
     router = _Router()
     state = {"router": router, "session": _Session(router=router),
-             "commit_ok": True}
+             "commit_ok": True, "golden_line": ORIGINAL_LINE}
 
     # Mocked at the Netmiko boundary, NOT above it. The connection dict that
     # verify_new_credential builds is therefore exercised for real — which is
@@ -426,8 +474,13 @@ def wired(monkeypatch, tmp_path):
     monkeypatch.setattr(cr, "preflight", lambda ln, hn: {
         "ok": True, "device": hn, "repo": str(repo), "device_row": device,
         "mgmt_ip": device["ip"], "identity": "uid:r2", "username": "admin",
-        "privilege": "15", "current_line": ORIGINAL_LINE,
-        "capture": "hostname r2\n" + ORIGINAL_LINE, "checks": [],
+        "privilege": "15", "current_line": state["golden_line"],
+        "capture": "hostname r2\n" + state["golden_line"], "checks": [],
+        # preflight does the live read; the fake device is the source of
+        # truth for it, exactly as on hardware. Computed the same way the
+        # real preflight computes it, so the stub cannot quietly disagree
+        # with the thing it stands in for.
+        **_live_fields(state),
     })
     monkeypatch.setattr(cr, "open_original_session", lambda d: state["session"])
     monkeypatch.setattr(cr, "_commit",
@@ -580,6 +633,11 @@ class TestTheStagingAndTheCacheOrdering:
         cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
         assert cr.staged_plaintext(wired["repo"], "r2") is None
 
+        # Back to the pre-rotation state: the first pass left the device
+        # holding a secret whose plaintext only that pass knew.
+        wired["router"].running = ORIGINAL_LINE
+        wired["router"].entry = "password"
+        wired["router"].password = ORIGINAL_PLAINTEXT
         wired["router"].honours_new_secret = False
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
         assert result["state"] == cr.REVERTED
@@ -1151,7 +1209,7 @@ class TestARefusedPushIsNotASuccessfulOne:
         # Force the old, refused shape through the real rotate() path.
         import modules.nsot.credential_rotation as mod
         original = mod.rotation_commands
-        mod.rotation_commands = lambda u, p, pw: [
+        mod.rotation_commands = lambda u, p, pw, kind="": [
             f"username {u} privilege {p} algorithm-type scrypt secret {pw}"]
         try:
             result = cr.rotate("Lab", "r2",
@@ -1743,6 +1801,203 @@ class TestTheGoldenIsTheWholeConfigNotTheVerifyRead:
         step = next(st for st in result["steps"] if st["name"] == "golden_capture")
         assert step["ok"] is False
         assert "LEFT UNCHANGED" in step.get("detail", "")
+
+
+class TestTheProgramIsConditionalOnTheDevicesEntryKind:
+    """One command over a secret, two over a password. Measured both ways.
+
+    IOS-XE 17.06, secret over a PASSWORD entry:
+        ERROR: Can not have both a user password and a user secret.
+    vIOS-L2 15.2, secret over a SECRET entry:
+        accepted silently; secret 5 -> secret 9; new works, old dead.
+
+    So the deletion is required by the password case and by nothing else.
+    Sending it anyway would delete and recreate an account for no reason,
+    opening a window in which it does not exist and raising a [confirm]
+    prompt — both risk, no benefit.
+    """
+
+    def test_one_command_over_a_secret(self):
+        assert cr.rotation_commands("admin", 15, "X", "secret") == [
+            "username admin privilege 15 algorithm-type scrypt secret X"]
+
+    def test_two_commands_over_a_password(self):
+        assert cr.rotation_commands("admin", 15, "X", "password") == [
+            "no username admin",
+            "username admin privilege 15 algorithm-type scrypt secret X"]
+
+    def test_an_unknown_kind_gets_the_two_command_form(self):
+        """Which works in BOTH states, so it is the safe answer."""
+        for unknown in ("", None, "surprise"):
+            assert cr.rotation_commands("admin", 15, "X", unknown or "")[0] == \
+                "no username admin"
+
+    def test_entry_kind_reads_the_line(self):
+        assert cr.entry_kind("username admin privilege 15 secret 5 $1$a$b") == "secret"
+        assert cr.entry_kind("username admin privilege 15 password 0 x") == "password"
+        assert cr.entry_kind("") == ""
+        assert cr.entry_kind("hostname r1") == ""
+
+    def test_the_fingerprint_binds_the_entry_kind(self):
+        """The program is a function of it, so a confirmation must cover it."""
+        common = dict(device_identity="uid:x", username="admin", privilege=15,
+                      capture_hash="abc")
+        assert cr.operation_fingerprint(**common, entry_kind="secret") != \
+            cr.operation_fingerprint(**common, entry_kind="password")
+
+    def test_the_plan_program_matches_the_wire_over_a_secret(self, wired):
+        """plan == wire, the SECRET path."""
+        wired["router"].entry = "secret"
+        wired["router"].running = ("username admin privilege 15 "
+                                   "secret 5 $1$salt$hash")
+        plan = cr.plan("Lab", "r2")
+        assert plan["entry_kind"] == "secret"
+        assert len(plan["new_program"]) == 1
+
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        sent = [c for c in wired["session"].sent if c.strip()]
+        assert len(sent) == 1, sent
+        assert sent[0].startswith("username admin privilege 15 "
+                                  "algorithm-type scrypt secret ")
+        assert "no username" not in " ".join(sent)
+
+    def test_the_plan_program_matches_the_wire_over_a_password(self, wired):
+        """plan == wire, the PASSWORD path."""
+        plan = cr.plan("Lab", "r2")
+        assert plan["entry_kind"] == "password"
+        assert len(plan["new_program"]) == 2
+
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        sent = [c for c in wired["session"].sent if c.strip()]
+        assert sent[0] == "no username admin"
+        assert len(sent) == 2
+
+    def test_the_live_read_beats_the_golden(self, wired):
+        """A stale golden must not choose the program."""
+        # Golden says password (the fixture's ORIGINAL_LINE); device says secret.
+        wired["router"].running = "username admin privilege 15 secret 5 $1$a$b"
+        plan = cr.plan("Lab", "r2")
+
+        assert plan["entry_kind"] == "secret"
+        assert len(plan["new_program"]) == 1
+        assert "golden" in plan["discrepancy"]
+        assert "stale" in plan["discrepancy"]
+
+    def test_an_unreadable_device_falls_back_and_says_so(self, wired):
+        wired["live_override"] = {"ok": False, "line": ""}
+        plan = cr.plan("Lab", "r2")
+
+        assert plan["entry_kind"] == ""
+        assert len(plan["new_program"]) == 2, "the form correct in either state"
+        assert "could not be read" in plan["discrepancy"]
+
+    def test_a_kind_that_changed_since_the_confirm_refuses(self, wired):
+        """What was confirmed would no longer be what is sent."""
+        plan = cr.plan("Lab", "r2")            # password -> two commands
+        fingerprint = plan["fingerprint"]
+        # The device now holds a secret instead.
+        wired["router"].entry = "secret"
+        wired["router"].running = ("username admin privilege 15 "
+                                   "secret 5 $1$salt$hash")
+
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=fingerprint)
+        assert result["state"] == cr.NOT_STARTED
+        # The FINGERPRINT catches it, before a session is even opened —
+        # because the entry kind is bound into it. The re-check on the held
+        # session is defence in depth for a change that lands in between.
+        assert "does not match" in result["reason"]
+        assert wired["session"].sent == [], "nothing may reach the device"
+
+
+class TestTheRevertIsConditionalToo:
+    """Restoring a pasted hash is not the same operation as typing a password.
+
+    Measured on vIOS-L2, restoring `username X privilege 15 secret 5 $1$…`
+    over a live `secret 9`: the line comes back byte-identical and the old
+    password authenticates again — in ONE command, and also in two.
+    """
+
+    ORIGINAL_SECRET = f"username admin privilege 15 secret 5 {ORIGINAL_HASH}"
+    ORIGINAL_PASSWORD = "username admin privilege 15 password 0 OldPlaintext"
+
+    def test_one_command_when_the_original_sets_a_secret(self):
+        assert cr.revert_commands("admin", self.ORIGINAL_SECRET) == [
+            self.ORIGINAL_SECRET]
+
+    def test_two_commands_when_the_original_sets_a_password(self):
+        assert cr.revert_commands("admin", self.ORIGINAL_PASSWORD) == [
+            "no username admin", self.ORIGINAL_PASSWORD]
+
+    def test_the_switch_revert_restores_the_line_verbatim(self, wired):
+        """A hash cannot be retyped; it must go back exactly."""
+        wired["router"].entry = "secret"
+        wired["router"].running = self.ORIGINAL_SECRET
+        wired["router"].honours_new_secret = False
+
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.REVERTED
+        assert self.ORIGINAL_SECRET in wired["session"].sent
+        assert "no username admin" not in wired["session"].sent, (
+            "a secret over a secret needs no deletion, on the revert either")
+
+    def test_the_router_revert_still_deletes_first(self, wired):
+        wired["router"].honours_new_secret = False
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.REVERTED
+        sent = wired["session"].sent
+        assert "no username admin" in sent
+        assert sent.index("no username admin") < sent.index(ORIGINAL_LINE)
+
+
+class TestPromptUndetectIsNamedInThePersistSummary:
+    """A fleet-wide Oxidized issue must not read as a rotation failure.
+
+    PromptUndetect means Oxidized authenticated and then failed to match its
+    prompt regexp. Measured across the switches it affects s1 and s2 equally
+    (179 vs 178 failures, same kinds), predates the rotations, and says
+    nothing about the credential. An operator who cannot tell it apart from a
+    credential problem will investigate the device instead of re-running the
+    persist-only command, which is all it needs.
+    """
+
+    def _fetch(self, monkeypatch, payload):
+        import json
+        import urllib.request
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {"oxidized_rest_url": "http://x"}.get(k, d))
+        blob = json.dumps(payload).encode()
+        monkeypatch.setattr(urllib.request, "urlopen",
+                            lambda *a, **k: type("R", (), {"read": lambda s: blob})())
+        return cr.confirm_fetch("10.255.1.21", cr.utc_now(), attempts=1,
+                                base_delay=0, sleep=lambda _s: None)
+
+    def test_prompt_undetect_is_named_and_says_what_to_do(self, monkeypatch):
+        out = self._fetch(monkeypatch, [{"name": "10.255.1.21", "last": {
+            "status": "no_connection",
+            "error": "Oxidized::PromptUndetect raised"}}])
+
+        assert out["ok"] is False
+        assert out["cause"] == "PromptUndetect"
+        assert "rotation itself succeeded" in out["error"]
+        assert "persist-only" in out["error"]
+
+    def test_an_auth_failure_is_named_differently(self, monkeypatch):
+        """That one IS credential-related and must not be waved off."""
+        out = self._fetch(monkeypatch, [{"name": "10.255.1.21", "last": {
+            "status": "no_connection",
+            "error": "Net::SSH::AuthenticationFailed"}}])
+
+        assert out["cause"] == "AuthenticationFailed"
+        assert "credential-related" in out["error"]
+        assert "rotation itself succeeded" not in out["error"]
+
+    def test_an_unrecognised_failure_keeps_the_plain_message(self, monkeypatch):
+        out = self._fetch(monkeypatch, [{"name": "10.255.1.21", "last": {
+            "status": "no_connection", "error": "something else"}}])
+
+        assert out["cause"] == ""
+        assert out["error"] == "no successful fetch after the rotation"
 
 
 class TestPersistenceNeverReverts:

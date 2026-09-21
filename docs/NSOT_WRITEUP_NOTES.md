@@ -3214,6 +3214,23 @@ It works. It reaches `r2>` with **no authentication at all** — no username, no
 password, no prompt. And because none of these devices has an `enable secret`,
 typing `enable` at that prompt yields **privilege 15**.
 
+Measured again before stage 2, on both platforms, because the operator-facing
+half of this had been left implicit. The console lands at privilege **1**:
+
+```
+s3> show privilege   ->  Current privilege level is 1
+s3> enable           ->  s3#          (no password prompt)
+s3# show privilege   ->  Current privilege level is 15
+```
+
+`r5` behaves identically, so this is the IOSv and vIOS-L2 behaviour rather than
+anything per-device. The security conclusion is unchanged — unauthenticated
+privilege 15 is one word away — but the *mechanism* is what somebody follows
+under pressure, and the confirm screen had been printing the `docker exec` line
+without the `enable` step. An operator recovering a locked-out device would
+land at `s3>`, find they cannot configure, and reasonably conclude the recovery
+path was broken. It now prints both steps.
+
 So the device's `username admin privilege 15 …` line — the thing this whole
 item exists to strengthen — protects the *SSH* path and nothing else. Anyone
 who can reach the serial console already has full configuration access to
@@ -4350,3 +4367,79 @@ one layer further out, and cost a line to fix rather than a redesign.
 > When a thing does not appear on screen, the cheapest discriminator is
 > whether the data layer has it. Every hypothesis above that point is
 > unfalsifiable until you look.
+
+## The same command, refused on one platform and accepted on the other
+
+Stage 1 established that `username <u> … algorithm-type scrypt secret <v>` is
+refused when the account already holds a `password`, and built a two-command
+program around it: delete, then set. Stage 2 targets switches, whose accounts
+hold a `secret 5`. Measured on vIOS-L2 15.2, on a throwaway account seeded to
+match:
+
+```
+seeded   : secret 5   login=True
+pushed   : username nmasprobe privilege 15 algorithm-type scrypt secret <new>
+device said: (nothing)
+config   : secret 9      login NEW=True   login OLD=False
+```
+
+Accepted silently. The refusal is about password-**and**-secret coexisting, not
+about replacing a credential, so a secret over a secret simply replaces.
+
+That makes the deletion not merely unnecessary on the switches but **harmful**:
+it opens a window in which the account does not exist and raises a `[confirm]`
+prompt, for nothing. The program is now conditional — one command over a
+secret, two over a password, two when the kind cannot be determined, since that
+form is correct in both states.
+
+### Deciding it from the device, not the record
+
+The kind is read live, on a short read-only session opened by `preflight()`.
+The golden is a stored capture, and a stale one would pick the wrong program —
+which on the password path is the one that gets silently refused. Where the
+two disagree the device wins and the confirm screen says the golden is stale.
+
+The first version put that read in `plan()`. That was wrong in a way the tests
+caught immediately: `rotate()` calls `preflight()` itself rather than reusing
+`plan()`'s result, so anything computed only in `plan()` is invisible to the
+code that actually sends commands. A fact the program depends on has to be
+established where every path can see it.
+
+The entry kind is bound into the **operation fingerprint**. The commands are a
+pure function of the confirmed inputs only while the kind is one of them;
+without it, a device whose entry kind changed between plan and apply would
+receive a program the operator never saw. With it, that case is refused before
+a session is even opened — and a re-check on the held session covers a change
+that lands in between.
+
+### The revert had the same asymmetry, and its switch form was unmeasured
+
+A router's original line sets a plaintext password. A switch's original line is
+`username … secret 5 $1$…` — a **hash**, pasted back. Restoring a hash is a
+different operation from typing a password, and it is the stage 2 lockout
+defence, so it was measured rather than reasoned:
+
+```
+seed secret 5 -> rotate to secret 9 -> re-send the captured secret-5 line
+  line restored byte-identical        login OLD=True   login NEW=False
+```
+
+Works in one command, and in two. So the revert is conditional on the same
+rule, and `original_line` now comes from the live read rather than the golden:
+a revert re-sends it verbatim, and restoring a hash from a stale golden would
+restore a credential nobody holds. (Measured on s4 today, golden and device
+agree — but that is a fact about today, not a property.)
+
+### What the fake could not have told us, again
+
+The fake device treated the token after `secret` as the plaintext, so
+re-sending a stored `secret 9 $9$…` set the password to the string `"9"`. Every
+test passed, because no test had ever re-sent a stored hash. It now models
+`secret <type> <hash>` as *naming* a credential rather than containing one,
+with a hash→plaintext map — which is the only reason the switch revert is
+testable at all.
+
+Third time in this work that a defect was found by making the double model
+measured behaviour rather than intended behaviour, and the second time the
+thing it could not express was the difference between a value and a reference
+to a value.
