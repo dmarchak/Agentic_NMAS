@@ -4444,15 +4444,41 @@ def ai_approval_reject(entry_id: str):
 
 @app.route("/ai/approvals/approve_all", methods=["POST"])
 def ai_approval_approve_all():
-    """Approve and execute every currently pending approval."""
-    from modules.approval_queue import get_pending, resolve
-    pending = get_pending()
-    results = []
-    for entry in pending:
+    """Approve and execute every pending approval that can be decided in bulk.
+
+    Items whose execution **ends in a confirmation** are skipped and reported,
+    never looped. Approve-all exists to clear a queue of decided outcomes; a
+    confirm-ending item would otherwise either auto-confirm a program nobody
+    was shown — exactly what the confirm hash exists to prevent — or stack one
+    modal per item on a single click.
+    """
+    from modules.approval_queue import get_pending, is_confirm_ending, resolve
+
+    results, skipped = [], []
+    for entry in get_pending():
+        if is_confirm_ending(entry):
+            skipped.append({
+                "id": entry["id"],
+                "device": entry.get("device_hostname") or entry.get("device_ip", ""),
+                "action_type": entry.get("action_type", ""),
+                "reason": "requires individual review",
+                "detail": ("Approving this opens a preview of the exact program "
+                           "to be sent, which you confirm per device. It cannot "
+                           "be approved in bulk."),
+            })
+            continue
         results.append(resolve(entry["id"], "approve"))
+
     ok_count   = sum(1 for r in results if r.get("ok"))
     fail_count = len(results) - ok_count
-    return jsonify({"ok": True, "approved": ok_count, "failed": fail_count, "results": results})
+    return jsonify({"ok": True, "approved": ok_count, "failed": fail_count,
+                    "skipped": skipped, "skipped_count": len(skipped),
+                    "results": results,
+                    "message": (
+                        f"{ok_count} approved"
+                        + (f", {fail_count} failed" if fail_count else "")
+                        + (f", {len(skipped)} require individual review"
+                           if skipped else ""))})
 
 
 # ---------------------------------------------------------------------------

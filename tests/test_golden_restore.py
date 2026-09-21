@@ -518,3 +518,48 @@ class TestTheUnguardedRevertExecutorIsRetired:
             {"device_ip": "203.0.113.1", "device_hostname": "R1"})
         assert called.get("saved") == "R1"
         assert "error" not in result
+
+
+class TestApproveAllSkipsConfirmEndingItems:
+    """Bulk approval must not auto-confirm a program nobody was shown.
+
+    Approve-all exists to clear a queue of decided outcomes. A confirm-ending
+    item — one whose approval opens a preview the operator confirms per device
+    — has no decided outcome yet. Looping it would either auto-confirm (exactly
+    what the confirm hash prevents) or stack N modals on one click.
+    """
+
+    def test_a_confirm_ending_action_is_identified(self):
+        from modules import approval_queue
+
+        assert approval_queue.is_confirm_ending(
+            {"action_type": "revert_to_golden"}) is True
+        assert approval_queue.is_confirm_ending(
+            {"action_type": "update_golden_config"}) is False
+
+    def test_approve_all_skips_it_and_says_why(self, monkeypatch):
+        import flask
+
+        import app as app_module
+        from modules import approval_queue
+
+        pending = [
+            {"id": "a1", "action_type": "update_golden_config",
+             "device_ip": "203.0.113.1", "device_hostname": "r1"},
+            {"id": "b2", "action_type": "revert_to_golden",
+             "device_ip": "203.0.113.2", "device_hostname": "r2"},
+        ]
+        resolved = []
+        monkeypatch.setattr(approval_queue, "get_pending", lambda: pending)
+        monkeypatch.setattr(approval_queue, "resolve",
+                            lambda i, a: resolved.append(i) or {"ok": True})
+
+        with app_module.app.test_request_context(json={}):
+            response = app_module.ai_approval_approve_all()
+        body = response.get_json() if hasattr(response, "get_json") else response[0]
+
+        assert resolved == ["a1"], "a confirm-ending item was bulk-approved"
+        assert body["skipped_count"] == 1
+        assert body["skipped"][0]["device"] == "r2"
+        assert body["skipped"][0]["reason"] == "requires individual review"
+        assert "individual review" in body["message"]

@@ -61,6 +61,23 @@ def _expire_old(entries: list) -> list:
 # Public API
 # ---------------------------------------------------------------------------
 
+#: Action types whose execution **ends in a confirmation** rather than in a
+#: result — the operator is shown a freshly computed program and confirms it
+#: under the normal hash discipline.
+#:
+#: These must never be bulk-approved. "Approve all" exists to clear a queue of
+#: decided outcomes; looping a confirmation through it would either
+#: auto-confirm programs nobody was shown — which is precisely what the confirm
+#: hash exists to prevent — or stack N modal dialogs on one click. Skipping and
+#: saying so is the only honest third option.
+CONFIRM_ENDING_ACTIONS = ("revert_to_golden",)
+
+
+def is_confirm_ending(entry: dict) -> bool:
+    """Does approving this entry end in a confirmation the operator must give?"""
+    return entry.get("action_type", "") in CONFIRM_ENDING_ACTIONS
+
+
 def add_approval(
     action_type:  str,
     description:  str,

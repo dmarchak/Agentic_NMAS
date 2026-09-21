@@ -2982,3 +2982,92 @@ asserts the revocation still stands.
 
 > A decision recorded by a person must not be overturnable by a computation
 > that runs afterwards.
+
+---
+
+## A fix that shipped, passed its tests, and protected almost nothing
+
+The outbound-redaction work is the clearest example in the project of a change
+that was *correct*, *tested*, *reviewed* — and very nearly useless.
+
+### What was claimed
+
+`31bca0f` added redaction at the provider boundary. The commit message was
+accurate about the mechanism: one choke point before `messages.create()`, whole
+-token matching, longest-secret-first, degrades honestly when the store is
+unreadable. Thirteen tests, including one driving seven different tool-result
+shapes and asserting on what the client receives. Verified by mutation:
+un-redacting `messages` failed the test.
+
+Everything in that paragraph is true, and the leak was still open.
+
+### What was actually true
+
+Two defects, neither visible from the code or the tests.
+
+**1. The length floor excluded nearly everything.** Redaction skipped values
+under 8 characters, on the sound reasoning that redacting `RO` would corrupt
+every config while protecting nothing guessable. Measured against the live
+credential store afterwards:
+
+```
+template secrets: 18 total, floor is 8 chars
+  9 × snmp_community_ro      6 chars   NOT redacted
+  5 × user_admin_password    7 chars   NOT redacted
+  4 × user_admin_secret     32 chars   redacted
+UNDER THE FLOOR: 14 of 18
+```
+
+The four covered were the type-9 hashes — the only secrets that were *already*
+safe, being salted and unrecoverable. Every value that actually mattered was
+one or two characters below the line.
+
+**2. Device credentials were collected as ciphertext.** The helper decrypted
+`devices.csv` rows with `secrets_store.decrypt_value()`, which returns anything
+lacking its own prefix **unchanged**. CSV fields use raw Fernet. So the
+redactor was searching payloads for 100-character `gAAAAA…` strings that no
+device will ever echo. Device passwords were not redacted at all.
+
+Both were found by one question — *how many stored values fall under the
+floor?* — asked only because a reviewer asked it. Neither would have been found
+by more tests, because the tests supplied their own fixtures: every test secret
+was comfortably over 8 characters and stored through the prefixed path. **The
+fixtures were healthier than production.**
+
+### The generalisable lesson
+
+> A guard with a threshold is a claim about the data on the other side of it.
+> The threshold was chosen by reasoning about what *could* be a secret; nobody
+> measured what *was*.
+
+This is the same shape as the round-trip metric that could not see nesting: an
+instrument that was right about its own logic and wrong about the world, giving
+a confident number either way. The countermeasure is identical — **measure the
+corpus, not the mechanism** — and it is worth noting that the project had
+already learned this lesson once, three commits earlier, and still shipped it
+again in a different costume.
+
+### What actually closed it
+
+`efb007e`, with **positional** redaction: mask whatever occupies a secret's
+syntactic slot — `snmp-server community <X>`, `username … password|secret <X>`,
+`enable secret <X>`, `key-string <X>` — regardless of length and regardless of
+whether the store has ever seen the value.
+
+Position is the discriminator length never was. `community X RO` tells you X is
+a secret whatever X is, and it covers what value matching cannot reach by
+construction: devices never onboarded, lists never extracted, a password typed
+into a chat message.
+
+Fleet result, measured rather than asserted: **0 unmasked secret-position lines
+across all nine devices**, against 110 secret occurrences before.
+
+The residual is the useful part of the result. `description eBGP to r5 Gi2 -
+simulated public` keeps the word "public", because the community is already
+masked where it *is* a community, and a redactor that mangles prose is one
+that gets turned off. The floor was not wrong — it was answering a different
+question than the one that mattered.
+
+> **Do not date the fix from the commit that described it.** The leak was open
+> from `31bca0f` to `efb007e`. A changelog that credits the first is telling
+> the story of the intention, not of the network.
