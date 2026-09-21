@@ -36,9 +36,60 @@ CONSOLE_REPLAYED = {"cisco_ios"}
 
 #: Platforms where vrnetlab injects its own ``username ... password ...``
 #: before the startup config. A ``secret`` line for that user arrives second
-#: and is refused, so these must use the password form and rotate afterwards.
-#: Measured in the patched launch script; confirmed on the probe.
+#: and is refused, so these must use the password form and rotate afterwards
+#: -- unless the launch script carries the stage-C user skip.
+#:
+#: Read in the patched launch script, CONFIRMED on hardware in stage B
+#: (`%CVAC-4-CLI_FAILURE ... was rejected`, node came up on admin/admin), and
+#: the skip PROVEN in stage C.
 VRNETLAB_INJECTS_USER = {"cisco_iosxe"}
+
+#: The keyword for the DNS domain, which differs between the two platforms and
+#: is not a style choice.
+#:
+#: Measured in stage C: `%CVAC-4-CLI_FAILURE: 'ip domain-name rcn.lab' was
+#: rejected` on IOS-XE 17.6, which spells it `ip domain name`. Classic IOS
+#: (vIOS-L2 15.x) spells it `ip domain-name` and rejects the other. There is
+#: no spelling that works on both, so the generator must know the platform.
+#:
+#: This one failed SILENTLY in the sense that mattered: the node booted, was
+#: healthy, answered SSH -- and had no domain name, so any later
+#: `crypto key generate rsa` would have failed too.
+DOMAIN_KEYWORD = {
+    "cisco_iosxe": "ip domain name",
+    "cisco_ios": "ip domain-name",
+}
+
+#: Platforms whose SSH server this file must start itself.
+#:
+#: Measured across the probe runs rather than assumed. The C8000v carried no
+#: `ip ssh` line and no key generation, and answered SSH in stages A, B and C
+#: -- vrnetlab's own bootstrap config sets it up. The vIOS carried
+#: `ip ssh version 2` with no key, and its capture had to be taken over the
+#: SERIAL CONSOLE because SSH never came up: IOS will not start an SSH server
+#: without an RSA keypair, and says nothing about it.
+#:
+#: Key generation needs a hostname and a domain name already set, so it is
+#: emitted after both and before `ip ssh version 2`.
+GENERATES_SSH_KEY = {"cisco_ios"}
+
+#: The helper name the stage-C launch patch defines.
+#:
+#: Two readers: `docs/bootstrap-probe/patches/patch-skip-injected-user.py`,
+#: which writes it, and `credential_rotation.verify_startup_applies()`, which
+#: greps the clab host's launch script for it to decide whether a `secret`
+#: line in a startup file can apply. A test asserts the patcher still emits
+#: exactly this name -- the check silently degrades to "always refuses" if the
+#: two drift apart, which reads as a safe failure and is actually a check that
+#: has stopped measuring anything.
+LAUNCH_SKIP_MARKER = "_skip_users_defined_in_startup"
+
+#: Modulus for the generated keypair. 2048 is the floor worth shipping.
+#:
+#: UNMEASURED on a console-replayed platform: key generation takes real time
+#: and vrnetlab waits for a prompt after each line it types. See
+#: `docs/bootstrap-probe/README.md` stage D.
+SSH_KEY_MODULUS = 2048
 
 
 class UnsupportedPlatform(Exception):
@@ -55,6 +106,30 @@ def secret_clause(platform: str, value: str) -> str:
     if platform in VRNETLAB_INJECTS_USER:
         return f"password 0 {value}"
     return f"secret 0 {value}"
+
+
+def domain_line(platform: str, domain: str) -> str:
+    """``ip domain name`` or ``ip domain-name``, per platform.
+
+    IOS-XE 17.6 rejects the hyphenated form and classic IOS rejects the
+    spaced one. A generator emitting one spelling is wrong on one platform.
+    """
+    keyword = DOMAIN_KEYWORD.get(platform)
+    if not keyword:
+        raise UnsupportedPlatform(
+            f"no domain-name spelling is known for '{platform}'")
+    return f"{keyword} {domain}"
+
+
+def ssh_key_lines(platform: str) -> list:
+    """Key generation, on the platforms that need it and nowhere else.
+
+    Emitting it where vrnetlab already does the work would regenerate a key
+    the device is mid-way through using.
+    """
+    if platform not in GENERATES_SSH_KEY:
+        return []
+    return [f"crypto key generate rsa modulus {SSH_KEY_MODULUS}"]
 
 
 def render_bootstrap(platform: str, *, hostname: str, username: str,
@@ -84,7 +159,7 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "!",
             f"username {username} privilege 15 {secret_clause(platform, secret)}",
             "!",
-            f"ip domain-name {domain}",
+            domain_line(platform, domain),
             "!",
             "line vty 0 4",
             " logging synchronous",
@@ -103,7 +178,7 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "!",
             f"username {username} privilege 15 {secret_clause(platform, secret)}",
             "!",
-            f"ip domain-name {domain}",
+            domain_line(platform, domain),
             "!",
             f"interface {interface}",
             " description clab-mgmt",
@@ -112,6 +187,7 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             " negotiation auto",
             " no shutdown",
             "!",
+        ] + ssh_key_lines(platform) + [
             "ip ssh version 2",
             "!",
             "line vty 0 4",

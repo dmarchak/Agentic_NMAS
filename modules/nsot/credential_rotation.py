@@ -991,6 +991,22 @@ def live_user_line(device: dict, username: str) -> dict:
             "error": f"no 'username {username}' line on the device"}
 
 
+def platform_of(list_name: str, hostname: str) -> str:
+    """This device's config dialect, from THIS list's inventory.
+
+    Takes the list rather than reading the active one: a function handed a
+    list name must not go and ask which list is currently selected. That is
+    the same correction as `PipelineContext.list_name` and `_devices_of()`.
+    """
+    from modules.device import load_saved_devices
+    from modules.nsot.platform import platform_for_device
+
+    for device in load_saved_devices(_csv_path_for(list_name)):
+        if device.get("hostname") == hostname:
+            return platform_for_device(device)
+    return ""
+
+
 def plan(list_name: str, hostname: str) -> dict:
     """What the operator is shown, and the fingerprint they confirm."""
     pre = preflight(list_name, hostname)
@@ -1014,6 +1030,9 @@ def plan(list_name: str, hostname: str) -> dict:
     return {
         "ok": True, "device": hostname, "mgmt_ip": pre["mgmt_ip"],
         "username": pre["username"], "privilege": pre["privilege"],
+        # Carried, not re-derived later. persist()'s applicability check needs
+        # it, and a second lookup is a second chance to read a different list.
+        "platform": platform_of(list_name, hostname),
         "current_form": _mask_line(pre["current_line"]),
         # The WHOLE program, masked — not just the credential line. The
         # program became two commands when the device turned out to refuse a
@@ -1791,8 +1810,129 @@ def verify_startup_file(hostname: str, new_hash: str, *, clab: str = "",
     return {"ok": found > 0, "matches": found, "file": f"{clab}:{remote}"}
 
 
+def _ssh_read(clab: str, command: str, *, timeout: int = 60) -> dict:
+    """One read over SSH. Returns the text, or says why it could not."""
+    import subprocess
+
+    cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", clab, command]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except Exception as exc:                   # noqa: BLE001
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
+    if proc.returncode != 0:
+        return {"ok": False,
+                "error": (proc.stderr or "").strip()[:160] or f"rc={proc.returncode}"}
+    return {"ok": True, "text": proc.stdout or ""}
+
+
+def verify_startup_applies(hostname: str, *, platform: str, username: str,
+                           clab: str = "", remote_dir: str = "",
+                           launch_patch: str = "") -> dict:
+    """Will the startup file put the device in the state it describes?
+
+    The check :func:`verify_startup_file` should always have been. That one
+    greps the file for the new hash and passes when it is there -- a
+    **presence** check. Stage B measured the gap: all five routers' files
+    contained their hash, and not one of them would have applied. The node
+    boots, reports healthy, answers SSH, and holds vrnetlab's credential.
+
+    Presence and applicability differ exactly when something else writes to
+    the same place first, and that is the case nobody thinks of.
+
+    **This asks the real question rather than encoding a platform rule.** The
+    rule would be "a `secret` line is unappliable on a C8000v" -- true when it
+    was written, and false the moment the stage-C launch patch is adopted. So
+    the check reads the launch script the node actually binds and looks for
+    the skip. Adopting the patch satisfies it; replacing the launch script
+    with a stock one breaks it again, which is correct both times.
+
+    Returns ``ok`` with a ``reason`` either way. An unreadable file or launch
+    script is **not ok**: "I could not tell" is not "it applies", and this
+    check exists because something unverifiable was treated as verified.
+    """
+    from modules.nsot.bootstrap_config import (LAUNCH_SKIP_MARKER,
+                                               VRNETLAB_INJECTS_USER)
+    from modules.settings_schema import get_setting
+
+    # Asked FIRST, because a platform that injects nothing needs no lab host
+    # to answer. Requiring one would make this fail for a reason unrelated to
+    # the question -- and a check that fails spuriously gets worked around.
+    if platform not in VRNETLAB_INJECTS_USER:
+        return {"ok": True, "applies": True,
+                "reason": (f"nothing is injected ahead of the startup config on "
+                           f"{platform or 'this platform'}; the file's own "
+                           f"username line is the only one")}
+
+    clab = clab or get_setting("clab_host", "")
+    remote_dir = remote_dir or get_setting("clab_configs_dir", "labs/lab/configs")
+    launch_patch = launch_patch or get_setting(
+        "clab_launch_patch", "labs/lab/patches/c8000v-launch.py")
+    if not clab:
+        return {"ok": False, "error": "clab_host is not configured"}
+
+    import shlex
+
+    remote = f"{remote_dir}/{hostname}.cfg"
+    read = _ssh_read(clab, f"cat {shlex.quote(remote)}")
+    if not read["ok"]:
+        return {"ok": False,
+                "error": f"could not read {clab}:{remote} -- {read['error']}"}
+
+    entry = ""
+    for line in read["text"].splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"username {username} "):
+            entry = stripped
+            break
+    if not entry:
+        return {"ok": False, "file": f"{clab}:{remote}",
+                "error": (f"no `username {username}` line in the startup file. "
+                          f"The device would boot with whatever the launch "
+                          f"script injects and nothing else.")}
+
+    kind = entry_kind(entry)
+    if kind == "password":
+        return {"ok": True, "applies": True, "kind": kind,
+                "file": f"{clab}:{remote}",
+                "reason": ("the password form applies behind the injected "
+                           "line; the device ends up with this credential")}
+
+    # A `secret` (or an unreadable form, which we must assume is the worst)
+    # lands behind vrnetlab's password line and is refused -- unless the
+    # launch script skips its own injection for this user.
+    patch = _ssh_read(clab, f"cat {shlex.quote(launch_patch)}")
+    if not patch["ok"]:
+        return {"ok": False, "file": f"{clab}:{remote}",
+                "error": (f"could not read the launch script {clab}:"
+                          f"{launch_patch} -- {patch['error']}. Whether this "
+                          f"file applies depends on it, so this is unknown, "
+                          f"not fine.")}
+
+    if LAUNCH_SKIP_MARKER in patch["text"]:
+        return {"ok": True, "applies": True, "kind": kind or "unknown",
+                "file": f"{clab}:{remote}", "launch_patch": launch_patch,
+                "reason": (f"the launch script skips its own username "
+                           f"injection for users the startup config defines "
+                           f"({LAUNCH_SKIP_MARKER}), so the `{kind or 'secret'}` "
+                           f"form applies")}
+
+    return {"ok": False, "applies": False, "kind": kind or "unknown",
+            "file": f"{clab}:{remote}", "launch_patch": launch_patch,
+            "error": (
+                f"the hash is in {remote} and the file WILL NOT APPLY. "
+                f"On {platform} the launch script injects `username {username} "
+                f"privilege 15 password ...` before this file, and IOS-XE "
+                f"refuses a secret for a user that already has a password "
+                f"(%CVAC-4-CLI_FAILURE, measured stage B). The node would boot "
+                f"healthy on the injected credential and NMAS would be locked "
+                f"out. Fix: adopt the user-skip into {launch_patch} (see "
+                f"docs/bootstrap-probe/ stage C), or write the password form "
+                f"and rotate after boot.")}
+
+
 def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
-            hostname: str, new_hash: str, after_iso: str, **kw) -> dict:
+            hostname: str, new_hash: str, after_iso: str, platform: str,
+            **kw) -> dict:
     """The persistence chain. **Never reverts the device.**
 
     Entered only once the rotation has happened and been committed, so every
@@ -1822,6 +1962,11 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     ``clab_sync``        a harvest into the startup files. Re-running copies
                          the same content.
     ``startup_file``     a grep. Pure read.
+    ``startup_applies``  two reads. Pure read.
+
+    ``platform`` has **no default**. It decides whether the last stage can
+    pass, and a default would pick one -- which is how a required input stops
+    being required. The same correction as ``operation_fingerprint``.
     """
     chain = []
     # Entering the chain is what makes "attempted" true. Any stage failing
@@ -1858,7 +2003,17 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
                                       **{k: kw[k] for k in ("clab", "remote_dir")
                                          if k in kw})):
         return result
+    # Presence is not applicability. Stage B measured five routers whose files
+    # contained the right hash and would not have applied one of them.
+    if not _stage("startup_applies",
+                  verify_startup_applies(hostname, platform=platform,
+                                         username=username,
+                                         **{k: kw[k] for k in
+                                            ("clab", "remote_dir", "launch_patch")
+                                            if k in kw})):
+        return result
 
     result["state"] = ROTATED_PERSISTED
-    result["reason"] = "rotated, committed, and present in the startup config"
+    result["reason"] = ("rotated, committed, present in the startup config, "
+                        "and that file applies on boot")
     return result

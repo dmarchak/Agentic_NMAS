@@ -1361,7 +1361,7 @@ class TestTheChainMakesOxidizedRereadRouterDb:
 
     BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
                 hostname="r2", new_hash="9 $9$salt$hash",
-                after_iso="2026-09-21 08:00:00")
+                after_iso="2026-09-21 08:00:00", platform="cisco_ios")
 
     def test_the_reload_stage_runs_between_the_write_and_the_fetch(self, monkeypatch):
         order = []
@@ -1482,7 +1482,7 @@ class TestEveryPersistStageIsIdempotent:
     HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "scripts", "nmas-oxidized-cred")
     BASE = dict(mgmt_ip="10.255.1.12", username="admin", password="Fresh9Value",
-                hostname="r2", new_hash="9 $9$salt$hash")
+                hostname="r2", new_hash="9 $9$salt$hash", platform="cisco_ios")
 
     @pytest.fixture
     def world(self, tmp_path, monkeypatch):
@@ -1686,7 +1686,8 @@ class TestNoFailureWordingDuringASuccessfulRun:
                           "steps": []},
                          mgmt_ip="203.0.113.12", username="admin",
                          password="pw", hostname="r2",
-                         new_hash="9 $9$s$h", after_iso=cr.utc_now())
+                         new_hash="9 $9$s$h", after_iso=cr.utc_now(),
+                         platform="cisco_ios")
         assert out["state"] == cr.ROTATED_PERSISTED
         summary = cr.summarise(out)
         for word in FAILURE_WORDING:
@@ -1701,7 +1702,8 @@ class TestNoFailureWordingDuringASuccessfulRun:
                           "steps": []},
                          mgmt_ip="203.0.113.12", username="admin",
                          password="pw", hostname="r2",
-                         new_hash="9 $9$s$h", after_iso=cr.utc_now())
+                         new_hash="9 $9$s$h", after_iso=cr.utc_now(),
+                         platform="cisco_ios")
 
         assert out["state"] == cr.ROTATED_UNVERIFIED
         summary = cr.summarise(out)
@@ -1724,7 +1726,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
         monkeypatch.setattr(cr, "update_oxidized_row", _first_stage)
         cr.persist(result, mgmt_ip="203.0.113.12", username="admin",
                    password="pw", hostname="r2", new_hash="9 $9$s$h",
-                   after_iso=cr.utc_now())
+                   after_iso=cr.utc_now(), platform="cisco_ios")
         assert seen["state_on_entry"] == cr.ROTATED_UNVERIFIED
         assert result["state"] == cr.ROTATED_UNVERIFIED
 
@@ -2149,7 +2151,7 @@ class TestAConfirmationSurvivesAnUnchangedDevice:
 class TestPersistenceNeverReverts:
     BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
                 hostname="r2", new_hash="9 $9$salt$hash",
-                after_iso="2026-09-21 08:00:00")
+                after_iso="2026-09-21 08:00:00", platform="cisco_ios")
 
     def _result(self):
         return {"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []}

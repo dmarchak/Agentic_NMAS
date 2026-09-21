@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""Write, verify, or open the break-glass credential record.
+
+A precondition for lifting the rcn-lab1 redeploy ban. Stage B measured what a
+bad redeploy looks like: five routers up, healthy, answering SSH, holding a
+credential nobody has. Getting back in means the serial console on the
+containerlab host and the credential that was live BEFORE the redeploy --
+which otherwise exists only inside `devices.csv`, encrypted with
+`data/key.key`, on a machine the operator may not be sitting at.
+
+    python3 scripts/nmas-breakglass export --list Default --out /media/usb/rcn.bg
+    python3 scripts/nmas-breakglass verify /media/usb/rcn.bg
+    python3 scripts/nmas-breakglass reveal /media/usb/rcn.bg --device r1
+
+`export` and `verify` never print a credential. `reveal` is the only command
+that does, it takes one device at a time, and it says so before it does.
+
+The passphrase is read from the terminal, never from an argument: anything on
+a command line is in the shell history and in `ps`.
+"""
+
+import argparse
+import getpass
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _passphrase(confirm=False):
+    value = getpass.getpass("passphrase: ")
+    if confirm:
+        if value != getpass.getpass("again    : "):
+            print("REFUSED: the two did not match. Nothing written.")
+            raise SystemExit(1)
+    return value
+
+
+def _devices(list_name):
+    """This list's rows, decrypted. Never the active list -- the list is
+    named on the command line and carried from there."""
+    from modules.config import get_list_data_dir
+    from modules.device import decrypt_field, load_saved_devices
+    from modules.nsot.platform import platform_for_device
+
+    path = os.path.join(get_list_data_dir(list_name), "devices.csv")
+    rows = []
+    for device in load_saved_devices(path):
+        rows.append({
+            "hostname": device.get("hostname", ""),
+            "ip": device.get("ip", ""),
+            "username": device.get("username", ""),
+            "password": decrypt_field(device.get("password", "")),
+            "secret": decrypt_field(device.get("secret", "")),
+            "platform": platform_for_device(device),
+            "list_name": list_name,
+            "container": device.get("container", ""),
+        })
+    return rows
+
+
+def _export(args):
+    import modules.breakglass as bg
+
+    list_name = args.list_name or _current_list()
+    devices = _devices(list_name)
+    if not devices:
+        print(f"REFUSED: list {list_name!r} has no devices.")
+        return 1
+
+    missing = [d["hostname"] for d in devices if not d["password"]]
+    print(f"list    : {list_name}")
+    print(f"devices : {len(devices)}  ({', '.join(d['hostname'] for d in devices)})")
+    if missing:
+        # Not a refusal. A partial record beats no record, and the gap is
+        # named so it is a known gap rather than a surprise during an outage.
+        print(f"WARNING : no stored password for {', '.join(missing)} -- "
+              f"these will be recorded without one")
+    print(f"out     : {os.path.abspath(args.out)}")
+    print()
+    print("This file will contain LIVE PLAINTEXT CREDENTIALS. Put it on "
+          "removable media or in a password manager, never in the repository "
+          "and never on the same disk as data/key.key -- a record that shares "
+          "a failure with the thing it recovers is not a record.")
+    print()
+
+    payload = bg.build_payload(devices, list_name=list_name)
+    try:
+        out = bg.write_record(args.out, payload, _passphrase(confirm=True))
+    except bg.BreakglassError as exc:
+        print(f"REFUSED: {exc}")
+        return 1
+
+    print(f"\nwritten : {out['path']}  mode {out['mode']}")
+    print("\nVerify it now, on the medium it will live on. An untested "
+          "break-glass record is a hope, not a record:")
+    print(f"    python3 scripts/nmas-breakglass verify {out['path']}")
+    return 0
+
+
+def _verify(args):
+    import json
+
+    import modules.breakglass as bg
+
+    try:
+        payload = bg.read_record(args.path, _passphrase())
+    except bg.BreakglassError as exc:
+        print(f"FAILED: {exc}")
+        return 1
+    except OSError as exc:
+        print(f"FAILED: {exc}")
+        return 1
+
+    report = bg.describe(payload)
+    print(f"\nopened  : {args.path}")
+    print(f"created : {report['created']}   list: {report['list_name']}")
+    print(f"devices : {len(report['devices'])}\n")
+    print(f"  {'device':<12}{'address':<18}{'platform':<16}"
+          f"{'pw':<5}{'en':<5}digest")
+    for row in report["devices"]:
+        print(f"  {row['hostname']:<12}{row['ip']:<18}{row['platform']:<16}"
+              f"{'yes' if row['has_password'] else 'NO ':<5}"
+              f"{'yes' if row['has_enable_secret'] else '-  ':<5}{row['digest']}")
+    print(f"\ncomplete: {report['complete']}")
+    print("\nNo credential was printed. The digest is salted per hostname, so "
+          "two devices sharing a password do not show the same token -- it "
+          "proves the record opened, not what is in it.")
+    return 0 if report["complete"] else 1
+
+
+def _reveal(args):
+    import modules.breakglass as bg
+
+    print("This prints a live credential to your terminal. It will be in "
+          "your scrollback and may be in your terminal's log.\n")
+    try:
+        payload = bg.read_record(args.path, _passphrase())
+    except (bg.BreakglassError, OSError) as exc:
+        print(f"FAILED: {exc}")
+        return 1
+
+    matches = [d for d in payload.get("devices", [])
+               if d.get("hostname") == args.device]
+    if not matches:
+        known = ", ".join(d.get("hostname", "") for d in payload.get("devices", []))
+        print(f"no device {args.device!r} in this record. It holds: {known}")
+        return 1
+
+    entry = matches[0]
+    print(f"\ndevice  : {entry['hostname']}   {entry['ip']}   "
+          f"{entry.get('platform', '')}")
+    print(f"username: {entry['username']}")
+    print(f"password: {entry['password']}")
+    if entry.get("secret"):
+        print(f"enable  : {entry['secret']}")
+    print(f"\n{payload.get('recovery', '')}")
+    return 0
+
+
+def _current_list():
+    from modules.config import get_current_list_name
+
+    return get_current_list_name()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    export = sub.add_parser("export", help="write a sealed record")
+    export.add_argument("--list", dest="list_name", default="")
+    export.add_argument("--out", required=True,
+                        help="a path OUTSIDE the repository")
+    export.set_defaults(run=_export)
+
+    verify = sub.add_parser("verify", help="prove it opens; prints no value")
+    verify.add_argument("path")
+    verify.set_defaults(run=_verify)
+
+    reveal = sub.add_parser("reveal", help="print ONE device's credential")
+    reveal.add_argument("path")
+    reveal.add_argument("--device", required=True)
+    reveal.set_defaults(run=_reveal)
+
+    args = ap.parse_args()
+    return args.run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

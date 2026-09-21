@@ -198,6 +198,10 @@ DEFAULTS: dict = {
     "yang_push_script":     "",
     "clab_host":            "",          # user@host of the containerlab VM
     "clab_configs_dir":     "labs/lab/configs",
+    # The launch script the c8000v nodes bind. Read (never written) by the
+    # persistence chain's applicability check, which asks whether it carries
+    # the user-skip that lets a `secret` line in a startup file apply.
+    "clab_launch_patch":    "labs/lab/patches/c8000v-launch.py",
 
     # ── S3-compatible archive ───────────────────────────────────────────────
     "s3_endpoint":   "",
@@ -391,6 +395,7 @@ SCHEMA: dict = {
         "yang_push_script": _STR,
         "clab_host": _STR,
         "clab_configs_dir": _STR,
+        "clab_launch_patch": _STR,
 
         "s3_endpoint": _STR,
         "s3_bucket": _STR,

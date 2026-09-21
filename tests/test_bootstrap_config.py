@@ -229,3 +229,94 @@ class TestAnUnknownPlatformIsRefusedNotGuessed:
                              secret="bcdefghi")
         assert "measuring" in str(excinfo.value)
         assert "bootstrap-probe" in str(excinfo.value)
+
+
+class TestTheDomainKeywordIsPerPlatform:
+    """Measured in stage C, on the node that had already passed every other
+    check: `%CVAC-4-CLI_FAILURE: 'ip domain-name rcn.lab' was rejected`.
+
+    IOS-XE 17.6 spells it `ip domain name`; classic IOS spells it
+    `ip domain-name` and rejects the other. There is no spelling that works on
+    both, so a generator emitting one is wrong on one platform.
+    """
+
+    def test_iosxe_uses_the_spaced_form(self):
+        out = render_bootstrap("cisco_iosxe", hostname="r6", username="admin",
+                               secret="abc12345")
+        assert "ip domain name rcn.lab" in out
+        assert "ip domain-name" not in out
+
+    def test_ios_uses_the_hyphenated_form(self):
+        out = render_bootstrap("cisco_ios", hostname="s5", username="admin",
+                               secret="abc12345")
+        assert "ip domain-name rcn.lab" in out
+        assert "ip domain name" not in out
+
+    def test_an_unknown_platform_has_no_default_spelling(self):
+        """Guessing here is what produced the rejected line."""
+        from modules.nsot.bootstrap_config import domain_line
+
+        with pytest.raises(UnsupportedPlatform):
+            domain_line("arista_eos", "rcn.lab")
+
+    def test_the_failure_was_silent_in_the_way_that_matters(self):
+        """The node booted, was healthy and answered SSH with no domain name.
+
+        Recorded as a test because the lesson is the detection gap, not the
+        keyword: nothing downstream of a rejected global asks whether it
+        applied, so the next thing to need a domain name would have failed
+        somewhere else entirely.
+        """
+        from modules.nsot.bootstrap_config import DOMAIN_KEYWORD
+
+        assert DOMAIN_KEYWORD["cisco_iosxe"] != DOMAIN_KEYWORD["cisco_ios"]
+
+
+class TestSshKeyGenerationWhereThePlatformNeedsIt:
+    """Measured across the probe runs, not assumed.
+
+    The C8000v carried no `ip ssh` line and no key generation, and answered
+    SSH in stages A, B and C -- vrnetlab sets it up. The vIOS carried
+    `ip ssh version 2` with no key, and its capture had to be taken over the
+    SERIAL CONSOLE, because IOS will not start an SSH server without an RSA
+    keypair and says nothing about it.
+    """
+
+    def test_ios_generates_a_key(self):
+        out = render_bootstrap("cisco_ios", hostname="s5", username="admin",
+                               secret="abc12345")
+        assert "crypto key generate rsa modulus 2048" in out
+
+    def test_iosxe_does_not(self):
+        """vrnetlab already did it; regenerating would replace a key the
+        device is part-way through using."""
+        out = render_bootstrap("cisco_iosxe", hostname="r6", username="admin",
+                               secret="abc12345")
+        assert "crypto key" not in out
+
+    def test_the_key_comes_after_hostname_and_domain(self):
+        """Key generation fails without both, and IOS reports it as a prompt
+        for a domain name rather than an error."""
+        lines = render_bootstrap("cisco_ios", hostname="s5", username="admin",
+                                 secret="abc12345").splitlines()
+        assert lines.index("hostname s5") < lines.index("ip domain-name rcn.lab")
+        assert (lines.index("ip domain-name rcn.lab")
+                < lines.index("crypto key generate rsa modulus 2048"))
+
+    def test_the_key_comes_before_ip_ssh(self):
+        lines = render_bootstrap("cisco_ios", hostname="s5", username="admin",
+                                 secret="abc12345").splitlines()
+        assert (lines.index("crypto key generate rsa modulus 2048")
+                < lines.index("ip ssh version 2"))
+
+    def test_the_modulus_is_at_least_2048(self):
+        from modules.nsot.bootstrap_config import SSH_KEY_MODULUS
+
+        assert SSH_KEY_MODULUS >= 2048
+
+    def test_the_line_is_still_sendable(self):
+        """It is typed into a console like every other line."""
+        from modules.nsot.bootstrap_config import ssh_key_lines
+        from modules.nsot.deploy import assert_sendable
+
+        assert_sendable(ssh_key_lines("cisco_ios"))
