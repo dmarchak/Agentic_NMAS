@@ -312,7 +312,16 @@ def service_may(operation: str) -> bool:
 #: Actions that are gated. Listed once so the diagnostic and the gates cannot
 #: drift apart — the route used to report which gates were ENABLED, which is a
 #: fact about configuration and not about the caller asking.
-GATED_ACTIONS = ("reveal", "approve", "confirm")
+#: `publish_remote` is its own kind rather than reusing `confirm`.
+#:
+#: Two reasons, and the second is the load-bearing one. The audit should read
+#: "published", not "confirmed" — they are different acts and a reader should
+#: not have to infer which. And `service_allowed_operations` is keyed on the
+#: KIND: sharing confirm's kind would mean a future grant letting a service
+#: run Part 2's credential rotation would also let it publish a network's
+#: history to a remote. A grant should not reach further than the thing it
+#: was written for.
+GATED_ACTIONS = ("reveal", "approve", "confirm", "publish_remote")
 
 
 def may(ident: "Identity", action: str, operation: str = "") -> tuple:

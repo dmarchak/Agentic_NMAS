@@ -544,3 +544,218 @@ def first_push_preview(list_name: str, repo_dir: str = "") -> dict:
         "secrets": secrets,
         "already_acknowledged": config.get("acknowledged_secrets"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Acknowledgement, push, and the auto-push hold
+# ---------------------------------------------------------------------------
+
+def gated_summary(scan: dict) -> dict:
+    """The shape an acknowledgement is ABOUT: gated kinds and their counts.
+
+    Only live, recoverable material. A dead value is reported and never gated,
+    and a hash is reported and never gated — so an acknowledgement is a
+    statement about what is actually being exposed, not about everything the
+    scan noticed.
+    """
+    counts = {}
+    for row in scan["rows"]:
+        if row["recoverable"] and row["live"]:
+            counts[row["kind"]] = counts.get(row["kind"], 0) + row["live"]
+    return {"kinds": sorted(counts), "counts": counts}
+
+
+def acknowledge(list_name: str, *, actor: str, actor_kind: str,
+                repo_dir: str = "") -> dict:
+    """Record that a person accepted publishing the gated material.
+
+    Bound to **what was acknowledged** — the kinds, their counts, and the
+    commit it was measured against. An acknowledgement that recorded only
+    "yes" would carry forward across changes to the thing being acknowledged,
+    which is the same failure mode as a template approval that survives a
+    template edit.
+    """
+    from datetime import datetime, timezone
+
+    from modules.config import get_list_data_dir
+
+    config = load_remote(list_name)
+    if not config:
+        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
+    repo_dir = repo_dir or os.path.join(get_list_data_dir(list_name),
+                                        "config_repo")
+
+    scan = scan_history_secrets(repo_dir, list_name)
+    gated = gated_summary(scan)
+    head = _run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
+                timeout=60).stdout.strip()
+
+    config["acknowledged_secrets"] = {
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "by": actor, "by_kind": actor_kind,
+        "kinds": gated["kinds"], "counts": gated["counts"],
+        "commit": head,
+    }
+    save_remote(list_name, config)
+    log.info("remote: '%s' publication acknowledged by %s (%s) — kinds=%s "
+             "counts=%s at %s", list_name, actor, actor_kind, gated["kinds"],
+             gated["counts"], head[:12])
+    return {"ok": True, "acknowledged": config["acknowledged_secrets"]}
+
+
+def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
+    """Does the recorded acknowledgement still cover what would be published?
+
+    Re-scanned, not trusted. A NEW gated kind, or a HIGHER count of one
+    already acknowledged, means a person agreed to publish less than is now
+    on offer — so it does not carry.
+
+    A count that FELL, or a kind that disappeared, still carries: less is
+    being published than was agreed to.
+    """
+    from modules.config import get_list_data_dir
+
+    config = load_remote(list_name)
+    if not config:
+        return {"ok": False, "reason": "no remote configured"}
+    ack = config.get("acknowledged_secrets")
+    if not ack:
+        return {"ok": False, "reason": "nothing has been acknowledged yet",
+                "needs": "acknowledgement"}
+
+    repo_dir = repo_dir or os.path.join(get_list_data_dir(list_name),
+                                        "config_repo")
+    now = gated_summary(scan_history_secrets(repo_dir, list_name))
+    was = {"kinds": ack.get("kinds") or [], "counts": ack.get("counts") or {}}
+
+    new_kinds = sorted(set(now["kinds"]) - set(was["kinds"]))
+    risen = sorted(k for k, n in now["counts"].items()
+                   if n > was["counts"].get(k, 0))
+    if new_kinds or risen:
+        return {"ok": False, "needs": "re-acknowledgement",
+                "new_kinds": new_kinds, "risen": risen,
+                "was": was, "now": now,
+                "reason": (
+                    "what would be published has grown since it was "
+                    f"acknowledged: {'new kinds ' + ', '.join(new_kinds) if new_kinds else ''}"
+                    f"{' and ' if new_kinds and risen else ''}"
+                    f"{'more ' + ', '.join(risen) if risen else ''}")}
+    return {"ok": True, "was": was, "now": now}
+
+
+def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:
+    """main + --follow-tags, then refs/notes/* IF any note ref exists.
+
+    Notes are pushed only when there is something to push: an empty refspec
+    errors on some git versions, and reporting ``0 notes`` is the honest
+    answer rather than a failure.
+
+    Refuses unless verification passed and the acknowledgement still covers
+    what would go out.
+    """
+    import time
+    from datetime import datetime, timezone
+
+    from modules.config import get_list_data_dir
+
+    config = load_remote(list_name)
+    if not config:
+        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
+    if not config.get("verified_at"):
+        return {"ok": False, "error": "this remote has not passed verification"}
+
+    covers = acknowledgement_covers(list_name, repo_dir)
+    if not covers["ok"]:
+        return {"ok": False, "error": covers["reason"], "needs": covers.get("needs"),
+                "detail": covers}
+
+    repo_dir = repo_dir or os.path.join(get_list_data_dir(list_name),
+                                        "config_repo")
+    url, branch = remote_url(config), config.get("branch", "main")
+    started = time.time()
+
+    before = {l.split()[1] for l in _run(["git", "ls-remote", url],
+                                         timeout=90).stdout.splitlines()
+              if len(l.split()) > 1}
+
+    main_push = _run(["git", "-C", repo_dir, "push", "--follow-tags", url,
+                      f"HEAD:refs/heads/{branch}"], timeout=600)
+    if main_push.returncode != 0:
+        return {"ok": False, "error": (main_push.stderr or "")[:400],
+                "stage": "push_main"}
+
+    note_refs = [l for l in _run(["git", "-C", repo_dir, "for-each-ref",
+                                  "--format=%(refname)", "refs/notes"],
+                                 timeout=60).stdout.splitlines() if l.strip()]
+    notes_pushed = 0
+    if note_refs:
+        notes = _run(["git", "-C", repo_dir, "push", url, "refs/notes/*:refs/notes/*"],
+                     timeout=300)
+        notes_pushed = len(note_refs) if notes.returncode == 0 else 0
+
+    after = {l.split()[1] for l in _run(["git", "ls-remote", url],
+                                        timeout=90).stdout.splitlines()
+             if len(l.split()) > 1}
+    gained = after - before
+
+    config["last_push"] = {
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "by": actor, "commit": _run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
+                                    timeout=60).stdout.strip(),
+    }
+    save_remote(list_name, config)
+
+    result = {
+        "ok": True, "remote": url, "branch": branch,
+        "refs_now": len(after),
+        "refs_gained": len(gained),
+        "tags_pushed": len([r for r in gained if r.startswith("refs/tags/")]),
+        "heads_pushed": len([r for r in gained if r.startswith("refs/heads/")]),
+        "notes_pushed": notes_pushed,
+        "note_refs_present": len(note_refs),
+        "seconds": round(time.time() - started, 1),
+    }
+    log.info("remote: '%s' pushed to %s by %s — %s", list_name, url, actor,
+             {k: v for k, v in result.items() if k != "ok"})
+    return result
+
+
+def enable_auto_push(list_name: str, *, actor: str) -> dict:
+    """Offered only after a successful push, never before."""
+    config = load_remote(list_name)
+    if not config:
+        return {"ok": False, "error": "no remote configured"}
+    if not config.get("last_push"):
+        return {"ok": False, "error": "auto-push is offered only after a "
+                                      "successful push"}
+    config["auto_push"] = True
+    save_remote(list_name, config)
+    log.info("remote: '%s' auto-push enabled by %s", list_name, actor)
+    return {"ok": True}
+
+
+def auto_push_decision(list_name: str, repo_dir: str = "") -> dict:
+    """May the post-commit hook push this commit WITHOUT a person?
+
+    Auto-push must not widen what is published. Each new commit is re-scanned:
+    if it introduces a gated kind that was not acknowledged, or raises the
+    count of one that was, the push is HELD and a person is asked to
+    re-acknowledge. Ordinary commits — a golden change carrying no new
+    exposure — push as before.
+
+    Holding is the conservative direction and the recoverable one: the commit
+    is already safe in the local repository, and nothing is lost by waiting.
+    Pushing would be irreversible.
+    """
+    config = load_remote(list_name)
+    if not config:
+        return {"push": False, "reason": "no remote configured"}
+    if not config.get("auto_push"):
+        return {"push": False, "reason": "auto-push is not enabled"}
+
+    covers = acknowledgement_covers(list_name, repo_dir)
+    if covers["ok"]:
+        return {"push": True, "reason": "acknowledgement still covers this"}
+    return {"push": False, "held": True, "reason": covers["reason"],
+            "needs": covers.get("needs"), "new_kinds": covers.get("new_kinds"),
+            "risen": covers.get("risen")}

@@ -30,9 +30,11 @@ def register_blueprints(app) -> list:
     from routes.templates import bp as templates_bp
     from routes.deploy import bp as deploy_bp
     from routes.identity import bp as identity_bp
+    from routes.remote import bp as remote_bp
 
     for bp in (integrations_bp, netbox_safety_bp, inventory_bp, golden_bp,
-               templatize_bp, templates_bp, deploy_bp, identity_bp):
+               templatize_bp, templates_bp, deploy_bp, identity_bp,
+               remote_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

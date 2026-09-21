@@ -479,3 +479,234 @@ class TestSnmpAccessModes:
         blob = json.dumps(out)
         assert "FixtureCommunityA" not in blob
         assert "FixtureCommunityB" not in blob
+
+
+class TestPublishIsItsOwnOperationKind:
+    """`publish_remote`, not `confirm`.
+
+    The audit should read "published", not "confirmed" — different acts, and a
+    reader should not have to infer which. And `service_allowed_operations` is
+    keyed on the kind: sharing confirm's would mean a future grant letting a
+    service run credential rotation could also let it publish a network's
+    history. A grant should not reach further than what it was written for.
+    """
+
+    def test_it_is_a_gated_action(self):
+        from modules.identity import GATED_ACTIONS
+        assert "publish_remote" in GATED_ACTIONS
+
+    def test_identity_and_a_person_are_required_by_default(self):
+        from modules.settings_schema import DEFAULTS
+        assert DEFAULTS["require_identity_for_publish_remote"] is True
+        assert DEFAULTS["require_person_for_publish_remote"] is True
+
+    def test_every_writing_route_is_gated(self):
+        """status/verify/preview are not: they are how you decide."""
+        import ast
+        import io as _io
+
+        tree = ast.parse(_io.open("routes/remote.py", encoding="utf-8").read())
+        gated, ungated = set(), set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            body = ast.dump(node)
+            (gated if "publish_remote" in body else ungated).add(node.name)
+        assert {"adopt", "acknowledge", "push", "auto_push"} <= gated
+        assert {"status", "verify", "preview"} <= ungated
+
+
+class TestTheAcknowledgementIsBoundToWhatItAcknowledged:
+    """Otherwise it carries forward across changes to the thing acknowledged.
+
+    Same failure mode as a template approval surviving a template edit: the
+    record says yes, and what it said yes TO has moved.
+    """
+
+    def _scan(self, kinds_counts):
+        rows = []
+        for kind, live in kinds_counts.items():
+            rows.append({"device": "r1", "kind": kind, "recoverable": True,
+                         "distinct": live, "live": live, "dead": 0})
+        return {"rows": rows, "blobs_scanned": 1,
+                "gated_kinds": sorted(kinds_counts)}
+
+    def test_it_records_kinds_counts_and_the_commit(self, lab, monkeypatch,
+                                                    tmp_path):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "scan_history_secrets",
+                            lambda *a, **k: self._scan({"snmp_community": 9}))
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc123\n", "stderr": "", "returncode": 0})())
+
+        out = R.acknowledge("default", actor="a@b", actor_kind="person")
+        ack = out["acknowledged"]
+        assert ack["kinds"] == ["snmp_community"]
+        assert ack["counts"] == {"snmp_community": 9}
+        assert ack["commit"] == "abc123"
+        assert ack["by_kind"] == "person"
+
+    def test_an_unchanged_scan_is_still_covered(self, lab, monkeypatch):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "scan_history_secrets",
+                            lambda *a, **k: self._scan({"snmp_community": 9}))
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc123\n", "stderr": "", "returncode": 0})())
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+
+        assert R.acknowledgement_covers("default")["ok"] is True
+
+    def test_a_new_gated_kind_is_not_covered(self, lab, monkeypatch):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc123\n", "stderr": "", "returncode": 0})())
+        monkeypatch.setattr(R, "scan_history_secrets",
+                            lambda *a, **k: self._scan({"snmp_community": 9}))
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: self._scan(
+            {"snmp_community": 9, "user_password": 1}))
+        covers = R.acknowledgement_covers("default")
+
+        assert covers["ok"] is False
+        assert covers["new_kinds"] == ["user_password"]
+        assert covers["needs"] == "re-acknowledgement"
+
+    def test_a_higher_count_of_a_known_kind_is_not_covered(self, lab, monkeypatch):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc\n", "stderr": "", "returncode": 0})())
+        monkeypatch.setattr(R, "scan_history_secrets",
+                            lambda *a, **k: self._scan({"snmp_community": 9}))
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+
+        monkeypatch.setattr(R, "scan_history_secrets",
+                            lambda *a, **k: self._scan({"snmp_community": 10}))
+        covers = R.acknowledgement_covers("default")
+        assert covers["ok"] is False
+        assert covers["risen"] == ["snmp_community"]
+
+    def test_a_lower_count_still_carries(self, lab, monkeypatch):
+        """Less is being published than was agreed to."""
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc\n", "stderr": "", "returncode": 0})())
+        monkeypatch.setattr(R, "scan_history_secrets",
+                            lambda *a, **k: self._scan({"snmp_community": 9}))
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+
+        monkeypatch.setattr(R, "scan_history_secrets",
+                            lambda *a, **k: self._scan({"snmp_community": 4}))
+        assert R.acknowledgement_covers("default")["ok"] is True
+
+    def test_nothing_acknowledged_is_not_covered(self, lab):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        covers = R.acknowledgement_covers("default")
+        assert covers["ok"] is False
+        assert covers["needs"] == "acknowledgement"
+
+
+class TestAutoPushDoesNotWidenWhatIsPublished:
+    """A credential published by an unattended hook cannot be unpublished."""
+
+    def _ready(self, monkeypatch, counts):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc\n", "stderr": "", "returncode": 0})())
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: {
+            "rows": [{"device": "r1", "kind": k, "recoverable": True,
+                      "distinct": n, "live": n, "dead": 0}
+                     for k, n in counts.items()],
+            "blobs_scanned": 1, "gated_kinds": sorted(counts)})
+
+    def test_an_ordinary_commit_still_pushes(self, lab, monkeypatch):
+        self._ready(monkeypatch, {"snmp_community": 9})
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+        config = R.load_remote("default")
+        config["auto_push"] = True
+        R.save_remote("default", config)
+
+        decision = R.auto_push_decision("default")
+        assert decision["push"] is True
+
+    def test_a_commit_adding_a_plaintext_password_holds_the_push(
+            self, lab, monkeypatch):
+        self._ready(monkeypatch, {"snmp_community": 9})
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+        config = R.load_remote("default")
+        config["auto_push"] = True
+        R.save_remote("default", config)
+
+        # The new commit introduces a kind nobody acknowledged.
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: {
+            "rows": [{"device": "r1", "kind": "snmp_community",
+                      "recoverable": True, "distinct": 9, "live": 9, "dead": 0},
+                     {"device": "r1", "kind": "user_password",
+                      "recoverable": True, "distinct": 1, "live": 1, "dead": 0}],
+            "blobs_scanned": 2, "gated_kinds": ["snmp_community", "user_password"]})
+
+        decision = R.auto_push_decision("default")
+        assert decision["push"] is False
+        assert decision["held"] is True
+        assert decision["new_kinds"] == ["user_password"]
+
+    def test_auto_push_off_means_no_push_and_no_hold(self, lab, monkeypatch):
+        self._ready(monkeypatch, {"snmp_community": 9})
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+
+        decision = R.auto_push_decision("default")
+        assert decision["push"] is False
+        assert decision.get("held") is not True
+
+    def test_auto_push_is_offered_only_after_a_successful_push(self, lab):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        out = R.enable_auto_push("default", actor="a@b")
+        assert out["ok"] is False
+        assert "only after a successful push" in out["error"]
+
+        config = R.load_remote("default")
+        config["last_push"] = {"at": "now", "by": "a@b", "commit": "abc"}
+        R.save_remote("default", config)
+        assert R.enable_auto_push("default", actor="a@b")["ok"] is True
+
+    def test_the_hook_holds_rather_than_pushing(self, lab, monkeypatch):
+        """The hook itself, not just the decision function."""
+        from modules.nsot import archive
+
+        self._ready(monkeypatch, {"snmp_community": 9})
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+        config = R.load_remote("default")
+        config["auto_push"] = True
+        R.save_remote("default", config)
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: {
+            "rows": [{"device": "r1", "kind": "user_password",
+                      "recoverable": True, "distinct": 1, "live": 1, "dead": 0}],
+            "blobs_scanned": 1, "gated_kinds": ["user_password"]})
+
+        def _forbidden(*a, **k):
+            raise AssertionError("the hook must not push while held")
+
+        monkeypatch.setattr("modules.nsot.repo.git", _forbidden)
+        out = archive.push_hook({"repo": "/tmp/x", "list_name": "default"})
+
+        assert out["ok"] is False
+        assert out["held"] is True
+        assert "re-acknowledge" in out["error"]
+
+
+class TestPushRefusesUntilItMay:
+    def test_it_refuses_without_verification(self, lab):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        out = R.push("default", actor="a@b")
+        assert out["ok"] is False
+        assert "not passed verification" in out["error"]
+
+    def test_it_refuses_without_an_acknowledgement(self, lab):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        config = R.load_remote("default")
+        config["verified_at"] = "2026-09-21T00:00:00Z"
+        R.save_remote("default", config)
+
+        out = R.push("default", actor="a@b")
+        assert out["ok"] is False
+        assert out["needs"] == "acknowledgement"

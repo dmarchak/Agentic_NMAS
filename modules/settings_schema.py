@@ -151,6 +151,10 @@ DEFAULTS: dict = {
     "require_identity_for_reveal":  True,
     "require_identity_for_approve": True,
     "require_identity_for_confirm": True,
+    # Publishing a network's history — including its credentials — to a
+    # remote. Its own kind so the audit says "published", and so a service
+    # grant written for one operation cannot reach this one.
+    "require_identity_for_publish_remote": True,
     #: A verified SERVICE is still not a person. Approve and confirm are the
     #: points where a human is supposed to have looked at an exact command list
     #: before it reaches a device; the confirm hash is only worth something
@@ -165,6 +169,7 @@ DEFAULTS: dict = {
     "require_person_for_reveal":  True,
     "require_person_for_approve": True,
     "require_person_for_confirm": True,
+    "require_person_for_publish_remote": True,
     #: The narrow exception: operation kinds a *service* may approve/confirm
     #: despite the two settings above. **Starts empty**, so the exception grants
     #: nothing until somebody names something. Part 2 adds
@@ -372,9 +377,11 @@ SCHEMA: dict = {
         "require_identity_for_reveal": _BOOL,
         "require_identity_for_approve": _BOOL,
         "require_identity_for_confirm": _BOOL,
+        "require_identity_for_publish_remote": _BOOL,
         "require_person_for_reveal": _BOOL,
         "require_person_for_approve": _BOOL,
         "require_person_for_confirm": _BOOL,
+        "require_person_for_publish_remote": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
 
         "oxidized_rest_url": _STR,

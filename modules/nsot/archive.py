@@ -16,16 +16,52 @@ log = logging.getLogger(__name__)
 
 
 def push_hook(context: dict) -> dict:
-    """Push to the configured remote, if there is one and auto-push is on."""
+    """Push to this LIST's remote, if there is one and auto-push is on.
+
+    Reads ``data/lists/{slug}/remote.json`` rather than the global settings:
+    one repository per network cannot be expressed by one global URL, and two
+    lists pushing to each other's repositories is a silent catastrophe.
+
+    **Auto-push must not widen what is published.** Every commit is re-scanned
+    before it goes: if it introduces a gated kind that nobody acknowledged, or
+    raises the count of one that was acknowledged, the push is HELD and a
+    person is asked to re-acknowledge in the UI. Ordinary commits — a golden
+    change carrying no new exposure — push as before.
+
+    Holding is both the conservative direction and the recoverable one. The
+    commit is already safe locally and nothing is lost by waiting; a push is
+    irreversible, and a credential published by an unattended hook cannot be
+    unpublished.
+    """
+    from modules.nsot import remote as R
     from modules.nsot.repo import git
     from modules.settings_schema import get_setting
 
-    remote = (get_setting("nsot_git_remote_url", "") or "").strip()
-    if not remote or not get_setting("nsot_git_auto_push", False):
-        return {"ok": True, "message": "push not configured"}
+    list_name = context.get("list_name", "")
+    config = R.load_remote(list_name) if list_name else None
+
+    if config is None:
+        # Fall back to the global setting for a list with no remote.json, so
+        # an installation that has not adopted yet keeps its old behaviour.
+        remote = (get_setting("nsot_git_remote_url", "") or "").strip()
+        if not remote or not get_setting("nsot_git_auto_push", False):
+            return {"ok": True, "message": "push not configured"}
+        branch = get_setting("nsot_git_branch", "main") or "main"
+    else:
+        decision = R.auto_push_decision(list_name, context.get("repo", ""))
+        if not decision["push"]:
+            if decision.get("held"):
+                log.warning("archive: auto-push HELD for '%s': %s", list_name,
+                            decision["reason"])
+                return {"ok": False, "held": True, "error": (
+                    f"auto-push held — {decision['reason']}. A person must "
+                    f"re-acknowledge publication in the UI before this "
+                    f"commit is pushed.")}
+            return {"ok": True, "message": decision["reason"]}
+        remote = R.remote_url(config)
+        branch = config.get("branch", "main") or "main"
 
     repo = context["repo"]
-    branch = get_setting("nsot_git_branch", "main") or "main"
 
     rc, _, _ = git(repo, "remote", "get-url", "origin")
     if rc != 0:
