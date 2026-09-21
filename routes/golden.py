@@ -132,9 +132,20 @@ def baselines():
 
     repo = _repo_for(_active_list())
     try:
+        from modules.nsot.restore import baseline_credential_gaps
+
+        list_name = _active_list()
         entries = list_baselines(repo)
         for entry in entries:
-            entry["device_count"] = len(devices_at(repo, entry["tag"]))
+            devices = devices_at(repo, entry["tag"])
+            entry["device_count"] = len(devices)
+            # Which devices' credentials this ref predates, computed here so
+            # it can be shown BESIDE the re-apply button rather than after
+            # the operator has committed to the operation.
+            gaps = baseline_credential_gaps(repo, entry["tag"], list_name,
+                                            devices)
+            entry["credential_stale"] = sorted(gaps["stale"])
+            entry["no_intent"] = sorted(gaps["no_intent"])
         return jsonify({"ok": True, "baselines": entries})
     except Exception as exc:                  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500

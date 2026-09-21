@@ -129,6 +129,47 @@ async function downloadGoldenVersion(hostname, ref) {
   } catch (e) { showToast(e.message, 'danger'); }
 }
 
+/* A baseline can be stale in two directions. The usual one is being behind.
+   The other is that it names credentials the fleet has rotated away from —
+   re-applying it would re-publish a secret that exists in history precisely
+   because rotation was meant to kill it. validate_restored_intent() refuses
+   such a device at plan time; this says so before the click. */
+function _gCredWarning(b) {
+  const stale = b.credential_stale || [];
+  const none = b.no_intent || [];
+  if (stale.length) {
+    return `<span class="badge bg-danger-subtle text-danger-emphasis"
+             title="These devices' credentials were rotated after this baseline. Re-applying it would name secrets that no longer exist; the restore refuses them at plan time.">
+             predates credentials: ${stale.map(_gEsc).join(', ')}</span>`;
+  }
+  if (none.length) {
+    return `<span class="badge bg-secondary-subtle text-secondary-emphasis"
+             title="No committed intent at this ref for these devices — not the same as being safe.">
+             no intent: ${none.map(_gEsc).join(', ')}</span>`;
+  }
+  return '<span class="badge bg-success-subtle text-success-emphasis">credentials current</span>';
+}
+
+/* Explicit acknowledgement before re-applying a baseline whose credentials
+   the fleet has rotated away from. The restore path refuses those devices at
+   plan time anyway — this is so the operator knows BEFORE starting, rather
+   than meeting a refusal mid-operation and wondering what is broken.
+
+   Deliberately not folded into previewBaselineRestore(): its second parameter
+   is `unOnboard`, and passing anything else there would be read as a list of
+   devices to un-onboard. */
+window._gBaselineCache = [];
+window.confirmBaselineRestore = function (tag) {
+  const b = (window._gBaselineCache || []).find(x => x.tag === tag) || {};
+  const stale = b.credential_stale || [];
+  if (stale.length && !confirm(
+        `${tag} predates the credentials now on: ${stale.join(', ')}.\n\n` +
+        `Re-applying it names secrets that no longer exist in the credential ` +
+        `store, so the restore will REFUSE those devices at plan time.\n\n` +
+        `Continue to the preview anyway?`)) return;
+  previewBaselineRestore(tag);
+};
+
 /* ── Baselines + migration ───────────────────────────────────────────────── */
 async function loadGoldenRepoPanel() {
   const host = document.getElementById('goldenRepoPanel');
@@ -141,6 +182,7 @@ async function loadGoldenRepoPanel() {
     ]);
 
     const baselines = (bRes.baselines || []).slice(0, 10);
+    window._gBaselineCache = baselines;
     const pending = (rRes.pending || []);
     const needsMigration = mRes.ok && mRes.device_count > 0 && !mRes.already_migrated;
 
@@ -167,9 +209,10 @@ async function loadGoldenRepoPanel() {
                   <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
                   <td><span class="badge bg-secondary-subtle text-secondary-emphasis">
                     ${b.device_count} device(s)</span></td>
+                  <td>${_gCredWarning(b)}</td>
                   <td class="text-end">
                     <button class="btn btn-outline-warning btn-sm"
-                            onclick="previewBaselineRestore('${_gEsc(b.tag)}')"
+                            onclick="confirmBaselineRestore('${_gEsc(b.tag)}')"
                             title="Re-applies stored configuration. Does not remove lines devices have gained.">
                       Re-apply this baseline
                     </button>

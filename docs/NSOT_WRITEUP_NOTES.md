@@ -4284,3 +4284,69 @@ mechanism rather than the result. `gates: {reveal: true}` meaning the gate is
 closed; `ROTATED_UNVERIFIED` meaning both "not attempted" and "failed";
 "Retrying" printed after the process had exited. This is the same error at the
 transport layer.
+
+## A restore point can be stale in two directions
+
+The Baselines panel lists every network-wide restore point with a Re-apply
+button. After the router rotations, three of the four entries were credential
+regressions, and the panel said nothing about it:
+
+```
+baseline/20260921T172602Z             credentials current
+baseline/20260921T170754Z             predates credentials: r3, r4, r5
+baseline/20260921T033554Z             predates credentials: r1, r2, r3, r4, r5
+baseline/20260920T212325Z-migrated    no intent: all nine
+```
+
+The usual way a restore point goes stale is by being **behind** — it holds an
+older configuration, and restoring it costs recent changes. A rotation makes
+it stale in a second direction: the ref names a secret the fleet has
+deliberately moved away from, so re-applying it re-publishes a secret that
+exists in history precisely because rotation was meant to kill it.
+
+Three things were true at once, and separating them mattered more than the
+fix:
+
+**The device-side refusal is real but accidental.** These routers now hold a
+`secret`, and the image refuses a `password` line on a username that has one —
+the behaviour discovered four hours earlier while debugging a failed rotation.
+It would not hold on a platform that accepts both.
+
+**The intent-side refusal is real and deliberate.**
+`validate_restored_intent()` already refuses any device whose ref-intent names
+a secret the credential store no longer holds, at plan time, before anything
+is sent. That is the guard, and it was working.
+
+**Neither was visible.** The operator's first sign would be a refusal partway
+through an operation they had already committed to — which reads as a broken
+tool, not as a protection. So the panel now computes the same question early
+and prints it beside the button, and a stale baseline requires an explicit
+acknowledgement naming the devices before the preview opens.
+
+The fourth row is the one worth pausing on. `-migrated` reports "no intent"
+rather than "credentials current", because at that ref no device had committed
+host_vars at all. Reporting it as clean would have been the most dangerous
+answer available: it is the oldest baseline, it predates every rotation, and
+the reason nothing is stale is that there is nothing recorded to be stale. An
+unmade measurement is not a passed one — the same rule as coverage for a
+baseline, and as `device_changed: None` on an unreadable capture.
+
+### The panel was also not refreshing
+
+Separately and more mundanely: `Save All` refreshed the Git tab but not the
+golden-repo panel, so a newly created baseline did not appear until the
+operator navigated away and back. The tag existed and `list_baselines()`
+returned it correctly; the screen whose job is to show it simply had not been
+told to look again.
+
+Worth recording because the initial hypothesis was wrong in an instructive
+way. The suspicion was that the panel lists baselines *per commit*, so a
+baseline sharing a commit with other tags would be hidden — which would have
+been a real defect newly introduced by tagging baselines on an existing HEAD.
+Checking `list_baselines()` against the live repository took one command and
+showed the tag present, correctly ordered, with the right subject. The bug was
+one layer further out, and cost a line to fix rather than a redesign.
+
+> When a thing does not appear on screen, the cheapest discriminator is
+> whether the data layer has it. Every hypothesis above that point is
+> unfalsifiable until you look.

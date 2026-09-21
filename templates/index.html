@@ -2647,6 +2647,12 @@ document.addEventListener('DOMContentLoaded', () => {
             !document.getElementById('gitPane').classList.contains('d-none')) {
           loadGitTab();
         }
+        // ...and the golden-repo panel, which is where baselines are listed.
+        // Save All is the main way a baseline is created, and the panel was
+        // only refreshed on tab activation — so a new baseline did not appear
+        // until the operator navigated away and back. The tag existed; the
+        // screen that exists to show it did not say so.
+        if (typeof loadGoldenRepoPanel === 'function') loadGoldenRepoPanel();
       } else {
         showToast(data.message || 'Save all configs failed', 'danger');
       }

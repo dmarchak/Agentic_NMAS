@@ -752,3 +752,108 @@ class TestTheHandoffScopesToOneDevice:
         # The only thing done with it is echoing it back.
         uses = [l.strip() for l in source.splitlines() if "advisory_diff" in l]
         assert uses == ['"advisory_diff": (data.get("advisory_diff") or ""),'], uses
+
+class TestBaselineCredentialGaps:
+    """Which devices' credentials a baseline predates, stated before the click.
+
+    A restore point normally goes stale by being behind. A rotation makes it
+    stale in a second direction: the ref names a secret the device has been
+    deliberately moved away from, so re-applying it would re-publish a secret
+    that exists in history precisely because rotation was meant to kill it.
+
+    `validate_restored_intent()` already refuses such a device at plan time,
+    so this is not a new guard — it is the same question asked early enough to
+    print beside the button rather than after the operator has committed.
+    """
+
+    def _repo(self, tmp_path, intents):
+        """A repo with one commit holding the given host_vars."""
+        import subprocess
+
+        import yaml
+
+        repo = tmp_path / "config_repo"
+        (repo / "host_vars").mkdir(parents=True)
+        for host, data in intents.items():
+            (repo / "host_vars" / f"{host}.yml").write_text(
+                yaml.safe_dump(data), encoding="utf-8")
+        for args in (["init", "-q"], ["add", "-A"]):
+            subprocess.run(["git", "-C", str(repo), *args], check=True)
+        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t",
+                        "-c", "user.name=t", "commit", "-q", "-m", "seed"],
+                       check=True)
+        return str(repo)
+
+    def test_a_rotated_device_is_reported_as_stale(self, tmp_path, monkeypatch):
+        from modules.nsot.restore import baseline_credential_gaps
+
+        repo = self._repo(tmp_path, {
+            "r1": {"secret_refs": ["user_admin_password", "snmp_community_ro"]},
+            "r9": {"secret_refs": ["user_admin_secret"]},
+        })
+        # The store holds only what survives today's rotation.
+        monkeypatch.setattr(
+            "modules.credentials.get_template_secret",
+            lambda key: "value" if key.endswith("user_admin_secret")
+            or key.endswith("snmp_community_ro") else "")
+
+        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1", "r9"])
+        assert out["stale"] == {"r1": ["user_admin_password"]}
+        assert out["no_intent"] == []
+        assert out["checked"] == 2
+
+    def test_a_device_with_no_intent_is_not_reported_as_safe(
+            self, tmp_path, monkeypatch):
+        """A ref predating onboarding is a different thing from a valid one."""
+        from modules.nsot.restore import baseline_credential_gaps
+
+        repo = self._repo(tmp_path, {"r1": {"secret_refs": ["user_admin_secret"]}})
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "value")
+
+        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1", "r_absent"])
+        assert out["stale"] == {}
+        assert out["no_intent"] == ["r_absent"]
+
+    def test_an_intent_with_no_secret_refs_counts_as_no_intent(
+            self, tmp_path, monkeypatch):
+        """The migrated baseline's shape: committed, but nothing to check."""
+        from modules.nsot.restore import baseline_credential_gaps
+
+        repo = self._repo(tmp_path, {"r1": {"users": [{"name": "admin"}]}})
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "value")
+
+        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1"])
+        assert out["no_intent"] == ["r1"]
+        assert out["stale"] == {}
+
+    def test_everything_current_reports_nothing(self, tmp_path, monkeypatch):
+        from modules.nsot.restore import baseline_credential_gaps
+
+        repo = self._repo(tmp_path, {"r1": {"secret_refs": ["user_admin_secret"]}})
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "value")
+
+        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1"])
+        assert out == {"stale": {}, "no_intent": [], "checked": 1}
+
+    def test_malformed_intent_is_not_silently_treated_as_current(
+            self, tmp_path, monkeypatch):
+        from modules.nsot.restore import baseline_credential_gaps
+
+        repo = tmp_path / "config_repo"
+        (repo / "host_vars").mkdir(parents=True)
+        (repo / "host_vars" / "r1.yml").write_text("{[not yaml", encoding="utf-8")
+        import subprocess
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t",
+                        "-c", "user.name=t", "commit", "-q", "-m", "seed"],
+                       check=True)
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "value")
+
+        out = baseline_credential_gaps(str(repo), "HEAD", "Lab", ["r1"])
+        assert out["no_intent"] == ["r1"], "unreadable is not current"
+

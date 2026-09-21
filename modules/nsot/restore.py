@@ -205,6 +205,55 @@ def intent_at(source, hostname: str):
     return hostvars.from_yaml(raw) if raw else None
 
 
+def baseline_credential_gaps(repo: str, ref: str, list_name: str,
+                             hosts: list) -> dict:
+    """Which devices' credentials does *ref* predate?
+
+    A restore point normally goes stale by being *behind*. A credential
+    rotation makes it stale in a second direction: the ref names a secret the
+    device has been deliberately moved away from, and re-applying it would
+    re-publish a secret that exists in history precisely because rotation was
+    meant to kill it.
+
+    :func:`validate_restored_intent` already REFUSES such a device at plan
+    time, so this is not the guard — it is the same question asked early
+    enough to be printed next to the button, instead of after the operator has
+    committed to the operation.
+
+    Returns ``{"stale": {host: [refs]}, "no_intent": [hosts], "checked": n}``.
+
+    ``no_intent`` is reported separately and deliberately NOT as safe: a ref
+    predating this device's onboarding has no committed intent to check, which
+    is a different thing from having intent that is still valid.
+    """
+    import yaml
+
+    from modules.credentials import get_template_secret, template_secret_key
+    from modules.nsot.repo import git
+
+    stale, no_intent = {}, []
+    for host in hosts:
+        rc, text, _err = git(repo, "show", f"{ref}:host_vars/{host}.yml")
+        if rc != 0 or not (text or "").strip():
+            no_intent.append(host)
+            continue
+        try:
+            intent = yaml.safe_load(text) or {}
+        except Exception:                      # noqa: BLE001
+            no_intent.append(host)
+            continue
+        refs = intent.get("secret_refs") or []
+        if not refs:
+            no_intent.append(host)
+            continue
+        missing = [r for r in refs
+                   if not get_template_secret(
+                       template_secret_key(list_name, host, r))]
+        if missing:
+            stale[host] = missing
+    return {"stale": stale, "no_intent": no_intent, "checked": len(hosts)}
+
+
 def validate_restored_intent(repo: str, hostname: str, intent: dict,
                              stored_golden: str, platform: str) -> list:
     """Plan-time gaps between old intent and the CURRENT tooling.
