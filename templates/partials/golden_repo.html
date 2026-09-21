@@ -191,7 +191,23 @@ window.confirmBaselineRestore = function (tag) {
   previewBaselineRestore(tag);
 };
 
+</script>
+
+<script>
 /* ── Remote (Phase 2b) ───────────────────────────────────────────────────── */
+/*
+   A SEPARATE script element, deliberately.
+
+   A syntax error anywhere in a block kills the whole block, so when a string
+   literal in this card spanned a line break the browser discarded the
+   Baselines loader with it — and the panel that warns which baselines would
+   re-publish dead credentials simply stopped rendering. The newest, least
+   important card took out the oldest, most consequential one.
+
+   try/catch cannot help: a parse error happens before any of it runs. Two
+   blocks is the only isolation that works, and the caller guards the symbol
+   as well, so an absent function is skipped rather than throwing.
+*/
 
 /* Publishing a network's history — credentials included — is gated on a
    verified PERSON. The flow is deliberately four steps with a read in the
@@ -320,19 +336,16 @@ window.remoteAcknowledge = async function () {
   const kinds = (d.gated && d.gated.kinds) || [];
   if (!kinds.length) { _remoteOut('nothing requires acknowledgement'); return; }
   const counts = (d.gated && d.gated.counts) || {};
-  const typed = prompt(
-    `Publishing to ${d.owner_repo} exposes, in history:
-
-` +
-    kinds.map(k => `  ${k} x${counts[k]}`).join('
-') +
-    `
-
-Rotating them afterwards does not unpublish them.
-
-` +
-    `Type the gated kinds to acknowledge:
-  ${kinds.join(' ')}`);
+  // Built as an array and joined, so no string literal here spans a line
+  // break. The previous version was written through a Python string, where a
+  // single-backslash \n becomes a REAL newline — which a backtick template
+  // literal tolerates and a single-quoted string does not. One of them was
+  // single-quoted, and the parse error took the whole script block with it.
+  const lines = ['Publishing to ' + d.owner_repo + ' exposes, in history:', ''];
+  kinds.forEach(k => lines.push('  ' + k + ' x' + counts[k]));
+  lines.push('', 'Rotating them afterwards does not unpublish them.', '',
+             'Type the gated kinds to acknowledge:', '  ' + kinds.join(' '));
+  const typed = prompt(lines.join('\n'));
   if (typed === null) return;
   const r = await fetch('/remote/acknowledge', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -369,6 +382,9 @@ window.remoteEnableAuto = async function () {
   loadRemotePanel();
 };
 
+</script>
+
+<script>
 /* ── Baselines + migration ───────────────────────────────────────────────── */
 async function loadGoldenRepoPanel() {
   const host = document.getElementById('goldenRepoPanel');
@@ -381,7 +397,9 @@ async function loadGoldenRepoPanel() {
     ]);
 
     const baselines = (bRes.baselines || []).slice(0, 10);
-    loadRemotePanel();
+    // Guarded: if the Remote card's block failed to parse, this symbol does
+    // not exist, and Baselines must still render.
+    if (typeof loadRemotePanel === 'function') loadRemotePanel();
     window._gBaselineCache = baselines;
     const pending = (rRes.pending || []);
     const needsMigration = mRes.ok && mRes.device_count > 0 && !mRes.already_migrated;

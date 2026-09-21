@@ -4695,3 +4695,63 @@ breaking something, and the thing it avoided breaking did not exist. There is
 no installation with a configured global and an unconfigured list. It was
 compatibility with a hypothetical, bought at the price of the property the
 whole phase is for.
+
+## 1656 tests, and not one of them parsed the JavaScript
+
+The Remote card shipped with a single-quoted string spanning a line break:
+
+```js
+kinds.map(k => `  ${k} x${counts[k]}`).join('
+') +
+```
+
+The browser rejects the entire script element on a parse error, so it
+discarded the **Baselines loader** along with it. The newest and least
+important card on the page took out the oldest and most consequential one —
+the panel that says which baselines would re-publish dead credentials and lock
+the tool out of the switches.
+
+Server-side everything was fine: endpoints 200, markup present, no log errors.
+The failure existed only in a parser nothing in this project runs.
+
+### How it got written
+
+The JavaScript was authored inside a Python string. In a non-raw Python
+string, `\n` **is** a newline, so `.join('\n')` in the source became
+`.join('` + newline + `')` in the output. Backtick template literals in the
+same block survived the same treatment, because they legally span lines — so
+most of the transformation looked fine, and one quote style did not.
+
+Two languages, one escaping layer between them, and the layer silently agreed
+with the generator about `\n` while disagreeing with the target.
+
+### Three fixes, in order of what they buy
+
+**The string.** Built as an array and joined, so no literal spans a line at
+all — rather than escaping it correctly and depending on the next author to
+notice.
+
+**Isolation.** The Remote card is its own script element now, and the call
+into it is guarded with `typeof`. A parse error still kills its own block, but
+the Baselines panel renders regardless. `try/catch` cannot help here: a parse
+error happens before any statement runs, which is exactly why the failure was
+total rather than local.
+
+**A test that runs the parser.** `node --check` on every inline script when
+node exists — and node is installed on neither the development machine nor the
+deployment host, so a scanner in pure Python does the same narrow job
+unconditionally. It tracks comments, template literals and regex literals well
+enough not to cry wolf on `/[&<>"']/g`, and reports any quoted string opened
+and not closed on its line. Run against the shipped commit, it flags lines
+304–305 and refuses it.
+
+> A test suite that checks generated code by searching it for substrings has
+> not checked that the result is a program. Every language in the repository
+> needs something that parses it, and "we have 1656 tests" says nothing about
+> the one that has no parser pointed at it.
+
+The narrowness of the scanner is deliberate. A general JavaScript parser in
+Python would be a dependency and a maintenance burden for a project that
+vendors its front-end precisely to avoid those. This checks one defect class,
+runs everywhere, and cannot be skipped into uselessness — which the node check,
+skipped on both machines that matter, would otherwise have been.
