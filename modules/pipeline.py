@@ -1277,10 +1277,10 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             undo = rollback_commands(pushed, pre_cfg, landed=landed)
             _applied, rejected = landed_leaves(pushed, landed)
             if rejected:
-                ctx.rollback_not_undone[ip] = [e["line"] for e in rejected]
+                ctx.rollback_not_undone[ip] = [e.line for e in rejected]
                 log.info("pipeline[rollback]: %s — %d line(s) not undone, never "
                          "applied: %s", hostname, len(rejected),
-                         [e["line"] for e in rejected])
+                         [e.line for e in rejected])
             assert_rollback_provenance(undo, pushed)
             ctx.rollback_commands[ip] = undo
 

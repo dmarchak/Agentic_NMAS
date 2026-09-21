@@ -876,7 +876,7 @@ class TestAncestryIsNotASetting:
         from modules.nsot.deploy import program_leaves, program_structure
 
         program = ["interface GigabitEthernet0/1", " shutdown", "exit"]
-        assert [e["line"] for e in program_leaves(program)] == [" shutdown"]
+        assert [e.line for e in program_leaves(program)] == [" shutdown"]
         assert [e["leaf"] for e in program_structure(program)] == [False, True]
 
     def test_a_nested_header_is_ancestry_too(self):
@@ -888,7 +888,7 @@ class TestAncestryIsNotASetting:
 
     def test_a_top_level_leaf_is_a_leaf(self):
         from modules.nsot.deploy import program_leaves
-        assert [e["line"] for e in program_leaves(["ip routing"])] == ["ip routing"]
+        assert [e.line for e in program_leaves(["ip routing"])] == ["ip routing"]
 
 
 class TestRollbackProvenanceCoversEveryLine:
@@ -1045,7 +1045,7 @@ class TestRollbackUndoesWhatLandedNotWhatWasPushed:
     def test_the_rejected_line_is_reported(self):
         from modules.nsot.deploy import landed_leaves
         _applied, rejected = landed_leaves(self.PUSHED, [" description 3B test"])
-        assert [e["line"] for e in rejected] == [" ip mtu 20000"]
+        assert [e.line for e in rejected] == [" ip mtu 20000"]
 
     def test_nothing_landed_means_nothing_to_undo(self):
         from modules.nsot.deploy import rollback_commands
@@ -1159,3 +1159,67 @@ class TestDiffCategoriesDistinguishReplaceFromResidue:
         assert result["add"] == [" ip mtu 1400"]
         assert result["replace"] == []
         assert result["residue"] == [" ip address 10.0.0.1 255.255.255.255"]
+
+
+class TestAHeaderCannotReachASettingKey:
+    """Made unrepresentable, not documented for a fourth time.
+
+    `interface Loopback0` and `interface Loopback1` both reduce to the key
+    `interface`. That produced three separate defects — a rollback "restoring"
+    one interface to another, `ip mtu` matched against `ip address`, and a
+    *replace* reported between two interfaces — across code written after the
+    rule was documented twice.
+
+    The rule kept being broken because "compare these two config lines" reads
+    as a whole-line operation right up until a header is one of them. So the
+    key function now takes a ``Leaf`` and a raw string is a TypeError: the same
+    move as ``resolve_identity`` losing the ability to mint.
+    """
+
+    def test_a_raw_line_is_refused(self):
+        from modules.nsot.deploy import _command_keys
+        with pytest.raises(TypeError) as exc:
+            _command_keys("interface Loopback0")
+        assert "not a setting" in str(exc.value)
+
+    def test_the_refusal_names_what_went_wrong(self):
+        from modules.nsot.deploy import _command_keys
+        with pytest.raises(TypeError) as exc:
+            _command_keys(" description x")
+        assert "Leaf" in str(exc.value)
+
+    def test_program_leaves_yields_leaf_values(self):
+        from modules.nsot.deploy import Leaf, program_leaves
+        leaves = program_leaves(["interface GigabitEthernet0/1", " shutdown", "exit"])
+        assert all(isinstance(entry, Leaf) for entry in leaves)
+        assert [entry.line for entry in leaves] == [" shutdown"]
+
+    def test_config_leaves_yields_leaf_values_and_excludes_headers(self):
+        from modules.nsot.deploy import Leaf, config_leaves
+        leaves = config_leaves("interface Loopback0\n description x\n ip mtu 1400\n")
+        assert all(isinstance(entry, Leaf) for entry in leaves)
+        assert [entry.line for entry in leaves] == [" description x", " ip mtu 1400"]
+        assert all(entry.line != "interface Loopback0" for entry in leaves)
+
+    def test_a_top_level_line_with_no_children_is_a_leaf(self):
+        from modules.nsot.deploy import config_leaves
+        assert [e.line for e in config_leaves("ip routing\nhostname s4\n")] == [
+            "ip routing", "hostname s4"]
+
+    def test_a_nested_header_is_excluded_too(self):
+        from modules.nsot.deploy import config_leaves
+        leaves = config_leaves(
+            "router bgp 65001\n address-family ipv4\n  neighbor 10.0.0.1 activate\n")
+        assert [e.line for e in leaves] == ["  neighbor 10.0.0.1 activate"]
+
+    def test_every_call_site_passes_a_leaf(self):
+        """A regression guard: no bare string reaches the key function."""
+        import inspect
+        import re
+        from modules.nsot import deploy
+
+        source = inspect.getsource(deploy)
+        calls = re.findall(r"_command_keys\(([^)]*)\)", source)
+        offenders = [c for c in calls
+                     if c.strip() and not c.strip().startswith(("Leaf(", "leaf"))]
+        assert offenders == [], f"raw values passed to _command_keys: {offenders}"

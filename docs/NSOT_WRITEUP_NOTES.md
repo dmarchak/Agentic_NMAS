@@ -2524,3 +2524,115 @@ evidence that the reason is *live* in this network rather than hypothetical.
 
 r2's plaintext password is also, separately, worth fixing. That is an operator
 decision the NSoT now makes askable.
+
+---
+
+## A tag that claimed more than it measured, and the relabel
+
+`baseline/20260921T015446Z` was created by batch 4 after deploying to **three
+of nine** devices. The tag asserts *the network looked like this*. Six devices
+were never contacted, never read, and never verified — their goldens in that
+commit are whatever the last save left there, which may or may not still match
+the device.
+
+It was not a bug in the sense of a wrong line of code. `save_golden` created a
+baseline when one call changed more than one device, which was a reasonable
+rule right up until "a batch is one call" made a three-device batch look like a
+network-wide event.
+
+The reason it mattered more than it looked: the Baselines panel lists every
+`baseline/*` as a **"network-wide restore point"**, and restore is the
+demonstration of the whole golden-config objective. The tag would have sat in
+the headline feature, offering to restore a network state that nobody had
+established.
+
+### The relabel
+
+```
+batch/20260921T015446Z    created at 25d91167, the same commit
+baseline/20260921T015446Z deleted
+```
+
+The commit is untouched — it is accurate history of what was deployed. Only the
+claim changed. `baseline/20260920T212325Z-migrated` stays: all nine devices,
+and the goldens at that commit *are* the captures they were taken from.
+
+### The rule that replaced it
+
+A baseline is now **earned by measurement**:
+
+* every targeted device succeeded, **and**
+* the whole inventory was targeted, **and**
+* each device's post-deploy capture equals what was pushed to it
+
+True by observation rather than by category — the same principle as
+`device_changed` reporting `None` rather than `False` when a capture fails.
+This also means an *additive* re-apply can earn a baseline if it happens to
+leave no residue, which ruling it out by mode would have understated.
+
+### The general shape
+
+> A label that asserts a property must be issued by something that measured
+> the property, not by something that observed a correlate of it.
+
+"More than one device changed" correlates with "this was a network-wide
+operation" until batching breaks the correlation. Every one of these is fine
+until the thing it stands in for moves.
+
+---
+
+## Making a rule unrepresentable after documenting it twice failed
+
+`interface Loopback0` and `interface Loopback1` both reduce to the command key
+`interface`. Section headers are not settings, and treating them as settings
+produced three separate defects:
+
+1. a rollback "restoring" `interface Loopback0` to `interface Loopback1`, which
+   reached a live device
+2. `ip mtu 20000` matched against `ip address 10.255.1.24 255.255.255.255`
+3. a diff reporting a *replace* between two different interfaces
+
+The rule was written into a docstring after (1) and into a second docstring
+after (2). (3) was written **by the same author, the same day, in a new
+function**, about twenty minutes after committing the note explaining (2).
+
+### Why documentation did not work here
+
+The mistake is not one of knowledge. Each time, the code was written by someone
+who had just explained the rule. The failure is that **"compare these two
+config lines" is a natural operation to write**, and it stays natural right up
+until one of the lines is a header — which is a property of the *data*, not
+visible at the call site.
+
+A docstring addresses the reader who is already looking at the function. It
+does nothing for the author of a new function two hundred lines away who is
+solving a different problem and reaches for the obvious helper.
+
+### The fix: change what the function accepts
+
+```python
+class Leaf(NamedTuple):
+    line: str
+    chain: tuple
+
+def _command_keys(leaf) -> tuple:
+    if not isinstance(leaf, Leaf):
+        raise TypeError("_command_keys takes a Leaf, not a line. …")
+```
+
+`Leaf` values are produced only by `program_leaves()` and `config_leaves()`,
+both of which exclude headers by construction. Passing a raw line is now a
+`TypeError` at the call site, immediately, in the author's own test run.
+
+This is the same move as `resolve_identity()` losing the ability to mint. In
+both cases the previous fix was "be careful in the right place", and in both
+cases the next author was careful in a different place.
+
+> When a rule is broken a second time by someone who knows it, the rule is in
+> the wrong place. Move it from the documentation into the type, the signature,
+> or the call graph — somewhere the compiler, the interpreter, or the test run
+> enforces it without anyone having to remember.
+
+A regression test also asserts, by scanning the module source, that every call
+site passes a `Leaf` — because the type check catches a raw *string*, and the
+remaining hole is someone constructing a `Leaf` around a header by hand.

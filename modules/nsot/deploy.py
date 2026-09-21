@@ -21,6 +21,7 @@ documented future option, not built.
 """
 
 import logging
+from typing import NamedTuple
 
 from modules.nsot.render_artifact import assert_no_mask
 
@@ -121,32 +122,12 @@ def classify_diff(target_config: str, running_config: str) -> dict:
     """
     from modules.nsot import ifnames
 
-    def _leaves(text):
-        """Configuration-bearing lines only.
-
-        A section header is context, not a setting. Classifying headers as
-        settings matched ``interface Loopback0`` against ``interface
-        Loopback1`` — both reduce to the key ``interface`` — and reported a
-        *replace* between two different interfaces. Third time this exact
-        mistake has been made in this file, so the rule is stated rather than
-        rediscovered: only leaves carry settings.
-        """
-        entries = list(_section_chains(text))
-        headers = {tuple(chain) + (line,)
-                   for line, chain in entries for _i in range(1)
-                   if any(len(other_chain) > len(chain)
-                          and tuple(other_chain[:len(chain) + 1])
-                          == tuple(chain) + (line,)
-                          for _ol, other_chain in entries)}
-        return [(line, chain) for line, chain in entries
-                if tuple(chain) + (line,) not in headers]
-
     def _index(text):
         precise, broad, verbatim = {}, {}, set()
-        for line, chain in _leaves(text):
-            canonical = ifnames.canonicalise_line(line)
-            key_precise, key_broad = _command_keys(canonical)
-            chain_key = tuple(ifnames.canonicalise_line(c) for c in chain)
+        for leaf in config_leaves(text):
+            canonical = ifnames.canonicalise_line(leaf.line)
+            key_precise, key_broad = _command_keys(Leaf(canonical, leaf.chain))
+            chain_key = tuple(ifnames.canonicalise_line(c) for c in leaf.chain)
             verbatim.add((chain_key, canonical))
             precise.setdefault((chain_key, key_precise), canonical)
             broad.setdefault((chain_key, key_broad), []).append(canonical)
@@ -156,7 +137,7 @@ def classify_diff(target_config: str, running_config: str) -> dict:
     run_precise, run_broad, run_verbatim = _index(running_config)
 
     def _counterpart(chain_key, canonical, precise_index, broad_index):
-        key_precise, key_broad = _command_keys(canonical)
+        key_precise, key_broad = _command_keys(Leaf(canonical, chain_key))
         hit = precise_index.get((chain_key, key_precise))
         if hit is not None:
             return hit
@@ -166,9 +147,10 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         return candidates[0] if len(candidates) == 1 else None
 
     add, replace, residue = [], [], []
-    for line, chain in _leaves(target_config):
+    for leaf in config_leaves(target_config):
+        line = leaf.line
         canonical = ifnames.canonicalise_line(line)
-        chain_key = tuple(ifnames.canonicalise_line(c) for c in chain)
+        chain_key = tuple(ifnames.canonicalise_line(c) for c in leaf.chain)
         if (chain_key, canonical) in run_verbatim:
             continue
         current = _counterpart(chain_key, canonical, run_precise, run_broad)
@@ -177,9 +159,10 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         else:
             replace.append({"line": line, "old": current, "new": canonical})
 
-    for line, chain in _leaves(running_config):
+    for leaf in config_leaves(running_config):
+        line = leaf.line
         canonical = ifnames.canonicalise_line(line)
-        chain_key = tuple(ifnames.canonicalise_line(c) for c in chain)
+        chain_key = tuple(ifnames.canonicalise_line(c) for c in leaf.chain)
         if (chain_key, canonical) in target_verbatim:
             continue
         # Being replaced is not being left behind.
@@ -312,7 +295,7 @@ def merge_commands(intended_config: str, running_config: str) -> list:
     # from drifting apart again: change either and this fails loudly, instead
     # of the rollback quietly disagreeing later.
     from modules.nsot import ifnames as _ifnames
-    classified = {_ifnames.canonicalise_line(e["line"])
+    classified = {_ifnames.canonicalise_line(e.line)
                   for e in program_leaves(commands)}
     expected = {_ifnames.canonicalise_line(l) for l in wanted
                 if l not in remaining}
@@ -347,7 +330,30 @@ def merge_commands(intended_config: str, running_config: str) -> list:
 FREE_FORM_COMMANDS = ("description", "banner", "remark", "name")
 
 
-def _command_keys(line: str) -> tuple:
+class Leaf(NamedTuple):
+    """A configuration-bearing line and the headers it sits under.
+
+    The **only** thing :func:`_command_keys` accepts. Passing a raw string is a
+    TypeError, so a section header cannot reach a setting-key function by
+    accident — which it did three times: ``interface Loopback0`` "restored" to
+    ``interface Loopback1`` in a rollback, ``ip mtu`` matched against ``ip
+    address``, and ``interface Loopback0`` vs ``Loopback1`` reported as a
+    *replace* between two interfaces.
+
+    The rule was documented twice and recurred anyway, because "compare these
+    two config lines" reads as a whole-line operation right up until a header
+    is one of them. Same move as ``resolve_identity`` losing the ability to
+    mint: stop relying on the caller remembering.
+
+    Produced only by :func:`program_leaves` and :func:`config_leaves`, both of
+    which exclude headers by construction.
+    """
+
+    line: str
+    chain: tuple
+
+
+def _command_keys(leaf) -> tuple:
     """``(precise, broad)`` keys identifying *which setting* a line sets.
 
     Two keys, because one cannot cover both shapes:
@@ -364,7 +370,13 @@ def _command_keys(line: str) -> tuple:
     starting with that word; otherwise it is ambiguous (``ip address`` primary
     and secondary, several ``switchport`` lines) and the precise key decides.
     """
-    words = line.strip().split()
+    if not isinstance(leaf, Leaf):
+        raise TypeError(
+            "_command_keys takes a Leaf, not a line. A section header is "
+            "context, not a setting, and passing one here has produced three "
+            f"separate defects. Got: {leaf!r}")
+
+    words = leaf.line.strip().split()
     if not words:
         return "", ""
     if words[0] == "no":
@@ -391,7 +403,7 @@ def landed_leaves(pushed: list, landed) -> tuple:
 
     seen = {ifnames.canonicalise_line(l).strip() for l in landed}
     applied = [e for e in leaves
-               if ifnames.canonicalise_line(e["line"]).strip() in seen]
+               if ifnames.canonicalise_line(e.line).strip() in seen]
     rejected = [e for e in leaves if e not in applied]
     return applied, rejected
 
@@ -435,12 +447,12 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
 
     precise_index, broad_index = {}, {}
     for line, chain in _section_chains(pre_config):
-        precise, broad = _command_keys(line)
+        precise, broad = _command_keys(Leaf(line, tuple(chain)))
         precise_index.setdefault((tuple(chain), precise), line)
         broad_index.setdefault((tuple(chain), broad), []).append(line)
 
     def _previous(chain, line):
-        precise, broad = _command_keys(line)
+        precise, broad = _command_keys(Leaf(line, tuple(chain)))
         hit = precise_index.get((tuple(chain), precise))
         if hit is not None:
             return hit
@@ -461,8 +473,8 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     pending = []
     applied, _rejected = landed_leaves(pushed, landed)
     for entry in applied:
-        line = entry["line"]
-        chain = list(entry["chain"])
+        line = entry.line
+        chain = list(entry.chain)
         indent = len(line) - len(line.lstrip())
         canonical = ifnames.canonicalise_line(line)
         previous = _previous(chain, canonical)
@@ -528,8 +540,24 @@ def program_structure(commands: list) -> list:
 
 
 def program_leaves(commands: list) -> list:
-    """The configuration-bearing lines of a program, with their chains."""
-    return [e for e in program_structure(commands) if e["leaf"]]
+    """The configuration-bearing lines of a program, as :class:`Leaf` values."""
+    return [Leaf(e["line"], tuple(e["chain"]))
+            for e in program_structure(commands) if e["leaf"]]
+
+
+def config_leaves(text: str) -> list:
+    """The configuration-bearing lines of a *config*, as :class:`Leaf` values.
+
+    A config has no explicit terminators, so ancestry is whatever appears in
+    another line's chain.
+    """
+    entries = list(_section_chains(text))
+    headers = set()
+    for _line, chain in entries:
+        for depth in range(len(chain)):
+            headers.add(tuple(chain[:depth + 1]))
+    return [Leaf(line, tuple(chain)) for line, chain in entries
+            if tuple(chain) + (line,) not in headers]
 
 
 def program_lines(commands: list) -> frozenset:
@@ -607,7 +635,7 @@ def assert_rollback_provenance(rollback: list, pushed: list) -> None:
         chain = tuple(ifnames.canonicalise_line(c) for c in entry["chain"])
         canonical = ifnames.canonicalise_line(entry["line"])
         if entry["leaf"]:
-            precise, broad = _command_keys(canonical)
+            precise, broad = _command_keys(Leaf(canonical, chain))
             keys = {canonical.strip(), f"key:{precise}"}
             if broad in FREE_FORM_COMMANDS:
                 keys.add(f"key:{broad}")
@@ -628,7 +656,7 @@ def assert_rollback_provenance(rollback: list, pushed: list) -> None:
 
         known = pushed_leaves.get(chain, set())
         stripped = canonical.strip()
-        precise, broad = _command_keys(canonical)
+        precise, broad = _command_keys(Leaf(canonical, chain))
         broad_ok = broad in FREE_FORM_COMMANDS and f"key:{broad}" in known
 
         if stripped.startswith("no "):
