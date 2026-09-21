@@ -1230,3 +1230,164 @@ class TestEachPathsBaselineIsKeyedOnItsOwnClaim:
                    for d in self.FLEET]
         outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
         assert outcome["baseline"] is True, outcome["baseline_reasons"]
+
+
+class TestARestoreBaselineIsEarnedByMeasurementNotByPath:
+    """The tag rule's tightening: *a skipped device counts only if MEASURED.*
+
+    Which replaces "every targeted device succeeded" for restore with **every
+    inventory device measured equivalent to the ref, whatever path got it
+    there**. Pushed, already matching, or one line short — the tag does not
+    care how a device arrived, only that this batch read it back and compared.
+
+    The load-bearing half is the negative: a device the batch never read
+    contributes no evidence, so it denies the tag rather than being assumed
+    fine. "It had nothing to send" is a conclusion drawn from a STORED
+    capture, which is a record of an earlier moment.
+    """
+
+    FLEET = ["r2", "s3", "s4"]
+
+    @pytest.fixture
+    def fleet(self, monkeypatch):
+        import modules.device as D
+        monkeypatch.setattr(D, "load_saved_devices",
+                            lambda path=None: [{"hostname": h, "ip": f"203.0.113.{i}"}
+                                               for i, h in enumerate(self.FLEET, 12)])
+        monkeypatch.setattr(D, "get_current_device_list",
+                            lambda: ("Lab", "devices.csv"))
+
+    def _pending(self, device, config, target=None, sent_nothing=False):
+        entry = {"hostname": device, "config_text": config,
+                 "mgmt_ip": "203.0.113.1", "netbox_id": None,
+                 "device_uid": device, "sent_nothing": sent_nothing}
+        if target is not None:
+            entry["target_config"] = target
+        return entry
+
+    def test_a_device_that_needed_nothing_still_counts_when_measured(self, fleet):
+        from routes.deploy import _baseline_earned
+
+        pending = [self._pending("r2", "hostname r2\n", target="hostname r2\n"),
+                   self._pending("s3", "hostname s3\n", target="hostname s3\n"),
+                   # Sent nothing, but read back and compared.
+                   self._pending("s4", "hostname s4\n", target="hostname s4\n",
+                                 sent_nothing=True)]
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+
+        assert outcome["baseline"] is True, outcome["baseline_reasons"]
+        assert outcome["measured"] == ["r2", "s3", "s4"]
+
+    def test_a_device_that_was_never_read_denies_the_tag(self, fleet):
+        """The old behaviour: absent from `pending` read as "fine"."""
+        from routes.deploy import _baseline_earned
+
+        pending = [self._pending(d, f"hostname {d}\n", target=f"hostname {d}\n")
+                   for d in ("r2", "s3")]
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+
+        assert outcome["baseline"] is False
+        assert any("s4" in reason for reason in outcome["baseline_reasons"])
+        assert "s4" not in outcome["measured"]
+
+    def test_a_device_read_back_but_with_no_reference_is_not_a_pass(self, fleet):
+        """Missing evidence is not evidence of a match."""
+        from routes.deploy import _baseline_earned
+
+        pending = [self._pending("r2", "hostname r2\n", target="hostname r2\n"),
+                   self._pending("s3", "hostname s3\n", target="hostname s3\n"),
+                   self._pending("s4", "hostname s4\n", target=None)]
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+
+        assert outcome["baseline"] is False
+        assert [r["device"] for r in outcome["residual"]] == ["s4"]
+
+    def test_residue_denies_a_restore_baseline_by_design(self, fleet):
+        """Merge-only cannot remove residue, so the network is NOT at the ref.
+
+        This is the false promise the rebuild exists to stop making, and it is
+        caught by measurement rather than by a rule about the mode.
+        """
+        from routes.deploy import _baseline_earned
+
+        pending = [self._pending("r2", "hostname r2\n", target="hostname r2\n"),
+                   self._pending("s3", "hostname s3\n", target="hostname s3\n"),
+                   self._pending("s4", "hostname s4\nlogging host 198.51.100.9\n",
+                                 target="hostname s4\n")]
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+
+        assert outcome["baseline"] is False
+        assert [r["device"] for r in outcome["residual"]] == ["s4"]
+
+    def test_a_deploy_baseline_does_not_require_measurement(self, fleet):
+        """Coverage, not content — the two claims stay different."""
+        from routes.deploy import _baseline_earned
+
+        pending = [self._pending(d, f"hostname {d}\nboot-start-marker\n",
+                                 target=f"hostname {d}\n")
+                   for d in self.FLEET]
+        outcome = _baseline_earned({}, pending, [], source_ref="")
+        assert outcome["baseline"] is True, outcome["baseline_reasons"]
+
+
+class TestADeviceWithNothingToSendIsStillRead:
+    """`_measure_unchanged`: the read that turns an inference into a fact."""
+
+    def _device(self):
+        return {"ip": "203.0.113.14", "hostname": "s4", "device_type": "cisco_ios"}
+
+    def test_it_returns_a_capture_shaped_like_stage_8_5s(self, tmp_path, monkeypatch):
+        import routes.deploy as RD
+        from modules.nsot import repo as R
+
+        repo = tmp_path / "config_repo"
+        R.init_repo(str(repo))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(tmp_path))
+        monkeypatch.setattr("modules.connection.with_temp_connection",
+                            lambda dev, fn: "hostname s4\nlive\n")
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: default)
+
+        out = RD._measure_unchanged("Lab", self._device(), "s4", "hostname s4\n")
+
+        assert len(out) == 1
+        assert out[0]["config_text"] == "hostname s4\nlive\n"
+        assert out[0]["target_config"] == "hostname s4\n"
+        assert out[0]["sent_nothing"] is True
+        assert set(out[0]) >= {"hostname", "config_text", "mgmt_ip",
+                               "netbox_id", "device_uid"}
+
+    def test_the_capture_is_staged_across_the_crash_window(self, tmp_path, monkeypatch):
+        import routes.deploy as RD
+        from modules.nsot import repo as R
+
+        repo = tmp_path / "config_repo"
+        R.init_repo(str(repo))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(tmp_path))
+        monkeypatch.setattr("modules.connection.with_temp_connection",
+                            lambda dev, fn: "hostname s4\nlive\n")
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: default)
+
+        RD._measure_unchanged("Lab", self._device(), "s4", "hostname s4\n")
+        assert R.staged_post_deploy(str(repo))["s4"] == "hostname s4\nlive\n"
+
+    def test_a_failed_read_yields_no_measurement_rather_than_a_guess(
+            self, tmp_path, monkeypatch):
+        """An unreachable device must not be recorded as matching."""
+        import routes.deploy as RD
+        from modules.nsot import repo as R
+
+        R.init_repo(str(tmp_path / "config_repo"))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(tmp_path))
+
+        def _boom(dev, fn):
+            raise OSError("unreachable")
+        monkeypatch.setattr("modules.connection.with_temp_connection", _boom)
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: default)
+
+        assert RD._measure_unchanged("Lab", self._device(), "s4", "x") == []

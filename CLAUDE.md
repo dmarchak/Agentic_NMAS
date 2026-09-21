@@ -79,8 +79,8 @@ tracked in git.
   config-line filter, one per job
 - **[modules/nsot/migrate.py](modules/nsot/migrate.py)** — dry-run-first
   migration with duplicate merging; one-shot, guarded by `.nsot/migrated.json`
-- **[modules/nsot/restore.py](modules/nsot/restore.py)** — baseline restore,
-  skipping stale devices
+- **[modules/nsot/restore.py](modules/nsot/restore.py)** — re-apply a ref
+  through the confirmed deploy path; device and intent as one unit
 - **[modules/nsot/hooks.py](modules/nsot/hooks.py)**,
   **[archive.py](modules/nsot/archive.py)** — background post-commit push/archive
 - **[modules/nsot/parsers/](modules/nsot/parsers/)** — config → host_vars, one
@@ -241,18 +241,48 @@ tools refuse to act on it, and its pooled SSH session is closed.
   pending.
 - **Re-apply goes through the confirmed deploy path**, not the approval queue.
   Every read at a ref goes through `repo.RefSource`, whose allowlist is a
-  **constructor argument** — restore declares `("golden/",)`, so asking for
-  `templates/`, `bindings.yml` or `.approvals.json` raises `ScopeRefused`.
-  Templates are code; rolling them back to restore a *network* would silently
-  revert template fixes. A second restore path inherits the bound by declaring
-  its own scope: item 2's intent restore will say `("golden/", "host_vars/")`. `RestoreTarget` duck-types what `plan_batch()` reads, so the
-  confirm hash, ASCII guard, provenance, `error_pattern`, failure capture,
-  circuit breaker, staging and single golden commit all apply unchanged.
+  **constructor argument** — restore declares `("golden/", "host_vars/")`, so
+  asking for `templates/`, `bindings.yml` or `.approvals.json` raises
+  `ScopeRefused`. Templates are code; rolling them back to restore a *network*
+  would silently revert template fixes. `RestoreTarget` duck-types what
+  `plan_batch()` reads, so the confirm hash, ASCII guard, provenance,
+  `error_pattern`, failure capture, circuit breaker, staging and single golden
+  commit all apply unchanged.
 - **It is additive, and labelled as such.** The button says *Re-apply this
   baseline*; the confirm reports `add` / `replace` / `residue` per device and
   states that residue is **not** removed. Removals are Mode B, not built.
   Queued items from the old path are rejected with a reason on first use —
   executing one would push whole-config text through the unguarded executor.
+- **Device and committed intent are one unit, per device.** Restoring the
+  config alone leaves the next template plan offering to undo the restore, so
+  the ref's `host_vars` are re-committed **verbatim** in the **same commit** as
+  that device's golden capture — for devices whose push succeeded only, staged
+  to `.nsot/staging/restored_intent/` across the crash window. Verbatim needs
+  `repo.git_raw()`: `git()` strips stdout and drops the trailing newline, which
+  would land a one-byte diff labelled "restore".
+- **Intent restore is a forward commit.** Nothing is reset or force-pushed; the
+  replaced intent stays reachable by `git log -- host_vars/<device>.yml`.
+- **Un-onboarding is opt-in, never a default.** A ref predating a device's
+  onboarding has no intent to restore, and deleting today's would un-do a human
+  review — so the default outcome is **skip**. Ticking it re-runs the
+  *preview*, because a skipped device has no command list and confirming
+  commands nobody was shown is what the confirm hash exists to prevent.
+- **`validate_restored_intent()` refuses at plan time** when a ref's intent no
+  longer round-trips through today's templates, or names a secret the
+  credential store no longer holds.
+- **`baseline/<ts>` is earned by measurement, not granted by mode.** A skipped
+  device counts only if it was **measured**, so a restore baseline requires
+  *every inventory device measured equivalent to the ref, whatever path got it
+  there*. A device with nothing to send is still read back
+  (`_measure_unchanged`), because "nothing to change" was decided against a
+  **stored** capture; an unreachable device contributes nothing and declines
+  the tag. **Residue therefore denies a restore baseline** — merge-only cannot
+  remove it, so the network is not at the ref. Deploy baselines stay
+  coverage-only: their goldens *are* the post-deploy captures.
+- **`save_golden()`'s empty-commit guard covers the whole commit**, not just
+  `golden/`. A restore to a ref a device already matches changes no golden and
+  still moves its intent; `extra_paths` staged content keeps the commit alive.
+  A call with neither still creates nothing.
 - Stale devices are skipped and **named** in the confirm dialog.
 - **Migration is dry-run by default.** It merges case-insensitive and IP-level
   duplicates keeping the newest content, reports every merge, and backs up
@@ -543,7 +573,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_render_context.py` | render context, interface IPs, template rendering |
 | `test_golden_repo.py` | one-call-one-commit, tags, `git log --follow` across renames |
 | `test_golden_migration.py` | dry run, duplicate merging, idempotence |
-| `test_golden_restore.py` | baseline restore, stale devices skipped and named |
+| `test_golden_restore.py` | restore: stale devices named, intent as one unit |
 | `test_normalize_equivalence.py` | each config filter pinned to prior behaviour |
 | `test_roundtrip.py` | fidelity, fixed point, ordering policy, coverage maths |
 | `test_parsers_cisco_ios.py` | both platform parsers against real fixtures |

@@ -153,6 +153,30 @@ def git(repo: str, *args) -> tuple:
         return 124, "", f"git {args[0] if args else ''} timed out after {GIT_TIMEOUT}s"
 
 
+def git_raw(repo: str, *args) -> tuple:
+    """:func:`git` without the ``.strip()``. For file CONTENT, not for display.
+
+    ``git()`` trims stdout, which is right for a sha or a status line and wrong
+    for a file read back out of history: it silently drops the trailing
+    newline. Restore commits the ref's ``host_vars`` **verbatim**, so a stripped
+    read would re-commit a one-byte change and label it "restore". Same shape
+    as the porcelain-offset bug — a helper that tidies for display, used where
+    exactness is the requirement.
+    """
+    _clear_stale_lock(repo)
+    ensure_repo_hygiene(repo)
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo, *args],
+            capture_output=True, text=True, timeout=GIT_TIMEOUT, env=_git_env(),
+        )
+        return proc.returncode, proc.stdout, proc.stderr.strip()
+    except FileNotFoundError:
+        return 127, "", "git is not installed or not on PATH"
+    except subprocess.TimeoutExpired:
+        return 124, "", f"git {args[0] if args else ''} timed out after {GIT_TIMEOUT}s"
+
+
 def init_repo(repo: str) -> bool:
     """Create the repo and its NSoT layout. Idempotent."""
     os.makedirs(repo, exist_ok=True)
@@ -429,7 +453,7 @@ def adopt_identity(repo: str, item) -> str:
 def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = True,
                 pipeline_id: str = None, baseline: bool = None,
-                extra_trailers: list = None) -> dict:
+                extra_trailers: list = None, extra_paths: list = None) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
     Returns ``{"ok", "commit", "changed", "unchanged", "tags", "renamed", "error"}``.
@@ -479,24 +503,41 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             changed.append({"hostname": item.hostname, "identity": identity,
                             "path": rel})
 
-        if not changed:
+        # `extra_paths` is explicit so a template deploy's commit never starts
+        # silently carrying intent. A restore passes "host_vars" because device
+        # and intent are one unit for that event; nothing else does.
+        git(repo, "add", "-A", "golden", ".nsot", *(extra_paths or []))
+
+        # "No content changed" has to mean the whole commit, not just golden/.
+        # A restore to a ref a device already matches changes no golden and
+        # still moves that device's committed intent; returning early there
+        # left the intent written but uncommitted — a dirty working tree in the
+        # live repo, and a restore with no record.
+        extra_dirty = []
+        for rel in (extra_paths or []):
+            _rc, out, _err = git(repo, "diff", "--cached", "--name-only", "--", rel)
+            extra_dirty.extend(l for l in (out or "").splitlines() if l.strip())
+
+        if not changed and not extra_dirty:
+            # Scoped: unstage exactly what this function staged, never a
+            # blanket reset of whatever else might be in the index.
+            git(repo, "reset", "-q", "--", "golden", ".nsot", *(extra_paths or []))
             return {"ok": True, "commit": "", "changed": [],
                     "unchanged": unchanged, "tags": [],
                     "renamed": rename_result["renamed"],
                     "message": "No content changed — no commit created."}
-
-        git(repo, "add", "-A", "golden", ".nsot")
 
         names = ", ".join(c["hostname"] for c in changed)
         subject = message or (
             f"golden: baseline {len(changed)} device(s) via {source}"
             + (f" {pipeline_id}" if pipeline_id else "")
         )
-        trailers = [
-            f"Source: {source}",
-            f"Actor: {actor}",
-            f"Devices: {','.join(c['hostname'] for c in changed)}",
-        ]
+        trailers = [f"Source: {source}", f"Actor: {actor}"]
+        if changed:
+            trailers.append(f"Devices: {','.join(c['hostname'] for c in changed)}")
+        elif extra_dirty:
+            # No golden moved; the commit is here for what extra_paths carries.
+            trailers.append(f"Paths: {','.join(sorted(extra_paths or []))}")
         for c in changed:
             trailers.append(f"Device-Id: {c['identity']}")
             trailers.append(f"Device-Name: {c['hostname']}")
@@ -689,6 +730,54 @@ def golden_history(repo: str, hostname: str, limit: int = 50) -> list:
     return entries
 
 
+RESTORED_INTENT_STAGING_REL = os.path.join(".nsot", "staging", "restored_intent")
+
+
+def stage_restored_intent(repo: str, hostname: str, yaml_text: str) -> str:
+    """Park restored intent across the same crash window as a capture.
+
+    Device and intent are one unit per device, and the intent is committed with
+    the batch at the end. Between a device's restore succeeding and that commit
+    there is a window where the device is at the ref and the intent is not —
+    the fight-itself state, arrived at by failure rather than by design.
+    """
+    directory = os.path.join(repo, RESTORED_INTENT_STAGING_REL)
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, f"{_safe_name(hostname)}.yml")
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(yaml_text)
+    return path
+
+
+def staged_restored_intent(repo: str) -> dict:
+    """``{hostname: yaml}`` for intent a restore has not yet committed."""
+    directory = os.path.join(repo, RESTORED_INTENT_STAGING_REL)
+    if not os.path.isdir(directory):
+        return {}
+    out = {}
+    for name in sorted(os.listdir(directory)):
+        if name.endswith(".yml"):
+            with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                out[name[:-4]] = fh.read()
+    return out
+
+
+def clear_restored_intent_staging(repo: str, hostnames: list = None) -> None:
+    directory = os.path.join(repo, RESTORED_INTENT_STAGING_REL)
+    if not os.path.isdir(directory):
+        return
+    keep = None if hostnames is None else {_safe_name(h) for h in hostnames}
+    for name in list(os.listdir(directory)):
+        if not name.endswith(".yml"):
+            continue
+        if keep is not None and name[:-4] not in keep:
+            continue
+        try:
+            os.remove(os.path.join(directory, name))
+        except OSError:
+            pass
+
+
 class ScopeRefused(PermissionError):
     """A read at a ref asked for a path the caller did not declare."""
 
@@ -737,7 +826,8 @@ class RefSource:
     def read(self, rel_path: str):
         """File content at the ref, or ``None`` if absent. Refuses out of scope."""
         rel = self._check(rel_path)
-        rc, out, _ = git(self.repo, "show", f"{self.ref}:{rel}")
+        # git_raw, not git: content is returned byte-for-byte. See git_raw().
+        rc, out, _ = git_raw(self.repo, "show", f"{self.ref}:{rel}")
         return out if rc == 0 else None
 
     def listdir(self, rel_dir: str) -> list:

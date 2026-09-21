@@ -196,6 +196,18 @@ class RestoreTarget:
     ref: str
     device_row: dict = field(default_factory=dict)
     reasons: tuple = field(default_factory=tuple)
+    #: The device's committed intent at the ref. ``None`` means the ref
+    #: predates its onboarding — see :attr:`un_onboard`.
+    ref_intent: dict = None
+    #: The ref's host_vars YAML **verbatim**. Restoring intent re-commits the
+    #: ref's own bytes rather than a re-serialisation of the parsed dict: a
+    #: round trip through the parser is a change the operator did not ask for,
+    #: and it would land in a commit labelled "restore".
+    ref_intent_text: str = ""
+    #: True only when the operator explicitly asked to remove committed intent
+    #: for a device the ref predates. Never a default: every host_vars commit
+    #: is a human review, and dropping one silently is "undo the onboarding".
+    un_onboard: bool = False
 
     @property
     def blocking_reasons(self) -> list:

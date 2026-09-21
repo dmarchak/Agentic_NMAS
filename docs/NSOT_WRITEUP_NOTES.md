@@ -2636,3 +2636,207 @@ cases the next author was careful in a different place.
 A regression test also asserts, by scanning the module source, that every call
 site passes a `Leaf` — because the type check catches a raw *string*, and the
 remaining hole is someone constructing a `Leaf` around a header by hand.
+
+---
+
+## A whole function deleted, and 1133 tests passed
+
+The worst defect in this stretch was not subtle. `_deploy_one()` — the only
+function in `routes/deploy.py` that opens a connection to a device — was
+deleted outright in commit `061158c`, and nothing noticed for three commits.
+
+```
+da8d7d4: _deploy_one defined = 1
+061158c: _deploy_one defined = 0     ← deployed to the NMAS
+7814ae0: _deploy_one defined = 0
+```
+
+### How it happened
+
+An edit applied as a slice replacement:
+
+```python
+s = s[:s.index("def _baseline_earned")] + new_tail
+```
+
+`_baseline_earned` was the intended target. `_deploy_one` sat *after* it in the
+file, so it went with the tail. The edit was mechanically correct for the
+function it was aimed at and silently destructive for the one behind it.
+
+### Why the suite did not catch it
+
+Every test in `test_deploy_contract.py`, `test_deploy_safety.py` and
+`test_deploy_batch.py` exercises the *pieces* `_deploy_one` calls —
+`prepare_for_deploy`, `merge_commands`, `assert_merge_only`, the pipeline, the
+batch runner — because those are the parts with interesting behaviour. Nothing
+called `_deploy_one` itself, because calling it means standing up a pipeline
+and a connection. So the function that stitches all the tested pieces together
+was the one piece with no test, and deleting it changed no test's outcome.
+
+It reached the live host and sat there, because everything done since was a
+read-only preview. A preview never reaches the deploy path. The first live
+re-apply would have been an `AttributeError` mid-batch.
+
+### The general shape
+
+> A test suite that covers every component and not the wiring will pass with
+> the wiring removed. Component coverage is a statement about the components.
+
+This is the mirror of *"a test written after the implementation encodes the
+implementation"*: these tests were written around a design, faithfully, and
+the design's own connective tissue was invisible to them.
+
+### The countermeasure
+
+Cheap and structural, in `test_deploy_contract.py`: parse each route module's
+AST, collect every private name it *calls*, and assert each is defined. It
+fails in 0.1s with the function removed, and it costs nothing to maintain
+because it derives the expectation from the source rather than restating it.
+
+The class of bug — "the name is gone and nothing looks it up until runtime" —
+is the cheapest class there is to catch and the most embarrassing to ship, so
+it gets a test of its own rather than relying on some other test happening to
+import the right thing.
+
+### The second-order lesson, which is the real one
+
+This is the third time in this project that a *scripted* edit has destroyed
+code: `modules/nsot/deploy.py` grew to 2.4MB of recursion, a pruning script
+removed test class headers, and now this. Each time the script was correct
+about what it was changing and careless about what it was adjacent to.
+
+> Anchor edits to the text on **both sides** of the change. An edit that says
+> "replace from here to the end of the file" is asserting something about every
+> line after it, usually without having looked.
+
+---
+
+## Restoring the device without restoring the intent
+
+Item 1 gave the re-apply button an honest label. Item 2 is what makes the
+button's effect survive the next plan.
+
+### The failure it prevents
+
+Re-applying a ref writes the ref's configuration onto the device. It does not
+touch `host_vars/`. So a moment later:
+
+* the device is at the ref
+* committed intent still describes the state the operator just undid
+* the next template plan offers to put that state back
+
+The operator sees a "drift" they created by pressing restore, and the source of
+truth is arguing with the network about a change the source of truth won.
+Restoring half of a two-part state is worse than restoring neither, because it
+looks like it worked.
+
+### Device and intent are one unit per device
+
+Not one unit per batch. A device whose push failed keeps today's intent — it
+never reached the ref, so the ref's intent would describe it wrongly in the
+other direction. `_write_restored_intent()` writes only for devices whose
+outcome is `DEPLOYED`, and the write lands in the **same commit** as that
+device's golden capture, because two commits means a window where the pair
+disagrees and a crash makes that permanent.
+
+For the window that remains — between the push landing and the batch commit —
+the intent is staged to `.nsot/staging/restored_intent/`, the same treatment
+the post-deploy capture already gets.
+
+### A forward commit, never a rewind
+
+The ref's `host_vars` are written into the working tree as today's intent and
+committed forward. History between the ref and now is untouched, so the intent
+that was replaced stays reachable by `git log -- host_vars/<device>.yml`.
+Nothing is reset, reverted, or force-pushed.
+
+### Verbatim, which turned out to need a fix
+
+The ref's `host_vars` are re-committed **byte for byte**, not re-serialised
+from the parsed dict. A round trip through the parser normalises key order and
+drops comments — a change the operator did not ask for, landing in a commit
+labelled "restore".
+
+That required fixing a read. `git()` in `repo.py` returns `proc.stdout.strip()`,
+which is right for a sha and wrong for file content: it silently drops the
+trailing newline, so writing the result back produces a one-byte diff. Added
+`git_raw()` and pointed `RefSource.read()` at it.
+
+> Same shape as the porcelain-offset bug: a helper that tidies output for
+> display, reused where exactness is the requirement.
+
+### Un-onboarding is an outcome, not a default
+
+A ref that predates a device's onboarding has no intent for it. Three options:
+
+1. restore the config, leave today's intent — the fight-itself state
+2. restore the config, delete today's intent — silently un-does a human review
+3. skip the device
+
+The default is **3**. Deleting reviewed intent is not something an operator
+should get by pressing the same button that restores a config, so it is opt-in
+per device, named in the dialog, and described as what it is: recoverable from
+git history, but an un-doing of the onboarding review.
+
+The opt-in re-runs the **preview** rather than going straight to apply. A
+skipped device has no command list and no confirm hash; sending it to apply on
+the strength of a second dialog would be confirming commands nobody was shown,
+which is the thing the confirm hash exists to prevent.
+
+### The guard that had to widen
+
+`save_golden()` returned early on "no content changed", judged purely on
+`golden/`. A restore to a ref a device *already matches* changes no golden and
+still moves that device's intent — so the intent was written and never
+committed, leaving a dirty working tree in the live repo and a restore with no
+record.
+
+The guard now asks about the whole commit: golden content, or anything
+`extra_paths` staged. The original property is kept by a test that asserts a
+call with neither still creates nothing.
+
+---
+
+## A baseline tag earned by measurement, on either path
+
+The tag rule, finished:
+
+> **A skipped device counts only if it was MEASURED.**
+
+Which replaces "every targeted device succeeded" for restore with **every
+inventory device measured equivalent to the ref, whatever path got it there**.
+
+### What that forced
+
+A device with nothing to send used to return `DEPLOYED — nothing to change`
+and contribute no capture. But "nothing to send" was decided by diffing the ref
+against a **stored** capture, and a stored capture is a record of an earlier
+moment, not evidence about the device now. Counting that device toward a tag
+that claims "the network is at this ref" is inference wearing a measurement's
+label.
+
+So `_measure_unchanged()` reads the device anyway — a read, nothing sent — and
+hands the capture to the batch like any other. The device is now measured, and
+counts. If the read fails, it contributes nothing and the tag is declined; an
+unreachable device is not a matching device.
+
+### The consequence worth stating plainly
+
+**Residue denies a restore baseline, by design.** Merge-only cannot remove a
+line the device has gained and the ref does not mention, so after a re-apply
+the network demonstrably is not back at the ref. The tag says so. Mode A can
+therefore earn `baseline/` only when the drift it re-applied was purely
+additive — which is exactly the honest answer, and it is reached by measuring
+rather than by a rule about which mode ran.
+
+The two claims stay different, which is the point:
+
+| path | claim | how it is decided |
+|---|---|---|
+| deploy | this commit's goldens are the network | coverage: every inventory device is in the commit |
+| restore | the network is back to the ref | content: every inventory device read back and compared |
+
+A deploy baseline is not measured against content, because the goldens in that
+commit *are* the post-deploy captures — measuring them against the render would
+report every unmodelled construct as a difference and deny a whole-fleet deploy
+a tag it had earned.

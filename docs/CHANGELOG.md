@@ -7,6 +7,61 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Restore, item 2: intent moves with the device
+
+### Fixed — `_deploy_one()` was deleted and the suite did not notice
+
+Removed in `061158c` by a slice edit that replaced from `_baseline_earned` to
+the end of the file; `_deploy_one` sat after it. It is the only function in
+`routes/deploy.py` that opens a connection, and it was live on the NMAS for
+three commits. 1133 tests passed throughout, because every test exercises the
+pieces it calls and nothing calls it.
+
+Recovered from `da8d7d4`. `test_deploy_contract.py` now parses each route
+module's AST and asserts every private name it calls is defined — it fails in
+0.1s with the function removed.
+
+### Added — committed intent is restored with the device
+
+* `_write_restored_intent()` writes the ref's `host_vars` forward for devices
+  whose restore **succeeded**, in the **same commit** as their golden capture.
+  A device that failed keeps today's intent.
+* The ref's YAML is re-committed **verbatim**, not re-serialised from the
+  parsed dict. That needed `repo.git_raw()` — `git()` strips stdout, which
+  dropped the trailing newline and produced a one-byte diff labelled "restore".
+* Staged to `.nsot/staging/restored_intent/` across the crash window.
+* `validate_restored_intent()` refuses at plan time when a ref's intent no
+  longer round-trips through today's templates, or names a secret the
+  credential store no longer holds.
+* **Un-onboarding is opt-in.** A device the ref predates is skipped by default;
+  removing its committed intent requires ticking it, and re-runs the preview so
+  the operator confirms an actual command list.
+* `RestoreTarget` gained `ref_intent`, `ref_intent_text`, `un_onboard`.
+* `RefSource` for restore declares `("golden/", "host_vars/")` — never
+  `templates/`, `bindings.yml` or `.approvals.json`.
+
+### Changed — a baseline tag is earned by measurement on the restore path
+
+> A skipped device counts only if it was **measured**.
+
+* Restore now requires **every inventory device measured equivalent to the
+  ref**, whatever path got it there.
+* `_measure_unchanged()` reads back a device that needed no commands, so
+  "nothing to change" becomes a measurement instead of an inference drawn from
+  a stored capture. A failed read contributes nothing and declines the tag.
+* Residue therefore denies a restore baseline — merge-only cannot remove it, so
+  the network is not at the ref, and the tag says so.
+* Deploy baselines are unchanged: coverage, not content.
+
+### Fixed — `save_golden()`'s empty-commit guard ignored `extra_paths`
+
+A restore to a ref a device already matches changes no golden and still moves
+that device's intent. The early return left the intent written and uncommitted.
+The guard now asks about the whole commit; a call with neither golden changes
+nor staged `extra_paths` still creates nothing.
+
+---
+
 ## [Unreleased] — Run 2 landed, and the deploy that minted a device
 
 Run 2 succeeded: `1f0140a5`, tag `golden/s4/20260920T231156Z`, verify converged

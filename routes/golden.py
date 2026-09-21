@@ -122,7 +122,8 @@ def restore_preview():
 
     list_name = _active_list(data)
     try:
-        targets, skipped = build_targets(list_name, ref, data.get("devices"))
+        targets, skipped = build_targets(list_name, ref, data.get("devices"),
+                                         un_onboard=data.get("un_onboard"))
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore preview failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -132,7 +133,9 @@ def restore_preview():
         entry = {"device": target.device, "platform": target.platform,
                  "deployable": target.deployable,
                  "blocking_reasons": target.blocking_reasons,
-                 "capture_hash": _capture_hash(target.captured)}
+                 "capture_hash": _capture_hash(target.captured),
+                 # The intent half of the same unit, stated before it happens.
+                 "intent": _intent_preview(list_name, target)}
         try:
             prepared = prepare_restore(target)
             diff = merge_diff(prepared["config"], target.captured)
@@ -163,11 +166,18 @@ def restore_preview():
     residue_total = sum(len(d.get("residue") or []) for d in devices)
     excluded_total = sum(len(d.get("excluded_unrenderable") or [])
                          for d in devices)
+    intent_restored = [d["device"] for d in devices
+                       if (d.get("intent") or {}).get("action") == "restore"]
+    un_onboarding = [d["device"] for d in devices
+                     if (d.get("intent") or {}).get("action") == "un_onboard"]
     return jsonify({
         "ok": True, "ref": ref, "list": list_name, "mode": "re-apply",
         "devices": devices, "skipped": skipped,
-        "scope": ("Device configuration from golden/ at this ref. Does not "
-                  "change committed intent, templates, bindings or approvals."),
+        "intent_restored": intent_restored, "un_onboarding": un_onboarding,
+        "scope": ("Device configuration AND committed intent from this ref — "
+                  "one unit per device, one commit. Never templates, bindings "
+                  "or approvals: those are code, and rolling them back to fix "
+                  "a network would silently revert template fixes."),
         "summary": (
             f"Re-applying stored configuration to {len(devices)} of "
             f"{len(devices) + len(skipped)} device(s)."
@@ -175,9 +185,53 @@ def restore_preview():
                "this ref and will NOT be removed." if residue_total else "")
             + (f" {excluded_total} block(s) cannot be re-applied at all "
                "(certificates, licence UDI, banners)." if excluded_total else "")
+            + (f" Committed intent moves back to this ref for "
+               f"{len(intent_restored)} device(s)." if intent_restored else "")
+            + (f" UN-ONBOARDING (committed intent removed): "
+               f"{', '.join(un_onboarding)}." if un_onboarding else "")
             + (f" Skipped: {', '.join(s['hostname'] for s in skipped)}."
                if skipped else "")),
     })
+
+
+def _intent_preview(list_name: str, target) -> dict:
+    """What the intent half of this device's restore will do. Reads only.
+
+    Device and intent move as one unit, so the preview has to show both. The
+    three outcomes are ``unchanged`` (the ref's intent is what is committed
+    today), ``restore`` (it differs and will be re-committed forward), and
+    ``un_onboard`` (the ref predates the device and the operator ticked it).
+    """
+    import os as _os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot import hostvars
+
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+    text = getattr(target, "ref_intent_text", "") or ""
+
+    if getattr(target, "un_onboard", False):
+        return {"action": "un_onboard",
+                "detail": ("Committed intent for this device will be REMOVED "
+                           "by a forward commit — recoverable from git "
+                           "history, but it un-does the onboarding review.")}
+    if not text:
+        return {"action": "none", "detail": "no committed intent at this ref"}
+
+    path = hostvars.committed_path(repo, target.device)
+    current = ""
+    if _os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            current = fh.read()
+    if current == text:
+        return {"action": "unchanged",
+                "detail": "committed intent already matches this ref"}
+    return {"action": "restore",
+            "detail": ("Committed intent will be set back to this ref's "
+                       "version by a forward commit." if current else
+                       "This device has no committed intent today; the ref's "
+                       "will be committed."),
+            "had_intent": bool(current)}
 
 
 @bp.route("/restore/apply", methods=["POST"])
@@ -205,7 +259,8 @@ def restore_apply():
     list_name = _active_list(data)
     invalidated = invalidate_queued_restores()
     try:
-        targets, skipped = build_targets(list_name, ref, list(confirmations))
+        targets, skipped = build_targets(list_name, ref, list(confirmations),
+                                         un_onboard=data.get("un_onboard"))
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore apply failed")
         return jsonify({"ok": False, "error": str(exc)}), 500

@@ -475,6 +475,233 @@ def run_targets(list_name: str, targets: list, data: dict,
     return report
 
 
+def _measure_unchanged(list_name: str, device: dict, hostname: str,
+                       target_config: str) -> list:
+    """Read a device that needs no changes, so its state is measured.
+
+    Returns a ``golden_pending`` entry shaped exactly like the one stage 8.5
+    produces, or ``[]`` if the read fails. A failed read is not a failed
+    deploy — nothing was sent — but it does mean this device contributes no
+    measurement, and :func:`_baseline_earned` then declines the tag rather than
+    assuming.
+
+    The capture is staged the same way stage 8.5 stages its own, so a crash
+    between here and the batch commit does not lose it.
+    """
+    import os as _os
+
+    from modules.config import get_list_data_dir
+    from modules.connection import with_temp_connection
+    from modules.nsot import manifest as _manifest
+    from modules.nsot.repo import stage_post_deploy
+    from modules.settings_schema import get_setting
+
+    ip = device.get("ip", "")
+    try:
+        timeout = get_setting("nsot_config_read_timeout", 120)
+        config = with_temp_connection(
+            device, lambda c: c.send_command("show running-config",
+                                             read_timeout=timeout))
+    except Exception as exc:                    # noqa: BLE001
+        log.warning("deploy: %s needed no changes but could not be read back "
+                    "(%s) — it contributes no measurement", hostname, exc)
+        return []
+    if not config:
+        return []
+
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+    netbox_id = device.get("_netbox_id")
+    device_uid = device.get("device_uid", "")
+    if not _manifest.identity_for(netbox_id, device_uid):
+        existing, _entry = _manifest.find_by_ip(repo, ip)
+        if not existing:
+            existing, _entry = _manifest.find_by_name(repo, hostname)
+        if existing and existing.startswith("uid:"):
+            device_uid = existing.split(":", 1)[1]
+        elif existing and existing.startswith("nb:"):
+            netbox_id = existing.split(":", 1)[1]
+
+    stage_post_deploy(repo, hostname, config)
+    return [{"hostname": hostname, "config_text": config, "mgmt_ip": ip,
+             "netbox_id": netbox_id, "device_uid": device_uid,
+             "target_config": target_config, "sent_nothing": True}]
+
+
+def _deploy_one(entry, list_name: str, device_rows: dict,
+                authorise: dict = None, source_ref: str = "") -> dict:
+    """Run the pipeline for a single device. The only path that connects."""
+    import threading
+
+    from modules.nsot.deploy import (DEPLOYED, FAILED, assert_merge_only,
+                                     merge_commands, prepare_for_deploy)
+    from modules.pipeline import PipelineContext, PipelineRunner
+
+    artifact = entry["artifact"]
+    hostname = artifact.device
+    device = device_rows.get(hostname, {})
+
+    try:
+        prepared = prepare_for_deploy(artifact)  # refuse → resolve → mask check
+    except Exception as exc:                    # noqa: BLE001
+        return {"device": hostname, "outcome": FAILED, "stage": "prepare",
+                "reason": str(exc)}
+
+    # The merge diff in sendable form — NOT the whole rendered config. Pushing
+    # the full render made assert_merge_only() vacuous (to_push was the
+    # intended config, so it could not fail) and meant the operator confirmed
+    # one line while 83 were sent.
+    captured = entry.get("fresh") or ""
+    commands = merge_commands(prepared["config"], captured)
+    if not commands:
+        # Nothing to send — but "nothing to send" was decided against a STORED
+        # capture, which is a record of the device at some earlier moment. A
+        # baseline tag is a claim about the device now, so the device is read
+        # once here and the capture handed to the batch like any other. Without
+        # it this device is *inferred* to match and contributes no measurement,
+        # which is the distinction the tag rule turns on.
+        return {"device": hostname, "outcome": DEPLOYED, "stage": "",
+                "reason": "nothing to change", "commands": [],
+                "ref_intent": getattr(artifact, "ref_intent", None),
+                "ref_intent_text": getattr(artifact, "ref_intent_text", ""),
+                "un_onboard": getattr(artifact, "un_onboard", False),
+                "device_changed": False,
+                "golden_pending": _measure_unchanged(
+                    list_name, device, hostname, prepared["config"])}
+    try:
+        assert_merge_only(commands, prepared["config"])
+    except Exception as exc:                    # noqa: BLE001
+        return {"device": hostname, "outcome": FAILED, "stage": "merge-only",
+                "reason": str(exc)}
+
+    ctx = PipelineContext(
+        config_type="template",
+        device_ips=[device.get("ip", "")],
+        params={"skip_route_check": True},
+        ip_params_map={},
+        selected_devices=[device],
+        check_devices=[device],
+        connections_pool={},
+        pool_lock=threading.Lock(),
+        config_id=f"tpl-{hostname}",
+    )
+    # Scoped to THIS device. The batch's other devices get their own list.
+    authorised = [a.strip() for a in ((authorise or {}).get(hostname) or [])]
+    ctx.params["allowed_dangerous"] = authorised
+    # Confirmed, not merely pre-populated: rendered_commands derives from this,
+    # so stage 2 cannot overwrite it and an attempt to do so raises.
+    ctx.confirmed_commands = {device.get("ip", ""): commands}
+    # The batch commits; this device hands its capture back.
+    ctx.defer_golden = True
+
+    try:
+        result = PipelineRunner(ctx).run()
+    except Exception as exc:                    # noqa: BLE001
+        log.exception("deploy: pipeline raised for %s", hostname)
+        return {"device": hostname, "outcome": FAILED, "stage": "pipeline",
+                "reason": str(exc)}
+
+    failed_stage = result.stages_failed[-1] if result.stages_failed else ""
+    # What actually landed. A failed push does not mean an unchanged device.
+    failure_state = list((result.failure_state or {}).values())
+    outcome = DEPLOYED if result.final_status == "success" else FAILED
+    return {
+        "device": hostname,
+        "outcome": outcome,
+        "commands": commands,
+        "failure_state": failure_state,
+        "authorised": authorised,
+        # Carried so the batch commit knows whether this device's intent is
+        # part of this event, and whether the operator asked to un-onboard it.
+        "ref_intent": getattr(artifact, "ref_intent", None),
+        "ref_intent_text": getattr(artifact, "ref_intent_text", ""),
+        "un_onboard": getattr(artifact, "un_onboard", False),
+        # The target text, so the batch can MEASURE whether the post-deploy
+        # capture equals what was pushed — which is what earns baseline/<ts>.
+        "golden_pending": [{**p, "target_config": prepared["config"]}
+                           for p in (result.golden_pending or [])],
+        "rollback_commands": list(
+            (result.rollback_commands or {}).get(device.get("ip", ""), [])),
+        "rollback_failures": dict(result.rollback_failures or {}),
+        "rollback_not_undone": list(
+            (result.rollback_not_undone or {}).get(device.get("ip", ""), [])),
+        "rollback_dangerous_exempt": list(
+            (result.rollback_dangerous or {}).get(device.get("ip", ""), [])),
+        "device_changed": any(e.get("device_changed") for e in failure_state),
+        "stage": failed_stage,
+        "reason": result.error or "",
+        "rolled_back": result.rollback_performed,
+        "pending_convergence": list(result.pending_convergence),
+        "golden_commit": (result.golden_result or {}).get("commit", ""),
+        "golden_skipped": list(result.golden_skipped),
+        "warnings": list(result.warnings),
+    }
+
+
+def _write_restored_intent(list_name: str, report: dict,
+                           source_ref: str) -> dict:
+    """Put the ref's committed intent back, for devices that succeeded.
+
+    **A forward commit, not a rewind.** The ref's ``host_vars`` are written
+    into the working tree as today's intent and committed with the batch; the
+    history in between is untouched and the previous intent stays reachable by
+    ``git log`` on the file. Nothing is reset, reverted or force-pushed.
+
+    **Device and intent move together or not at all.** Only devices whose
+    restore succeeded get their intent written, because a device still at its
+    drifted state with the ref's intent committed is the same fight-itself
+    state in the other direction.
+
+    **Un-onboarding is opt-in and still a forward commit.** A device the ref
+    predates has no intent to restore; removing today's is a deletion of
+    reviewed work, so it happens only when the operator ticked it, and the
+    file is removed by a commit rather than by rewriting history — recoverable
+    from git history.
+
+    Returns ``{"restored": [...], "un_onboarded": [...], "skipped": [...]}``.
+    """
+    import os as _os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot import hostvars
+    from modules.nsot.deploy import DEPLOYED
+    from modules.nsot.repo import stage_restored_intent
+
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+    restored, un_onboarded, skipped = [], [], []
+
+    for entry in report.get("results") or []:
+        device = entry.get("device", "")
+        text = entry.get("ref_intent_text") or ""
+        if entry.get("outcome") != DEPLOYED:
+            if text or entry.get("un_onboard"):
+                skipped.append({"device": device,
+                                "reason": "the device did not reach the ref, "
+                                          "so its intent is left alone"})
+            continue
+
+        if entry.get("un_onboard"):
+            path = hostvars.committed_path(repo, device)
+            if _os.path.exists(path):
+                _os.remove(path)
+                un_onboarded.append(device)
+            continue
+
+        if not text:
+            continue
+        # Staged first: between here and the batch commit the device is at the
+        # ref and the committed intent is not, and a crash in that window is
+        # exactly the state this pairing exists to prevent.
+        stage_restored_intent(repo, device, text)
+        hostvars.write_committed_text(repo, device, text)
+        restored.append(device)
+
+    if restored or un_onboarded:
+        log.info("restore: intent restored for %s%s", sorted(restored),
+                 f", un-onboarded {sorted(un_onboarded)}" if un_onboarded else "")
+    return {"restored": sorted(restored), "un_onboarded": sorted(un_onboarded),
+            "skipped": skipped, "ref": source_ref}
+
+
 def _commit_batch_golden(list_name: str, report: dict, label: str = "",
                          source_ref: str = "") -> dict:
     """One commit for the batch, naming exactly the devices that succeeded.
@@ -494,7 +721,7 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     from modules.config import get_list_data_dir
     from modules.nsot.deploy import DEPLOYED
     from modules.nsot.repo import (GoldenItem, clear_post_deploy_staging,
-                                   save_golden)
+                                   clear_restored_intent_staging, save_golden)
 
     results = report.get("results") or []
     pending, succeeded, failed = [], [], []
@@ -520,22 +747,41 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     subject = f"golden: baseline {len(pending)} device(s) {what}"
     trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
 
+    # Device and intent are ONE UNIT per device, so the restored intent is part
+    # of this commit, not a second one after it. A restore path names
+    # ``host_vars`` explicitly; a template deploy does not, and so can never
+    # carry intent into a commit by accident.
+    intent, extra_paths = {}, None
+    if source_ref:
+        intent = _write_restored_intent(list_name, report, source_ref)
+        if intent["restored"] or intent["un_onboarded"]:
+            extra_paths = ["host_vars"]
+            trailers.append(f"Restored-Intent: {','.join(intent['restored'])}")
+            if intent["un_onboarded"]:
+                trailers.append(
+                    f"Un-Onboarded: {','.join(intent['un_onboarded'])}")
+
     items = [GoldenItem(p["hostname"], p["config_text"], p["mgmt_ip"],
                         netbox_id=p["netbox_id"], device_uid=p["device_uid"])
              for p in pending]
     result = save_golden(list_name, items, source="pipeline", actor="pipeline",
                          message=subject, pipeline_id=batch_id,
                          baseline=earned["baseline"], allow_new=False,
-                         extra_trailers=trailers)
+                         extra_trailers=trailers, extra_paths=extra_paths)
 
+    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
     if result.get("ok"):
-        repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
         clear_post_deploy_staging(repo, [p["hostname"] for p in pending])
+        if intent:
+            clear_restored_intent_staging(
+                repo, intent["restored"] + intent["un_onboarded"])
     else:
         log.error("deploy: batch golden commit failed: %s — captures remain in "
-                  ".nsot/staging/post_deploy/", result.get("error"))
+                  ".nsot/staging/post_deploy/%s", result.get("error"),
+                  " and restored intent in .nsot/staging/restored_intent/"
+                  if intent else "")
     return {**result, "batch_id": batch_id, "devices": succeeded,
-            "failed_devices": failed, **earned}
+            "failed_devices": failed, "intent": intent, **earned}
 
 
 def _baseline_earned(report: dict, pending: list, failed: list,
@@ -550,8 +796,22 @@ def _baseline_earned(report: dict, pending: list, failed: list,
       succeeded it is true by construction. What remains is coverage: every
       targeted device succeeded, and the whole inventory was targeted.
     * A **restore** baseline says *the network is back to the ref's state*.
-      That is a claim about content, so it is measured: each post-deploy
-      capture against the ref's golden.
+      That is a claim about content, so it is measured: **every inventory
+      device measured equivalent to the ref, whatever path got it there.**
+      Pushed, already matching, or needing one line — the tag does not care
+      how a device arrived, only that this batch read it back and compared it.
+
+    A device is *measured* only if this batch produced a live capture for it.
+    That is why a device with nothing to send is still read (see
+    :func:`_measure_unchanged`): "no commands" was decided against a stored
+    capture, and a stored capture is a record of an earlier moment, not
+    evidence about now. A device skipped at plan time — stale, unconfirmed, no
+    golden or no usable intent at the ref — produced no measurement, so it
+    blocks the tag rather than being assumed fine.
+
+    Note that residue keeps a restore from earning ``baseline/``, and should:
+    merge-only cannot remove it, so the network is demonstrably *not* back to
+    the ref. That is the whole point of measuring instead of asserting.
 
     An earlier version measured content on both paths and compared a *rendered
     template* against a device. A render is a statement of intent, not a whole
@@ -575,33 +835,48 @@ def _baseline_earned(report: dict, pending: list, failed: list,
                     "eligibility (%s)", exc)
         return {"baseline": False, "baseline_reasons": ["inventory unreadable"]}
 
-    targeted = {p["hostname"] for p in pending} | set(failed)
+    measured = {p["hostname"] for p in pending}
+    targeted = measured | set(failed)
     missing = sorted(inventory - targeted)
     if missing:
         reasons.append(f"{len(missing)} device(s) not targeted: {missing}")
 
-    if source_ref:
-        # Restore only: the tag claims the network matches the ref.
-        from modules.nsot import roundtrip
+    if not source_ref:
+        return {"baseline": not reasons, "measured": sorted(measured),
+                "baseline_reasons": reasons or ["every inventory device is in "
+                                                "this commit"]}
 
-        residual = []
-        for item in pending:
-            target = item.get("target_config")
-            if target is None:
-                continue
-            outcome = roundtrip.configs_equivalent(item["config_text"], target)
-            if not outcome["equal"]:
-                residual.append({
-                    "device": item["hostname"],
-                    "still_differs": (outcome["only_left"][:3]
-                                      + outcome["only_right"][:3]),
-                })
-        if residual:
-            reasons.append(
-                f"{len(residual)} device(s) do not match {source_ref}: "
-                + ", ".join(r["device"] for r in residual))
-            return {"baseline": False, "baseline_reasons": reasons,
-                    "residual": residual}
+    # Restore only: the tag claims the network matches the ref, so every
+    # inventory device has to have been read back and compared.
+    from modules.nsot import roundtrip
 
-    return {"baseline": not reasons,
-            "baseline_reasons": reasons or ["every targeted device matches"]}
+    unmeasured = sorted(inventory - measured)
+    if unmeasured:
+        reasons.append(f"{len(unmeasured)} device(s) were not measured against "
+                       f"{source_ref}: {unmeasured}")
+
+    residual = []
+    for item in pending:
+        target = item.get("target_config")
+        if target is None:
+            # No target to compare against is not a pass. It is the absence of
+            # the measurement the tag is named for.
+            residual.append({"device": item["hostname"],
+                             "still_differs": ["no reference config to "
+                                               "compare against"]})
+            continue
+        outcome = roundtrip.configs_equivalent(item["config_text"], target)
+        if not outcome["equal"]:
+            residual.append({
+                "device": item["hostname"],
+                "still_differs": (outcome["only_left"][:3]
+                                  + outcome["only_right"][:3]),
+            })
+    if residual:
+        reasons.append(f"{len(residual)} device(s) do not match {source_ref}: "
+                       + ", ".join(r["device"] for r in residual))
+
+    return {"baseline": not reasons, "measured": sorted(measured),
+            "residual": residual,
+            "baseline_reasons": reasons or [
+                f"every inventory device measured equivalent to {source_ref}"]}

@@ -80,19 +80,22 @@ def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
     }
 
 
-def build_targets(list_name: str, ref: str, devices: list = None) -> tuple:
+def build_targets(list_name: str, ref: str, devices: list = None,
+                  un_onboard: list = None) -> tuple:
     """``(targets, skipped)`` for a re-apply of *ref*. Reads only.
 
     **Scope is declared, not remembered.** Every read goes through a
-    ``RefSource`` constructed with ``golden/`` only, so asking for
-    ``templates/``, ``bindings.yml`` or ``.approvals.json`` raises rather than
-    returning content. Templates are code; rolling them back to restore a
-    *network* would silently revert template fixes, including this week's.
+    ``RefSource`` constructed with ``golden/`` and ``host_vars/`` and nothing
+    else, so asking for ``templates/``, ``bindings.yml`` or ``.approvals.json``
+    raises rather than returning content. Templates are code; rolling them back
+    to restore a *network* would silently revert template fixes, including this
+    week's. The allowlist is a constructor argument precisely so a second
+    restore path has to say what it needs at its own call site.
 
-    A future second restore path inherits the bound by constructing its own
-    source and saying what it needs — item 2's intent restore will declare
-    ``("golden/", "host_vars/")``, and declaring it at the call site is the
-    point.
+    **Device and intent are one unit per device.** A device is either restored
+    with its intent from the same ref, or not restored at all — restoring the
+    configuration while committed intent still describes something else leaves
+    the device fighting the next plan.
     """
     import os as _os
 
@@ -102,7 +105,8 @@ def build_targets(list_name: str, ref: str, devices: list = None) -> tuple:
     from modules.nsot.platform import platform_for_device
 
     repo = _repo_for(list_name)
-    source = _repo.RefSource(repo, ref)          # golden/ only, by construction
+    # Declared, not remembered: intent restore needs host_vars/ and says so.
+    source = _repo.RefSource(repo, ref, allow=("golden/", "host_vars/"))
     at_ref = source.devices()
     if not at_ref:
         return [], [{"hostname": "", "reason": f"no golden configs at '{ref}'"}]
@@ -133,13 +137,102 @@ def build_targets(list_name: str, ref: str, devices: list = None) -> tuple:
                             "reason": f"no golden config at {ref}"})
             continue
 
+        platform = platform_for_device(row)
+        ref_intent_text = source.read(f"host_vars/{hostname}.yml") or ""
+        ref_intent = intent_at(source, hostname)
+
+        if ref_intent is None:
+            # Restoring the device while its committed intent still says
+            # something else recreates the fight-itself loop; removing the
+            # intent is an un-onboarding nobody asked for. Skipping changes
+            # neither half and says so — consistent with a stale device.
+            if hostname not in set(un_onboard or []):
+                skipped.append({
+                    "hostname": hostname, "ip": mgmt_ip,
+                    "reason": f"no committed intent at {ref}",
+                    "detail": ("This ref predates the device's onboarding. "
+                               "Restoring its configuration while current "
+                               "intent says something else would make the next "
+                               "plan offer to undo the restore. Tick "
+                               "'un-onboard' to remove the committed intent as "
+                               "well — a forward commit, recoverable from git "
+                               "history."),
+                    "un_onboardable": True})
+                continue
+
+        gaps = []
+        if ref_intent is not None:
+            gaps = validate_restored_intent(repo, hostname, ref_intent,
+                                            stored, platform)
+        if gaps:
+            skipped.append({"hostname": hostname, "ip": mgmt_ip,
+                            "reason": "this ref's intent is not usable today",
+                            "detail": "; ".join(gaps)})
+            continue
+
         from routes.deploy import _captured_config
         captured = _captured_config(repo, hostname)
         targets.append(RestoreTarget(
-            device=hostname, platform=platform_for_device(row),
-            target_config=stored, captured=captured, ref=ref, device_row=row))
+            device=hostname, platform=platform,
+            target_config=stored, captured=captured, ref=ref, device_row=row,
+            ref_intent=ref_intent, ref_intent_text=ref_intent_text,
+            un_onboard=(ref_intent is None)))
 
     return targets, skipped
+
+
+def intent_at(source, hostname: str):
+    """The device's committed intent at the ref, or ``None`` if it had none."""
+    from modules.nsot import hostvars
+
+    raw = source.read(f"host_vars/{hostname}.yml")
+    return hostvars.from_yaml(raw) if raw else None
+
+
+def validate_restored_intent(repo: str, hostname: str, intent: dict,
+                             stored_golden: str, platform: str) -> list:
+    """Plan-time gaps between old intent and the CURRENT tooling.
+
+    Two ways a ref's intent can be unusable today, both refused here rather
+    than discovered mid-batch:
+
+    * **It no longer round-trips.** The schema and the templates have moved
+      since older refs. Rendering the ref's intent through *today's* template
+      must reproduce the ref's golden — otherwise restoring that intent
+      immediately produces a plan proposing changes nobody asked for.
+    * **A secret it names is gone.** The credential store is unversioned, so a
+      ref can reference a secret since rotated away or never present on this
+      installation. The render emits ``<missing-secret:…>``, which
+      ``assert_no_mask`` catches at deploy — naming the device and the ref at
+      plan time is the difference between a refusal and a failed batch.
+    """
+    from modules.credentials import get_template_secret
+    from modules.nsot import hostvars, roundtrip
+
+    gaps = []
+
+    for ref_name in (intent.get("secret_refs") or []):
+        if not get_template_secret(f"{hostname}:{ref_name}"):
+            gaps.append(f"secret '{ref_name}' is named by this ref's intent but "
+                        "is not in the credential store")
+
+    try:
+        live = hostvars.hydrate_secrets(intent, hostname)
+        rendered = roundtrip.render(live, live.get("platform", platform))
+    except Exception as exc:                  # noqa: BLE001
+        gaps.append(f"this ref's intent does not render through the current "
+                    f"template: {exc}")
+        return gaps
+
+    report = roundtrip.compare(stored_golden, rendered, live)
+    if report["missing_from_render"] or report["extra_in_render"]:
+        sample = [m["line"] for m in report["details"]["missing"][:2]] + \
+                 [e["line"] for e in report["details"]["extra"][:2]]
+        gaps.append(
+            f"this ref's intent no longer reproduces its own golden through "
+            f"the current template ({report['missing_from_render']} missing, "
+            f"{report['extra_in_render']} invented): " + "; ".join(sample))
+    return gaps
 
 
 def invalidate_queued_restores(reason: str = "") -> dict:

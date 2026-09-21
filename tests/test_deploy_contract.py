@@ -446,3 +446,63 @@ class TestTheConfirmedListReachesTheTransport:
         published = command_fingerprint(self.CONFIRMED)
         PipelineRunner(self._ctx()).run()
         assert command_fingerprint(spy[0]["commands"]) == published
+
+
+class TestEveryReferencedHelperExists:
+    """A whole function was deleted and 1133 tests passed.
+
+    `_deploy_one` — the only path that connects to a device — was removed by an
+    over-wide slice, and the suite did not notice because every test exercises
+    the pieces it calls rather than the wiring that calls it. It reached the
+    live host and sat there through a read-only preview, which does not touch
+    it.
+
+    Import-time errors are the cheapest class of bug to catch and the most
+    embarrassing to ship, so they get a test of their own rather than relying
+    on some other test happening to import the right thing.
+    """
+
+    ROUTE_MODULES = ["routes.deploy", "routes.golden", "routes.templatize",
+                     "routes.templates", "routes.inventory",
+                     "routes.netbox_safety", "routes.settings_integrations"]
+
+    @pytest.mark.parametrize("module_name", ROUTE_MODULES)
+    def test_module_imports(self, module_name):
+        import importlib
+        importlib.import_module(module_name)
+
+    @pytest.mark.parametrize("module_name", ROUTE_MODULES)
+    def test_every_name_it_calls_is_defined(self, module_name):
+        """Catches a deleted helper that nothing happens to exercise."""
+        import ast
+        import importlib
+        import inspect
+
+        module = importlib.import_module(module_name)
+        tree = ast.parse(inspect.getsource(module))
+
+        defined = {node.name for node in ast.walk(tree)
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                        ast.ClassDef))}
+        # Module-level names bound by assignment or import.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                defined.add(node.id)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    defined.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for arg in node.args.args + node.args.kwonlyargs:
+                    defined.add(arg.arg)
+
+        called = {node.func.id for node in ast.walk(tree)
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+
+        import builtins
+        missing = sorted(name for name in called
+                         if name.startswith("_")
+                         and name not in defined
+                         and not hasattr(builtins, name)
+                         and not hasattr(module, name))
+        assert missing == [], (
+            f"{module_name} calls undefined helper(s): {missing}")

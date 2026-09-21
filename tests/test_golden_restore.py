@@ -210,3 +210,172 @@ class TestBaselineCoverage:
         monkeypatch.setattr("modules.inventory.stale_message", lambda ip, ln="": "gone")
         restore.plan_restore("Lab", lab["baseline"])
         assert R.golden_at(lab["repo"], "R7", lab["baseline"]) is not None
+
+
+class TestIntentIsRestoredWithTheDevice:
+    """Item 2: device and committed intent are one unit per device.
+
+    Restoring only the configuration leaves the device at the ref while
+    ``host_vars`` still describes something else, so the very next plan offers
+    to undo the restore. The device fights its own source of truth, and the
+    operator sees a "drift" they created by pressing restore.
+    """
+
+    def _with_intent(self, lab, host, text):
+        from modules.nsot import hostvars
+        hostvars.write_committed_text(lab["repo"], host, text)
+        R.git(lab["repo"], "add", "-A", "host_vars")
+        R.git(lab["repo"], "commit", "-m", f"intent: {host}")
+        _rc, sha, _err = R.git(lab["repo"], "rev-parse", "HEAD")
+        return sha.strip()
+
+    def test_ref_intent_is_carried_verbatim(self, lab, monkeypatch):
+        """The ref's own bytes, not a re-serialisation of the parsed dict."""
+        text = "device: R1\nplatform: cisco_ios\nhostname: R1\n# a human note\n"
+        ref = self._with_intent(lab, "R1", text)
+
+        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
+        monkeypatch.setattr("modules.nsot.restore.validate_restored_intent",
+                            lambda *a, **k: [])
+        monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "")
+        targets, _skipped = restore.build_targets("Lab", ref, ["R1"])
+
+        target = next(t for t in targets if t.device == "R1")
+        assert target.ref_intent_text == text, (
+            "the comment survives only if the ref's bytes are carried")
+        assert target.ref_intent["device"] == "R1"
+
+    def test_device_with_no_intent_at_the_ref_is_skipped_not_un_onboarded(
+            self, lab, monkeypatch):
+        """The default outcome is SKIP, never a silent deletion of intent."""
+        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
+        monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "")
+
+        targets, skipped = restore.build_targets("Lab", lab["baseline"], ["R1"])
+        assert targets == []
+        entry = next(s for s in skipped if s["hostname"] == "R1")
+        assert entry["un_onboardable"] is True
+        assert "un-onboard" in entry["detail"]
+        assert "recoverable from git history" in entry["detail"]
+
+    def test_un_onboarding_is_opt_in_per_device(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
+        monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "")
+
+        targets, skipped = restore.build_targets(
+            "Lab", lab["baseline"], ["R1", "R2"], un_onboard=["R1"])
+        assert [t.device for t in targets] == ["R1"]
+        assert targets[0].un_onboard is True
+        assert [s["hostname"] for s in skipped] == ["R2"]
+
+    def test_intent_is_written_only_for_devices_that_reached_the_ref(
+            self, lab, monkeypatch):
+        """A failed device keeps today's intent. Half a unit is the bug."""
+        from modules.nsot import hostvars
+        from routes.deploy import _write_restored_intent
+
+        hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nold: yes\n")
+        hostvars.write_committed_text(lab["repo"], "R2", "device: R2\nold: yes\n")
+
+        report = {"results": [
+            {"device": "R1", "outcome": "deployed",
+             "ref_intent_text": "device: R1\nnew: yes\n"},
+            {"device": "R2", "outcome": "failed",
+             "ref_intent_text": "device: R2\nnew: yes\n"},
+        ]}
+        out = _write_restored_intent("Lab", report, "some-ref")
+
+        assert out["restored"] == ["R1"]
+        assert [s["device"] for s in out["skipped"]] == ["R2"]
+        assert "new: yes" in open(hostvars.committed_path(lab["repo"], "R1")).read()
+        assert "old: yes" in open(hostvars.committed_path(lab["repo"], "R2")).read()
+
+    def test_restored_intent_is_staged_across_the_crash_window(
+            self, lab, monkeypatch):
+        """Between the push landing and the commit, the pairing is at risk."""
+        from routes.deploy import _write_restored_intent
+
+        report = {"results": [{"device": "R1", "outcome": "deployed",
+                               "ref_intent_text": "device: R1\nnew: yes\n"}]}
+        _write_restored_intent("Lab", report, "some-ref")
+        assert R.staged_restored_intent(lab["repo"]) == {
+            "R1": "device: R1\nnew: yes\n"}
+
+    def test_un_onboard_removes_the_file_by_a_forward_commit(self, lab):
+        from modules.nsot import hostvars
+        from routes.deploy import _write_restored_intent
+
+        hostvars.write_committed_text(lab["repo"], "R1", "device: R1\n")
+        R.git(lab["repo"], "add", "-A", "host_vars")
+        R.git(lab["repo"], "commit", "-m", "intent: R1")
+
+        report = {"results": [{"device": "R1", "outcome": "deployed",
+                               "un_onboard": True, "ref_intent_text": ""}]}
+        out = _write_restored_intent("Lab", report, "some-ref")
+
+        assert out["un_onboarded"] == ["R1"]
+        assert not os.path.exists(hostvars.committed_path(lab["repo"], "R1"))
+        # The previous commit is untouched, so the intent is still reachable.
+        _rc, out_log, _e = R.git(lab["repo"], "log", "--oneline", "--", "host_vars")
+        assert "intent: R1" in out_log
+
+
+class TestIntentCommitsWithTheDevice:
+    """``host_vars`` reaches a commit only when a caller asks for it."""
+
+    def test_a_template_deploy_never_carries_intent(self, lab):
+        """``extra_paths`` omitted: staged intent stays out of the commit."""
+        from modules.nsot import hostvars
+
+        hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nx: 1\n")
+        items = [R.GoldenItem("R1", "hostname R1\nnew line\n", "203.0.113.1",
+                              netbox_id=1)]
+        result = R.save_golden("Lab", items, source="pipeline")
+
+        _rc, files, _e = R.git(lab["repo"], "show", "--name-only",
+                               "--format=", result["commit"])
+        assert "host_vars" not in files
+
+    def test_a_restore_carries_intent_in_the_same_commit(self, lab):
+        from modules.nsot import hostvars
+
+        hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nx: 1\n")
+        items = [R.GoldenItem("R1", "hostname R1\nnew line\n", "203.0.113.1",
+                              netbox_id=1)]
+        result = R.save_golden("Lab", items, source="pipeline",
+                               extra_paths=["host_vars"])
+
+        _rc, files, _e = R.git(lab["repo"], "show", "--name-only",
+                               "--format=", result["commit"])
+        assert "host_vars/R1.yml" in files
+        assert "golden/R1.cfg" in files
+
+    def test_intent_alone_still_produces_a_commit(self, lab):
+        """A device already at the ref changes no golden — the intent still moved.
+
+        The empty-commit guard asked only about ``golden/``. A restore to a ref
+        a device already matches would have written the intent and returned
+        "no commit created", leaving it uncommitted in the working tree.
+        """
+        from modules.nsot import hostvars
+
+        hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nx: 1\n")
+        items = [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1", netbox_id=1)]
+        result = R.save_golden("Lab", items, source="pipeline",
+                               extra_paths=["host_vars"])
+
+        assert result["changed"] == []
+        assert result["commit"], "intent moved, so there is something to record"
+        _rc, files, _e = R.git(lab["repo"], "show", "--name-only",
+                               "--format=", result["commit"])
+        assert "host_vars/R1.yml" in files
+
+    def test_nothing_at_all_still_creates_no_commit(self, lab):
+        """The guard must not have been traded away for the case above."""
+        before = R.git(lab["repo"], "rev-parse", "HEAD")[1].strip()
+        items = [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1", netbox_id=1)]
+        result = R.save_golden("Lab", items, source="pipeline",
+                               extra_paths=["host_vars"])
+
+        assert result["commit"] == ""
+        assert R.git(lab["repo"], "rev-parse", "HEAD")[1].strip() == before

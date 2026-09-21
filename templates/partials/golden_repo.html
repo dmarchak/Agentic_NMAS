@@ -266,11 +266,17 @@ async function syncGoldenRenames() {
   } catch (e) { showToast(e.message, 'danger'); }
 }
 
-async function previewBaselineRestore(tag) {
+// `unOnboard` is empty on the first pass. If the operator opts in for devices
+// this ref predates, we PREVIEW AGAIN with them included rather than sending
+// them straight to apply: they were skipped, so they have no command list and
+// no hash, and confirming commands nobody was shown is exactly what the
+// confirm hash exists to prevent.
+async function previewBaselineRestore(tag, unOnboard) {
+  unOnboard = unOnboard || [];
   try {
     const r = await fetch('/golden/restore/preview', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ref: tag}),
+      body: JSON.stringify({ref: tag, un_onboard: unOnboard}),
     });
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); return; }
@@ -291,12 +297,34 @@ async function previewBaselineRestore(tag) {
         lines.push(`      replace: ${rp.old.trim()}  →  ${rp.new.trim()}`));
       (dev.residue || []).slice(0, 3).forEach(rs =>
         lines.push(`      stays:   ${rs.trim()}`));
+      // The intent half of the same unit. A device restored with its committed
+      // intent left behind would have the next plan offer to undo the restore.
+      const it = dev.intent || {};
+      if (it.action === 'restore')  lines.push(`      intent:  restored to this ref`);
+      if (it.action === 'un_onboard') lines.push(`      intent:  REMOVED (un-onboard)`);
     });
 
     const skipped = d.skipped || [];
     const skippedText = skipped.length
       ? '\n\nSkipped:\n' + skipped.map(s => `  • ${s.hostname} — ${s.reason}`).join('\n')
       : '';
+
+    // Devices this ref predates. The default outcome is SKIP: removing a
+    // device's committed intent un-does a human review, so it is never
+    // something the operator gets by pressing the same button.
+    const offerable = skipped.filter(s => s.un_onboardable);
+    if (offerable.length) {
+      const names = offerable.map(s => s.hostname).join(', ');
+      if (confirm(
+          `${names} — this ref predates their onboarding, so there is no `
+          + `committed intent to restore.\n\nThey are SKIPPED by default.\n\n`
+          + `Include them anyway AND remove their committed intent? That `
+          + `un-does the onboarding review. It is a forward commit, so the `
+          + `intent stays recoverable from git history.\n\n`
+          + `OK = show me what that would send.  Cancel = leave them skipped.`)) {
+        return previewBaselineRestore(tag, offerable.map(s => s.hostname));
+      }
+    }
 
     if (!confirm(
         `${d.summary}\n\n${lines.join('\n')}${skippedText}\n\n`
@@ -315,11 +343,16 @@ async function previewBaselineRestore(tag) {
 
     const ar = await fetch('/golden/restore/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ref: tag, confirmations, command_hashes: hashes}),
+      body: JSON.stringify({ref: tag, confirmations, command_hashes: hashes,
+                            un_onboard: unOnboard}),
     });
     const ad = await ar.json();
     const done = (ad.deployed || []).length;
-    showToast(ad.ok ? `Re-applied to ${done} device(s)` : `Re-apply failed: ${ad.error || ''}`,
+    const intent = (ad.golden || {}).intent || {};
+    const extra = (intent.restored || []).length
+      ? `, intent restored for ${(intent.restored || []).length}` : '';
+    showToast(ad.ok ? `Re-applied to ${done} device(s)${extra}`
+                    : `Re-apply failed: ${ad.error || ''}`,
               ad.ok ? 'success' : 'danger');
     loadGoldenRepoPanel();
   } catch (e) { showToast(e.message, 'danger'); }
