@@ -1,12 +1,30 @@
-# Phase 6 — One private GitHub repository per device list
+# Phase 2b — Remote durability: one private GitHub repository per device list
 
 **Status: PLAN ONLY. Nothing in this document is built.**
 
-Sequencing: after the queued steps 1–4. I read that as Phase 4 (onboarding
-wizard), Phase 5 (monitoring integration), and the two small queued items
-(move template seeding to `POST /templates/seed`; decide the fate of
-`nsot_git_token`). Correct me if the queue means something else — it changes
-only this line, not the content below.
+Numbered 2b because it completes Phase 2 (the golden config repository): the
+repo exists and is version-controlled, but lives on one server. "Phase 6" is
+taken by GUI completeness.
+
+## Sequencing
+
+This plan subsumes much of queued item (1), backend fixes. It is **not** next.
+Order:
+
+1. **Forward-path secret masking** — queued (2). Stop *adding* plaintext to
+   history before caring where history is published.
+2. **Rest of the multi-network audit** — queued (3): write paths resolving the
+   list at write time, and whether the credential store keys secrets by device
+   name alone.
+3. **Set-credential + convert r1–r5 to NEW type-9 secrets** — queued (4).
+   The five plaintext router passwords stop being a live exposure, and the
+   rotation is to *new* values, so the published-history problem shrinks to
+   dead credentials.
+4. **Adopt-first increment of this plan** — §1 + adoption + §5 + §7.
+5. Phases 4, 5, 6.
+
+Steps 1–3 are what make step 4's first push safe. That ordering is the point:
+by the time anything is published, the plaintext in history is dead material.
 
 Goal: **a list's configuration history survives the loss of this server, and
 setting that up is as close to automatic as it can be made.** MinIO stays
@@ -294,11 +312,38 @@ All five must pass. Each reports the check that failed and the fix.
    repo**; `Hi username!` means an **account-wide key**, which would grant this
    list push access to every repo the account owns — refuse, and say so.
 2. **Read works**: `git ls-remote <alias>:<owner>/<repo>` succeeds.
-3. **Write works**: push an empty throwaway ref
-   (`git push <remote> HEAD:refs/nmas/writetest` then delete it) — a read-only
-   deploy key passes checks 1 and 2 and fails only here. Verifying the property
-   rather than trusting the `read_only` flag is the same rule the baseline tag
-   now follows.
+3. **Write works** — and the probe must publish **nothing**.
+
+   A read-only deploy key passes checks 1 and 2 and fails only on a write, so
+   the property has to be exercised rather than inferred from the `read_only`
+   flag. But the obvious probe is a trap:
+
+   > `git push <remote> HEAD:refs/nmas/writetest` pushes **HEAD**, and HEAD
+   > carries all 51 commits and every blob under them — including the 10 golden
+   > commits with plaintext passwords and SNMP communities. Deleting the ref
+   > afterwards does not remove the objects from GitHub. **The verification step
+   > would publish exactly what §6's acknowledgement exists to gate**, before the
+   > operator had acknowledged anything.
+
+   The probe therefore carries no history and no content:
+
+   ```
+   tmp=$(mktemp -d)                      # a throwaway repo, NOT config_repo
+   git -C "$tmp" init -q
+   tree=$(git -C "$tmp" hash-object -t tree /dev/null)      # the empty tree
+   commit=$(git -C "$tmp" commit-tree "$tree" -m "nmas write probe")
+   git -C "$tmp" push <remote> "$commit:refs/nmas/writeprobe"
+   git -C "$tmp" push <remote> :refs/nmas/writeprobe        # clean up the ref
+   rm -rf "$tmp"
+   ```
+
+   An orphan commit (no parents) with the empty tree: one commit object, one
+   tree object, **zero blobs**, nothing reachable from `config_repo`. It proves
+   the key can write and leaves the repository with no content in it.
+
+   Run this **before** the privacy check is satisfied only if it is this
+   probe — the old form had to run after §6, which would have meant asking the
+   operator to acknowledge publication in order to test connectivity.
 4. **Repository is PRIVATE** — anonymous, unauthenticated:
    - `GET https://api.github.com/repos/{owner}/{repo}` → **200 means public →
      refuse.**
@@ -410,6 +455,9 @@ The list requested, plus what the findings above make necessary:
 | empty remote accepted | `ls-remote` rc=0 with no refs is the normal first-setup case |
 | account-wide key refused | `ssh -T` → `Hi username!` → refuse; `Hi owner/repo!` → accept |
 | read-only key caught | write probe fails → refuse with the read-only message, not a generic failure |
+| **write probe publishes nothing** | the objects the probe pushes contain **no blob** — one orphan commit, one empty tree. Guards against reintroducing `HEAD:refs/...`, which would publish all 51 commits and every secret in them |
+| write probe leaves no ref | `refs/nmas/writeprobe` absent from the remote afterwards |
+| write probe never touches config_repo | the probe runs in a throwaway repo; `config_repo` gains no ref, no remote, no object |
 | **token never persisted** | after the automatic path: absent from `user_settings.json`, every `remote.json`, all log output, and the audit trail. Asserted by **value search**, not by key name |
 | SSH include file idempotent | run twice → one `Include` line, one stanza per list, unmanaged content byte-identical |
 | SSH config never otherwise edited | only the `Include` line may differ from the original; a backup exists |
@@ -427,21 +475,31 @@ matching the existing "no test touches a live network" rule.
 
 ---
 
-## 10. Open decisions
+## 10. Decisions taken
 
-1. **Phase number / sequencing** — stated at the top as Phase 6 after the
-   queued items; say if the queue means something else.
-2. **Adopt-first milestone.** Recommended: ship §1 + adoption + §5 verification
-   + §7 Push now *first*, as a self-contained increment that makes the default
-   list durable. Key generation and repo provisioning (§3, §4) follow. This gets
-   the history off the single server soonest, which is the actual goal.
-3. **Tag-deletion divergence** — `_prune_device_tags` trims locally and the
-   remote keeps everything. Recommend keeping it (an archive should not forget)
-   but recording it as a decision.
-4. **`nsot_git_token` / `nsot_git_auth_mode` removal** — recommended, since
-   Option A promises the token is never stored. Confirm before deletion; the
-   settings rule says old keys are never deleted, and this would be a
-   deliberate exception.
-5. **Secrets, before any push.** Not a plan question, but it gates the phase:
-   the exposure is 18 SNMP communities and 5 plaintext router passwords across
-   51 commits. Rotating after the first push does not unpublish anything.
+1. **Phase number** — 2b, completing Phase 2. "Phase 6" is GUI completeness.
+2. **Adopt-first increment** — agreed. Ship §1 + adoption + §5 + §7 Push now as
+   a self-contained increment; key generation and repo provisioning (§3, §4)
+   follow.
+3. **Tag divergence kept.** `_prune_device_tags` trims locally; the remote keeps
+   everything. The remote is an **archive**, and an archive should not forget.
+   Recorded here so it is a decision rather than an accident.
+4. **`nsot_git_token` and `nsot_git_auth_mode` are deleted** — a recorded
+   exception to the settings rule that old keys are never removed. The rule
+   exists so a downgrade does not lose configuration; here the keys are read
+   nowhere, and Option A promises the token is never stored, so an
+   encrypted-at-rest field for it contradicts the product. `settings_schema.py`
+   must carry the exception in a comment naming this document, otherwise the
+   next person restores them for consistency with the rule.
+5. **GUIDED MANUAL is the default path; AUTOMATIC is secondary.** Because
+   deleting the PAT deletes the deploy key: the manual path produces a key with
+   no token lifetime attached, which is the more durable artefact. The
+   automatic path stays for convenience and says plainly what the token's
+   deletion would do.
+
+## 11. Still open
+
+1. **Secrets in existing history.** Not a plan question — it is sequencing
+   step 3 above. 18 SNMP communities and 5 plaintext router passwords across 51
+   commits. Rotating after a push does not unpublish anything, which is why the
+   rotation comes first and goes to *new* values.
