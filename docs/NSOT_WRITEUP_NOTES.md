@@ -4174,3 +4174,56 @@ Worth stating because it is the reason this cannot wait: the only whole-fleet
 baseline predates the rotations, so restoring to it today would reinstate r1's
 and r2's old plaintext passwords on devices that no longer use them. The
 repair and the new baseline are the same action.
+
+## Rotation moves the floor under every restore point
+
+The repair landed as `280b1da`, "golden: baseline 2 device(s) via save_all" —
+only r1 and r2 changed, because the other seven were already current. Tags at
+HEAD: `baseline/20260921T170754Z` plus per-device `golden/r1/…` and
+`golden/r2/…`. Both goldens are back to full length (337 and 331 lines) and
+both now carry `username admin privilege 15 secret 9`. The new content guard
+passed the repair, which is the case it should pass: sections gained, not lost.
+
+**`baseline/20260921T170754Z` is the first whole-fleet restore point taken
+after the rotations.** Every earlier baseline — including
+`baseline/20260921T033554Z`, which was earned honestly and was correct when it
+was made — would, if restored today, put r1's and r2's *old plaintext
+passwords* back on devices that no longer use them.
+
+That is worth stating as its own property, because it is not what a baseline
+usually means. A restore point normally goes stale in the direction of being
+*behind*: it holds an older configuration, and restoring it costs you recent
+changes. A credential rotation makes it stale in a second direction. The ref
+holds a credential the device has been deliberately moved away from, and
+restoring it does not merely undo an improvement — it re-publishes a secret
+that exists in git history precisely because rotation was supposed to make it
+dead.
+
+The restore path is merge-only, so it would not remove the new `secret 9`
+line; it would *add* the old `password 0` line alongside it. On this image
+those two cannot coexist — the device refuses a password on a username that
+has a secret, the same refusal that started this whole sequence — so the
+practical outcome is a refused line rather than a downgraded device. That is
+luck, not design. It depends on a platform behaviour discovered by accident
+four hours earlier, and it would not hold for a device that accepts both.
+
+### The rule
+
+> A rotation invalidates every restore point older than itself, for that
+> device, in a way that is invisible from the restore point's own metadata.
+> Take a fresh whole-fleet baseline at the end of each rotation stage, and
+> treat the newest one as the only safe restore target.
+
+Concretely, for the work in flight: the router stage is r1–r5, so a Save All
+after r5 re-establishes a safe fleet-wide restore point, and the same again
+after the s1–s4 stage. Between those points the newest baseline is safe for
+every device *except* the ones rotated since — which is exactly the kind of
+qualified statement an operator should not have to reconstruct under pressure.
+
+There is a design question deferred here rather than answered: nothing in the
+tool tells you this. `restore` will happily offer a ref whose credentials are
+dead, and the confirm screen describes what will be sent without knowing that
+one of those lines is a secret the fleet has retired. Making `validate_restored_intent()`
+refuse a ref whose credential predates the device's newest rotation is the
+obvious place for it, and it is a Part 2 item rather than something to add
+between two rotations.
