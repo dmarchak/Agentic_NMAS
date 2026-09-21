@@ -3553,8 +3553,16 @@ The comment sitting directly above that constant reads:
 It was right about the mechanism and wrong about the vocabulary, and the gap
 between those two is where this defect lived. The constant is shared with the
 deploy path, so any command IOS refused in that wording was being recorded as
-applied — and a merge-only deploy then commits a golden config asserting lines
-the device rejected.
+applied.
+
+To be precise about the blast radius there, because an earlier draft of this
+note overstated it: stage 8.5 commits the **post-deploy capture**, not the
+pushed program, so a refused line never reaches a golden config — the golden
+stays truthful about the device. What a missed refusal produces on the deploy
+path is a **false success report** and a silent divergence between committed
+intent and the device: the tool says the change landed, the next plan renders
+the same lines again, and the operator is told there is drift they did not
+cause. Quieter than a wrong golden, and still a real defect.
 
 Now anchored per line (netmiko applies it with `re.M`), covering both families,
 and verified against the real refusal plus four benign echoes — `description
@@ -3604,3 +3612,64 @@ And the sharper one, about the diagnosis rather than the bug:
 The reproduction only became possible after asking what the probe was **not**
 reproducing — which is a different question from what the probe was testing,
 and the one that took three rounds to reach.
+
+## The session that deletes the account it is logged in as
+
+Every probe in the previous round rotated `nmasprobe` from a session
+authenticated as `admin`. The real rotation does not do that. It deletes and
+recreates **the account its own held session is using**, and the entire lockout
+defence rests on that session surviving. Nothing had reproduced it.
+
+Same lesson as the round before — ask what the probe is *not* reproducing —
+applied one level up, to a probe that had just been used to prove a fix.
+
+Mirrored exactly: seed the throwaway account at privilege 15 with a `password
+0` entry, open the held session **as that account**, and rotate it against
+itself. All four properties held on r2:
+
+```
+2. self-rotation     secret 9, login NEW True, login OLD False, nothing raised
+3. session after     is_alive True, config mode + command True, config write OK
+4. recovery          deleted itself -> (absent), nothing can log in
+                     -> recreated from that same session -> login OLD True
+```
+
+IOS does not tear down an established session when its username is removed, and
+an orphaned session can still write config. That is what makes `no username`
+safe here, and it is now measured rather than assumed — the alternative
+(`nopassword` first) would have been the correct sequence if this had failed,
+so it was a real fork, not a formality.
+
+### What the transcript caught
+
+The confirm prompt was raised and answered:
+
+```
+> no username nmasprobe
+  ... Do you want to continue? [confirm]
+>                                         <- answered
+  r2(config)#
+> username nmasprobe ... algorithm-type scrypt secret <NEW>
+  r2(config)#
+>                                         <- a second, unasked-for Enter
+```
+
+`push_rotation()` searched `transcript[-300:]` — the **accumulated** output —
+so the previous command's `[confirm]` was still in range after the next
+command and was answered a second time. At a config prompt an extra Enter does
+nothing, which is why it was invisible in the device state, in the return
+value, and in every test. It cost 6.5 seconds of the 14, and it is exactly the
+stray keystroke that gets consumed as the answer to some later prompt.
+
+Fixed to inspect only the current command's output. The same probe re-run
+against the fixed code: one answer, and 14.0s -> 7.5s.
+
+> The decisive evidence that a prompt was answered is not that the prompt
+> appears answered. It is that the **next** command took effect — if the
+> prompt had eaten it, the account would have been absent rather than holding
+> a secret.
+
+That is the same shape as everything else in this round: the check that finds
+something is the one that measures a consequence, not the one that inspects
+the mechanism. Reading the transcript would have shown two plausible-looking
+Enters and no reason to care.

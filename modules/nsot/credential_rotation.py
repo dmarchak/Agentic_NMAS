@@ -436,9 +436,15 @@ def push_rotation(session, commands) -> dict:
     session.config_mode()
     try:
         for command in commands:
-            transcript += session.send_command_timing(
+            # Only THIS command's output may trigger an answer. Searching the
+            # accumulated transcript re-matched the previous command's
+            # [confirm] and sent a second, unasked-for Enter — harmless at a
+            # config prompt, and exactly the kind of stray keystroke that gets
+            # consumed as the answer to some later prompt.
+            out = session.send_command_timing(
                 command, strip_prompt=False, strip_command=False)
-            if re.search(CONFIRM_PROMPT, transcript[-300:], re.I):
+            transcript += out
+            if re.search(CONFIRM_PROMPT, out, re.I):
                 transcript += session.send_command_timing(
                     "\n", strip_prompt=False, strip_command=False)
     finally:

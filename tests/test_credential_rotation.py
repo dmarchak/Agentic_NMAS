@@ -1018,6 +1018,30 @@ class TestARefusedPushIsNotASuccessfulOne:
         assert wired["router"].entry == "password"
         assert cr.staged_plaintext(wired["repo"], "r2") is None
 
+    def test_only_the_current_output_can_trigger_a_confirm_answer(self, wired):
+        """Found in a hardware transcript: a second, unasked-for Enter.
+
+        The check searched the ACCUMULATED transcript, so the `no username`
+        prompt was still in range after the next command and was answered
+        twice. Harmless at a config prompt, and exactly the stray keystroke
+        that gets eaten as the answer to some later prompt.
+        """
+        session = _Session(router=wired["router"])
+        cr.push_rotation(session, cr.rotation_commands("admin", 15, "NewPw"))
+
+        blanks = [c for c in session.sent if c.strip() == ""]
+        assert len(blanks) == 0, (
+            f"answers are sent via send_command_timing, not recorded as "
+            f"commands; got {blanks}")
+        assert wired["router"].entry == "secret"
+
+    def test_a_second_command_is_not_eaten_as_the_confirm_answer(self, wired):
+        """If the prompt consumed it, the account would be absent, not secret."""
+        session = _Session(router=wired["router"])
+        cr.push_rotation(session, cr.rotation_commands("admin", 15, "NewPw"))
+        assert wired["router"].exists is True
+        assert wired["router"].entry == "secret"
+
     def test_push_rotation_answers_the_confirm_prompt(self, wired):
         """An unanswered [confirm] leaves the session mid-dialogue."""
         session = _Session(router=wired["router"])
