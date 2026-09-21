@@ -30,6 +30,8 @@ unknown secret harmless; this makes a known one stop travelling.
 
 import logging
 import re
+import threading
+import time
 
 log = logging.getLogger(__name__)
 
@@ -119,8 +121,24 @@ def _label_for(key: str) -> str:
     return key.rsplit(":", 1)[-1] or "secret"
 
 
+_cache = {"values": None, "at": 0.0}
+_cache_lock = threading.Lock()
+
+#: Seconds a built table is reused. Short enough that a rotation or a new
+#: extraction is picked up promptly; long enough that a burst of log records
+#: does not decrypt the credential store once per line.
+CACHE_TTL = 30.0
+
+
+def invalidate_cache() -> None:
+    """Drop the cached table — call after writing a secret."""
+    with _cache_lock:
+        _cache["values"] = None
+        _cache["at"] = 0.0
+
+
 def known_secret_values() -> dict:
-    """``{value: label}`` for every secret this installation holds.
+    """``{value: label}`` for every secret this installation holds. Cached.
 
     **Every list**, not the active one: a payload is redacted for what it
     contains, and which network a secret belongs to does not change whether it
@@ -128,6 +146,11 @@ def known_secret_values() -> dict:
     ``hostvars.assert_no_secret_values()`` — a guard narrowed by list fails
     open when the narrowing is wrong.
     """
+    with _cache_lock:
+        if (_cache["values"] is not None
+                and time.monotonic() - _cache["at"] < CACHE_TTL):
+            return _cache["values"]
+
     out = {}
     try:
         from modules.credentials import get_template_secret, list_template_secrets
@@ -136,6 +159,10 @@ def known_secret_values() -> dict:
             if value and len(value) >= MIN_REDACTABLE:
                 out[value] = _label_for(entry["name"])
     except Exception as exc:                  # noqa: BLE001
+        # Counted, not just logged. An unreadable credential store means
+        # secrets are NOT being redacted, and the filter never raises — so
+        # without this, health() reports "healthy" while the table is empty.
+        _note_failure(exc)
         log.error("redact: could not read template secrets (%s) — "
                   "payload will NOT be redacted for them", exc)
 
@@ -149,6 +176,10 @@ def known_secret_values() -> dict:
                 out.setdefault(value, label)
     except Exception as exc:                  # noqa: BLE001
         log.debug("redact: device credentials unavailable (%s)", exc)
+
+    with _cache_lock:
+        _cache["values"] = out
+        _cache["at"] = time.monotonic()
     return out
 
 
@@ -255,13 +286,30 @@ class RedactingFilter(logging.Filter):
     unredacted rather than dropped. A log that silently loses entries is a
     worse failure than one that occasionally keeps something it should not:
     the first destroys the record of what happened, and this is the file an
-    operator reaches for when something has already gone wrong. The failure is
-    itself logged, once, so the gap is visible.
+    operator reaches for when something has already gone wrong.
+
+    Failing open only stays defensible while the failure is *visible*, so it is
+    counted in module state and surfaced by :func:`health` — a one-time log
+    line announcing that the log is unreliable is a note written in the medium
+    that just became unreliable.
     """
 
-    _warned = False
+    #: Re-entry guard. The filter calls `known_secret_values()`, which logs on
+    #: failure — and that record re-enters the filter, which calls it again.
+    #: Unbounded recursion that can hang the process, not merely the tests it
+    #: was first seen in. Thread-local because handlers are shared across
+    #: threads and a module-level flag would make one thread's redaction
+    #: silently skip another's record.
+    _local = threading.local()
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if getattr(RedactingFilter._local, "active", False):
+            # A record emitted from inside redaction. Pass it through
+            # unredacted rather than recursing: it is our own diagnostic, and
+            # dropping or looping on it loses the only notice that redaction
+            # is failing.
+            return True
+        RedactingFilter._local.active = True
         try:
             values = known_secret_values()
             # Format once here so args are interpolated; a secret is far more
@@ -278,12 +326,89 @@ class RedactingFilter(logging.Filter):
                         record.exc_info), values)
                 record.exc_info = None
         except Exception as exc:              # noqa: BLE001
-            if not RedactingFilter._warned:
-                RedactingFilter._warned = True
-                logging.getLogger(__name__).error(
-                    "redact: log redaction failed (%s) — records are being "
-                    "written UNREDACTED", type(exc).__name__)
+            _note_failure(exc)
+        finally:
+            RedactingFilter._local.active = False
         return True
+
+
+# ---------------------------------------------------------------------------
+# Failure visibility
+# ---------------------------------------------------------------------------
+
+#: Redaction fails open, so the only thing standing between that and a silent
+#: leak is somebody noticing. Kept as state rather than only a log line,
+#: because a log line saying "the log is unreliable" is written in the medium
+#: that just became unreliable.
+_failures = {"count": 0, "first_at": "", "last_at": "", "last_error": ""}
+_failure_lock = threading.Lock()
+
+
+def _note_failure(exc: Exception) -> None:
+    with _failure_lock:
+        first = _failures["count"] == 0
+        _failures["count"] += 1
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        _failures["last_at"] = stamp
+        _failures["last_error"] = type(exc).__name__
+        if first:
+            _failures["first_at"] = stamp
+    if first:
+        logging.getLogger(__name__).error(
+            "redact: log redaction FAILED (%s) — records are being written "
+            "UNREDACTED. See redaction health in /identity/status.",
+            type(exc).__name__)
+
+
+def health() -> dict:
+    """Is outbound redaction working? For diagnostics and health badges."""
+    with _failure_lock:
+        failures = dict(_failures)
+    handlers = _handler_coverage()
+    return {
+        "healthy": failures["count"] == 0 and handlers["unprotected"] == 0,
+        "redaction_failures": failures["count"],
+        "first_failure_at": failures["first_at"],
+        "last_failure_at": failures["last_at"],
+        "last_error": failures["last_error"],
+        "log_handlers_total": handlers["total"],
+        "log_handlers_unprotected": handlers["unprotected"],
+        "unprotected_handler_types": handlers["types"],
+    }
+
+
+def reset_health() -> None:
+    """For tests. Never called by the app."""
+    with _failure_lock:
+        _failures.update({"count": 0, "first_at": "", "last_at": "",
+                          "last_error": ""})
+
+
+# ---------------------------------------------------------------------------
+# Handler coverage
+# ---------------------------------------------------------------------------
+
+def _all_handlers() -> list:
+    """Every handler attached anywhere, root and named loggers alike."""
+    seen, out = set(), []
+    loggers = [logging.getLogger()]
+    manager = logging.getLogger().manager
+    loggers += [lg for lg in manager.loggerDict.values()
+                if isinstance(lg, logging.Logger)]
+    for logger in loggers:
+        for handler in getattr(logger, "handlers", []):
+            if id(handler) not in seen:
+                seen.add(id(handler))
+                out.append(handler)
+    return out
+
+
+def _handler_coverage() -> dict:
+    handlers = _all_handlers()
+    unprotected = [h for h in handlers
+                   if not any(isinstance(f, RedactingFilter) for f in h.filters)]
+    return {"total": len(handlers), "unprotected": len(unprotected),
+            "types": sorted({type(h).__name__ for h in unprotected})}
 
 
 def install_log_redaction(handler) -> bool:
@@ -291,4 +416,49 @@ def install_log_redaction(handler) -> bool:
     if any(isinstance(f, RedactingFilter) for f in handler.filters):
         return False
     handler.addFilter(RedactingFilter())
+    return True
+
+
+def redact_all_handlers() -> int:
+    """Install on **every** handler attached anywhere. Returns how many gained it.
+
+    A filter on the root *logger* would not do: a record emitted by a child
+    logger is passed to ancestor **handlers** without ancestor logger filters
+    being consulted. Handler filters are the only ones every record must pass.
+
+    And one handler is not enough either. The file handler is created only when
+    ``app.debug`` is false; a StreamHandler to stdout — which under systemd is
+    the journal — would otherwise carry unredacted records to exactly the place
+    an operator greps first.
+    """
+    return sum(1 for handler in _all_handlers() if install_log_redaction(handler))
+
+
+_guard_installed = False
+
+
+def guard_new_handlers() -> bool:
+    """Make handlers added *later* inherit the filter. Idempotent.
+
+    Coverage established once at startup decays: a library that calls
+    ``addHandler`` after boot, a lazily-imported module, a handler swapped at
+    runtime. Rather than documenting "remember to re-run redact_all_handlers",
+    the capability is bounded at the point where a handler is attached — the
+    same move as ``resolve_identity`` losing the ability to mint.
+    """
+    global _guard_installed
+    if _guard_installed:
+        return False
+
+    original = logging.Logger.addHandler
+
+    def addHandler(self, hdlr):                # noqa: N802 - matches stdlib
+        try:
+            install_log_redaction(hdlr)
+        except Exception:                      # noqa: BLE001
+            pass                               # never break logging setup
+        return original(self, hdlr)
+
+    logging.Logger.addHandler = addHandler
+    _guard_installed = True
     return True

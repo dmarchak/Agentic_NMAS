@@ -316,6 +316,16 @@ def set_template_secret(name: str, value: str, secret_kind: str = "plaintext",
             "last_rotated": time.time() if secret_kind != "hash" else None,
         }
         _save(data)
+    # Redaction caches the secret table for 30s so a burst of log records does
+    # not decrypt the store per line. A freshly stored secret must be redacted
+    # from the very next record, not from the next cache expiry — the window
+    # right after an extraction is exactly when config carrying it is flowing.
+    try:
+        from modules.redact import invalidate_cache
+        invalidate_cache()
+    except Exception:                         # noqa: BLE001
+        pass                                  # never fail a write over a cache
+
     log.info("credentials: stored template secret '%s' (kind=%s, list=%s)",
              name, secret_kind, slug or "unscoped")
     return {"ok": True}

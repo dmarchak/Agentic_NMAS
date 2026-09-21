@@ -28,6 +28,16 @@ log = logging.getLogger(__name__)
 bp = Blueprint("identity", __name__, url_prefix="/identity")
 
 
+def _redaction_health() -> dict:
+    """Is outbound redaction working, and is every log handler covered?"""
+    try:
+        from modules import redact
+        return redact.health()
+    except Exception as exc:                  # noqa: BLE001
+        log.error("identity: could not read redaction health: %s", exc)
+        return {"healthy": False, "error": "redaction health unavailable"}
+
+
 @bp.route("/status", methods=["GET"])
 def status():
     """Who does this app think is making *this* request?"""
@@ -66,6 +76,10 @@ def status():
             ident_mod.JWT_HEADER: bool(request.headers.get(ident_mod.JWT_HEADER)),
             ident_mod.EMAIL_HEADER: bool(request.headers.get(ident_mod.EMAIL_HEADER)),
         },
+        # Outbound redaction fails OPEN, which stays defensible only while
+        # the failure is visible. A log line saying "the log is unreliable" is
+        # written in the medium that just became unreliable.
+        "redaction": _redaction_health(),
         # Whether, not with what.
         "access_configured": ident_mod.is_configured(),
         "trusted_peers_configured": bool(ident_mod.trusted_peers()),

@@ -771,17 +771,39 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   carries the same secrets as either config on its `-`/`+` lines, so both go
   through one helper rather than each remembering. A refused reveal returns the
   **masked** text, not the secret with an error beside it.
+- **`data/reveal_audit.jsonl` stays local, for now.** It is the only gated
+  action whose audit trail is **not** in git: golden saves, deploys, restores
+  and intent edits are all commits, and Phase 2b will push those to a private
+  remote. Reveals are not. That is a deliberate deferral, not an oversight —
+  revisit in Part 2, when there is somewhere to put it that does not make the
+  trail itself a secondary exposure.
 - **The reveal trail records what was looked at, never what was seen** — device,
   ref, actor, kind, time, peer. A trail that copies the secret it records has
   become a second place the secret lives. Masked reads record nothing; the trail
   logs reveals, not requests.
-- **The app log is redacted at the handler** (`redact.RedactingFilter` on the
-  root file handler), so every module's `getLogger(__name__)` is covered without
-  each remembering. Arguments are redacted as well as format strings — a secret
-  is far more often in an arg — and exception text too. It **fails open**: if
-  redaction raises, the record is written unredacted rather than dropped,
-  because a log that silently loses entries is the worse failure in the file an
-  operator reaches for when something has already gone wrong.
+- **The app log is redacted on EVERY handler** — `redact_all_handlers()` at
+  startup, plus `guard_new_handlers()` so handlers attached later inherit it.
+  Not the root *logger*: a record from a child logger reaches ancestor
+  **handlers** without ancestor logger filters being consulted. Not the file
+  handler alone either — it exists only when `app.debug` is false, and a
+  StreamHandler to stdout is the systemd journal. Arguments are redacted as
+  well as format strings (a secret is far more often in an arg) and so is
+  exception text.
+- **It fails open, and the failure is visible.** A record that cannot be
+  redacted is written unredacted rather than dropped — a log that silently
+  loses entries is the worse failure in the file an operator reaches for when
+  something has already gone wrong. That is only defensible while the failure
+  is *visible*, so failures are counted and reported by `redact.health()` in
+  `GET /identity/status`; a log line announcing that the log is unreliable is
+  written in the medium that just became unreliable. An unreadable credential
+  store counts too, since the filter itself never raises in that case.
+- **The filter is re-entrant-guarded and the secret table is cached.**
+  `known_secret_values()` logs on failure, and that record re-enters the
+  filter — unbounded recursion that can hang the process. A thread-local guard
+  passes such records through unredacted. The table is cached for 30s so a
+  burst of records does not decrypt the credential store per line, and
+  `set_template_secret()` invalidates it, because the window right after an
+  extraction is exactly when config carrying that secret is flowing.
 - `GET /identity/status` reports **`may`** — what *this caller* can do, with a
   reason when false — not which gates are enabled. The earlier `gates` field
   reported configuration, and `gates: {reveal: true}` reads as permission while

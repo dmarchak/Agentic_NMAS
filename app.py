@@ -204,19 +204,35 @@ if not app.debug:
     # actually contained the module's log.error() call. app.logger still
     # propagates to root by default, so this also keeps capturing its messages
     # without needing a second handler on it directly.
-    # The third place secrets leave this process, after the model API and the
-    # HTTP API — and the easiest to forget, because nobody logs a password on
-    # purpose. It arrives inside a config dump, an exception message, a Netmiko
-    # echo, or a diff. Attached to the HANDLER, so it covers every module's own
-    # getLogger(__name__) without each having to remember.
-    from modules.redact import install_log_redaction
-    install_log_redaction(file_handler)
-
     logging.getLogger().addHandler(file_handler)
     logging.getLogger().setLevel(logging.INFO)
 
     app.logger.setLevel(logging.INFO)
     app.logger.info('Device Manager startup')
+
+# The third place secrets leave this process, after the model API and the HTTP
+# API — and the easiest to forget, because nobody logs a password on purpose.
+# It arrives inside a config dump, an exception message, a Netmiko echo, or a
+# diff.
+#
+# EVERY handler, not just the file one. A filter on the root *logger* would not
+# do: a record from a child logger reaches ancestor handlers without ancestor
+# logger filters being consulted. And the file handler exists only when
+# app.debug is false — a StreamHandler to stdout is the systemd journal, which
+# is where an operator greps first.
+#
+# guard_new_handlers() covers handlers attached after this point, because
+# coverage established once at startup decays.
+try:
+    from modules.redact import guard_new_handlers, redact_all_handlers
+    guard_new_handlers()
+    _redacted = redact_all_handlers()
+    logging.getLogger(__name__).info(
+        "redact: log redaction installed on %d handler(s)", _redacted)
+except Exception as _red_exc:                 # noqa: BLE001
+    logging.getLogger(__name__).error(
+        "redact: COULD NOT install log redaction (%s) — records may be written "
+        "unredacted", _red_exc)
 
 # ---------------------------------------------------------------------------
 # Flask Error Handlers

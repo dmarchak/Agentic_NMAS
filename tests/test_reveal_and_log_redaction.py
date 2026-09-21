@@ -278,10 +278,190 @@ class TestTheAppLogIsRedacted:
         assert redact.install_log_redaction(h) is False
         assert sum(isinstance(f, redact.RedactingFilter) for f in h.filters) == 1
 
-    def test_the_app_installs_it_on_the_file_handler(self):
+    def test_the_app_covers_every_handler_not_just_the_file_one(self):
+        """A StreamHandler to stdout is the systemd journal.
+
+        And the file handler only exists when app.debug is false, so installing
+        on it alone leaves debug runs entirely unredacted.
+        """
         import inspect
 
         import app as app_module
 
         source = inspect.getsource(app_module)
-        assert "install_log_redaction(file_handler)" in source
+        assert "redact_all_handlers()" in source
+        assert "guard_new_handlers()" in source
+        assert "install_log_redaction(file_handler)" not in source
+
+
+class TestEveryHandlerIsCovered:
+    """A filter on one handler leaves every other handler unredacted.
+
+    And a filter on the root *logger* would not help: a record emitted by a
+    child logger is handed to ancestor HANDLERS without ancestor logger filters
+    being consulted. Handler filters are the only ones every record must pass.
+    """
+
+    @pytest.fixture
+    def secret(self, monkeypatch):
+        from modules import credentials
+
+        values = {"lab:r1:snmp_community_ro": "Str0ngC0mmunityValue"}
+        monkeypatch.setattr(credentials, "get_template_secret",
+                            lambda name: values.get(name, ""))
+        monkeypatch.setattr(credentials, "list_template_secrets",
+                            lambda ln="": [{"name": n, "secret_kind": "plaintext",
+                                            "rotatable": True} for n in values])
+        monkeypatch.setattr(credentials, "device_credential_values", dict)
+        redact.invalidate_cache()
+        return values
+
+    def _capture(self):
+        records = []
+
+        class _Cap(logging.Handler):
+            def emit(self, record):
+                records.append(self.format(record))
+        h = _Cap()
+        h.setFormatter(logging.Formatter("%(message)s"))
+        return h, records
+
+    def test_a_child_logger_record_is_redacted_in_EVERY_handler(self, secret,
+                                                                 monkeypatch):
+        """The case the file-handler-only install missed."""
+        file_like, file_out = self._capture()
+        stream_like, stream_out = self._capture()
+
+        root = logging.getLogger()
+        monkeypatch.setattr(root, "handlers", [file_like, stream_like])
+        monkeypatch.setattr(root, "level", logging.DEBUG)
+
+        installed = redact.redact_all_handlers()
+        assert installed >= 2
+
+        child = logging.getLogger("modules.some.deep.child")
+        monkeypatch.setattr(child, "handlers", [])
+        child.propagate = True
+        child.setLevel(logging.DEBUG)
+        child.warning("snmp-server community Str0ngC0mmunityValue RO")
+
+        assert file_out and stream_out, "both handlers should have received it"
+        for out in (file_out, stream_out):
+            assert "Str0ngC0mmunityValue" not in out[0]
+            assert "<redacted:" in out[0]
+
+    def test_a_handler_added_later_inherits_the_filter(self, secret):
+        """Coverage established once at startup decays."""
+        redact.guard_new_handlers()
+
+        late, out = self._capture()
+        logger = logging.getLogger("added.later")
+        logger.handlers = []
+        logger.addHandler(late)          # the patched addHandler
+        logger.propagate = False
+        logger.setLevel(logging.DEBUG)
+
+        assert any(isinstance(f, redact.RedactingFilter) for f in late.filters)
+        logger.error("password Str0ngC0mmunityValue")
+        assert "Str0ngC0mmunityValue" not in out[0]
+
+    def test_coverage_is_reported(self, monkeypatch):
+        bare, _ = self._capture()
+        root = logging.getLogger()
+        monkeypatch.setattr(root, "handlers", [bare])
+
+        health = redact.health()
+        assert health["log_handlers_unprotected"] >= 1
+        assert health["healthy"] is False
+
+        redact.redact_all_handlers()
+        assert redact.health()["log_handlers_unprotected"] == 0
+
+
+class TestRedactionFailureIsVisible:
+    """Failing open is only defensible while the failure is visible.
+
+    A log line saying "the log is unreliable" is written in the medium that
+    just became unreliable.
+    """
+
+    def test_an_unreadable_store_marks_redaction_unhealthy(self, monkeypatch):
+        from modules import credentials
+
+        def _boom(*a, **k):
+            raise RuntimeError("store exploded")
+        monkeypatch.setattr(credentials, "list_template_secrets", _boom)
+        redact.invalidate_cache()
+
+        redact.known_secret_values()
+        health = redact.health()
+
+        assert health["healthy"] is False
+        assert health["redaction_failures"] >= 1
+        assert health["last_error"] == "RuntimeError"
+        assert health["first_failure_at"]
+
+    def test_the_filter_does_not_recurse_when_the_store_fails(self, monkeypatch):
+        """known_secret_values() logs on failure; that record re-enters here.
+
+        Unbounded recursion that can hang the process, not merely the test
+        suite it was first seen in.
+        """
+        from modules import credentials
+
+        def _boom(*a, **k):
+            raise RuntimeError("store exploded")
+        monkeypatch.setattr(credentials, "list_template_secrets", _boom)
+        redact.invalidate_cache()
+
+        records = []
+
+        class _Cap(logging.Handler):
+            def emit(self, record):
+                records.append(self.format(record))
+
+        h = _Cap()
+        h.setFormatter(logging.Formatter("%(message)s"))
+        redact.install_log_redaction(h)
+        logger = logging.getLogger("recursion.guard")
+        logger.handlers = [h]
+        logger.propagate = False
+        logger.setLevel(logging.DEBUG)
+
+        logger.error("a record that triggers the failure path")
+        assert len(records) == 1, "the filter recursed"
+
+    def test_health_is_reported_in_the_diagnostic(self):
+        import inspect
+
+        import routes.identity as route_mod
+
+        assert "_redaction_health()" in inspect.getsource(route_mod.status)
+        assert "redact.health()" in inspect.getsource(route_mod._redaction_health)
+
+
+class TestTheSecretTableIsCached:
+    def test_a_newly_stored_secret_is_redacted_immediately(self, tmp_path,
+                                                            monkeypatch):
+        """Not at the next cache expiry — the window right after an extraction
+        is exactly when config carrying the secret is flowing."""
+        from modules import credentials
+
+        monkeypatch.setattr(credentials, "_FILE",
+                            str(tmp_path / "credential_profiles.json"))
+        monkeypatch.setattr(credentials, "device_credential_values", dict)
+        redact.invalidate_cache()
+
+        # A banner carries no secret POSITION, so only value matching can
+        # cover it — which isolates the cache question from the positional one.
+        prose = "banner motd ^JustStoredValue^"
+        assert redact.redact_text(prose) == prose, (
+            "nothing is stored yet, so there is no value to match")
+
+        credentials.set_template_secret("lab:r1:snmp_community_ro",
+                                        "JustStoredValue", list_name="lab")
+        out = redact.redact_text(prose)
+        assert "JustStoredValue" not in out, (
+            "a freshly stored secret must be redacted from the next record, "
+            "not from the next cache expiry")
+        assert "<redacted:snmp_community_ro>" in out
