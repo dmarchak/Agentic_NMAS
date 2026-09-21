@@ -501,10 +501,11 @@ The only part of the NSoT work that reaches a device.
 - **A batch is an event: one golden commit, one baseline.** Stage 8.5 hands its
   capture back (`defer_golden`) instead of committing, so `save_golden`'s "one
   call is one commit" is preserved rather than special-cased. The subject and
-  `Devices:` name the successful subset, `Failed-Devices:` the rest. A baseline
-  tag marks any completed batch — **including a single-device one**, since a
-  baseline marks a moment rather than a device count. A batch where every
-  device fails commits nothing and tags nothing. Captures are staged to
+  `Devices:` name the successful subset, `Failed-Devices:` the rest.
+  `save_golden` no longer needs `len(changed) > 1` to tag — a baseline marks a
+  moment, not a device count — but **coverage still governs**, so a batch
+  targeting one device out of nine is denied the tag with the other eight
+  named. A batch where every device fails commits nothing and tags nothing. Captures are staged to
   `.nsot/staging/post_deploy/` as each device completes, so a crash between
   8.5 and the commit is recoverable without re-reading devices that may have
   changed since.
