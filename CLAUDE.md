@@ -584,7 +584,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_render_artifact.py` | deployability gate, masking, unmodelled acknowledgement |
 | `test_template_approval.py` | template library, bindings, binding fingerprint |
 | `test_codemirror_assets.py` | vendored asset paths, load order, no CDN |
-| `test_deploy_contract.py` | refuse → real secrets → mask check, before any socket |
+| `test_deploy_contract.py` | refuse → real secrets → mask check, before any socket; route→wire seam |
 | `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
 | `test_deploy_batch.py` | drift skip, breaker, every device accounted for |
 | `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
@@ -609,6 +609,12 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 - Use `pathlib` / `os.path`, never hardcoded separators or drive letters
 - **No IPv4 literals** in `modules/integrations/`, `modules/nsot/`, or `routes/` —
   `test_no_ip_literals.py` enforces this
+- **Scan a diff for definitions it did not mean to remove** before committing:
+  `python scripts/check_removed_definitions.py` (staged by default; takes a ref
+  or `A..B`). Install it as a hook with
+  `ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit`. It exits 1 when
+  a removed definition is still called — three edits in this project have
+  destroyed adjacent code, and all three show that shape.
 - Fernet key at `data/key.key` — back it up; losing it makes stored credentials
   and secrets unrecoverable
 - `.env` holds `ANTHROPIC_API_KEY`; excluded from git

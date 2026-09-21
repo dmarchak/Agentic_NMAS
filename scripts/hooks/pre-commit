@@ -1,0 +1,10 @@
+#!/bin/sh
+# Scan the staged diff for definitions the edit removed but did not mean to.
+#
+# Install:  ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
+# Bypass:   git commit --no-verify   (for a deliberate removal)
+#
+# Blocks only on BROKEN / GONE — a removed definition something still calls.
+# A clean rename or a deliberate deletion with no remaining references prints
+# and passes.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_removed_definitions.py"

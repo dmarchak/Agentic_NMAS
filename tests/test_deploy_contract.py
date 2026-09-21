@@ -506,3 +506,157 @@ class TestEveryReferencedHelperExists:
                          and not hasattr(module, name))
         assert missing == [], (
             f"{module_name} calls undefined helper(s): {missing}")
+
+
+class TestARequestReachesTheWire:
+    """The seam one layer up: HTTP request → route → `_deploy_one` → transport.
+
+    ``TestTheConfirmedListReachesTheTransport`` follows a command list from a
+    ``PipelineContext`` to the wire. It starts *after* the route has already
+    built the context, so it says nothing about whether any route still calls
+    the code it exercises — which is how ``_deploy_one()`` could be deleted
+    outright with 1133 tests green.
+
+    An AST presence test catches that deletion. It does not catch a function
+    that exists but is no longer called, is called with the wrong arguments, or
+    is bypassed by a second path someone added. This does, because it makes the
+    request the test subject: POST /deploy/plan for a real command list and
+    hash, POST /deploy/apply with that hash, and assert the exact program
+    arrives at the transport.
+
+    Only the transport and the stages that would open a socket are replaced.
+    Everything between the route and them — artifact build, `prepare_device`,
+    `merge_commands`, `assert_merge_only`, `plan_batch`, `run_batch`,
+    `_deploy_one`, `PipelineRunner` — is the real code.
+    """
+
+    DEVICE = "s1"
+    IP = "203.0.113.21"
+    EDIT = "NSoT-managed route seam"
+
+    @pytest.fixture
+    def wired(self, tmp_path, monkeypatch):
+        import flask
+        from modules.nsot import hostvars, manifest, templates_repo
+        from modules.nsot.parsers import get_parser
+        from modules import pipeline as P
+        import routes.deploy as RD
+
+        list_dir = tmp_path / "lab"
+        repo = str(list_dir / "config_repo")
+        os.makedirs(os.path.join(repo, "golden"), exist_ok=True)
+        os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+        templates_repo.seed_templates(repo)
+        manifest.upsert_device(repo, f"uid:{self.DEVICE}", self.DEVICE, self.IP,
+                               platform="cisco_ios")
+
+        captured = _config(self.DEVICE)
+        with open(os.path.join(repo, "golden", f"{self.DEVICE}.cfg"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(captured)
+
+        # Committed intent = the capture's own parse plus ONE edit, so the
+        # program is exactly the lines that edit produces.
+        intent = get_parser("cisco_ios").parse(captured)
+        target = next(i for i in intent["interfaces"]
+                      if i["name"].startswith("GigabitEthernet"))
+        target["description"] = self.EDIT
+        # write_committed() refuses a `secrets:` mapping, so the committed file
+        # holds refs only. The credential store is what puts values back at
+        # deploy time; here the capture's own parsed values stand in for it.
+        secrets = dict(intent.get("secrets") or {})
+        hostvars.write_committed(repo, intent)
+
+        row = {"hostname": self.DEVICE, "ip": self.IP,
+               "device_type": "cisco_ios", "username": "u", "password": "p",
+               "secret": "s", "device_uid": self.DEVICE}
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(list_dir))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        monkeypatch.setattr("modules.device.get_current_device_list",
+                            lambda: ("Lab", str(list_dir / "devices.csv")))
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path=None: [row])
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda *a, **k: True)
+        monkeypatch.setattr("modules.nsot.hostvars.hydrate_secrets",
+                            lambda hv, host: {**hv, "secrets": dict(secrets)})
+        # The batch commit is a different seam, covered elsewhere.
+        monkeypatch.setattr(RD, "_commit_batch_golden",
+                            lambda *a, **k: {"ok": True, "commit": ""})
+
+        seen = []
+
+        def _spy_push(dev, cmds, pool, lock):
+            seen.append({"ip": dev.get("ip"), "commands": list(cmds)})
+            return "spy: accepted"
+
+        monkeypatch.setattr(P, "_push_config", _spy_push)
+        for stage in ("_stage_netbox_query", "_stage_ci_gate",
+                      "_stage_pre_snapshot", "_stage_config_diff",
+                      "_stage_post_snapshot", "_stage_verify",
+                      "_stage_save_golden"):
+            monkeypatch.setattr(P, stage, lambda ctx: None)
+
+        app = flask.Flask(__name__)
+        app.register_blueprint(RD.bp)
+        return app.test_client(), seen
+
+    def _plan(self, client):
+        response = client.post("/deploy/plan", json={"devices": [self.DEVICE]})
+        assert response.status_code == 200, response.data
+        body = response.get_json()
+        return next(d for d in body["devices"] if d["device"] == self.DEVICE)
+
+    def test_the_plans_program_is_what_arrives_at_the_transport(self, wired):
+        client, seen = wired
+
+        planned = self._plan(client)
+        assert planned["deployable"] is True, planned.get("blocking_reasons")
+        assert planned["commands"], "the plan published no program to follow"
+
+        response = client.post("/deploy/apply", json={
+            "confirmations": {self.DEVICE: planned["capture_hash"]},
+            "command_hashes": {self.DEVICE: planned["command_hash"]}})
+        assert response.status_code == 200, response.data
+
+        assert len(seen) == 1, (
+            f"expected exactly one push from one request, got {len(seen)}. "
+            "Zero means nothing on the route reaches the transport at all.")
+        assert seen[0]["ip"] == self.IP
+        assert seen[0]["commands"] == planned["commands"], (
+            "the program that reached the wire is not the program the plan "
+            f"published: {seen[0]['commands']} != {planned['commands']}")
+
+    def test_the_edit_is_in_the_program_that_reached_the_wire(self, wired):
+        """Guards against a seam that passes an empty list end to end."""
+        client, seen = wired
+
+        planned = self._plan(client)
+        client.post("/deploy/apply", json={
+            "confirmations": {self.DEVICE: planned["capture_hash"]},
+            "command_hashes": {self.DEVICE: planned["command_hash"]}})
+
+        arrived = "\n".join(seen[0]["commands"])
+        assert self.EDIT in arrived
+        assert "end" not in [c.strip() for c in seen[0]["commands"]]
+
+    def test_a_stale_hash_stops_the_request_before_the_wire(self, wired):
+        """The refusal is part of the route's job, so it is part of this test."""
+        client, seen = wired
+
+        planned = self._plan(client)
+        response = client.post("/deploy/apply", json={
+            "confirmations": {self.DEVICE: planned["capture_hash"]},
+            "command_hashes": {self.DEVICE: "not-the-hash-you-confirmed"}})
+
+        body = response.get_json()
+        assert seen == [], "a refused device must never reach the transport"
+        assert body["refused"][0]["device"] == self.DEVICE
+        assert "changed since you confirmed" in body["refused"][0]["reason"]
+
+    def test_an_unconfirmed_device_reaches_nothing(self, wired):
+        client, seen = wired
+        response = client.post("/deploy/apply", json={"confirmations": {}})
+        assert response.status_code == 400
+        assert seen == []
