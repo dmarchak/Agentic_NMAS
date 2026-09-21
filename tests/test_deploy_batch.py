@@ -853,3 +853,90 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
         undo = rollback_commands(self.PUSHED, "hostname s4\n")
         assert undo == ["interface GigabitEthernet0/1",
                         " no description x", "exit"]
+
+
+class TestTheNotesListingEvaluatesApplicability:
+    """The listing reported every stored record, not the ones that block.
+
+    ``rolled_back_note()`` without a program returns the raw note — correct for
+    reading one, wrong for answering "what is blocked". After 3B the listing
+    said s4 was rolled back while the plan said s4 was deployable, because the
+    intent had since been reverted and the failing program was no longer what
+    would be sent. Two answers to one question, and the operator reads the
+    wrong one first.
+    """
+
+    FAILED = ["interface Loopback0", " description 3B test", "exit"]
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars, repo as R
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        repo = str(list_dir / "config_repo")
+        R.init_repo(repo)
+        hostvars.write_committed_text(repo, "s4", "hostname: s4\n")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 initial")
+        hostvars.record_rolled_back(
+            repo, "s4", hostvars.intent_commits(repo, "s4")[0]["sha"],
+            reason="verify failed", commands=self.FAILED)
+        return repo, hostvars
+
+    def _listing(self, monkeypatch, program):
+        import flask
+        import routes.deploy as D
+        import routes.templatize as T
+
+        monkeypatch.setattr(D, "_artifact_for", lambda *a: (("art", "cap"), ""))
+        monkeypatch.setattr(D, "_current_program", lambda art, cap: program)
+        app = flask.Flask(__name__)
+        with app.test_request_context(json={}):
+            return T.rolled_back().get_json()
+
+    def test_a_note_whose_program_still_applies_is_listed_as_blocking(
+            self, lab, monkeypatch):
+        body = self._listing(monkeypatch, self.FAILED)
+        assert "s4" in body["rolled_back"]
+        assert body["rolled_back"]["s4"]["applicability"] == "blocking"
+        assert body["blocking_count"] == 1
+
+    def test_a_note_that_no_longer_applies_is_not_listed_as_blocking(
+            self, lab, monkeypatch):
+        """The 3B case: intent reverted, nothing would be sent."""
+        body = self._listing(monkeypatch, [])
+        assert body["rolled_back"] == {}
+        assert body["blocking_count"] == 0
+        assert body["stale"]["s4"]["applicability"] == "no longer applies"
+
+    def test_the_record_is_kept_not_deleted(self, lab, monkeypatch):
+        """It is real history, and the retry log refers to it."""
+        body = self._listing(monkeypatch, [])
+        assert body["stale"]["s4"]["commands"] == self.FAILED
+        assert body["stale"]["s4"]["reason"] == "verify failed"
+
+    def test_an_uncomputable_program_is_reported_as_standing(
+            self, lab, monkeypatch):
+        """Unknown must not read as cleared — the same rule as the capture."""
+        import routes.deploy as D
+        import routes.templatize as T
+
+        def _boom(*a):
+            raise RuntimeError("cannot render")
+
+        monkeypatch.setattr(D, "_artifact_for", lambda *a: (("art", "cap"), ""))
+        monkeypatch.setattr(D, "_current_program", _boom)
+        import flask
+        app = flask.Flask(__name__)
+        with app.test_request_context(json={}):
+            body = T.rolled_back().get_json()
+
+        assert body["rolled_back"]["s4"]["applicability"] == "unknown"
+        assert body["blocking_count"] == 1

@@ -397,16 +397,49 @@ def rolled_back_retries():
 
 @bp.route("/rolled-back", methods=["GET"])
 def rolled_back():
-    """Devices whose current intent was rolled back and not yet resolved."""
-    from modules.nsot import hostvars
+    """Rolled-back notes, split by whether they still apply.
 
-    repo = _repo_for(_active_list())
-    notes = {}
+    The listing used to report every stored record, because
+    ``rolled_back_note()`` without a program returns the raw note — which is
+    correct for reading one, and wrong for answering "what is blocked". An
+    operator saw "s4 is rolled back" beside a plan that said s4 was deployable.
+
+    A note applies while the program a fresh plan would send still contains the
+    lines that failed. Evaluating that means computing each device's program,
+    which is why this is done here rather than in the store: the store should
+    not need a renderer to answer a question about its own contents.
+    """
+    from modules.nsot import hostvars
+    from routes.deploy import _artifact_for, _current_program
+
+    list_name = _active_list()
+    repo = _repo_for(list_name)
+    applies, stale = {}, {}
+    cache = {}
+
     for hostname in hostvars.list_committed(repo):
-        note = hostvars.rolled_back_note(repo, hostname)
-        if note:
-            notes[hostname] = note
-    return jsonify({"ok": True, "rolled_back": notes})
+        raw = hostvars.rolled_back_note(repo, hostname)
+        if not raw:
+            continue
+        try:
+            built, error = _artifact_for(list_name, hostname, cache)
+            program = _current_program(built[0], built[1]) if built else None
+        except Exception as exc:              # noqa: BLE001
+            log.warning("templatize: could not compute %s's program to test "
+                        "its rolled-back note (%s) — reporting it as standing",
+                        hostname, exc)
+            applies[hostname] = {**raw, "applicability": "unknown"}
+            continue
+
+        if program is None:
+            applies[hostname] = {**raw, "applicability": "unknown"}
+        elif hostvars.rolled_back_note(repo, hostname, program):
+            applies[hostname] = {**raw, "applicability": "blocking"}
+        else:
+            stale[hostname] = {**raw, "applicability": "no longer applies"}
+
+    return jsonify({"ok": True, "rolled_back": applies, "stale": stale,
+                    "blocking_count": len(applies)})
 
 
 def _public(result: dict) -> dict:
