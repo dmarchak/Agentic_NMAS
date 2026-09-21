@@ -470,12 +470,13 @@ def run_targets(list_name: str, targets: list, data: dict,
     if refused:
         report.setdefault("results", []).extend(refused)
         report["refused"] = refused
-    report["golden"] = _commit_batch_golden(list_name, report, label=label)
+    report["golden"] = _commit_batch_golden(list_name, report, label=label,
+                                            source_ref=source_ref)
     return report
 
 
-def _commit_batch_golden(list_name: str, report: dict,
-                         label: str = "") -> dict:
+def _commit_batch_golden(list_name: str, report: dict, label: str = "",
+                         source_ref: str = "") -> dict:
     """One commit for the batch, naming exactly the devices that succeeded.
 
     A batch is an event, and the record should say so. Three per-device commits
@@ -514,7 +515,7 @@ def _commit_batch_golden(list_name: str, report: dict,
                 "reason": "no device completed successfully"}
 
     batch_id = f"batch-{report.get('batch_id') or _os.urandom(3).hex()}"
-    earned = _baseline_earned(report, pending, failed)
+    earned = _baseline_earned(report, pending, failed, source_ref=source_ref)
     what = label or f"via pipeline {batch_id}"
     subject = f"golden: baseline {len(pending)} device(s) {what}"
     trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
@@ -537,22 +538,30 @@ def _commit_batch_golden(list_name: str, report: dict,
             "failed_devices": failed, **earned}
 
 
-def _baseline_earned(report: dict, pending: list, failed: list) -> dict:
+def _baseline_earned(report: dict, pending: list, failed: list,
+                     source_ref: str = "") -> dict:
     """Whether this batch produced a state worth calling a baseline.
 
-    Measured, not categorised. ``baseline/<ts>`` asserts *the network looked
-    like this*, so it is earned when three things are observably true: every
-    targeted device succeeded, the whole inventory was targeted, and each
-    device's post-deploy capture equals what was pushed to it. An additive
-    re-apply that leaves residue on one device did not produce the baseline; an
-    additive re-apply that leaves none did, and refusing the tag by category
-    would understate what happened.
+    **Each path's baseline is keyed on the claim its tag makes**, which are not
+    the same claim:
 
-    Same principle as ``device_changed``: ask the artifact, do not infer from
-    the kind of operation.
+    * A **deploy** baseline says *this commit's goldens are the network*. The
+      goldens in that commit ARE the post-deploy captures, so for devices that
+      succeeded it is true by construction. What remains is coverage: every
+      targeted device succeeded, and the whole inventory was targeted.
+    * A **restore** baseline says *the network is back to the ref's state*.
+      That is a claim about content, so it is measured: each post-deploy
+      capture against the ref's golden.
+
+    An earlier version measured content on both paths and compared a *rendered
+    template* against a device. A render is a statement of intent, not a whole
+    config, so every unmodelled construct read as a difference and a whole-fleet
+    template deploy would have been denied a baseline it had earned. Substituting
+    ``template_report`` would have been the adjacent-question mistake in the
+    other direction: it answers whether the template reproduces the device, not
+    whether the commit is the network.
     """
     from modules.device import get_current_device_list, load_saved_devices
-    from modules.nsot import normalize
 
     reasons = []
     if failed:
@@ -571,110 +580,28 @@ def _baseline_earned(report: dict, pending: list, failed: list) -> dict:
     if missing:
         reasons.append(f"{len(missing)} device(s) not targeted: {missing}")
 
-    residual = []
-    for item in pending:
-        target = item.get("target_config")
-        if target is None:
-            continue          # a template deploy has no single target text
-        post = normalize.strip_for_diff(item["config_text"])
-        if post != normalize.strip_for_diff(target):
-            residual.append(item["hostname"])
-    if residual:
-        reasons.append(f"{len(residual)} device(s) differ from what was pushed: "
-                       f"{sorted(residual)}")
+    if source_ref:
+        # Restore only: the tag claims the network matches the ref.
+        from modules.nsot import roundtrip
+
+        residual = []
+        for item in pending:
+            target = item.get("target_config")
+            if target is None:
+                continue
+            outcome = roundtrip.configs_equivalent(item["config_text"], target)
+            if not outcome["equal"]:
+                residual.append({
+                    "device": item["hostname"],
+                    "still_differs": (outcome["only_left"][:3]
+                                      + outcome["only_right"][:3]),
+                })
+        if residual:
+            reasons.append(
+                f"{len(residual)} device(s) do not match {source_ref}: "
+                + ", ".join(r["device"] for r in residual))
+            return {"baseline": False, "baseline_reasons": reasons,
+                    "residual": residual}
 
     return {"baseline": not reasons,
             "baseline_reasons": reasons or ["every targeted device matches"]}
-
-
-def _deploy_one(entry, list_name: str, device_rows: dict,
-                authorise: dict = None, source_ref: str = "") -> dict:
-    """Run the pipeline for a single device. The only path that connects."""
-    import threading
-
-    from modules.nsot.deploy import (DEPLOYED, FAILED, assert_merge_only,
-                                     merge_commands, prepare_for_deploy)
-    from modules.pipeline import PipelineContext, PipelineRunner
-
-    artifact = entry["artifact"]
-    hostname = artifact.device
-    device = device_rows.get(hostname, {})
-
-    try:
-        prepared = prepare_for_deploy(artifact)  # refuse → resolve → mask check
-    except Exception as exc:                    # noqa: BLE001
-        return {"device": hostname, "outcome": FAILED, "stage": "prepare",
-                "reason": str(exc)}
-
-    # The merge diff in sendable form — NOT the whole rendered config. Pushing
-    # the full render made assert_merge_only() vacuous (to_push was the
-    # intended config, so it could not fail) and meant the operator confirmed
-    # one line while 83 were sent.
-    captured = entry.get("fresh") or ""
-    commands = merge_commands(prepared["config"], captured)
-    if not commands:
-        return {"device": hostname, "outcome": DEPLOYED, "stage": "",
-                "reason": "nothing to change", "commands": []}
-    try:
-        assert_merge_only(commands, prepared["config"])
-    except Exception as exc:                    # noqa: BLE001
-        return {"device": hostname, "outcome": FAILED, "stage": "merge-only",
-                "reason": str(exc)}
-
-    ctx = PipelineContext(
-        config_type="template",
-        device_ips=[device.get("ip", "")],
-        params={"skip_route_check": True},
-        ip_params_map={},
-        selected_devices=[device],
-        check_devices=[device],
-        connections_pool={},
-        pool_lock=threading.Lock(),
-        config_id=f"tpl-{hostname}",
-    )
-    # Scoped to THIS device. The batch's other devices get their own list.
-    authorised = [a.strip() for a in ((authorise or {}).get(hostname) or [])]
-    ctx.params["allowed_dangerous"] = authorised
-    # Confirmed, not merely pre-populated: rendered_commands derives from this,
-    # so stage 2 cannot overwrite it and an attempt to do so raises.
-    ctx.confirmed_commands = {device.get("ip", ""): commands}
-    # The batch commits; this device hands its capture back.
-    ctx.defer_golden = True
-
-    try:
-        result = PipelineRunner(ctx).run()
-    except Exception as exc:                    # noqa: BLE001
-        log.exception("deploy: pipeline raised for %s", hostname)
-        return {"device": hostname, "outcome": FAILED, "stage": "pipeline",
-                "reason": str(exc)}
-
-    failed_stage = result.stages_failed[-1] if result.stages_failed else ""
-    # What actually landed. A failed push does not mean an unchanged device.
-    failure_state = list((result.failure_state or {}).values())
-    outcome = DEPLOYED if result.final_status == "success" else FAILED
-    return {
-        "device": hostname,
-        "outcome": outcome,
-        "commands": commands,
-        "failure_state": failure_state,
-        "authorised": authorised,
-        # The target text, so the batch can MEASURE whether the post-deploy
-        # capture equals what was pushed — which is what earns baseline/<ts>.
-        "golden_pending": [{**p, "target_config": prepared["config"]}
-                           for p in (result.golden_pending or [])],
-        "rollback_commands": list(
-            (result.rollback_commands or {}).get(device.get("ip", ""), [])),
-        "rollback_failures": dict(result.rollback_failures or {}),
-        "rollback_not_undone": list(
-            (result.rollback_not_undone or {}).get(device.get("ip", ""), [])),
-        "rollback_dangerous_exempt": list(
-            (result.rollback_dangerous or {}).get(device.get("ip", ""), [])),
-        "device_changed": any(e.get("device_changed") for e in failure_state),
-        "stage": failed_stage,
-        "reason": result.error or "",
-        "rolled_back": result.rollback_performed,
-        "pending_convergence": list(result.pending_convergence),
-        "golden_commit": (result.golden_result or {}).get("commit", ""),
-        "golden_skipped": list(result.golden_skipped),
-        "warnings": list(result.warnings),
-    }

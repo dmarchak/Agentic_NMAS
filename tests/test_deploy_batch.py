@@ -1133,3 +1133,100 @@ class TestACrashedBatchCanRecoverItsCaptures:
     def test_the_staging_area_is_gitignored(self, repo):
         with open(os.path.join(repo, ".gitignore"), encoding="utf-8") as fh:
             assert ".nsot/staging/" in fh.read()
+
+
+class TestEachPathsBaselineIsKeyedOnItsOwnClaim:
+    """A deploy baseline and a restore baseline assert different things.
+
+    * deploy: *this commit's goldens are the network*. The goldens ARE the
+      post-deploy captures, so for devices that succeeded it is true by
+      construction — what remains is coverage.
+    * restore: *the network is back to the ref's state*. A claim about
+      content, so it is measured.
+
+    An earlier version measured content on both and compared a rendered
+    template against a device. A render is a statement of intent, not a whole
+    config, so every unmodelled construct read as a difference and a whole-fleet
+    template deploy would have been denied a baseline it had earned.
+    """
+
+    FLEET = ["r2", "s3", "s4"]
+
+    @pytest.fixture
+    def fleet(self, monkeypatch):
+        import modules.device as D
+        monkeypatch.setattr(D, "load_saved_devices",
+                            lambda path=None: [{"hostname": h, "ip": f"203.0.113.{i}"}
+                                               for i, h in enumerate(self.FLEET, 12)])
+        monkeypatch.setattr(D, "get_current_device_list",
+                            lambda: ("Lab", "devices.csv"))
+
+    def _pending(self, device, config, target=None):
+        entry = {"hostname": device, "config_text": config,
+                 "mgmt_ip": "203.0.113.1", "netbox_id": None,
+                 "device_uid": device}
+        if target is not None:
+            entry["target_config"] = target
+        return entry
+
+    def test_a_whole_fleet_template_deploy_earns_a_baseline(self, fleet):
+        """The render differs from the device by every unmodelled construct;
+        that is not a reason to deny the tag."""
+        from routes.deploy import _baseline_earned
+
+        pending = [self._pending(d, f"hostname {d}\nboot-start-marker\n",
+                                 target=f"hostname {d}\n")
+                   for d in self.FLEET]
+        outcome = _baseline_earned({}, pending, [], source_ref="")
+        assert outcome["baseline"] is True, outcome["baseline_reasons"]
+
+    def test_a_failed_device_denies_it(self, fleet):
+        from routes.deploy import _baseline_earned
+        pending = [self._pending(d, f"hostname {d}\n") for d in ("r2", "s3")]
+        outcome = _baseline_earned({}, pending, ["s4"], source_ref="")
+        assert outcome["baseline"] is False
+        assert "did not succeed" in outcome["baseline_reasons"][0]
+
+    def test_a_partial_fleet_denies_it(self, fleet):
+        from routes.deploy import _baseline_earned
+        pending = [self._pending("s3", "hostname s3\n")]
+        outcome = _baseline_earned({}, pending, [], source_ref="")
+        assert outcome["baseline"] is False
+        assert "not targeted" in outcome["baseline_reasons"][0]
+
+    def test_a_restore_that_matches_the_ref_earns_a_baseline(self, fleet):
+        from routes.deploy import _baseline_earned
+        pending = [self._pending(d, f"hostname {d}\n", target=f"hostname {d}\n")
+                   for d in self.FLEET]
+        outcome = _baseline_earned({}, pending, [],
+                                   source_ref="baseline/20260920T212325Z-migrated")
+        assert outcome["baseline"] is True, outcome["baseline_reasons"]
+
+    def test_a_restore_leaving_residue_is_denied_and_names_the_device(self, fleet):
+        """The case the tag must not overclaim: one device still differs."""
+        from routes.deploy import _baseline_earned
+
+        pending = [self._pending("r2", "hostname r2\n", target="hostname r2\n"),
+                   self._pending("s3", "hostname s3\n", target="hostname s3\n"),
+                   self._pending("s4",
+                                 "hostname s4\ninterface Loopback0\n description left over\n",
+                                 target="hostname s4\n")]
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+
+        assert outcome["baseline"] is False
+        assert "s4" in outcome["baseline_reasons"][-1]
+        assert [r["device"] for r in outcome["residual"]] == ["s4"]
+        assert outcome["residual"][0]["still_differs"]
+
+    def test_volatile_lines_and_bare_bangs_do_not_decide_it(self, fleet):
+        """A flat comparison turned on `!` and on ordering."""
+        from routes.deploy import _baseline_earned
+
+        target = "hostname s3\n!\ninterface Loopback0\n description x\n!\n"
+        capture = ("! Golden config — s3 (203.0.113.23)\n"
+                   "interface Loopback0\n description x\n!\nhostname s3\n")
+        pending = [self._pending(d, capture.replace("s3", d),
+                                 target=target.replace("s3", d))
+                   for d in self.FLEET]
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+        assert outcome["baseline"] is True, outcome["baseline_reasons"]

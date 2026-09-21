@@ -458,6 +458,14 @@ The only part of the NSoT work that reaches a device.
   post-deploy config stage 7 now captures.
 - **Batch**: sequential by default, circuit breaker on repeated *verify*
   failures, drift skips rather than aborts, every device accounted for.
+- **Each path's baseline is keyed on the claim its tag makes.** A *deploy*
+  baseline says "this commit's goldens are the network" — the goldens are the
+  post-deploy captures, so it is true by construction for devices that
+  succeeded, and only coverage remains (all targeted devices succeeded, whole
+  inventory targeted). A *restore* baseline says "the network is back to the
+  ref's state", which is a content claim and is measured per device with
+  `roundtrip.configs_equivalent()` — section-aware, over `strip_for_diff`, so
+  bare `!` and ordering cannot decide it.
 - **A batch is an event: one golden commit, one baseline.** Stage 8.5 hands its
   capture back (`defer_golden`) instead of committing, so `save_golden`'s "one
   call is one commit" is preserved rather than special-cased. The subject and

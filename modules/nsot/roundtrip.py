@@ -129,6 +129,46 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     return template.render(vars=host_vars, secret=_secret)
 
 
+def configs_equivalent(left: str, right: str) -> dict:
+    """Are two **complete** configs the same network state?
+
+    ``{"equal": bool, "only_left": [...], "only_right": [...]}``.
+
+    Section-aware and volatile-line aware: headers with their children, over
+    :func:`normalize.strip_for_diff` output. A flat list comparison decides on
+    bare ``!`` lines and on ordering, neither of which is a difference in
+    configuration — and a baseline tag that turns on those is a tag that is
+    wrong for reasons nobody can act on.
+
+    For **complete** configs only. A rendered template is a statement of
+    intent, not a whole config, so comparing one against a device here would
+    report every unmodelled construct as a difference. That question is
+    ``compare()``, and it is a different question.
+    """
+    left_sections = _sections("\n".join(normalize.strip_for_diff(left or "")))
+    right_sections = _sections("\n".join(normalize.strip_for_diff(right or "")))
+
+    only_left, only_right = [], []
+    for header in sorted(set(left_sections) | set(right_sections)):
+        a = left_sections.get(header)
+        b = right_sections.get(header)
+        if a is None:
+            only_right.append(header)
+            continue
+        if b is None:
+            only_left.append(header)
+            continue
+        for child in a:
+            if child not in b:
+                only_left.append(f"{header} :: {child}")
+        for child in b:
+            if child not in a:
+                only_right.append(f"{header} :: {child}")
+
+    return {"equal": not only_left and not only_right,
+            "only_left": only_left, "only_right": only_right}
+
+
 def compare(running_config: str, rendered_config: str, host_vars: dict = None) -> dict:
     """Compare a rendered config against the real one. Returns a coverage report."""
     running = _sections("\n".join(normalize.strip_for_roundtrip(running_config)))
