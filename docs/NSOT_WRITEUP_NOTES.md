@@ -4584,3 +4584,66 @@ already flagged as not meaning safe, and which still did not say *lockout*.
 > of them you actually care about, and whether anything can move one without
 > the other — because that is where the proxy will fail, and it will fail
 > quietly.
+
+## A rule that cannot be conditional
+
+The first-push preview reported that five routers' plaintext passwords in
+history are dead. The report then *named one of them* — in prose, in a commit
+message, and in a test docstring — on the reasoning that a dead credential is
+not a secret.
+
+The reasoning is wrong in a way that matters more than the instance. The
+reporter does not know which values are dead. It is handed strings out of a
+config and classifies them afterwards; "this one is safe to print" is a
+conclusion drawn from the same machinery whose output is being printed. A rule
+conditioned on that is a rule that holds until the classification is wrong
+once.
+
+And it was wrong immediately, in the very next report. Asked to show SNMP
+access **modes** and no values, a script printed:
+
+```
+snmp-server host <ip> version 2c public
+```
+
+Its own regex masked `community|password|auth|priv` followed by a token. The
+trap-host form carries the community as a bare trailing token with no keyword
+in front of it, so nothing matched and the value went out. The project's
+redactor already knew that shape — the reporter had reimplemented a worse one,
+which is the actual defect. `describe_line()` now routes every config line a
+report shows through `redact.redact_positional()`, unconditionally.
+
+### The gap that turned up underneath
+
+Checking whether the real redactor had the same blind spot found a different
+one. It handles `snmp-server host <ip> version 2c <community>`. It did not
+handle the trap and inform forms:
+
+```
+snmp-server host <ip> traps version 2c secretcomm
+  -> snmp-server host <ip> <redacted:snmp_community> version 2c secretcomm
+```
+
+The pattern knew about an optional `version` clause and nothing else, so on
+`traps` it masked the keyword and published the community beside it. That is
+worse than no masking at all: the line *looks* handled. A reader scanning for
+unmasked secrets sees a `<redacted:…>` and moves on.
+
+Fixed to spell out the optional clauses IOS actually allows — `vrf`,
+`traps|informs`, `version` with its auth level — and added to the canary, so
+an edit that reopens it is caught by the health check rather than by someone
+reading a log.
+
+> A masked line is a claim that the secret on it was found. When the mask is
+> in the wrong place, the claim is false and the evidence that it is false
+> looks exactly like evidence that it is true.
+
+### What was actually being asked
+
+The question behind all this was narrow and the answer is worth recording
+plainly: every SNMP community in this fleet is **RO**, all nine ACL-restricted,
+and there is **no RW community in any of the 42 golden blobs in history**. An
+RW community would have been a configuration-write path into every device that
+no confirm hash, deploy gate or approval queue covers — which is why it was
+worth measuring across history rather than only at HEAD, since a push
+publishes every commit.

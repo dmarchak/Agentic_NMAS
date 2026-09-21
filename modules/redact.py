@@ -79,8 +79,22 @@ _VALUE = r"((?![\[\]|<>(){}])\S+)"
 _POSITIONAL = (
     ("snmp_community", re.compile(
         r"(?i)\b(snmp-server\s+community\s+)" + _VALUE + r"()")),
+    # `snmp-server host <ip> [vrf X] [traps|informs] [version {1|2c|3 [auth|
+    # noauth|priv]}] <community>`. The optional clauses have to be spelled
+    # out, because the pattern that only knew about `version` masked the wrong
+    # token on the trap/inform forms and left the community in the clear:
+    #
+    #   snmp-server host <ip> traps version 2c secretcomm
+    #     -> snmp-server host <ip> <redacted:snmp_community> version 2c secretcomm
+    #
+    # Masking a keyword while publishing the secret beside it is worse than
+    # not masking at all — the line looks handled.
     ("snmp_community", re.compile(
-        r"(?i)\b(snmp-server\s+host\s+\S+(?:\s+version\s+\S+)?\s+)" + _VALUE + r"()")),
+        r"(?i)\b(snmp-server\s+host\s+\S+"
+        r"(?:\s+vrf\s+\S+)?"
+        r"(?:\s+(?:traps|informs))?"
+        r"(?:\s+version\s+\S+(?:\s+(?:auth|noauth|priv))?)?"
+        r"\s+)" + _VALUE + r"()")),
     # `privilege N` and `algorithm-type X` are both optional, may appear in
     # either order, and either may be absent. The first version allowed only
     # `privilege N`, so
@@ -477,6 +491,11 @@ CANARY_LINES = (
     ("user_secret_algo",
      "username admin privilege 15 algorithm-type scrypt secret CanaryTokenC3"),
     ("enable_secret", "enable secret 9 CanaryTokenD4"),
+    # The trap-host form. Its community sits after optional keywords, and the
+    # pattern that only knew about `version` masked `traps` and published the
+    # community — a line that LOOKS handled is worse than one that does not.
+    ("snmp_trap_host",
+     "snmp-server host 203.0.113.10 traps version 2c CanaryTokenE5"),
 )
 CANARY_TOKENS = {label: line.split()[-1] if label != "snmp_community"
                  else "CanaryTokenA1"

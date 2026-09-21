@@ -370,6 +370,57 @@ def _blobs_of_golden(repo_dir: str):
     return seen
 
 
+def describe_line(line: str) -> str:
+    """A config line, safe to print. **Unconditionally.**
+
+    Every path that shows device configuration in a report goes through this.
+    The rule "never print a secret value" cannot be conditioned on knowing
+    which values are secret, or on one of them being dead: a reporter cannot
+    know what it is holding, and a caller that decides per-line will
+    eventually decide wrong.
+
+    Learned twice. A report meant to show SNMP access MODES printed a
+    community, because its own ad-hoc regex knew about `snmp-server community`
+    and not about `snmp-server host … version 2c <community>`. The redactor
+    already knew that shape; the reporter had reimplemented a worse one.
+    """
+    from modules import redact
+
+    return redact.redact_positional(line or "")
+
+
+def snmp_access_modes(repo_dir: str, ref: str, hosts: list) -> dict:
+    """Community ACCESS MODES per device. Counts and modes, never values.
+
+    RO grants read. RW grants configuration write over SNMP — a write path
+    into the device that no confirm hash, deploy gate or approval queue
+    covers. Publishing an RW community is publishing config-write access, so
+    it is reported separately from "how many communities are there".
+    """
+    modes_re = re.compile(
+        r"^\s*snmp-server community \S+\s+(RO|RW)\b\s*(\S*)", re.M | re.I)
+    bare_re = re.compile(r"^\s*snmp-server community \S+\s*$", re.M)
+
+    per_device, totals = {}, {"RO": 0, "RW": 0, "unqualified": 0}
+    for host in hosts:
+        text = _run(["git", "-C", repo_dir, "show", f"{ref}:golden/{host}.cfg"],
+                    timeout=60).stdout
+        found = modes_re.findall(text)
+        bare = len(bare_re.findall(text))
+        modes = [m.upper() for m, _acl in found]
+        for mode in modes:
+            totals[mode] = totals.get(mode, 0) + 1
+        totals["unqualified"] += bare
+        per_device[host] = {
+            "communities": len(found) + bare,
+            "modes": modes,
+            "acl_restricted": sum(1 for _m, acl in found if acl),
+            "unqualified": bare,
+        }
+    return {"per_device": per_device, "totals": totals,
+            "all_read_only": totals["RW"] == 0 and totals["unqualified"] == 0}
+
+
 def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
     """What a push would publish, per device, per kind, with LIVENESS.
 
@@ -473,7 +524,10 @@ def first_push_preview(list_name: str, repo_dir: str = "") -> dict:
         by_prefix[tag.split("/", 1)[0]] = by_prefix.get(tag.split("/", 1)[0], 0) + 1
 
     secrets = scan_history_secrets(repo_dir, list_name)
+    hosts = sorted({os.path.basename(p)[:-4]
+                    for p in _blobs_of_golden(repo_dir).values()})
     return {
+        "snmp": snmp_access_modes(repo_dir, "HEAD", hosts),
         "ok": True,
         "remote": remote_url(config),
         "owner_repo": f"{config['owner']}/{config['repo']}",

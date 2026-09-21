@@ -284,12 +284,15 @@ class TestTheHistoryScanClassifiesLiveness:
     use, wastes the only attention the gate has.
     """
 
+    # `operator` is BOTH the username and the old password here, which is the
+    # collision the liveness test has to survive. A synthetic value, chosen
+    # not to coincide with any credential this fleet has ever held.
     OLD = ("hostname r1\n"
-           "username admin privilege 15 password 0 admin\n"
-           "snmp-server community public RO\n")
+           "username operator privilege 15 password 0 operator\n"
+           "snmp-server community FixtureCommunityA RO 99\n")
     NEW = ("hostname r1\n"
-           "username admin privilege 15 secret 9 $9$abc$def\n"
-           "snmp-server community public RO\n")
+           "username operator privilege 15 secret 9 $9$fixture$hash\n"
+           "snmp-server community FixtureCommunityA RO 99\n")
 
     def _repo(self, tmp_path):
         work = tmp_path / "config_repo"
@@ -306,10 +309,10 @@ class TestTheHistoryScanClassifiesLiveness:
     def test_a_rotated_password_is_dead(self, tmp_path, monkeypatch):
         """And is NOT live merely because the string survives elsewhere.
 
-        The password was `admin`, and `admin` is still the USERNAME at HEAD.
-        Comparing against HEAD's raw text reported every router's old password
-        as live — a short secret collides with ordinary config. Liveness is
-        about the value still occupying a SECRET POSITION.
+        The rotated value is also this device's username. Comparing against
+        HEAD's raw text reported every router's old password as live — a short
+        secret collides with ordinary config text. Liveness is about the value
+        still occupying a SECRET POSITION, not about the string appearing.
         """
         monkeypatch.setattr("modules.redact.known_secret_values", lambda: set())
         out = R.scan_history_secrets(self._repo(tmp_path), "lab")
@@ -348,7 +351,7 @@ class TestTheHistoryScanClassifiesLiveness:
     def test_a_value_in_the_credential_store_counts_as_live(self, tmp_path,
                                                             monkeypatch):
         monkeypatch.setattr("modules.redact.known_secret_values",
-                            lambda: {"admin"})
+                            lambda: {"operator"})
         out = R.scan_history_secrets(self._repo(tmp_path), "lab")
         row = next(r for r in out["rows"] if r["kind"] == "user_password")
         assert row["live"] == 1
@@ -360,6 +363,119 @@ class TestTheHistoryScanClassifiesLiveness:
         preview = R.first_push_preview("default", self._repo(tmp_path))
 
         blob = json.dumps(preview)
-        assert "public" not in blob, "an SNMP community value leaked"
-        assert "$9$abc$def" not in blob, "a hash value leaked"
+        assert "FixtureCommunityA" not in blob, "an SNMP community value leaked"
+        assert "$9$fixture$hash" not in blob, "a hash value leaked"
         assert preview["commits"] == 2
+
+
+class TestAReporterCannotPrintAValue:
+    """The rule is unconditional, and cannot depend on knowing which is which.
+
+    A report meant to show SNMP access MODES printed a community, because its
+    own regex knew `snmp-server community` and not
+    `snmp-server host … version 2c <community>`. The project's redactor
+    already knew that shape; the reporter had reimplemented a worse one.
+
+    "Never print a secret value" cannot be conditioned on liveness either. The
+    reporter cannot know what it is holding — a dead value and a live one are
+    the same string to it — so the rule has to hold before that is known.
+    """
+
+    LINES = [
+        "snmp-server community FixtureCommunityA RO 99",
+        "snmp-server host 203.0.113.10 version 2c FixtureCommunityB",
+        "snmp-server host 203.0.113.10 traps version 2c FixtureCommunityC",
+        "snmp-server host 203.0.113.10 informs version 2c FixtureCommunityD",
+        "username operator privilege 15 password 0 FixtureSecretE",
+        "enable secret 9 FixtureSecretF",
+    ]
+    TOKENS = ["FixtureCommunityA", "FixtureCommunityB", "FixtureCommunityC",
+              "FixtureCommunityD", "FixtureSecretE", "FixtureSecretF"]
+
+    def test_describe_line_masks_every_shape(self):
+        for line in self.LINES:
+            out = R.describe_line(line)
+            leaked = [t for t in self.TOKENS if t in out]
+            assert not leaked, f"{leaked} survived in {out!r}"
+
+    def test_the_trap_host_forms_are_masked_by_the_redactor(self):
+        """The gap: `traps`/`informs` sit between the host and the community.
+
+        The old pattern knew only about `version`, so it masked the keyword
+        and published the community — a line that LOOKS handled, which is
+        worse than one that plainly is not.
+        """
+        from modules.redact import redact_positional
+
+        for line, token in (
+                ("snmp-server host 203.0.113.10 traps version 2c Tok1", "Tok1"),
+                ("snmp-server host 203.0.113.10 informs version 2c Tok2", "Tok2"),
+                ("snmp-server host 203.0.113.10 vrf M traps version 2c Tok3", "Tok3"),
+                ("snmp-server host 203.0.113.10 version 3 priv Tok4", "Tok4"),
+                ("snmp-server host 203.0.113.10 Tok5", "Tok5")):
+            out = redact_positional(line)
+            assert token not in out, f"{token} survived in {out!r}"
+
+    def test_the_canary_covers_the_trap_host_shape(self):
+        """So a future edit that reopens the gap is caught by the canary."""
+        from modules.redact import CANARY_LINES, CANARY_TOKENS, redact_positional
+
+        labels = [label for label, _line in CANARY_LINES]
+        assert "snmp_trap_host" in labels
+
+        for label, line in CANARY_LINES:
+            out = redact_positional(line)
+            assert CANARY_TOKENS[label] not in out, label
+
+
+class TestSnmpAccessModes:
+    """RW grants configuration write over SNMP — a path no gate here covers."""
+
+    def _repo(self, tmp_path, body):
+        work = tmp_path / "config_repo"
+        (work / "golden").mkdir(parents=True)
+        _git(work, "init", "-q")
+        (work / "golden" / "r1.cfg").write_text(body, encoding="utf-8")
+        _git(work, "add", "-A")
+        _git(work, "commit", "-q", "-m", "seed")
+        return str(work)
+
+    def test_read_only_communities_report_all_read_only(self, tmp_path):
+        repo = self._repo(tmp_path,
+                          "snmp-server community FixtureCommunityA RO 99\n")
+        out = R.snmp_access_modes(repo, "HEAD", ["r1"])
+
+        assert out["all_read_only"] is True
+        assert out["totals"]["RO"] == 1 and out["totals"]["RW"] == 0
+        assert out["per_device"]["r1"]["acl_restricted"] == 1
+
+    def test_a_write_community_is_reported_and_stops_it(self, tmp_path):
+        repo = self._repo(tmp_path,
+                          "snmp-server community FixtureCommunityA RW\n")
+        out = R.snmp_access_modes(repo, "HEAD", ["r1"])
+
+        assert out["all_read_only"] is False
+        assert out["totals"]["RW"] == 1
+
+    def test_an_unqualified_community_is_not_assumed_read_only(self, tmp_path):
+        """No mode means the device's default, which is RO — but not stated.
+
+        Reporting an unstated default as RO would be inferring the property
+        the operator asked to have measured.
+        """
+        repo = self._repo(tmp_path, "snmp-server community FixtureCommunityA\n")
+        out = R.snmp_access_modes(repo, "HEAD", ["r1"])
+
+        assert out["all_read_only"] is False
+        assert out["totals"]["unqualified"] == 1
+
+    def test_no_value_appears_in_the_result(self, tmp_path):
+        repo = self._repo(tmp_path,
+                          "snmp-server community FixtureCommunityA RO 99\n"
+                          "snmp-server host 203.0.113.10 traps version 2c "
+                          "FixtureCommunityB\n")
+        out = R.snmp_access_modes(repo, "HEAD", ["r1"])
+
+        blob = json.dumps(out)
+        assert "FixtureCommunityA" not in blob
+        assert "FixtureCommunityB" not in blob
