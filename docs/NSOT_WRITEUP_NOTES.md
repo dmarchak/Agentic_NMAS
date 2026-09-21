@@ -4443,3 +4443,75 @@ Third time in this work that a defect was found by making the double model
 measured behaviour rather than intended behaviour, and the second time the
 thing it could not express was the difference between a value and a reference
 to a value.
+
+## A gate that could never open
+
+s1's rotation refused at the confirmation: *"the device or the plan changed
+since you confirmed"*, `failed_before_any_change`, nothing sent. Seconds had
+passed and nothing had touched the device.
+
+The hypothesis was volatility: the new live read must be feeding something
+into the fingerprint that moves on its own — `Last configuration change at
+…`, `ntp clock-period`, the whole running config instead of one line. It fits;
+for the routers the capture came from a stored golden and was therefore
+stable, and the live read was the thing that had just changed.
+
+It was wrong. Four consecutive preflights on s1 produced the identical
+fingerprint `078fd91dcd2599a4` and identical values for **every** input,
+including the capture hash. Nothing was unstable.
+
+```
+input           run1              run2              run3              run4
+capture_hash    d570293fc8f1869d  d570293fc8f1869d  d570293fc8f1869d  d570293fc8f1869d
+entry_kind      secret            secret            secret            secret
+live_line_h     b80936782cbd      b80936782cbd      b80936782cbd      b80936782cbd
+fingerprint     078fd91dcd2599a4  078fd91dcd2599a4  078fd91dcd2599a4  078fd91dcd2599a4
+```
+
+The fingerprint was stable and *still* did not match, which leaves exactly one
+possibility: the two sides were not computing the same function.
+
+### Two producers, one of them not updated
+
+```python
+# plan()
+fingerprint = operation_fingerprint(..., capture_hash=capture_hash, entry_kind=kind)
+
+# rotate()
+expected    = operation_fingerprint(..., capture_hash=capture_hash)
+```
+
+`entry_kind` was added to the fingerprint's inputs when the program became
+conditional on it. `plan()` was updated. `rotate()` was not. Both ran, because
+the new parameter had a default — so the caller that forgot it did not fail,
+it silently computed a different hash. Every confirmation on that path was
+refused, permanently, and in the safe direction.
+
+The defect is the *shape*, not the omission. Two call sites computing the same
+hash from the same data is a rule somebody has to keep; the next input added
+to the fingerprint would have had the same chance of being added to only one
+of them. There is now one producer, `fingerprint_for(pre)`, and a test that
+walks the module's AST and asserts nothing else calls `operation_fingerprint`.
+Its parameters have no defaults, so an omission is a `TypeError` rather than a
+different answer.
+
+> A required input with a default is not required. The default is a promise
+> that some caller will eventually take you up on.
+
+### What it binds now
+
+Not the capture hash. That covers an entire configuration and moves for
+reasons that have nothing to do with the operation being confirmed — a Save
+All, a timestamp line, an NTP clock-period drift. Binding it makes the
+confirmation refuse changes it has no business refusing; the s1 diagnosis
+showed it stable *today*, which is a fact about today and not a property.
+
+It binds the two facts the program actually depends on: the **entry kind** and
+the **normalized username line**. Whitespace is collapsed so that rendering
+differences are not changes; the secret token is deliberately left alone,
+because normalising it away would let the credential change underneath a
+confirmation that still matched. The capture hash is still displayed, labelled
+as context rather than as something bound.
+
+Verified against the real switches: `plan()` and `rotate()`'s expected value
+now agree on s1, s2 and s4, each resolving to the one-command program.

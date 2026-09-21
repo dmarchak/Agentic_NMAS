@@ -117,7 +117,8 @@ class TestTheCommandAndItsMask:
 
 class TestTheConfirmFingerprint:
     BASE = dict(device_identity="uid:r2", username="admin", privilege=15,
-                capture_hash="cap123")
+                entry_kind="secret",
+                user_line="username admin privilege 15 secret 5 $1$a$b")
 
     def test_it_is_stable(self):
         assert cr.operation_fingerprint(**self.BASE) == \
@@ -136,12 +137,76 @@ class TestTheConfirmFingerprint:
         ("device_identity", "uid:r3"),
         ("username", "operator"),
         ("privilege", 1),
-        ("capture_hash", "changed"),
+        ("entry_kind", "password"),
+        ("user_line", "username admin privilege 15 secret 5 $1$DIFFERENT$x"),
     ])
     def test_every_bound_property_moves_it(self, field, value):
         changed = dict(self.BASE, **{field: value})
         assert cr.operation_fingerprint(**changed) != \
             cr.operation_fingerprint(**self.BASE)
+
+    def test_every_parameter_is_required(self):
+        """A default is what let rotate() omit entry_kind and never match.
+
+        plan() passed it, rotate() did not, and both ran — producing hashes
+        that could never agree. Every confirmation on that path was refused,
+        safely and permanently. A missing input must be a TypeError, not a
+        different answer.
+        """
+        import inspect
+        sig = inspect.signature(cr.operation_fingerprint)
+        defaulted = [n for n, p in sig.parameters.items()
+                     if p.default is not inspect.Parameter.empty]
+        assert defaulted == [], f"these can be silently omitted: {defaulted}"
+
+    def test_whitespace_in_the_line_does_not_move_it(self):
+        """Rendering differences are not changes."""
+        spaced = dict(self.BASE,
+                      user_line="  username   admin  privilege 15 "
+                                "secret 5   $1$a$b  ")
+        assert cr.operation_fingerprint(**spaced) == \
+            cr.operation_fingerprint(**self.BASE)
+
+    def test_the_secret_token_is_still_bound(self):
+        """Normalising it away would let the credential change underneath."""
+        other = dict(self.BASE,
+                     user_line="username admin privilege 15 secret 5 $1$a$OTHER")
+        assert cr.operation_fingerprint(**other) != \
+            cr.operation_fingerprint(**self.BASE)
+
+    def test_the_whole_capture_is_NOT_bound(self, wired):
+        """A re-saved golden must not invalidate a confirmation.
+
+        The capture hash covers an entire configuration, which changes for
+        reasons that have nothing to do with this operation — a Save All, a
+        timestamp line, an NTP clock-period drift. Refusing on those is safe
+        and still wrong.
+        """
+        first = cr.fingerprint_for(cr.preflight("Lab", "r2"))
+        wired["golden_line"] = ORIGINAL_LINE   # unchanged user line...
+        pre = cr.preflight("Lab", "r2")
+        pre["capture"] = pre["capture"] + "\nntp clock-period 17179860\n"
+        assert cr.fingerprint_for(pre) == first
+
+    def test_plan_and_rotate_use_the_same_function(self):
+        """The defect, stated structurally: there must be ONE producer."""
+        import ast
+        import io as _io
+
+        tree = ast.parse(_io.open("modules/nsot/credential_rotation.py",
+                                  encoding="utf-8").read())
+        callers = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for call in ast.walk(node):
+                if isinstance(call, ast.Call) and \
+                        getattr(call.func, "id", "") == "operation_fingerprint":
+                    callers.setdefault(node.name, 0)
+                    callers[node.name] += 1
+        assert set(callers) == {"fingerprint_for"}, (
+            f"operation_fingerprint is called from {sorted(callers)} — every "
+            "caller but fingerprint_for can drift from the others")
 
     def test_changing_the_charset_moves_it(self, monkeypatch):
         before = cr.operation_fingerprint(**self.BASE)
@@ -493,12 +558,13 @@ def wired(monkeypatch, tmp_path):
 
 
 def _fingerprint(state):
-    import hashlib
-    pre = cr.preflight("Lab", "r2")
-    return cr.operation_fingerprint(
-        device_identity=pre["identity"], username=pre["username"],
-        privilege=pre["privilege"],
-        capture_hash=hashlib.sha256(pre["capture"].encode()).hexdigest()[:16])
+    """Through the SAME function the plan and the apply use.
+
+    This helper used to build the hash itself, which is the very duplication
+    that let plan() and rotate() drift apart — a test that recomputes a value
+    independently cannot notice two producers disagreeing.
+    """
+    return cr.fingerprint_for(cr.preflight("Lab", "r2"))
 
 
 class TestTheFiveStates:
@@ -1841,7 +1907,7 @@ class TestTheProgramIsConditionalOnTheDevicesEntryKind:
     def test_the_fingerprint_binds_the_entry_kind(self):
         """The program is a function of it, so a confirmation must cover it."""
         common = dict(device_identity="uid:x", username="admin", privilege=15,
-                      capture_hash="abc")
+                      user_line="username admin privilege 15 secret 5 $1$a$b")
         assert cr.operation_fingerprint(**common, entry_kind="secret") != \
             cr.operation_fingerprint(**common, entry_kind="password")
 
@@ -1998,6 +2064,86 @@ class TestPromptUndetectIsNamedInThePersistSummary:
 
         assert out["cause"] == ""
         assert out["error"] == "no successful fetch after the rotation"
+
+
+class TestAConfirmationSurvivesAnUnchangedDevice:
+    """s1 refused its own confirmation: "the device or the plan changed".
+
+    Nothing had changed. `plan()` passed `entry_kind` to the fingerprint and
+    `rotate()` did not, so the two computed different hashes from identical
+    data and no confirmation on that path could ever match. It failed in the
+    safe direction, and it was still a gate that could never open.
+
+    Measured on s1 while diagnosing: four consecutive preflights produced the
+    identical fingerprint 078fd91dcd2599a4 and identical values for every
+    input. The inputs were never the unstable part.
+    """
+
+    def test_two_consecutive_preflights_agree(self, wired):
+        first = cr.fingerprint_for(cr.preflight("Lab", "r2"))
+        second = cr.fingerprint_for(cr.preflight("Lab", "r2"))
+        assert first == second
+
+    def test_they_agree_with_volatile_lines_in_the_capture(self, wired):
+        """The device emits lines that differ every read. They must not count.
+
+        `Last configuration change at ...`, `ntp clock-period`, and the
+        byte-count banner all move on their own. A confirmation that binds
+        them refuses changes it has no business refusing.
+        """
+        volatile = [
+            "! Last configuration change at 09:41:02 UTC Sun Sep 21 2026",
+            "ntp clock-period 17179860",
+            "! NVRAM config last updated at 09:40:55 UTC Sun Sep 21 2026",
+        ]
+        first = cr.fingerprint_for(cr.preflight("Lab", "r2"))
+        for i, line in enumerate(volatile):
+            pre = cr.preflight("Lab", "r2")
+            pre["capture"] = pre["capture"] + f"\n{line}\n"
+            assert cr.fingerprint_for(pre) == first, line
+
+    def test_a_plan_can_be_confirmed_end_to_end(self, wired):
+        """The whole point: the gate must actually open."""
+        plan = cr.plan("Lab", "r2")
+        result = cr.rotate("Lab", "r2",
+                           confirmed_fingerprint=plan["fingerprint"])
+
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST, result.get("reason")
+        assert not any(st["name"] == "confirmation" and not st["ok"]
+                       for st in result["steps"])
+
+    def test_a_changed_username_line_still_refuses(self, wired):
+        """Stability must not have been bought with blindness."""
+        plan = cr.plan("Lab", "r2")
+        # The credential on the device changes under the confirmation.
+        wired["router"].running = ("username admin privilege 15 "
+                                   "password SomethingElse")
+        result = cr.rotate("Lab", "r2",
+                           confirmed_fingerprint=plan["fingerprint"])
+
+        assert result["state"] == cr.NOT_STARTED
+        assert "does not match" in result["reason"]
+        assert wired["session"].sent == [], "nothing may reach the device"
+
+    def test_a_changed_entry_kind_still_refuses(self, wired):
+        plan = cr.plan("Lab", "r2")
+        wired["router"].running = ("username admin privilege 15 "
+                                   "secret 5 $1$salt$hash")
+        result = cr.rotate("Lab", "r2",
+                           confirmed_fingerprint=plan["fingerprint"])
+
+        assert result["state"] == cr.NOT_STARTED
+        assert wired["session"].sent == []
+
+    def test_a_confirmation_from_another_device_still_refuses(self, wired):
+        plan = cr.plan("Lab", "r2")
+        other = cr.operation_fingerprint(
+            device_identity="uid:somewhere-else", username="admin",
+            privilege=15, entry_kind="password", user_line=ORIGINAL_LINE)
+        assert other != plan["fingerprint"]
+
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=other)
+        assert result["state"] == cr.NOT_STARTED
 
 
 class TestPersistenceNeverReverts:

@@ -334,22 +334,64 @@ def masked_command(username: str, privilege) -> str:
     return rotation_command(username, privilege, "<generated>")
 
 
+def normalize_user_line(line: str) -> str:
+    """The username line reduced to the facts a confirmation should bind.
+
+    Whitespace is collapsed and the line is stripped, so a device that renders
+    the same configuration with different spacing does not read as a change.
+    Nothing else is touched: the secret token IS the fact being confirmed, and
+    normalising it away would let the credential change under a confirmation
+    that still matched.
+    """
+    return " ".join((line or "").split())
+
+
+def fingerprint_for(pre: dict) -> str:
+    """THE fingerprint for a preflight result. One function, both callers.
+
+    `plan()` and `rotate()` each built this themselves, and when `entry_kind`
+    was added to the inputs only `plan()` was updated. `rotate()` went on
+    computing without it, so the two could never agree and every confirmation
+    on the new code path was refused — safely, and permanently. The default
+    value on the new parameter is what made that possible: a caller that
+    omitted a now-required input still ran, and silently produced a different
+    hash.
+
+    Two callers computing the same hash from the same data is a rule that can
+    be broken. One function is a rule that cannot.
+    """
+    return operation_fingerprint(
+        device_identity=pre.get("identity", ""),
+        username=pre.get("username", ""),
+        privilege=pre.get("privilege", ""),
+        entry_kind=pre.get("entry_kind", ""),
+        user_line=pre.get("original_line") or pre.get("current_line") or "")
+
+
 def operation_fingerprint(*, device_identity: str, username: str,
-                          privilege, capture_hash: str,
-                          entry_kind: str = "") -> str:
+                          privilege, entry_kind: str, user_line: str) -> str:
     """What the operator confirms: every property except the random value.
 
     Deliberately excludes the password — they cannot confirm bytes they are not
     allowed to see. It binds the device, the user, the privilege, the algorithm,
-    the charset and length, and the capture the plan was computed against, so a
-    confirmation cannot be replayed against a different device or a changed
-    device.
+    the charset and length, so a confirmation cannot be replayed against a
+    different device.
 
-    It also binds ``entry_kind``, because the program is now conditional on
-    it: one command over an existing secret, two over a password. The
-    commands are a pure function of the bound inputs only while that is one
-    of them — otherwise a device whose entry kind changed between plan and
-    apply would receive a program the operator never saw.
+    **Every parameter is required.** Giving one a default is what let
+    ``rotate()`` omit ``entry_kind`` and compute a hash that could never match
+    the plan's.
+
+    What it binds about the device's state is the **normalized username
+    line** and the **entry kind** — the two facts the program actually depends
+    on — and not a hash of the whole captured config. A whole-config hash
+    changes for reasons that have nothing to do with this operation: a
+    re-saved golden, a timestamp line, an NTP clock-period drift. Binding it
+    made the confirmation refuse changes it had no business refusing, which is
+    safe and still wrong.
+
+    The entry kind is bound because the program is conditional on it — one
+    command over an existing secret, two over a password — so the commands are
+    a pure function of the bound inputs only while it is one of them.
     """
     import hashlib
     import json
@@ -361,8 +403,9 @@ def operation_fingerprint(*, device_identity: str, username: str,
         "algorithm": "scrypt",
         "charset": hashlib.sha256(CHARSET.encode()).hexdigest()[:12],
         "length": LENGTH,
-        "capture_hash": capture_hash,
         "entry_kind": entry_kind,
+        "user_line": hashlib.sha256(
+            normalize_user_line(user_line).encode()).hexdigest()[:32],
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
@@ -957,16 +1000,16 @@ def plan(list_name: str, hostname: str) -> dict:
                                    for c in pre["checks"] if not c["ok"])}
 
     import hashlib
+    # Shown, not bound. It identifies the stored capture the plan was read
+    # against, which is useful context; the confirmation binds the username
+    # line and the entry kind instead.
     capture_hash = hashlib.sha256(pre["capture"].encode()).hexdigest()[:16]
 
     # preflight() did the live read; plan only surfaces it.
     kind = pre.get("entry_kind", "")
     disagreement = pre.get("discrepancy", "")
 
-    fingerprint = operation_fingerprint(
-        device_identity=pre["identity"], username=pre["username"],
-        privilege=pre["privilege"], capture_hash=capture_hash,
-        entry_kind=kind)
+    fingerprint = fingerprint_for(pre)
 
     return {
         "ok": True, "device": hostname, "mgmt_ip": pre["mgmt_ip"],
@@ -1088,10 +1131,7 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     _step("preflight", True)
 
     import hashlib
-    capture_hash = hashlib.sha256(pre["capture"].encode()).hexdigest()[:16]
-    expected = operation_fingerprint(
-        device_identity=pre["identity"], username=pre["username"],
-        privilege=pre["privilege"], capture_hash=capture_hash)
+    expected = fingerprint_for(pre)
     if confirmed_fingerprint != expected:
         _step("confirmation", False, "the device or the plan changed since "
                                      "you confirmed")
