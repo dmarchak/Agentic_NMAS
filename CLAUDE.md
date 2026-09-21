@@ -768,9 +768,14 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   form, `admin` was accepted over SSH and the file's own credential was
   refused — while `Startup complete` was still reached in 7m26s, so nothing
   announced the divergence. **A redeploy today brings r1–r5 up on vrnetlab's
-  admin/admin and locks NMAS out of all five.** The ban stands until stage C
-  shows a fix working on the probe (`docs/bootstrap-probe/`). Switches are
-  unaffected: nothing is injected there.
+  admin/admin and locks NMAS out of all five.** Switches are unaffected:
+  nothing is injected there. **Stage C proved a fix on the probe (2026-09-21)
+  and the ban STILL STANDS** — proven on a throwaway node is not adopted
+  here. Four items remain, all future work: adopt the patch into
+  `~/labs/lab/patches/`; the static applicability check live in the
+  persistence chain; r1–r5's credentials recoverable while unreachable;
+  generator fixes (vIOS `crypto key generate rsa`, per-platform domain-name
+  syntax). See `docs/bootstrap-probe/`.
 
 - Jenkins pipelines default to Windows `bat` steps; switch to `sh` in Settings for
   a Linux Jenkins agent. Generated XML is byte-identical to pre-Phase-0 output

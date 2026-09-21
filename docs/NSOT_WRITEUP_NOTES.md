@@ -5186,3 +5186,87 @@ patch, which is a different thing from having adopted it — the applicability
 check has to be in place first, so the next rotation cannot recreate this
 silently, and the five routers' current credentials have to be recorded
 somewhere that survives those routers being unreachable.
+
+---
+
+## Stage C: the fix proven, and the ban still standing
+
+**Measured on hardware, 2026-09-21.** The same startup file stage B booted
+(sha256 verified identical), with a launch script carrying the user-skip:
+
+| observation | value |
+|---|---|
+| Startup complete | reached, 7m15s |
+| the patch | fired — `startup config defines admin; not injecting vrnetlab's own username line` |
+| CLI failure for the username line | **none** |
+| running config | `username admin privilege 15 secret 9 <hash>` |
+| SSH with the file's own credential | **accepted** |
+| SSH as `admin` | **refused** |
+
+Stage B and stage C differ in exactly one input — the launch script — and the
+outcome inverts completely. That is what makes it evidence rather than a
+coincidence: the same bytes, the same image, the same node type, one variable.
+
+### The health reading that was not a finding
+
+A `docker inspect` three seconds after `Startup complete` returned
+`unhealthy`, and it would have been easy to write that up as a cost of the
+patch. It is not one, and the reason is worth recording because the temptation
+was to reason about it rather than look.
+
+The image's `/healthcheck.py` reads `/health` and exits with its status. It
+performs no login and holds no credentials, so there is no mechanism by which
+skipping a username injection could change what it reports. The `unhealthy`
+was Docker's own stale result from the boot period — default 30s interval,
+three retries — read before the first post-boot probe had run. `rcn-lab1-r1`,
+the same image, reports healthy.
+
+Two independent checks, either of which settles it: the healthcheck's source
+(no credential path exists) and a control (the same image healthy elsewhere).
+A single observation with no control is what produced the withdrawn Oxidized
+conclusion earlier in this project.
+
+### A second defect, found only because the first was fixed
+
+```
+%CVAC-4-CLI_FAILURE: Configuration command failure:
+  'ip domain-name rcn.lab' was rejected
+```
+
+IOS-XE 17.6 spells it `ip domain name`; classic IOS spells it `ip domain-name`
+and rejects the spaced form. There is no spelling that works on both, so the
+generator has to know the platform.
+
+This one was invisible for the same reason as the first: **the node booted,
+was healthy, and answered SSH with no domain name set.** Nothing downstream of
+a rejected global asks whether it applied. It would have surfaced at r6, as
+something else failing — a `crypto key generate rsa` with no domain name, most
+likely, reported as a prompt rather than an error.
+
+Both defects are in the same class as the headline finding: a config line that
+is present, well-formed, and silently not in effect.
+
+Production router startup files come from Oxidized, i.e. from each device's
+own `show running-config`, so they carry IOS-XE's own spelling and are
+probably unaffected. **Probably is not measured** — one grep of
+`~/labs/lab/configs/r*.cfg` settles it, and it is reported, not acted on.
+
+### What stage C licenses, and what it does not
+
+It licenses *adopting* the patch. It does not lift the ban, and the ban is
+recorded as still standing in all three places.
+
+Proven on a throwaway node is not adopted here. Four things are needed, and
+all four are future work:
+
+1. the patch adopted into `~/labs/lab/patches/c8000v-launch.py` — the file
+   r1–r5 already bind;
+2. the static applicability check live in the persistence chain, so the next
+   rotation cannot recreate the hazard silently;
+3. r1–r5's credentials recoverable while the routers are unreachable;
+4. the generator fixes above.
+
+Items 2, 3 and 4 are **built and tested** (`verify_startup_applies()`,
+`modules/breakglass.py`, `DOMAIN_KEYWORD` / `GENERATES_SSH_KEY`) and none of
+them has been adopted into the lab. Built is not deployed, and a plan that
+treats the two as the same thing is how a redeploy happens by accident.

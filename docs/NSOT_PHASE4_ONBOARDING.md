@@ -27,9 +27,21 @@ Plan only. Nothing here is built.
 > **A redeploy of rcn-lab1 today brings r1–r5 up on vrnetlab's admin/admin and
 > locks NMAS out of all five**, with startup files that look correct.
 >
-> **This includes `--reconfigure`, and it includes adding r6.** The ban stands
-> until stage C shows a fix working on the probe — see `docs/bootstrap-probe/`.
-> The switches are unaffected: nothing is injected on that platform.
+> **This includes `--reconfigure`, and it includes adding r6.** The switches
+> are unaffected: nothing is injected on that platform.
+>
+> **Stage C PROVED a fix on the probe (2026-09-21) and the ban STILL STANDS.**
+> A patched launch script that skips vrnetlab's username injection booted the
+> same startup file correctly: `Startup complete` 7m15s, no CLI failure, the
+> file's own credential accepted and `admin` refused. That is a fix proven on
+> a throwaway node, not a fix adopted here. Four things are needed before a
+> redeploy, all future work:
+>
+> 1. adopt the patch into `~/labs/lab/patches/c8000v-launch.py`;
+> 2. the static applicability check live in the persistence chain;
+> 3. r1–r5's credentials recoverable while the routers are unreachable;
+> 4. generator fixes — vIOS `crypto key generate rsa`, per-platform
+>    domain-name syntax.
 
 Adding a new device, or a new site, from the GUI: NetBox objects, committed
 intent, a rendered config, and either a download for a node that does not
