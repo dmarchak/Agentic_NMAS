@@ -789,6 +789,23 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   StreamHandler to stdout is the systemd journal. Arguments are redacted as
   well as format strings (a secret is far more often in an arg) and so is
   exception text.
+- **Coverage is proven by a canary, not by inspecting filters.**
+  `redact.canary(handler)` runs a synthetic secret-bearing record through a
+  handler's **real filter chain** and checks it comes out masked. Reading
+  `handler.filters` answers a weaker question — a filter can be shadowed by an
+  earlier one, attached to a handler since replaced, or raising.
+  `GET /identity/status` reports `canary_leaking` and names where a leaking
+  handler writes. The canary is filtered, never handled, so no canary line ever
+  reaches a log.
+- **A config keyword with nothing after it is a mention, not a setting.**
+  `_VALUE` refuses to capture a token starting with `[ ] | < > ( )`. Found live:
+  `show running-config | include snmp-server community [in /home/…:2613]` — an
+  operator *searching* for the community, where the token the pattern ate was
+  the log formatter's own `[in`. Masking it corrupted the line and protected
+  nothing.
+- **The mask string is `<redacted:<label>>`.** `render_artifact.MASK`
+  (`••••••••`) is a **different** mechanism, for template previews — grepping
+  logs for bullets will never find redactor output.
 - **It fails open, and the failure is visible.** A record that cannot be
   redacted is written unredacted rather than dropped — a log that silently
   loses entries is the worse failure in the file an operator reaches for when

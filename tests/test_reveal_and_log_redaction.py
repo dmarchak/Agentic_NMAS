@@ -670,3 +670,130 @@ class TestEveryCredentialWriteInvalidatesTheCache:
         out = redact.redact_text(prose)
         assert "Rotated-Password-99" not in out
         assert "<redacted:user_admin_password>" in out
+
+
+class TestTheCanaryReplacesGreppingTheLog:
+    """Ask each handler whether a record reaching IT comes out masked.
+
+    `handler.filters` answers a weaker question: a filter can be present and
+    shadowed by an earlier one returning False, installed on a handler that was
+    later replaced, or raising. The canary runs the real filter chain over a
+    synthetic record and reads the result.
+
+    It never emits — the record is filtered, not handled — so no canary line
+    ever appears in a log.
+    """
+
+    def test_an_unprotected_handler_is_reported_as_leaking(self):
+        h = logging.StreamHandler()
+        result = redact.canary(h)
+        assert result["ok"] is False
+        assert result["dropped"] is False
+
+    def test_a_protected_handler_passes(self):
+        h = logging.StreamHandler()
+        redact.install_log_redaction(h)
+        assert redact.canary(h)["ok"] is True
+
+    def test_a_shadowed_filter_is_caught(self):
+        """A filter present but never reached is not protection.
+
+        `handler.filters` would say this handler is covered.
+        """
+        h = logging.StreamHandler()
+        redact.install_log_redaction(h)
+        # An earlier filter that drops nothing but raises would break the chain;
+        # here, one that *passes* but is ordered before ours is fine. The real
+        # hazard is a filter returning False first — then nothing is written at
+        # all, which is reported as dropped rather than leaking.
+        h.filters.insert(0, lambda record: False)
+        result = redact.canary(h)
+        assert result["dropped"] is True
+        assert result["ok"] is True
+
+    def test_a_raising_filter_is_reported_not_swallowed(self):
+        class _Boom(logging.Filter):
+            def filter(self, record):
+                raise RuntimeError("bad filter")
+
+        h = logging.StreamHandler()
+        h.addFilter(_Boom())
+        result = redact.canary(h)
+        assert result["ok"] is False
+        assert result["error"] == "RuntimeError"
+
+    def test_the_canary_emits_nothing(self):
+        """No canary line may appear in any log."""
+        records = []
+
+        class _Cap(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        h = _Cap()
+        redact.install_log_redaction(h)
+        redact.canary(h)
+        assert records == [], "the canary must not be emitted"
+
+    def test_health_reports_the_canary_and_fails_on_a_leak(self, monkeypatch):
+        bare = logging.StreamHandler()
+        root = logging.getLogger()
+        monkeypatch.setattr(root, "handlers", [bare])
+
+        health = redact.health()
+        assert health["canary_leaking"] >= 1
+        assert health["healthy"] is False
+        assert health["canary_leaking_detail"][0]["handler"] == "StreamHandler"
+
+        redact.redact_all_handlers()
+        healthy = redact.health()
+        assert healthy["canary_leaking"] == 0
+        assert healthy["healthy"] is True
+
+    def test_the_report_names_where_a_leaking_handler_writes(self, tmp_path,
+                                                             monkeypatch):
+        """An operator needs the file, not just the class name."""
+        path = tmp_path / "unprotected.log"
+        h = logging.FileHandler(str(path))
+        try:
+            root = logging.getLogger()
+            monkeypatch.setattr(root, "handlers", [h])
+            detail = redact.canary_report()["leaking_detail"]
+            assert detail and str(path) in detail[0]["target"]
+        finally:
+            h.close()
+
+
+class TestAMentionIsNotASetting:
+    """A config keyword named with nothing after it is a mention.
+
+    Found in the live log:
+
+        show running-config | include snmp-server community [in /home/…:2613]
+
+    An operator searching for the community — no value present — and the token
+    the pattern ate was the log formatter's own `[in`. Masking it corrupted the
+    line and protected nothing.
+    """
+
+    def test_a_filter_expression_is_not_masked(self):
+        line = ("Bulk execute on 1 devices: show running-config | include "
+                "snmp-server community [in /home/x/app.py:2613]")
+        assert redact.redact_positional(line) == line
+
+    def test_bracketed_and_piped_tokens_are_never_values(self):
+        for tail in ("[in /path:1]", "| include foo", "<something>", "(none)"):
+            line = f"snmp-server community {tail}"
+            assert redact.redact_positional(line) == line, tail
+
+    def test_a_real_value_is_still_masked(self):
+        """The guard must not have been bought at the cost of the point."""
+        for line, token in (
+            ("snmp-server community public RO", "public"),
+            ("username admin privilege 15 password cisco123", "cisco123"),
+            ("enable secret 5 $1$xyz$hashvalue", "$1$xyz$hashvalue"),
+            ("key-string MySharedKey", "MySharedKey"),
+        ):
+            out = redact.redact_positional(line)
+            assert token not in out, line
+            assert "<redacted:" in out, line

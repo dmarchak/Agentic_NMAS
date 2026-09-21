@@ -62,27 +62,40 @@ PLACEHOLDER = "<redacted:{label}>"
 #: a list not yet extracted, a password typed into chat — which value-based
 #: redaction cannot reach by construction.
 #:
+#: The captured value, shared by every pattern below so the rule is stated once.
+#:
+#: A value cannot begin with these. Found in a real log line:
+#:
+#:     show running-config | include snmp-server community [in /home/…:2613]
+#:
+#: An operator *searching* for the community — no value present — and the token
+#: the pattern ate was the log formatter's own ``[in``. Masking it corrupted
+#: the line without protecting anything. A config keyword named with nothing
+#: after it is a mention, not a setting, and the next token belongs to someone
+#: else.
+_VALUE = r"((?![\[\]|<>(){}])\S+)"
+
 #: Each entry captures (prefix, secret, suffix); only the middle is replaced.
 _POSITIONAL = (
     ("snmp_community", re.compile(
-        r"(?i)\b(snmp-server\s+community\s+)(\S+)()")),
+        r"(?i)\b(snmp-server\s+community\s+)" + _VALUE + r"()")),
     ("snmp_community", re.compile(
-        r"(?i)\b(snmp-server\s+host\s+\S+(?:\s+version\s+\S+)?\s+)(\S+)()")),
+        r"(?i)\b(snmp-server\s+host\s+\S+(?:\s+version\s+\S+)?\s+)" + _VALUE + r"()")),
     ("user_password", re.compile(
-        r"(?i)\b(username\s+\S+(?:\s+privilege\s+\d+)?\s+(?:password|secret)\s+(?:\d+\s+)?)(\S+)()")),
+        r"(?i)\b(username\s+\S+(?:\s+privilege\s+\d+)?\s+(?:password|secret)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     ("enable_secret", re.compile(
-        r"(?i)^(\s*enable\s+(?:password|secret)\s+(?:\d+\s+)?)(\S+)()",
+        r"(?i)^(\s*enable\s+(?:password|secret)\s+(?:\d+\s+)?)" + _VALUE + r"()",
         re.M)),
     ("key_string", re.compile(
-        r"(?i)\b(key-string\s+(?:\d+\s+)?)(\S+)()")),
+        r"(?i)\b(key-string\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     ("pre_shared_key", re.compile(
-        r"(?i)\b(pre-shared-key\s+(?:address\s+\S+\s+)?(?:key\s+)?)(\S+)()")),
+        r"(?i)\b(pre-shared-key\s+(?:address\s+\S+\s+)?(?:key\s+)?)" + _VALUE + r"()")),
     ("shared_key", re.compile(
-        r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)(\S+)()")),
+        r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     ("line_password", re.compile(
-        r"(?i)^(\s*password\s+(?:\d+\s+)?)(\S+)()", re.M)),
+        r"(?i)^(\s*password\s+(?:\d+\s+)?)" + _VALUE + r"()", re.M)),
     ("ppp_password", re.compile(
-        r"(?i)\b(ppp\s+(?:chap|pap)\s+(?:password|sent-username\s+\S+\s+password)\s+(?:\d+\s+)?)(\S+)()")),
+        r"(?i)\b(ppp\s+(?:chap|pap)\s+(?:password|sent-username\s+\S+\s+password)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
 )
 
 #: Already redacted, or a marker — replacing these again would nest markers.
@@ -380,8 +393,15 @@ def health() -> dict:
     with _failure_lock:
         failures = dict(_failures)
     handlers = _handler_coverage()
+    probe = canary_report()
     return {
-        "healthy": failures["count"] == 0 and handlers["unprotected"] == 0,
+        # The canary is the authority: it asks whether a record reaching each
+        # handler comes out masked, rather than whether a filter is attached.
+        "healthy": (failures["count"] == 0 and handlers["unprotected"] == 0
+                    and probe["leaking"] == 0),
+        "canary_handlers_checked": probe["handlers"],
+        "canary_leaking": probe["leaking"],
+        "canary_leaking_detail": probe["leaking_detail"],
         "redaction_failures": failures["count"],
         "first_failure_at": failures["first_at"],
         "last_failure_at": failures["last_at"],
@@ -424,6 +444,62 @@ def _handler_coverage() -> dict:
                    if not any(isinstance(f, RedactingFilter) for f in h.filters)]
     return {"total": len(handlers), "unprotected": len(unprotected),
             "types": sorted({type(h).__name__ for h in unprotected})}
+
+
+#: A line shaped exactly like a secret-bearing config line, with a value that
+#: is not a secret anywhere. Pushed through a handler's own filter chain to ask
+#: the only question that matters: *does a record reaching THIS handler come out
+#: masked?* Inspecting `handler.filters` answers a weaker question — a filter
+#: can be present and disabled, shadowed by an earlier filter returning False,
+#: or installed on a handler that was later replaced.
+CANARY_LINE = "snmp-server community CanaryNotARealSecret RO"
+CANARY_TOKEN = "CanaryNotARealSecret"
+
+
+def canary(handler) -> dict:
+    """Would a secret-bearing record survive *handler*'s filters unmasked?
+
+    Runs the handler's real filter chain over a synthetic record. Never emits:
+    the record is built and filtered, not handled, so nothing is written
+    anywhere and no canary line appears in any log.
+    """
+    record = logging.LogRecord(
+        name="redact.canary", level=logging.INFO, pathname=__file__, lineno=0,
+        msg=CANARY_LINE, args=(), exc_info=None)
+    try:
+        for f in list(handler.filters):
+            result = f.filter(record) if hasattr(f, "filter") else f(record)
+            if result is False:
+                # Dropped before reaching the formatter — nothing to leak here.
+                return {"ok": True, "dropped": True,
+                        "handler": type(handler).__name__}
+        leaked = CANARY_TOKEN in record.getMessage()
+        return {"ok": not leaked, "dropped": False,
+                "handler": type(handler).__name__,
+                "target": _handler_target(handler)}
+    except Exception as exc:                  # noqa: BLE001
+        return {"ok": False, "dropped": False, "handler": type(handler).__name__,
+                "error": type(exc).__name__}
+
+
+def _handler_target(handler) -> str:
+    """Where a handler writes, for a report an operator can act on."""
+    for attr in ("baseFilename", "stream"):
+        value = getattr(handler, attr, None)
+        if isinstance(value, str):
+            return value
+        name = getattr(value, "name", "")
+        if name:
+            return str(name)
+    return ""
+
+
+def canary_report() -> dict:
+    """Run the canary through every handler. This replaces grepping the log."""
+    results = [canary(h) for h in _all_handlers()]
+    leaking = [r for r in results if not r["ok"]]
+    return {"handlers": len(results), "leaking": len(leaking),
+            "leaking_detail": leaking, "results": results}
 
 
 def install_log_redaction(handler) -> bool:
