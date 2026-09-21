@@ -872,3 +872,172 @@ class TestSaveGoldenRefusesToLoseSections:
         assert counts == {"interface": 3, "routing": 2, "vrf": 1,
                           "line": 2, "acl": 1}
 
+class TestABaselineNeedsNoCommit:
+    """A fleet already in sync produced no restore point.
+
+    Save All ran over nine devices, every capture matched its committed
+    golden, `save_golden` correctly refused an empty commit — and returned
+    before any tagging, so there was no baseline either. The operator learned
+    that by reading git.
+
+    "No changes" is not the absence of evidence. It is the strongest evidence
+    available for exactly the claim a baseline makes: every device was
+    captured and compared and found equal to what this commit records. A fleet
+    that had drifted got a baseline; a fleet that was perfect did not.
+
+    The tag goes on the existing HEAD. An empty commit to hang it on would be
+    a false record of a change.
+    """
+
+    BODY = ("hostname {name}\n!\ninterface GigabitEthernet1\n"
+            " ip address 203.0.113.1 255.255.255.0\n!\n"
+            "router ospf 1\n!\nline vty 0 4\n!\nend\n")
+
+    def _items(self, names):
+        from modules.nsot.repo import GoldenItem
+        return [GoldenItem(n, self.BODY.format(name=n), f"203.0.113.{i + 1}")
+                for i, n in enumerate(names)]
+
+    def _head(self, lab):
+        from modules.nsot.repo import git
+        return git(lab, "rev-parse", "HEAD")[1].strip()
+
+    def _tags(self, lab, pattern="baseline/*"):
+        from modules.nsot.repo import git
+        return [t for t in git(lab, "tag", "-l", pattern)[1].splitlines() if t]
+
+    def test_an_unchanged_whole_fleet_save_tags_a_baseline_at_head(self, lab):
+        from modules.nsot.repo import save_golden
+
+        names = ["r1", "r2", "r3"]
+        first = save_golden("lab", self._items(names), source="save_all",
+                            actor="user", inventory_size=3, skipped=[])
+        assert first["ok"] and first["commit"]
+        head_before = self._head(lab)
+        baselines_before = set(self._tags(lab))
+
+        again = save_golden("lab", self._items(names), source="save_all",
+                            actor="user", inventory_size=3, skipped=[])
+
+        assert again["ok"] is True
+        assert again["commit"] == "", "no empty commit may be created"
+        assert self._head(lab) == head_before, "HEAD must not move"
+
+        new = set(self._tags(lab)) - baselines_before
+        assert len(new) == 1, f"expected one new baseline, got {new}"
+        assert again["baseline"] in new
+        assert sorted(again["unchanged"]) == names
+
+    def test_that_baseline_points_at_the_existing_head(self, lab):
+        from modules.nsot.repo import git, save_golden
+
+        names = ["r1", "r2"]
+        save_golden("lab", self._items(names), source="save_all", actor="user",
+                    inventory_size=2, skipped=[])
+        head = self._head(lab)
+
+        out = save_golden("lab", self._items(names), source="save_all",
+                          actor="user", inventory_size=2, skipped=[])
+        tagged = git(lab, "rev-parse", f"{out['baseline']}^{{commit}}")[1].strip()
+        assert tagged == head
+
+    def test_the_annotation_says_it_measured_rather_than_changed(self, lab):
+        from modules.nsot.repo import git, save_golden
+
+        names = ["r1", "r2"]
+        save_golden("lab", self._items(names), source="save_all", actor="user",
+                    inventory_size=2, skipped=[])
+        out = save_golden("lab", self._items(names), source="save_all",
+                          actor="user", inventory_size=2, skipped=[])
+
+        body = git(lab, "tag", "-n99", "-l", out["baseline"])[1]
+        assert "verified equal" in body
+        assert "no changes" in body.lower()
+
+    def test_a_skipped_device_yields_neither_commit_nor_baseline(self, lab):
+        """A baseline may not be claimed for a fleet one member of which was
+        never measured — the whole point of the coverage rule."""
+        from modules.nsot.repo import save_golden
+
+        names = ["r1", "r2", "r3"]
+        save_golden("lab", self._items(names), source="save_all", actor="user",
+                    inventory_size=3, skipped=[])
+        head_before = self._head(lab)
+        before = set(self._tags(lab))
+
+        out = save_golden("lab", self._items(["r1", "r2"]), source="save_all",
+                          actor="user", inventory_size=3,
+                          skipped=[{"hostname": "r3", "reason": "offline"}])
+
+        assert out["ok"] is True
+        assert out["commit"] == ""
+        assert out.get("baseline", "") == ""
+        assert self._head(lab) == head_before
+        assert set(self._tags(lab)) == before, "no baseline may appear"
+
+    def test_coverage_is_unproven_when_the_caller_says_nothing(self, lab):
+        """Callers that do not supply inventory size get no baseline.
+
+        Unproven is the right default: a baseline is a claim, and an unmade
+        measurement cannot support one. This also keeps every pre-existing
+        caller behaving exactly as before.
+        """
+        from modules.nsot.repo import save_golden
+
+        names = ["r1", "r2"]
+        save_golden("lab", self._items(names), source="save_all", actor="user",
+                    inventory_size=2, skipped=[])
+        before = set(self._tags(lab))
+
+        out = save_golden("lab", self._items(names), source="save_all",
+                          actor="user")
+        assert out["commit"] == ""
+        assert out.get("baseline", "") == ""
+        assert set(self._tags(lab)) == before
+
+    def test_a_changed_save_still_baselines_on_its_own_commit(self, lab):
+        """The pre-existing path is untouched."""
+        from modules.nsot.repo import save_golden
+
+        names = ["r1", "r2"]
+        save_golden("lab", self._items(names), source="save_all", actor="user",
+                    inventory_size=2, skipped=[])
+        edited = self._items(names)
+        edited[0].config_text += "ntp server 203.0.113.99\n"
+
+        out = save_golden("lab", edited, source="save_all", actor="user",
+                          inventory_size=2, skipped=[])
+        assert out["commit"], "a real change must still commit"
+        assert out["baseline"].startswith("baseline/")
+
+    def test_baseline_is_returned_on_both_paths(self, lab):
+        """A caller must not have to sift `tags` to learn whether one exists."""
+        from modules.nsot.repo import save_golden
+
+        names = ["r1", "r2"]
+        committed = save_golden("lab", self._items(names), source="save_all",
+                                actor="user", inventory_size=2, skipped=[])
+        unchanged = save_golden("lab", self._items(names), source="save_all",
+                                actor="user", inventory_size=2, skipped=[])
+
+        assert "baseline" in committed and "baseline" in unchanged
+        assert committed["baseline"].startswith("baseline/")
+        assert unchanged["baseline"].startswith("baseline/")
+        assert committed["baseline"] != unchanged["baseline"]
+
+    def test_no_empty_commit_is_ever_created(self, lab):
+        """Counted, so a future 'just commit something' cannot creep in."""
+        from modules.nsot.repo import git, save_golden
+
+        names = ["r1", "r2"]
+        save_golden("lab", self._items(names), source="save_all", actor="user",
+                    inventory_size=2, skipped=[])
+        count_before = len(git(lab, "log", "--format=%h")[1].splitlines())
+
+        for _ in range(3):
+            save_golden("lab", self._items(names), source="save_all",
+                        actor="user", inventory_size=2, skipped=[])
+
+        count_after = len(git(lab, "log", "--format=%h")[1].splitlines())
+        assert count_after == count_before
+

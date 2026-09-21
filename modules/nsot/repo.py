@@ -523,11 +523,34 @@ def _guard_content(abs_path: str, hostname: str, incoming: str,
         f"structurally, pass acknowledge_structural_change=True.")
 
 
+def _baseline_wanted(baseline, source: str, changed_count: int) -> bool:
+    """Does this save claim to mark the state of the whole network?"""
+    if baseline is not None:
+        return bool(baseline)
+    return source in ("save_all", "migration") or changed_count > 1
+
+
+def _covers_inventory(measured: list, inventory_size: int, skipped) -> bool:
+    """Was EVERY device in the inventory actually measured?
+
+    A baseline taken with a device skipped would claim the network matches
+    these goldens while saying nothing about one of its members. The caller
+    supplies the inventory size and the skip list because only it knows them;
+    absent that, coverage is unproven and the answer is no. Unproven is the
+    right default — a baseline is a claim, and an unmade measurement cannot
+    support one.
+    """
+    if inventory_size <= 0 or skipped:
+        return False
+    return len(measured) >= inventory_size
+
+
 def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = True,
                 pipeline_id: str = None, baseline: bool = None,
                 extra_trailers: list = None, extra_paths: list = None,
-                acknowledge_structural_change: bool = False) -> dict:
+                acknowledge_structural_change: bool = False,
+                inventory_size: int = 0, skipped: list = None) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
     Returns ``{"ok", "commit", "changed", "unchanged", "tags", "renamed", "error"}``.
@@ -616,10 +639,47 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             # Scoped: unstage exactly what this function staged, never a
             # blanket reset of whatever else might be in the index.
             git(repo, "reset", "-q", "--", "golden", ".nsot", *(extra_paths or []))
+
+            # NO CHANGES IS A MEASUREMENT, AND IT IS THE BEST ONE.
+            #
+            # A baseline claims "the network matches the goldens at this
+            # commit". Every device here was captured and compared against its
+            # committed golden and found equal — which is precisely that
+            # claim, established by observation rather than inferred from a
+            # deploy having succeeded. Yet this branch returned before any
+            # tagging, so a fleet that was perfectly in sync produced no
+            # restore point, while one that had drifted did. The stronger the
+            # evidence, the less the operator got.
+            #
+            # The tag goes on the EXISTING HEAD. Nothing is committed: an
+            # empty commit to hang a tag on would be a false record of a
+            # change, and the commit is not what the baseline is about.
+            tags, baseline_tag = [], ""
+            if _baseline_wanted(baseline, source, 0) and _covers_inventory(
+                    unchanged, inventory_size, skipped):
+                _rc, head, _err = git(repo, "rev-parse", "HEAD")
+                head = (head or "").strip()
+                if _rc == 0 and head:
+                    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+                    baseline_tag = _unique_tag(repo, f"baseline/{stamp}", head)
+                    if git(repo, "tag", "-a", baseline_tag, "-m",
+                           f"network baseline — no changes; all "
+                           f"{len(unchanged)} capture(s) verified equal to "
+                           f"HEAD, via {source}")[0] == 0:
+                        tags.append(baseline_tag)
+                        log.info("repo: baseline %s at existing HEAD %s "
+                                 "(%d device(s) verified equal)",
+                                 baseline_tag, head[:12], len(unchanged))
+                    else:
+                        baseline_tag = ""
             return {"ok": True, "commit": "", "changed": [],
-                    "unchanged": unchanged, "tags": [],
+                    "unchanged": unchanged, "tags": tags,
+                    "baseline": baseline_tag,
                     "renamed": rename_result["renamed"],
-                    "message": "No content changed — no commit created."}
+                    "message": ("No content changed — no commit created."
+                                + (f" Baseline {baseline_tag} tagged at the "
+                                   "existing HEAD: every capture was verified "
+                                   "equal to it." if baseline_tag else ""))}
 
         names = ", ".join(c["hostname"] for c in changed)
         subject = message or (
@@ -664,14 +724,14 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         # caller that knows it is one says so rather than the count implying
         # it. Without this a single-device deploy left no reference to restore
         # the network to — the change was recorded and the moment was not.
-        want_baseline = (baseline if baseline is not None
-                         else (source in ("save_all", "migration")
-                               or len(changed) > 1))
-        if want_baseline:
+        baseline_tag = ""
+        if _baseline_wanted(baseline, source, len(changed)):
             baseline_tag = _unique_tag(repo, f"baseline/{stamp}", sha)
             if git(repo, "tag", "-a", baseline_tag, "-m",
                    f"network baseline — {len(changed)} device(s) via {source}")[0] == 0:
                 tags.append(baseline_tag)
+            else:
+                baseline_tag = ""
 
         _prune_device_tags(repo, [c["hostname"] for c in changed])
         git(repo, "gc", "--auto")
@@ -684,8 +744,10 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                      "source": source, "actor": actor, "tags": tags,
                      "devices": [c["hostname"] for c in changed]})
 
+    # `baseline` on both return paths, so a caller never has to sift `tags`
+    # to find out whether a restore point exists.
     return {"ok": True, "commit": sha, "changed": [c["hostname"] for c in changed],
-            "unchanged": unchanged, "tags": tags,
+            "unchanged": unchanged, "tags": tags, "baseline": baseline_tag,
             "renamed": rename_result["renamed"], "error": ""}
 
 

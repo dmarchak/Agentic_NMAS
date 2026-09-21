@@ -4227,3 +4227,60 @@ one of those lines is a secret the fleet has retired. Making `validate_restored_
 refuse a ref whose credential predates the device's newest rotation is the
 obvious place for it, and it is a Part 2 item rather than something to add
 between two rotations.
+
+## The strongest evidence produced the weakest result
+
+Save All ran over all nine devices, every capture matched its committed
+golden, and `save_golden()` correctly refused to create an empty commit. It
+then returned before reaching any tagging, so there was no baseline either.
+
+A fleet that had drifted got a restore point. A fleet that was perfectly in
+sync got nothing.
+
+That is backwards, and the reason is worth naming: the baseline was attached
+to *having committed something* rather than to the claim it makes. A baseline
+says "the network matches the goldens at this commit". "Every device was
+captured, compared against its committed golden, and found equal" is not the
+absence of evidence for that claim — it is the claim, established by direct
+observation rather than inferred from a deploy having succeeded. The one case
+where the property is measured end to end was the case that produced no tag.
+
+The tag now goes on the **existing HEAD**. Nothing is committed: an empty
+commit to hang a tag on would be a false record of a change, and the commit
+was never what the baseline was about.
+
+Coverage still governs, and now travels with the call. `save_golden()` cannot
+see an inventory, so the route passes `inventory_size` and the `skipped` list;
+absent those, coverage is *unproven* and no baseline is issued. Unproven is
+the right default — a baseline is a claim, and an unmade measurement cannot
+support one — and it also leaves every pre-existing caller behaving exactly as
+before.
+
+### HTTP 200 means the request ended
+
+Both whole-fleet saves today left nothing behind but a werkzeug access line.
+That one of them produced no commit **and** no baseline was discovered by
+reading git afterwards.
+
+The response had said `"Saved N device config(s) in one commit "` — with an
+empty string where the sha goes, because there was no commit. It read as
+success because it was written on the assumption that reaching the end of the
+handler meant the operation had happened.
+
+Every whole-fleet run now reports what it did, in the log and in the response
+and in the UI, with the same fields: devices captured of how many, changed,
+unchanged, skipped **with reasons**, commit sha or `none`, baseline tag or
+`none`. The two outcomes that used to be silent are the two that are now
+loudest — a skipped device logs a warning naming it, and "no commit and no
+baseline" logs a warning saying no restore point was created and why.
+
+> A handler that returns 200 has reported on itself, not on the operation.
+> Any operation worth an operator's attention has to state its outcome in
+> terms of what the operator wanted, and "nothing needed doing" is an outcome
+> that must be said out loud rather than inferred from silence.
+
+The general shape recurs in this project: a status that describes the
+mechanism rather than the result. `gates: {reveal: true}` meaning the gate is
+closed; `ROTATED_UNVERIFIED` meaning both "not attempted" and "failed";
+"Retrying" printed after the process had exited. This is the same error at the
+transport layer.

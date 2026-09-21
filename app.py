@@ -5051,7 +5051,12 @@ def golden_configs_save_all():
         return jsonify({"ok": False, "saved": saved, "failed": failed,
                         "message": "No configs were saved."}), 400
 
-    commit_result = save_golden(list_name, items, source="save_all", actor="user")
+    # The inventory size and the skip list travel WITH the save, because only
+    # this route knows them — and a baseline may not be claimed for a fleet
+    # one of whose members was never measured.
+    commit_result = save_golden(list_name, items, source="save_all",
+                                actor="user", inventory_size=len(devices),
+                                skipped=failed)
     if not commit_result.get("ok"):
         return jsonify({"ok": False, "saved": [], "failed": failed,
                         "message": commit_result.get("error", "commit failed")}), 500
@@ -5078,27 +5083,92 @@ def golden_configs_save_all():
                     pipeline_error = str(exc)
                     app.logger.warning("save_all: pipeline trigger failed: %s", exc)
 
-    changed_count = len(commit_result.get("changed", []))
-    unchanged_count = len(commit_result.get("unchanged", []))
-    msg = (
-        f"Saved {len(saved)} device config(s) in one commit "
-        f"{commit_result.get('commit', '')[:8]}"
-        + (f" ({unchanged_count} unchanged)" if unchanged_count else "")
-        + "."
-        + (f" Validation pipeline '{pipeline_name}' triggered." if pipeline_name else
-           " Jenkins not configured — committed without a CI pipeline.")
-    )
+    # ---- say what actually happened -------------------------------------
+    #
+    # HTTP 200 means the request ended, not that it achieved what the operator
+    # intended. Two whole-fleet saves ran today and left nothing behind but a
+    # werkzeug access line; that one of them produced no commit AND no
+    # baseline was discovered by reading git afterwards. A whole-fleet
+    # operation reports what it did, every time, in the log and in the
+    # response — including when the answer is "nothing needed doing".
+    changed = commit_result.get("changed", [])
+    changed_names = sorted(c["hostname"] if isinstance(c, dict) else c
+                           for c in changed)
+    unchanged_names = sorted(commit_result.get("unchanged", []))
+    commit_sha = commit_result.get("commit", "")
+    baseline_tag = commit_result.get("baseline", "") or next(
+        (t for t in commit_result.get("tags", []) if t.startswith("baseline/")),
+        "")
+
+    summary = {
+        "list":        list_name,
+        "inventory":   len(devices),
+        "captured":    len(saved),
+        "changed":     changed_names,
+        "unchanged":   unchanged_names,
+        "skipped":     [{"hostname": f.get("hostname"), "ip": f.get("ip"),
+                         "reason": f.get("reason")} for f in failed],
+        "commit":      commit_sha or "none",
+        "baseline":    baseline_tag or "none",
+        "tags":        commit_result.get("tags", []),
+        "renamed":     commit_result.get("renamed", []),
+        "pipeline":    pipeline_name or "none",
+    }
+    app.logger.info(
+        "save_all[%s]: inventory=%d captured=%d changed=%d unchanged=%d "
+        "skipped=%d commit=%s baseline=%s pipeline=%s",
+        list_name, summary["inventory"], summary["captured"],
+        len(changed_names), len(unchanged_names), len(failed),
+        summary["commit"], summary["baseline"], summary["pipeline"])
+    for entry in summary["skipped"]:
+        app.logger.warning("save_all[%s]: SKIPPED %s (%s) — %s", list_name,
+                           entry["hostname"], entry["ip"], entry["reason"])
+    if not commit_sha and baseline_tag:
+        app.logger.info("save_all[%s]: no commit — every golden already "
+                        "current; baseline %s tagged at the existing HEAD",
+                        list_name, baseline_tag)
+    elif not commit_sha and not baseline_tag:
+        app.logger.warning(
+            "save_all[%s]: no commit AND no baseline. Every golden was "
+            "already current, but coverage was not established "
+            "(%d skipped of %d) so no restore point was created.",
+            list_name, len(failed), len(devices))
+
+    # The message states the outcome rather than implying one. It used to say
+    # "Saved N device config(s) in one commit " with an empty sha when there
+    # was no commit at all.
+    if commit_sha:
+        headline = (f"Captured {len(saved)} of {len(devices)} device(s); "
+                    f"{len(changed_names)} changed in commit {commit_sha[:8]}")
+    else:
+        headline = (f"Captured {len(saved)} of {len(devices)} device(s); "
+                    f"every golden already current — no commit")
+    parts = [headline]
+    if unchanged_names:
+        parts.append(f"{len(unchanged_names)} unchanged")
+    if failed:
+        parts.append(f"{len(failed)} SKIPPED: " + ", ".join(
+            f"{f.get('hostname')} ({f.get('reason')})" for f in failed))
+    parts.append(f"baseline {baseline_tag}" if baseline_tag
+                 else "NO baseline — no whole-fleet restore point from this run")
+    if pipeline_name:
+        parts.append(f"validation pipeline '{pipeline_name}' triggered")
+    elif commit_sha:
+        parts.append("Jenkins not configured — committed without a CI pipeline")
+    msg = ". ".join(parts) + "."
 
     return jsonify({
         "ok":            True,
         "saved":         saved,
         "failed":        failed,
-        "commit":        commit_result.get("commit", ""),
+        "commit":        commit_sha,
         "tags":          commit_result.get("tags", []),
+        "baseline":      baseline_tag,
         "unchanged":     commit_result.get("unchanged", []),
         "renamed":       commit_result.get("renamed", []),
         "pipeline":      pipeline_name,
         "pipeline_error": pipeline_error,
+        "summary":       summary,
         "message":       msg,
     })
 
