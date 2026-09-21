@@ -9,6 +9,7 @@ problem.
 
 import math
 import os
+import sys
 
 import pytest
 
@@ -1209,6 +1210,168 @@ class TestTheChainMakesOxidizedRereadRouterDb:
         out = cr.reload_oxidized()
         assert out["ok"] is False
         assert "/reload failed" in out["error"]
+
+
+class TestEveryPersistStageIsIdempotent:
+    """The recovery path re-runs the chain, so it MEETS finished stages.
+
+    r2 was rotated, its router.db row written, and a later stage failed. The
+    persist-only command then refused at the FIRST stage — "expected exactly
+    one changed row, changed: none" — because that row was already correct. A
+    recovery tool that fails on the state it was built to recover from is not
+    a recovery tool.
+
+    ``oxidized_row`` runs the REAL helper as a subprocess here, against a
+    temporary router.db, because it is the stage whose idempotence was broken
+    and a stub would only assert what the stub was told.
+    """
+
+    HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "scripts", "nmas-oxidized-cred")
+    BASE = dict(mgmt_ip="10.255.1.12", username="admin", password="Fresh9Value",
+                hostname="r2", new_hash="9 $9$salt$hash")
+
+    @pytest.fixture
+    def world(self, tmp_path, monkeypatch):
+        db = tmp_path / "router.db"
+        db.write_text("10.255.1.11:ios:admin:Old1\n"
+                      "10.255.1.12:ios:admin:Old1\n"
+                      "10.255.1.21:ios:admin:Old1\n", encoding="utf-8")
+        calls = {"reload": 0, "fetch": 0, "sync": 0, "startup": 0}
+
+        def _row(ip, user, pw, **kw):
+            import json as _json
+            import subprocess as _sp
+            proc = _sp.run([sys.executable, self.HELPER, "--file", str(db),
+                            "--ip", ip, "--no-backup"],
+                           input=_json.dumps({"username": user, "password": pw}),
+                           capture_output=True, text=True, timeout=30)
+            try:
+                return _json.loads(proc.stdout or "{}")
+            except ValueError:
+                return {"ok": False, "error": proc.stderr[:120]}
+
+        monkeypatch.setattr(cr, "update_oxidized_row", _row)
+        monkeypatch.setattr(cr, "reload_oxidized",
+                            lambda **k: calls.__setitem__("reload", calls["reload"] + 1)
+                            or {"ok": True, "mechanism": "rest_reload"})
+        monkeypatch.setattr(cr, "confirm_fetch",
+                            lambda *a, **k: calls.__setitem__("fetch", calls["fetch"] + 1)
+                            or {"ok": True, "end": "2026-09-21 09:24:09 UTC"})
+        monkeypatch.setattr(cr, "run_sync",
+                            lambda **k: calls.__setitem__("sync", calls["sync"] + 1)
+                            or {"ok": True, "rc": 0})
+        monkeypatch.setattr(cr, "verify_startup_file",
+                            lambda *a, **k: calls.__setitem__("startup", calls["startup"] + 1)
+                            or {"ok": True, "matches": 1})
+        return {"db": db, "calls": calls}
+
+    def _run(self):
+        return cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED,
+                           "steps": []},
+                          after_iso=cr.utc_now(), **self.BASE)
+
+    def test_running_persist_twice_reaches_persisted_both_times(self, world):
+        """The test the r2 failure asks for, end to end."""
+        first = self._run()
+        assert first["state"] == cr.ROTATED_PERSISTED, first.get("persistence")
+
+        second = self._run()
+        assert second["state"] == cr.ROTATED_PERSISTED, second.get("persistence")
+        assert all(st["ok"] for st in second["persistence"])
+
+    def test_the_second_run_reports_the_row_as_already_current(self, world):
+        self._run()
+        second = self._run()
+
+        row = next(st for st in second["persistence"] if st["name"] == "oxidized_row")
+        assert row["ok"] is True
+        assert row.get("already_current") is True
+        assert row.get("changed") == 0
+
+    def test_the_second_run_rewrites_nothing(self, world):
+        self._run()
+        before = world["db"].read_text(encoding="utf-8")
+        self._run()
+        assert world["db"].read_text(encoding="utf-8") == before
+
+    def test_every_stage_still_runs_on_the_second_pass(self, world):
+        """Idempotent is not 'skipped'. The outcome is re-established."""
+        self._run()
+        self._run()
+        assert world["calls"] == {"reload": 2, "fetch": 2, "sync": 2,
+                                  "startup": 2}
+
+    def test_the_first_run_actually_changed_the_row(self, world):
+        """Otherwise 'already current' could be hiding a write that never was."""
+        first = self._run()
+        row = next(st for st in first["persistence"] if st["name"] == "oxidized_row")
+        assert row.get("changed") == 1
+        assert row.get("already_current") is not True
+        assert "Fresh9Value" in world["db"].read_text(encoding="utf-8")
+
+
+class TestTimestampsAreTimezoneAware:
+    """`confirm_fetch` decides "after the rotation" by comparing datetimes.
+
+    A naive value on either side is either a TypeError or — worse — a silent
+    comparison between two different clocks that answers confidently. The
+    symptom would be a fetch that looks like it never arrived.
+    """
+
+    def test_utc_now_is_aware(self):
+        assert cr.utc_now().tzinfo is not None
+
+    def test_oxidized_format_parses_with_and_without_the_suffix(self):
+        """Measured on the live REST API: '2026-09-21 09:12:44 UTC'."""
+        with_suffix = cr.as_utc("2026-09-21 09:12:44 UTC")
+        without = cr.as_utc("2026-09-21 09:12:44")
+        assert with_suffix == without
+        assert with_suffix.tzinfo is not None
+
+    def test_iso_forms_parse_too(self):
+        assert cr.as_utc("2026-09-21T09:12:44+00:00") == \
+            cr.as_utc("2026-09-21 09:12:44 UTC")
+
+    def test_a_naive_datetime_is_assumed_utc_not_local(self):
+        from datetime import datetime, timezone
+        naive = datetime(2026, 9, 21, 9, 12, 44)
+        assert cr.as_utc(naive) == datetime(2026, 9, 21, 9, 12, 44,
+                                            tzinfo=timezone.utc)
+
+    def test_every_parsed_value_is_comparable_with_every_other(self):
+        """The property that matters: no mix can raise."""
+        values = [cr.utc_now(), cr.as_utc("2026-09-21 09:12:44 UTC"),
+                  cr.as_utc("2026-09-21T09:12:44+00:00")]
+        for a in values:
+            for b in values:
+                assert isinstance(a >= b, bool)
+
+    def test_confirm_fetch_accepts_a_fetch_after_the_start(self, monkeypatch):
+        self._drive(monkeypatch, end="2026-09-21 09:24:09 UTC",
+                    start="2026-09-21 09:24:00", expect=True)
+
+    def test_confirm_fetch_rejects_a_fetch_from_before_the_start(self, monkeypatch):
+        """A stale success must not be read as this run's."""
+        self._drive(monkeypatch, end="2026-09-21 09:23:00 UTC",
+                    start="2026-09-21 09:24:00", expect=False)
+
+    def _drive(self, monkeypatch, *, end, start, expect):
+        import json as _json
+        import urllib.request
+
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {"oxidized_rest_url": "http://x"}.get(k, d))
+        payload = _json.dumps([{"name": "10.255.1.12",
+                                "last": {"status": "success", "end": end}}]).encode()
+
+        def _urlopen(url, **k):
+            return type("R", (), {"read": lambda s: payload})()
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        out = cr.confirm_fetch("10.255.1.12", cr.as_utc(start), attempts=1,
+                               base_delay=0, sleep=lambda _s: None)
+        assert out["ok"] is expect, out
 
 
 class TestPersistenceNeverReverts:

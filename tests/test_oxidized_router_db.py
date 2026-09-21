@@ -188,15 +188,53 @@ class TestSafetyOfTheWriteItself:
         for bad in ("from modules", "import modules", "sys.path.insert"):
             assert bad not in source, bad
 
-    def test_running_twice_is_idempotent_in_effect(self, db):
+    def test_running_twice_reports_already_current(self, db):
+        """The second run is a SUCCESS, and says it changed nothing.
+
+        This test previously asserted the opposite — that the second run must
+        fail "exactly one changed row" — with a comment calling that a refusal
+        to pretend work happened. That reasoning was wrong, and the assertion
+        pinned a defect under a reassuring name. Reporting the true state is
+        not pretending: the row holds the intended value, which is what the
+        caller asked for.
+
+        It broke the persist-only recovery path in exactly the case it exists
+        for. r2 was rotated, its row written, and a later stage failed; re-
+        running then refused at the FIRST stage because that row was already
+        correct.
+        """
         run(db, "10.255.1.12", password="Same9Value")
         first = rows_of(db)
+
         code, body = run(db, "10.255.1.12", password="Same9Value")
-        # The second run changes nothing, so "exactly one row differs" fails —
-        # which is correct: it is a refusal to pretend work happened.
-        assert code == 1
-        assert "exactly one changed row" in body["error"]
-        assert rows_of(db) == first
+        assert code == 0
+        assert body["ok"] is True
+        assert body["changed"] == 0
+        assert body["already_current"] is True
+        assert rows_of(db) == first, "nothing may be rewritten"
+
+    def test_already_current_still_refuses_a_different_username(self, db):
+        """Idempotence is about the INTENDED value, not about doing nothing."""
+        run(db, "10.255.1.12", password="Same9Value")
+        code, body = run(db, "10.255.1.12", password="Same9Value",
+                         username="someone-else")
+        assert code == 0 and body.get("changed") == 1, (
+            "a different username is a real change and must be written")
+
+    def test_a_changed_password_is_still_written(self, db):
+        run(db, "10.255.1.12", password="First9Value")
+        code, body = run(db, "10.255.1.12", password="Second9Value")
+        assert code == 0
+        assert body["changed"] == 1
+        assert body.get("already_current") is not True
+        fields = [l.split(":") for l in rows_of(db)]
+        assert dict((f[0], f[3]) for f in fields)["10.255.1.12"] == "Second9Value"
+
+    def test_already_current_does_not_take_a_backup(self, db):
+        """Nothing was written, so there is nothing to roll back to."""
+        run(db, "10.255.1.12", password="Same9Value")
+        _code, body = run(db, "10.255.1.12", password="Same9Value")
+        assert body["backup"] == ""
 
 
 class TestTheShebangIsPartOfTheSecurity:

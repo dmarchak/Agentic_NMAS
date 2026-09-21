@@ -3865,3 +3865,88 @@ start; shared services had not, and there is no principled line between them —
 the restart interrupted a harvest for eight devices that had nothing to do with
 the rotation. It is the same category as a device change and gets the same
 rule.
+
+## A recovery tool that failed on the state it was built to recover from
+
+`nmas-persist-credential` exists for one situation: the device is rotated and
+committed, and the persistence chain stopped partway. Run against r2, it failed
+at the first stage:
+
+```
+[XX] oxidized_row  validation failed, nothing written:
+                   expected exactly one changed row (10.255.1.12), changed: none
+```
+
+r2's router.db row already held the correct credential — written on the first
+attempt, before the stage that actually failed. The helper's "exactly one row
+changed" rule read the *correct target state* as a failure.
+
+The rule itself is right, and it is there for a good reason: it is what catches
+an edit that touched the wrong row, or more rows than intended. What was wrong
+was treating "no change needed" as one of the things it guards against. By
+construction, a recovery path **meets stages that are already done** — that is
+what makes it a recovery path. So the check fired in the one scenario the tool
+exists for, and in no other.
+
+`after` is built from `before` by replacing only the target row, so
+`after == before` can mean exactly one thing: that row already holds the
+intended username and password. No other row can have converged, because no
+other row was touched. That case now reports `already_current: true, changed: 0`
+and writes nothing; every other difference is still refused.
+
+### The test asserted the defect, again
+
+```python
+def test_running_twice_is_idempotent_in_effect(self, db):
+    ...
+    # The second run changes nothing, so "exactly one row differs" fails —
+    # which is correct: it is a refusal to pretend work happened.
+    assert code == 1
+```
+
+Named for idempotence, asserting its absence, with a comment explaining why the
+absence was correct. The reasoning does not survive being written down:
+reporting that a row already holds the intended value is not pretending work
+happened, it is reporting the state accurately. This is the same shape as
+[`test_bgp_address_families_on_r3_r4_r5`](#the-corpus-had-the-right-shape-the-comparison-could-not-see-it)
+— a name that says the property is covered, an assertion that pins its
+opposite, and a comment that makes the reader feel the question was already
+considered.
+
+> A test whose comment argues that a surprising behaviour is correct deserves
+> more suspicion than one with no comment at all. The argument was written by
+> someone who noticed the surprise and talked themselves out of it.
+
+**Idempotence is now a stated requirement of every stage**, documented per
+stage in `persist()` rather than left to be true by accident: the row write
+reports already-current, the reload is a GET, the fetch asks again, the sync
+re-harvests, the startup check is a grep. The test runs `persist()` twice and
+requires `rotated_and_persisted` both times — and separately requires that the
+second pass *still runs every stage*. Idempotent is not "skipped": the outcome
+is re-established, not assumed.
+
+## Two clocks that happened to agree
+
+`confirm_fetch()` decides whether a fetch happened *after* the rotation by
+comparing the run's start time with Oxidized's reported timestamp. Both sides
+were naive datetimes: `datetime.utcnow()` on one, `strptime` of Oxidized's
+string on the other.
+
+It worked, because both happened to be UTC. That is the whole of the
+justification, and none of it is expressed in the code. The failure modes were
+one edit away in either direction — an aware value on one side raises
+`TypeError`; a naive *local* time on one side compares two different clocks and
+answers confidently, which in this chain looks like a fetch that never arrived
+rather than like a bug. `utcnow()` is also deprecated from Python 3.12, so the
+change was coming whether or not anyone chose it.
+
+Everything in the chain now produces and consumes aware UTC. `as_utc()` accepts
+a datetime (naive assumed UTC, which is what every producer here means) or any
+of Oxidized's string forms, and always returns aware — so a mixed comparison is
+impossible rather than unlikely. Oxidized's format was read off the live REST
+API rather than taken from its documentation: `'2026-09-21 09:12:44 UTC'`,
+with the suffix present.
+
+The test that matters is not that each form parses. It is that every parsed
+value is comparable with every other, which is the property the code depends on
+and the one a future timestamp source could break.

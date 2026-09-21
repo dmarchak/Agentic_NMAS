@@ -1179,6 +1179,53 @@ def reload_oxidized(*, rest: str = "", timeout: float = 30.0, sleep=None,
             sleep(2)
 
 
+#: Oxidized reports times as ``'2026-09-21 09:12:44 UTC'`` — measured on the
+#: live REST API, not assumed from its docs.
+_OXIDIZED_TIME = "%Y-%m-%d %H:%M:%S"
+
+
+def utc_now():
+    """Timezone-AWARE now. Never ``utcnow()``.
+
+    ``datetime.utcnow()`` returns a naive datetime that merely happens to hold
+    UTC. Comparing one against an aware datetime raises ``TypeError``; comparing
+    it against a naive LOCAL time silently compares two different clocks and
+    answers confidently. This chain decides "did a fetch happen after the
+    rotation" by exactly such a comparison, so the failure would look like a
+    fetch that never arrived rather than like a bug. It is also deprecated from
+    Python 3.12.
+    """
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc)
+
+
+def as_utc(value):
+    """Parse anything this chain handles into an AWARE UTC datetime.
+
+    Accepts a datetime (naive is *assumed* UTC, which is what every producer
+    here means) or one of Oxidized's strings, with or without its ``UTC``
+    suffix, with or without ISO ``T``/offset. Returning aware on every path is
+    the point: a mixed comparison must be impossible rather than unlikely.
+    """
+    from datetime import datetime, timezone
+
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None \
+            else value.astimezone(timezone.utc)
+
+    text = (value or "").strip()
+    if not text:
+        raise ValueError("empty timestamp")
+    text = text.removesuffix(" UTC").strip()
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        parsed = datetime.strptime(text, _OXIDIZED_TIME)
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None \
+        else parsed.astimezone(timezone.utc)
+
+
 def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
                   base_delay: float = 10.0, rest: str = "", sleep=None) -> dict:
     """Require a SUCCESSFUL fetch timestamped after *after_iso*.
@@ -1191,7 +1238,6 @@ def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
     import json
     import time
     import urllib.request
-    from datetime import datetime
 
     from modules.settings_schema import get_setting
 
@@ -1199,7 +1245,7 @@ def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
     if not rest:
         return {"ok": False, "error": "oxidized_rest_url is not configured"}
     sleep = sleep or time.sleep
-    want = datetime.strptime(after_iso, "%Y-%m-%d %H:%M:%S")
+    want = as_utc(after_iso)
     last = {}
     for attempt in range(attempts):
         try:
@@ -1213,10 +1259,15 @@ def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
                 if node.get("name") != mgmt_ip:
                     continue
                 last = node.get("last") or {}
-                end = (last.get("end") or "").replace(" UTC", "")
+                end = last.get("end") or ""
                 if last.get("status") == "success" and end:
-                    if datetime.strptime(end, "%Y-%m-%d %H:%M:%S") >= want:
-                        return {"ok": True, "end": end, "attempts": attempt + 1}
+                    try:
+                        when = as_utc(end)
+                    except ValueError:
+                        continue
+                    if when >= want:
+                        return {"ok": True, "end": end,
+                                "attempts": attempt + 1}
         except Exception as exc:               # noqa: BLE001
             last = {"error": f"{type(exc).__name__}"}
     return {"ok": False, "attempts": attempts, "last": last,
@@ -1283,6 +1334,29 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     failure here leaves the state at :data:`ROTATED_UNVERIFIED` — the device is
     rotated, the credential is live and recorded, and only the boot-time copy
     is behind.
+
+    **Every stage is idempotent, and that is a requirement rather than a
+    convenience.** This chain's recovery path re-runs it after a partial
+    failure, so by construction it meets stages that are already done. A stage
+    that treats "already in the intended state" as an error fails precisely
+    when the recovery tool is used — which is what happened to r2: its
+    router.db row was written on the first attempt, a later stage failed, and
+    re-running was refused at the FIRST stage because that row was already
+    correct.
+
+    Per stage:
+
+    ``oxidized_row``     the helper reports ``already_current`` and writes
+                         nothing when the row already holds the intended
+                         credential. Any *other* row differing is still a
+                         refusal.
+    ``oxidized_reload``  a GET. No state, nothing to repeat wrongly.
+    ``fetch_confirmed``  asks for a fresh fetch and requires one that succeeds
+                         after *after_iso*. Re-running asks again; a device
+                         that is reachable satisfies it every time.
+    ``clab_sync``        a harvest into the startup files. Re-running copies
+                         the same content.
+    ``startup_file``     a grep. Pure read.
     """
     chain = []
 
@@ -1291,6 +1365,7 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
         return outcome.get("ok")
 
     result["persistence"] = chain
+    # Each stage gates the next; every one of them may find its work done.
     if not _stage("oxidized_row",
                   update_oxidized_row(mgmt_ip, username, password,
                                       **{k: kw[k] for k in ("router_db",)

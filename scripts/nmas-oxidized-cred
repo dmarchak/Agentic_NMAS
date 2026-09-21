@@ -47,6 +47,11 @@ WHAT IT GUARANTEES
     then VALIDATE it, then replace atomically. A validation failure leaves the
     original untouched. Nothing is printed except a JSON result that contains no
     credential.
+
+    IDEMPOTENT: if the target row already holds the intended credential, it
+    reports ``changed: 0, already_current: true`` and writes nothing. Any
+    other row differing, or the target differing in any way other than to the
+    intended value, is still refused.
 """
 
 import argparse
@@ -159,6 +164,25 @@ def main():
 
     after = [(r[0], r[1], username, password) if r[0] == args.ip else r
              for r in before]
+
+    # ALREADY CURRENT is success, not failure.
+    #
+    # `after` is built from `before` by replacing only the target row, so
+    # `after == before` can mean exactly one thing: that row already holds the
+    # intended username and password. No other row can have converged, because
+    # no other row was touched.
+    #
+    # The "exactly one row changed" rule is right for catching a wrong write,
+    # but it used to reject this case — which is the case the persist-only
+    # recovery path exists to handle. A chain that re-runs after a partial
+    # failure will find earlier stages already done, so treating "already
+    # correct" as an error makes the recovery tool fail precisely when it is
+    # needed.
+    if after == before:
+        print(json.dumps({"ok": True, "ip": args.ip, "rows": len(before),
+                          "backup": "", "changed": 0, "already_current": True}))
+        return
+
     try:
         validate(before, after, args.ip)
     except ValueError as exc:
