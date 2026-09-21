@@ -53,6 +53,12 @@ def status():
         # rather than a fault.
         "kind": ident.kind,
         "service_id": ident.service_id,
+        # How the audit trail will name this caller. For a service that is its
+        # label when one is configured, so the diagnostic shows the same string
+        # the trail will — an unlabelled token reads as 32 hex characters, and
+        # discovering that later, in a log, is the wrong moment.
+        "audit_name": (ident_mod.service_label(ident.service_id)
+                       if ident.kind == "service" else ident.actor),
         # Presence only — this is how you tell "the tunnel forwards the email
         # header but not the assertion" from "it forwards neither", which are
         # different deployment problems with different fixes.

@@ -748,3 +748,61 @@ class TestTheFixtureMatchesTheRealDefaults:
                     f"the fixture says {key}={value!r} but the real default is "
                     f"{DEFAULTS[key]!r} — the fixture is testing a system that "
                     "does not exist")
+
+
+class TestTheDiagnosticShowsTheAuditName:
+    """The diagnostic should show the string the audit trail will show.
+
+    Discovering that a token is unlabelled — and reads as 32 hex characters —
+    is much cheaper here than later, in a log, while reconstructing who did
+    something.
+    """
+
+    CLIENT_ID = "e367826f93b8d71185e03fe518aff3b4.access"
+
+    @pytest.fixture
+    def client(self, configured):
+        import flask
+
+        import routes.identity as route_mod
+
+        app = flask.Flask(__name__)
+        app.register_blueprint(route_mod.bp)
+        return app.test_client()
+
+    def _svc(self, private):
+        import jwt
+        now = int(time.time())
+        return jwt.encode({"type": "app", "aud": AUD, "iss": f"https://{TEAM}",
+                           "common_name": self.CLIENT_ID, "iat": now,
+                           "exp": now + 600, "sub": ""},
+                          private, algorithm="RS256")
+
+    def test_a_labelled_service_shows_its_label(self, client, keys, monkeypatch,
+                                                 configured):
+        private, _ = keys
+        base = dict(configured)
+        base["cf_access_service_labels"] = {self.CLIENT_ID: "nmas-automation"}
+        monkeypatch.setattr(identity, "_setting",
+                            lambda key, default=None: base.get(key, default))
+
+        body = client.get("/identity/status",
+                          headers={identity.JWT_HEADER: self._svc(private)},
+                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+        assert body["kind"] == "service"
+        assert body["audit_name"] == "nmas-automation"
+        assert body["actor"] == f"service:{self.CLIENT_ID}"
+
+    def test_an_unlabelled_service_shows_its_raw_id(self, client, keys):
+        private, _ = keys
+        body = client.get("/identity/status",
+                          headers={identity.JWT_HEADER: self._svc(private)},
+                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+        assert body["audit_name"] == self.CLIENT_ID
+
+    def test_a_person_shows_their_address(self, client, keys):
+        private, _ = keys
+        body = client.get("/identity/status",
+                          headers={identity.JWT_HEADER: _token(private)},
+                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+        assert body["audit_name"] == "dustin@example.com"
