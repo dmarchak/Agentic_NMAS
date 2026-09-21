@@ -2,22 +2,32 @@
 
 > ## ⚠ DO NOT REDEPLOY rcn-lab1
 >
+> **CONFIRMED ON HARDWARE, stage B, 2026-09-21.** Not a prediction any more.
+>
 > `configs/r1.cfg`–`r5.cfg` contain `username admin privilege 15 secret 9 …`
 > and have **never been booted**. Those nodes last started 2026-09-19 05:23;
 > the files were rewritten 2026-09-21 18:41 by clab-sync after the credential
 > rotation.
 >
-> Reading the patched launch script, vrnetlab injects
-> `username admin privilege 15 password admin` **before** the startup config,
-> and IOS-XE refuses a secret for a user that already has a password. If that
-> reading is right, a redeploy brings all five routers up holding
-> **vrnetlab's admin/admin**, locks NMAS out of every one of them, and leaves
-> startup files that look correct.
+> A throwaway C8000v booted a startup file in exactly that shape. Its boot log:
 >
-> **This includes `--reconfigure`, and it includes adding r6.** It is
-> unresolved until the probe measures it — see
-> `docs/bootstrap-probe/` stage B. The switches are unaffected: nothing is
-> injected on that platform.
+> ```
+> %CVAC-4-CLI_FAILURE: Configuration command failure:
+>   'username admin privilege 15 secret 9 $9$…' was rejected
+> ```
+>
+> preceded by the `%AAAA` type-0 warning for vrnetlab's own injected line.
+> After boot the running config held `username admin privilege 15 password 0
+> admin`; over SSH **`admin` was accepted and the file's own credential was
+> refused**. Startup complete was reached in 7m26s, so nothing announced that
+> the device was not what its startup file said.
+>
+> **A redeploy of rcn-lab1 today brings r1–r5 up on vrnetlab's admin/admin and
+> locks NMAS out of all five**, with startup files that look correct.
+>
+> **This includes `--reconfigure`, and it includes adding r6.** The ban stands
+> until stage C shows a fix working on the probe — see `docs/bootstrap-probe/`.
+> The switches are unaffected: nothing is injected on that platform.
 
 The Phase 4 wizard decides whether a device is *factory-default* or *already
 configured*. That decision needs a per-platform **bootstrap profile**: the set
@@ -392,9 +402,43 @@ rm -f configs/bp-c8k-secret9.cfg          # it contains a generated hash
 
 ---
 
-## If the hazard is confirmed: the two candidate fixes
+## Stage B result: hazard CONFIRMED on hardware (2026-09-21)
 
-Both to be evaluated **on the probe**, not on rcn-lab1.
+Measured, not predicted.
+
+| observation | value |
+|---|---|
+| Startup complete | reached, 7m26s |
+| boot log | `%CVAC-4-CLI_FAILURE: Configuration command failure: 'username admin privilege 15 secret 9 $9$…' was rejected`, preceded by the `%AAAA` type-0 warning for vrnetlab's injected line |
+| running config after boot | `username admin privilege 15 password 0 admin` |
+| SSH as `admin` | **accepted** |
+| SSH with the file's own credential | **refused** |
+
+So the prediction was right in every part, including the part that makes it
+dangerous: **the node boots successfully.** `Startup complete` is reached, the
+container is healthy, the router answers SSH. Only the credential is not the
+one its startup file describes. There is no failure to notice.
+
+A redeploy of rcn-lab1 today brings r1–r5 up on vrnetlab's admin/admin and
+locks NMAS out of all five.
+
+### What this says about the persistence chain
+
+`verify_startup_file()` greps the startup file for the new hash and passes.
+The hash **is** in the file. The file does not apply. That is a **presence**
+check standing in for an **applicability** one, and the gap between them is
+exactly the size of this defect — five routers, silently unreachable, at the
+next redeploy.
+
+Nothing short of a boot could have distinguished the two. The check was not
+weak in a way a reviewer would see; it asked a question whose answer was yes.
+
+---
+
+## The two candidate fixes
+
+Both to be evaluated **on the probe**, not on rcn-lab1. Stage C evaluates
+(a).
 
 **(a) Patch the launch script to skip its username injection when the startup
 config supplies one.** `patches/c8000v-launch.py` already exists and already
@@ -420,6 +464,175 @@ rotation" — a weaker property, and one somebody has to remember.
 I lean to **(a)** for the reason given: it keeps the file and the device in
 agreement, which is what a source of truth is for. (b) is the fallback if the
 probe shows vrnetlab depends on injecting that account.
+
+---
+
+## Stage C — evaluating fix (a) on the probe
+
+Deploy only after stages A and B are destroyed and `clab-bootstrap-probe` is
+gone. One node, same isolated network.
+
+### C-pre. Build the patched launch script
+
+The patch is **copied** and then edited, never edited in place. The patcher
+refuses a path under `~/labs/lab`.
+
+```bash
+cd ~/labs/bootstrap-probe
+cp ~/labs/lab/patches/c8000v-launch.py patches/c8000v-launch-userskip.py
+
+# Confirm the starting point is rcn-lab1's own patch, unmodified.
+diff ~/labs/lab/patches/c8000v-launch.py patches/c8000v-launch-userskip.py \
+  && echo "identical to production patch"
+
+# Show the diff. Writes nothing.
+python3 patches/patch-skip-injected-user.py patches/c8000v-launch-userskip.py
+
+# Apply it.
+python3 patches/patch-skip-injected-user.py patches/c8000v-launch-userskip.py --write
+
+# The whole divergence from stock, in one place: smp="2" plus the user skip.
+diff ~/labs/lab/patches/c8000v-launch.py patches/c8000v-launch-userskip.py
+```
+
+The patcher **refuses** rather than guessing if the file is not what stage B
+measured: no `import re` / `import logging`, no injected
+`username … privilege 15 password …` line, not exactly one
+`cfg = self.gen_bootstrap_config() + startup_cfg`, or already patched. A
+refusal means the reading this fix rests on is stale — report it rather than
+forcing the edit.
+
+The functional change is **two lines** at the concatenation site; the rest of
+the diff is the helper and its comment.
+
+### C0. Does the patch break the boot at all?
+
+The startup config here defines `admin` with the **password** form and the
+value `admin` — the credential vrnetlab was given. So the injection is
+skipped, but the device still ends up with the credential vrnetlab knows.
+
+```bash
+cp configs/bp-c8k.cfg configs/bp-c8k-stage-c.cfg
+containerlab deploy -t nmas-userskip-probe.clab.yml
+
+c=clab-nmas-userskip-probe-bp-c8k-c
+time docker logs -f $c 2>&1 | grep -m1 "Startup complete"   # expect < 15 min
+docker logs $c 2>&1 | grep -i "not injecting"               # the patch speaking
+docker inspect --format '{{.State.Health.Status}}' $c       # expect: healthy
+```
+
+| C0 outcome | meaning |
+|---|---|
+| Startup complete, healthy | the patch mechanism is sound — go to C1 |
+| stalls or unhealthy | **(a) is dead regardless of credentials.** Report the last 40 log lines and fall back to (b); C1 would tell us nothing more |
+
+Then regenerate the type-9 hash C1 needs (stage A's node is gone):
+
+```bash
+ssh -o StrictHostKeyChecking=no admin@172.30.30.41
+  conf t
+  username probehash privilege 15 algorithm-type scrypt secret ProbeSecretValue1
+  do show run | include ^username probehash
+  no username probehash
+  end
+```
+
+Copy the `$9$…` hash into the template exactly as printed, then tear down:
+
+```bash
+sed "s|@@HASH@@|<the $9$ hash>|" configs/bp-c8k-secret9.cfg.template \
+  > configs/bp-c8k-secret9.cfg
+grep -c '\$9\$' configs/bp-c8k-secret9.cfg        # expect 1
+containerlab destroy -t nmas-userskip-probe.clab.yml --cleanup
+```
+
+If `configs/bp-c8k-secret9.cfg` from stage B still exists, skip the
+regeneration and use it — then `diff` proves C1 booted the same bytes stage B
+did.
+
+### C1. The real test
+
+```bash
+cp configs/bp-c8k-secret9.cfg configs/bp-c8k-stage-c.cfg
+diff configs/bp-c8k-secret9.cfg configs/bp-c8k-stage-c.cfg && echo "same config"
+containerlab deploy -t nmas-userskip-probe.clab.yml
+
+c=clab-nmas-userskip-probe-bp-c8k-c
+time docker logs -f $c 2>&1 | grep -m1 "Startup complete"
+```
+
+Then, all five pass criteria:
+
+```bash
+# 1. no CVAC rejection for the username line
+docker logs $c 2>&1 | grep -i "CVAC-4-CLI_FAILURE" || echo "PASS: no CLI failure"
+
+# 2. the skip actually fired
+docker logs $c 2>&1 | grep -i "not injecting"
+
+# 3. running config carries secret 9
+ssh -o StrictHostKeyChecking=no admin@172.30.30.41 \
+  "show running-config | include ^username admin"
+#    expect: username admin privilege 15 secret 9 $9$...
+#    NOT:    username admin privilege 15 password 0 admin
+
+# 4. the file's credential is accepted and vrnetlab's is refused
+#    (deliberately two separate attempts, not one inference)
+sshpass -p 'ProbeSecretValue1' ssh -o StrictHostKeyChecking=no \
+  admin@172.30.30.41 "show version | include uptime" && echo "PASS: file cred accepted"
+sshpass -p 'admin' ssh -o StrictHostKeyChecking=no -o NumberOfPasswordPrompts=1 \
+  admin@172.30.30.41 "show version" && echo "FAIL: admin still works" \
+  || echo "PASS: admin refused"
+
+# 5. the container is healthy, not merely running
+docker inspect --format '{{.State.Health.Status}}' $c
+```
+
+**All five must pass.** Criterion 5 is separate from criterion 1 on purpose:
+stage B reached `Startup complete` *and* was healthy while holding the wrong
+credential, so neither one alone says the node is what its file describes.
+
+### If C1 stalls
+
+C0 passing and C1 stalling is the signature of **vrnetlab needing the account
+it injects** — it can reach the console while the credential is still `admin`
+and not once the config has changed it. Report:
+
+```bash
+docker logs $c 2>&1 | tail -60        # where it stops, verbatim
+docker inspect --format '{{.State.Health.Status}}' $c
+```
+
+The line it stops on is the finding. A stall at a login prompt after the
+config is applied says vrnetlab logs back in; a stall before it says something
+else, and the two lead to different fixes.
+
+Then fall back to **(b)**: the startup file carries the password form and
+`set_credential` rotates after boot. Note what (b) costs, so it is chosen
+knowingly rather than by exhaustion — the startup file stops recording the
+credential the device ends up with, so "survives redeploy" weakens to
+"survives redeploy, then needs a rotation somebody has to remember".
+
+### C2. Destroy
+
+```bash
+containerlab destroy -t nmas-userskip-probe.clab.yml --cleanup
+docker network rm clab-bootstrap-probe 2>/dev/null || true
+rm -f configs/bp-c8k-stage-c.cfg configs/bp-c8k-secret9.cfg   # generated hashes
+```
+
+### What a C1 pass does and does not license
+
+A pass means fix (a) works **on the probe**, on one node, on this image. It
+does **not** lift the redeploy ban by itself. Lifting it needs, in order:
+
+1. the patched script adopted into `~/labs/lab/patches/` — the file r1–r5
+   already bind, so every router picks it up;
+2. the persistence chain's applicability check in place (below), so the next
+   rotation cannot recreate this silently;
+3. a rollback path if a redeploy still goes wrong — the five routers'
+   current credentials recorded somewhere that survives them being
+   unreachable.
 
 ---
 

@@ -5080,3 +5080,109 @@ files that reach a node. The topology YAML is read by containerlab's parser
 and the README by people; neither is a CLI. Widening the rule to them would
 turn a safety property into a house style, and a rule that fires on prose is
 a rule people learn to ignore.
+
+---
+
+## Headline finding: a presence check that passed while the property was false
+
+**Measured on hardware, 2026-09-21.** Five production routers would have come
+up unreachable at the next redeploy, and every check the system had said they
+were fine.
+
+### What was true
+
+`configs/r1.cfg`–`r5.cfg` each carry
+`username admin privilege 15 secret 9 $9$…`, written by the stage 1 credential
+rotation. The persistence chain verified that by reading the startup file back
+and finding the hash in it. It was there. The check passed, correctly.
+
+vrnetlab's patched launch script builds the config it applies as
+
+```python
+cfg = self.gen_bootstrap_config() + startup_cfg
+```
+
+and `gen_bootstrap_config()` contains
+`username admin privilege 15 password admin`. So vrnetlab's line is applied
+**first**, and IOS-XE refuses a secret for a user that already has a password.
+
+### What the boot showed
+
+A throwaway C8000v booted a startup file in exactly r1's shape:
+
+```
+%AAAA-4-...            (type-0 warning for vrnetlab's injected line)
+%CVAC-4-CLI_FAILURE: Configuration command failure:
+  'username admin privilege 15 secret 9 $9$…' was rejected
+```
+
+After boot, `show running-config` held
+`username admin privilege 15 password 0 admin`. Over SSH, `admin` was
+**accepted** and the startup file's own credential was **refused**.
+
+`Startup complete` was reached in 7m26s. The container reported healthy. The
+router answered SSH. **Nothing failed.**
+
+### Why this is the dangerous shape
+
+The defect is not that a check was weak. `verify_startup_file()` asked "is the
+new hash in the startup file", and the answer was yes, and the answer was
+*correct*. The question was the wrong one: what matters is not whether the
+hash is in the file but whether **the file applies**. Presence and
+applicability are different properties, and here they diverged completely —
+presence true, applicability false, for all five routers at once.
+
+A reviewer reading that check finds nothing wrong with it, because there is
+nothing wrong with it. It cannot be found by reading. It was found by booting
+a node that could be thrown away.
+
+And the failure it was guarding against is silent by construction. A redeploy
+would not error. It would produce five healthy routers holding credentials
+nobody has, with startup files that read correctly, and the first symptom
+would be NMAS failing to log in to all five at once — after the state that
+could have explained it was gone.
+
+### The correction
+
+**A check about a remote system's behaviour has to exercise that behaviour.**
+This is the same lesson as the rotation verifier reporting a local
+`InvalidToken` as a device verdict, arriving from the opposite direction:
+there, a local fault was reported as a remote answer; here, a local
+observation (bytes in a file) was accepted *as* a remote answer. Both are the
+same substitution — reading something nearby instead of asking the thing
+itself.
+
+`verify_startup_file()` becomes an **applicability** check. It can be done
+without redeploying production, because the platform's launch path is known:
+on a C8000v, a `username <vrnetlab-user> … secret …` line in a startup file is
+unappliable, full stop, and the chain knows the platform. That rule is cheap,
+runs on every rotation, and would have fired the moment the first router's
+file was written.
+
+The ban on redeploying rcn-lab1 now rests on this measurement rather than on
+a reading of the launch script, and is recorded in three places — `CLAUDE.md`,
+`docs/bootstrap-probe/README.md`, and `docs/NSOT_PHASE4_ONBOARDING.md` — all
+of which say **confirmed**.
+
+### Stage C, and what a pass would license
+
+Fix (a) is a second line in the launch patch rcn-lab1 already binds: skip
+vrnetlab's injected `username` line when the startup config defines that same
+user. `patches/patch-skip-injected-user.py` applies it against a copy, prints
+the real diff, and refuses if the file is not what stage B measured — a patch
+written against a file the author could not read is a guess with line numbers
+on it.
+
+The question stage C actually has to answer is not whether the secret lands.
+It is whether **vrnetlab still needs the account it injects**: it authenticates
+to the console with `--username/--password`, and the healthcheck may too. So
+stage C is two boots, not one. C0 skips the injection while leaving the device
+holding the credential vrnetlab was given; C1 changes it. C0 passing and C1
+stalling is the precise signature of "vrnetlab needs its own account", and a
+single boot could not tell that apart from "the patch is broken".
+
+A C1 pass would not lift the ban on its own. It would license adopting the
+patch, which is a different thing from having adopted it — the applicability
+check has to be in place first, so the next rotation cannot recreate this
+silently, and the five routers' current credentials have to be recorded
+somewhere that survives those routers being unreachable.

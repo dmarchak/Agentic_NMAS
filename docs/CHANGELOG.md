@@ -9,6 +9,33 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Measured — the rcn-lab1 redeploy hazard is real (stage B, hardware)
+
+A throwaway C8000v booted a startup file in r1's exact current shape. The
+`username admin privilege 15 secret 9 $9$…` line was rejected
+(`%CVAC-4-CLI_FAILURE`) behind vrnetlab's injected password line; the node
+came up holding `password 0 admin`, accepted `admin` over SSH, refused the
+file's own credential — and reached `Startup complete` in 7m26s reporting
+healthy. A redeploy today locks NMAS out of r1–r5 with no visible failure.
+
+- The ban is recorded as **confirmed** in `CLAUDE.md`,
+  `docs/bootstrap-probe/README.md` and `docs/NSOT_PHASE4_ONBOARDING.md`.
+- `verify_startup_file()`'s hash grep is a **presence** check standing in for
+  an **applicability** one. It passed, correctly, on all five routers.
+
+### Added — stage C, to evaluate fix (a) on the probe
+
+- `docs/bootstrap-probe/patches/patch-skip-injected-user.py` — applies the
+  user-skip to a **copy** of rcn-lab1's launch patch, prints the real unified
+  diff, writes only with `--write`, and refuses (naming the anchor) if the
+  file is not what stage B measured. Two functional lines at the concatenation
+  site; the injection still happens for any user the startup config does not
+  define.
+- `docs/bootstrap-probe/nmas-userskip-probe.clab.yml` — one node, same
+  isolated network. **Two boots**: C0 skips the injection while the device
+  still holds vrnetlab's credential (is the patch sound?), C1 changes it (does
+  vrnetlab need its own account?). One boot could not separate those.
+
 ### Added — one bootstrap-config generator, ASCII over its whole output
 
 `modules/nsot/bootstrap_config.py` produces the minimal config a new device

@@ -4,22 +4,32 @@ Plan only. Nothing here is built.
 
 > ## ⚠ DO NOT REDEPLOY rcn-lab1
 >
+> **CONFIRMED ON HARDWARE, stage B, 2026-09-21.** Not a prediction any more.
+>
 > `configs/r1.cfg`–`r5.cfg` contain `username admin privilege 15 secret 9 …`
 > and have **never been booted**. Those nodes last started 2026-09-19 05:23;
 > the files were rewritten 2026-09-21 18:41 by clab-sync after the credential
 > rotation.
 >
-> Reading the patched launch script, vrnetlab injects
-> `username admin privilege 15 password admin` **before** the startup config,
-> and IOS-XE refuses a secret for a user that already has a password. If that
-> reading is right, a redeploy brings all five routers up holding
-> **vrnetlab's admin/admin**, locks NMAS out of every one of them, and leaves
-> startup files that look correct.
+> A throwaway C8000v booted a startup file in exactly that shape. Its boot log:
 >
-> **This includes `--reconfigure`, and it includes adding r6.** It is
-> unresolved until the probe measures it — see
-> `docs/bootstrap-probe/` stage B. The switches are unaffected: nothing is
-> injected on that platform.
+> ```
+> %CVAC-4-CLI_FAILURE: Configuration command failure:
+>   'username admin privilege 15 secret 9 $9$…' was rejected
+> ```
+>
+> preceded by the `%AAAA` type-0 warning for vrnetlab's own injected line.
+> After boot the running config held `username admin privilege 15 password 0
+> admin`; over SSH **`admin` was accepted and the file's own credential was
+> refused**. Startup complete was reached in 7m26s, so nothing announced that
+> the device was not what its startup file said.
+>
+> **A redeploy of rcn-lab1 today brings r1–r5 up on vrnetlab's admin/admin and
+> locks NMAS out of all five**, with startup files that look correct.
+>
+> **This includes `--reconfigure`, and it includes adding r6.** The ban stands
+> until stage C shows a fix working on the probe — see `docs/bootstrap-probe/`.
+> The switches are unaffected: nothing is injected on that platform.
 
 Adding a new device, or a new site, from the GUI: NetBox objects, committed
 intent, a rendered config, and either a download for a node that does not

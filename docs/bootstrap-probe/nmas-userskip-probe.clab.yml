@@ -1,0 +1,61 @@
+name: nmas-userskip-probe
+
+# ---------------------------------------------------------------------------
+# STAGE C - does fix (a) work, and does vrnetlab still need the account it
+# injects?
+#
+# Stage B CONFIRMED the hazard on hardware: a startup file carrying
+# `username admin privilege 15 secret 9 <hash>` is refused on boot
+# (%CVAC-4-CLI_FAILURE), the node keeps vrnetlab's admin/admin, and
+# `Startup complete` is still reached so nothing announces it.
+#
+# Fix (a) is a second line in the launch patch rcn-lab1 already owns: skip
+# vrnetlab's injected `username` line when the startup config defines that
+# same user. Applied by patches/patch-skip-injected-user.py, which prints its
+# diff and refuses if the file is not what stage B measured.
+#
+# The open question fix (a) has to answer is NOT whether the secret lands.
+# It is whether vrnetlab still needs that account for itself: it authenticates
+# to the console with --username/--password, and the healthcheck may too. If
+# it does, skipping the injection strands the launch script at a login prompt
+# and we fall back to (b).
+#
+# TWO BOOTS, each answering one thing, because a single boot that fails
+# cannot tell "the patch is broken" from "vrnetlab needs its credential":
+#
+#   C0  patched script + configs/bp-c8k.cfg   (password form, value `admin`)
+#       The startup config defines admin, so the injection IS skipped - but
+#       the credential the device ends up with is still the one vrnetlab was
+#       given. Boots => the patch mechanism is sound. Stalls => the patch
+#       itself is wrong, and (a) is dead regardless of credentials.
+#       Also regenerates the type-9 hash stage C1 needs.
+#
+#   C1  patched script + configs/bp-c8k-secret9.cfg  (secret 9, the real test)
+#       Same file stage B booted. Everything as C0 except that the device's
+#       credential now differs from vrnetlab's. C0 passing and C1 stalling is
+#       the precise signature of "vrnetlab needs the account it injects".
+#
+# ONE node. Same isolated network and subnet as stages A and B, deployed only
+# after those are destroyed, so the two labs never contend.
+#
+# The startup config is copied to configs/bp-c8k-stage-c.cfg before each boot
+# rather than edited into this file, so "the same config stage B booted" is a
+# claim `diff` can check.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-bootstrap-probe
+  ipv4-subnet: 172.30.30.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a
+
+  nodes:
+    bp-c8k-c:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.30.41
+      startup-config: configs/bp-c8k-stage-c.cfg
+      binds:
+        - patches/c8000v-launch-userskip.py:/launch.py
