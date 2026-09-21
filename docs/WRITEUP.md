@@ -315,6 +315,30 @@ credential rotation; the identity layer; the Integrations panel.
 5. **Settings audit** — the settings surface has grown one key at a time.
 6. **A resolved `ListRef` type**, so a list name cannot be re-derived from
    global state mid-operation. Three separate defects had that shape.
+7. **Docker publishes past the firewall.** `ufw`'s default-deny does **not**
+   cover Docker-published ports: Docker writes its own `iptables` rules into
+   `DOCKER`/`DOCKER-USER`, which are evaluated ahead of ufw's chains, so a
+   published port is reachable from the whole LAN while `ufw status` shows it
+   denied. Measured here: NetBox `:8000`, Loki `:3100` and oxidized-web
+   `:8888` were all open to the LAN, and **oxidized-web serves every device's
+   full running configuration** — the largest exposure of the three by a wide
+   margin.
+
+   It surfaced by accident and by contrast: Grafana runs as a **native
+   process** rather than a container, so ufw blocked it exactly as
+   configured. One service behaving differently from its neighbours is what
+   made the rule visible — had everything been containerised, the firewall
+   would have looked like it was working.
+
+   The fix is to bind the containers to `127.0.0.1` (the services are only
+   consumed by NMAS on the same host) or to add explicit `DOCKER-USER` rules.
+   Deferred deliberately: it is a change to running infrastructure and
+   belongs in its own measured step, not in a documentation pass.
+
+   It is the same shape as the two findings above. `ufw status` is a
+   **presence** check — the rule is in the table — and reachability is the
+   **applicability** question. They diverge exactly because something else
+   writes to the same place first, which is the case nobody thinks of.
 
 ---
 
