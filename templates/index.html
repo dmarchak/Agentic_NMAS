@@ -302,12 +302,27 @@
       <td class="device-hostname">{{ d["hostname"] }}</td>
       <td class="device-ip">{{ d["ip"] }}</td>
       <td>
+        <div class="d-flex flex-wrap gap-1">
         {% if d["online"] %}
           <a id="btn-{{ d['ip'] }}" href="{{ url_for('manage_device', ip=d['ip']) }}"
              class="btn btn-sm btn-primary" target="_blank" rel="noopener">Manage</a>
         {% else %}
           <button id="btn-{{ d['ip'] }}" class="btn btn-sm btn-secondary" disabled>Offline</button>
         {% endif %}
+        {# NSoT actions. NOT gated on `online`: all three read captured
+           artifacts -- a golden config, a stored backup, committed intent --
+           and open no socket, so an unreachable device is exactly when its
+           history is most worth looking at. #}
+          <button class="btn btn-sm btn-outline-info"
+                  title="Render from committed intent; round-trip coverage and host_vars"
+                  onclick="nsotAction('showRenderPreview', '{{ d['hostname'] }}')">Template preview</button>
+          <button class="btn btn-sm btn-outline-warning"
+                  title="Build the deploy plan for this device. Shows the exact commands; sends nothing."
+                  onclick="nsotAction('openDeployPlan', '{{ d['hostname'] }}', true)">Deploy plan</button>
+          <button class="btn btn-sm btn-outline-secondary"
+                  title="Every golden commit for this device"
+                  onclick="nsotAction('showGoldenHistory', '{{ d['hostname'] }}')">Golden history</button>
+        </div>
       </td>
       <td>
         <form method="post" action="{{ url_for('delete_device', ip=d['ip']) }}">
@@ -356,6 +371,7 @@
 {% include 'partials/golden_repo.html' %}
 {% include 'partials/template_editor.html' %}
 {% include 'partials/deploy_wizard.html' %}
+{% include 'partials/device_nsot_actions.html' %}
 
 <!-- Add Device Form -->
 <hr>

@@ -1,0 +1,38 @@
+{# Dispatcher for the per-device NSoT buttons.
+
+   The three modals (render preview, deploy plan, golden history) had working
+   backends, passing tests, and NO CALLER -- the fourth time this project has
+   shipped code nothing invokes. These buttons are the entry points; nothing
+   about what the modals do has changed.
+
+   A missing function must be LOUD. A `typeof` guard that skips quietly is how
+   the Remote card failed: the symbol was absent, the click did nothing, and
+   nothing distinguished "not wired" from "nothing to show". So the guard here
+   reports rather than returns. #}
+<script>
+function nsotAction(name, hostname, asArray) {
+  const fn = window[name];
+
+  if (typeof fn !== 'function') {
+    // Visible, not silent. This is the failure the buttons exist to end.
+    const msg = 'This button calls ' + name + '(), which is not defined on '
+              + 'this page. The partial that defines it did not load, or its '
+              + 'script block failed to parse -- check the console.';
+    console.error('nsotAction: ' + name + ' is not defined');
+    if (typeof showToast === 'function') { showToast(msg, 'danger'); }
+    else { window.alert(msg); }
+    return;
+  }
+
+  try {
+    fn(asArray ? [hostname] : hostname);
+  } catch (e) {
+    // A modal that throws while opening leaves a backdrop and no content,
+    // which reads as a hung page rather than an error.
+    console.error('nsotAction: ' + name + ' threw', e);
+    const msg = name + '() failed: ' + (e && e.message ? e.message : e);
+    if (typeof showToast === 'function') { showToast(msg, 'danger'); }
+    else { window.alert(msg); }
+  }
+}
+</script>
