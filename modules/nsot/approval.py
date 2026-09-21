@@ -25,6 +25,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -51,6 +52,53 @@ def content_hash(text: str) -> str:
 FINGERPRINT_SCHEME = 2
 
 
+#: Jinja tags that pull another file into a template's rendered output.
+_IMPORT_RE = re.compile(
+    r"{%-?\s*(?:import|include|extends|from)\s+['\"]([^'\"]+)['\"]")
+
+
+def template_imports(text: str) -> list:
+    """Template paths *text* pulls in, in the order they appear."""
+    return _IMPORT_RE.findall(text or "")
+
+
+def template_closure(repo: str, rel_path: str) -> list:
+    """*rel_path* and every template it transitively imports, sorted.
+
+    Cycles terminate: a path already seen is not followed again.
+    """
+    from modules.nsot import templates_repo
+
+    seen, queue = set(), [rel_path]
+    while queue:
+        current = queue.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        text = templates_repo.read_template(repo, current)
+        if text is None:
+            # A missing import is not silently ignored — it changes the render
+            # (to an error), so it stays in the closure and its absence is part
+            # of the hash.
+            continue
+        queue.extend(template_imports(text))
+    return sorted(seen)
+
+
+def template_closure_text(repo: str, rel_path: str) -> str:
+    """The closure's contents, path-labelled, for hashing.
+
+    Paths are included so moving a macro between files changes the hash even
+    when the total text does not.
+    """
+    from modules.nsot import templates_repo
+
+    parts = []
+    for path in template_closure(repo, rel_path):
+        parts.append(f"--- {path}\n{templates_repo.read_template(repo, path) or ''}")
+    return "\n".join(parts)
+
+
 def binding_fingerprint(repo: str, rel_path: str,
                         host_vars_by_device: dict = None) -> dict:
     """Everything an approval is bound to: the template, and the devices it covers.
@@ -74,7 +122,15 @@ def binding_fingerprint(repo: str, rel_path: str,
     """
     from modules.nsot import templates_repo
 
-    template_text = templates_repo.read_template(repo, rel_path) or ""
+    # The full import closure, not just this file. A template IS base.j2 plus
+    # every macro file it imports; hashing only base.j2 meant an edit to the
+    # shared `_common.j2` — where every routing, interface and service macro
+    # lives — left every approval standing while the render changed underneath
+    # it. Found while fixing the BGP macro: that edit would have kept
+    # cisco_ios/base.j2 approved for s1-s4 on the strength of a hash that never
+    # looked at the file being changed. Same shape as the round-trip metric —
+    # a gate measuring less than its claim.
+    template_text = template_closure_text(repo, rel_path)
     bound = templates_repo.devices_for_template(repo, rel_path)
     # Stable identities, not names: a rename is the same device, onboarding is
     # not. Falls back to the name when a device has no manifest identity.
@@ -271,6 +327,11 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user") -> dic
              rel_path, actor, validation["device_count"])
     return {"ok": True, "template": rel_path, "validation": validation,
             "fingerprint": fingerprint["fingerprint"]}
+
+
+def approved_templates(repo: str) -> list:
+    """Template paths carrying a stored record, revoked or not."""
+    return sorted(_load(repo))
 
 
 def revoke(repo: str, rel_path: str, reason: str = "", actor: str = "") -> dict:

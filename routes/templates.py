@@ -205,17 +205,28 @@ def write_template(rel_path):
     # Editing changes the content hash, so the stored approval no longer
     # matches its fingerprint. Recording WHY makes that explicit — an edit is
     # a reason, and "unapproved" on its own does not say an edit caused it.
-    approval.revoke(repo, rel_path,
-                    reason="the template was edited; re-approval must "
-                           "validate the new content against every bound "
-                           "device",
-                    actor=data.get("actor", "user"))
+    #
+    # Every approval whose import closure contains this file, not just this
+    # file's own. `_common.j2` holds the routing, interface and service macros
+    # for BOTH platforms: editing it changes what every base.j2 renders, and
+    # revoking only `_common.j2` (which has no approval of its own) would leave
+    # them all standing.
+    revoked = []
+    for stored_path in approval.approved_templates(repo):
+        if rel_path in approval.template_closure(repo, stored_path):
+            approval.revoke(
+                repo, stored_path,
+                reason=(f"'{rel_path}' was edited, and this template imports "
+                        "it; re-approval must validate the new content "
+                        "against every bound device"),
+                actor=data.get("actor", "user"))
+            revoked.append(stored_path)
 
     commit = repo_service.save_templates(
         list_name, [rel_path], actor=data.get("actor", "user"),
         message=data.get("message", ""))
     return jsonify({"ok": True, "path": rel_path, "commit": commit.get("commit", ""),
-                    "approval_revoked": True})
+                    "approval_revoked": bool(revoked), "revoked": revoked})
 
 
 @bp.route("/revoke/<path:rel_path>", methods=["POST"])

@@ -551,3 +551,103 @@ class TestRevocationIsARecordedFinding:
         assert result["ok"] is True
         assert approval._load(repo)[rel].get("revoked") is None
         assert approval.is_approved(repo, rel) is True
+
+
+class TestApprovalCoversTheImportClosure:
+    """A template is ``base.j2`` PLUS every macro file it imports.
+
+    ``template_hash`` hashed only ``base.j2``. ``_common.j2`` holds the
+    routing, interface and service macros for both platforms, so editing it
+    changed what every ``base.j2`` renders while every approval stayed valid —
+    the hash never looked at the file being changed.
+
+    Found while fixing the BGP macro: that edit would have kept
+    ``cisco_ios/base.j2`` approved for s1–s4 on the strength of a hash of a
+    file that did not change. Same shape as the round-trip metric it was found
+    next to — a gate measuring less than its claim.
+    """
+
+    def _repo(self, tmp_path):
+        from modules.nsot import templates_repo
+        repo = str(tmp_path / "config_repo")
+        os.makedirs(repo, exist_ok=True)
+        templates_repo.seed_templates(repo)
+        return repo
+
+    def test_the_closure_includes_the_shared_macros(self, tmp_path):
+        from modules.nsot import approval
+        repo = self._repo(tmp_path)
+
+        closure = approval.template_closure(repo, "cisco_ios/base.j2")
+        assert "cisco_ios/base.j2" in closure
+        assert "_common.j2" in closure, closure
+
+    def test_editing_the_shared_macros_moves_the_fingerprint(self, tmp_path):
+        from modules.nsot import approval, templates_repo
+        repo = self._repo(tmp_path)
+
+        before = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        text = templates_repo.read_template(repo, "_common.j2")
+        templates_repo.write_template(repo, "_common.j2",
+                                      text + "\n{# an edit #}\n")
+        after = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+
+        assert before["fingerprint"] != after["fingerprint"], (
+            "an edit to the imported macros must move the fingerprint of every "
+            "template that imports them")
+
+    def test_both_platforms_move_together(self, tmp_path):
+        """`_common.j2` is shared, so an edit to it reaches both."""
+        from modules.nsot import approval, templates_repo
+        repo = self._repo(tmp_path)
+
+        before = {p: approval.binding_fingerprint(repo, p)["fingerprint"]
+                  for p in ("cisco_ios/base.j2", "cisco_iosxe/base.j2")}
+        text = templates_repo.read_template(repo, "_common.j2")
+        templates_repo.write_template(repo, "_common.j2", text + "\n{# edit #}\n")
+
+        for path, old in before.items():
+            assert approval.binding_fingerprint(repo, path)["fingerprint"] != old, path
+
+    def test_editing_one_platform_does_not_move_the_other(self, tmp_path):
+        """The closure must not over-reach either."""
+        from modules.nsot import approval, templates_repo
+        repo = self._repo(tmp_path)
+
+        untouched = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        text = templates_repo.read_template(repo, "cisco_iosxe/base.j2")
+        templates_repo.write_template(repo, "cisco_iosxe/base.j2",
+                                      text + "\n! an edit\n")
+
+        assert approval.binding_fingerprint(
+            repo, "cisco_ios/base.j2")["fingerprint"] == untouched["fingerprint"]
+
+    def test_moving_a_macro_between_files_changes_the_hash(self, tmp_path):
+        """Path-labelled, so identical total text in a different layout differs."""
+        from modules.nsot import approval, templates_repo
+        repo = self._repo(tmp_path)
+
+        before = approval.template_closure_text(repo, "cisco_ios/base.j2")
+        common = templates_repo.read_template(repo, "_common.j2")
+        base = templates_repo.read_template(repo, "cisco_ios/base.j2")
+        templates_repo.write_template(repo, "_common.j2", base)
+        templates_repo.write_template(repo, "cisco_ios/base.j2", common)
+        after = approval.template_closure_text(repo, "cisco_ios/base.j2")
+
+        assert approval.content_hash(before) != approval.content_hash(after)
+
+    def test_a_cycle_terminates(self, tmp_path):
+        from modules.nsot import approval, templates_repo
+        repo = self._repo(tmp_path)
+
+        templates_repo.write_template(repo, "a.j2", "{% import 'b.j2' as b %}")
+        templates_repo.write_template(repo, "b.j2", "{% import 'a.j2' as a %}")
+        assert approval.template_closure(repo, "a.j2") == ["a.j2", "b.j2"]
+
+    def test_a_missing_import_is_part_of_the_hash(self, tmp_path):
+        """It changes the render — to an error — so it is not ignored."""
+        from modules.nsot import approval, templates_repo
+        repo = self._repo(tmp_path)
+
+        templates_repo.write_template(repo, "x.j2", "{% import 'gone.j2' as g %}")
+        assert "gone.j2" in approval.template_closure(repo, "x.j2")

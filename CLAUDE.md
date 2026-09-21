@@ -390,7 +390,12 @@ exception.
   invalidated by any new or removed unmodelled line.
 - **Approval requires a clean round-trip against every bound device**, keyed on
   a binding fingerprint of **template hash + sorted bound identities**
-  (scheme 2). Revoked by a template edit or a change to the device set —
+  (scheme 2). The template hash covers the **whole import closure** — a
+  template is `base.j2` plus every macro file it imports, and `_common.j2`
+  holds the routing, interface and service macros for both platforms. Hashing
+  only `base.j2` meant an edit to the shared macros changed what every template
+  rendered while every approval stayed valid. Editing any file revokes every
+  approval whose closure contains it. Revoked by a template edit or a change to the device set —
   onboarding or removal. A device's *configuration* changing does not revoke
   it: that is `template_report`, live on every plan, per device, gating there
   with the lines named. Scheme 1 also hashed each device's host_vars, which
