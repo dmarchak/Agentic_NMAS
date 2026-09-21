@@ -336,14 +336,239 @@ redacted from the next log record rather than at the next TTL expiry.
 
 ---
 
-## 8. Open questions
+## 8. Decisions taken
 
-1. **s1–s4 are type 5 (MD5).** Out of scope here; converting them to type 9 is
-   the same operation with a different starting point. Worth deciding before
-   Phase 2b's first push, since the same "dead material" argument applies less
-   strongly to a weak hash than to cleartext, but it still applies.
-2. **`enable secret` does not exist on these devices.** If one is added later,
-   it is a second credential with its own rotation. Not created by this item.
-3. **The confirm-fingerprint departure in §2** is the one place this operation
-   deviates from the deploy contract. Flagging it explicitly for a decision
-   rather than burying it in an implementation.
+1. **The confirm-fingerprint departure (§2) is ACCEPTED**, as a *named
+   exception* rather than a silent one: the operator confirms every property of
+   the operation, and the tool guarantees the one value they may not see was
+   freshly generated and never recorded. This is the only place in the system
+   where "what you confirm is what is sent, byte for byte" does not hold, and
+   it says so.
+
+2. **s1–s4 (type 5, MD5) convert too** — as **stage 2**, after every router
+   succeeds, and **before** Phase 2b's first GitHub push. **s3 goes LAST**: it
+   owns `10.255.0.1` and is the lab's single management gateway, so it is the
+   one device whose loss isolates everything else. OOB recovery is demonstrated
+   on s3 *before* s3 is touched.
+
+3. **OOB recovery is demonstrated on r2 before r2 is rotated**, not merely
+   documented. See §GAP 3 — the path is verified and the procedure below.
+
+---
+
+## GAP 1 — Credential consumers
+
+`admin` is not "the NMAS credential". It is **the** credential, shared by every
+consumer, and a rotation that only updates `devices.csv` breaks the rest
+silently.
+
+### Inventoried on the NMAS (measured, not assumed)
+
+| consumer | how it authenticates | scope | breaks how |
+|---|---|---|---|
+| **NMAS** | `devices.csv`, per-device row, Fernet-encrypted | all 9 | loudly — connection errors in the UI |
+| **Oxidized** | **one global** `username`/`password` in `/opt/oxidized/config`; `router.db` maps only `name: 0` | all 9 | **silently** — see below |
+| **`~/lab-configs/yang-push-sub.py`** | **hardcoded** `username="admin", password=…`, NETCONF :830 | ad-hoc, not a service | silently, next time it is run |
+
+No Ansible inventory, no Jenkins device credentials, and `snmp-exporter` uses a
+community rather than this account.
+
+### Why Oxidized is the dangerous one
+
+Oxidized failing to log in does not produce an error downstream. The sync reads
+**Oxidized's git repo**, so a credential failure upstream looks exactly like
+"no changes since last time". The startup files quietly stop tracking the
+devices, and the first symptom is a redeploy booting stale configuration —
+which is finding #1 in the write-up notes, arrived at by a different route.
+
+So: **a rotation that breaks Oxidized also breaks redeploy persistence, and
+neither failure announces itself.**
+
+### The design question: per-consumer accounts
+
+Today one account serves three consumers, so a rotation is an all-or-nothing
+event across all of them. Two options:
+
+**(a) Keep one account; the operation updates every consumer.** Simplest, and
+what stage 1 must do regardless — but it means every future rotation has to
+know the full consumer list, and the list is only correct until someone adds a
+script.
+
+**(b) Split by consumer** — `admin` (people), `oxidized` (harvest), and
+optionally `nmas`. Each with its own type-9 secret, rotated independently.
+Oxidized's CSV source supports per-device credentials
+(`map: username:`, `password:`), so its account can differ per device rather
+than being one global value.
+
+**Recommendation: (a) for stage 1, then (b) as its own item.** Splitting
+accounts during a rotation means changing *what authenticates* and *what the
+password is* in the same operation, and if the device becomes unreachable you
+cannot tell which half did it. Do the rotation first, with the consumer list
+explicit; split afterwards, when each move is individually reversible.
+
+### What the operation does about it, in stage 1
+
+Per device, after a successful rotation:
+
+1. **NMAS** — `devices.csv` row rewritten (§7). Automatic.
+2. **Oxidized** — its credential updated, then **an immediate fetch requested**
+   and confirmed (§GAP 2). Automatic.
+3. **`yang-push-sub.py`** — **not** updated automatically: it is an ad-hoc
+   script with a hardcoded literal, and silently rewriting someone's source is
+   worse than telling them. It is **listed in the result as broken**, by path
+   and line number.
+
+> Every consumer is either updated by the operation or named in the result as
+> broken. There is no third category, and "we think that's all of them" is not
+> one either — the inventory above is part of the plan so that adding a
+> consumer means editing this table.
+
+---
+
+## GAP 2 — Redeploy persistence, and proving it
+
+A rotation that does not reach the startup files produces a device that works
+today and is **unreachable after the next `--cleanup`**, with the old password
+in a file and the new one in `devices.csv`. That is strictly worse than not
+rotating.
+
+### The sequence, appended to §3 step 6b
+
+```
+ 6b-vii.  UPDATE OXIDIZED's credential for this device
+ 6b-viii. REQUEST AN IMMEDIATE FETCH
+            POST/GET  http://127.0.0.1:8888/node/next/<node>
+            node name = the device IP (router.db maps name: 0)
+ 6b-ix.   RUN THE SYNC
+            /home/dmarchak/bin/clab-sync        ← see below
+ 6b-x.    VERIFY ON THE CLAB VM  (10.0.0.210), not the NMAS's local copy
+            ~/labs/lab/configs/<device>.cfg contains the NEW $9$ hash
+```
+
+**The verification must read the clab VM.** `~/lab-configs/configs/` on the
+NMAS is the sanitiser's *staging output*; the file that actually boots the node
+lives on `10.0.0.210`. Checking the local copy would confirm that we generated
+something, not that it was delivered — a distinction this project has already
+paid for once.
+
+Only then does the result say **"survives redeploy"**. Until measured, it says
+"not verified", not nothing.
+
+### Permission to run the sync — a narrower answer than the one asked for
+
+The request was for the narrowest sudoers rule allowing
+`systemctl start clab-sync.service`. Checking first:
+
+```
+/etc/systemd/system/clab-sync.service   root:root  0644   User=dmarchak
+/home/dmarchak/bin/clab-sync            dmarchak   0700
+NMAS app process                        runs as dmarchak
+```
+
+**The unit runs as `dmarchak`, and the app already runs as `dmarchak`.** So the
+app can simply execute `/home/dmarchak/bin/clab-sync` directly — same script,
+same user, same `flock` (which is inside the wrapper, so a concurrent timer run
+exits cleanly). **No sudoers rule, no polkit rule, no privilege boundary
+crossed at all.**
+
+**Recommendation: run the script directly.** The narrowest privilege is none.
+
+If journal integration is wanted instead, the narrowest rule is:
+
+```
+dmarchak ALL=(root) NOPASSWD: /usr/bin/systemctl start clab-sync.service
+```
+
+— one verb, one unit, fully qualified. With a **caveat worth stating plainly**:
+that rule is safe *only because* the unit has `User=dmarchak`. `ExecStart`
+points at a script that `dmarchak` owns and can rewrite, so if the unit is ever
+changed to run as root, this rule silently becomes a root escalation. If you
+take the systemd route, that constraint belongs in a comment in the unit file,
+not only here.
+
+---
+
+## GAP 3 — Out-of-band recovery, verified
+
+The containerlab host is **`10.0.0.210`**, not the NMAS. `docker exec` on the
+NMAS reaches nothing; the containers live there.
+
+And for vrnetlab images, `docker exec` reaches the *container*, not IOS — the
+network OS runs inside qemu behind a serial console.
+
+### Verified on r2
+
+```
+dmarchak@10.0.0.210 is reachable from the NMAS by key; dmarchak is in the
+docker group, so no sudo is needed.
+
+Listeners inside clab-rcn-lab1-r2:   *:5000  and  *:4000   (qemu serial)
+/usr/bin/telnet is present inside the container.
+
+Probe:  docker exec -i clab-rcn-lab1-r2 telnet localhost 5000
+        → "Connected to localhost."  and released cleanly
+        → established sessions on :5000 afterwards: 0
+```
+
+`clab-rcn-lab1-s3` (vIOS-L2) exposes the **same** `*:5000` / `*:4000`, so the
+procedure is identical on both platforms — which was not safe to assume.
+
+### The procedure
+
+```
+ssh dmarchak@10.0.0.210
+docker exec -it clab-rcn-lab1-<node> telnet localhost 5000
+   <Enter> for a prompt
+   ... recover ...
+   ^]  then  quit          ← releases the console; it allows ONE session
+```
+
+Two properties to respect:
+
+- **The console allows one session at a time.** An abandoned connection locks
+  out the recovery path itself. Always exit with `^]` then `quit`; the probe
+  above confirms release by counting established sessions afterwards.
+- **It survives credential loss entirely** — the serial console bypasses SSH
+  and the `username` database is irrelevant to reaching the prompt.
+
+**Demonstrated before use, not at the moment of need**: once on r2 before
+stage 1, and once on s3 before stage 2, each time reaching an IOS prompt and
+releasing cleanly.
+
+---
+
+## 9. Revised sequencing
+
+```
+ STAGE 0   demonstrate OOB on r2 (GAP 3) — reach a prompt, release cleanly
+           confirm the Oxidized fetch + sync + clab-VM verify loop works
+           on an UNCHANGED device first, so the loop is proven before it
+           is load-bearing
+
+ STAGE 1   r2  →  r1  →  r3  →  r4  →  r5      sequential, stop at first failure
+           each: rotate → verify → commit → update consumers → prove redeploy
+
+ STAGE 2   demonstrate OOB on s3
+           s1  →  s2  →  s4  →  s3             s3 LAST: management gateway
+           same operation, type 5 → type 9
+
+ THEN      Phase 2b adopt-first increment; the cleartext in history is by
+           then a dead credential, and the weak hashes are gone too
+```
+
+Stage 0's second line is the part most easily skipped: proving the
+Oxidized→sync→clab-VM loop on a device **nothing has changed** separates "the
+loop works" from "the rotation worked", which are otherwise discovered
+together, at the worst moment.
+
+---
+
+## 10. Still open
+
+1. **Per-consumer account split** (GAP 1 option b) — recommended as its own
+   item after stage 1, not during it.
+2. **`yang-push-sub.py` holds a hardcoded credential.** Out of scope to fix
+   here beyond reporting it, but it is a plaintext password in a source file
+   and belongs in the credential store like everything else.
+3. **The pipeline is not version-controlled** (`docs/ARCHITECTURE.md`). The
+   truncation guard is exactly the kind of logic whose history matters.
