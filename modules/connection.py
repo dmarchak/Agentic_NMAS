@@ -25,6 +25,54 @@ from modules.config import DEVICES_FILE, FAST_CLI
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Connection parameters — ONE construction, every caller
+# ---------------------------------------------------------------------------
+
+
+def connection_params(dev: dict, *, password: str, secret: str = None) -> dict:
+    """Build the ConnectHandler kwargs. The only place they are assembled.
+
+    Five call sites used to build these independently, all of them agreeing by
+    coincidence rather than by construction. That is survivable until one
+    transport setting is needed — legacy KEX or host-key algorithms for older
+    IOS against a modern client, a timeout, a device-type quirk — at which
+    point it is added where the failure was noticed and the other four are
+    silently left behind.
+
+    That asymmetry is specifically dangerous on the rotation path. If the
+    verify negotiates differently from the session that just pushed the new
+    credential, it fails for a **transport** reason, the classifier reads a
+    connection failure as a device verdict, and a rotation that actually
+    succeeded gets reverted. A fake device cannot catch it either: it models
+    the credential exchange, not the negotiation.
+
+    **The password is always passed explicitly.** Callers holding an inventory
+    row decrypt first; the rotation holds a plaintext value that has never been
+    stored and passes it straight through. Deciding internally whether to
+    decrypt is what produced the r2 defect — a function that guesses which of
+    those two it was handed will eventually guess wrong.
+    """
+    return {
+        "device_type": dev["device_type"],
+        "ip": dev["ip"],
+        "username": dev["username"],
+        "password": password,
+        "secret": password if secret is None else secret,
+        "port": 22,
+        "fast_cli": FAST_CLI,
+    }
+
+
+def stored_connection_params(dev: dict) -> dict:
+    """:func:`connection_params` for a device row, decrypting as it goes."""
+    return connection_params(
+        dev,
+        password=decrypt_field(dev["password"]),
+        secret=decrypt_field(dev["secret"]),
+    )
+
 # ---------------------------------------------------------------------------
 # Per-device send locks
 # ---------------------------------------------------------------------------
@@ -100,15 +148,9 @@ def verify_device_connection(
     Attempts to connect to a device using Netmiko and returns the hostname prompt.
     Raises exception if connection fails.
     """
-    conn = ConnectHandler(
-        device_type=device_type,
-        ip=ip,
-        username=username,
-        password=password,
-        secret=secret,
-        port=22,
-        fast_cli=FAST_CLI,
-    )
+    conn = ConnectHandler(**connection_params(
+        {"device_type": device_type, "ip": ip, "username": username},
+        password=password, secret=secret))
     conn.enable()
     prompt = conn.find_prompt()
     conn.disconnect()
@@ -246,15 +288,7 @@ def get_persistent_connection(
                         raw.disconnect()
                 except Exception:
                     pass
-                raw = ConnectHandler(
-                    device_type=dev["device_type"],
-                    ip=dev["ip"],
-                    username=dev["username"],
-                    password=decrypt_field(dev["password"]),
-                    secret=decrypt_field(dev["secret"]),
-                    port=22,
-                    fast_cli=FAST_CLI,
-                )
+                raw = ConnectHandler(**stored_connection_params(dev))
                 raw.enable()
                 connections[ip] = LockedConnection(raw, send_lock)
             elif not isinstance(conn, LockedConnection):
@@ -281,15 +315,7 @@ def with_temp_connection(dev: dict, func) -> any:
         logger.debug(
             "Attempting connection to %s as %s", dev.get("ip"), dev.get("username")
         )
-        conn = ConnectHandler(
-            device_type=dev["device_type"],
-            ip=dev["ip"],
-            username=dev["username"],
-            password=decrypt_field(dev["password"]),
-            secret=decrypt_field(dev["secret"]),
-            port=22,
-            fast_cli=FAST_CLI,
-        )
+        conn = ConnectHandler(**stored_connection_params(dev))
         conn.enable()
         logger.debug("Connected to %s", dev.get("ip"))
         try:

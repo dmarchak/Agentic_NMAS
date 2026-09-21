@@ -342,15 +342,13 @@ def open_original_session(device: dict):
     """
     from netmiko import ConnectHandler
 
-    from modules.connection import FAST_CLI
+    from modules.connection import connection_params
     from modules.device import decrypt_field
 
-    conn = ConnectHandler(
-        device_type=device["device_type"], ip=device["ip"],
-        username=device["username"],
+    conn = ConnectHandler(**connection_params(
+        device,
         password=decrypt_field(device["password"]),
-        secret=decrypt_field(device.get("secret", "") or device["password"]),
-        port=22, fast_cli=FAST_CLI)
+        secret=decrypt_field(device.get("secret", "") or device["password"])))
     conn.enable()
     # Prove it, rather than trusting that connect() succeeding means usable.
     conn.send_command("show clock", read_timeout=30)
@@ -424,14 +422,16 @@ def verify_new_credential(device: dict, username: str, password: str) -> dict:
     """
     from netmiko import ConnectHandler
 
-    from modules.connection import FAST_CLI
+    from modules.connection import connection_params
 
+    # The SAME builder the pushing session used. If the verify negotiated
+    # differently it would fail for a transport reason, be read as a device
+    # verdict, and revert a rotation that worked.
+    params = connection_params(dict(device, username=username),
+                               password=password)
     conn = None
     try:
-        conn = ConnectHandler(
-            device_type=device["device_type"], ip=device["ip"],
-            username=username, password=password, secret=password,
-            port=22, fast_cli=FAST_CLI)
+        conn = ConnectHandler(**params)
         conn.enable()
         out = conn.send_command("show running-config | include ^username",
                                 read_timeout=60)

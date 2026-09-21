@@ -620,6 +620,103 @@ class TestTheConnectionDict:
         assert out["attempted"] is True
 
 
+class TestTheConnectionParameters:
+    """The verify must negotiate exactly like every other connection.
+
+    Connecting directly fixed the decrypt defect and introduced a second risk:
+    a second set of ConnectHandler kwargs. If they ever diverge — a legacy KEX
+    or host-key algorithm for older IOS, a timeout, a device-type quirk added
+    where one failure was noticed — the verify fails for a TRANSPORT reason,
+    the classifier reads a connection failure as a device verdict, and a
+    rotation that actually succeeded is reverted.
+
+    The fake router cannot catch this: it models the credential exchange, not
+    the negotiation. So it is pinned as a property of the parameters instead.
+    """
+
+    def test_verify_matches_the_normal_path_in_every_field_but_the_secret(self):
+        from modules.connection import connection_params, stored_connection_params
+
+        row = {"device_type": "cisco_xe", "ip": "203.0.113.12",
+               "username": "admin", "password": "enc-pw", "secret": "enc-sec"}
+
+        import modules.connection as conn
+        real = conn.decrypt_field
+        conn.decrypt_field = lambda v: {"enc-pw": "OldPw", "enc-sec": "OldEn"}[v]
+        try:
+            normal = stored_connection_params(row)
+        finally:
+            conn.decrypt_field = real
+
+        verify = connection_params(dict(row, username="admin"),
+                                   password="FreshPlaintext")
+
+        assert set(normal) == set(verify), "same fields, or one path is special"
+        differing = {k for k in normal if normal[k] != verify[k]}
+        assert differing == {"password", "secret"}, (
+            f"the verify negotiates differently in: {differing - {'password', 'secret'}}")
+
+    def test_the_held_session_and_the_verify_use_one_builder(self):
+        """Both rotation sites, not just the one that broke."""
+        import inspect
+        for func in (cr.open_original_session, cr.verify_new_credential):
+            src = inspect.getsource(func)
+            assert "connection_params" in src, f"{func.__name__} builds its own"
+            assert "device_type=" not in src, f"{func.__name__} hand-rolls kwargs"
+
+    def test_no_caller_hand_rolls_connecthandler_kwargs(self):
+        """A sixth site would reintroduce exactly this divergence.
+
+        Structural rather than textual: every ConnectHandler call on these two
+        modules must take ``**params`` and name no keyword of its own.
+        """
+        import ast
+        import io
+
+        offenders = []
+        for path in ("modules/connection.py",
+                     "modules/nsot/credential_rotation.py"):
+            tree = ast.parse(io.open(path, encoding="utf-8").read())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+                if name != "ConnectHandler":
+                    continue
+                named = [k.arg for k in node.keywords if k.arg is not None]
+                if named:
+                    offenders.append(f"{path}:{node.lineno} names {named}")
+
+        assert not offenders, (
+            "ConnectHandler parameters built outside connection_params(): "
+            + "; ".join(offenders))
+
+    def test_connection_params_is_the_only_place_fast_cli_is_set(self):
+        import ast
+        import io
+
+        tree = ast.parse(io.open("modules/connection.py", encoding="utf-8").read())
+        users = [n.lineno for n in ast.walk(tree)
+                 if isinstance(n, ast.Name) and n.id == "FAST_CLI"]
+        assert len(users) == 1, f"FAST_CLI read at {len(users)} places: {users}"
+
+    def test_the_secret_defaults_to_the_password(self):
+        """Rotation sets both to the new value; the default must not surprise."""
+        from modules.connection import connection_params
+        params = connection_params(
+            {"device_type": "cisco_xe", "ip": "203.0.113.12", "username": "a"},
+            password="X")
+        assert params["secret"] == "X"
+
+    def test_a_plaintext_password_is_never_decrypted_by_the_builder(self):
+        """The builder does not guess which kind of value it was handed."""
+        from modules.connection import connection_params
+        params = connection_params(
+            {"device_type": "cisco_xe", "ip": "203.0.113.12", "username": "a"},
+            password="Not-A-Fernet-Token")
+        assert params["password"] == "Not-A-Fernet-Token"
+
+
 class TestPersistenceNeverReverts:
     BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
                 hostname="r2", new_hash="9 $9$salt$hash",
