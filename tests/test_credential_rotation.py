@@ -20,12 +20,28 @@ from modules.nsot import credential_rotation as cr
 class TestGeneration:
     def test_length_and_entropy(self):
         assert cr.LENGTH == 32
-        assert len(cr.CHARSET) == 79
-        assert 32 * math.log2(79) > 200
+        assert len(cr.CHARSET) == 78
+        assert 32 * math.log2(len(cr.CHARSET)) > 200
 
     def test_the_charset_excludes_what_the_cli_would_eat(self):
         for ch in "? \"'\\`|":
             assert ch not in cr.CHARSET, ch
+
+    def test_the_charset_excludes_the_router_db_delimiter(self):
+        """':' would produce an unparseable Oxidized row.
+
+        The helper refuses it rather than corrupting the file, so the failure
+        is safe — but it lands AFTER the device is rotated and committed,
+        stranding the credential live with the boot copy behind. At 32 chars
+        from 79, that was 1 - (78/79)**32 = 33.5% of rotations.
+        """
+        assert ":" not in cr.CHARSET
+
+    def test_no_charset_character_can_break_a_router_db_row(self):
+        """Every character, checked against the file format it lands in."""
+        for ch in cr.CHARSET:
+            assert ch not in ":\n\r", ch
+            assert ch.isprintable(), ch
 
     def test_the_charset_excludes_what_OUR_REDACTOR_cannot_mask(self):
         """`redact._VALUE` refuses a token starting with these.
@@ -147,7 +163,7 @@ class TestPersistenceFailureIsNotRotationFailure:
         summary = cr.summarise(result)
         assert "ROTATED and committed" in summary
         assert "not reverted" in summary.lower()
-        assert "redeploy would restore the old password" in summary
+        assert "redeploy would boot the OLD password" in summary
 
     def test_a_verify_failure_reports_the_device_unchanged(self):
         summary = cr.summarise({"state": cr.REVERTED, "device": "r2"})
@@ -1075,6 +1091,88 @@ class TestARefusedPushIsNotASuccessfulOne:
             assert not re.search(IOS_ERROR_PATTERN, benign), benign
 
 
+class TestTheChainMakesOxidizedRereadRouterDb:
+    """The defect that stranded r2: writing router.db is not enough.
+
+    Measured on Oxidized 0.37.0 with the CORRECT credential already in the
+    file: every fetch failed AuthenticationFailed, GET /reload did not change
+    that, and a container restart made the very next fetch succeed. Net::SSH
+    from inside the container authenticated with that same row throughout,
+    under Oxidized's own option set — so the credential was never wrong. A
+    live node object holds its credential in memory.
+
+    The chain had no reload step at all, so `confirm_fetch` was always polling
+    an Oxidized that could not have picked the change up.
+    """
+
+    BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
+                hostname="r2", new_hash="9 $9$salt$hash",
+                after_iso="2026-09-21 08:00:00")
+
+    def test_the_reload_stage_runs_between_the_write_and_the_fetch(self, monkeypatch):
+        order = []
+        monkeypatch.setattr(cr, "update_oxidized_row",
+                            lambda *a, **k: order.append("write") or {"ok": True})
+        monkeypatch.setattr(cr, "reload_oxidized",
+                            lambda **k: order.append("reload") or {"ok": True})
+        monkeypatch.setattr(cr, "confirm_fetch",
+                            lambda *a, **k: order.append("fetch") or {"ok": True})
+        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
+        monkeypatch.setattr(cr, "verify_startup_file",
+                            lambda *a, **k: {"ok": True, "matches": 1})
+
+        cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []},
+                   **self.BASE)
+        assert order == ["write", "reload", "fetch"], (
+            "a fetch before the reload polls an Oxidized holding the old "
+            "credential")
+
+    def test_a_failed_reload_stops_before_the_fetch(self, monkeypatch):
+        """Otherwise the fetch fails for a reason that looks nothing like it."""
+        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "reload_oxidized",
+                            lambda **k: {"ok": False, "error": "no such container"})
+        called = []
+        monkeypatch.setattr(cr, "confirm_fetch",
+                            lambda *a, **k: called.append(1) or {"ok": True})
+
+        out = cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED,
+                          "steps": []}, **self.BASE)
+        assert called == []
+        assert out["state"] == cr.ROTATED_UNVERIFIED
+        assert [s["name"] for s in out["persistence"]][-1] == "oxidized_reload"
+
+    def test_reload_without_a_command_reports_itself_unverified(self, monkeypatch):
+        """The /reload-only path is the one measured NOT to work."""
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {"oxidized_rest_url": "http://x",
+                                               "oxidized_reload_command": ""}.get(k, d))
+        import urllib.request
+        monkeypatch.setattr(urllib.request, "urlopen",
+                            lambda *a, **k: (_ for _ in ()).throw(OSError("no")))
+
+        out = cr.reload_oxidized()
+        assert out["verified"] is False
+        assert out["mechanism"] == "rest_reload_only"
+
+    def test_a_restart_is_not_ok_until_the_api_answers(self, monkeypatch):
+        """A queued fetch against a restarting Oxidized goes nowhere."""
+        import subprocess
+        import urllib.request
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {"oxidized_rest_url": "http://x",
+                                               "oxidized_reload_command": "true"}.get(k, d))
+        monkeypatch.setattr(subprocess, "run",
+                            lambda *a, **k: type("P", (), {"returncode": 0,
+                                                           "stdout": "", "stderr": ""})())
+        monkeypatch.setattr(urllib.request, "urlopen",
+                            lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
+
+        out = cr.reload_oxidized(timeout=0.01, sleep=lambda _s: None)
+        assert out["ok"] is False
+        assert "did not answer" in out["error"]
+
+
 class TestPersistenceNeverReverts:
     BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
                 hostname="r2", new_hash="9 $9$salt$hash",
@@ -1091,19 +1189,29 @@ class TestPersistenceNeverReverts:
         assert out["state"] == cr.ROTATED_UNVERIFIED
         assert out["persistence"][0]["ok"] is False
         assert "ROTATED and committed" in cr.summarise(out)
+        # The message must be TERMINAL: the process has exited by the time it
+        # is printed, so nothing is retrying and it must not say otherwise.
+        assert "Retrying" not in cr.summarise(out)
+        assert "Nothing is retrying" in cr.summarise(out)
 
     def test_a_fetch_failure_leaves_the_device_rotated(self, monkeypatch):
         monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "reload_oxidized",
+                            lambda **k: {"ok": True, "mechanism": "restart",
+                                         "verified": True})
         monkeypatch.setattr(cr, "confirm_fetch",
                             lambda *a, **k: {"ok": False, "error": "timeout"})
         out = cr.persist(self._result(), **self.BASE)
 
         assert out["state"] == cr.ROTATED_UNVERIFIED
         assert [s["name"] for s in out["persistence"]] == \
-            ["oxidized_row", "fetch_confirmed"]
+            ["oxidized_row", "oxidized_reload", "fetch_confirmed"]
 
     def test_a_startup_file_miss_leaves_the_device_rotated(self, monkeypatch):
         monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "reload_oxidized",
+                            lambda **k: {"ok": True, "mechanism": "restart",
+                                         "verified": True})
         monkeypatch.setattr(cr, "confirm_fetch", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file",
@@ -1111,10 +1219,13 @@ class TestPersistenceNeverReverts:
         out = cr.persist(self._result(), **self.BASE)
 
         assert out["state"] == cr.ROTATED_UNVERIFIED
-        assert "redeploy would restore the old password" in cr.summarise(out)
+        assert "redeploy would boot the OLD password" in cr.summarise(out)
 
     def test_the_full_chain_reaches_persisted(self, monkeypatch):
         monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "reload_oxidized",
+                            lambda **k: {"ok": True, "mechanism": "restart",
+                                         "verified": True})
         monkeypatch.setattr(cr, "confirm_fetch", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file",

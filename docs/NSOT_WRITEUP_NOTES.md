@@ -3673,3 +3673,103 @@ That is the same shape as everything else in this round: the check that finds
 something is the one that measures a consequence, not the one that inspects
 the mechanism. Reading the transcript would have shown two plausible-looking
 Enters and no reason to care.
+
+## An hour spent on a password that was correct the whole time
+
+r2 rotated cleanly: pushed, verified on a fresh login, captured its type-9
+hash, committed. Then the persistence chain failed and Oxidized reported, over
+and over, `Net::SSH::AuthenticationFailed for user admin@10.255.1.12`.
+
+The obvious reading — and the one the investigation started from — is that the
+value written into Oxidized's `router.db` is not the value the device accepted.
+Two plausible mechanisms, both worth checking: a second `generate_password()`
+call somewhere, or the helper mangling the value in transit.
+
+Both were wrong. Fingerprints (sha256 prefixes, no values printed):
+
+```
+devices.csv r2 password          26685bca5acd   32 chars
+router.db   r2 password          26685bca5acd   32 chars
+Oxidized's own Ruby parse of it  26685bca5acd   32 chars
+a fresh SSH login with it        ok=True
+```
+
+Every copy identical, and the device accepted it on demand. Oxidized was
+reading the right username and the right password and still failing to
+authenticate with them.
+
+### What it actually was
+
+Nothing in the persistence chain ever told Oxidized to re-read the file.
+`update_oxidized_row()` wrote `router.db`; `confirm_fetch()` immediately began
+polling for a successful fetch. In between, nothing. Oxidized 0.37 holds a
+node's credential on the live node object, and `GET /reload` — which the
+operator tried by hand — re-reads the node *list* without refreshing it.
+
+```
+router.db written           08:55:55  -> every fetch AuthenticationFailed
+GET /reload + /node/next    09:01:28  -> still AuthenticationFailed
+container restarted         09:12:31
+next fetch                  09:13:07  -> success, same router.db row
+```
+
+So the chain could never have succeeded on a rotated device. It is exactly the
+[same shape as the rotation command
+itself](#a-command-the-device-had-been-refusing-all-along), one layer out: a
+step that was reasoned about and never run. Writing the file is not the goal;
+the goal is Oxidized using it, and only one of those was ever checked.
+
+### The tell that was there the whole time
+
+The error said **authentication failed**, not *credential wrong*. Those are the
+same sentence only if you assume Oxidized is using the credential you just
+wrote. The whole investigation ran on that assumption until the fingerprints
+refused to differ.
+
+There is a smaller lesson in how the false lead was cleared. Comparing
+fingerprints was not what found the bug — it found that three copies agreed,
+which closed off the entire "wrong value" family in one measurement and forced
+the question somewhere else. A check that comes back negative is not a wasted
+check if it was capable of coming back positive.
+
+### The false trail, recorded because it is instructive
+
+Midway, a test of Oxidized's configured legacy SSH algorithms appeared to find
+the cause: with `ssh_kex`/`ssh_host_key`/`ssh_hmac` as configured, Net::SSH
+could not settle on an hmac and the connection failed.
+
+It was an artifact. Oxidized passes `append_all_supported_algorithms: true`,
+which the reproduction omitted, so the reproduction was strictly more
+restrictive than the thing it claimed to reproduce. Two facts contradicted it
+immediately and both were visible: the error class was wrong
+(`Net::SSH::Exception`, "could not settle on hmac_client algorithm" — not
+`AuthenticationFailed`), and the *other four routers* failed the same
+reproduction while Oxidized was fetching them successfully.
+
+> A reproduction that fails differently from the bug has not reproduced the
+> bug. Matching the *outcome* — "it also fails" — is not matching the
+> mechanism, and the error class is the cheapest discriminator available.
+
+### Two more defects found on the way
+
+**The charset contained `:`, which is router.db's field delimiter.** The helper
+refuses a colon rather than corrupting the file, so the failure is safe — but
+it lands *after* the device is rotated and committed, stranding the credential
+live with the boot copy behind. At 32 characters from 79, that is
+`1 - (78/79)**32` = **33.5%** of rotations. r2's password happened not to
+contain one, which is the only reason this was found by inspection rather than
+by a second stranded device. Removed rather than escaped: Oxidized's csv source
+splits on a bare `/:/` with no escape handling, so there is nothing to escape
+it to.
+
+**The terminal message described work that was not happening.** After the chain
+failed, the summary said "Retrying; the device is not reverted for this" — but
+the process had exited. A message that tells an operator to wait for an outcome
+that will never arrive is worse than no message. It now names the failed stage,
+states that nothing is retrying, and gives the command that finishes the job.
+
+Also corrected, unprompted by any failure: `_commit()` and the script's
+credential read both called `get_current_device_list()` while holding a
+`list_name` — the [carry-the-list defect](#the-target-list-is-carried) that the
+pipeline had at three points after its push. Same fix: resolve the path from
+the name that was passed in.

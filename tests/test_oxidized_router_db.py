@@ -321,3 +321,92 @@ class TestTheReinstallHintNamesTheRightDestination:
 
         monkeypatch.setattr(cr, "HELPER_INSTALLED", "/opt/custom/nmas-helper")
         assert cr.helper_status()["reinstall"].endswith("/opt/custom/nmas-helper")
+
+class TestTheValueSurvivesTheHelperByteForByte:
+    """The value reaching router.db must equal the value the verify proved.
+
+    r2 was stranded with a correct credential, so nothing here was the cause —
+    but nothing proved it *wasn't*, either. Establishing it took reading the
+    file as root, which is not a check anyone will repeat. This runs the REAL
+    helper as a subprocess and compares fingerprints across it, so the claim
+    is a test rather than an afternoon.
+
+    Every character of the charset goes through, which is also what catches a
+    delimiter being added to the charset later: ':' would make the helper
+    refuse, and that refusal lands after the device is already rotated.
+    """
+
+    def _run(self, tmp_path, password, ip="10.255.1.12"):
+        import hashlib
+        import json
+        import subprocess
+
+        db = tmp_path / "router.db"
+        db.write_text(
+            "10.255.1.11:ios:admin:oldone\n"
+            f"{ip}:ios:admin:oldtwo\n"
+            "10.255.1.13:ios:admin:oldthree\n", encoding="utf-8")
+
+        proc = subprocess.run(
+            [sys.executable, HELPER, "--file", str(db), "--ip", ip,
+             "--no-backup"],
+            input=json.dumps({"username": "admin", "password": password}),
+            capture_output=True, text=True, timeout=30)
+        body = json.loads(proc.stdout or "{}")
+
+        stored = None
+        for line in db.read_text(encoding="utf-8").splitlines():
+            if line.startswith(ip + ":"):
+                stored = line.split(":")[3] if len(line.split(":")) > 3 else None
+        fp = (hashlib.sha256(stored.encode()).hexdigest()[:12]
+              if stored is not None else None)
+        return body, stored, fp
+
+    def test_every_charset_character_survives_byte_for_byte(self, tmp_path):
+        import hashlib
+
+        from modules.nsot.credential_rotation import CHARSET
+
+        # Not a random sample: every character the generator can emit, in one
+        # value, so a mangled one cannot hide behind a lucky draw.
+        password = "".join(sorted(CHARSET))
+        body, stored, fp = self._run(tmp_path, password)
+
+        assert body.get("ok") is True, body
+        assert stored == password, "the helper altered the value"
+        assert fp == hashlib.sha256(password.encode()).hexdigest()[:12]
+
+    def test_a_generated_password_survives_byte_for_byte(self, tmp_path):
+        """The real generator's output, not a hand-written value."""
+        import hashlib
+
+        from modules.nsot import credential_rotation as cr
+
+        for _ in range(25):
+            password = cr.generate_password("r2")
+            body, stored, fp = self._run(tmp_path, password)
+            assert body.get("ok") is True, (body, len(password))
+            assert stored == password
+            assert fp == hashlib.sha256(password.encode()).hexdigest()[:12]
+
+    def test_the_other_rows_are_untouched(self, tmp_path):
+        from modules.nsot.credential_rotation import generate_password
+
+        body, _stored, _fp = self._run(tmp_path, generate_password("r2"))
+        assert body.get("changed") == 1
+        assert body.get("rows") == 3
+
+    def test_a_colon_is_refused_rather_than_corrupting_the_file(self, tmp_path):
+        """The charset excludes it; this pins what happens if it returns."""
+        body, stored, _fp = self._run(tmp_path, "has:a:colon:in:it")
+        assert body.get("ok") is False
+        assert "':'" in body.get("error", "")
+        assert stored == "oldtwo", "the original row must be untouched"
+
+    def test_whitespace_and_newlines_are_refused_or_preserved(self, tmp_path):
+        """A trailing space would silently become a different password."""
+        body, stored, _fp = self._run(tmp_path, "trailing ")
+        if body.get("ok"):
+            assert stored == "trailing ", "whitespace was stripped in transit"
+        body, stored, _fp = self._run(tmp_path, "two\nlines")
+        assert body.get("ok") is False

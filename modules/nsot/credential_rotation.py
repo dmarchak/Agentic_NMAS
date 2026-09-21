@@ -51,7 +51,18 @@ log = logging.getLogger(__name__)
 #: password starting with ``[`` would not be positionally masked in a log. A
 #: defensive measure added elsewhere constrains the generator here, which is
 #: the kind of interaction that stays invisible until it is in a log file.
-CHARSET = (string.ascii_letters + string.digits + "-_.+=:@#%^&*,;~$!")
+#: ``:`` is EXCLUDED because it is Oxidized's router.db field delimiter.
+#: The helper refuses a colon rather than corrupting the file, so the failure
+#: is safe — but it lands AFTER the device has been rotated and committed,
+#: leaving the credential live and the boot copy behind. With 32 characters
+#: drawn from this set, P(at least one colon) was 1 - (78/79)**32 = 0.335:
+#: roughly one rotation in three would have stranded a device that way. r2's
+#: password happened not to contain one.
+#:
+#: Not escaped: Oxidized's csv source splits on a bare regexp (`/:/`) with no
+#: escape handling, so there is nothing to escape it *to*. Verified in
+#: oxidized-0.37.0's sshbase/csv source, not assumed.
+CHARSET = (string.ascii_letters + string.digits + "-_.+=@#%^&*,;~$!")
 
 LENGTH = 32
 
@@ -286,6 +297,14 @@ def persistence_failed(result: dict) -> bool:
     return result.get("state") == ROTATED_UNVERIFIED
 
 
+def _failed_stage(result: dict) -> str:
+    """The persistence stage that failed, for a message that names it."""
+    for stage in result.get("persistence") or []:
+        if not stage.get("ok"):
+            return f"{stage.get('name')} ({stage.get('error', 'no reason')})"[:120]
+    return ""
+
+
 def summarise(result: dict) -> str:
     """One honest sentence. The states are not interchangeable."""
     device = result.get("device", "the device")
@@ -293,11 +312,18 @@ def summarise(result: dict) -> str:
         ROTATED_PERSISTED: (
             f"{device}: rotated, verified, committed, and confirmed present in "
             "the startup config — survives redeploy."),
+        # No "retrying": by the time this is printed the process has exited
+        # and nothing is retrying. A terminal message that describes work
+        # which is not happening is worse than no message — it tells the
+        # operator to wait for an outcome that will never arrive.
         ROTATED_UNVERIFIED: (
             f"{device}: ROTATED and committed — the new credential is live and "
-            "recorded. Persistence to the startup config is NOT yet verified, "
-            "so a redeploy would restore the old password. Retrying; the device "
-            "is not reverted for this."),
+            "recorded, and the device is NOT reverted for this. Persistence to "
+            f"the startup config FAILED at "
+            f"{_failed_stage(result) or 'the persistence chain'}. Nothing is "
+            "retrying. A redeploy would boot the OLD password, so do not "
+            "redeploy until this is finished: fix the cause, then run "
+            f"`scripts/nmas-persist-credential {device}`."),
         REVERTED: (
             f"{device}: the new credential did not verify, so the original was "
             "restored and proven. The device is unchanged."),
@@ -962,6 +988,18 @@ def _revert(result, _step, session, device, username, original_line, repo,
     return result
 
 
+def _csv_path_for(list_name: str) -> str:
+    """This list's devices.csv, by name — not whichever list is active."""
+    import os
+
+    from modules.config import get_list_data_dir
+    from modules.device import get_current_device_list
+
+    if not list_name:
+        return get_current_device_list()[1]
+    return os.path.join(get_list_data_dir(list_name), "devices.csv")
+
+
 def _commit(list_name, repo, hostname, device, username, privilege, password,
             new_hash, post_config, actor) -> dict:
     """Record the rotation: credential store, devices.csv, golden + intent.
@@ -973,8 +1011,7 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
     import os
 
     from modules.credentials import set_template_secret, template_secret_key
-    from modules.device import (get_current_device_list, load_saved_devices,
-                                write_devices_csv)
+    from modules.device import load_saved_devices, write_devices_csv
     from modules.nsot import hostvars
     from modules.nsot.repo import GoldenItem, save_golden
 
@@ -990,7 +1027,12 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
         #    THIS ROW ONLY. A per-device rotation never rewrites a shared
         #    profile: that would change the credential every other device
         #    inherits while only one device actually changed.
-        _n, csv_path = get_current_device_list()
+        # The list is CARRIED, never re-derived. get_current_device_list()
+        # reads the active list off disk, so a list switch between the push
+        # and this commit would write the new credential into a different
+        # network's inventory — the same defect the pipeline had at three
+        # points after its push.
+        csv_path = _csv_path_for(list_name)
         rows = load_saved_devices(csv_path)
         from modules.device import fernet
         for row in rows:
@@ -1073,6 +1115,91 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
     except ValueError:
         body = {"ok": False, "error": (proc.stderr or proc.stdout)[:200]}
     return body
+
+
+def reload_oxidized(*, rest: str = "", reload_command: str = "",
+                    timeout: float = 120.0, sleep=None) -> dict:
+    """Make Oxidized actually re-read router.db. **Measured, not assumed.**
+
+    Writing the file is not enough, and the chain used to do nothing else —
+    ``update_oxidized_row`` wrote router.db and ``confirm_fetch`` immediately
+    queued a fetch against an Oxidized that still held the OLD credential in
+    memory. So the persistence chain could never have succeeded on a rotated
+    device, for the same reason the one-line rotation command could never have
+    worked: the step was reasoned rather than run.
+
+    Measured on Oxidized 0.37.0, r2, with the correct credential already in
+    router.db::
+
+        router.db written 08:55:55   -> every fetch AuthenticationFailed
+        GET /reload + /node/next     -> still AuthenticationFailed at 09:01:28
+        container restarted 09:12:31 -> success 09:13:07
+
+    Net::SSH from inside the container authenticated with that same row
+    throughout, under Oxidized's exact option set, so the credential was never
+    the problem. `/reload` re-reads the node LIST; it does not refresh the
+    credential a live node object is holding.
+
+    An empty *reload_command* falls back to `/reload` alone and says so — the
+    result carries ``verified: False``, because that path is the one observed
+    NOT to work and nothing here should imply otherwise.
+    """
+    import subprocess
+    import time
+    import urllib.request
+
+    from modules.settings_schema import get_setting
+
+    rest = rest or get_setting("oxidized_rest_url", "")
+    reload_command = reload_command or get_setting("oxidized_reload_command", "")
+    sleep = sleep or time.sleep
+    out = {"ok": False, "mechanism": "", "verified": False}
+
+    if rest:
+        try:                                   # best effort, cheap, harmless
+            urllib.request.urlopen(f"{rest}/reload", timeout=10).read()
+            out["reload_called"] = True
+        except Exception as exc:               # noqa: BLE001
+            out["reload_called"] = f"{type(exc).__name__}"
+
+    if not reload_command:
+        out["mechanism"] = "rest_reload_only"
+        out["ok"] = bool(rest)
+        out["error"] = ("oxidized_reload_command is not set, so only "
+                        "GET /reload was called — which is the path measured "
+                        "NOT to refresh a rotated credential")
+        return out
+
+    try:
+        proc = subprocess.run(reload_command, shell=True, capture_output=True,
+                              text=True, timeout=60)
+    except Exception as exc:                   # noqa: BLE001
+        out["mechanism"] = "restart"
+        out["error"] = f"{type(exc).__name__}: {exc}"[:160]
+        return out
+    if proc.returncode != 0:
+        out["mechanism"] = "restart"
+        out["error"] = (proc.stderr or proc.stdout or
+                        f"exit {proc.returncode}")[:160]
+        return out
+
+    # Up again? Until the REST API answers, a queued fetch goes nowhere.
+    out["mechanism"] = "restart"
+    if not rest:
+        out["ok"] = True
+        out["error"] = "no oxidized_rest_url, so readiness was not confirmed"
+        return out
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(f"{rest}/nodes.json", timeout=5).read()
+            out["ok"] = True
+            out["verified"] = True
+            return out
+        except Exception:                      # noqa: BLE001
+            sleep(2)
+    out["error"] = f"Oxidized did not answer {rest}/nodes.json within {timeout}s"
+    return out
 
 
 def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
@@ -1191,6 +1318,11 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
                   update_oxidized_row(mgmt_ip, username, password,
                                       **{k: kw[k] for k in ("router_db",)
                                          if k in kw})):
+        return result
+    if not _stage("oxidized_reload",
+                  reload_oxidized(**{k: kw[k] for k in ("rest", "reload_command",
+                                                        "sleep")
+                                     if k in kw})):
         return result
     if not _stage("fetch_confirmed",
                   confirm_fetch(mgmt_ip, after_iso,
