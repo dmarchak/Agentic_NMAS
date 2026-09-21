@@ -717,6 +717,102 @@ class TestTheConnectionParameters:
         assert params["password"] == "Not-A-Fernet-Token"
 
 
+class TestTheEnableSecretIsNotTheLoginPassword:
+    """Found by the hardware probe, one config change from being a live bug.
+
+    The rotation changes the ``username`` line and nothing else, so a device's
+    enable secret is whatever it already was. Passing the NEW login password
+    as ``secret`` is wrong the moment a device has a separate one — and it
+    fails in the worst direction, because netmiko's ``enable()`` raises
+    ``ValueError``, which the name table reads as a local fault. A rotation
+    that actually succeeded would be reverted.
+
+    No device in this fleet has an enable secret today, which is exactly why
+    it passed on r2 and would have kept passing until Part 2 added one to
+    close the serial-console hole.
+    """
+
+    def test_the_stored_enable_secret_is_used_not_the_new_password(self, wired):
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        kwargs = wired["router"].logins[0]
+        assert kwargs["secret"] == "OldPlaintext", (
+            "the verify offered the NEW password as the enable secret")
+        assert kwargs["password"] != kwargs["secret"], (
+            "login and enable credentials are separate things")
+
+    def test_an_empty_enable_secret_is_passed_through_not_substituted(self):
+        """Measured on r2: the stored field decrypts to "".
+
+        The normal path passes that empty string, so this one must too. The
+        property being defended is sameness, not correctness-in-isolation.
+        """
+        import modules.device as dev
+        real = dev.decrypt_field
+        dev.decrypt_field = lambda v: ""
+        try:
+            assert cr.enable_secret({"secret": "gAAAAAB-ciphertext"}) == ""
+        finally:
+            dev.decrypt_field = real
+
+    def test_a_row_with_no_enable_secret_reuses_the_login_password(self):
+        assert cr.enable_secret({"secret": ""}) is None
+        assert cr.enable_secret({}) is None
+
+        from modules.connection import connection_params
+        params = connection_params(
+            {"device_type": "cisco_ios", "ip": "203.0.113.12", "username": "a"},
+            password="New", secret=None)
+        assert params["secret"] == "New"
+
+    def test_a_failure_after_login_is_a_device_verdict(self, wired):
+        """netmiko raises ValueError from enable(). We are logged IN."""
+        class _NoEnable:
+            def enable(self):
+                raise ValueError("Failed to enter enable mode.")
+
+            def send_command(self, *a, **k):
+                raise AssertionError("never reached")
+
+            def disconnect(self):
+                pass
+
+        wired["router"].login = lambda **kw: _NoEnable()
+        out = cr.verify_new_credential(wired["device"], "admin", "pw")
+
+        assert out["attempted"] is True, "a login that succeeded is not local"
+        assert out["recognised"] is True
+        assert out["stage"] == "after_login"
+
+    def test_a_post_login_failure_never_reads_as_a_local_fault(self, wired):
+        """The classifier must not get a vote once we are authenticated."""
+        assert cr.classify_failure("ValueError")["attempted"] is False
+        # ...and yet:
+        class _NoEnable:
+            def enable(self):
+                raise ValueError("Failed to enter enable mode.")
+
+            def disconnect(self):
+                pass
+
+        wired["router"].login = lambda **kw: _NoEnable()
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        # The revert-verify hits the same broken enable, so the device really
+        # did refuse — REVERT_FAILED is the honest answer. What matters is
+        # that it is a DEVICE verdict either way, never REVERTED_UNPROVEN.
+        assert result["state"] == cr.REVERT_FAILED
+        assert result["state"] != cr.REVERTED_UNPROVEN, (
+            "a device that answered must not be reported as a local fault")
+        assert "UNRECOGNISED" not in result["reason"]
+
+    def test_the_connect_stage_is_still_classified_by_name(self, wired):
+        """Before a connection exists, a name is all there is."""
+        wired["router"].local_fault = InvalidToken("bad ciphertext")
+        out = cr.verify_new_credential(wired["device"], "admin", "pw")
+        assert out["stage"] == "connect"
+        assert out["attempted"] is False
+
+
 class TestPersistenceNeverReverts:
     BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
                 hostname="r2", new_hash="9 $9$salt$hash",

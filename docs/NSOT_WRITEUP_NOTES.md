@@ -3370,3 +3370,102 @@ is hard to get right, and it was right, on hardware, on the first attempt. The
 nothing. Designing the dangerous path carefully and the description of it
 casually produces a system that is safe and untrustworthy at the same time —
 and the second one is what people act on.
+
+## The fix that needed its own fix, found by refusing to simulate it
+
+Connecting directly in `verify_new_credential()` removed the decrypt defect and
+created a second one: a **second set of ConnectHandler parameters**. Five sites
+in the codebase built those kwargs independently and agreed only by
+coincidence. That survives right up until one transport setting is needed —
+legacy KEX or host-key algorithms for older IOS against a modern client, a
+timeout, a device-type quirk — at which point it is added where the failure was
+noticed and the other four are silently left behind.
+
+On the rotation path that asymmetry has a specific, bad shape: a verify that
+negotiates differently from the session that just pushed the new credential
+fails for a **transport** reason, the classifier reads a connection failure as a
+device verdict, and a rotation that actually succeeded gets reverted. The fix
+for "a local fault reported as a device verdict" would have reintroduced the
+same error through a different door.
+
+`connection_params()` is now the only place they are assembled, with the
+password always passed explicitly — the normal path decrypts first, the
+rotation passes plaintext. A builder that decides internally which of those it
+was handed is what produced the original defect.
+
+### What the fake device could not have told us
+
+The fake router models the credential exchange: it accepts one password at a
+time, learns a new one from the line the push sends, hashes it in its running
+config the way IOS does. It does **not** model SSH negotiation, and no
+elaboration of it would — a test double is written from the same understanding
+as the code it doubles.
+
+So the parameters were pinned as a property instead (`verify`'s kwargs differ
+from the normal path's in exactly `{password, secret}`), and then the verifier
+was run against r2 with nothing at stake: once with the credential it already
+has, once with a deliberately wrong one.
+
+### What the hardware run found that neither had
+
+Both probes passed. The **parameter diff** did not:
+
+```
+differing  : ['secret']
+```
+
+Expected `{password, secret}`, saw `{secret}` — the passwords matched because
+the probe deliberately used the current one. Which raised the question the
+whole exercise existed to raise: *what is `secret` doing here at all?*
+
+`verify_new_credential()` was passing the **new login password** as the
+**enable** secret. The rotation changes the `username` line and nothing else,
+so a device's enable secret is whatever it already was. Nobody noticed because
+**no device in this fleet has an enable secret** — `conn.enable()` has nothing
+to authenticate against, so any value works.
+
+And it fails in the worst available direction. netmiko's `enable()` raises
+`ValueError`. `ValueError` is in the local-fault table, because a `ValueError`
+is overwhelmingly a bug in this process. So a device that **accepted the new
+credential and logged us in** would have been classified as a local fault,
+retried three times, and reverted — with the operator told the proof could not
+run.
+
+The trigger for that is a single line of configuration. It is also a line
+[already identified as a Part 2 target](#where-the-real-security-boundary-turned-out-to-be):
+adding `enable secret` is the fix for the unauthenticated serial console. The
+work that closes one hole would have silently armed this one.
+
+### The structural fix, not the name fix
+
+The tempting repair is to take `ValueError` out of the local-fault table. That
+is the wrong lever — it is still true that a bare `ValueError` before a
+connection exists is a local bug.
+
+The real distinction is **where** the failure happened, and that is knowable
+without consulting any table:
+
+- failures **at connect** are classified by exception name, because a name is
+  all there is;
+- failures **after login** are device verdicts **by construction** — we are
+  authenticated, so whatever went wrong, the device answered.
+
+Every result now carries `stage`. The classifier only gets a vote before a
+connection exists.
+
+The enable secret is read from the device row (`enable_secret()`), and the
+parameter diff on real hardware is now empty in every field.
+
+### The general shape
+
+> A simulation is written from the same understanding as the code it tests, so
+> it can only confirm what you already believe. The hardware probe cost two
+> logins and found a defect that was one config line from reverting successful
+> rotations.
+
+There is a narrower lesson too, about the probe's own design. The check that
+found this was not "does it work" — both probes passed — it was an **equality
+assertion against a reference path** that came back differing by one field. A
+pass/fail probe would have reported success. The useful question was not *did
+the verify succeed* but *is the verify the same as everything else*, and the
+one field where the answer was no turned out to be the whole finding.

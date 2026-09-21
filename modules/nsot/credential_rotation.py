@@ -399,7 +399,38 @@ def classify_failure(name: str) -> dict:
     return {"attempted": True, "recognised": False}
 
 
-def verify_new_credential(device: dict, username: str, password: str) -> dict:
+def enable_secret(device: dict) -> str:
+    """The device's enable secret, decrypted — unchanged by this operation.
+
+    Three cases, and the distinction matters because the goal is to be
+    *identical* to every other connection in the app, not to be clever:
+
+    - the row has no ``secret`` field at all -> ``None``, which
+      :func:`connection_params` turns into "reuse the login password";
+    - the field decrypts to an empty string -> ``""`` is returned **as is**,
+      which is what ``stored_connection_params()`` passes. Measured on r2:
+      this is the real case for this fleet;
+    - it decrypts to a value -> that value.
+
+    Every device here has no enable secret configured, so nothing challenges
+    it — which is precisely why this has to match the normal path rather than
+    be reasoned about.
+    """
+    from modules.device import decrypt_field
+
+    stored = (device.get("secret") or "").strip()
+    if not stored:
+        return None
+    try:
+        return decrypt_field(stored)
+    except Exception:                          # noqa: BLE001
+        # Already plaintext, or unreadable. Falling back to the login password
+        # is what happened before this function existed.
+        return None
+
+
+def verify_new_credential(device: dict, username: str, password: str, *,
+                          secret: str = None) -> dict:
     """Log in **again, from scratch**, with a PLAINTEXT credential.
 
     A fresh TCP session and a fresh authentication. Not the pooled connection
@@ -415,8 +446,18 @@ def verify_new_credential(device: dict, username: str, password: str) -> dict:
     convention where it belongs (the stored inventory) and out of a code path
     whose whole input is a value that has never been stored.
 
+    ``secret`` is the device's **enable** secret, which this operation does
+    not touch — it rotates the ``username`` line only. Passing the new login
+    password here instead is wrong the moment a device has a separate enable
+    secret, and it fails in the worst direction: ``enable()`` raises
+    ``ValueError``, which reads as a local fault, so a rotation that actually
+    worked would be reverted. No device in the fleet has one today, which is
+    exactly why it would have gone unnoticed until one did.
+
     Returns ``attempted``: whether a connection to the device was actually
-    made, from :func:`classify_failure`. ``ok=False, attempted=False`` is **not a verdict about the device** —
+    made. Past the connect, it is always ``True`` **by construction** rather
+    than by name lookup — we are logged in, so whatever failed next, the
+    device answered. ``ok=False, attempted=False`` is **not a verdict about the device** —
     it is a local failure, and treating it as one produced the most alarming
     message this tool can emit from code that never contacted anything.
     """
@@ -428,19 +469,33 @@ def verify_new_credential(device: dict, username: str, password: str) -> dict:
     # differently it would fail for a transport reason, be read as a device
     # verdict, and revert a rotation that worked.
     params = connection_params(dict(device, username=username),
-                               password=password)
+                               password=password, secret=secret)
     conn = None
     try:
-        conn = ConnectHandler(**params)
-        conn.enable()
-        out = conn.send_command("show running-config | include ^username",
-                                read_timeout=60)
-    except Exception as exc:                  # noqa: BLE001
-        name = type(exc).__name__
-        verdict = classify_failure(name)
-        return {"ok": False, "attempted": verdict["attempted"],
-                "recognised": verdict["recognised"], "error_type": name,
-                "error": f"{name}: {exc}"[:200]}
+        # Only THIS may be a local fault. Classified by name, because a name
+        # is all there is before a connection exists.
+        try:
+            conn = ConnectHandler(**params)
+        except Exception as exc:              # noqa: BLE001
+            name = type(exc).__name__
+            verdict = classify_failure(name)
+            return {"ok": False, "attempted": verdict["attempted"],
+                    "recognised": verdict["recognised"], "error_type": name,
+                    "error": f"{name}: {exc}"[:200], "stage": "connect"}
+
+        # Past here we are authenticated, so every failure is the device
+        # answering — established by where we are, not by the exception's
+        # name. netmiko's enable() raises ValueError, which the name table
+        # reads as local; a login that succeeded is not a local fault.
+        try:
+            conn.enable()
+            out = conn.send_command("show running-config | include ^username",
+                                    read_timeout=60)
+        except Exception as exc:              # noqa: BLE001
+            name = type(exc).__name__
+            return {"ok": False, "attempted": True, "recognised": True,
+                    "error_type": name, "error": f"{name}: {exc}"[:200],
+                    "stage": "after_login"}
     finally:
         if conn is not None:
             try:
@@ -448,9 +503,10 @@ def verify_new_credential(device: dict, username: str, password: str) -> dict:
             except Exception:                 # noqa: BLE001
                 pass
     if not out:
-        return {"ok": False, "attempted": True,
-                "error": "logged in but read nothing back"}
-    return {"ok": True, "attempted": True, "config": out}
+        return {"ok": False, "attempted": True, "recognised": True,
+                "error": "logged in but read nothing back",
+                "stage": "after_login"}
+    return {"ok": True, "attempted": True, "config": out, "stage": "after_login"}
 
 
 #: Indirection so a retry test does not spend six real seconds sleeping.
@@ -458,7 +514,7 @@ _SLEEP = time.sleep
 
 
 def verify_with_retry(device: dict, username: str, password: str, *,
-                      attempts: int = 3, sleep=None) -> dict:
+                      secret: str = None, attempts: int = 3, sleep=None) -> dict:
     """Verify, retrying only while the failure is LOCAL.
 
     An authentication refusal is a verdict and is returned immediately — there
@@ -469,7 +525,8 @@ def verify_with_retry(device: dict, username: str, password: str, *,
     sleep = sleep or _SLEEP
     last = {"ok": False, "attempted": False, "error": "not run"}
     for attempt in range(attempts):
-        last = verify_new_credential(device, username, password)
+        last = verify_new_credential(device, username, password,
+                                     secret=secret)
         if last["ok"] or last.get("attempted"):
             return {**last, "tries": attempt + 1}
         log.warning("rotate: verify could not run (%s) — retrying %d/%d",
@@ -691,7 +748,8 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
         # And only a failure the DEVICE produced. A local fault is retried
         # while the session is still open, because acting on an inconclusive
         # result is how a working device gets reverted — or reported lost.
-        check = verify_with_retry(device, username, password)
+        check = verify_with_retry(device, username, password,
+                                  secret=enable_secret(device))
         if not check["ok"]:
             conclusive = check.get("attempted", False)
             _step(VERIFY, False,
@@ -769,7 +827,8 @@ def _revert(result, _step, session, device, username, original_line, repo,
     # Plaintext, like the verify — the inventory's encrypted form was already
     # decrypted above, and handing it back to something that decrypts again is
     # exactly the bug this run found.
-    proof = verify_with_retry(device, username, old)
+    proof = verify_with_retry(device, username, old,
+                              secret=enable_secret(device))
     _step("revert_verified", proof["ok"],
           f"{proof.get('error','')}"
           f"{'' if proof.get('attempted') else '  [LOCAL FAULT — no connection made]'}")
