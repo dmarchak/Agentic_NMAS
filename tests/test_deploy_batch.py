@@ -1391,3 +1391,120 @@ class TestADeviceWithNothingToSendIsStillRead:
                             lambda key, default=None: default)
 
         assert RD._measure_unchanged("Lab", self._device(), "s4", "x") == []
+
+
+class TestTheCommitLandsInTheListTheDeployStartedIn:
+    """Switching lists mid-deploy must not redirect the golden commit.
+
+    The pipeline asked `get_current_list_name()` for its target repo at three
+    points, all AFTER the push — including `save_golden`. That function reads
+    `current_list` out of a file on disk on every call: not per-request, not
+    per-thread, and rewritten by any request that switches lists.
+
+    A deploy spans the push plus a convergence settle window of 45s (OSPF),
+    60s (BGP) or 90s (RIP). Switching lists in the UI while waiting is one
+    click and a natural thing to do. Stage 8.5 then committed network A's
+    captured configs into network B's repository.
+
+    `allow_new=False` hid this in the easy case — a device B had never heard of
+    failed identity resolution and errored. That protection disappears exactly
+    when it matters: two networks that both contain `r1` resolve cleanly, and
+    A's running config is committed as B's golden. Silently.
+    """
+
+    IP = "203.0.113.31"
+
+    def _ctx(self, list_name, settle_hook):
+        import threading
+        from modules.pipeline import PipelineContext
+
+        ctx = PipelineContext(
+            config_type="template",
+            device_ips=[self.IP],
+            params={"skip_route_check": True}, ip_params_map={},
+            selected_devices=[{"ip": self.IP, "hostname": "r1",
+                               "device_uid": "r1-uid"}],
+            check_devices=[], connections_pool={},
+            pool_lock=threading.Lock(), config_id="tpl-r1",
+            list_name=list_name,
+            settle_sleep=settle_hook,
+        )
+        ctx.confirmed_commands = {self.IP: ["interface Loopback0",
+                                            " description switched-mid-run",
+                                            "exit"]}
+        return ctx
+
+    def test_a_list_switch_during_convergence_does_not_move_the_commit(
+            self, tmp_path, monkeypatch):
+        from modules import pipeline as P
+
+        saved = {}
+        active = {"list": "campus"}
+
+        # The global the pipeline used to consult.
+        monkeypatch.setattr("modules.config.get_current_list_name",
+                            lambda: active["list"])
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(tmp_path / name))
+
+        def _capture_save(list_name, items, **kwargs):
+            saved["list_name"] = list_name
+            return {"ok": True, "commit": "deadbeef", "changed": ["r1"],
+                    "unchanged": [], "tags": []}
+        monkeypatch.setattr("modules.nsot.repo.save_golden", _capture_save)
+        monkeypatch.setattr("modules.nsot.repo.stage_post_deploy",
+                            lambda *a, **k: None)
+
+        monkeypatch.setattr(P, "_push_config", lambda d, c, p, l: "ok")
+        for stage in ("_stage_netbox_query", "_stage_ci_gate",
+                      "_stage_pre_snapshot", "_stage_config_diff"):
+            monkeypatch.setattr(P, stage, lambda ctx: None)
+
+        def _post_snapshot(ctx):
+            ctx.post_snapshots = {self.IP: {"running_config": "hostname r1\n"}}
+        monkeypatch.setattr(P, "_stage_post_snapshot", _post_snapshot)
+
+        # THE EVENT: verify is where the 45-90s settle windows are spent, and
+        # where the operator has time to click another list.
+        def _verify_while_the_operator_switches(ctx):
+            active["list"] = "branch"
+        monkeypatch.setattr(P, "_stage_verify", _verify_while_the_operator_switches)
+
+        P.PipelineRunner(self._ctx("campus", lambda _s: None)).run()
+
+        assert active["list"] == "branch", "the fixture must actually switch"
+        assert saved.get("list_name") == "campus", (
+            "the golden commit followed the ACTIVE list instead of the list the "
+            f"deploy started in: {saved.get('list_name')!r}")
+
+    def test_the_context_carries_the_list_the_route_resolved(self):
+        """routes/deploy.py must hand its list_name to the pipeline."""
+        import inspect
+        import routes.deploy as RD
+
+        source = inspect.getsource(RD._deploy_one)
+        assert "list_name=list_name" in source, (
+            "_deploy_one builds the PipelineContext and has list_name in scope; "
+            "not passing it puts the pipeline back on the global")
+
+    def test_the_pipeline_does_not_consult_the_active_list(self):
+        """One permitted fallback, in one named function, and it logs."""
+        import inspect
+        from modules import pipeline as P
+
+        source = inspect.getsource(P)
+        uses = [l.strip() for l in source.splitlines()
+                if "get_current_list_name" in l and not l.strip().startswith("#:")]
+        # Only _list_of's import and call may remain.
+        assert len(uses) == 2, uses
+        assert "get_current_list_name" in inspect.getsource(P._list_of)
+
+    def test_the_fallback_warns_when_a_caller_supplies_nothing(self, caplog):
+        import logging
+        from modules import pipeline as P
+
+        class _Bare:
+            list_name = ""
+        with caplog.at_level(logging.WARNING):
+            P._list_of(_Bare())
+        assert any("no list_name on the context" in r.message for r in caplog.records)

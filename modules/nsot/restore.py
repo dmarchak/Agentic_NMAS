@@ -22,6 +22,26 @@ def _repo_for(list_name: str) -> str:
     return os.path.join(get_list_data_dir(list_name), "config_repo")
 
 
+def _devices_of(list_name: str) -> list:
+    """The inventory of *list_name* — not of whichever list happens to be active.
+
+    These functions took ``list_name``, used it for the repo, and then read the
+    devices from ``get_current_device_list()``. The signature advertised a
+    capability the body did not honour: pass a list that is not the active one
+    and you get list A's stored configs matched against list B's device rows —
+    B's management addresses, B's credentials, B's platform mapping.
+
+    Latent, because every caller happened to pass the active list. It is the
+    more dangerous of the two shapes the audit found, because nothing looks
+    wrong at the call site.
+    """
+    from modules.config import get_list_data_dir
+    from modules.device import load_saved_devices
+
+    return load_saved_devices(os.path.join(get_list_data_dir(list_name),
+                                           "devices.csv"))
+
+
 def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
     """Report what a restore to *ref* would do. Reads only.
 
@@ -41,10 +61,8 @@ def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
     wanted = set(devices) if devices else set(at_ref)
     restorable, skipped = [], []
 
-    from modules.device import get_current_device_list, load_saved_devices
-    _name, csv_path = get_current_device_list()
     ip_by_host = {d.get("hostname", ""): d.get("ip", "")
-                  for d in load_saved_devices(csv_path)}
+                  for d in _devices_of(list_name)}
 
     for hostname in sorted(at_ref):
         if hostname not in wanted:
@@ -99,7 +117,6 @@ def build_targets(list_name: str, ref: str, devices: list = None,
     """
     import os as _os
 
-    from modules.device import get_current_device_list, load_saved_devices
     from modules.inventory import is_stale, stale_message
     from modules.nsot.deploy import RestoreTarget
     from modules.nsot.platform import platform_for_device
@@ -112,8 +129,7 @@ def build_targets(list_name: str, ref: str, devices: list = None,
         return [], [{"hostname": "", "reason": f"no golden configs at '{ref}'"}]
 
     wanted = set(devices) if devices else set(at_ref)
-    _name, csv_path = get_current_device_list()
-    rows = {d.get("hostname", ""): d for d in load_saved_devices(csv_path)}
+    rows = {d.get("hostname", ""): d for d in _devices_of(list_name)}
 
     targets, skipped = [], []
     for hostname in sorted(at_ref):

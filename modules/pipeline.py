@@ -122,6 +122,24 @@ class PipelineStageError(PipelineError):
 # Shared context (mutable state passed through every stage)
 # ---------------------------------------------------------------------------
 
+def _list_of(ctx) -> str:
+    """The device list this run belongs to.
+
+    The **only** place the pipeline may consult global state for it, and only
+    when a caller supplied nothing. Every production caller sets
+    ``ctx.list_name``; the fallback exists for older test contexts and logs
+    loudly, because a deploy that has to guess which network it is writing to
+    is a deploy that can write to the wrong one.
+    """
+    if getattr(ctx, "list_name", ""):
+        return ctx.list_name
+    from modules.config import get_current_list_name
+    fallback = get_current_list_name()
+    log.warning("pipeline: no list_name on the context — falling back to the "
+                "active list %r. The caller should set ctx.list_name.", fallback)
+    return fallback
+
+
 @dataclass
 class PipelineContext:
     """All state for one pipeline run, shared across all stage handlers."""
@@ -136,6 +154,24 @@ class PipelineContext:
     connections_pool: dict
     pool_lock:        Any
     config_id:        str
+    #: Which device list this run writes to. **Set once, by the originating
+    #: request, and never re-derived.**
+    #:
+    #: The pipeline used to ask ``get_current_list_name()`` for this at three
+    #: points, all of them *after* the push — including the golden commit. That
+    #: function reads ``current_list`` out of a file on disk on every call, so
+    #: it is neither per-request nor per-thread: any request that switches
+    #: lists rewrites it. A deploy spans push plus a convergence settle window
+    #: of 45s (OSPF), 60s (BGP) or 90s (RIP), and switching lists in the UI
+    #: while waiting is one click — after which stage 8.5 committed network A's
+    #: captured configs into network B's repository.
+    #:
+    #: ``allow_new=False`` masked this: a device B's manifest had never heard of
+    #: failed identity resolution and the commit errored. That protection
+    #: disappears exactly when it matters — two networks that both contain
+    #: ``r1``, or both use the same management address, resolve cleanly and A's
+    #: config is committed as B's golden.
+    list_name:        str = ""
 
     # ---- Populated by stages ---------------------------------------------
     intended_config:   dict = field(default_factory=dict)  # Stage 1: NetBox data
@@ -1322,12 +1358,12 @@ def _note_rolled_back_intent(ctx: PipelineContext) -> None:
     import os as _os
 
     try:
-        from modules.config import get_current_list_name, get_list_data_dir
+        from modules.config import get_list_data_dir
         from modules.nsot import hostvars as _hv
     except ImportError:
         return
 
-    repo = _os.path.join(get_list_data_dir(get_current_list_name()), "config_repo")
+    repo = _os.path.join(get_list_data_dir(_list_of(ctx)), "config_repo")
     if not _os.path.isdir(repo):
         return
     for ip in ctx.rolled_back_ips:
@@ -1390,11 +1426,11 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
     """
     import os as _os
 
-    from modules.config import get_current_list_name, get_list_data_dir
+    from modules.config import get_list_data_dir
     from modules.nsot import manifest as _manifest
     from modules.nsot.repo import GoldenItem, save_golden, stage_post_deploy
 
-    repo = _os.path.join(get_list_data_dir(get_current_list_name()), "config_repo")
+    repo = _os.path.join(get_list_data_dir(_list_of(ctx)), "config_repo")
     rolled_back = set(ctx.rolled_back_ips or [])
     failed_ips = {f.get("ip") for f in (ctx.deploy_failures or [])
                   if isinstance(f, dict)}
@@ -1468,7 +1504,7 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
 
     # allow_new=False: a pipeline deploy targets a device the inventory
     # already knows. Reaching here with no identity is a bug, not a new device.
-    result = save_golden(get_current_list_name(), items, source="pipeline",
+    result = save_golden(_list_of(ctx), items, source="pipeline",
                          actor="pipeline", pipeline_id=ctx.config_id,
                          allow_new=False)
     ctx.golden_result = result

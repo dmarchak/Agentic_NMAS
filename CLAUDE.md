@@ -478,6 +478,15 @@ The only part of the NSoT work that reaches a device.
   no stage can substitute its own render. `test_deploy_contract.py` runs the
   full pipeline with a spy transport and asserts the list reaching the wire is
   the list the plan published.
+- **The target list is carried, never re-derived.** `PipelineContext.list_name`
+  is set once by the originating request. The pipeline asked
+  `get_current_list_name()` at three points *after* the push, including the
+  golden commit — and that function reads a file on disk, so a list switch
+  during a 45–90s convergence window committed one network's captures into
+  another's repository. `allow_new=False` hid it until two networks shared a
+  device name or address, i.e. exactly the multi-network case. `restore`'s
+  `_devices_of()` is the same correction: a function taking `list_name` must
+  not read its inventory from the active list.
 - **Transport is per platform.** `supports_netconf: false` goes straight to SSH
   with no attempt — not a fallback after a timeout.
 - **`deployable` subsumes sendability.** `build_artifact()` measures

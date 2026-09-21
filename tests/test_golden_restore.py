@@ -379,3 +379,69 @@ class TestIntentCommitsWithTheDevice:
 
         assert result["commit"] == ""
         assert R.git(lab["repo"], "rev-parse", "HEAD")[1].strip() == before
+
+
+class TestRestoreUsesTheListItWasGiven:
+    """Audit finding C: repo from the argument, inventory from a global.
+
+    ``plan_restore()`` and ``build_targets()`` both take ``list_name``, used it
+    to resolve the repo, then read the devices from
+    ``get_current_device_list()``. Pass a list that is not the active one — which
+    the signature invites, since why else take the parameter — and you get list
+    A's stored configs matched against list B's device rows: B's management
+    addresses, B's credentials, B's platform mapping.
+
+    Latent, because every caller happened to pass the active list. The more
+    dangerous of the two shapes, because nothing looks wrong at the call site.
+    """
+
+    def test_devices_come_from_the_named_list_not_the_active_one(
+            self, lab, monkeypatch, tmp_path):
+        from modules.nsot import restore
+
+        other = tmp_path / "other_list"
+        (other / "config_repo").mkdir(parents=True)
+        (other / "devices.csv").write_text(
+            "hostname,ip,device_type,username,password,secret\n"
+            "R1,198.51.100.99,cisco_ios,u,p,s\n", encoding="utf-8")
+
+        # The ACTIVE list is the other one; the caller asks for "Lab".
+        monkeypatch.setattr("modules.device.get_current_device_list",
+                            lambda: ("Other", str(other / "devices.csv")))
+        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
+
+        result = restore.plan_restore("Lab", lab["baseline"])
+
+        addresses = {entry["ip"] for entry in result["restorable"]}
+        assert "198.51.100.99" not in addresses, (
+            "restore resolved device addresses from the ACTIVE list instead of "
+            f"the list it was given: {addresses}")
+        assert addresses <= {"203.0.113.1", "203.0.113.2", "203.0.113.7"}
+
+    def test_build_targets_uses_the_named_list(self, lab, monkeypatch, tmp_path):
+        from modules.nsot import restore
+
+        other = tmp_path / "other_list2"
+        (other / "config_repo").mkdir(parents=True)
+        (other / "devices.csv").write_text(
+            "hostname,ip,device_type,username,password,secret\n"
+            "R1,198.51.100.99,cisco_ios,u,p,s\n", encoding="utf-8")
+        monkeypatch.setattr("modules.device.get_current_device_list",
+                            lambda: ("Other", str(other / "devices.csv")))
+        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
+        monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "")
+
+        targets, skipped = restore.build_targets("Lab", lab["baseline"],
+                                                 un_onboard=["R1", "R2", "R7"])
+        addresses = {t.device_row.get("ip") for t in targets}
+        assert "198.51.100.99" not in addresses, addresses
+
+    def test_the_module_does_not_consult_the_active_list(self):
+        import inspect
+        from modules.nsot import restore
+
+        source = inspect.getsource(restore)
+        offending = [l.strip() for l in source.splitlines()
+                     if "get_current_device_list" in l
+                     and not l.strip().startswith(("#", "devices from"))]
+        assert offending == [], offending

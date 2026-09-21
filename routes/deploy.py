@@ -585,6 +585,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         connections_pool={},
         pool_lock=threading.Lock(),
         config_id=f"tpl-{hostname}",
+        # Carried, never re-derived. The pipeline must not ask a global which
+        # network it is writing to: a list switch during a 45-90s convergence
+        # window would land this device's golden in another list's repository.
+        list_name=list_name,
     )
     # Scoped to THIS device. The batch's other devices get their own list.
     authorised = [a.strip() for a in ((authorise or {}).get(hostname) or [])]
