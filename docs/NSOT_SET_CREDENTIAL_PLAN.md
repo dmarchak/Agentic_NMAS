@@ -42,15 +42,79 @@ username X privilege 15 secret ?
     0/5/8/9, <0-9>, LINE
 ```
 
-So the command is:
+So the command is **two** commands:
 
 ```
+no username admin
 username admin privilege 15 algorithm-type scrypt secret <new>
 ```
 
 `algorithm-type scrypt` is explicit and unambiguous. `secret 0 <plaintext>`
 would rely on the image's default hash choice, which is exactly the kind of
 implicit behaviour that differs between versions.
+
+### Why the deletion is required — measured, not reasoned
+
+> **This section replaces an earlier single-command version.** That version
+> was derived from the CLI's `?` help output, which lists what is
+> *syntactically* accepted. The refusal below is *semantic*, so `?` could
+> never have shown it. It was found by running the command against r2.
+
+Setting a secret on a username that already holds a `password` entry is
+**refused**. Verbatim from r2, IOS-XE 17.06.01a:
+
+```
+ERROR: Can not have both a user password and a user secret.
+Please choose one or the other.
+```
+
+The command is well-formed, so there is no `% Invalid input`. The device
+declines it, **keeps the old line, and the old credential goes on working**.
+
+Every device in this fleet carries `password 0 <x>`, so **every one of them
+would have refused**. The single-command form could not have rotated any
+device; r2 was not an unlucky draw.
+
+Hardware-verified matrix (throwaway `nmasprobe` account, r2, seeded into the
+same state as `admin`):
+
+| sequence | result |
+|---|---|
+| `algorithm-type scrypt secret` alone | refused; config unchanged; old value still authenticates |
+| `secret 0 <new>` alone | refused **identically** — rules out the keyword, not the coexistence |
+| **`no username` then scrypt** | **stores `secret 9`; new authenticates; old stops working** |
+| `nopassword` then scrypt | also works |
+
+`no username` is chosen over `nopassword` because of the failure window
+between the two commands. `no username` leaves the account **absent**, so
+logins fail; `nopassword` leaves a **privilege 15 account with no password**,
+which is an open door. Both commands go in one send, so the window is one
+round trip, and the held original session — which IOS does not drop when a
+username is removed — is what recovers from a failure between them.
+
+### The revert needs the same treatment, mirrored
+
+After a successful push the account holds a **secret** entry, and the original
+line sets a **password**. The device's objection is symmetric, so a one-line
+revert is refused too — and the failure the revert exists to recover from
+would become a real lockout. The revert sends `no username <u>` first as well.
+
+### Charset and length: measured, and unchanged
+
+Both were suspected before the real cause was found, and both are cleared on
+this image:
+
+| probe | result |
+|---|---|
+| 32 characters, alphanumeric | authenticates |
+| 18 characters, all 17 specials | authenticates |
+| 32 characters, mixed specials | authenticates |
+| **24 real `generate_password()` outputs**, all 17 specials exercised at length 32 | **24/24 authenticate** |
+
+**No change to `CHARSET` or `LENGTH` is warranted.** The exclusions in the
+table above remain reasoned rather than measured, with one now settled: length
+32 and the full 79-character set are accepted by IOS-XE 17.06.01a in a
+`username … algorithm-type scrypt secret` line.
 
 ### The template needs no change — and approval survives
 
@@ -139,6 +203,7 @@ So `set_credential` is its own operation, with its own confirmation:
 - The password is generated **after** the confirm, in memory, and never leaves
   it except as the CLI line to that one device.
 - The plan, the result, the audit row and every log line show
+  `no username admin` followed by
   `username admin privilege 15 algorithm-type scrypt secret <generated>`.
 
 This is a deliberate departure from "what you confirm is what is sent, byte for
@@ -177,6 +242,7 @@ Every step names what happens if it fails.
     - so the very next record is redacted against the new value
 
  4. PUSH on the ORIGINAL session
+      no username admin
       username admin privilege 15 algorithm-type scrypt secret <generated>
     - error_pattern armed; a rejected line aborts before step 5
 

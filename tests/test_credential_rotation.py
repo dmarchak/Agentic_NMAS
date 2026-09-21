@@ -198,46 +198,99 @@ class _Router:
     it would fail on hardware.
     """
 
+    #: Verbatim from r2, IOS-XE 17.06.01a.
+    REFUSAL = ("ERROR: Can not have both a user password and a user secret.\n"
+               "Please choose one or the other.\n")
+    CONFIRM = ("This operation will remove all username related configurations "
+               "with same name.Do you want to continue? [confirm]")
+
     def __init__(self, password=ORIGINAL_PLAINTEXT):
         self.password = password
         self.logins = []            # every kwargs dict ConnectHandler received
         self.running = ORIGINAL_LINE
+        self.entry = "password"     # which kind of entry the account holds
+        self.exists = True
         self.stores = "9"           # what the running config shows after a push
         self.honours_new_secret = True   # False: stores it, won't authenticate
         self.dead = False           # refuses every credential
         self.local_fault = None     # raised before any "connection" happens
+        self.awaiting_confirm = False
 
     def login(self, **kwargs):
         if self.local_fault is not None:
             raise self.local_fault
         self.logins.append(dict(kwargs))
-        if self.dead or kwargs.get("password") != self.password:
+        if self.dead or not self.exists \
+                or kwargs.get("password") != self.password:
             raise NetmikoAuthenticationException(
                 f"Authentication to device {kwargs.get('ip')} failed")
         return _Conn(self)
 
     def apply(self, line):
-        """A ``username`` line replaces the login credential, as IOS does."""
+        """Apply one config line; return what the device would print.
+
+        This models the behaviour measured on r2 rather than the behaviour the
+        command's name suggests. Setting a secret on a username that already
+        holds a ``password`` entry is REFUSED — well-formed, so no
+        ``% Invalid input``, just a plain-English decline and no change. Every
+        device in the fleet is in that state, so the original one-command
+        rotation could not have worked on any of them.
+        """
+        line = line.strip()
+        if self.awaiting_confirm:
+            self.awaiting_confirm = False
+            self.exists = False
+            self.running = ""
+            return ""
+
         parts = line.split()
+        if parts[:2] == ["no", "username"]:
+            if not self.exists:
+                return ""
+            self.awaiting_confirm = True
+            return self.CONFIRM
+
         if parts[:1] != ["username"]:
-            return
-        for keyword in ("secret", "password"):
+            return ""
+
+        for keyword in ("secret", "password", "nopassword"):
             if keyword in parts:
-                value = parts[parts.index(keyword) + 1]
                 break
         else:
-            return
+            return ""
 
+        if keyword == "nopassword":
+            self.entry = "nopassword"
+            self.exists = True
+            self.running = line
+            return ""
+
+        value = parts[parts.index(keyword) + 1]
+        if keyword == "password":
+            # Symmetric: the device refuses a password over a secret entry for
+            # the same reason it refuses a secret over a password one. This is
+            # what the REVERT walks into after a successful push.
+            if self.exists and self.entry == "secret":
+                return self.REFUSAL
+            self.exists, self.entry = True, "password"
+            self.running, self.password = line, value
+            return ""
+
+        # keyword == "secret"
+        if self.exists and self.entry == "password":
+            return self.REFUSAL           # refused; nothing changes
+
+        self.exists, self.entry = True, "secret"
         if "algorithm-type" in parts:
             # IOS hashes it: the running config never shows the plaintext
             # again, which is why the verify must carry the value from memory.
             self.running = (f"username {parts[1]} privilege 15 "
                             f"secret {self.stores} $9$saltsalt$hashhash")
-            if self.honours_new_secret:
-                self.password = value
         else:
             self.running = line
+        if self.honours_new_secret:
             self.password = value
+        return ""
 
 
 class _Conn:
@@ -269,16 +322,39 @@ class _Session:
         self.fail_on = fail_on or []
         self.disconnected = False
         self.router = router
+        self.in_config = False
 
     def send_config_set(self, commands, **kw):
-        self.sent.extend(commands)
+        out = ""
+        for line in commands:
+            out += self._one(line)
+        return out or "ok"
+
+    # --- the timing API push_rotation actually uses ----------------------
+    #
+    # send_config_set cannot answer a [confirm] prompt: it waits for a prompt
+    # that never comes. The real push drives config mode by hand, so the fake
+    # has to offer the same surface.
+
+    def config_mode(self):
+        self.in_config = True
+        return ""
+
+    def exit_config_mode(self):
+        self.in_config = False
+        return ""
+
+    def send_command_timing(self, command, **kw):
+        if command.strip() in ("", "\n"):          # answering [confirm]
+            return self.router.apply("") if self.router else ""
+        return self._one(command)
+
+    def _one(self, line):
+        self.sent.append(line)
         for needle in self.fail_on:
-            if any(needle in c for c in commands):
+            if needle in line:
                 raise RuntimeError(f"device rejected: {needle}")
-        if self.router is not None:
-            for line in commands:
-                self.router.apply(line)
-        return "ok"
+        return self.router.apply(line) if self.router is not None else ""
 
     def send_command(self, *a, **k):
         return "clock"
@@ -811,6 +887,168 @@ class TestTheEnableSecretIsNotTheLoginPassword:
         out = cr.verify_new_credential(wired["device"], "admin", "pw")
         assert out["stage"] == "connect"
         assert out["attempted"] is False
+
+
+class TestTheDeviceRefusesASecretOverAPassword:
+    """Measured on r2, IOS-XE 17.06.01a. The reason the rotation never worked.
+
+    Pushing a secret at a username that already holds a ``password`` entry is
+    refused::
+
+        ERROR: Can not have both a user password and a user secret.
+        Please choose one or the other.
+
+    The command is well-formed, so there is no ``% Invalid input``. The device
+    declines it, keeps the old line, and the old credential goes on working.
+    Every device in this fleet carries ``password 0 <x>``, so every one of
+    them would have refused — r2 was not unlucky, and no amount of changing
+    the password would have helped.
+
+    ``secret 0`` without ``algorithm-type`` is refused identically, which is
+    what rules out the keyword rather than the coexistence.
+    """
+
+    def test_the_old_one_command_form_is_refused(self, wired):
+        """The fake now reproduces the hardware, so the old form fails here."""
+        router = wired["router"]
+        out = router.apply(
+            "username admin privilege 15 algorithm-type scrypt secret NewPw")
+        assert "Can not have both" in out
+        assert router.entry == "password", "nothing changed"
+        assert router.password == ORIGINAL_PLAINTEXT, "the old value survives"
+
+    def test_the_refusal_is_not_an_invalid_input_error(self, wired):
+        """Which is exactly why the old error pattern missed it."""
+        out = wired["router"].apply(
+            "username admin privilege 15 algorithm-type scrypt secret NewPw")
+        assert "% Invalid" not in out
+        assert "Incomplete" not in out
+
+    def test_rotation_commands_removes_the_account_first(self):
+        cmds = cr.rotation_commands("admin", 15, "NewPw")
+        assert len(cmds) == 2
+        assert cmds[0] == "no username admin"
+        assert cmds[1] == ("username admin privilege 15 "
+                           "algorithm-type scrypt secret NewPw")
+
+    def test_the_masked_program_shows_the_deletion_too(self):
+        """The operator confirms what is sent, including the removal."""
+        masked = cr.masked_commands("admin", 15)
+        assert masked[0] == "no username admin"
+        assert "<generated>" in masked[1]
+        assert not any("NewPw" in m for m in masked)
+
+    def test_the_fingerprint_still_describes_the_credential(self):
+        """Prefixing a deletion must not change what the operator confirms."""
+        assert cr.rotation_command("admin", 15, "X") == (
+            "username admin privilege 15 algorithm-type scrypt secret X")
+
+    def test_a_full_rotation_now_lands_a_secret(self, wired):
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.ROTATED_UNVERIFIED
+        assert wired["router"].entry == "secret"
+        assert wired["router"].password != ORIGINAL_PLAINTEXT
+
+    def test_the_old_credential_stops_working(self, wired):
+        """login OLD: False on hardware. The point of the whole operation."""
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        with pytest.raises(NetmikoAuthenticationException):
+            wired["router"].login(ip="203.0.113.12", username="admin",
+                                  password=ORIGINAL_PLAINTEXT)
+
+
+class TestTheRevertHitsTheSameRefusalMirrored:
+    """After a successful push the account holds a SECRET entry.
+
+    The original line sets a password, and the device's objection is symmetric
+    — so a one-line revert is declined, and the failure the revert exists to
+    recover from becomes a real lockout. Found because the fake was taught the
+    device's actual rule rather than the one the command names imply.
+    """
+
+    def test_a_one_line_revert_would_be_refused(self, wired):
+        router = wired["router"]
+        router.entry, router.exists = "secret", True
+        out = router.apply(ORIGINAL_LINE)
+        assert "Can not have both" in out, "the mirrored refusal"
+
+    def test_the_revert_removes_the_account_first(self, wired):
+        wired["router"].honours_new_secret = False
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.REVERTED
+        sent = wired["session"].sent
+        assert "no username admin" in sent
+        assert sent.index("no username admin") < sent.index(ORIGINAL_LINE)
+
+    def test_the_original_credential_works_again_after_the_revert(self, wired):
+        wired["router"].honours_new_secret = False
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert wired["router"].entry == "password"
+        assert wired["router"].login(
+            ip="203.0.113.12", username="admin", password=ORIGINAL_PLAINTEXT)
+
+
+class TestARefusedPushIsNotASuccessfulOne:
+    """The rotation recorded a successful push of a command the device declined."""
+
+    def test_push_rotation_raises_on_a_refusal(self, wired):
+        session = _Session(router=wired["router"])
+        with pytest.raises(cr.RotationRefused) as excinfo:
+            cr.push_rotation(session, [
+                "username admin privilege 15 algorithm-type scrypt secret X"])
+        assert "Can not have both" in str(excinfo.value)
+
+    def test_a_refused_push_leaves_the_device_untouched(self, wired):
+        wired["session"] = _Session(router=wired["router"])
+        # Force the old, refused shape through the real rotate() path.
+        import modules.nsot.credential_rotation as mod
+        original = mod.rotation_commands
+        mod.rotation_commands = lambda u, p, pw: [
+            f"username {u} privilege {p} algorithm-type scrypt secret {pw}"]
+        try:
+            result = cr.rotate("Lab", "r2",
+                               confirmed_fingerprint=_fingerprint(wired))
+        finally:
+            mod.rotation_commands = original
+
+        assert result["state"] == cr.NOT_STARTED
+        assert "Can not have both" in result["reason"]
+        assert wired["router"].entry == "password"
+        assert cr.staged_plaintext(wired["repo"], "r2") is None
+
+    def test_push_rotation_answers_the_confirm_prompt(self, wired):
+        """An unanswered [confirm] leaves the session mid-dialogue."""
+        session = _Session(router=wired["router"])
+        cr.push_rotation(session, cr.rotation_commands("admin", 15, "NewPw"))
+        assert wired["router"].awaiting_confirm is False
+        assert wired["router"].entry == "secret"
+
+    def test_the_error_pattern_matches_the_real_refusal(self):
+        import re
+        from modules.pipeline import IOS_ERROR_PATTERN
+
+        real = ("R2(config)#username admin privilege 15 algorithm-type scrypt "
+                "secret X\n"
+                "ERROR: Can not have both a user password and a user secret.\n"
+                "Please choose one or the other.\n")
+        assert re.search(IOS_ERROR_PATTERN, real)
+        assert re.search(IOS_ERROR_PATTERN,
+                         "% Invalid input detected at '^' marker.")
+
+    def test_the_error_pattern_does_not_fire_on_echoed_config(self):
+        """Netmiko echoes commands after the prompt, so only output starts a line."""
+        import re
+        from modules.pipeline import IOS_ERROR_PATTERN
+
+        for benign in (
+            "R2(config-if)#description ERROR: link flaps under load",
+            "R2(config)#banner motd ^C report any ERROR: to noc ^C",
+            "R2(config)#ip access-list extended ERROR-DROP",
+            "R2(config)#username x privilege 15 secret Ab%Errors",
+        ):
+            assert not re.search(IOS_ERROR_PATTERN, benign), benign
 
 
 class TestPersistenceNeverReverts:

@@ -187,10 +187,67 @@ def generate_password(hostname: str = "device", length: int = LENGTH) -> str:
         "disagree, which is a bug in one of them")
 
 
+#: IOS-XE prompts before deleting a username. Measured verbatim on r2:
+#: "This operation will remove all username related configurations with same
+#: name.Do you want to continue? [confirm]" (the missing space is the
+#: device's). An unanswered prompt leaves the session mid-dialogue, which is
+#: how the first probe run desynced.
+CONFIRM_PROMPT = r"\[confirm\]|\[yes/no\]"
+
+
+def rotation_commands(username: str, privilege, password: str) -> list[str]:
+    """The program sent to the device. TWO commands, and it has to be two.
+
+    The original one-liner could never have worked on any device in this
+    fleet. Measured on r2 (IOS-XE 17.06.01a), pushing a secret at a username
+    that already has a ``password`` entry is refused::
+
+        ERROR: Can not have both a user password and a user secret.
+        Please choose one or the other.
+
+    The command is well-formed, so there is no ``% Invalid input``; the device
+    declines it on semantic grounds and keeps the old line. Every device in
+    this fleet carries ``password 0 <x>``, so every one of them would have
+    refused. r2 was not unlucky.
+
+    ``secret 0`` without ``algorithm-type`` is refused identically, which is
+    what rules out the keyword as the cause rather than the coexistence.
+
+    So the password entry must go first. Two ways were measured, and the
+    choice between them is about the failure window, not elegance:
+
+    ``no username`` then set          the account is briefly ABSENT -> logins
+                                      fail. **Chosen.**
+    ``nopassword`` then set           the account is briefly PASSWORDLESS ->
+                                      at privilege 15, an open door.
+
+    Both commands go in one ``send_config_set`` so the window is one round
+    trip, and the held original session is what recovers from a failure
+    between them — it stays authenticated, because IOS does not drop
+    established sessions when a username is removed.
+    """
+    priv = f" privilege {privilege}" if privilege not in (None, "") else ""
+    return [
+        f"no username {username}",
+        f"username {username}{priv} algorithm-type scrypt secret {password}",
+    ]
+
+
 def rotation_command(username: str, privilege, password: str) -> str:
-    """The one line sent to the device. Verified on IOS-XE 17.06.01a."""
+    """The credential-setting line alone, for fingerprinting and display.
+
+    Deliberately NOT what is sent — :func:`rotation_commands` is. Kept
+    separate because the fingerprint the operator confirms should describe the
+    credential being set, and prefixing it with a deletion would change every
+    stored fingerprint without changing what is being asked for.
+    """
     priv = f" privilege {privilege}" if privilege not in (None, "") else ""
     return f"username {username}{priv} algorithm-type scrypt secret {password}"
+
+
+def masked_commands(username: str, privilege) -> list[str]:
+    """Exactly what the operator confirms — including the deletion."""
+    return rotation_commands(username, privilege, "<generated>")
 
 
 def masked_command(username: str, privilege) -> str:
@@ -355,12 +412,47 @@ def open_original_session(device: dict):
     return conn
 
 
-def push_rotation(session, command: str) -> dict:
-    """Send the one line on the ALREADY-AUTHENTICATED original session."""
+def push_rotation(session, commands) -> dict:
+    """Send the program on the ALREADY-AUTHENTICATED original session.
+
+    ``no username`` raises a ``[confirm]`` prompt on this image, and
+    ``send_config_set`` has no way to answer one — it waits for a prompt that
+    never comes, times out, and leaves the session mid-dialogue. So the
+    commands are sent with timing-based reads and the prompt is answered
+    explicitly.
+
+    The refusal check is done here, against the WHOLE transcript, rather than
+    delegated: this is the path that read "ERROR: Can not have both a user
+    password and a user secret." as a successful push.
+    """
+    import re
+
     from modules.pipeline import IOS_ERROR_PATTERN
 
-    output = session.send_config_set([command], error_pattern=IOS_ERROR_PATTERN)
-    return {"ok": True, "output_len": len(output or "")}
+    if isinstance(commands, str):               # one line, older callers
+        commands = [commands]
+
+    transcript = ""
+    session.config_mode()
+    try:
+        for command in commands:
+            transcript += session.send_command_timing(
+                command, strip_prompt=False, strip_command=False)
+            if re.search(CONFIRM_PROMPT, transcript[-300:], re.I):
+                transcript += session.send_command_timing(
+                    "\n", strip_prompt=False, strip_command=False)
+    finally:
+        try:
+            session.exit_config_mode()
+        except Exception:                       # noqa: BLE001
+            pass
+
+    refusal = re.search(IOS_ERROR_PATTERN, transcript)
+    if refusal:
+        line = next((l.strip() for l in transcript.splitlines()
+                     if re.search(IOS_ERROR_PATTERN, l)), refusal.group(0))
+        raise RotationRefused(f"the device refused the command: {line}"[:300])
+    return {"ok": True, "output_len": len(transcript)}
 
 
 #: Netmiko/paramiko failures that mean "the device answered and refused us".
@@ -716,8 +808,9 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     invalidate_cache()
     _step("invalidate_redaction_cache", True)
 
-    command = rotation_command(username, privilege, password)
-    log.info("rotate %s: sending %s", hostname, masked_command(username, privilege))
+    commands = rotation_commands(username, privilege, password)
+    for masked in masked_commands(username, privilege):
+        log.info("rotate %s: sending %s", hostname, masked)
 
     # ---- the original session: opened, proven, and held open -------------
     try:
@@ -734,11 +827,11 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     try:
         # ---- push --------------------------------------------------------
         try:
-            push_rotation(session, command)
+            push_rotation(session, commands)
         except Exception as exc:               # noqa: BLE001
             _step("push", False, f"{type(exc).__name__}: {exc}"[:160])
             clear_staged(repo, hostname)
-            result["reason"] = "the device rejected the command"
+            result["reason"] = f"the device rejected the command: {exc}"[:200]
             result["state"] = NOT_STARTED
             return result
         _step("push", True)
@@ -810,12 +903,18 @@ def _revert(result, _step, session, device, username, original_line, repo,
         result["state"] = REVERT_FAILED
         result["reason"] = "nothing to revert to — recover on the console"
         return result
+    # The revert walks into the SAME refusal, mirrored. After a successful
+    # push the account holds a secret entry, and the original line sets a
+    # password — "Can not have both a user password and a user secret" is
+    # symmetric. A one-line revert would be declined, and the failure that the
+    # revert exists to recover from would become a real lockout.
     try:
-        push_rotation(session, original_line)
+        push_rotation(session, [f"no username {username}", original_line])
     except Exception as exc:                   # noqa: BLE001
         _step("revert", False, f"{type(exc).__name__}: {exc}"[:160])
         result["state"] = REVERT_FAILED
-        result["reason"] = "the revert command failed — recover on the console"
+        result["reason"] = (f"the revert command failed — recover on the "
+                            f"console ({exc})")[:200]
         return result
 
     from modules.device import decrypt_field

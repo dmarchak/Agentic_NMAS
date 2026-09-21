@@ -893,7 +893,27 @@ def _push_via_netconf(dev: dict, cmds: list[str]) -> str:
 #: "pushed — N command(s)", verify passes because nothing changed, and stage 8.5
 #: commits a golden that correctly records a device which was never configured.
 #: A successful deploy that configured nothing is the quietest failure available.
-IOS_ERROR_PATTERN = r"% (Invalid|Incomplete|Ambiguous|Unrecognized)"
+#:
+#: That comment was right about the mechanism and wrong about the vocabulary.
+#: It listed the ``% Invalid input`` family only, and IOS has a second one:
+#: a semantic refusal of a *well-formed* command, printed as a bare ``ERROR:``
+#: with no ``%`` at all. Measured on r2 (IOS-XE 17.06.01a)::
+#:
+#:     ERROR: Can not have both a user password and a user secret.
+#:     Please choose one or the other.
+#:
+#: The credential rotation sent one command, the device refused it in plain
+#: English, and the tool recorded a successful push — exactly the failure this
+#: constant exists to prevent, through the half of the vocabulary it did not
+#: cover.
+#:
+#: Anchored per line, and netmiko applies it with ``re.M``. That is what keeps
+#: an echoed ``description ERROR: link flaps`` from firing it: netmiko echoes
+#: each command after the prompt on the same line, so only device output
+#: begins a line. The ``(?m)`` is inline so the pattern carries its own
+#: semantics to any caller that does not pass the flag.
+IOS_ERROR_PATTERN = (r"(?m)^\s*(?:%\s*(?:Invalid|Incomplete|Ambiguous|Unrecognized)"
+                     r"|%?\s*ERROR:|%\s*Error:)")
 
 
 def _push_via_netmiko(dev: dict, cmds: list[str], pool: dict, lock: Any) -> str:

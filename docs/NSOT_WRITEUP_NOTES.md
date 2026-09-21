@@ -3469,3 +3469,138 @@ assertion against a reference path** that came back differing by one field. A
 pass/fail probe would have reported success. The useful question was not *did
 the verify succeed* but *is the verify the same as everything else*, and the
 one field where the answer was no turned out to be the whole finding.
+
+## A command the device had been refusing all along
+
+r2's second rotation attempt ended `REVERTED`: the new credential was refused
+on a fresh login, the original was restored on the held session and proven, the
+device was unchanged. The machinery worked on a real verdict. The open question
+was why a device would refuse a password it had just accepted.
+
+Two hypotheses, both reasonable: **length** (the image truncates silently past
+some limit and hashed a prefix) and **characters** (something in the charset is
+interpreted by the CLI rather than taken literally). The charset exclusions had
+been reasoned from first principles and never tested on this image.
+
+Both were wrong, and the way they were wrong is the point.
+
+### Clearing them cost two probes and found nothing
+
+On a throwaway `nmasprobe` account, with `admin` untouched: 32 alphanumeric
+(length alone), 18 characters containing all 17 specials (characters alone —
+17 do not fit in 16), and 32 with specials. All three authenticated. Then 24
+real `generate_password()` outputs, exercising every special at length 32,
+across two timing arms. **24/24 authenticated.**
+
+At that point the honest conclusion is not "it must be something subtle about
+the value". It is "it is not the value", and the question becomes what the
+probes were **not** reproducing.
+
+### What they were not reproducing
+
+```
+admin      already existed, carrying `password 0 <x>`, privilege 15
+nmasprobe  was CREATED by the scrypt line itself, privilege 1
+```
+
+Seeding the throwaway account into `admin`'s state reproduced the failure on
+the first attempt, and at both privilege levels:
+
+```
+setup   : username nmasprobe privilege 15 password 0 OldProbeValue1
+push    : username nmasprobe privilege 15 algorithm-type scrypt secret <new>
+config  : username nmasprobe privilege 15 password 0 OldProbeValue1  ← unchanged
+login NEW: False      login OLD: True
+```
+
+The device had been saying so the entire time:
+
+```
+ERROR: Can not have both a user password and a user secret.
+Please choose one or the other.
+```
+
+The command is well-formed, so there is no `% Invalid input`. IOS declines it
+on semantic grounds, keeps the old line, and the old credential goes on
+working. **Every device in this fleet carries `password 0 <x>`, so every one of
+them would have refused.** The operation could never have rotated anything. r2
+was not an unlucky draw; it was the first device to be asked.
+
+`secret 0` without `algorithm-type` is refused identically, which is what rules
+out the keyword rather than the coexistence.
+
+### The command came from `?`, which cannot show this
+
+The plan derived the command from the CLI's own help output — the `?` listing
+of what `username X privilege 15 secret` accepts. That listing is **syntax**.
+The refusal is **semantics**: a valid command, declined because of state the
+help text has no way to mention. Reading the help and writing the command down
+felt like verification against the device, and it was verification against the
+device's *parser*.
+
+### The tool called a refusal a success
+
+`IOS_ERROR_PATTERN` was `% (Invalid|Incomplete|Ambiguous|Unrecognized)`. IOS
+has a second rejection vocabulary — a bare `ERROR:` with no `%` — and it was
+not covered. So the push "succeeded", and the verify's later failure was
+attributed to the credential.
+
+The comment sitting directly above that constant reads:
+
+> A successful deploy that configured nothing is the quietest failure
+> available.
+
+It was right about the mechanism and wrong about the vocabulary, and the gap
+between those two is where this defect lived. The constant is shared with the
+deploy path, so any command IOS refused in that wording was being recorded as
+applied — and a merge-only deploy then commits a golden config asserting lines
+the device rejected.
+
+Now anchored per line (netmiko applies it with `re.M`), covering both families,
+and verified against the real refusal plus four benign echoes — `description
+ERROR: link flaps`, banner text, an `ERROR-DROP` ACL name, and a password
+containing `%Error`. Netmiko echoes each command after the prompt on the same
+line, so only genuine device output can start a line.
+
+### Teaching the fake the rule found a second defect
+
+The fake router was taught the device's actual rule — refuse a secret over a
+password entry — and nine tests failed immediately, all on the revert.
+
+After a successful push the account holds a **secret** entry. The original line
+sets a **password**. The objection is symmetric, so a one-line revert is
+refused too. The path that exists to recover from a failed verify would itself
+have been declined, turning the recoverable case into the real lockout the
+whole design is built to avoid.
+
+This is the second time in this work that making a test double model the
+*measured* behaviour rather than the intended behaviour immediately surfaced a
+defect elsewhere. A double built from the same understanding as the code
+confirms that understanding. A double built from measurement disagrees with it.
+
+### Verified on hardware, fixed code, throwaway account
+
+```
+1. fixed rotation   config: secret 9    login NEW: True   login OLD: False   PASS
+2. fixed revert     config: password 0  login OLD: True   login NEW: False   PASS
+3. old one-liner    RotationRefused: ERROR: Can not have both ...            PASS
+```
+
+`nmasprobe` removed and verified absent after every probe; the `admin` line
+confirmed intact after every probe.
+
+### The general shape
+
+> A device's help text describes its parser, not its rules. `?` will happily
+> show you the syntax of a command it is about to refuse.
+
+And the sharper one, about the diagnosis rather than the bug:
+
+> When every hypothesis about the *value* fails, the answer is usually that the
+> value was never the variable. Two probes proved the password was fine; what
+> they could not do was notice that the account under test differed from the
+> real one in a way nobody had written down.
+
+The reproduction only became possible after asking what the probe was **not**
+reproducing — which is a different question from what the probe was testing,
+and the one that took three rounds to reach.
