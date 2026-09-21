@@ -264,3 +264,39 @@ parallel one.
    for Save All on a device the manifest has not seen. Today that silently
    adopts; afterwards it refuses and names the device. I think that is right,
    and it is a behaviour change to make deliberately rather than discover.
+
+---
+
+## 8. Decisions taken (and what they changed)
+
+1. **Factory-default is "nothing beyond the per-platform bootstrap profile".**
+   "No hostname and no configured interfaces" is never true here —
+   containerlab nodes boot with a hostname, a `clab-mgmt` VRF, a management
+   interface and a user. A routing process, or a data interface with an
+   address, means configured: refuse unless acknowledged.
+
+   **The profile is measured, not written.** See
+   `docs/bootstrap-probe/` — a throwaway topology sharing nothing with
+   `rcn-lab1`, whose captures become fixtures with their provenance.
+
+2. **`BootstrapTarget` keeps merge-only semantics.** Download is always
+   available; deploy requires a capture, and shows the diff and the residue
+   like every other deploy. This is a smaller departure from `RenderArtifact`
+   than first planned — the only thing it lacks is *committed* intent to
+   render from, not the merge.
+
+3. **One commit per wizard run**, site and device together, trailers naming
+   both. NetBox cannot be atomic with git: if device creation fails after the
+   site is created, the result reports the site created and the device not.
+
+4. **Local lists** get a `devices.csv` row via `write_devices_csv()` carrying
+   the adopted identity. **NetBox-sourced lists** get the NetBox device,
+   credentials as a credential-store device override, and the next refresh
+   picks it up — identity there is read-only, so the wizard must not pretend
+   otherwise.
+
+5. **The last wizard step offers `set_credential`**, so an onboarded device
+   moves to a device-generated type-9 secret rather than keeping whatever
+   bootstrap credential it came with.
+
+6. **`allow_new` flipped first**, in `3dc7730`. Done.

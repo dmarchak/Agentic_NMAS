@@ -1,0 +1,57 @@
+name: nmas-bootstrap-probe
+
+# ---------------------------------------------------------------------------
+# Throwaway topology whose ONLY purpose is to measure what a freshly booted
+# node looks like, so Phase 4's bootstrap profile is captured rather than
+# written from knowledge of containerlab and vrnetlab.
+#
+# A profile that is wrong in one direction blocks every real deploy; wrong in
+# the other, it passes a configured device off as new. Neither is detectable
+# from reading the code that produced it.
+#
+# SHARES NOTHING WITH rcn-lab1
+#   - its own lab name, so containerlab's own state is separate
+#   - its own docker network AND subnet. rcn-lab1 deliberately has no `mgmt:`
+#     block because the default `clab` network already owns 172.20.20.0/24 and
+#     a second network on that subnet fails to create. This lab therefore
+#     declares a different network on a different subnet, which is the only
+#     way to be isolated rather than merely polite.
+#   - no startup-config, no binds: whatever appears in the running config is
+#     what the image and containerlab put there, which is the thing being
+#     measured.
+#
+# THE LINK IS DELIBERATE
+#   One link, unaddressed. Without it neither node would have a data
+#   interface at all, and the profile would not record what an unconfigured
+#   data interface looks like — which is exactly the line the wizard must
+#   tolerate on a genuinely fresh device.
+#
+# KIND ENV MIRRORS rcn-lab1
+#   CLAB_MGMT_PASSTHROUGH=false is set on the vIOS kind there, and it changes
+#   what containerlab injects. The profile has to describe a fresh node in
+#   THIS environment, so the setting is mirrored rather than defaulted.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-bootstrap-probe
+  ipv4-subnet: 172.30.30.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a       # same image as r1-r5
+    cisco_vios:
+      image: vrnetlab/cisco_vios:L2-20180619       # same image as s1-s4
+      env:
+        CLAB_MGMT_PASSTHROUGH: "false"
+
+  nodes:
+    bp-c8k:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.30.11
+    bp-vios:
+      kind: cisco_vios
+      mgmt-ipv4: 172.30.30.21
+
+  links:
+    - endpoints: ["bp-c8k:Gi2", "bp-vios:Gi0"]
