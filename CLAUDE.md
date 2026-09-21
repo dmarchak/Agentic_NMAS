@@ -743,6 +743,18 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 
 ## Things to Keep in Mind
 
+- **DO NOT REDEPLOY rcn-lab1 — including `--reconfigure` and including adding
+  r6.** `configs/r1.cfg`–`r5.cfg` hold `username admin privilege 15 secret 9 …`
+  and have never been booted (nodes started 2026-09-19, files rewritten
+  2026-09-21 by clab-sync after the rotation). vrnetlab's patched launch
+  script concatenates its own `username admin privilege 15 password admin`
+  **before** the startup config, and IOS-XE refuses a secret for a user that
+  already has a password — so a redeploy would likely bring all five routers
+  up on vrnetlab's admin/admin and lock NMAS out, with startup files that look
+  correct. Unresolved pending the probe's stage B measurement
+  (`docs/bootstrap-probe/`). Switches are unaffected: nothing is injected
+  there.
+
 - Jenkins pipelines default to Windows `bat` steps; switch to `sh` in Settings for
   a Linux Jenkins agent. Generated XML is byte-identical to pre-Phase-0 output
   while the default is unchanged.

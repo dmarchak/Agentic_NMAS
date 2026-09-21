@@ -1,5 +1,24 @@
 # Measuring the bootstrap profile
 
+> ## ⚠ DO NOT REDEPLOY rcn-lab1
+>
+> `configs/r1.cfg`–`r5.cfg` contain `username admin privilege 15 secret 9 …`
+> and have **never been booted**. Those nodes last started 2026-09-19 05:23;
+> the files were rewritten 2026-09-21 18:41 by clab-sync after the credential
+> rotation.
+>
+> Reading the patched launch script, vrnetlab injects
+> `username admin privilege 15 password admin` **before** the startup config,
+> and IOS-XE refuses a secret for a user that already has a password. If that
+> reading is right, a redeploy brings all five routers up holding
+> **vrnetlab's admin/admin**, locks NMAS out of every one of them, and leaves
+> startup files that look correct.
+>
+> **This includes `--reconfigure`, and it includes adding r6.** It is
+> unresolved until the probe measures it — see
+> `docs/bootstrap-probe/` stage B. The switches are unaffected: nothing is
+> injected on that platform.
+
 The Phase 4 wizard decides whether a device is *factory-default* or *already
 configured*. That decision needs a per-platform **bootstrap profile**: the set
 of lines the image and containerlab create on a node nobody has touched.
@@ -268,3 +287,169 @@ file would **apply**. Writing it down here rather than fixing it in passing —
 it wants its own decision, and the fix is probably that a C8000v startup file
 must carry the password form and let `set_credential` rotate afterwards,
 which is exactly what the wizard will do for r6.
+
+---
+
+# Stage B — does r1's current startup file actually apply?
+
+Stage A measures what a fresh node looks like. **Stage B measures whether the
+redeploy hazard is real**, because reading a launch script is a prediction and
+this one decides whether the production lab can be redeployed.
+
+Run **after** stage A is captured and destroyed. Stage B needs a real type-9
+hash, and only a device can produce one.
+
+### B1. Generate a type-9 hash on the probe
+
+While stage A's `bp-c8k` is still up — do this before destroying it.
+
+```bash
+PLAIN='ProbeSecretValue1'          # throwaway, known, never the fleet's
+ssh -o StrictHostKeyChecking=no admin@172.30.30.11
+```
+
+At the prompt:
+
+```
+configure terminal
+username hashgen privilege 1 algorithm-type scrypt secret ProbeSecretValue1
+end
+show running-config | include ^username hashgen
+```
+
+Copy the `$9$…` token. Then remove the scratch user — it prompts:
+
+```
+configure terminal
+no username hashgen
+<press Enter at "Do you want to continue? [confirm]">
+end
+```
+
+Now destroy stage A (step 6 above) and stage the hash:
+
+```bash
+cd ~/labs/bootstrap-probe
+sed "s|@@HASH@@|<the \$9\$… token>|" \
+    configs/bp-c8k-secret9.cfg.template > configs/bp-c8k-secret9.cfg
+grep -c '@@HASH@@' configs/bp-c8k-secret9.cfg      # must print 0
+```
+
+### B2. Boot it
+
+```bash
+containerlab deploy -t nmas-redeploy-probe.clab.yml
+```
+
+Same 15-minute deadline. Then, **before touching the device**, read the boot
+log — the refusal is the evidence, and it is easier to see here than to infer
+from behaviour afterwards:
+
+```bash
+c=clab-nmas-redeploy-probe-bp-c8k-b
+docker logs "$c" 2>&1 | grep -iE "can not have both|invalid|refused|%AAAA|type 0 password" | head
+docker logs "$c" 2>&1 | grep -m1 "Startup complete"
+```
+
+### B3. Ask the device which credential it has
+
+The whole question, in three attempts. **Expect two of them to fail** — that
+is the measurement, not an error:
+
+```bash
+for p in admin ProbeSecretValue1; do
+  if sshpass -p "$p" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+       admin@172.30.30.31 'show running-config | include ^username admin' \
+       >/tmp/out.$p 2>/dev/null; then
+    echo "ACCEPTED: $p"; sed -E 's/(secret|password) ([0-9]+ )?\S+/\1 \2<redacted>/' /tmp/out.$p
+  else
+    echo "refused : $p"
+  fi
+done
+```
+
+If **neither** is accepted, SSH is locked out — which is itself the answer,
+and the console still works:
+
+```bash
+{ printf '\r\nenable\r\nshow running-config | include ^username admin\r\n'; sleep 10; } \
+  | timeout 40 docker exec -i clab-nmas-redeploy-probe-bp-c8k-b telnet localhost 5000
+```
+
+### B4. Report, then destroy
+
+| observation | meaning |
+|---|---|
+| `admin` accepted, running config shows `password` | **hazard confirmed** — the secret line was refused; r1–r5 would come up on vrnetlab's credential |
+| `ProbeSecretValue1` accepted, running config shows `secret 9` | hazard **not** real on this image; the reading was wrong and the startup files are fine |
+| neither accepted | worse than predicted — record exactly what the running config holds |
+
+```bash
+containerlab destroy -t nmas-redeploy-probe.clab.yml --cleanup
+docker network rm clab-bootstrap-probe 2>/dev/null || true
+rm -f configs/bp-c8k-secret9.cfg          # it contains a generated hash
+```
+
+---
+
+## If the hazard is confirmed: the two candidate fixes
+
+Both to be evaluated **on the probe**, not on rcn-lab1.
+
+**(a) Patch the launch script to skip its username injection when the startup
+config supplies one.** `patches/c8000v-launch.py` already exists and already
+diverges from stock by one line, so this is a second line in a file the lab
+owns. It fixes r1–r5 and r6 at the source and keeps the startup files honest —
+the file says what the device will have.
+
+Before adopting it, one thing must be checked rather than assumed: **does
+vrnetlab still need that account?** It authenticates to the console with
+`--username/--password` to apply the config, and the healthcheck may use it
+too. Skipping the injection when a startup config defines the same user is
+safe only if the startup config's credential is one vrnetlab also knows, or if
+nothing after the injection needs to log in. The probe can answer this: patch,
+boot, and see whether `Startup complete` is still reached and the healthcheck
+still passes.
+
+**(b) The startup file carries the password form, and `set_credential` rotates
+after boot.** Requires no patch and matches what the wizard will do for r6.
+The cost is that the startup file no longer records the credential the device
+ends up with, so "survives redeploy" becomes "survives redeploy, then needs a
+rotation" — a weaker property, and one somebody has to remember.
+
+I lean to **(a)** for the reason given: it keeps the file and the device in
+agreement, which is what a source of truth is for. (b) is the fallback if the
+probe shows vrnetlab depends on injecting that account.
+
+---
+
+## What the persistence chain must check instead
+
+`verify_startup_file()` currently greps the startup file for the new hash.
+That is a **presence** check, and the hazard above is precisely a case where
+presence is satisfied and the property is not: the hash is in the file and the
+file does not apply.
+
+The replacement is an **applicability** check, and it can be done without
+redeploying production:
+
+1. **A static, platform-aware rule, on every rotation.** The chain knows the
+   platform and can know what that platform's launch path injects. On a
+   C8000v, a `username <vrnetlab-user> … secret …` line in a startup file is
+   unappliable, because a password line for that user lands first. That is
+   cheap, runs every time, and would have caught this at the moment the first
+   router rotated.
+2. **A dynamic proof, once per platform, on the probe.** Boot the actual
+   startup file on a throwaway node and confirm the credential the file
+   describes is the credential the device answers on. Recorded as evidence
+   with its capture, exactly like the bootstrap profile — not run per
+   rotation, because it costs five minutes and a node.
+
+The static rule is the one that belongs in the persistence chain. The dynamic
+proof is what establishes the rule is right, and is re-run when an image or a
+launch script changes — which is the only time the answer can move.
+
+> A presence check asks whether the artefact contains the right bytes. An
+> applicability check asks whether the machine that reads it will end up in
+> the state those bytes describe. They differ exactly when something else
+> writes to the same place first, which is the case nobody thinks of.

@@ -2,6 +2,25 @@
 
 Plan only. Nothing here is built.
 
+> ## ⚠ DO NOT REDEPLOY rcn-lab1
+>
+> `configs/r1.cfg`–`r5.cfg` contain `username admin privilege 15 secret 9 …`
+> and have **never been booted**. Those nodes last started 2026-09-19 05:23;
+> the files were rewritten 2026-09-21 18:41 by clab-sync after the credential
+> rotation.
+>
+> Reading the patched launch script, vrnetlab injects
+> `username admin privilege 15 password admin` **before** the startup config,
+> and IOS-XE refuses a secret for a user that already has a password. If that
+> reading is right, a redeploy brings all five routers up holding
+> **vrnetlab's admin/admin**, locks NMAS out of every one of them, and leaves
+> startup files that look correct.
+>
+> **This includes `--reconfigure`, and it includes adding r6.** It is
+> unresolved until the probe measures it — see
+> `docs/bootstrap-probe/` stage B. The switches are unaffected: nothing is
+> injected on that platform.
+
 Adding a new device, or a new site, from the GUI: NetBox objects, committed
 intent, a rendered config, and either a download for a node that does not
 exist yet or a deploy to one that does.

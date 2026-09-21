@@ -1,0 +1,39 @@
+name: nmas-redeploy-probe
+
+# ---------------------------------------------------------------------------
+# STAGE B — does a startup file in r1's CURRENT shape actually apply on boot?
+#
+# The claim under test is not "vrnetlab injects a username line" (measured in
+# the launch script) but its consequence: that r1-r5's present startup files,
+# which carry `username admin privilege 15 secret 9 <hash>`, would be REFUSED
+# on boot and leave the router holding vrnetlab's admin/admin.
+#
+# That is a prediction from reading code. It decides whether rcn-lab1 can be
+# redeployed at all, so it gets measured on a node that can be thrown away.
+#
+# ONE node, deployed AFTER stage A has been captured and destroyed — its
+# startup file needs a real type-9 hash, and the only way to get one is to
+# have a device generate it. Sequential rather than concurrent so the two labs
+# never contend for the same network.
+#
+# The startup config is NOT in the repository: it contains a hash generated on
+# the probe at run time. `configs/bp-c8k-secret9.cfg.template` is the shape;
+# step B2 fills it in.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-bootstrap-probe
+  ipv4-subnet: 172.30.30.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a
+
+  nodes:
+    bp-c8k-b:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.30.31
+      startup-config: configs/bp-c8k-secret9.cfg
+      binds:
+        - patches/c8000v-launch.py:/launch.py
