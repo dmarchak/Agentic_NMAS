@@ -858,3 +858,66 @@ class TestNoRemoteJsonMeansNoPush:
         out = archive.push_hook({"repo": "/tmp/x"})
         assert out["ok"] is True
         assert "nothing pushed" in out["message"]
+
+
+class TestAListIsNotItsOwnRival:
+    """The uniqueness check compared the list against itself.
+
+    `get_current_list_name()` returns the DISPLAY name ("Default") while the
+    directory is the slug ("default"), so `slug == list_name` was false for
+    the very list being verified — every adopted list failed its own
+    uniqueness check, naming itself as the other list that already owns the
+    repository. No list could ever pass verification.
+    """
+
+    def _repo(self, tmp_path):
+        work = tmp_path / "config_repo"
+        work.mkdir()
+        _git(work, "init", "-q")
+        (work / "f").write_text("x", encoding="utf-8")
+        _git(work, "add", "-A")
+        _git(work, "commit", "-q", "-m", "seed")
+        return str(work)
+
+    def test_a_list_passes_against_its_own_remote(self, lab, tmp_path,
+                                                  monkeypatch):
+        R.adopt("default", ssh_alias="a", owner="dmarchak", repo="rcn-nsot-config")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "", "stderr": "", "returncode": 0})())
+
+        out = R.check_right_repository(
+            {"owner": "dmarchak", "repo": "rcn-nsot-config", "ssh_alias": "a"},
+            "default", self._repo(tmp_path))
+        assert out["ok"] is True, out
+
+    def test_it_passes_when_called_by_DISPLAY_name(self, lab, tmp_path,
+                                                   monkeypatch):
+        """The exact shape of the bug: 'Default' vs the 'default' directory."""
+        R.adopt("default", ssh_alias="a", owner="dmarchak", repo="rcn-nsot-config")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "", "stderr": "", "returncode": 0})())
+        # get_list_data_dir is case-insensitive about the list name in this
+        # fixture the same way the real one is about slug vs display name.
+        import modules.config as config
+        real = config.get_list_data_dir
+        monkeypatch.setattr(config, "get_list_data_dir",
+                            lambda name: real(name.lower()))
+
+        out = R.check_right_repository(
+            {"owner": "dmarchak", "repo": "rcn-nsot-config", "ssh_alias": "a"},
+            "Default", self._repo(tmp_path))
+        assert out["ok"] is True, (
+            "the list was compared against itself under another spelling")
+
+    def test_a_second_list_naming_the_same_repo_is_refused(self, lab, tmp_path,
+                                                           monkeypatch):
+        R.adopt("other", ssh_alias="b", owner="dmarchak", repo="rcn-nsot-config")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "", "stderr": "", "returncode": 0})())
+
+        out = R.check_right_repository(
+            {"owner": "dmarchak", "repo": "rcn-nsot-config", "ssh_alias": "a"},
+            "default", self._repo(tmp_path))
+        assert out["ok"] is False
+        assert out["detail"] == "other", "it must name the list that owns it"
+        assert "must not share" in out["fix"]

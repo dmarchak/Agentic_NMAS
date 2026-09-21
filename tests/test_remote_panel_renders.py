@@ -138,3 +138,69 @@ class TestTheCardUsesTheStatusEndpoint:
         for path in ("/remote/verify", "/remote/verify-write", "/remote/preview",
                      "/remote/acknowledge", "/remote/push", "/remote/auto-push"):
             assert path in block, path
+
+
+class TestResultsSurviveTheCardRefresh:
+    """A failure reason that disappears is worse than none.
+
+    Every action ends by refreshing the card, and the output area used to be
+    inside the markup that refresh replaces — so a result flashed and was
+    wiped. The operator knows something was said and cannot read it.
+    """
+
+    def _markup(self):
+        return _markup(_source())
+
+    def _scripts_joined(self):
+        return "\n".join(_scripts(_source()))
+
+    def test_the_output_area_is_outside_the_card(self):
+        markup = self._markup()
+        assert 'id="remoteOut"' in markup, (
+            "the output area is built by the card, so the card's refresh "
+            "destroys it")
+
+    def test_the_card_does_not_rebuild_the_output_area(self):
+        """Two owners of one id is exactly how the results vanished."""
+        for body in _scripts(_source()):
+            assert 'id="remoteOut"' not in body, (
+                "a script recreating the output area wipes what is in it")
+
+    def test_the_output_area_is_not_a_child_of_the_card(self):
+        """Structurally outside, not merely declared before."""
+        markup = self._markup()
+        panel = markup.index('id="remotePanel"')
+        out = markup.index('id="remoteOut"')
+        between = markup[panel:out]
+        assert between.count("</div>") >= between.count("<div"), (
+            "remoteOut appears to be nested inside remotePanel")
+
+    def test_results_are_kept_in_state_as_well(self):
+        script = self._scripts_joined()
+        assert "_remoteLastResult" in script
+        assert "_remoteRestore" in script
+
+    def test_the_card_restores_the_last_result_after_rendering(self):
+        script = self._scripts_joined()
+        body = script[script.index("function loadRemotePanel"):]
+        body = body[:body.index("} catch (")]
+        assert "_remoteRestore()" in body, (
+            "a refresh that ignores the last result loses it on any re-render")
+
+    def test_a_result_can_be_dismissed(self):
+        script = self._scripts_joined()
+        assert "remoteDismiss" in script
+        assert "btn-close" in script
+
+    def test_progress_messages_are_transient_and_results_are_not(self):
+        """"verifying…" should not persist; the verification result should."""
+        script = self._scripts_joined()
+        assert "transient: true" in script
+        # The spinner LITERALS, not the bare words — "pushing" also occurs in
+        # prose ("rotating them after pushing does not unpublish them"), which
+        # is how this assertion first failed on correct code.
+        for spinner in ("'verifying\u2026'", "'probing write access\u2026'",
+                        "'scanning history\u2026'", "'pushing\u2026'"):
+            assert spinner in script, spinner
+            window = script[script.index(spinner):][:90]
+            assert "transient" in window, f"{spinner} persists as a result"

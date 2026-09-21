@@ -294,9 +294,24 @@ def check_right_repository(config: dict, list_name: str, repo_dir: str) -> dict:
         return {"ok": False, "name": "not_the_application_repo", "detail": own,
                 "fix": "that is this application's own source repository."}
 
+    # Excluded by IDENTITY, not by name.
+    #
+    # `get_current_list_name()` returns the DISPLAY name ("Default") while the
+    # directory is the slug ("default"), so `slug == list_name` was false for
+    # the very list being verified — and every adopted list failed its own
+    # uniqueness check, reporting itself as the other list that already owns
+    # the repository. No list could ever pass verification.
+    #
+    # Resolving both sides to a data directory makes the comparison answer
+    # "is this the same list", which is the question, rather than "do these
+    # two strings match", which was never it.
+    def _identity(name):
+        return os.path.realpath(get_list_data_dir(name))
+
+    mine = _identity(list_name)
     lists_dir = os.path.dirname(get_list_data_dir(list_name))
     for slug in sorted(os.listdir(lists_dir)):
-        if slug == list_name:
+        if _identity(slug) == mine:
             continue
         other = load_remote(slug)
         if other and f"{other.get('owner')}/{other.get('repo')}".lower() == target:

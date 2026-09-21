@@ -22,6 +22,18 @@
   </div>
 </div>
 
+{# The output area is a SIBLING of the card, not a child of it.
+
+   Every action ends by refreshing the card, and the output used to live
+   inside the markup that refresh replaces — so a result appeared and was
+   wiped a moment later. A verification failure that shows its reason for a
+   split second is worse than one that shows nothing: the operator knows
+   something was said and cannot read it.
+
+   Outside the re-rendered region, it simply persists until the next action
+   or until dismissed. #}
+<div id="remoteOut" class="small mb-3"></div>
+
 <div id="goldenRepoPanel" class="mb-3" data-list-name="{{ current_list }}"></div>
 
 <div class="modal fade" id="goldenTimelineModal" tabindex="-1" aria-hidden="true">
@@ -284,8 +296,8 @@ async function loadRemotePanel() {
           <button class="btn btn-outline-danger btn-sm" onclick="remotePush()"
                   ${(s.verified_at && ack && covers.ok) ? '' : 'disabled'}>Push now</button>
         </div>
-        <div id="remoteOut" class="small mt-2"></div>
       </div></div>`;
+    _remoteRestore();
   } catch (e) {
     console.error('loadRemotePanel', e);
     host.innerHTML = `<div class="alert alert-danger py-2 px-3 small mb-0">
@@ -293,13 +305,48 @@ async function loadRemotePanel() {
   }
 }
 
-function _remoteOut(html) {
+/* The last result, kept so it survives anything that re-renders. Held in
+   state as well as in the DOM: the DOM copy is what the operator reads, and
+   the state copy is what restores it if some future card rebuilds the page
+   around it. */
+window._remoteLastResult = null;
+
+function _remoteOut(html, opts) {
   const el = document.getElementById('remoteOut');
-  if (el) el.innerHTML = html;
+  if (!el) { console.error('remoteOut container missing'); return; }
+  const transient = !!(opts && opts.transient);
+  if (!transient) {
+    const when = new Date().toLocaleTimeString();
+    window._remoteLastResult =
+      `<div class="card border-light-subtle"><div class="card-body py-2 px-3">
+         <div class="d-flex align-items-start gap-2">
+           <div class="flex-grow-1">${html}</div>
+           <button type="button" class="btn-close btn-sm"
+                   aria-label="Dismiss" onclick="remoteDismiss()"></button>
+         </div>
+         <div class="text-muted mt-1" style="font-size:.75rem">${when}</div>
+       </div></div>`;
+    el.innerHTML = window._remoteLastResult;
+  } else {
+    el.innerHTML = `<div class="text-muted">${html}</div>`;
+  }
+}
+
+window.remoteDismiss = function () {
+  window._remoteLastResult = null;
+  const el = document.getElementById('remoteOut');
+  if (el) el.innerHTML = '';
+};
+
+function _remoteRestore() {
+  const el = document.getElementById('remoteOut');
+  if (el && window._remoteLastResult && !el.innerHTML.trim()) {
+    el.innerHTML = window._remoteLastResult;
+  }
 }
 
 window.remoteVerify = async function () {
-  _remoteOut('<span class="text-muted">verifying…</span>');
+  _remoteOut('verifying…', {transient: true});
   const d = await (await fetch('/remote/verify', {method: 'POST'})).json();
   _remoteOut((d.checks || []).map(c =>
     `<div>${c.ok ? '<span class="text-success">[ok]</span>'
@@ -316,7 +363,7 @@ window.remoteVerifyWrite = async function () {
                'It publishes no content — an orphan commit with an empty ' +
                'tree, whose ref is removed afterwards — but it is a real ' +
                'write to GitHub. Proceed?')) return;
-  _remoteOut('<span class="text-muted">probing write access…</span>');
+  _remoteOut('probing write access…', {transient: true});
   const d = await (await fetch('/remote/verify-write', {method: 'POST'})).json();
   _remoteOut((d.checks || []).map(c =>
     `<div>${c.ok ? '<span class="text-success">[ok]</span>'
@@ -329,7 +376,7 @@ window.remoteVerifyWrite = async function () {
 };
 
 window.remotePreview = async function () {
-  _remoteOut('<span class="text-muted">scanning history…</span>');
+  _remoteOut('scanning history…', {transient: true});
   const d = await (await fetch('/remote/preview')).json();
   if (!d.ok) { _remoteOut(`<span class="text-danger">${_gEsc(d.error)}</span>`); return; }
   const rows = (d.secrets.rows || []).reduce((acc, r) => {
@@ -386,7 +433,7 @@ window.remotePush = async function () {
   if (!confirm('Publish this list\'s full history and tags to the remote?\n\n' +
                'This cannot be undone: rotating a credential afterwards does ' +
                'not unpublish it.')) return;
-  _remoteOut('<span class="text-muted">pushing…</span>');
+  _remoteOut('pushing…', {transient: true});
   const r = await fetch('/remote/push', {method: 'POST'});
   const d = await r.json();
   if (!d.ok) { _remoteOut(`<span class="text-danger">${_gEsc(d.error)}</span>`); return; }

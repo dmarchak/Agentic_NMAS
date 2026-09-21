@@ -4819,3 +4819,60 @@ component's internal call order is not isolated, whatever else was done to it
 > a defect into an appearance.
 
 Seven of the ten new tests fail against the shipped state and pass now.
+
+## A check that could only ever refuse, and a reason nobody could read
+
+Two defects in one screenshot, taken in the split second before the output
+vanished.
+
+### The list was its own rival
+
+```
+[XX] not_another_lists_repo — list 'default' already pushes to dmarchak/rcn-nsot-config
+```
+
+The cross-list uniqueness check walks the lists directory and skips the list
+being verified:
+
+```python
+for slug in sorted(os.listdir(lists_dir)):
+    if slug == list_name:
+        continue
+```
+
+`get_current_list_name()` returns the **display name** — `Default` — and the
+directory is the **slug**, `default`. The skip never fired, so the list found
+its own `remote.json` and reported itself as the other network that already
+owns the repository. No adopted list could ever pass verification, and the
+message said something that is both true and useless: `default` does push
+there, because it is the list you are verifying.
+
+The comparison was of two strings that usually match. It is now of two
+resolved data directories, which answers "is this the same list" — the
+question — rather than "do these spellings agree", which was never it.
+
+The same display-name/slug split has now appeared three times in this project
+(the pipeline's `get_current_list_name()` after a push, `restore`'s
+`_devices_of()`, and here). Each time the fix is the same shape: compare
+identities, not names.
+
+### The reason appeared for a split second
+
+Every action on the card ends by refreshing the card, and the output area was
+inside the markup that refresh replaces. So a result rendered, and a moment
+later the refresh wiped it.
+
+This is a worse failure than showing nothing. The operator saw that something
+was said, and could not read it — which converts a diagnosable refusal into a
+suspicion that the page is broken. It also made the first defect much harder
+to find than it needed to be: the check's message named its own cause, and it
+was on screen for less than a second.
+
+The output area is now a **sibling** of the card, server-rendered, so a
+re-render cannot reach it. Results are also kept in state and restored after
+any render, carry a timestamp, and have a dismiss button; only the
+"working…" messages are transient.
+
+> Any region that is rebuilt wholesale will eventually destroy something
+> important that was placed in it. Output that outlives an action belongs
+> outside the thing the action refreshes.
