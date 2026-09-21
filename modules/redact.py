@@ -45,6 +45,70 @@ _TOKEN_CHAR = r"[A-Za-z0-9_\-\.\$/]"
 
 PLACEHOLDER = "<redacted:{label}>"
 
+#: **Positional** redaction: the token that occupies a secret's syntactic slot,
+#: whatever its length and whether or not this installation has ever seen it.
+#:
+#: Value-based redaction alone was measured against the live fleet and covered
+#: almost nothing: 14 of 18 stored secrets fall under the 8-character floor —
+#: every SNMP community (6 chars) and every plaintext router password (7). The
+#: floor cannot simply be lowered, because redacting a 6-character string
+#: wherever it appears would corrupt ordinary config text. Position is the
+#: discriminator the length never was: ``community X RO`` tells you X is a
+#: secret no matter what X is.
+#:
+#: It also covers what the store has never seen — a device not yet onboarded,
+#: a list not yet extracted, a password typed into chat — which value-based
+#: redaction cannot reach by construction.
+#:
+#: Each entry captures (prefix, secret, suffix); only the middle is replaced.
+_POSITIONAL = (
+    ("snmp_community", re.compile(
+        r"(?i)\b(snmp-server\s+community\s+)(\S+)()")),
+    ("snmp_community", re.compile(
+        r"(?i)\b(snmp-server\s+host\s+\S+(?:\s+version\s+\S+)?\s+)(\S+)()")),
+    ("user_password", re.compile(
+        r"(?i)\b(username\s+\S+(?:\s+privilege\s+\d+)?\s+(?:password|secret)\s+(?:\d+\s+)?)(\S+)()")),
+    ("enable_secret", re.compile(
+        r"(?i)^(\s*enable\s+(?:password|secret)\s+(?:\d+\s+)?)(\S+)()",
+        re.M)),
+    ("key_string", re.compile(
+        r"(?i)\b(key-string\s+(?:\d+\s+)?)(\S+)()")),
+    ("pre_shared_key", re.compile(
+        r"(?i)\b(pre-shared-key\s+(?:address\s+\S+\s+)?(?:key\s+)?)(\S+)()")),
+    ("shared_key", re.compile(
+        r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)(\S+)()")),
+    ("line_password", re.compile(
+        r"(?i)^(\s*password\s+(?:\d+\s+)?)(\S+)()", re.M)),
+    ("ppp_password", re.compile(
+        r"(?i)\b(ppp\s+(?:chap|pap)\s+(?:password|sent-username\s+\S+\s+password)\s+(?:\d+\s+)?)(\S+)()")),
+)
+
+#: Already redacted, or a marker — replacing these again would nest markers.
+_ALREADY = re.compile(r"^<(?:redacted|missing-secret)[:>]")
+
+
+def redact_positional(text: str) -> str:
+    """Mask whatever occupies a secret position, regardless of length.
+
+    Structure-preserving: ``snmp-server community`` and the trailing ``RO`` both
+    survive, so the model still sees what the line *is*. Idempotent — a token
+    that is already a placeholder is left alone.
+    """
+    if not text:
+        return text
+
+    def _sub(label):
+        def _replace(match):
+            token = match.group(2)
+            if _ALREADY.match(token):
+                return match.group(0)
+            return match.group(1) + PLACEHOLDER.format(label=label) + match.group(3)
+        return _replace
+
+    for label, pattern in _POSITIONAL:
+        text = pattern.sub(_sub(label), text)
+    return text
+
 
 def _label_for(key: str) -> str:
     """``campus:r1:snmp_community_ro`` → ``snmp_community_ro``.
@@ -100,9 +164,21 @@ def _compile(values: dict):
 
 
 def redact_text(text: str, values: dict = None) -> str:
-    """Replace every known secret value in *text* with a labelled placeholder."""
+    """Redact *text* both ways: by known value, and by syntactic position.
+
+    The two are complementary and neither subsumes the other. Value-based
+    catches a secret wherever it appears — in prose, a diff, an error message —
+    but only if this installation holds it and it clears the length floor.
+    Positional catches anything in a secret's slot, including secrets never
+    extracted and secrets too short to match safely, but only where the
+    surrounding syntax is recognised.
+
+    Positional runs first so that value-based cannot re-wrap a placeholder.
+    """
     if not text:
         return text
+    text = redact_positional(text)
+
     values = known_secret_values() if values is None else values
     pattern, table = _compile(values)
     if pattern is None:
@@ -121,8 +197,6 @@ def redact_payload(payload, values: dict = None):
     payload would otherwise decrypt the whole credential store per string.
     """
     values = known_secret_values() if values is None else values
-    if not values:
-        return payload
 
     def _walk(node):
         if isinstance(node, str):

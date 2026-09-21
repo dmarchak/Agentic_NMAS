@@ -250,12 +250,29 @@ def device_credential_values() -> dict:
         log.error("credentials: could not read profiles for redaction: %s", exc)
 
     # Every list, not the active one: a payload is redacted for what it holds.
+    #
+    # CSV fields use RAW Fernet (`gAAAAA…`); settings and profiles use
+    # secrets_store's prefixed form. `decrypt_value()` returns anything
+    # unprefixed unchanged, so using it here collected ciphertext — and
+    # redaction then searched payloads for a string no device will ever echo.
+    # Measured: every CSV credential came back 100 characters long.
+    from modules.device import decrypt_field
+
     for path in _glob.glob(os.path.join(LISTS_DIR, "*", "devices.csv")):
         try:
             with open(path, newline="", encoding="utf-8") as fh:
                 for row in _csv.DictReader(fh):
-                    _add(decrypt_value(row.get("password", "")), "device-password")
-                    _add(decrypt_value(row.get("secret", "")), "enable-secret")
+                    for field, label in (("password", "device-password"),
+                                         ("secret", "enable-secret")):
+                        raw = (row.get(field) or "").strip()
+                        if not raw:
+                            continue
+                        try:
+                            _add(decrypt_field(raw), label)
+                        except Exception:     # noqa: BLE001
+                            # Undecryptable (rotated key) — skip it rather than
+                            # adding ciphertext that can never match.
+                            continue
         except Exception as exc:              # noqa: BLE001
             log.debug("credentials: skipping %s for redaction: %s", path, exc)
     return out

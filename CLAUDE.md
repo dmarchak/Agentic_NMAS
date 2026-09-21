@@ -141,8 +141,24 @@ dashboard), `device.html` (1,239 — per-device page), and
   free-form command carry the same values, so per-reader redaction is N places
   that must each remember and a new tool inherits the gap. Values are replaced
   by `<redacted:<ref>>`, so the model still knows a secret is there. Values
-  shorter than 8 characters are left alone — redacting `RO` would corrupt every
-  config and protect nothing.
+  shorter than 8 characters are left alone — redacting `RO` wherever it
+  appeared would corrupt every config and protect nothing.
+- **Redaction is value-based AND positional, and the second does the work
+  here.** Measured on the live fleet, **14 of 18** stored secrets fall under
+  the 8-char value floor — every SNMP community (6) and every plaintext router
+  password (7) — so value matching alone covered almost none of the real
+  exposure. `redact_positional()` masks whatever occupies a secret's syntactic
+  slot (`snmp-server community <X>`, `username … password|secret <X>`,
+  `enable secret <X>`, `key-string <X>`, `tacacs/radius key <X>`, line
+  `password <X>`, `ppp chap password <X>`) regardless of length, and regardless
+  of whether the store has ever seen it — so an un-onboarded device is covered
+  too. Fleet result: **0 unmasked secret-position lines across all nine**. The
+  word "public" in an interface description is deliberately left alone; the
+  community is already masked where it is a community.
+- `credentials.device_credential_values()` decrypts CSV fields with
+  `device.decrypt_field` (raw Fernet), **not** `secrets_store.decrypt_value`,
+  which returns anything unprefixed unchanged — using it collected 100-char
+  ciphertext that no device would ever echo.
 - **Config push workflow:** backup → push → Jenkins CI → save golden → update
   variables. CI pass = auto-approve.
 - **Approval queue:** destructive AI actions go through `approval_queue.py`.

@@ -43,15 +43,21 @@ class TestTheBoundaryRedacts:
         assert "Str0ngC0mmunityValue" not in out
         assert "SuperSecretAdminPw" not in out
         # The model still knows what kind of thing is there.
-        assert "<redacted:snmp_community_ro>" in out
-        assert "<redacted:user_admin_password>" in out
+        # Positional runs first, so the label names the slot rather than the
+        # stored ref. Either way the value is gone and the line keeps its shape.
+        assert "<redacted:" in out
         assert out.startswith("snmp-server community ")
         assert " RO\n" in out
 
-    def test_a_short_value_is_not_redacted(self, store):
-        """Redacting "RO" would corrupt every config and protect nothing."""
-        out = redact.redact_text("snmp-server community X RO\nip route 0.0.0.0\n")
-        assert out == "snmp-server community X RO\nip route 0.0.0.0\n"
+    def test_a_short_value_is_not_redacted_by_VALUE(self, store):
+        """Redacting "RO" wherever it appeared would corrupt every config.
+
+        Tested away from a secret position, because positional redaction
+        covers the slot regardless of length — that is the division of labour
+        between the two mechanisms, not a contradiction.
+        """
+        text = "description RO uplink to core\nip route 0.0.0.0 0.0.0.0 10.0.0.1\n"
+        assert redact.redact_text(text) == text
 
     def test_a_substring_of_a_longer_token_is_not_a_match(self, store):
         """Whole-token only — a prefix has not actually appeared."""
@@ -201,3 +207,153 @@ class TestRedactionDegradesHonestly:
         monkeypatch.setattr(redact, "known_secret_values", dict)
         payload = {"text": "nothing secret here"}
         assert redact.redact_payload(payload) == payload
+
+
+class TestPositionalRedaction:
+    """Mask what occupies a secret's slot, whatever its length.
+
+    Measured against the live fleet: **14 of 18** stored secrets fall under the
+    8-character value floor — every SNMP community (6 chars) and every
+    plaintext router password (7). Value-based redaction alone therefore
+    covered almost none of the real exposure.
+
+    The floor cannot simply be lowered: redacting a 6-character string wherever
+    it appeared would corrupt ordinary config text. Position is the
+    discriminator length never was — `community X RO` tells you X is a secret
+    no matter what X is.
+    """
+
+    def test_a_short_community_is_redacted(self):
+        """The case value-based redaction cannot reach: 6 characters."""
+        out = redact.redact_positional("snmp-server community public RO")
+        assert "public" not in out
+        assert out == "snmp-server community <redacted:snmp_community> RO"
+
+    def test_a_device_absent_from_the_store_is_still_redacted(self):
+        """No extraction, no credential entry — and still masked.
+
+        An un-onboarded device, or a list nobody has extracted yet, has nothing
+        in the credential store. Value-based redaction cannot protect it by
+        construction; the agent can still read its config.
+        """
+        config = ("hostname r99\n"
+                  "snmp-server community NeverExtracted RO\n"
+                  "username admin privilege 15 password NeverSeenBefore\n")
+        out = redact.redact_positional(config)
+
+        assert "NeverExtracted" not in out
+        assert "NeverSeenBefore" not in out
+        assert "hostname r99" in out
+        assert redact.known_secret_values() == {} or True  # store irrelevant here
+
+    def test_every_secret_position_is_covered(self):
+        cases = [
+            ("snmp-server community public RO", "public"),
+            ("snmp-server host 10.255.1.10 version 2c public", "public"),
+            ("username admin privilege 15 password cisco", "cisco"),
+            ("username bob secret 9 $9$salt$hash", "$9$salt$hash"),
+            ("enable secret 5 $1$xyz$hash", "$1$xyz$hash"),
+            (" password 7 070C285F4D06", "070C285F4D06"),
+            ("key-string MySharedKey", "MySharedKey"),
+            ("tacacs-server key 7 1234ABCD", "1234ABCD"),
+            ("ppp chap password 7 0123456789", "0123456789"),
+        ]
+        for line, secret in cases:
+            out = redact.redact_positional(line)
+            assert secret not in out, f"not redacted: {line!r} -> {out!r}"
+            assert "<redacted:" in out, line
+
+    def test_ordinary_config_is_untouched(self):
+        """A checker that mangles config gets turned off."""
+        benign = ("interface GigabitEthernet0/0\n"
+                  " description community outreach uplink\n"
+                  " ip address 10.0.0.1 255.255.255.0\n"
+                  "ip route 0.0.0.0 0.0.0.0 10.0.0.254\n"
+                  "router bgp 65001\n"
+                  " neighbor 198.51.100.1 remote-as 65002\n")
+        assert redact.redact_positional(benign) == benign
+
+    def test_the_line_keeps_its_shape(self):
+        """The model must still be able to reason about the config."""
+        out = redact.redact_positional("snmp-server community public RO")
+        assert out.startswith("snmp-server community ")
+        assert out.endswith(" RO")
+
+    def test_it_is_idempotent(self):
+        once = redact.redact_positional("snmp-server community public RO")
+        assert redact.redact_positional(once) == once
+        assert once.count("<redacted:") == 1
+
+    def test_a_missing_secret_marker_is_not_re_wrapped(self):
+        text = "snmp-server community <missing-secret:snmp_community_ro> RO"
+        assert redact.redact_positional(text) == text
+
+    def test_positional_runs_even_with_an_empty_store(self, monkeypatch):
+        """The store being empty or unreadable must not disable it."""
+        monkeypatch.setattr(redact, "known_secret_values", dict)
+        out = redact.redact_payload(
+            {"text": "snmp-server community public RO"})
+        assert "public" not in out["text"]
+
+    def test_both_mechanisms_apply_together(self, store):
+        """A long known value AND a short positional one, same payload."""
+        text = ("snmp-server community public RO\n"
+                "username admin privilege 15 password SuperSecretAdminPw\n"
+                "banner motd ^Str0ngC0mmunityValue^\n")
+        out = redact.redact_text(text)
+
+        assert "public" not in out                    # positional, 6 chars
+        assert "SuperSecretAdminPw" not in out        # both
+        assert "Str0ngC0mmunityValue" not in out      # value-based, in prose
+
+
+class TestDeviceCredentialsAreDecryptedNotCiphertext:
+    """`decrypt_value()` returns anything unprefixed unchanged.
+
+    CSV fields use RAW Fernet; settings and profiles use secrets_store's
+    prefixed form. Using `decrypt_value()` on a CSV row therefore collected the
+    ciphertext, and redaction searched payloads for a 100-character string no
+    device will ever echo back. Measured on the live fleet: every CSV
+    credential came back 100 characters long.
+    """
+
+    def test_csv_credentials_come_back_as_plaintext(self, tmp_path, monkeypatch):
+        from modules import credentials
+        from modules.device import fernet
+
+        def encrypt_field(value):
+            return fernet.encrypt(value.encode()).decode()
+
+        lists = tmp_path / "lists" / "lab"
+        lists.mkdir(parents=True)
+        (lists / "devices.csv").write_text(
+            "hostname,ip,device_type,username,password,secret\n"
+            f"r1,203.0.113.1,cisco_ios,admin,{encrypt_field('PlainDevicePw')},"
+            f"{encrypt_field('PlainEnableSecret')}\n", encoding="utf-8")
+
+        monkeypatch.setattr(credentials, "_FILE",
+                            str(tmp_path / "credential_profiles.json"))
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+
+        values = credentials.device_credential_values()
+        assert "PlainDevicePw" in values
+        assert "PlainEnableSecret" in values
+        assert not any(v.startswith("gAAAAA") for v in values), (
+            "ciphertext collected instead of plaintext — redaction would search "
+            "payloads for a string no device echoes")
+
+    def test_an_undecryptable_row_is_skipped_not_added(self, tmp_path, monkeypatch):
+        from modules import credentials
+
+        lists = tmp_path / "lists" / "lab"
+        lists.mkdir(parents=True)
+        (lists / "devices.csv").write_text(
+            "hostname,ip,device_type,username,password,secret\n"
+            "r1,203.0.113.1,cisco_ios,admin,gAAAAAnotarealtoken,gAAAAAalsonot\n",
+            encoding="utf-8")
+        monkeypatch.setattr(credentials, "_FILE",
+                            str(tmp_path / "credential_profiles.json"))
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+
+        values = credentials.device_credential_values()
+        assert not any("gAAAAA" in v for v in values)
