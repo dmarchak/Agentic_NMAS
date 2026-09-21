@@ -3071,3 +3071,57 @@ question than the one that mattered.
 > **Do not date the fix from the commit that described it.** The leak was open
 > from `31bca0f` to `efb007e`. A changelog that credits the first is telling
 > the story of the intention, not of the network.
+
+---
+
+## "I tested it" and "it is running" are different sentences
+
+Twice in one session I reported a verification that was real, against code that
+was not deployed.
+
+**First time.** Redaction looked broken against the live fleet — 110 secret
+occurrences before, 106 after. The overlay used to run live checks is built
+with `git archive HEAD`, which takes the last *commit*; the positional
+redaction under test was still uncommitted. The measurement was of the previous
+implementation, and I nearly reported a working fix as a failure.
+
+**Second time, the opposite direction.** After adding
+`require_person_for_reveal`, I checked the rule against live settings through
+the overlay, saw `reveal: False`, and wrote that this was "already enforced"
+by the running build. It was not. The setting was **unset** in
+`user_settings.json`, so its value came from `DEFAULTS` — which is *code*. The
+overlay was running the new code; the app was running the old. A service could
+still have revealed every secret in the store, and I had just told the operator
+it could not.
+
+### Why the second one is worse
+
+The first produced a false negative I would have chased. The second produced a
+**false assurance about a security control**, which nobody chases, because it
+says everything is fine.
+
+The trap is specific: a setting absent from the settings file takes its value
+from the defaults in the source. So "this comes from settings, not code" —
+which is what I told myself — is only true for settings that have actually been
+*written*. For everything else, changing the default **is** a code change, and
+it ships when the process restarts, not when the file is edited.
+
+### The rule
+
+> A claim about the running system has to be measured against the running
+> system. Anything else is a claim about a build.
+
+Concretely, for this project:
+
+* the overlay (`/tmp/nsot_run`) tests **code**, including uncommitted code if
+  copied in deliberately — never what the deployed process does;
+* `git log -1` in the checkout says what was *pulled*, not what is *loaded*;
+  the process start time versus the pull time is the thing to compare;
+* a gate's effective value is `user_settings.json` **if the key is present**,
+  and the running build's `DEFAULTS` otherwise — and only the first survives a
+  restart of older code.
+
+The check that actually settles it is the one the operator asked for: hit the
+real endpoint, through the real path, and read what the process says about
+itself. `GET /identity/status` exists for exactly that, and it answered in one
+request.
