@@ -202,6 +202,9 @@ def compare(running_config: str, rendered_config: str, host_vars: dict = None) -
         "round_trip_fidelity": round(
             100.0 * matched_count / (matched_count + len(missing)), 1
         ) if (matched_count + len(missing)) else 0.0,
+        # Named, so "100%" never travels without what it did not examine.
+        # Information, not a gate — template_report decides deployability.
+        "excluded_unrenderable": normalize.excluded_unrenderable(running_config),
         "ok": not missing and not extra and not reordered,
         "details": {"missing": missing, "extra": extra, "reordered": reordered},
     }

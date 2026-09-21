@@ -221,6 +221,7 @@ def validate_template(repo: str, rel_path: str, devices: list) -> dict:
             "unmodeled": report["unmodeled"],
             "unmodeled_acknowledged": acknowledged,
             "modeled_coverage": report["modeled_coverage"],
+            "excluded_unrenderable": report.get("excluded_unrenderable", []),
             "missing_sample": [m["line"] for m in report["details"]["missing"][:5]],
             "extra_sample": [e["line"] for e in report["details"]["extra"][:5]],
         })

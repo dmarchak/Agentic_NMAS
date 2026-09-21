@@ -17,7 +17,7 @@ import os
 
 import pytest
 
-from modules.nsot import hostvars, roundtrip
+from modules.nsot import hostvars, normalize, roundtrip
 from modules.nsot.parsers import get_parser
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "configs")
@@ -305,3 +305,74 @@ class TestRealNmasGoldenShape:
         for size in (4240, 8905, 1):
             out = strip_for_roundtrip(f"Current configuration : {size} bytes\nhostname x\n")
             assert out == ["hostname x"]
+
+
+class TestExcludedUnrenderableTravelsWithCoverage:
+    """100% coverage with `unmodeled: []` read as "everything is modelled".
+
+    ``strip_for_roundtrip()`` removes certificate chains and banners from
+    **both** sides before comparing. The exclusion is right — a certificate
+    body cannot be reproduced from intent, the same argument as a ``$9$`` hash
+    — but it happens silently, so the figure beside it claimed more than it had
+    examined. On r2 that hid two ``crypto pki certificate chain`` blocks: not
+    modelled, not unmodelled, not counted.
+
+    Named rather than counted, because "2 blocks excluded" is no more
+    answerable than "100%". Information only: ``template_report`` remains the
+    gate.
+    """
+
+    WITH_CERT = (
+        "hostname r2\n"
+        "crypto pki trustpoint TP-self-signed-2968666059\n"
+        " enrollment selfsigned\n"
+        "crypto pki certificate chain TP-self-signed-2968666059\n"
+        " certificate self-signed 01\n"
+        "  30820330 30820218 A0030201 02020101 300D0609\n"
+        "  2A864886 F70D0101 05050030 31312F30 2D060355\n"
+        "  quit\n"
+        "crypto pki certificate chain SLA-TrustPoint\n"
+        " certificate ca 01\n"
+        "  30820245 308201AE A0030201 02020102\n"
+        "  quit\n"
+        "ip routing\n"
+    )
+    WITHOUT_CERT = "hostname s3\nip routing\n"
+
+    def test_a_config_with_a_certificate_chain_reports_it(self):
+        found = normalize.excluded_unrenderable(self.WITH_CERT)
+        assert found == [
+            "crypto pki certificate chain TP-self-signed-2968666059",
+            "crypto pki certificate chain SLA-TrustPoint",
+        ]
+
+    def test_a_config_without_one_reports_zero(self):
+        assert normalize.excluded_unrenderable(self.WITHOUT_CERT) == []
+
+    def test_coverage_is_still_100_and_the_exclusion_is_non_zero(self):
+        """Both halves of the point, in one assertion pair."""
+        report = roundtrip.compare(self.WITH_CERT, self.WITH_CERT)
+        assert report["modeled_coverage"] == 100.0
+        assert report["unmodeled"] == 0
+        assert len(report["excluded_unrenderable"]) == 2
+
+    def test_a_clean_config_reports_an_empty_exclusion_list(self):
+        report = roundtrip.compare(self.WITHOUT_CERT, self.WITHOUT_CERT)
+        assert report["excluded_unrenderable"] == []
+
+    def test_banners_are_named_too(self):
+        text = "hostname r2\nbanner motd ^C\nUnauthorised use prohibited\n^C\nip routing\n"
+        assert normalize.excluded_unrenderable(text) == ["banner motd ^C"]
+
+    def test_the_certificate_body_is_still_stripped_from_the_comparison(self):
+        """The exclusion itself is unchanged — only the reporting is new."""
+        stripped = normalize.strip_for_roundtrip(self.WITH_CERT)
+        assert not any("30820330" in line for line in stripped)
+        assert not any("certificate chain" in line for line in stripped)
+        assert "hostname r2" in stripped
+
+    def test_it_gates_nothing(self):
+        """Non-zero exclusions must not make a report not-ok."""
+        report = roundtrip.compare(self.WITH_CERT, self.WITH_CERT)
+        assert report["excluded_unrenderable"]
+        assert report["ok"] is True

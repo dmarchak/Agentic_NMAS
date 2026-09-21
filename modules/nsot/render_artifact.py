@@ -254,6 +254,8 @@ class RenderArtifact:
             "stale_acknowledgements": gap["stale"],
             "masked_refs": list(self.masked_refs),
             "modeled_coverage": self.report.get("modeled_coverage", 0.0),
+            "excluded_unrenderable": list(
+                self.report.get("excluded_unrenderable", [])),
             "round_trip_fidelity": (self.template_report or self.report).get(
                 "round_trip_fidelity", 0.0),
             "bootstrap": self.bootstrap,

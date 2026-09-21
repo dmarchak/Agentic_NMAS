@@ -2468,3 +2468,59 @@ losing the evidence.
 > distinguishes two causes that the raised limit would have made
 > indistinguishable. Then make it configurable, because the number you measured
 > is a fact about the thing you measured.
+
+---
+
+## What the NSoT found out about the network, not about itself
+
+Everything else in this document is a defect in the tool. This is the first
+thing the tool established about the **network**, which is the point of
+building it.
+
+Onboarding r2 (a C8000v) after s4 (a vIOS-L2) surfaced a difference nobody had
+written down:
+
+```
+s4:  user_admin_secret     kind=hash        rotatable=False    enable secret 9 $9$…
+r2:  user_admin_password   kind=plaintext   rotatable=True     username admin … password …
+     snmp_community_ro     kind=plaintext   rotatable=True
+```
+
+Two devices in the same lab, administered the same way, storing the same
+credential in two different forms. s4 holds a type-9 hash, which is salted and
+cannot be regenerated — the extractor records the hash string verbatim and
+marks it `secret_kind: hash` precisely so a future rotation skips it. r2 holds
+a plaintext password, which rotation can and should change.
+
+Neither is wrong. They were configured at different times, probably by
+different commands, and no running-config diff would have shown it as a
+difference — both devices look internally consistent, and the two lines are not
+the same line.
+
+### Why this is the interesting kind of finding
+
+It is not a drift, a misconfiguration, or a bug. It is a **fact about the
+network that only became visible once the network was modelled**. Reading nine
+running-configs would not surface it; you would have to already suspect it and
+go looking. The extractor surfaced it as a side effect of answering a different
+question — what secrets does this device have, and can they be rotated?
+
+That is the argument for a source of truth, stated more concretely than "single
+pane of glass". The value is not that the data is in one place. It is that
+putting it in one place makes per-device variation legible as variation rather
+than as nine separate normal-looking configs.
+
+### The Part 2 consequence
+
+Rotation will treat these two devices differently, and correctly: r2's password
+can be rotated, s4's hash cannot. A rotation implementation that assumed
+uniformity — "rotate the admin credential on every device" — would either fail
+on s4 or, worse, "succeed" by replacing a hash with something the device then
+refuses to authenticate against.
+
+The `secret_kind` distinction was built in Phase 3a for a reason argued from
+first principles (a salted hash cannot be regenerated). This is the first
+evidence that the reason is *live* in this network rather than hypothetical.
+
+r2's plaintext password is also, separately, worth fixing. That is an operator
+decision the NSoT now makes askable.

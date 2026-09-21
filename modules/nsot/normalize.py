@@ -201,6 +201,50 @@ UNRENDERABLE_TOPLEVEL_ONLY = ()
 _BANNER_OPENERS = ("banner motd", "banner login", "banner exec", "banner incoming")
 
 
+def excluded_unrenderable(text: str) -> list:
+    """Name every block :func:`strip_for_roundtrip` removes from both sides.
+
+    The exclusion is right — a certificate body cannot be reproduced from
+    intent, the same argument as a ``$9$`` hash — but it happens on *both*
+    sides of the comparison, so the resulting ``modeled_coverage: 100.0`` with
+    ``unmodeled: []`` reads exactly like "everything in this config is
+    modelled". On r2 that hid two ``crypto pki certificate chain`` blocks:
+    not modelled, not unmodelled, not counted.
+
+    Returned as **names, not a count**. A bare number recreates the problem one
+    level up: "2 blocks excluded" is no more answerable than "100%".
+
+    Information, never a gate. ``template_report`` decides deployability;
+    this says what the figure beside it did not examine.
+    """
+    found, in_block, in_banner = [], False, False
+
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+
+        if in_banner:
+            if "^C" in line or stripped == "!":
+                in_banner = False
+            continue
+
+        if any(stripped.startswith(p) for p in _BANNER_OPENERS):
+            found.append(stripped)
+            in_banner = line.count("^C") < 2
+            continue
+
+        if in_block:
+            if line.startswith((" ", "\t")) or stripped == "quit":
+                continue
+            in_block = False
+
+        if any(stripped.startswith(p) for p in UNRENDERABLE_BLOCK_PREFIXES):
+            found.append(stripped)
+            in_block = True
+            continue
+
+    return found
+
+
 def strip_for_roundtrip(text: str) -> list:
     """Remove lines a template cannot render, for round-trip comparison.
 
