@@ -376,3 +376,131 @@ class TestExcludedUnrenderableTravelsWithCoverage:
         report = roundtrip.compare(self.WITH_CERT, self.WITH_CERT)
         assert report["excluded_unrenderable"]
         assert report["ok"] is True
+
+
+class TestComparisonSeesNestingDepth:
+    """The flat comparison could not tell these configs apart.
+
+    ``split_blocks()`` appends every indented line to one ``children`` list
+    regardless of depth, so ``roundtrip._sections()`` compared a two-level
+    block as one level. Every line was present, so a render that hoisted BGP
+    networks and neighbor activations out of their address-families scored
+    **100%** — on precisely the three devices whose configs the comparison
+    least understood.
+
+    The corpus was never the problem: the fleet fixtures carried BGP
+    address-families from the start. Parse and render flattened *symmetrically*,
+    so the two sides agreed with each other while both disagreed with the
+    device.
+
+    What makes this worth a permanent test is where it sat. ``deploy``'s
+    ``_section_chains()`` was depth-aware all along, and its docstring names
+    this exact hazard — "sending ``neighbor … activate`` after only
+    ``router bgp 65001`` applies it to the wrong address family, silently and
+    successfully". The tool could compute the right answer and simultaneously
+    report there was nothing to compute.
+    """
+
+    AT_REF = """hostname r9
+!
+router bgp 65002
+ bgp router-id 10.255.1.15
+ neighbor 198.51.100.0 remote-as 65001
+ !
+ address-family ipv4
+  network 8.8.8.8 mask 255.255.255.255
+  neighbor 198.51.100.0 activate
+ exit-address-family
+ !
+ address-family ipv6
+  network 2001:DB8:1::15/128
+ exit-address-family
+!
+"""
+
+    SWAPPED = AT_REF.replace(
+        "  network 8.8.8.8 mask 255.255.255.255\n  neighbor 198.51.100.0 activate",
+        "  network 2001:DB8:1::15/128\n  neighbor 198.51.100.0 activate").replace(
+        "  network 2001:DB8:1::15/128\n exit-address-family\n!\n",
+        "  network 8.8.8.8 mask 255.255.255.255\n exit-address-family\n!\n")
+
+    HOISTED = """hostname r9
+!
+router bgp 65002
+ bgp router-id 10.255.1.15
+ neighbor 198.51.100.0 remote-as 65001
+ !
+ address-family ipv4
+ exit-address-family
+ !
+ address-family ipv6
+ exit-address-family
+ network 8.8.8.8 mask 255.255.255.255
+ neighbor 198.51.100.0 activate
+ network 2001:DB8:1::15/128
+!
+"""
+
+    def test_swapping_address_families_is_not_equivalent(self):
+        """Same lines, wrong families. `configs_equivalent` said True."""
+        out = roundtrip.configs_equivalent(self.AT_REF, self.SWAPPED)
+        assert out["equal"] is False, (
+            "two configs advertising different prefixes in different address "
+            "families are not the same network state")
+        assert out["only_left"] or out["only_right"]
+
+    def test_hoisting_out_of_address_families_is_not_equivalent(self):
+        """The r3/r4/r5 render shape, asserted directly."""
+        out = roundtrip.configs_equivalent(self.AT_REF, self.HOISTED)
+        assert out["equal"] is False
+        moved = " ".join(out["only_left"] + out["only_right"])
+        assert "address-family" in moved, (
+            "the difference must name the container the lines left")
+
+    def test_the_difference_names_the_full_path(self):
+        out = roundtrip.configs_equivalent(self.AT_REF, self.HOISTED)
+        assert any("router bgp 65002 > address-family" in entry
+                   for entry in out["only_left"]), out["only_left"]
+
+    def test_a_config_is_still_equivalent_to_itself(self):
+        """Depth-awareness must not make everything differ from everything."""
+        assert roundtrip.configs_equivalent(self.AT_REF, self.AT_REF)["equal"]
+        assert roundtrip.configs_equivalent(self.HOISTED, self.HOISTED)["equal"]
+
+    def test_reordering_within_a_family_is_still_not_a_difference(self):
+        """Depth is the new rule; set-vs-order semantics are unchanged."""
+        reordered = self.AT_REF.replace(
+            "  network 8.8.8.8 mask 255.255.255.255\n  neighbor 198.51.100.0 activate",
+            "  neighbor 198.51.100.0 activate\n  network 8.8.8.8 mask 255.255.255.255")
+        assert roundtrip.configs_equivalent(self.AT_REF, reordered)["equal"]
+
+    def test_bare_bangs_still_do_not_decide_it(self):
+        assert roundtrip.configs_equivalent(
+            self.AT_REF, self.AT_REF.replace("\n!\n", "\n"))["equal"]
+
+    def test_compare_reports_the_hoisted_lines_against_their_container(self):
+        report = roundtrip.compare(self.AT_REF, self.HOISTED)
+        assert report["missing_from_render"] > 0
+        sections = {row["section"] for row in report["details"]["missing"]}
+        assert any("address-family" in s for s in sections), sections
+
+    def test_the_global_scope_is_not_treated_as_an_ordered_section(self):
+        """A template emits globals in its own order; that is not a difference.
+
+        The flat comparison made every top-level line its own key, and keys are
+        compared as a set — so it never checked global ordering either.
+        Treating the new global bucket as ordered would smuggle in a rule the
+        change was not meant to add, and it did: every device reported one
+        reordered section named "".
+        """
+        shuffled = "\n".join(["!", "router bgp 65002", " bgp router-id 10.255.1.15",
+                              " neighbor 198.51.100.0 remote-as 65001", " !",
+                              " address-family ipv4",
+                              "  network 8.8.8.8 mask 255.255.255.255",
+                              "  neighbor 198.51.100.0 activate",
+                              " exit-address-family", " !", " address-family ipv6",
+                              "  network 2001:DB8:1::15/128",
+                              " exit-address-family", "!", "hostname r9", ""])
+        out = roundtrip.configs_equivalent(self.AT_REF, shuffled)
+        assert out["equal"] is True, (out["only_left"], out["only_right"])
+        assert roundtrip.compare(self.AT_REF, shuffled)["reordered_sections"] == 0

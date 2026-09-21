@@ -310,7 +310,18 @@ Config → `host_vars` YAML → render → compare. **Read-only**: extractions g
 `config_repo/.nsot/staging/host_vars/` (gitignored); 3b adds the reviewed commit.
 
 Current coverage across all nine reference devices (R1–R5, S1–S4):
-**100% modeled, 100% round-trip fidelity, zero unmodeled constructs.**
+**100% modeled and 100% round-trip fidelity on six; r3/r4/r5 fail pending BGP
+address-family modelling** (strict `xfail` in `test_fleet_coverage.py`).
+
+The earlier "100% across nine" was measured by a comparison that could not see
+nesting depth. `split_blocks()` flattens every indented line into one list, so
+`roundtrip._sections()` compared a two-level block as one level — and the
+cisco_iosxe template, whose render hoists BGP networks and neighbor activations
+out of their address-families to the top of `router bgp`, scored 100%. **The
+fixtures contained the address-families all along; parse and render flattened
+symmetrically, so both sides agreed with each other while both disagreed with
+the device.** `scripts/nsot_metric_diff.py` reports flat vs depth-aware per
+device and lists every nested construct in the corpus.
 
 Decision rule for what to model: **any construct appearing on 2+ devices, or
 any routing/redundancy protocol in the network design.**
@@ -321,9 +332,20 @@ any routing/redundancy protocol in the network design.**
 - **Secrets are hashes.** `enable secret 9 $9$…` has a per-hash salt and cannot
   be regenerated; the store holds the hash string and templates emit it
   verbatim. `secret_kind: hash` marks values Part 2's rotation must skip.
+- **Comparison is depth-aware.** `modules/nsot/sections.py` holds the
+  indentation→ancestry algorithm; `_sections()` keys on a line's full container
+  path (`router bgp 65002 > address-family ipv4`). A container is a key, never
+  also a child of its parent — listing it in both counted it twice. The global
+  scope `""` is a scope, not a section: it contributes no section-level match
+  (a wholly unknown config scored 16.7% instead of 0 when it did) and is
+  **unordered**, because a template emits globals in its own order and the flat
+  comparison never checked that either.
 - **Ordered comparison by default.** Reordered ACLs / prefix-lists / route-maps
   / `ip sla` fail. The unordered allowlist covers only what the device treats
-  as a set, plus interface bodies (IOS reorders those itself).
+  as a set, plus interface bodies (IOS reorders those itself). With paths,
+  `section_is_unordered()` tests **every component** and
+  **order-significant anywhere wins** — a route-map nested in an unordered
+  block is still a route-map.
 - **Interface names are canonicalized** on both sides (`Gi0/0` →
   `GigabitEthernet0/0`), including references inside lines.
 - **Coverage is reported honestly**: `modeled_coverage` counts `unmodeled`

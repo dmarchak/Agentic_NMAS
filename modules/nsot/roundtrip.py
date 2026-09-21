@@ -65,10 +65,30 @@ ORDER_SIGNIFICANT_SECTIONS = (
 
 
 def section_is_unordered(header: str) -> bool:
-    text = header.strip()
-    if any(p.match(text) for p in ORDER_SIGNIFICANT_SECTIONS):
+    """Is child order insignificant for the container at this **path**?
+
+    *header* is a path now (``router bgp 65002 > address-family ipv4``), so
+    every component is tested rather than letting ``^router bgp`` happen to
+    match the joined string. **Order-significant anywhere in the path wins**:
+    a route-map nested inside an otherwise unordered block is still a
+    route-map, and the stricter answer is the safe one when the two rules
+    disagree.
+    """
+    from modules.nsot.sections import PATH_SEPARATOR
+
+    if not header.strip():
+        # The top level is a scope, not a section. A template emits globals in
+        # its own order and the device renders them in its own; neither is a
+        # configuration difference. The flat comparison never checked global
+        # ordering either — each top-level line was its own key, and keys are
+        # compared as a set — so treating it as ordered would be a NEW rule
+        # smuggled in by a change that was only meant to add depth.
+        return True
+
+    parts = [p.strip() for p in header.split(PATH_SEPARATOR) if p.strip()]
+    if any(rule.match(part) for part in parts for rule in ORDER_SIGNIFICANT_SECTIONS):
         return False
-    return any(p.match(text) for p in UNORDERED_SECTIONS)
+    return any(rule.match(part) for part in parts for rule in UNORDERED_SECTIONS)
 
 
 def _norm(line: str) -> str:
@@ -76,19 +96,57 @@ def _norm(line: str) -> str:
     return re.sub(r"\s+", " ", ifnames.canonicalise_line(line.strip())).strip()
 
 
-def _sections(config: str) -> dict:
-    """``{normalised header: [normalised children]}``.
+def _leaf_of(path: str) -> str:
+    """The config line a container path names, without its ancestors."""
+    from modules.nsot.sections import PATH_SEPARATOR
+    return path.split(PATH_SEPARATOR)[-1] if path else ""
 
-    Repeated headers (``ip sla 1`` twice) are merged; that is what the device
-    does too.
+
+def _sections(config: str) -> dict:
+    """``{container path: [normalised lines directly under it]}``.
+
+    **Depth-aware.** The key is a line's full ancestor path
+    (``router bgp 65002 > address-family ipv4``), so a line carries the
+    container it belongs to rather than only the top-level block it is
+    somewhere inside.
+
+    The previous version built on ``split_blocks()``, which appends every
+    indented line to one flat ``children`` list regardless of depth. That made
+    a two-level block compare as one level: a render that hoisted BGP networks
+    and neighbor activations out of their address-families to the top of
+    ``router bgp`` had all the same lines, so it scored **100%** — on the three
+    devices whose configs the comparison least understood. The corpus had the
+    right shape; the comparison could not see it.
+
+    Repeated containers (``ip sla 1`` twice) are merged; that is what the
+    device does too. A line that opens a container appears both as a child of
+    its parent and as a key of its own, so a missing container and a missing
+    line inside one are different findings.
     """
+    from modules.nsot import sections as _sec
+
+    entries = [(line, chain) for line, chain in
+               _sec.chains(config.splitlines(), norm=_norm) if line]
+
+    # A line is a container if it appears in something else's ancestry.
+    containers = {chain[:depth + 1]
+                  for _line, chain in entries
+                  for depth in range(len(chain))}
+
     out = {}
-    for block in split_blocks(config):
-        header = _norm(block.line)
-        if not header or header in ("!", "end"):
-            continue
-        children = [_norm(c) for c in block.children if _norm(c) not in ("", "!")]
-        out.setdefault(header, []).extend(children)
+    for line, chain in entries:
+        own = chain + (line,)
+        if own in containers:
+            # Containers are keys, never also children of their parent: the
+            # header is already counted once when its key matches, and listing
+            # it again under the parent counted it twice.
+            #
+            # An EMPTY container still gets a key, so `address-family ipv6`
+            # whose networks were hoisted away shows as present-but-empty
+            # rather than vanishing and taking the difference with it.
+            out.setdefault(_sec.path_of(own), [])
+        else:
+            out.setdefault(_sec.path_of(chain), []).append(line)
     return out
 
 
@@ -177,13 +235,22 @@ def compare(running_config: str, rendered_config: str, host_vars: dict = None) -
     matched, missing, extra, reordered = [], [], [], []
 
     for header, run_children in running.items():
+        # "" is the global SCOPE, not a section. It has no config line of its
+        # own, so it contributes no section-level entry — counting one would
+        # add a match for a thing that does not exist, and it did: a wholly
+        # unknown config scored 16.7% instead of 0.
+        scope = not header
         if header not in rendered:
-            missing.append({"section": header, "line": header, "kind": "section"})
+            if not scope:
+                missing.append({"section": header, "line": _leaf_of(header),
+                                "kind": "section"})
             missing.extend({"section": header, "line": c, "kind": "child"}
                            for c in run_children)
             continue
 
-        matched.append({"section": header, "line": header, "kind": "section"})
+        if not scope:
+            matched.append({"section": header, "line": _leaf_of(header),
+                            "kind": "section"})
         ren_children = rendered[header]
 
         if section_is_unordered(header):
@@ -220,7 +287,9 @@ def compare(running_config: str, rendered_config: str, host_vars: dict = None) -
 
     for header, ren_children in rendered.items():
         if header not in running:
-            extra.append({"section": header, "line": header, "kind": "section"})
+            if header:
+                extra.append({"section": header, "line": _leaf_of(header),
+                              "kind": "section"})
             extra.extend({"section": header, "line": c, "kind": "child"}
                          for c in ren_children)
 
