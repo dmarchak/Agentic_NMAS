@@ -53,13 +53,28 @@ def main() -> int:
 
     stored = approval._load(repo)
     stale = [path for path, record in stored.items()
-             if record.get("scheme") != approval.FINGERPRINT_SCHEME]
+             if record.get("revoked")
+             or record.get("scheme") != approval.FINGERPRINT_SCHEME]
     if not stale:
         print(f"every approval is already on scheme {approval.FINGERPRINT_SCHEME}")
         return 0
 
-    print(f"\n{len(stale)} approval(s) predate scheme "
-          f"{approval.FINGERPRINT_SCHEME}\n")
+    # Say which it is. A revoked record and a scheme-migrated one both need
+    # re-approval and are not the same event: one is a finding somebody
+    # recorded, the other is bookkeeping. Reporting the second when it is the
+    # first buries the reason the template was withdrawn.
+    print()
+    for path in sorted(stale):
+        record = stored[path]
+        if record.get("revoked"):
+            print(f"{path}: REVOKED {record.get('revoked_at', '')} by "
+                  f"{record.get('actor', '?')}")
+            print(f"    reason: {record.get('reason', '(none recorded)')}")
+        else:
+            print(f"{path}: approved under fingerprint scheme "
+                  f"{record.get('scheme', 1)}, current is "
+                  f"{approval.FINGERPRINT_SCHEME}")
+    print(f"\n{len(stale)} approval(s) need re-validation\n")
 
     approved, refused = [], []
     for rel_path in sorted(stale):
