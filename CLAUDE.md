@@ -310,10 +310,11 @@ Config → `host_vars` YAML → render → compare. **Read-only**: extractions g
 `config_repo/.nsot/staging/host_vars/` (gitignored); 3b adds the reviewed commit.
 
 Current coverage across all nine reference devices (R1–R5, S1–S4):
-**100% modeled and 100% round-trip fidelity on six; r3/r4/r5 fail pending BGP
-address-family modelling** (strict `xfail` in `test_fleet_coverage.py`).
+**100% modeled, 100% round-trip fidelity, zero unmodeled constructs — under the
+depth-aware comparison**, and `merge_commands()` against each device's own
+capture is empty for all nine.
 
-The earlier "100% across nine" was measured by a comparison that could not see
+An earlier "100% across nine" was measured by a comparison that could not see
 nesting depth. `split_blocks()` flattens every indented line into one list, so
 `roundtrip._sections()` compared a two-level block as one level — and the
 cisco_iosxe template, whose render hoists BGP networks and neighbor activations
@@ -321,7 +322,18 @@ out of their address-families to the top of `router bgp`, scored 100%. **The
 fixtures contained the address-families all along; parse and render flattened
 symmetrically, so both sides agreed with each other while both disagreed with
 the device.** `scripts/nsot_metric_diff.py` reports flat vs depth-aware per
-device and lists every nested construct in the corpus.
+device and lists every nested construct in the corpus; the two now agree
+everywhere.
+
+- **BGP address-families own their contents.**
+  `routing.bgp.address_families` is `[{afi, networks, neighbors, settings}]`.
+  Nothing belongs at the top level of `router bgp` that the device puts inside
+  a family. The old shape put `network 8.8.8.8 mask …` and
+  `network 2001:DB8::/32` in one list and left the `address-family` headers in
+  `settings` as ordinary text.
+- The existing `test_bgp_address_families_on_r3_r4_r5` asserted
+  `any("address-family" in s for s in bgp["settings"])` — **it pinned the
+  flattening as correct**, under a name that made the construct look covered.
 
 Decision rule for what to model: **any construct appearing on 2+ devices, or
 any routing/redundancy protocol in the network design.**

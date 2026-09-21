@@ -600,10 +600,56 @@ class BaseParser:
         entry = self._routing_block(block, "ripng", {"name": m.group(1)})
         out["routing"].setdefault("ripng", []).append(entry)
 
+    #: Structure, not configuration: the template re-emits it around a family.
+    #: Keeping it as a setting is what let the families become decoration.
+    AF_TERMINATOR = "exit-address-family"
+
     def _h_bgp(self, block, out, m):
-        entry = self._routing_block(block, "bgp", {"asn": m.group(1)})
-        entry.update(self._split_routing(entry.pop("raw"), network_key="network",
+        """BGP, with **address-family membership preserved**.
+
+        The previous version ran every child through ``child.strip()`` and one
+        flat ``_split_routing``, which put ``network 8.8.8.8 mask …`` (an
+        ``address-family ipv4`` statement) and ``network 2001:DB8::/32`` (an
+        ``address-family ipv6`` one) in the same list, and left the
+        ``address-family`` headers in ``settings`` as ordinary text. The
+        template then emitted every network and activation at the top level of
+        ``router bgp``.
+
+        Nothing caught it because the round-trip comparison flattened both
+        sides symmetrically — it scored 100% — while ``merge_commands()``, which
+        *is* depth-aware, would have sent an IPv6 prefix outside
+        ``address-family ipv6``.
+        """
+        from modules.nsot import sections as _sec
+
+        entry = {"asn": m.group(1)}
+        families, order = {}, []
+
+        def _norm(line):
+            return ifnames.canonicalise_line(line.strip())
+
+        globals_, per_family = [], {}
+        for line, chain in _sec.chains(block.children, norm=_norm):
+            if line == self.AF_TERMINATOR:
+                continue
+            parent = chain[-1] if chain else ""
+            if parent.startswith("address-family "):
+                per_family.setdefault(parent, []).append(line)
+            elif line.startswith("address-family "):
+                if line not in families:
+                    families[line] = True
+                    order.append(line)
+            else:
+                globals_.append(line)
+
+        entry.update(self._split_routing(globals_, network_key="network",
                                          neighbor_key="neighbor"))
+        entry["address_families"] = [
+            {"afi": header.split(" ", 1)[1],
+             **self._split_routing(per_family.get(header, []),
+                                   network_key="network",
+                                   neighbor_key="neighbor")}
+            for header in order]
         out["routing"]["bgp"] = entry
 
     @staticmethod

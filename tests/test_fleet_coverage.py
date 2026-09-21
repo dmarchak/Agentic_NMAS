@@ -11,21 +11,11 @@ import os
 
 import pytest
 
+from modules.nsot import roundtrip
 from modules.nsot.roundtrip import rank_unmodeled, validate_device
 
 FLEET = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
 DEVICES = sorted(os.path.basename(p)[:-4] for p in glob.glob(f"{FLEET}/*.cfg"))
-
-
-#: The defect step 2 fixes. Named here once so removing it is a single edit.
-BGP_XFAIL_REASON = (
-    "BGP address-families are not modelled: the parser flattens networks and "
-    "neighbor activations out of their family into one list, and the template "
-    "re-emits them at the top level of `router bgp`. The flat round-trip "
-    "comparison scored this 100% because it compared a two-level block as one "
-    "level. Fixed by modelling address_families; remove this marker then."
-)
-BGP_ADDRESS_FAMILY_DEVICES = ("r3", "r4", "r5")
 
 
 def _platform(name):
@@ -63,8 +53,6 @@ class TestPerDevice:
         along; the comparison flattened both sides symmetrically and could not
         see them.
         """
-        if name in BGP_ADDRESS_FAMILY_DEVICES:
-            pytest.xfail(BGP_XFAIL_REASON)
         report = validate_device(_config(name), _platform(name))
         assert report["round_trip_fidelity"] == 100.0
         assert report["missing_from_render"] == 0
@@ -84,7 +72,6 @@ class TestFleetAggregate:
         mean = sum(r["modeled_coverage"] for r in fleet) / len(fleet)
         assert mean >= 95.0, f"fleet mean modelled coverage is {mean:.1f}%"
 
-    @pytest.mark.xfail(strict=True, reason=BGP_XFAIL_REASON)
     def test_every_device_reproduces(self, fleet):
         assert all(r["ok"] for r in fleet)
 
@@ -108,11 +95,66 @@ class TestPlatformSpecificFeatures:
     """Features only some devices have — the reason nine fixtures beat two."""
 
     def test_bgp_address_families_on_r3_r4_r5(self):
+        """Membership, not the mere presence of the words.
+
+        This test is older than the fix and it asserted::
+
+            assert any("address-family" in s for s in bgp["settings"])
+
+        — that the address-family *header* was an ordinary setting, which is
+        precisely the flattening. It pinned the defect as correct behaviour,
+        under a name that made the construct look covered. Anyone auditing
+        would have read "BGP address families: tested" and moved on.
+
+        A test written after the implementation encodes the implementation.
+        This one was named for the feature and checked for a substring.
+        """
         for name in ("r3", "r4", "r5"):
             report = validate_device(_config(name), _platform(name))
             bgp = report["host_vars"]["routing"]["bgp"]
             assert bgp is not None, f"{name} has no BGP"
-            assert any("address-family" in s for s in bgp["settings"]), name
+
+            families = bgp["address_families"]
+            assert [af["afi"] for af in families] == ["ipv4", "ipv6"], name
+
+            # The header is structure now, not a setting hiding among settings.
+            assert not any("address-family" in s for s in bgp["settings"]), name
+            assert not any("exit-address-family" in s for s in bgp["settings"]), name
+
+            # Every network belongs to a family, and to the RIGHT one: an
+            # IPv6 prefix outside `address-family ipv6` is what the flat model
+            # produced and what merge_commands() would have sent.
+            v4, v6 = families[0], families[1]
+            assert all(":" not in n for n in v4["networks"]), (name, v4["networks"])
+            assert all(":" in n for n in v6["networks"]), (name, v6["networks"])
+            assert bgp["networks"] == [], (
+                f"{name}: no network belongs at the top level of `router bgp`")
+
+    def test_bgp_round_trips_with_families_intact(self):
+        """The render must put each line back in the family it came from."""
+        import re
+
+        for name in ("r3", "r4", "r5"):
+            config = _config(name)
+            report = validate_device(config, _platform(name))
+            rendered = roundtrip.render(report["host_vars"],
+                                        report["host_vars"]["platform"])
+
+            def families(text):
+                out, current = {}, None
+                block = re.search(r"^router bgp.*?(?=^\S)", text, re.M | re.S)
+                for line in block.group(0).splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("address-family "):
+                        current = stripped
+                        out[current] = set()
+                    elif stripped == "exit-address-family":
+                        current = None
+                    elif current and stripped and stripped != "!":
+                        out[current].add(stripped)
+                return out
+
+            assert families(rendered) == families(config), name
 
     def test_r5_is_the_pe_no_ospf_no_telemetry(self):
         host_vars = validate_device(_config("r5"), "cisco_xe")["host_vars"]

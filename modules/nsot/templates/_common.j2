@@ -147,6 +147,15 @@ interface {{ i.name }}
 {% endfor %}
 {%- for n in v.routing.bgp.networks %} {{ n }}
 {% endfor %}
+{%- for af in v.routing.bgp.address_families or [] %} !
+ address-family {{ af.afi }}
+{% for n in af.networks %}  {{ n }}
+{% endfor %}
+{%- for n in af.neighbors %}  {{ n }}
+{% endfor %}
+{%- for s in af.settings %}  {{ s }}
+{% endfor %} exit-address-family
+{% endfor %}
 {%- endif %}
 {%- for o in (v.routing or {}).get('ospfv3', []) %}ipv6 router ospf {{ o.process }}
 {% for s in o.raw %} {{ s }}
