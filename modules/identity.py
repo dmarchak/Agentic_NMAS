@@ -88,9 +88,12 @@ class Identity:
         and an audit trail that cannot distinguish them cannot answer the
         question it exists to answer.
         """
-        return {"actor": self.actor, "kind": self.kind,
-                "verified": self.verified, "outcome": self.outcome,
-                "peer": self.peer, "peer_trusted": self.peer_trusted}
+        row = {"actor": self.actor, "kind": self.kind,
+               "verified": self.verified, "outcome": self.outcome,
+               "peer": self.peer, "peer_trusted": self.peer_trusted}
+        if self.kind == "service" and self.service_id:
+            row["service"] = service_label(self.service_id)
+        return row
 
 
 #: Service actors are prefixed so no reader can mistake a Client ID for a
@@ -123,6 +126,19 @@ def _actor_from_claims(claims: dict) -> tuple:
     if common_name:
         return f"{SERVICE_ACTOR_PREFIX}{common_name}", "", "service", common_name
     return "", "", "", ""
+
+
+def service_label(client_id: str) -> str:
+    """A friendly name for a service token's Client ID, or the ID itself.
+
+    **A label, never a grant.** Identity comes from the verified assertion;
+    this only decides how the audit row reads. An unlabelled token
+    authenticates exactly as well — it just reads as 32 hex characters, which
+    is how a legitimate token and a leaked one come to look identical to
+    whoever is reading the trail later.
+    """
+    labels = _setting("cf_access_service_labels", {}) or {}
+    return labels.get(client_id, "") or client_id
 
 
 def _setting(key, default=None):

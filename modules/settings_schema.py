@@ -132,6 +132,11 @@ DEFAULTS: dict = {
     #: It is also the layer that survives a firewall rule being edited later.
     "cf_access_trusted_peers": "",       # comma-separated; blank disables the check
     "cf_access_jwks_ttl":    3600,       # key-cache seconds; survives a short outage
+    #: ``{client-id: friendly name}`` for service tokens, so an audit row reads
+    #: "nmas-automation" rather than 32 hex characters. A LABEL ONLY — never a
+    #: grant. Identity still comes from the verified assertion; an unlabelled
+    #: token authenticates exactly as well, it just reads worse.
+    "cf_access_service_labels": {},
     #: All three default ON. Reveal exposes a secret; approve and confirm are
     #: the two actions that put configuration **on a device**. An audit entry
     #: for any of them is worthless without a name attached to it, and the two
@@ -321,6 +326,7 @@ SCHEMA: dict = {
         "cf_access_aud": _STR,
         "cf_access_trusted_peers": _STR,
         "cf_access_jwks_ttl": {"type": "integer", "minimum": 0},
+        "cf_access_service_labels": {"type": "object"},
         "require_identity_for_reveal": _BOOL,
         "require_identity_for_approve": _BOOL,
         "require_identity_for_confirm": _BOOL,

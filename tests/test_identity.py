@@ -557,3 +557,49 @@ class TestAllThreeActionsRequireIdentityByDefault:
             assert loopback not in source, (
                 f"{loopback} appears in identity.py — a loopback exemption "
                 "bypasses the audit trail exactly where it matters most")
+
+
+class TestServiceLabelsAreCosmeticOnly:
+    """A label decides how the trail READS, never who gets in."""
+
+    CLIENT_ID = "e367826f93b8d71185e03fe518aff3b4.access"
+
+    def _service_token(self, private):
+        import jwt
+        now = int(time.time())
+        return jwt.encode({"type": "app", "aud": AUD, "iss": f"https://{TEAM}",
+                           "common_name": self.CLIENT_ID, "iat": now,
+                           "exp": now + 600, "sub": ""},
+                          private, algorithm="RS256")
+
+    def test_an_unlabelled_token_falls_back_to_its_id(self, configured, keys):
+        private, _ = keys
+        row = identity.identify(_Req(token=self._service_token(private))).audit()
+        assert row["service"] == self.CLIENT_ID
+
+    def test_a_labelled_token_reads_as_its_name(self, configured, keys, monkeypatch):
+        private, _ = keys
+        base = dict(configured,
+                    cf_access_service_labels={self.CLIENT_ID: "nmas-automation"})
+        monkeypatch.setattr(identity, "_setting",
+                            lambda key, default=None: base.get(key, default))
+        row = identity.identify(_Req(token=self._service_token(private))).audit()
+        assert row["service"] == "nmas-automation"
+        assert row["actor"].startswith(identity.SERVICE_ACTOR_PREFIX)
+
+    def test_a_label_grants_nothing(self, configured, keys, monkeypatch):
+        """Labelling an id the assertion does not carry changes no outcome."""
+        private, _ = keys
+        base = dict(configured,
+                    cf_access_service_labels={"someone-elses.access": "trusted"})
+        monkeypatch.setattr(identity, "_setting",
+                            lambda key, default=None: base.get(key, default))
+        ident = identity.identify(_Req(token=self._service_token(private)))
+        assert ident.is_identified is True
+        assert ident.service_id == self.CLIENT_ID
+        assert ident.audit()["service"] == self.CLIENT_ID
+
+    def test_a_person_row_has_no_service_field(self, configured, keys):
+        private, _ = keys
+        row = identity.identify(_Req(token=_token(private))).audit()
+        assert "service" not in row
