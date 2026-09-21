@@ -444,6 +444,7 @@ def _commit_batch_golden(list_name: str, report: dict) -> dict:
                 "reason": "no device completed successfully"}
 
     batch_id = f"batch-{report.get('batch_id') or _os.urandom(3).hex()}"
+    earned = _baseline_earned(report, pending, failed)
     subject = (f"golden: baseline {len(pending)} device(s) via pipeline "
                f"{batch_id}")
     trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
@@ -453,7 +454,7 @@ def _commit_batch_golden(list_name: str, report: dict) -> dict:
              for p in pending]
     result = save_golden(list_name, items, source="pipeline", actor="pipeline",
                          message=subject, pipeline_id=batch_id,
-                         baseline=True, allow_new=False,
+                         baseline=earned["baseline"], allow_new=False,
                          extra_trailers=trailers)
 
     if result.get("ok"):
@@ -463,7 +464,57 @@ def _commit_batch_golden(list_name: str, report: dict) -> dict:
         log.error("deploy: batch golden commit failed: %s — captures remain in "
                   ".nsot/staging/post_deploy/", result.get("error"))
     return {**result, "batch_id": batch_id, "devices": succeeded,
-            "failed_devices": failed}
+            "failed_devices": failed, **earned}
+
+
+def _baseline_earned(report: dict, pending: list, failed: list) -> dict:
+    """Whether this batch produced a state worth calling a baseline.
+
+    Measured, not categorised. ``baseline/<ts>`` asserts *the network looked
+    like this*, so it is earned when three things are observably true: every
+    targeted device succeeded, the whole inventory was targeted, and each
+    device's post-deploy capture equals what was pushed to it. An additive
+    re-apply that leaves residue on one device did not produce the baseline; an
+    additive re-apply that leaves none did, and refusing the tag by category
+    would understate what happened.
+
+    Same principle as ``device_changed``: ask the artifact, do not infer from
+    the kind of operation.
+    """
+    from modules.device import get_current_device_list, load_saved_devices
+    from modules.nsot import normalize
+
+    reasons = []
+    if failed:
+        reasons.append(f"{len(failed)} device(s) did not succeed: {sorted(failed)}")
+
+    try:
+        _name, csv_path = get_current_device_list()
+        inventory = {d.get("hostname", "") for d in load_saved_devices(csv_path)}
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("deploy: could not read the inventory to judge baseline "
+                    "eligibility (%s)", exc)
+        return {"baseline": False, "baseline_reasons": ["inventory unreadable"]}
+
+    targeted = {p["hostname"] for p in pending} | set(failed)
+    missing = sorted(inventory - targeted)
+    if missing:
+        reasons.append(f"{len(missing)} device(s) not targeted: {missing}")
+
+    residual = []
+    for item in pending:
+        target = item.get("target_config")
+        if target is None:
+            continue          # a template deploy has no single target text
+        post = normalize.strip_for_diff(item["config_text"])
+        if post != normalize.strip_for_diff(target):
+            residual.append(item["hostname"])
+    if residual:
+        reasons.append(f"{len(residual)} device(s) differ from what was pushed: "
+                       f"{sorted(residual)}")
+
+    return {"baseline": not reasons,
+            "baseline_reasons": reasons or ["every targeted device matches"]}
 
 
 def _deploy_one(entry, list_name: str, device_rows: dict,

@@ -998,8 +998,14 @@ class TestABatchCommitsOnceAndLeavesABaseline:
         _rc, out, _ = R.git(repo, "tag", "--list")
         return sorted(out.split())
 
-    def test_three_of_three_makes_one_commit_three_tags_and_a_baseline(self, lab):
+    def test_three_of_three_makes_one_commit_three_tags_and_a_baseline(self, lab, monkeypatch):
+        import modules.device as D
         from modules.nsot import repo as R
+        monkeypatch.setattr(D, "load_saved_devices",
+                            lambda path=None: [{"hostname": h, "ip": f"203.0.113.{i}"}
+                                               for i, h in enumerate(["r2", "s3", "s4"], 12)])
+        monkeypatch.setattr(D, "get_current_device_list",
+                            lambda: ("Lab", "devices.csv"))
 
         outcome = self._commit(lab, [self._result(d) for d in ("r2", "s3", "s4")])
         assert outcome["ok"] is True
@@ -1027,7 +1033,8 @@ class TestABatchCommitsOnceAndLeavesABaseline:
         tags = self._tags(lab)
         assert sorted(t.split("/")[1] for t in tags if t.startswith("golden/")) \
             == ["r2", "s3"]
-        assert len([t for t in tags if t.startswith("baseline/")]) == 1
+        # A failed device means this is not the network's state.
+        assert [t for t in tags if t.startswith("baseline/")] == []
 
     def test_zero_of_three_commits_nothing(self, lab):
         from modules.nsot import repo as R
@@ -1041,15 +1048,40 @@ class TestABatchCommitsOnceAndLeavesABaseline:
         assert before == after
         assert self._tags(lab) == []
 
-    def test_a_single_device_batch_still_gets_a_baseline(self, lab):
-        """A baseline marks a moment, not a device count. Run 2 had none."""
+    def test_a_single_device_batch_earns_a_baseline_only_if_it_is_the_fleet(self, lab, monkeypatch):
+        """A baseline marks a moment, not a device count — but it asserts the
+        *network's* state, so it needs the whole inventory."""
+        import modules.device as D
+        monkeypatch.setattr(D, "load_saved_devices",
+                            lambda path=None: [{"hostname": "s4",
+                                                "ip": "203.0.113.24"}])
+        monkeypatch.setattr(D, "get_current_device_list",
+                            lambda: ("Lab", "devices.csv"))
         self._commit(lab, [self._result("s4")])
         tags = self._tags(lab)
         assert [t for t in tags if t.startswith("golden/")] != []
         assert len([t for t in tags if t.startswith("baseline/")]) == 1
 
-    def test_the_baseline_points_at_the_batch_commit(self, lab):
+    def test_a_partial_fleet_does_not_earn_a_baseline(self, lab, monkeypatch):
+        """Three of nine devices says nothing about the other six."""
+        import modules.device as D
+        monkeypatch.setattr(D, "load_saved_devices",
+                            lambda path=None: [{"hostname": h, "ip": f"203.0.113.{i}"}
+                                               for i, h in enumerate(
+                                                   ["r1", "r2", "s3", "s4"], 11)])
+        monkeypatch.setattr(D, "get_current_device_list",
+                            lambda: ("Lab", "devices.csv"))
+        self._commit(lab, [self._result(d) for d in ("r2", "s3", "s4")])
+        assert [t for t in self._tags(lab) if t.startswith("baseline/")] == []
+
+    def test_the_baseline_points_at_the_batch_commit(self, lab, monkeypatch):
+        import modules.device as D
         from modules.nsot import repo as R
+        monkeypatch.setattr(D, "load_saved_devices",
+                            lambda path=None: [{"hostname": "r2", "ip": "203.0.113.12"},
+                                               {"hostname": "s3", "ip": "203.0.113.23"}])
+        monkeypatch.setattr(D, "get_current_device_list",
+                            lambda: ("Lab", "devices.csv"))
 
         self._commit(lab, [self._result(d) for d in ("r2", "s3")])
         baseline = next(t for t in self._tags(lab) if t.startswith("baseline/"))

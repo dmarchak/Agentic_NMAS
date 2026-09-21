@@ -95,6 +95,101 @@ def prepare_device(artifact, template_root: str = None) -> dict:
 # Merge-only diff
 # ---------------------------------------------------------------------------
 
+def classify_diff(target_config: str, running_config: str) -> dict:
+    """Split a diff into ``add`` / ``replace`` / ``residue``.
+
+    ``removal_warnings`` over-reported. A device holding
+    ``description batch 4 baseline`` against a target of ``description old``
+    had the device's line listed as "present on the device and not in the
+    target" — technically true, and read as "will not be removed" when in fact
+    pushing the target **replaces** it. On a restore that is the difference
+    between an honest warning and a false one, and the false one is the demo
+    case.
+
+    Three categories, using the *same* setting classification
+    :func:`rollback_commands` uses — precise key, plus the broad key only for
+    free-form commands. Re-deriving it here is what produced the
+    ``interface Loopback0`` and ``ip address`` bugs; there is one answer to
+    "do these two lines set the same thing" and both directions consume it.
+
+    * ``add``     — in the target, nothing on the device sets it
+    * ``replace`` — in the target, the device sets it to something else
+    * ``residue`` — on the device, the target does not mention it at all
+
+    Only ``residue`` is untouched by the push, so only ``residue`` may be
+    reported as "will not be removed".
+    """
+    from modules.nsot import ifnames
+
+    def _leaves(text):
+        """Configuration-bearing lines only.
+
+        A section header is context, not a setting. Classifying headers as
+        settings matched ``interface Loopback0`` against ``interface
+        Loopback1`` — both reduce to the key ``interface`` — and reported a
+        *replace* between two different interfaces. Third time this exact
+        mistake has been made in this file, so the rule is stated rather than
+        rediscovered: only leaves carry settings.
+        """
+        entries = list(_section_chains(text))
+        headers = {tuple(chain) + (line,)
+                   for line, chain in entries for _i in range(1)
+                   if any(len(other_chain) > len(chain)
+                          and tuple(other_chain[:len(chain) + 1])
+                          == tuple(chain) + (line,)
+                          for _ol, other_chain in entries)}
+        return [(line, chain) for line, chain in entries
+                if tuple(chain) + (line,) not in headers]
+
+    def _index(text):
+        precise, broad, verbatim = {}, {}, set()
+        for line, chain in _leaves(text):
+            canonical = ifnames.canonicalise_line(line)
+            key_precise, key_broad = _command_keys(canonical)
+            chain_key = tuple(ifnames.canonicalise_line(c) for c in chain)
+            verbatim.add((chain_key, canonical))
+            precise.setdefault((chain_key, key_precise), canonical)
+            broad.setdefault((chain_key, key_broad), []).append(canonical)
+        return precise, broad, verbatim
+
+    target_precise, target_broad, target_verbatim = _index(target_config)
+    run_precise, run_broad, run_verbatim = _index(running_config)
+
+    def _counterpart(chain_key, canonical, precise_index, broad_index):
+        key_precise, key_broad = _command_keys(canonical)
+        hit = precise_index.get((chain_key, key_precise))
+        if hit is not None:
+            return hit
+        if key_broad not in FREE_FORM_COMMANDS:
+            return None
+        candidates = broad_index.get((chain_key, key_broad), [])
+        return candidates[0] if len(candidates) == 1 else None
+
+    add, replace, residue = [], [], []
+    for line, chain in _leaves(target_config):
+        canonical = ifnames.canonicalise_line(line)
+        chain_key = tuple(ifnames.canonicalise_line(c) for c in chain)
+        if (chain_key, canonical) in run_verbatim:
+            continue
+        current = _counterpart(chain_key, canonical, run_precise, run_broad)
+        if current is None:
+            add.append(line)
+        else:
+            replace.append({"line": line, "old": current, "new": canonical})
+
+    for line, chain in _leaves(running_config):
+        canonical = ifnames.canonicalise_line(line)
+        chain_key = tuple(ifnames.canonicalise_line(c) for c in chain)
+        if (chain_key, canonical) in target_verbatim:
+            continue
+        # Being replaced is not being left behind.
+        if _counterpart(chain_key, canonical, target_precise, target_broad) is not None:
+            continue
+        residue.append(line)
+
+    return {"add": add, "replace": replace, "residue": residue}
+
+
 def merge_diff(intended_config: str, running_config: str) -> dict:
     """Lines to add, and lines present only on the device.
 
@@ -122,12 +217,19 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
     intended_set = set(intended)
 
     to_add = [l for l in intended if l not in running_set]
-    # Section headers whose children are all present are not "additions".
-    removal_warnings = [l for l in running if l not in intended_set]
+
+    # `removal_warnings` used to be every device line absent from the intended
+    # config, which listed a line about to be REPLACED as one that would not be
+    # removed. Batch 4's plan warned about ' description mgmt identity' while
+    # pushing a new description straight over it. Only residue is untouched.
+    classified = classify_diff(intended_config, running_config)
 
     return {
         "to_add": to_add,
-        "removal_warnings": removal_warnings,
+        "add": classified["add"],
+        "replace": classified["replace"],
+        "removal_warnings": classified["residue"],
+        "residue": classified["residue"],
         "unchanged_count": len(intended) - len(to_add),
     }
 

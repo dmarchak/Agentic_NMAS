@@ -1064,3 +1064,98 @@ class TestRollbackUndoesWhatLandedNotWhatWasPushed:
         undo = rollback_commands(self.PUSHED, self.PRE,
                                  landed=[" description 3B test"])
         assert_rollback_provenance(undo, self.PUSHED)
+
+
+class TestDiffCategoriesDistinguishReplaceFromResidue:
+    """`removal_warnings` listed lines that were about to be replaced.
+
+    A device holding ``description batch 4 baseline`` against a target of
+    ``description old`` had its line reported as "present on the device and not
+    in the target" — true, and read as "will not be removed" when pushing the
+    target replaces it. On a restore that is the difference between an honest
+    warning and a false one, and it is exactly the demo case.
+
+    The classification is the one ``rollback_commands()`` already uses: precise
+    key, plus the broad key only for free-form commands. Re-deriving it is what
+    produced the ``interface Loopback0`` and ``ip address`` bugs.
+    """
+
+    TARGET = ("interface Loopback0\n"
+              " description old\n"
+              " ip address 10.0.0.1 255.255.255.255\n")
+    DEVICE = ("interface Loopback0\n"
+              " description batch 4 baseline\n"
+              " ip address 10.0.0.1 255.255.255.255\n"
+              " mtu 1500\n")
+
+    def test_a_replaced_description_is_replace_not_residue(self):
+        from modules.nsot.deploy import classify_diff
+        result = classify_diff(self.TARGET, self.DEVICE)
+        assert [r["old"] for r in result["replace"]] == [" description batch 4 baseline"]
+        assert [r["new"] for r in result["replace"]] == [" description old"]
+        assert " description batch 4 baseline" not in result["residue"]
+
+    def test_a_genuinely_extra_line_is_residue(self):
+        from modules.nsot.deploy import classify_diff
+        assert classify_diff(self.TARGET, self.DEVICE)["residue"] == [" mtu 1500"]
+
+    def test_a_line_the_device_lacks_entirely_is_add(self):
+        from modules.nsot.deploy import classify_diff
+        result = classify_diff(
+            "interface Loopback0\n description x\n ip mtu 1400\n",
+            "interface Loopback0\n description x\n")
+        assert result["add"] == [" ip mtu 1400"]
+        assert result["replace"] == []
+
+    def test_an_identical_config_classifies_as_nothing(self):
+        from modules.nsot.deploy import classify_diff
+        result = classify_diff(self.DEVICE, self.DEVICE)
+        assert result == {"add": [], "replace": [], "residue": []}
+
+    def test_merge_diff_reports_only_residue_as_a_removal_warning(self):
+        from modules.nsot.deploy import merge_diff
+        diff = merge_diff(self.TARGET, self.DEVICE)
+        assert diff["removal_warnings"] == [" mtu 1500"]
+        assert [r["old"] for r in diff["replace"]] == [" description batch 4 baseline"]
+
+    def test_the_batch_4_false_warning_is_gone(self):
+        """The observed case: a plan warned about a line it was replacing."""
+        from modules.nsot.deploy import merge_diff
+        diff = merge_diff(
+            "interface Loopback0\n description NSoT-managed - batch 4\n",
+            "interface Loopback0\n description mgmt identity\n")
+        assert diff["removal_warnings"] == []
+        assert diff["to_add"] == [" description NSoT-managed - batch 4"]
+
+    def test_the_same_setting_under_a_different_header_is_not_a_replace(self):
+        """And a header is not a setting at all.
+
+        `interface Loopback0` and `interface Loopback1` both reduce to the key
+        `interface`, so classifying headers reported a *replace* between two
+        different interfaces. Only leaves carry settings — the third time this
+        exact mistake has been made in this file.
+        """
+        from modules.nsot.deploy import classify_diff
+        result = classify_diff(
+            "interface Loopback0\n description a\n",
+            "interface Loopback1\n description b\n")
+        assert result["replace"] == []
+        assert result["add"] == [" description a"]
+        assert result["residue"] == [" description b"]
+
+    def test_a_header_is_never_classified(self):
+        from modules.nsot.deploy import classify_diff
+        result = classify_diff(
+            "interface Loopback0\n description a\n",
+            "interface Loopback0\n description a\n")
+        assert result == {"add": [], "replace": [], "residue": []}
+
+    def test_a_non_free_form_setting_needs_a_precise_match_to_replace(self):
+        """`ip mtu` must not be matched against `ip address`."""
+        from modules.nsot.deploy import classify_diff
+        result = classify_diff(
+            "interface Loopback0\n ip mtu 1400\n",
+            "interface Loopback0\n ip address 10.0.0.1 255.255.255.255\n")
+        assert result["add"] == [" ip mtu 1400"]
+        assert result["replace"] == []
+        assert result["residue"] == [" ip address 10.0.0.1 255.255.255.255"]
