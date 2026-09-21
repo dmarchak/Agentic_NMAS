@@ -183,6 +183,18 @@ def _locate(text: str, value: str):
     return None
 
 
+def list_name_for_repo(repo: str) -> str:
+    """The device list a repo belongs to: ``data/lists/<slug>/config_repo``.
+
+    Derived, not passed. A ``list_name`` parameter alongside a ``repo`` argument
+    is two sources for one answer, and the audit found exactly that shape in
+    ``restore.build_targets()`` — repo from the argument, inventory from a
+    global. The repo path is already threaded everywhere and cannot disagree
+    with the repo being written to.
+    """
+    return os.path.basename(os.path.dirname(os.path.abspath(repo)))
+
+
 def assert_no_secret_values(text: str, hostname: str) -> None:
     """Refuse to write a resolved secret into something git will keep.
 
@@ -210,12 +222,17 @@ def assert_no_secret_values(text: str, hostname: str) -> None:
             f"{hostname}: committed host_vars must not contain a 'secrets' "
             "mapping — values live in the credential store, names in secret_refs")
 
-    from modules.credentials import get_template_secret, list_template_secrets
+    from modules.credentials import (get_template_secret, list_template_secrets,
+                                     split_template_secret_key)
 
-    prefix = f"{hostname}:"
+    # EVERY list's secrets, narrowed only by device. This is a leak guard, and
+    # narrowing it by list would make a wrong list derivation silently check
+    # nothing — a guard that fails open. Scanning wider costs a few string
+    # searches and cannot produce a false negative; the device narrowing is
+    # pre-existing and deliberate (see the docstring).
     for entry in list_template_secrets():
         name = entry["name"]
-        if not name.startswith(prefix):
+        if split_template_secret_key(name)[1] != hostname:
             continue
         value = get_template_secret(name)
         if not value or len(value) < MIN_CHECKABLE_SECRET:
@@ -655,7 +672,8 @@ def intent_change(repo: str, hostname: str) -> dict:
             "diff": diff if rc == 0 else ""}
 
 
-def hydrate_secrets(host_vars: dict, hostname: str) -> dict:
+def hydrate_secrets(host_vars: dict, hostname: str,
+                    list_name: str = "") -> dict:
     """Return a copy with ``secrets`` resolved from the credential store.
 
     **In memory only.** The result must never be written anywhere — it is the
@@ -663,35 +681,42 @@ def hydrate_secrets(host_vars: dict, hostname: str) -> dict:
     Committed intent carries ``secret_refs``; this is where names become values,
     once, as late as possible.
     """
-    from modules.credentials import get_template_secret
+    from modules.credentials import get_template_secret, template_secret_key
 
     refs = host_vars.get("secret_refs") or sorted(
         (host_vars.get("secrets") or {}).keys())
     secrets = {}
     for ref in refs:
-        value = get_template_secret(f"{hostname}:{ref}")
+        value = get_template_secret(template_secret_key(list_name, hostname, ref))
         if value:
             secrets[ref] = value
         else:
-            log.warning("hostvars: %s references secret %r with no stored value",
-                        hostname, ref)
+            log.warning("hostvars: %s references secret %r with no stored value "
+                        "in list %r", hostname, ref, list_name)
     return {**host_vars, "secrets": secrets}
 
 
-def store_secrets(host_vars: dict, hostname: str, dry_run: bool = True) -> dict:
+def store_secrets(host_vars: dict, hostname: str, dry_run: bool = True,
+                  list_name: str = "") -> dict:
     """Move extracted secret values into the credential store.
 
     Returns what was moved — names only, never values. With *dry_run* (the
     Phase 3a default) nothing is written; the report just says what would move.
+
+    *list_name* scopes the key. It is required in practice: without it the key
+    is built unscoped and two networks' devices of the same name collide.
     """
+    from modules.credentials import template_secret_key
+
     secrets = host_vars.get("secrets") or {}
     moved = []
     for ref, value in sorted(secrets.items()):
         kind = "hash" if _looks_hashed(value) else "plaintext"
-        moved.append({"ref": f"{hostname}:{ref}", "kind": kind})
+        key = template_secret_key(list_name, hostname, ref)
+        moved.append({"ref": key, "kind": kind})
         if not dry_run:
             from modules.credentials import set_template_secret
-            set_template_secret(f"{hostname}:{ref}", value, secret_kind=kind)
+            set_template_secret(key, value, secret_kind=kind, list_name=list_name)
     return {"moved": moved, "dry_run": dry_run, "count": len(moved)}
 
 

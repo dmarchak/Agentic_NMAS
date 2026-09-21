@@ -206,18 +206,20 @@ def validate_restored_intent(repo: str, hostname: str, intent: dict,
       ``assert_no_mask`` catches at deploy — naming the device and the ref at
       plan time is the difference between a refusal and a failed batch.
     """
-    from modules.credentials import get_template_secret
+    from modules.credentials import get_template_secret, template_secret_key
     from modules.nsot import hostvars, roundtrip
 
     gaps = []
+    list_name = hostvars.list_name_for_repo(repo)
 
     for ref_name in (intent.get("secret_refs") or []):
-        if not get_template_secret(f"{hostname}:{ref_name}"):
+        if not get_template_secret(
+                template_secret_key(list_name, hostname, ref_name)):
             gaps.append(f"secret '{ref_name}' is named by this ref's intent but "
-                        "is not in the credential store")
+                        "is not in the credential store for this list")
 
     try:
-        live = hostvars.hydrate_secrets(intent, hostname)
+        live = hostvars.hydrate_secrets(intent, hostname, list_name)
         rendered = roundtrip.render(live, live.get("platform", platform))
     except Exception as exc:                  # noqa: BLE001
         gaps.append(f"this ref's intent does not render through the current "

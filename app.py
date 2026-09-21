@@ -160,6 +160,21 @@ try:
 except Exception as _mig_exc:                 # noqa: BLE001
     app.logger.error("Settings migration failed: %s", _mig_exc)
 
+# Template secrets predating list scoping are keyed <host>:<ref> in one
+# installation-wide store, so two lists holding a device of the same name
+# shared a key and the second silently replaced the first. Every such key
+# belongs to whichever list was the only one, which is unambiguous because
+# there has only ever been one. Idempotent; re-running skips scoped keys.
+try:
+    from modules.config import get_current_list_name as _cur_list
+    from modules.credentials import migrate_template_secrets_to_list_scope
+    _sec_mig = migrate_template_secrets_to_list_scope(_cur_list(), dry_run=False)
+    if _sec_mig.get("count"):
+        app.logger.warning("Migrated %d template secret(s) into list scope",
+                           _sec_mig["count"])
+except Exception as _sec_exc:                 # noqa: BLE001
+    app.logger.error("Template-secret scope migration failed: %s", _sec_exc)
+
 # Background daemons are started after all routes/functions are defined.
 # See _start_background_daemons() called at the bottom of this file.
 

@@ -146,7 +146,8 @@ def extract(hostname):
 
     path = hostvars.write_staged(repo, result["host_vars"])
     secrets = hostvars.store_secrets(result["host_vars"], hostname,
-                                     dry_run=not data.get("store_secrets"))
+                                     dry_run=not data.get("store_secrets"),
+                                     list_name=list_name)
 
     return jsonify({"ok": True, "hostname": hostname,
                     "staged_path": os.path.relpath(path, repo),
@@ -250,7 +251,8 @@ def commit_extraction(hostname):
             "staged, so committing now would commit something nobody "
             "reviewed. Extract again and review the new diff.")}), 409
 
-    secrets = hostvars.store_secrets(fresh["host_vars"], hostname, dry_run=False)
+    secrets = hostvars.store_secrets(fresh["host_vars"], hostname,
+                                     dry_run=False, list_name=list_name)
     try:
         path = hostvars.write_committed(repo, fresh["host_vars"])
     except hostvars.SecretLeak as exc:

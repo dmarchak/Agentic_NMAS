@@ -580,7 +580,7 @@ class TestARequestReachesTheWire:
         monkeypatch.setattr("modules.nsot.approval.is_approved",
                             lambda *a, **k: True)
         monkeypatch.setattr("modules.nsot.hostvars.hydrate_secrets",
-                            lambda hv, host: {**hv, "secrets": dict(secrets)})
+                            lambda hv, host, ln="": {**hv, "secrets": dict(secrets)})
         # The batch commit is a different seam, covered elsewhere.
         monkeypatch.setattr(RD, "_commit_batch_golden",
                             lambda *a, **k: {"ok": True, "commit": ""})

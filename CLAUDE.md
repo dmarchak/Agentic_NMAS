@@ -436,6 +436,25 @@ The only part of the NSoT work that reaches a device.
   the device since the capture rides along. The plan renders the *previous*
   committed intent against the same capture and splits `to_add` into
   `from_this_edit` and `pre_existing`.
+- **Secrets are scoped to their device list.** The credential-store key is
+  `<list-slug>:<hostname>:<ref>`, built **only** by
+  `credentials.template_secret_key()`. It used to be `<hostname>:<ref>`, built
+  by four f-strings in three modules over one installation-wide store, so two
+  lists each holding an `r1` shared a key: the second list's extraction
+  silently replaced the first's, and the first network then deployed the
+  second's SNMP community with every guard on the deploy path satisfied.
+  `set_template_secret()` refuses to replace a secret another list owns, which
+  covers a caller that builds the key by hand. Legacy keys migrate on startup.
+  `assert_no_secret_values()` deliberately scans **every** list's secrets,
+  narrowed only by device — it is a leak guard, and narrowing it by list would
+  make a wrong derivation silently check nothing.
+- **Masking is OUTBOUND, never at rest.** Golden configs are stored verbatim.
+  Masking them would make `golden/` depend on `data/key.key`, which is not in
+  the repository — so a private remote would hold configs nobody can restore a
+  network from, defeating the point of having one. Secrets are redacted on the
+  way *out* instead (provider payloads, API responses, logs). Rotation is what
+  kills plaintext already in history; masking new commits does nothing about
+  it.
 - **Secrets:** committed host_vars hold `secret_refs`; values live in the
   credential store. `write_committed()` refuses a `secrets:` mapping or any
   resolved value, checked structurally and by value. `hydrate_secrets()` is the

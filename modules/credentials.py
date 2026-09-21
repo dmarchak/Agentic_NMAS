@@ -178,22 +178,81 @@ def _from_credential_list(credential_list: str, mgmt_ip: str):
     return None
 
 
-def set_template_secret(name: str, value: str, secret_kind: str = "plaintext") -> dict:
+class SecretOwnedByAnotherList(Exception):
+    """A write would replace a secret a different device list owns."""
+
+
+def template_secret_key(list_name: str, hostname: str, ref: str) -> str:
+    """The ONE place a template-secret key is built: ``<slug>:<host>:<ref>``.
+
+    The key used to be ``<hostname>:<ref>``, built by four separate f-strings
+    in three modules, in a single installation-wide store. Two lists that each
+    contain a device called ``r1`` — the actual name in the reference lab, and
+    the likeliest name in any second one — therefore shared one key. The second
+    list's extraction silently replaced the first's, and the first network then
+    rendered and deployed the second network's SNMP community, with every guard
+    on the deploy path satisfied: none of them asks which network a secret
+    belongs to.
+
+    Same correction as ``sections.chains()`` and ``deploy._command_keys()``:
+    a value four call sites re-derive is a value that will eventually be
+    derived four different ways. Building it here means the scoping rule can
+    only be changed in one place.
+    """
+    from modules.config import list_slug
+    return f"{list_slug(list_name)}:{hostname}:{ref}"
+
+
+def split_template_secret_key(name: str) -> tuple:
+    """``(slug, hostname, ref)``; slug is ``""`` for a legacy unscoped key."""
+    parts = (name or "").split(":")
+    if len(parts) >= 3:
+        return parts[0], parts[1], ":".join(parts[2:])
+    if len(parts) == 2:
+        return "", parts[0], parts[1]
+    return "", "", name or ""
+
+
+def set_template_secret(name: str, value: str, secret_kind: str = "plaintext",
+                        list_name: str = "") -> dict:
     """Store a named secret referenced by a template.
 
     ``secret_kind`` is ``hash`` for an IOS password hash, which must be emitted
     verbatim and can never be re-derived — Part 2's rotation must skip those,
     because "rotating" one means asking the device to generate a new hash.
+
+    **Refuses to replace a secret another list owns.** List-scoped keys already
+    make a cross-list collision impossible through
+    :func:`template_secret_key`, so this guard exists for the case that
+    actually caused the bug: a caller that builds the key itself. Ownership is
+    recorded on the entry and checked on write, so the rule holds even when the
+    key is constructed somewhere this module cannot see.
     """
+    from modules.config import list_slug
+
+    slug = list_slug(list_name) if list_name else split_template_secret_key(name)[0]
     with _lock:
         data = _load()
-        data.setdefault("template_secrets", {})[name] = {
+        store = data.setdefault("template_secrets", {})
+        existing = store.get(name)
+        if existing:
+            owner = existing.get("list", "")
+            if owner and slug and owner != slug:
+                raise SecretOwnedByAnotherList(
+                    f"secret '{name}' belongs to device list '{owner}'; "
+                    f"'{slug}' may not overwrite it. This is the collision that "
+                    "made one network deploy another network's credentials — "
+                    "use a list-scoped key from template_secret_key().")
+        store[name] = {
             "value": encrypt_value(value),
             "secret_kind": secret_kind,
+            "list": slug,
+            "device": split_template_secret_key(name)[1],
             "last_rotated": time.time() if secret_kind != "hash" else None,
         }
         _save(data)
-    log.info("credentials: stored template secret '%s' (kind=%s)", name, secret_kind)
+    log.info("credentials: stored template secret '%s' (kind=%s, list=%s)",
+             name, secret_kind, slug or "unscoped")
     return {"ok": True}
 
 
@@ -203,11 +262,68 @@ def get_template_secret(name: str) -> str:
     return decrypt_value(entry.get("value", "")) if entry else ""
 
 
-def list_template_secrets() -> list:
-    """Names and kinds only — never values."""
-    return [{"name": name, "secret_kind": entry.get("secret_kind", "plaintext"),
-             "rotatable": entry.get("secret_kind") != "hash"}
-            for name, entry in sorted(_load().get("template_secrets", {}).items())]
+def list_template_secrets(list_name: str = "") -> list:
+    """Names and kinds only — never values. Filtered to *list_name* when given."""
+    from modules.config import list_slug
+
+    want = list_slug(list_name) if list_name else ""
+    out = []
+    for name, entry in sorted(_load().get("template_secrets", {}).items()):
+        slug = entry.get("list", "") or split_template_secret_key(name)[0]
+        if want and slug != want:
+            continue
+        out.append({"name": name, "secret_kind": entry.get("secret_kind", "plaintext"),
+                    "rotatable": entry.get("secret_kind") != "hash",
+                    "list": slug, "device": entry.get("device", "")})
+    return out
+
+
+def migrate_template_secrets_to_list_scope(list_name: str,
+                                           dry_run: bool = True) -> dict:
+    """Move legacy ``<host>:<ref>`` keys into *list_name*'s namespace.
+
+    Every key predating list scoping belongs to whichever list was the only one
+    — unambiguous here because there has only ever been one. A key that already
+    carries a slug is left alone, so this is idempotent and safe to re-run.
+
+    Values are re-encrypted through ``set_template_secret``'s own path rather
+    than copied, so the stored shape is whatever that function produces today.
+    """
+    from modules.config import list_slug
+
+    slug = list_slug(list_name)
+    data = _load()
+    store = data.get("template_secrets", {})
+
+    moves, skipped = [], []
+    for name, entry in sorted(store.items()):
+        key_slug, hostname, ref = split_template_secret_key(name)
+        if key_slug or entry.get("list"):
+            skipped.append({"name": name, "reason": "already list-scoped"})
+            continue
+        moves.append({"from": name,
+                      "to": template_secret_key(list_name, hostname, ref),
+                      "secret_kind": entry.get("secret_kind", "plaintext")})
+
+    if dry_run or not moves:
+        return {"ok": True, "dry_run": dry_run, "moved": moves,
+                "skipped": skipped, "count": len(moves)}
+
+    with _lock:
+        data = _load()
+        store = data.setdefault("template_secrets", {})
+        for move in moves:
+            entry = store.get(move["from"])
+            if not entry:
+                continue
+            store[move["to"]] = {**entry, "list": slug,
+                                 "device": split_template_secret_key(move["to"])[1]}
+            del store[move["from"]]
+        _save(data)
+    log.warning("credentials: migrated %d template secret(s) into list '%s'",
+                len(moves), slug)
+    return {"ok": True, "dry_run": False, "moved": moves, "skipped": skipped,
+            "count": len(moves)}
 
 
 def resolve(mgmt_ip: str, role: str = "", site: str = "",

@@ -137,7 +137,8 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
     committed = hostvars.read_committed(repo, hostname)
     bootstrap = committed is None
     # Names become values here and only here, in memory, as late as possible.
-    intent = None if bootstrap else hostvars.hydrate_secrets(committed, hostname)
+    intent = (None if bootstrap else
+              hostvars.hydrate_secrets(committed, hostname, list_name))
 
     bound = _bound_host_vars(repo, template, platform,
                              cache if cache is not None else {})
@@ -230,7 +231,8 @@ def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
         if getattr(artifact, "template_root", ""):
             render_kwargs["template_root"] = artifact.template_root
         before = roundtrip.render(
-            hostvars.hydrate_secrets(previous, hostname),
+            hostvars.hydrate_secrets(previous, hostname,
+                                     hostvars.list_name_for_repo(repo)),
             artifact.platform, **render_kwargs)
     except Exception as exc:                  # noqa: BLE001
         log.warning("deploy: could not render previous intent for %s: %s",

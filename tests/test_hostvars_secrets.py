@@ -115,9 +115,9 @@ class TestStaging:
     def test_hash_kind_is_recorded(self):
         out = get_parser("cisco_ios").parse(_config("s1_vios_l2.cfg"))
         moved = {e["ref"]: e["kind"]
-                 for e in hostvars.store_secrets(out, "s1")["moved"]}
-        assert moved["s1:user_admin_secret"] == "hash"
-        assert moved["s1:snmp_community_ro"] == "plaintext"
+                 for e in hostvars.store_secrets(out, "s1", list_name="lab")["moved"]}
+        assert moved["lab:s1:user_admin_secret"] == "hash"
+        assert moved["lab:s1:snmp_community_ro"] == "plaintext"
 
 
 class TestCommittedIntentNeverHoldsASecretValue:
@@ -133,7 +133,7 @@ class TestCommittedIntentNeverHoldsASecretValue:
     def store(self, tmp_path, monkeypatch):
         """A credential store holding one real secret for s1."""
         from modules import credentials
-        values = {"s1:user_admin_secret": "$9$RealHashValue$notregenerable"}
+        values = {"lab:s1:user_admin_secret": "$9$RealHashValue$notregenerable"}
         monkeypatch.setattr(credentials, "get_template_secret",
                             lambda name: values.get(name, ""))
         monkeypatch.setattr(credentials, "list_template_secrets",
@@ -144,16 +144,16 @@ class TestCommittedIntentNeverHoldsASecretValue:
     def test_to_yaml_emits_refs_not_values(self, store):
         from modules.nsot import hostvars
         text = hostvars.to_yaml({"hostname": "s1",
-                                 "secrets": {"user_admin_secret": store["s1:user_admin_secret"]}})
+                                 "secrets": {"user_admin_secret": store["lab:s1:user_admin_secret"]}})
         assert "secret_refs" in text
-        assert store["s1:user_admin_secret"] not in text
+        assert store["lab:s1:user_admin_secret"] not in text
 
     def test_write_committed_refuses_a_resolved_value(self, tmp_path, store):
         from modules.nsot import hostvars
         with pytest.raises(hostvars.SecretLeak):
             hostvars.write_committed_text(
                 str(tmp_path), "s1",
-                f"hostname: s1\nbanner: {store['s1:user_admin_secret']}\n")
+                f"hostname: s1\nbanner: {store['lab:s1:user_admin_secret']}\n")
 
     def test_write_committed_refuses_a_secrets_mapping(self, tmp_path, store):
         from modules.nsot import hostvars
@@ -166,7 +166,7 @@ class TestCommittedIntentNeverHoldsASecretValue:
         path = hostvars.write_committed_text(
             str(tmp_path), "s1", "hostname: s1\nsecret_refs:\n- user_admin_secret\n")
         with open(path, encoding="utf-8") as fh:
-            assert store["s1:user_admin_secret"] not in fh.read()
+            assert store["lab:s1:user_admin_secret"] not in fh.read()
 
     def test_no_committed_file_in_the_repo_holds_a_value(self, tmp_path, store):
         """The property stated directly, over every file in the store."""
@@ -174,7 +174,7 @@ class TestCommittedIntentNeverHoldsASecretValue:
         repo = str(tmp_path)
         hostvars.write_committed(repo, {
             "hostname": "s1",
-            "secrets": {"user_admin_secret": store["s1:user_admin_secret"]},
+            "secrets": {"user_admin_secret": store["lab:s1:user_admin_secret"]},
             "interfaces": [],
         })
         for name in hostvars.list_committed(repo):
@@ -188,16 +188,16 @@ class TestCommittedIntentNeverHoldsASecretValue:
         repo = str(tmp_path)
         hostvars.write_committed(repo, {
             "hostname": "s1",
-            "secrets": {"user_admin_secret": store["s1:user_admin_secret"]},
+            "secrets": {"user_admin_secret": store["lab:s1:user_admin_secret"]},
         })
         committed = hostvars.read_committed(repo, "s1")
         assert "secrets" not in committed
 
-        live = hostvars.hydrate_secrets(committed, "s1")
-        assert live["secrets"]["user_admin_secret"] == store["s1:user_admin_secret"]
+        live = hostvars.hydrate_secrets(committed, "s1", "lab")
+        assert live["secrets"]["user_admin_secret"] == store["lab:s1:user_admin_secret"]
 
         with open(hostvars.committed_path(repo, "s1"), encoding="utf-8") as fh:
-            assert store["s1:user_admin_secret"] not in fh.read()
+            assert store["lab:s1:user_admin_secret"] not in fh.read()
 
     def test_a_reference_with_no_stored_value_is_not_silently_empty(self, tmp_path, store):
         from modules.nsot import hostvars
@@ -382,3 +382,155 @@ class TestCommittedIntentMustBePrintableAscii:
         with pytest.raises(hostvars.NonPrintableContent):
             hostvars.write_committed(str(tmp_path),
                                      {"hostname": "s4", "banner": "a — b"})
+
+
+class TestSecretsAreScopedToTheirDeviceList:
+    """The collision that made one network deploy another network's credentials.
+
+    The key was ``<hostname>:<ref>`` in one installation-wide store, built by
+    four separate f-strings in three modules. Two lists that each contain a
+    device called ``r1`` — the actual name in the reference lab, and the
+    likeliest name in any second one — shared one key. The second list's
+    extraction silently replaced the first's, and the first network then
+    rendered and deployed the second network's SNMP community, with **every
+    guard on the deploy path satisfied**: none of them asks which network a
+    secret belongs to.
+    """
+
+    @pytest.fixture
+    def store(self, tmp_path, monkeypatch):
+        from modules import credentials
+        monkeypatch.setattr(credentials, "_FILE",
+                            str(tmp_path / "credential_profiles.json"))
+        return credentials
+
+    def test_two_lists_with_the_same_device_name_do_not_collide(self, store):
+        from modules.nsot import hostvars
+
+        hostvars.store_secrets({"secrets": {"snmp_community_ro": "NET-A-VALUE"}},
+                               "r1", dry_run=False, list_name="campus")
+        hostvars.store_secrets({"secrets": {"snmp_community_ro": "NET-B-VALUE"}},
+                               "r1", dry_run=False, list_name="branch")
+
+        assert store.get_template_secret(
+            store.template_secret_key("campus", "r1", "snmp_community_ro")) == "NET-A-VALUE"
+        assert store.get_template_secret(
+            store.template_secret_key("branch", "r1", "snmp_community_ro")) == "NET-B-VALUE"
+        assert len(store.list_template_secrets()) == 2
+
+    def test_hydration_resolves_this_lists_secret(self, store):
+        """The end the bug came out of: the wrong value reaching a render."""
+        from modules.nsot import hostvars
+
+        for list_name, value in (("campus", "NET-A-VALUE"), ("branch", "NET-B-VALUE")):
+            hostvars.store_secrets({"secrets": {"snmp_community_ro": value}},
+                                   "r1", dry_run=False, list_name=list_name)
+
+        intent = {"hostname": "r1", "secret_refs": ["snmp_community_ro"]}
+        campus = hostvars.hydrate_secrets(intent, "r1", "campus")
+        branch = hostvars.hydrate_secrets(intent, "r1", "branch")
+
+        assert campus["secrets"]["snmp_community_ro"] == "NET-A-VALUE"
+        assert branch["secrets"]["snmp_community_ro"] == "NET-B-VALUE"
+
+    def test_listing_can_be_filtered_to_one_list(self, store):
+        from modules.nsot import hostvars
+        for list_name in ("campus", "branch"):
+            hostvars.store_secrets({"secrets": {"snmp_community_ro": "v"}},
+                                   "r1", dry_run=False, list_name=list_name)
+
+        assert [e["name"] for e in store.list_template_secrets("campus")] == \
+               ["campus:r1:snmp_community_ro"]
+        assert len(store.list_template_secrets()) == 2
+
+    def test_a_write_may_not_replace_another_lists_secret(self, store):
+        """Defence for the case that caused the bug: a hand-built key.
+
+        List-scoped keys already make the collision impossible through
+        `template_secret_key`. This guard covers a caller that constructs the
+        key itself, which is exactly what the four f-strings were.
+        """
+        store.set_template_secret("campus:r1:snmp_community_ro", "NET-A",
+                                  list_name="campus")
+        with pytest.raises(store.SecretOwnedByAnotherList) as excinfo:
+            store.set_template_secret("campus:r1:snmp_community_ro", "NET-B",
+                                      list_name="branch")
+
+        assert "campus" in str(excinfo.value)
+        assert store.get_template_secret("campus:r1:snmp_community_ro") == "NET-A"
+
+    def test_a_list_may_update_its_own_secret(self, store):
+        """Rotation must still work — the guard is about OTHER lists."""
+        store.set_template_secret("campus:r1:snmp_community_ro", "OLD",
+                                  list_name="campus")
+        store.set_template_secret("campus:r1:snmp_community_ro", "NEW",
+                                  list_name="campus")
+        assert store.get_template_secret("campus:r1:snmp_community_ro") == "NEW"
+
+    def test_the_key_is_built_in_exactly_one_place(self):
+        """Four f-strings in three modules is how the shapes drifted apart."""
+        import inspect
+        import re
+        import subprocess
+
+        from modules import credentials
+
+        out = subprocess.run(
+            ["grep", "-rn", "-E", r"\{(hostname|host)\}:\{", "--include=*.py",
+             "modules/", "routes/", "scripts/"],
+            capture_output=True, text=True).stdout
+        # The one legitimate construction is the body of template_secret_key.
+        owner = inspect.getsource(credentials.template_secret_key)
+        strays = [line for line in out.splitlines()
+                  if line.strip() and line.split(":", 2)[-1].strip() not in
+                  [l.strip() for l in owner.splitlines()]]
+        assert strays == [], (
+            "a template-secret key is built outside template_secret_key():\n"
+            + "\n".join(strays))
+
+
+class TestLegacySecretMigration:
+    """Existing keys predate list scoping and all belong to the only list."""
+
+    @pytest.fixture
+    def store(self, tmp_path, monkeypatch):
+        from modules import credentials
+        monkeypatch.setattr(credentials, "_FILE",
+                            str(tmp_path / "credential_profiles.json"))
+        credentials.set_template_secret("r1:snmp_community_ro", "LEGACY-A")
+        credentials.set_template_secret("s1:user_admin_secret", "LEGACY-B",
+                                        secret_kind="hash")
+        return credentials
+
+    def test_dry_run_writes_nothing(self, store):
+        result = store.migrate_template_secrets_to_list_scope("Default")
+        assert result["dry_run"] is True
+        assert result["count"] == 2
+        assert store.get_template_secret("r1:snmp_community_ro") == "LEGACY-A"
+        assert store.get_template_secret("default:r1:snmp_community_ro") == ""
+
+    def test_apply_moves_keys_and_preserves_values_and_kinds(self, store):
+        store.migrate_template_secrets_to_list_scope("Default", dry_run=False)
+
+        assert store.get_template_secret("default:r1:snmp_community_ro") == "LEGACY-A"
+        assert store.get_template_secret("default:s1:user_admin_secret") == "LEGACY-B"
+        assert store.get_template_secret("r1:snmp_community_ro") == ""
+
+        kinds = {e["name"]: e["secret_kind"] for e in store.list_template_secrets()}
+        assert kinds["default:s1:user_admin_secret"] == "hash"
+        assert kinds["default:r1:snmp_community_ro"] == "plaintext"
+
+    def test_migration_is_idempotent(self, store):
+        store.migrate_template_secrets_to_list_scope("Default", dry_run=False)
+        again = store.migrate_template_secrets_to_list_scope("Default", dry_run=False)
+
+        assert again["count"] == 0
+        assert len(again["skipped"]) == 2
+        assert store.get_template_secret("default:r1:snmp_community_ro") == "LEGACY-A"
+
+    def test_a_migrated_key_is_owned_and_guarded(self, store):
+        """After migration the ownership guard protects it."""
+        store.migrate_template_secrets_to_list_scope("Default", dry_run=False)
+        with pytest.raises(store.SecretOwnedByAnotherList):
+            store.set_template_secret("default:r1:snmp_community_ro", "X",
+                                      list_name="branch")
