@@ -221,3 +221,50 @@ The asymmetry between them is real and load-bearing: the C8000v's `Gi1` is
 absent because vrnetlab owns it, while the vIOS's `Gi0/0` is configured
 explicitly because nothing else will. A wizard that treated the two platforms
 the same would produce an unreachable switch.
+
+---
+
+## The two platforms bootstrap differently, and it decides the username form
+
+Measured in the launch scripts rather than inferred from behaviour.
+
+| | C8000v | vIOS-L2 |
+|---|---|---|
+| bootstrap config | `cfg = gen_bootstrap_config() + startup_cfg` | none |
+| injects a username line | **yes** — `username admin privilege 15 password admin` | **no** |
+| with no startup config | falls back to bootstrap only; boots | `logger.fatal("Failed to find startup configuration file")` |
+| username form this file may use | **password** | **secret** |
+
+This explains both of the first probe's failures precisely. The vIOS did not
+stall because it was slow — it failed fatally, by design, for want of a file.
+And the C8000v's fallback path works, so its failure was purely the missing
+second vCPU.
+
+It also settles the username form by mechanism rather than by convention. On
+the C8000v, vrnetlab's line lands first, so a `secret` here would arrive at a
+user who already has a `password` and be refused — the same refusal measured
+on r2 in stage 1. On the vIOS nothing is injected, so `secret` is safe, and a
+username line is not optional: without one the node is unreachable.
+
+### A hazard this uncovered, outside the probe
+
+`configs/r1.cfg` … `r5.cfg` in `~/labs/lab` **currently contain `secret 9`**,
+harvested after the credential rotation. Those files have not been booted:
+r1 and s1 last started **2026-09-19 05:23**, and the files were rewritten
+**2026-09-21 18:41**.
+
+On the next redeploy, each router's `secret 9` line would arrive after
+vrnetlab's `username admin privilege 15 password admin` and be **refused**.
+The routers would come up holding vrnetlab's password, while NMAS holds the
+type-9 credential — so NMAS could not log in, and the startup file would look
+correct while being unappliable.
+
+The switches are unaffected: nothing is injected there, so their `secret 9`
+line is the only one and applies cleanly.
+
+This is the inverse of the hazard the persistence chain was built for. That
+chain verifies the new hash **is in the startup file**; it never verified the
+file would **apply**. Writing it down here rather than fixing it in passing —
+it wants its own decision, and the fix is probably that a C8000v startup file
+must carry the password form and let `set_credential` rotate afterwards,
+which is exactly what the wizard will do for r6.
