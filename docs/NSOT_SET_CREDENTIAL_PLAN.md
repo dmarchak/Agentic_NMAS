@@ -75,19 +75,20 @@ NMAS 10.255.0.10 → gateway 10.255.0.1 → device Loopback0s (10.255.1.11–15)
 10.255.0.1 is on s3.
 ```
 
-**s3 is the single management gateway for the entire lab.** It is not in scope
-here, and that is worth stating plainly: this item touches routers only, and
-the one device whose loss would isolate everything is deliberately untouched.
+**s3 is the single management gateway for the entire lab.** Stage 1 touches
+routers only; s3 is converted in **stage 2 and goes LAST of all nine**, because
+it is the one device whose loss isolates everything else.
 
 Because the routers are reached by *routing* to their loopbacks, a credential
 lockout is confined to the device it happens on — it does not isolate its
 neighbours. Blast radius of a failure here is "lose management of one router",
 not "lose the lab".
 
-**Out-of-band recovery must be confirmed before the first run**: containerlab
-nodes are reachable with `docker exec` on the NMAS host, which bypasses SSH
-entirely. That is the recovery path if both the push and the revert fail, and
-it should be *demonstrated once* on the first device before it is needed.
+**Out-of-band recovery is the serial console on the containerlab host**, which
+is `10.0.0.210` — **not** the NMAS. `docker exec` reaches the *container*, not
+IOS; the network OS runs inside qemu behind a serial console on `:5000`. The
+verified procedure is in **§GAP 3**, and it is *demonstrated* before it is
+needed, not at the moment of need.
 
 ---
 
@@ -235,7 +236,11 @@ Rotate login credential — r2 (10.255.1.12)
                     original line is restored on the still-open session and the
                     result is reported either way.
 
-  out-of-band       docker exec on the NMAS host  (confirmed reachable ✓)
+  out-of-band       serial console on the containerlab host (10.0.0.210):
+                      ssh dmarchak@10.0.0.210
+                      docker exec -it clab-rcn-lab1-r2 telnet localhost 5000
+                      exit with  ^]  then  quit  — ONE session only
+                    demonstrated on this device before this run ✓
 
   NOT changed       the template (no approval revocation)
                     any other device
@@ -435,15 +440,31 @@ rotating.
 ### The sequence, appended to §3 step 6b
 
 ```
- 6b-vii.  UPDATE OXIDIZED's credential for this device
- 6b-viii. REQUEST AN IMMEDIATE FETCH
-            POST/GET  http://127.0.0.1:8888/node/next/<node>
+ 6b-vii.  UPDATE OXIDIZED's credential FOR THIS DEVICE  (router.db row)
+ 6b-viii. REQUEST A FETCH
+            GET  http://127.0.0.1:8888/node/next/<node>
             node name = the device IP (router.db maps name: 0)
- 6b-ix.   RUN THE SYNC
+ 6b-ix.   CONFIRM THE FETCH SUCCEEDED  ← not "requested", succeeded
+            read the node status from oxidized-web and require a SUCCESSFUL
+            fetch timestamped AFTER the rotation
+ 6b-x.    RUN THE SYNC
             /home/dmarchak/bin/clab-sync        ← see below
- 6b-x.    VERIFY ON THE CLAB VM  (10.0.0.210), not the NMAS's local copy
+ 6b-xi.   VERIFY ON THE CLAB VM  (10.0.0.210), not the NMAS's local copy
             ~/labs/lab/configs/<device>.cfg contains the NEW $9$ hash
 ```
+
+**Step 6b-ix is a separate step for a reason.** Requesting a fetch and a fetch
+succeeding are different events. If the sync runs on Oxidized's *previous*
+copy, the clab-VM check at 6b-xi fails — and it fails for a reason that looks
+nothing like its cause: the startup file simply does not contain the new hash,
+with no indication that the harvest never happened. Confirming the fetch turns
+a confusing downstream failure into an obvious upstream one.
+
+**Step 6b-vii depends on stage 0 having already moved Oxidized to per-device
+credentials.** Oxidized's credential is a *single global* value, so the moment
+r2 has a different password from the other eight, one global value cannot serve
+both. There is no ordering of stage 1 that avoids this — it breaks on the first
+device.
 
 **The verification must read the clab VM.** `~/lab-configs/configs/` on the
 NMAS is the sanitiser's *staging output*; the file that actually boots the node
@@ -540,10 +561,12 @@ releasing cleanly.
 ## 9. Revised sequencing
 
 ```
- STAGE 0   demonstrate OOB on r2 (GAP 3) — reach a prompt, release cleanly
-           confirm the Oxidized fetch + sync + clab-VM verify loop works
-           on an UNCHANGED device first, so the loop is proven before it
-           is load-bearing
+ STAGE 0   1. demonstrate OOB on r2 (GAP 3) — reach a prompt, release cleanly
+           2. move Oxidized to PER-DEVICE credentials (router.db columns),
+              every device still on its CURRENT password
+           3. confirm how the installed Oxidized reloads its node list
+           4. confirm a SUCCESSFUL fetch for all nine
+           5. run clab-sync; clab-VM files unchanged except expected
 
  STAGE 1   r2  →  r1  →  r3  →  r4  →  r5      sequential, stop at first failure
            each: rotate → verify → commit → update consumers → prove redeploy
@@ -556,10 +579,27 @@ releasing cleanly.
            then a dead credential, and the weak hashes are gone too
 ```
 
-Stage 0's second line is the part most easily skipped: proving the
-Oxidized→sync→clab-VM loop on a device **nothing has changed** separates "the
+### Why stage 0 carries the Oxidized migration
+
+Step 2 **changes how Oxidized stores credentials without changing any
+credential.** Every device stays on its current password; only the place the
+password is read from moves, from one global value to a per-device column. That
+makes it independently reversible and independently provable — a normal fetch
+cycle either works or does not, with no rotation in flight to confuse the
+diagnosis.
+
+Doing it during stage 1 instead would mean changing *where the credential comes
+from* and *what the credential is* in the same step, on a device that is
+temporarily unreachable if either goes wrong.
+
+Steps 4 and 5 are the part most easily skipped: proving the
+Oxidized→sync→clab-VM loop on devices **nothing has changed** separates "the
 loop works" from "the rotation worked", which are otherwise discovered
 together, at the worst moment.
+
+`router.db` holds plaintext credentials, so it must be **owner-only (0600) and
+owned by the user Oxidized runs as** — it is gaining eight more secrets than it
+had.
 
 ---
 
