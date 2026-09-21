@@ -205,53 +205,102 @@ def intent_at(source, hostname: str):
     return hostvars.from_yaml(raw) if raw else None
 
 
+def golden_user_lines(repo: str, ref: str, hostname: str):
+    """Normalized ``username`` lines from this device's golden at *ref*.
+
+    ``None`` when there is no golden there at all, which is a different answer
+    from "no username lines" and must not be confused with it.
+    """
+    from modules.nsot.repo import git
+
+    rc, text, _err = git(repo, "show", f"{ref}:golden/{hostname}.cfg")
+    if rc != 0:
+        return None
+    return sorted(" ".join(line.split()) for line in text.splitlines()
+                  if line.startswith("username "))
+
+
 def baseline_credential_gaps(repo: str, ref: str, list_name: str,
                              hosts: list) -> dict:
-    """Which devices' credentials does *ref* predate?
+    """Which devices' credentials does *ref* predate? MEASURED, not inferred.
 
-    A restore point normally goes stale by being *behind*. A credential
-    rotation makes it stale in a second direction: the ref names a secret the
-    device has been deliberately moved away from, and re-applying it would
-    re-publish a secret that exists in history precisely because rotation was
-    meant to kill it.
+    The first version asked whether the secret_ref NAME in the ref's intent
+    still existed in the credential store. That is a proxy, and it failed on
+    the case it most needed to catch.
 
-    :func:`validate_restored_intent` already REFUSES such a device at plan
-    time, so this is not the guard — it is the same question asked early
-    enough to be printed next to the button, instead of after the operator has
-    committed to the operation.
+    The routers' rotation renamed the ref (``user_admin_password`` ->
+    ``user_admin_secret``), so the name disappeared and the check fired. The
+    switches' rotation kept ``user_admin_secret`` and changed only the VALUE,
+    so the name was still there and the check reported "credentials current"
+    for four baselines that predate all four switch rotations.
 
-    Returns ``{"stale": {host: [refs]}, "no_intent": [hosts], "checked": n}``.
+    That is the dangerous direction. On these switches a secret replaces a
+    secret cleanly — measured — so re-applying such a baseline would push the
+    old ``secret 5`` line, every switch would accept it, and this tool, which
+    holds the new password, would lose SSH to all four. No device refusal, and
+    the intent-side guard silent because the name matched. Every future
+    rotation would have been invisible too, the routers now being on
+    ``user_admin_secret`` as well.
 
-    ``no_intent`` is reported separately and deliberately NOT as safe: a ref
-    predating this device's onboarding has no committed intent to check, which
-    is a different thing from having intent that is still valid.
+    So compare the thing itself: the device's ``username`` lines as this ref
+    stored them against as HEAD stores them. A difference means re-applying
+    would change the credential, whatever the refs are called.
+
+    Returns::
+
+        {"stale":     {host: {"at_ref": "...", "at_head": "..."}},
+         "refused":   [hosts],   # the intent guard WOULD stop these
+         "silent":    [hosts],   # stale AND nothing would stop it
+         "no_golden": [hosts],
+         "checked":   n}
+
+    ``silent`` is the set that matters. A stale device the restore already
+    refuses is a nuisance; a stale device it does not refuse is a lockout.
     """
     import yaml
 
     from modules.credentials import get_template_secret, template_secret_key
     from modules.nsot.repo import git
 
-    stale, no_intent = {}, []
+    def kind(lines):
+        if not lines:
+            return "none"
+        parts = lines[0].split()
+        for keyword in ("secret", "password"):
+            if keyword in parts:
+                return f"{keyword} {parts[parts.index(keyword) + 1]}"
+        return "?"
+
+    stale, refused, no_golden = {}, [], []
     for host in hosts:
+        at_ref = golden_user_lines(repo, ref, host)
+        at_head = golden_user_lines(repo, "HEAD", host)
+        if at_ref is None or at_head is None:
+            no_golden.append(host)
+            continue
+        if at_ref != at_head:
+            stale[host] = {"at_ref": kind(at_ref), "at_head": kind(at_head)}
+
+        # Separately: would validate_restored_intent() refuse this device?
+        # That is the existing intent-side guard, and knowing whether it
+        # covers a stale device is the difference between a nuisance and a
+        # lockout.
         rc, text, _err = git(repo, "show", f"{ref}:host_vars/{host}.yml")
         if rc != 0 or not (text or "").strip():
-            no_intent.append(host)
             continue
         try:
             intent = yaml.safe_load(text) or {}
         except Exception:                      # noqa: BLE001
-            no_intent.append(host)
             continue
-        refs = intent.get("secret_refs") or []
-        if not refs:
-            no_intent.append(host)
-            continue
-        missing = [r for r in refs
+        missing = [r for r in (intent.get("secret_refs") or [])
                    if not get_template_secret(
                        template_secret_key(list_name, host, r))]
         if missing:
-            stale[host] = missing
-    return {"stale": stale, "no_intent": no_intent, "checked": len(hosts)}
+            refused.append(host)
+
+    return {"stale": stale, "refused": sorted(refused),
+            "silent": sorted(set(stale) - set(refused)),
+            "no_golden": sorted(no_golden), "checked": len(hosts)}
 
 
 def validate_restored_intent(repo: str, hostname: str, intent: dict,

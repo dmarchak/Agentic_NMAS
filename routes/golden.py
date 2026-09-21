@@ -145,7 +145,12 @@ def baselines():
             gaps = baseline_credential_gaps(repo, entry["tag"], list_name,
                                             devices)
             entry["credential_stale"] = sorted(gaps["stale"])
-            entry["no_intent"] = sorted(gaps["no_intent"])
+            entry["credential_detail"] = gaps["stale"]
+            # Stale AND not refused by the intent guard: re-applying these
+            # would actually land, and this tool would lose access to them.
+            entry["credential_silent"] = gaps["silent"]
+            entry["credential_refused"] = gaps["refused"]
+            entry["no_intent"] = gaps["no_golden"]
         return jsonify({"ok": True, "baselines": entries})
     except Exception as exc:                  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500

@@ -4515,3 +4515,72 @@ as context rather than as something bound.
 
 Verified against the real switches: `plan()` and `rotate()`'s expected value
 now agree on s1, s2 and s4, each resolving to the one-command program.
+
+## Checking the name instead of the thing
+
+The Baselines panel badged `baseline/20260921T172602Z` **"credentials current"**.
+That baseline predates all four switch rotations.
+
+`baseline_credential_gaps()` asked whether the secret_ref NAME in the ref's
+intent still existed in the credential store. It worked on the routers by
+accident: their rotation renamed the ref, `user_admin_password` ->
+`user_admin_secret`, so the old name vanished from the store and the check
+fired. The switches' rotation kept `user_admin_secret` and changed only the
+**value**. The name was still there. The check saw nothing.
+
+Measured across the real baselines, name-based against line-based:
+
+```
+baseline                     name-based      measured
+…184324Z                     []              []
+…183320Z                     []              ['s3']
+…172602Z                     []              ['s1','s2','s3','s4']
+…170754Z                     ['r3','r4','r5'] ['r3','r4','r5','s1','s2','s3','s4']
+-migrated                    ['no-intent']   all nine
+```
+
+### Why this one was dangerous rather than untidy
+
+Every other gap in this work failed toward refusing something. This one failed
+toward doing it.
+
+A secret replaces a secret cleanly on these switches — measured two days ago
+while deciding the stage 2 program, and the measurement that made the
+one-command form correct is the same measurement that makes this a lockout.
+Re-applying `…172602Z` would push the old `secret 5` line, all four switches
+would accept it without complaint, and this tool — holding the new password —
+would lose SSH to every one of them, s3 the management gateway included. The
+device-side refusal that saved the routers does not exist here, and the
+intent-side guard stays silent because the name matches.
+
+It was also about to get worse rather than better. The routers are now on
+`user_admin_secret` too, so **every future rotation would have been invisible
+to this check** — the one case it caught was the one-off rename, not the
+general case.
+
+### Measure the property
+
+The property is "would re-applying this change the credential", and it is
+answered by comparing the device's `username` lines as the ref stored them
+against as HEAD stores them. Whitespace is normalised so rendering differences
+are not changes; nothing else is, because the secret token is the fact.
+
+The result separates two things that were previously one:
+
+* **`refused`** — the intent guard would stop this device. A nuisance.
+* **`silent`** — stale, and nothing would stop it. A lockout.
+
+`silent` is the number that matters, and the confirmation now states the
+consequence rather than the category: *"NMAS would LOSE SSH ACCESS to s1, s2,
+s3, s4 — recovery is the serial console"*, behind a typed `APPLY`.
+
+Run against the real repository, the worst entry is not any of the ones that
+prompted this. `baseline/20260920T212325Z-migrated` has no committed intent at
+all, so nothing is refused, and re-applying it would land old credentials on
+**all nine devices**. The old check called that one "no intent" — which I had
+already flagged as not meaning safe, and which still did not say *lockout*.
+
+> A proxy is a claim that two things move together. It is worth checking which
+> of them you actually care about, and whether anything can move one without
+> the other — because that is where the proxy will fail, and it will fail
+> quietly.

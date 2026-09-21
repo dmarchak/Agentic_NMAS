@@ -135,17 +135,23 @@ async function downloadGoldenVersion(hostname, ref) {
    because rotation was meant to kill it. validate_restored_intent() refuses
    such a device at plan time; this says so before the click. */
 function _gCredWarning(b) {
-  const stale = b.credential_stale || [];
-  const none = b.no_intent || [];
+  const stale  = b.credential_stale || [];
+  const silent = b.credential_silent || [];
+  const none   = b.no_intent || [];
   if (stale.length) {
+    // `silent` is the set the restore would NOT refuse — it would land, and
+    // this tool would lose SSH to those devices.
+    const worst = silent.length
+      ? `<div class="small text-danger">NMAS would LOSE ACCESS to: ${silent.map(_gEsc).join(', ')}</div>`
+      : '';
     return `<span class="badge bg-danger-subtle text-danger-emphasis"
-             title="These devices' credentials were rotated after this baseline. Re-applying it would name secrets that no longer exist; the restore refuses them at plan time.">
-             predates credentials: ${stale.map(_gEsc).join(', ')}</span>`;
+             title="These devices' username lines at this baseline differ from the ones they have now. Re-applying would change their credentials back.">
+             predates credentials: ${stale.map(_gEsc).join(', ')}</span>${worst}`;
   }
   if (none.length) {
     return `<span class="badge bg-secondary-subtle text-secondary-emphasis"
-             title="No committed intent at this ref for these devices — not the same as being safe.">
-             no intent: ${none.map(_gEsc).join(', ')}</span>`;
+             title="No golden at this ref for these devices — not the same as being safe.">
+             no golden: ${none.map(_gEsc).join(', ')}</span>`;
   }
   return '<span class="badge bg-success-subtle text-success-emphasis">credentials current</span>';
 }
@@ -161,12 +167,27 @@ function _gCredWarning(b) {
 window._gBaselineCache = [];
 window.confirmBaselineRestore = function (tag) {
   const b = (window._gBaselineCache || []).find(x => x.tag === tag) || {};
-  const stale = b.credential_stale || [];
-  if (stale.length && !confirm(
-        `${tag} predates the credentials now on: ${stale.join(', ')}.\n\n` +
-        `Re-applying it names secrets that no longer exist in the credential ` +
-        `store, so the restore will REFUSE those devices at plan time.\n\n` +
-        `Continue to the preview anyway?`)) return;
+  const stale   = b.credential_stale || [];
+  const silent  = b.credential_silent || [];
+  const refused = b.credential_refused || [];
+  if (!stale.length) { previewBaselineRestore(tag); return; }
+
+  let msg = `${tag} predates the credentials now on: ${stale.join(', ')}.\n\n`;
+  if (silent.length) {
+    // The dangerous case, stated as a consequence rather than a category.
+    msg += `WOULD ACTUALLY APPLY to: ${silent.join(', ')}\n` +
+           `Those devices accept a credential change without complaint, and ` +
+           `NMAS holds the NEW password — re-applying this baseline would ` +
+           `push the OLD one and NMAS would LOSE SSH ACCESS to them.\n` +
+           `Recovery is the serial console (see the rotation plan).\n\n`;
+  }
+  if (refused.length) {
+    msg += `Refused at plan time (safe): ${refused.join(', ')}\n\n`;
+  }
+  msg += `Type the word APPLY in the next prompt to continue to the preview.`;
+  if (!confirm(msg)) return;
+  const typed = prompt(`Re-apply ${tag}? Type APPLY to continue.`);
+  if ((typed || '').trim() !== 'APPLY') return;
   previewBaselineRestore(tag);
 };
 

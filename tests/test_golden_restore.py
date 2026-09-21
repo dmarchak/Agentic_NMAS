@@ -754,106 +754,162 @@ class TestTheHandoffScopesToOneDevice:
         assert uses == ['"advisory_diff": (data.get("advisory_diff") or ""),'], uses
 
 class TestBaselineCredentialGaps:
-    """Which devices' credentials a baseline predates, stated before the click.
+    """Measure whether re-applying would change the credential. Not the name.
 
-    A restore point normally goes stale by being behind. A rotation makes it
-    stale in a second direction: the ref names a secret the device has been
-    deliberately moved away from, so re-applying it would re-publish a secret
-    that exists in history precisely because rotation was meant to kill it.
+    The first version asked whether the ref's secret_ref NAME still existed in
+    the credential store. The routers' rotation renamed it
+    (user_admin_password -> user_admin_secret) so the name vanished and the
+    check fired. The switches' rotation kept user_admin_secret and changed
+    only the VALUE — so the name was still there, and four baselines that
+    predate all four switch rotations were badged "credentials current".
 
-    `validate_restored_intent()` already refuses such a device at plan time,
-    so this is not a new guard — it is the same question asked early enough to
-    print beside the button rather than after the operator has committed.
+    That is the dangerous direction, not a cosmetic miss. A secret replaces a
+    secret cleanly on those switches (measured), so re-applying such a
+    baseline would push the old `secret 5` line, every switch would take it,
+    and this tool — holding the new password — would lose SSH to all four. The
+    intent-side guard stays silent because the name matches. And every future
+    rotation would be invisible too, the routers now being on the same name.
     """
 
-    def _repo(self, tmp_path, intents):
-        """A repo with one commit holding the given host_vars."""
+    SECRET5 = ("hostname {h}\n!\n"
+               "username admin privilege 15 secret 5 $1$old$hash\n!\nend\n")
+    SECRET9 = ("hostname {h}\n!\n"
+               "username admin privilege 15 secret 9 $9$new$hash\n!\nend\n")
+    PASSWORD = ("hostname {h}\n!\n"
+                "username admin privilege 15 password 0 plain\n!\nend\n")
+
+    def _repo(self, tmp_path, at_tag, at_head, intents=None):
+        """A repo with a tagged commit and a later HEAD."""
         import subprocess
 
         import yaml
 
         repo = tmp_path / "config_repo"
+        (repo / "golden").mkdir(parents=True)
         (repo / "host_vars").mkdir(parents=True)
-        for host, data in intents.items():
+
+        def commit(message):
+            subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+            # --allow-empty: a fixture where HEAD matches the tag is exactly
+            # the "nothing changed" case these tests need to cover.
+            subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t",
+                            "-c", "user.name=t", "commit", "-q",
+                            "--allow-empty", "-m", message], check=True)
+
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+        for host, body in at_tag.items():
+            (repo / "golden" / f"{host}.cfg").write_text(
+                body.format(h=host), encoding="utf-8")
             (repo / "host_vars" / f"{host}.yml").write_text(
-                yaml.safe_dump(data), encoding="utf-8")
-        for args in (["init", "-q"], ["add", "-A"]):
-            subprocess.run(["git", "-C", str(repo), *args], check=True)
-        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t",
-                        "-c", "user.name=t", "commit", "-q", "-m", "seed"],
-                       check=True)
+                yaml.safe_dump((intents or {}).get(
+                    host, {"secret_refs": ["user_admin_secret"]})),
+                encoding="utf-8")
+        commit("at the baseline")
+        subprocess.run(["git", "-C", str(repo), "tag", "baseline/x"], check=True)
+
+        for host, body in at_head.items():
+            (repo / "golden" / f"{host}.cfg").write_text(
+                body.format(h=host), encoding="utf-8")
+        commit("later")
         return str(repo)
 
-    def test_a_rotated_device_is_reported_as_stale(self, tmp_path, monkeypatch):
+    def test_a_rotation_that_keeps_the_ref_name_is_caught(self, tmp_path,
+                                                          monkeypatch):
+        """The exact switch case: secret 5 -> secret 9, same ref name."""
         from modules.nsot.restore import baseline_credential_gaps
 
-        repo = self._repo(tmp_path, {
-            "r1": {"secret_refs": ["user_admin_password", "snmp_community_ro"]},
-            "r9": {"secret_refs": ["user_admin_secret"]},
-        })
-        # The store holds only what survives today's rotation.
+        repo = self._repo(tmp_path,
+                          at_tag={"s1": self.SECRET5, "s2": self.SECRET5},
+                          at_head={"s1": self.SECRET9, "s2": self.SECRET9})
+        # The name is still in the store — which is why the old check passed.
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "still-here")
+
+        out = baseline_credential_gaps(repo, "baseline/x", "Lab", ["s1", "s2"])
+        assert sorted(out["stale"]) == ["s1", "s2"]
+        assert out["stale"]["s1"] == {"at_ref": "secret 5", "at_head": "secret 9"}
+        assert out["refused"] == [], "the name check finds nothing — that is the point"
+        assert out["silent"] == ["s1", "s2"], (
+            "stale and NOT refused: re-applying would land and lock us out")
+
+    def test_an_unchanged_device_is_not_flagged(self, tmp_path, monkeypatch):
+        from modules.nsot.restore import baseline_credential_gaps
+
+        repo = self._repo(tmp_path, at_tag={"s1": self.SECRET9},
+                          at_head={"s1": self.SECRET9})
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "v")
+
+        out = baseline_credential_gaps(repo, "baseline/x", "Lab", ["s1"])
+        assert out["stale"] == {}
+        assert out["silent"] == []
+
+    def test_the_router_case_is_still_caught_and_marked_refused(
+            self, tmp_path, monkeypatch):
+        """password -> secret, ref renamed: stale AND refused at plan time."""
+        from modules.nsot.restore import baseline_credential_gaps
+
+        repo = self._repo(
+            tmp_path, at_tag={"r1": self.PASSWORD}, at_head={"r1": self.SECRET9},
+            intents={"r1": {"secret_refs": ["user_admin_password"]}})
         monkeypatch.setattr(
             "modules.credentials.get_template_secret",
-            lambda key: "value" if key.endswith("user_admin_secret")
-            or key.endswith("snmp_community_ro") else "")
+            lambda key: "" if key.endswith("user_admin_password") else "v")
 
-        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1", "r9"])
-        assert out["stale"] == {"r1": ["user_admin_password"]}
-        assert out["no_intent"] == []
-        assert out["checked"] == 2
+        out = baseline_credential_gaps(repo, "baseline/x", "Lab", ["r1"])
+        assert "r1" in out["stale"]
+        assert out["refused"] == ["r1"]
+        assert out["silent"] == [], "the guard covers this one"
 
-    def test_a_device_with_no_intent_is_not_reported_as_safe(
-            self, tmp_path, monkeypatch):
-        """A ref predating onboarding is a different thing from a valid one."""
-        from modules.nsot.restore import baseline_credential_gaps
-
-        repo = self._repo(tmp_path, {"r1": {"secret_refs": ["user_admin_secret"]}})
-        monkeypatch.setattr("modules.credentials.get_template_secret",
-                            lambda key: "value")
-
-        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1", "r_absent"])
-        assert out["stale"] == {}
-        assert out["no_intent"] == ["r_absent"]
-
-    def test_an_intent_with_no_secret_refs_counts_as_no_intent(
-            self, tmp_path, monkeypatch):
-        """The migrated baseline's shape: committed, but nothing to check."""
-        from modules.nsot.restore import baseline_credential_gaps
-
-        repo = self._repo(tmp_path, {"r1": {"users": [{"name": "admin"}]}})
-        monkeypatch.setattr("modules.credentials.get_template_secret",
-                            lambda key: "value")
-
-        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1"])
-        assert out["no_intent"] == ["r1"]
-        assert out["stale"] == {}
-
-    def test_everything_current_reports_nothing(self, tmp_path, monkeypatch):
-        from modules.nsot.restore import baseline_credential_gaps
-
-        repo = self._repo(tmp_path, {"r1": {"secret_refs": ["user_admin_secret"]}})
-        monkeypatch.setattr("modules.credentials.get_template_secret",
-                            lambda key: "value")
-
-        out = baseline_credential_gaps(repo, "HEAD", "Lab", ["r1"])
-        assert out == {"stale": {}, "no_intent": [], "checked": 1}
-
-    def test_malformed_intent_is_not_silently_treated_as_current(
+    def test_a_device_with_no_golden_at_the_ref_is_not_called_safe(
             self, tmp_path, monkeypatch):
         from modules.nsot.restore import baseline_credential_gaps
 
-        repo = tmp_path / "config_repo"
-        (repo / "host_vars").mkdir(parents=True)
-        (repo / "host_vars" / "r1.yml").write_text("{[not yaml", encoding="utf-8")
-        import subprocess
-        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
-        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t",
-                        "-c", "user.name=t", "commit", "-q", "-m", "seed"],
-                       check=True)
+        repo = self._repo(tmp_path, at_tag={"s1": self.SECRET9},
+                          at_head={"s1": self.SECRET9})
         monkeypatch.setattr("modules.credentials.get_template_secret",
-                            lambda key: "value")
+                            lambda key: "v")
 
-        out = baseline_credential_gaps(str(repo), "HEAD", "Lab", ["r1"])
-        assert out["no_intent"] == ["r1"], "unreadable is not current"
+        out = baseline_credential_gaps(repo, "baseline/x", "Lab",
+                                       ["s1", "newcomer"])
+        assert out["no_golden"] == ["newcomer"]
+        assert "newcomer" not in out["stale"]
+
+    def test_whitespace_alone_is_not_a_credential_change(self, tmp_path,
+                                                         monkeypatch):
+        from modules.nsot.restore import baseline_credential_gaps
+
+        spaced = ("hostname {h}\n!\n"
+                  "username  admin   privilege 15  secret 9   $9$new$hash\n!\nend\n")
+        repo = self._repo(tmp_path, at_tag={"s1": self.SECRET9},
+                          at_head={"s1": spaced})
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "v")
+
+        out = baseline_credential_gaps(repo, "baseline/x", "Lab", ["s1"])
+        assert out["stale"] == {}, "rendering differences are not changes"
+
+    def test_an_added_user_counts_as_a_credential_difference(self, tmp_path,
+                                                             monkeypatch):
+        """Not only the admin line: any username line."""
+        from modules.nsot.restore import baseline_credential_gaps
+
+        extra = self.SECRET9.replace(
+            "!\nend\n", "username backup privilege 15 secret 9 $9$b$c\n!\nend\n")
+        repo = self._repo(tmp_path, at_tag={"s1": self.SECRET9},
+                          at_head={"s1": extra})
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda key: "v")
+
+        out = baseline_credential_gaps(repo, "baseline/x", "Lab", ["s1"])
+        assert "s1" in out["stale"]
+
+    def test_golden_user_lines_distinguishes_absent_from_empty(self, tmp_path):
+        from modules.nsot.restore import golden_user_lines
+
+        repo = self._repo(tmp_path, at_tag={"s1": self.SECRET9},
+                          at_head={"s1": self.SECRET9})
+        assert golden_user_lines(repo, "HEAD", "s1") == [
+            "username admin privilege 15 secret 9 $9$new$hash"]
+        assert golden_user_lines(repo, "HEAD", "nope") is None
 
