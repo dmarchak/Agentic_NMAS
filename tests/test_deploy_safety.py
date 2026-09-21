@@ -1269,9 +1269,29 @@ class TestSendabilityIsCheckedOnSendableLines:
         with pytest.raises(DeployRefused):
             prepare_restore(bad)
 
-    def test_the_check_uses_the_same_filter_as_the_program(self):
-        """Whatever merge_commands can put in a program is what is checked."""
+    def test_there_is_one_sendability_computation_not_two(self):
+        """The target consumes merge_commands' answer rather than repeating it.
+
+        Two call sites running the same filter is the two-template-roots shape:
+        they agree until one changes. It also over-blocked — a line unsendable
+        in the stored config that the device already has identically is never
+        sent, so it has no business blocking.
+        """
         import inspect
         from modules.nsot import deploy
-        source = inspect.getsource(deploy._unsendable_config_lines)
-        assert "strip_for_roundtrip" in source
+
+        source = inspect.getsource(deploy.RestoreTarget)
+        assert "merge_commands(" in source
+        assert "strip_for_roundtrip" not in source
+
+        prepare = inspect.getsource(deploy.prepare_restore)
+        assert "assert_sendable" not in prepare
+
+    def test_an_unsendable_line_the_device_already_has_does_not_block(self):
+        """It is never pushed, so it cannot be unsendable in practice."""
+        from modules.nsot.deploy import RestoreTarget
+        text = "hostname s4\ninterface Loopback0\n description a — b\n"
+        target = RestoreTarget(device="s4", platform="cisco_ios",
+                               target_config=text, captured=text,
+                               ref="baseline/x")
+        assert target.deployable is True

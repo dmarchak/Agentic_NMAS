@@ -111,6 +111,7 @@ def restore_preview():
     from modules.nsot.deploy import (command_fingerprint, dangerous_in,
                                      merge_commands, merge_diff,
                                      prepare_restore)
+    from modules.nsot import normalize
     from modules.nsot.restore import build_targets
     from routes.deploy import _capture_hash
 
@@ -140,6 +141,12 @@ def restore_preview():
                 "add": diff["add"],
                 "replace": diff["replace"],
                 "residue": diff["residue"],
+                # Blocks a re-apply cannot send at all — certificate chains,
+                # licence UDI, banners. Correct to exclude, and the operator
+                # has to know: a drifted banner on s3 is NOT re-applied by
+                # this, and "100%" would otherwise imply it was.
+                "excluded_unrenderable": normalize.excluded_unrenderable(
+                    target.target_config),
                 "commands": commands,
                 "command_hash": command_fingerprint(commands),
                 "dangerous": dangerous_in(commands),
@@ -147,10 +154,15 @@ def restore_preview():
             })
         except Exception as exc:              # noqa: BLE001
             entry.update({"add": [], "replace": [], "residue": [],
-                          "commands": [], "error": str(exc)})
+                          "commands": [],
+                          "excluded_unrenderable": normalize.excluded_unrenderable(
+                              target.target_config),
+                          "error": str(exc)})
         devices.append(entry)
 
     residue_total = sum(len(d.get("residue") or []) for d in devices)
+    excluded_total = sum(len(d.get("excluded_unrenderable") or [])
+                         for d in devices)
     return jsonify({
         "ok": True, "ref": ref, "list": list_name, "mode": "re-apply",
         "devices": devices, "skipped": skipped,
@@ -161,6 +173,8 @@ def restore_preview():
             f"{len(devices) + len(skipped)} device(s)."
             + (f" {residue_total} line(s) present on devices are absent from "
                "this ref and will NOT be removed." if residue_total else "")
+            + (f" {excluded_total} block(s) cannot be re-applied at all "
+               "(certificates, licence UDI, banners)." if excluded_total else "")
             + (f" Skipped: {', '.join(s['hostname'] for s in skipped)}."
                if skipped else "")),
     })
