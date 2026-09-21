@@ -107,40 +107,73 @@ class TestPlanRestore:
         assert plan["ok"] is False and "No golden configs" in plan["error"]
 
 
-class TestExecuteRestore:
-    def test_queues_approvals_never_pushes(self, lab, monkeypatch):
-        queued = []
-        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
-        monkeypatch.setattr("modules.approval_queue.add_approval",
-                            lambda **kw: queued.append(kw) or "id-1")
-        result = restore.execute_restore("Lab", lab["baseline"])
-        assert result["ok"]
-        assert sorted(result["queued"]) == ["R1", "R2", "R7"]
-        assert all(k["action_type"] == "revert_to_golden" for k in queued)
+class TestRestoreGoesThroughTheConfirmedPath:
+    """Restore no longer queues whole-config approvals.
 
-    def test_stale_devices_are_not_queued(self, lab, monkeypatch):
-        queued = []
-        monkeypatch.setattr("modules.inventory.is_stale",
-                            lambda ip, ln="": ip == "203.0.113.7")
-        monkeypatch.setattr("modules.inventory.stale_message", lambda ip, ln="": "gone")
-        monkeypatch.setattr("modules.approval_queue.add_approval",
-                            lambda **kw: queued.append(kw) or "id-1")
-        result = restore.execute_restore("Lab", lab["baseline"])
-        assert "R7" not in result["queued"]
-        assert [s["hostname"] for s in result["skipped"]] == ["R7"]
-        assert "R7" in result["message"]
+    The old path handed the approval executor the entire stored config and let
+    it push directly — no confirm hash, no ASCII guard, no provenance, no
+    ``error_pattern``, no failure capture, no rollback. It is the one button
+    whose label promised the most and whose mechanism had the least behind it.
+    """
 
-    def test_queued_config_is_the_baseline_version(self, lab, monkeypatch):
-        queued = []
-        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
-        monkeypatch.setattr("modules.approval_queue.add_approval",
-                            lambda **kw: queued.append(kw) or "id-1")
-        # Change the live golden after the baseline was taken.
-        R.save_golden("Lab", [R.GoldenItem("R1", "hostname R1\n changed\n",
-                                           "203.0.113.1", netbox_id=1)])
-        restore.execute_restore("Lab", lab["baseline"], devices=["R1"])
-        config = queued[0]["action_params"]["config_text"]
-        assert "changed" not in config, "restore queued the current config, not the baseline"
+    def test_execute_restore_is_gone(self):
+        """The unguarded entry point must not still be callable."""
+        from modules.nsot import restore
+        assert not hasattr(restore, "execute_restore")
+
+    def test_build_targets_reads_only_golden_at_the_ref(self, lab):
+        """Scope: never templates, bindings or approvals.
+
+        Templates are code. Rolling them back to restore a network would
+        silently revert template fixes — including the ones made this week.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from modules.nsot import restore
+
+        # Code only: the docstring names what must not be touched, and would
+        # otherwise trip its own guard.
+        tree = ast.parse(textwrap.dedent(inspect.getsource(restore.build_targets)))
+        function = tree.body[0]
+        if (function.body and isinstance(function.body[0], ast.Expr)
+                and isinstance(function.body[0].value, ast.Constant)):
+            function.body = function.body[1:]
+        code = ast.unparse(function)
+
+        for forbidden in ("templates/", "bindings.yml", ".approvals.json",
+                          "templates_repo", "approval"):
+            assert forbidden not in code, f"restore must not touch {forbidden}"
+        assert "golden_at" in code
+
+    def test_queued_restore_items_are_rejected_not_executed(self, monkeypatch):
+        from modules.nsot import restore
+
+        pending = [{"id": "a1", "action_type": "revert_to_golden",
+                    "device_hostname": "s4"},
+                   {"id": "b2", "action_type": "update_golden_config",
+                    "device_hostname": "s3"}]
+        resolved = []
+        import modules.approval_queue as Q
+        monkeypatch.setattr(Q, "get_pending", lambda: pending)
+        monkeypatch.setattr(Q, "resolve",
+                            lambda entry_id, action: resolved.append((entry_id, action)))
+
+        outcome = restore.invalidate_queued_restores()
+
+        assert resolved == [("a1", "reject")], (
+            "only queued restores are rejected, and they are rejected not run")
+        assert [r["hostname"] for r in outcome["rejected"]] == ["s4"]
+        assert "superseded" in outcome["reason"]
+
+    def test_the_reason_tells_the_operator_what_to_do(self, monkeypatch):
+        from modules.nsot import restore
+        import modules.approval_queue as Q
+        monkeypatch.setattr(Q, "get_pending", lambda: [
+            {"id": "a1", "action_type": "revert_to_golden", "device_hostname": "s4"}])
+        monkeypatch.setattr(Q, "resolve", lambda entry_id, action: None)
+        assert "Baselines panel" in restore.invalidate_queued_restores()["reason"]
 
 
 class TestBaselineCoverage:

@@ -21,6 +21,7 @@ documented future option, not built.
 """
 
 import logging
+from dataclasses import dataclass, field
 from typing import NamedTuple
 
 from modules.nsot.render_artifact import assert_no_mask
@@ -171,6 +172,86 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         residue.append(line)
 
     return {"add": add, "replace": replace, "residue": residue}
+
+
+@dataclass(frozen=True)
+class RestoreTarget:
+    """A device's target config read from a ref, ready for the batch runner.
+
+    Restore is a different **source**, not a different path. It cannot reuse
+    ``RenderArtifact`` — there is no template, no intent and no approval to
+    speak of — but everything below the intent layer transfers: the confirm
+    hash, the ASCII guard, provenance, ``error_pattern``, failure capture, the
+    circuit breaker, post-deploy staging and the single golden commit.
+
+    Duck-types the three things ``plan_batch()`` reads, so the batch runner is
+    untouched. Its blocking reasons are its **own short list**, stated here
+    rather than borrowed from ``deployable`` and hoped to line up.
+    """
+
+    device: str
+    platform: str
+    target_config: str
+    captured: str
+    ref: str
+    device_row: dict = field(default_factory=dict)
+    reasons: tuple = field(default_factory=tuple)
+
+    @property
+    def blocking_reasons(self) -> list:
+        reasons = list(self.reasons)
+        if not self.target_config.strip():
+            reasons.append(f"no golden config for this device at {self.ref}")
+        unsendable = _unsendable_config_lines(self.target_config)
+        if unsendable:
+            reasons.append(
+                f"{len(unsendable)} line(s) in the stored config cannot be "
+                "sent: " + "; ".join(unsendable[:2]))
+        return reasons
+
+    @property
+    def deployable(self) -> bool:
+        return not self.blocking_reasons
+
+    @property
+    def template(self) -> str:
+        return f"restore:{self.ref}"
+
+
+def _unsendable_config_lines(text: str) -> list:
+    from modules.nsot import normalize
+
+    flagged = []
+    for number, line in enumerate((text or "").splitlines(), 1):
+        found = normalize.find_non_printable(line)
+        if found:
+            flagged.append(f"line {number}: "
+                           f"{normalize.describe_non_printable(found)}")
+    return flagged
+
+
+def prepare_restore(target: RestoreTarget) -> dict:
+    """Validate a stored config before anything connects.
+
+    The restore counterpart of :func:`prepare_device`, and deliberately a
+    different, shorter list. There is no render and no secret resolution — a
+    golden config is the device's own text, already real — so what remains is
+    the refusal, the sendability guard and the mask backstop. ``assert_no_mask``
+    should never fire here; it runs because a golden that somehow contained a
+    mask is exactly the thing that must not reach a device.
+    """
+    assert_deployable(target)
+    assert_sendable(target.target_config.splitlines())
+    assert_no_mask(target.target_config, context="restore")
+    return {"device": target.device, "platform": target.platform,
+            "config": target.target_config, "template": target.template}
+
+
+def prepare_for_deploy(target) -> dict:
+    """Dispatch to the right preparation for whatever produced this target."""
+    if isinstance(target, RestoreTarget):
+        return prepare_restore(target)
+    return prepare_device(target)
 
 
 def merge_diff(intended_config: str, running_config: str) -> dict:

@@ -157,7 +157,7 @@ async function loadGoldenRepoPanel() {
       <div class="card border-light-subtle">
         <div class="card-body py-2 px-3">
           <h6 class="text-primary fw-semibold mb-2">Baselines
-            <span class="text-muted fw-normal small ms-1">(network-wide restore points)</span>
+            <span class="text-muted fw-normal small ms-1">(stored network-wide configuration)</span>
           </h6>
           ${baselines.length ? `
             <div class="table-responsive"><table class="table table-sm align-middle mb-0">
@@ -169,8 +169,9 @@ async function loadGoldenRepoPanel() {
                     ${b.device_count} device(s)</span></td>
                   <td class="text-end">
                     <button class="btn btn-outline-warning btn-sm"
-                            onclick="previewBaselineRestore('${_gEsc(b.tag)}')">
-                      Restore network to this baseline
+                            onclick="previewBaselineRestore('${_gEsc(b.tag)}')"
+                            title="Re-applies stored configuration. Does not remove lines devices have gained.">
+                      Re-apply this baseline
                     </button>
                   </td>
                 </tr>`).join('')}</tbody></table></div>`
@@ -274,22 +275,53 @@ async function previewBaselineRestore(tag) {
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); return; }
 
+    // Three categories, because "re-apply" and "restore" differ exactly here:
+    // residue is what stays behind, and it is the only thing the old label
+    // implied would be removed.
+    const lines = [];
+    (d.devices || []).forEach(dev => {
+      const adds = (dev.add || []).length, reps = (dev.replace || []).length;
+      const res  = (dev.residue || []).length;
+      if (!dev.deployable) {
+        lines.push(`  • ${dev.device} — BLOCKED: ${(dev.blocking_reasons || []).join('; ')}`);
+        return;
+      }
+      lines.push(`  • ${dev.device} — ${adds} to add, ${reps} to replace, ${res} left in place`);
+      (dev.replace || []).slice(0, 3).forEach(rp =>
+        lines.push(`      replace: ${rp.old.trim()}  →  ${rp.new.trim()}`));
+      (dev.residue || []).slice(0, 3).forEach(rs =>
+        lines.push(`      stays:   ${rs.trim()}`));
+    });
+
     const skipped = d.skipped || [];
-    const detail = skipped.length
-      ? '\n\nSkipped (not restored):\n' + skipped.map(s =>
-          `  • ${s.hostname} — ${s.reason}`).join('\n')
-        + '\n\nTheir golden configs at this baseline are unchanged and still downloadable.'
+    const skippedText = skipped.length
+      ? '\n\nSkipped:\n' + skipped.map(s => `  • ${s.hostname} — ${s.reason}`).join('\n')
       : '';
-    if (!confirm(`${d.summary}${detail}\n\n`
-        + `Each device becomes an approval item — nothing is pushed directly.\n\nContinue?`)) return;
+
+    if (!confirm(
+        `${d.summary}\n\n${lines.join('\n')}${skippedText}\n\n`
+        + `SCOPE: ${d.scope}\n\n`
+        + `This ADDS and REPLACES. It does not remove lines a device has gained.\n\nContinue?`)) return;
+
+    const confirmations = {}, hashes = {};
+    (d.devices || []).filter(x => x.deployable).forEach(x => {
+      confirmations[x.device] = x.capture_hash;
+      hashes[x.device] = x.command_hash;
+    });
+    if (!Object.keys(confirmations).length) {
+      showToast('Nothing to re-apply — every device is blocked or already matches', 'warning');
+      return;
+    }
 
     const ar = await fetch('/golden/restore/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ref: tag}),
+      body: JSON.stringify({ref: tag, confirmations, command_hashes: hashes}),
     });
     const ad = await ar.json();
-    showToast(ad.message || (ad.ok ? 'Restore queued' : 'Restore failed'),
+    const done = (ad.deployed || []).length;
+    showToast(ad.ok ? `Re-applied to ${done} device(s)` : `Re-apply failed: ${ad.error || ''}`,
               ad.ok ? 'success' : 'danger');
+    loadGoldenRepoPanel();
   } catch (e) { showToast(e.message, 'danger'); }
 }
 

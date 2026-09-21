@@ -94,27 +94,113 @@ def baselines():
 
 @bp.route("/restore/preview", methods=["POST"])
 def restore_preview():
-    """What a restore would do — including which devices are skipped."""
-    from modules.nsot.restore import plan_restore
+    """What re-applying a ref would do, per device, before anything is sent.
+
+    **Additive.** This re-applies stored configuration; it does not remove
+    lines a device has gained since. The three categories exist so that
+    distinction is visible rather than implied:
+
+    * ``add``     — in the stored config, absent from the device
+    * ``replace`` — in the stored config, the device sets it to something else
+    * ``residue`` — on the device, the stored config does not mention it
+
+    Only ``residue`` is left behind, so only ``residue`` is reported as "will
+    not be removed". The previous report listed every device line absent from
+    the target, which included lines about to be overwritten.
+    """
+    from modules.nsot.deploy import (command_fingerprint, dangerous_in,
+                                     merge_commands, merge_diff,
+                                     prepare_restore)
+    from modules.nsot.restore import build_targets
+    from routes.deploy import _capture_hash
 
     data = request.get_json(silent=True) or {}
     ref = (data.get("ref") or "").strip()
     if not ref:
         return jsonify({"ok": False, "error": "ref is required"}), 400
-    return jsonify(plan_restore(_active_list(data), ref, data.get("devices")))
+
+    list_name = _active_list(data)
+    try:
+        targets, skipped = build_targets(list_name, ref, data.get("devices"))
+    except Exception as exc:                  # noqa: BLE001
+        log.exception("golden: restore preview failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    devices = []
+    for target in targets:
+        entry = {"device": target.device, "platform": target.platform,
+                 "deployable": target.deployable,
+                 "blocking_reasons": target.blocking_reasons,
+                 "capture_hash": _capture_hash(target.captured)}
+        try:
+            prepared = prepare_restore(target)
+            diff = merge_diff(prepared["config"], target.captured)
+            commands = merge_commands(prepared["config"], target.captured)
+            entry.update({
+                "add": diff["add"],
+                "replace": diff["replace"],
+                "residue": diff["residue"],
+                "commands": commands,
+                "command_hash": command_fingerprint(commands),
+                "dangerous": dangerous_in(commands),
+                "unchanged_count": diff["unchanged_count"],
+            })
+        except Exception as exc:              # noqa: BLE001
+            entry.update({"add": [], "replace": [], "residue": [],
+                          "commands": [], "error": str(exc)})
+        devices.append(entry)
+
+    residue_total = sum(len(d.get("residue") or []) for d in devices)
+    return jsonify({
+        "ok": True, "ref": ref, "list": list_name, "mode": "re-apply",
+        "devices": devices, "skipped": skipped,
+        "scope": ("Device configuration from golden/ at this ref. Does not "
+                  "change committed intent, templates, bindings or approvals."),
+        "summary": (
+            f"Re-applying stored configuration to {len(devices)} of "
+            f"{len(devices) + len(skipped)} device(s)."
+            + (f" {residue_total} line(s) present on devices are absent from "
+               "this ref and will NOT be removed." if residue_total else "")
+            + (f" Skipped: {', '.join(s['hostname'] for s in skipped)}."
+               if skipped else "")),
+    })
 
 
 @bp.route("/restore/apply", methods=["POST"])
 def restore_apply():
-    """Queue a restore for approval. Never pushes directly."""
-    from modules.nsot.restore import execute_restore
+    """Re-apply a ref through the confirmed deploy path.
+
+    Not the approval queue. That path pushed whole-config text with none of the
+    guarantees built since: no confirm hash, no ASCII guard, no provenance, no
+    ``error_pattern``, no failure capture, no rollback. Any entry it left
+    queued is rejected on first use of this route, because executing one now
+    would send exactly the payload this replaced.
+    """
+    from modules.nsot.restore import build_targets, invalidate_queued_restores
+    from routes.deploy import run_targets
 
     data = request.get_json(silent=True) or {}
     ref = (data.get("ref") or "").strip()
     if not ref:
         return jsonify({"ok": False, "error": "ref is required"}), 400
-    return jsonify(execute_restore(_active_list(data), ref, data.get("devices"),
-                                   actor=data.get("actor", "user")))
+    confirmations = data.get("confirmations") or {}
+    if not confirmations:
+        return jsonify({"ok": False,
+                        "error": "Nothing confirmed — re-apply refused"}), 400
+
+    list_name = _active_list(data)
+    invalidated = invalidate_queued_restores()
+    try:
+        targets, skipped = build_targets(list_name, ref, list(confirmations))
+    except Exception as exc:                  # noqa: BLE001
+        log.exception("golden: restore apply failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    report = run_targets(list_name, targets, data,
+                         label=f"re-apply {ref}", source_ref=ref)
+    report.update({"ref": ref, "mode": "re-apply", "skipped": skipped,
+                   "invalidated_queue_items": invalidated["rejected"]})
+    return jsonify({"ok": True, "list": list_name, **report})
 
 
 @bp.route("/migrate/plan", methods=["GET", "POST"])

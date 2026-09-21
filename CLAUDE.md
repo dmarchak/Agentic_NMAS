@@ -239,8 +239,19 @@ tools refuse to act on it, and its pooled SSH session is closed.
   `pending_rename` in the manifest only; the `git mv` happens at the next
   `save_golden` or via "Sync device names to repo". Both names resolve while
   pending.
-- **Restore queues approvals**, never pushes. Stale devices are skipped and
-  **named** in the confirm dialog.
+- **Re-apply goes through the confirmed deploy path**, not the approval queue.
+  `build_targets()` reads `golden/<device>.cfg` at the ref and **nothing else**
+  — never `templates/`, `bindings.yml` or `.approvals.json`, because templates
+  are code and rolling them back to restore a network would silently revert
+  template fixes. `RestoreTarget` duck-types what `plan_batch()` reads, so the
+  confirm hash, ASCII guard, provenance, `error_pattern`, failure capture,
+  circuit breaker, staging and single golden commit all apply unchanged.
+- **It is additive, and labelled as such.** The button says *Re-apply this
+  baseline*; the confirm reports `add` / `replace` / `residue` per device and
+  states that residue is **not** removed. Removals are Mode B, not built.
+  Queued items from the old path are rejected with a reason on first use —
+  executing one would push whole-config text through the unguarded executor.
+- Stale devices are skipped and **named** in the confirm dialog.
 - **Migration is dry-run by default.** It merges case-insensitive and IP-level
   duplicates keeping the newest content, reports every merge, and backs up
   rather than deletes.

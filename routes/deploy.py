@@ -405,7 +405,77 @@ def apply():
     return jsonify({"ok": True, "list": list_name, **report})
 
 
-def _commit_batch_golden(list_name: str, report: dict) -> dict:
+def run_targets(list_name: str, targets: list, data: dict,
+                label: str = "", source_ref: str = "") -> dict:
+    """Run a batch of already-built targets. Shared by deploy and re-apply.
+
+    Everything below the intent layer is the same operation whether the target
+    came from rendering committed intent or from reading a stored config: the
+    confirm hash, the authorisation, the circuit breaker, sequential
+    execution, failure capture, rollback and the single golden commit. Only
+    *what to send* differs, and that was decided before this is called.
+    """
+    from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
+                                     assert_authorised, command_fingerprint,
+                                     merge_commands, plan_batch,
+                                     prepare_for_deploy, run_batch)
+
+    confirmations = data.get("confirmations") or {}
+    command_hashes = data.get("command_hashes") or {}
+    authorise = data.get("authorise") or {}
+
+    accepted, fresh_captures, device_rows, refused = [], {}, {}, []
+    for target in targets:
+        hostname = target.device
+        if hostname not in confirmations:
+            refused.append({"device": hostname, "outcome": "refused",
+                            "reason": "not confirmed"})
+            continue
+
+        captured = getattr(target, "captured", "")
+        expected = command_hashes.get(hostname)
+        if expected is not None:
+            try:
+                recomputed = merge_commands(
+                    prepare_for_deploy(target)["config"], captured)
+                device_auth = [a.strip() for a in (authorise.get(hostname) or [])]
+                assert_authorised(recomputed, device_auth)
+                now = command_fingerprint(recomputed, device_auth)
+            except NotAuthorised as exc:
+                refused.append({"device": hostname, "outcome": "refused",
+                                "reason": str(exc)})
+                continue
+            except Exception as exc:          # noqa: BLE001
+                refused.append({"device": hostname, "outcome": "refused",
+                                "reason": f"could not recompute commands: {exc}"})
+                continue
+            if now != expected:
+                refused.append({"device": hostname, "outcome": "refused",
+                                "reason": ("the device changed since you "
+                                           "confirmed — re-run the preview and "
+                                           "confirm the new command list"),
+                                "confirmed_hash": expected,
+                                "current_hash": now})
+                continue
+
+        accepted.append(target)
+        device_rows[hostname] = getattr(target, "device_row", {}) or {}
+        fresh_captures[hostname] = captured
+
+    batch = plan_batch(accepted, confirmations, fresh_captures)
+    report = run_batch(batch,
+                       lambda entry: _deploy_one(entry, list_name, device_rows,
+                                                 authorise, source_ref),
+                       CircuitBreaker())
+    if refused:
+        report.setdefault("results", []).extend(refused)
+        report["refused"] = refused
+    report["golden"] = _commit_batch_golden(list_name, report, label=label)
+    return report
+
+
+def _commit_batch_golden(list_name: str, report: dict,
+                         label: str = "") -> dict:
     """One commit for the batch, naming exactly the devices that succeeded.
 
     A batch is an event, and the record should say so. Three per-device commits
@@ -445,8 +515,8 @@ def _commit_batch_golden(list_name: str, report: dict) -> dict:
 
     batch_id = f"batch-{report.get('batch_id') or _os.urandom(3).hex()}"
     earned = _baseline_earned(report, pending, failed)
-    subject = (f"golden: baseline {len(pending)} device(s) via pipeline "
-               f"{batch_id}")
+    what = label or f"via pipeline {batch_id}"
+    subject = f"golden: baseline {len(pending)} device(s) {what}"
     trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
 
     items = [GoldenItem(p["hostname"], p["config_text"], p["mgmt_ip"],
@@ -518,12 +588,12 @@ def _baseline_earned(report: dict, pending: list, failed: list) -> dict:
 
 
 def _deploy_one(entry, list_name: str, device_rows: dict,
-                authorise: dict = None) -> dict:
+                authorise: dict = None, source_ref: str = "") -> dict:
     """Run the pipeline for a single device. The only path that connects."""
     import threading
 
     from modules.nsot.deploy import (DEPLOYED, FAILED, assert_merge_only,
-                                     merge_commands, prepare_device)
+                                     merge_commands, prepare_for_deploy)
     from modules.pipeline import PipelineContext, PipelineRunner
 
     artifact = entry["artifact"]
@@ -531,7 +601,7 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     device = device_rows.get(hostname, {})
 
     try:
-        prepared = prepare_device(artifact)     # refuse → real secrets → mask check
+        prepared = prepare_for_deploy(artifact)  # refuse → resolve → mask check
     except Exception as exc:                    # noqa: BLE001
         return {"device": hostname, "outcome": FAILED, "stage": "prepare",
                 "reason": str(exc)}
@@ -588,7 +658,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         "commands": commands,
         "failure_state": failure_state,
         "authorised": authorised,
-        "golden_pending": list(result.golden_pending or []),
+        # The target text, so the batch can MEASURE whether the post-deploy
+        # capture equals what was pushed — which is what earns baseline/<ts>.
+        "golden_pending": [{**p, "target_config": prepared["config"]}
+                           for p in (result.golden_pending or [])],
         "rollback_commands": list(
             (result.rollback_commands or {}).get(device.get("ip", ""), [])),
         "rollback_failures": dict(result.rollback_failures or {}),

@@ -80,45 +80,90 @@ def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
     }
 
 
-def execute_restore(list_name: str, ref: str, devices: list = None,
-                    actor: str = "user") -> dict:
-    """Queue per-device restore approvals. Pushes nothing directly."""
-    from modules.approval_queue import add_approval
+def build_targets(list_name: str, ref: str, devices: list = None) -> tuple:
+    """``(targets, skipped)`` for a re-apply of *ref*. Reads only.
 
-    planned = plan_restore(list_name, ref, devices)
-    if not planned["ok"]:
-        return planned
+    **Scope: ``golden/`` at the ref and nothing else.** Never ``templates/``,
+    ``bindings.yml`` or ``.approvals.json`` — templates are code, and rolling
+    them back to restore a network would silently revert template fixes,
+    including this week's. Enforced by only ever asking for
+    ``golden/<device>.cfg``, and asserted by test.
+    """
+    import os as _os
+
+    from modules.device import get_current_device_list, load_saved_devices
+    from modules.inventory import is_stale, stale_message
+    from modules.nsot.deploy import RestoreTarget
+    from modules.nsot.platform import platform_for_device
 
     repo = _repo_for(list_name)
-    queued, errors = [], []
+    at_ref = _repo.devices_at(repo, ref)
+    if not at_ref:
+        return [], [{"hostname": "", "reason": f"no golden configs at '{ref}'"}]
 
-    for item in planned["restorable"]:
-        content = _repo.golden_at(repo, item["hostname"], ref)
-        if content is None:
-            errors.append({"hostname": item["hostname"], "error": "config vanished"})
+    wanted = set(devices) if devices else set(at_ref)
+    _name, csv_path = get_current_device_list()
+    rows = {d.get("hostname", ""): d for d in load_saved_devices(csv_path)}
+
+    targets, skipped = [], []
+    for hostname in sorted(at_ref):
+        if hostname not in wanted:
+            continue
+        row = rows.get(hostname)
+        if not row:
+            skipped.append({"hostname": hostname,
+                            "reason": "not in the current device list"})
+            continue
+        mgmt_ip = row.get("ip", "")
+        if is_stale(mgmt_ip, list_name):
+            skipped.append({"hostname": hostname, "ip": mgmt_ip,
+                            "reason": "no longer in NetBox for this list",
+                            "detail": stale_message(mgmt_ip, list_name)})
+            continue
+
+        stored = _repo.golden_at(repo, hostname, ref)
+        if stored is None:
+            skipped.append({"hostname": hostname, "ip": mgmt_ip,
+                            "reason": f"no golden config at {ref}"})
+            continue
+
+        from routes.deploy import _captured_config
+        captured = _captured_config(repo, hostname)
+        targets.append(RestoreTarget(
+            device=hostname, platform=platform_for_device(row),
+            target_config=stored, captured=captured, ref=ref, device_row=row))
+
+    return targets, skipped
+
+
+def invalidate_queued_restores(reason: str = "") -> dict:
+    """Reject any restore approvals the old path queued.
+
+    Those entries carry whole-config text for an executor that pushes it
+    directly — no confirm hash, no ASCII guard, no provenance, no
+    ``error_pattern``, no failure capture, no rollback. Executing one after the
+    switch would send exactly the payload this rebuild exists to stop sending.
+
+    Rejected with a reason rather than deleted, so the queue shows what
+    happened.
+    """
+    from modules.approval_queue import get_pending, resolve
+
+    reason = reason or ("superseded: restore now goes through the confirmed "
+                        "deploy path; re-run it from the Baselines panel")
+    rejected = []
+    for entry in get_pending():
+        if entry.get("action_type") != "revert_to_golden":
             continue
         try:
-            add_approval(
-                action_type="revert_to_golden",
-                description=f"Restore {item['hostname']} to {ref}",
-                device_ip=item["ip"],
-                device_hostname=item["hostname"],
-                action_params={"ref": ref, "config_text": content,
-                               "list_name": list_name, "requested_by": actor},
-                context=f"Network restore to baseline {ref}, requested by {actor}",
-            )
-            queued.append(item["hostname"])
+            resolve(entry["id"], "reject")
+            rejected.append({"id": entry["id"],
+                             "hostname": entry.get("device_hostname", ""),
+                             "reason": reason})
         except Exception as exc:              # noqa: BLE001
-            log.exception("restore: could not queue %s", item["hostname"])
-            errors.append({"hostname": item["hostname"], "error": str(exc)})
-
-    log.info("restore: queued %d device(s) for '%s' at %s (%d skipped)",
-             len(queued), list_name, ref, len(planned["skipped"]))
-    return {"ok": True, "ref": ref, "queued": queued,
-            "skipped": planned["skipped"], "errors": errors,
-            "message": (
-                f"Queued {len(queued)} device(s) for approval."
-                + (f" Skipped {len(planned['skipped'])}: "
-                   f"{', '.join(s['hostname'] for s in planned['skipped'])}."
-                   if planned["skipped"] else "")
-            )}
+            log.error("restore: could not reject queued item %s: %s",
+                      entry.get("id"), exc)
+    if rejected:
+        log.warning("restore: rejected %d queued restore approval(s) — %s",
+                    len(rejected), reason)
+    return {"ok": True, "rejected": rejected, "reason": reason}
