@@ -1223,3 +1223,55 @@ class TestAHeaderCannotReachASettingKey:
         offenders = [c for c in calls
                      if c.strip() and not c.strip().startswith(("Leaf(", "leaf"))]
         assert offenders == [], f"raw values passed to _command_keys: {offenders}"
+
+
+class TestSendabilityIsCheckedOnSendableLines:
+    """The guard was right about the bytes and wrong about the artifact.
+
+    ``RestoreTarget`` checked the raw stored config, which begins with NMAS's
+    own golden header — ``! Golden config — <device> (<ip>)``, carrying an em
+    dash. Every re-apply was refused on the first live preview, by a guard
+    firing on a comment this tool writes and never sends.
+    """
+
+    NMAS_HEADER = ("! Golden config — s4 (203.0.113.24)\n"
+                   "hostname s4\n"
+                   "interface Loopback0\n"
+                   " description mgmt identity\n")
+
+    def test_the_nmas_header_does_not_block_a_re_apply(self):
+        from modules.nsot.deploy import RestoreTarget
+        target = RestoreTarget(device="s4", platform="cisco_ios",
+                               target_config=self.NMAS_HEADER,
+                               captured="hostname s4\n", ref="baseline/x")
+        assert target.blocking_reasons == []
+        assert target.deployable is True
+
+    def test_a_real_config_line_still_blocks(self):
+        from modules.nsot.deploy import RestoreTarget
+        target = RestoreTarget(device="s4", platform="cisco_ios",
+                               target_config="hostname s4\n description a — b\n",
+                               captured="", ref="baseline/x")
+        assert target.deployable is False
+        assert "U+2014" in target.blocking_reasons[0]
+
+    def test_prepare_restore_accepts_a_header_and_refuses_a_line(self):
+        from modules.nsot.deploy import (DeployRefused, RestoreTarget,
+                                         prepare_restore)
+        ok = RestoreTarget(device="s4", platform="cisco_ios",
+                           target_config=self.NMAS_HEADER,
+                           captured="hostname s4\n", ref="baseline/x")
+        assert prepare_restore(ok)["config"] == self.NMAS_HEADER
+
+        bad = RestoreTarget(device="s4", platform="cisco_ios",
+                            target_config="hostname s4\n banner-ish — x\n",
+                            captured="", ref="baseline/x")
+        with pytest.raises(DeployRefused):
+            prepare_restore(bad)
+
+    def test_the_check_uses_the_same_filter_as_the_program(self):
+        """Whatever merge_commands can put in a program is what is checked."""
+        import inspect
+        from modules.nsot import deploy
+        source = inspect.getsource(deploy._unsendable_config_lines)
+        assert "strip_for_roundtrip" in source

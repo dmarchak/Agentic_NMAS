@@ -219,13 +219,24 @@ class RestoreTarget:
 
 
 def _unsendable_config_lines(text: str) -> list:
+    """Sendability of the lines that could actually be sent.
+
+    Checked on ``strip_for_roundtrip()`` output, which is the same filter
+    ``merge_commands()`` runs, so this asks about exactly the lines that can
+    reach a program. Checking the raw stored text instead flagged NMAS's own
+    golden header — ``! Golden config — s4 (<mgmt ip>)`` carries an em dash —
+    and refused every re-apply on the first live preview.
+
+    A comment cannot be sent and therefore cannot be unsendable. The guard was
+    right about the bytes and wrong about the artifact.
+    """
     from modules.nsot import normalize
 
     flagged = []
-    for number, line in enumerate((text or "").splitlines(), 1):
+    for number, line in enumerate(normalize.strip_for_roundtrip(text or ""), 1):
         found = normalize.find_non_printable(line)
         if found:
-            flagged.append(f"line {number}: "
+            flagged.append(f"config line {number}: "
                            f"{normalize.describe_non_printable(found)}")
     return flagged
 
@@ -241,7 +252,12 @@ def prepare_restore(target: RestoreTarget) -> dict:
     mask is exactly the thing that must not reach a device.
     """
     assert_deployable(target)
-    assert_sendable(target.target_config.splitlines())
+    # The program's own lines are checked by merge_commands(); this covers the
+    # stored config's sendable lines before one is built. Deliberately not the
+    # raw text: NMAS's golden header is a comment, contains an em dash, and is
+    # never sent.
+    from modules.nsot import normalize
+    assert_sendable(normalize.strip_for_roundtrip(target.target_config))
     assert_no_mask(target.target_config, context="restore")
     return {"device": target.device, "platform": target.platform,
             "config": target.target_config, "template": target.template}
