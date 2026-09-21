@@ -324,40 +324,6 @@ class IdentityRequired(ValueError):
     """A save reached the repo with no identity for a device the manifest knows."""
 
 
-def resolve_identity(repo: str, item, allow_new: bool):
-    """The identity this item's device already has, or a new one if permitted.
-
-    Minting happens in exactly one place, and this is it — gated. The previous
-    behaviour was ``identity = item.identity or _manifest.new_device_uid()``,
-    one line, and it meant a caller that simply *forgot* to pass an identity
-    got a brand-new device instead of an error. The first successful deploy did
-    exactly that: s4 gained a second manifest entry, with an empty platform,
-    for a device the manifest had known since migration.
-
-    A function that creates identity when none is supplied will always mask a
-    caller that forgot to supply it. Same shape as intent derived from current
-    state: the fallback is indistinguishable from the correct answer, so the
-    bug cannot surface.
-    """
-    if item.identity:
-        return item.identity
-
-    identity, _entry = _manifest.find_by_ip(repo, item.mgmt_ip)
-    if not identity:
-        identity, _entry = _manifest.find_by_name(repo, item.hostname)
-    if identity:
-        return identity
-
-    if allow_new:
-        return _manifest.new_device_uid()
-
-    raise IdentityRequired(
-        f"{item.hostname} ({item.mgmt_ip or 'no ip'}) reached save_golden with "
-        "no identity and is not in the manifest. Pass the device's identity, or "
-        "call with allow_new=True if this really is a device being onboarded "
-        "for the first time.")
-
-
 POST_DEPLOY_STAGING_REL = os.path.join(".nsot", "staging", "post_deploy")
 
 
@@ -411,6 +377,55 @@ def clear_post_deploy_staging(repo: str, hostnames: list = None) -> None:
             pass
 
 
+def resolve_identity(repo: str, item):
+    """The identity this device **already has**, or ``None``.
+
+    This function cannot create an identity. That is the point, and it is a
+    stronger guarantee than checking carefully inside one that can.
+
+    The first version took an ``allow_new`` flag and minted when it was set.
+    That put creation on a code path whose job is resolution, and the failure
+    followed directly: an item arriving with a well-formed ``uid:`` that the
+    manifest had never seen was *trusted outright*, because a supplied identity
+    looked like a resolved one. ``devices.csv`` and the manifest turned out to
+    hold different uid sets — migration minted into both independently — so six
+    of nine devices carried a CSV uid naming nothing, and every deploy created
+    a second manifest entry for a device that already had one.
+
+    **A wrong identity is indistinguishable from a new device**, so a resolver
+    that can create cannot tell them apart. Creation is
+    :func:`adopt_identity`, named for what it does, called only by a caller
+    that has decided this really is a new device.
+    """
+    if item.identity:
+        # Supplied — but only if the manifest actually knows it. A uid that
+        # names nothing is not evidence of anything.
+        if _manifest.find_by_identity(repo, item.identity) is not None:
+            return item.identity
+        log.warning("repo: %s supplied identity %s, which the manifest does "
+                    "not hold — resolving by address instead",
+                    item.hostname, item.identity)
+
+    identity, _entry = _manifest.find_by_ip(repo, item.mgmt_ip)
+    if not identity:
+        identity, _entry = _manifest.find_by_name(repo, item.hostname)
+    return identity or None
+
+
+def adopt_identity(repo: str, item) -> str:
+    """Mint an identity for a device the manifest has never seen.
+
+    The only place a device identity is created outside migration. Separate
+    from :func:`resolve_identity` so that "I am looking this up" and "I am
+    onboarding something new" cannot be the same call with a different
+    argument.
+    """
+    identity = item.identity or _manifest.new_device_uid()
+    log.info("repo: adopting %s (%s) as %s", item.hostname,
+             item.mgmt_ip or "no ip", identity)
+    return identity
+
+
 def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = True,
                 pipeline_id: str = None, baseline: bool = None,
@@ -434,13 +449,19 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         os.makedirs(os.path.join(repo, "golden"), exist_ok=True)
 
         for item in items:
-            try:
-                identity = resolve_identity(repo, item, allow_new)
-            except IdentityRequired as exc:
-                log.error("repo: %s", exc)
-                return {"ok": False, "error": str(exc), "changed": [],
-                        "unchanged": unchanged, "tags": [],
-                        "renamed": rename_result["renamed"]}
+            identity = resolve_identity(repo, item)
+            if identity is None:
+                if not allow_new:
+                    error = (
+                        f"{item.hostname} ({item.mgmt_ip or 'no ip'}) is not in "
+                        "the manifest. Pass the device's identity, or call with "
+                        "allow_new=True if this really is a device being "
+                        "onboarded for the first time.")
+                    log.error("repo: %s", error)
+                    return {"ok": False, "error": error, "changed": [],
+                            "unchanged": unchanged, "tags": [],
+                            "renamed": rename_result["renamed"]}
+                identity = adopt_identity(repo, item)
             rel = f"golden/{_safe_name(item.hostname)}.cfg"
             abs_path = os.path.join(repo, rel)
             content = golden_body(item.hostname, item.mgmt_ip, item.config_text)

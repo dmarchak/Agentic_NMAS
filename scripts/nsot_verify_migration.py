@@ -178,6 +178,39 @@ def verify(list_name):
     check(12, "migration preserved content (at the migration commit)",
           status, detail)
 
+    # 13 ---------------------------------------------------------------
+    # Two identity namespaces disagreed silently for a week. Nothing stopped
+    # them drifting again once reconciled, so "they agree today" becomes "they
+    # are asserted to agree".
+    from modules.device import load_saved_devices
+
+    csv_path = os.path.join(list_dir, "devices.csv")
+    inventory = load_saved_devices(csv_path) if os.path.exists(csv_path) else []
+    orphan_uids = []
+    for device in inventory:
+        uid = (device.get("device_uid") or "").strip()
+        if not uid:
+            continue
+        identity = _m.identity_for(device.get("_netbox_id"), uid)
+        if identity and _m.find_by_identity(repo, identity) is None:
+            orphan_uids.append(f"{device.get('hostname', '?')}={identity}")
+    check(13, "every devices.csv device_uid exists in the manifest",
+          PASS if inventory and not orphan_uids else
+          (WARN if not inventory else FAIL),
+          f"{len(inventory) - len(orphan_uids)}/{len(inventory)} resolve"
+          + (f"; naming nothing: {sorted(orphan_uids)}" if orphan_uids else ""))
+
+    # 14 ---------------------------------------------------------------
+    counts = {}
+    for entry in devices.values():
+        key = (entry.get("name") or "").strip().lower()
+        counts[key] = counts.get(key, 0) + 1
+    shared = sorted(name for name, count in counts.items() if count > 1)
+    check(14, "every manifest entry maps to exactly one device",
+          PASS if devices and not shared else FAIL,
+          f"{len(devices)} entr(ies) over {len(counts)} device(s)"
+          + (f"; duplicated: {shared}" if shared else ""))
+
     return results
 
 

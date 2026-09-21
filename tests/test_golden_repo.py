@@ -493,7 +493,7 @@ class TestIdentityIsResolvedNotMinted:
                                                     "203.0.113.99")],
                                allow_new=False)
         assert result["ok"] is False
-        assert "no identity" in result["error"]
+        assert "not in the manifest" in result["error"]
         assert self._entries(lab) == {}
 
     def test_the_refusal_says_what_to_do(self, lab):
@@ -628,3 +628,99 @@ class TestReadsNeverCommit:
         R.init_repo(lab)
         R.init_repo(lab)
         assert self._count(lab) == before
+
+
+class TestMintingIsNotReachableFromTheResolver:
+    """A wrong identity is indistinguishable from a new device.
+
+    So a resolver that can create cannot tell them apart, and the rule is not
+    "verify identities" — it is that **minting must not be reachable from a
+    path that thinks it is resolving**. ``resolve_identity()`` cannot create;
+    ``adopt_identity()`` is named for what it does and is called only by a
+    caller that has decided this is a new device.
+
+    The failure this prevents, observed on the live lab: ``devices.csv`` and
+    the manifest held different uid sets — migration minted into both
+    independently — so six of nine devices carried a CSV ``device_uid`` naming
+    nothing. Every deploy supplied one, the resolver trusted it because a
+    supplied identity looked like a resolved one, and a second manifest entry
+    appeared for a device that already had one.
+    """
+
+    def _entries(self, repo):
+        return M.load(repo)["devices"]
+
+    def test_a_well_formed_unknown_identity_resolves_by_address(self, lab):
+        """The live case: a CSV uid the manifest has never held."""
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        original = next(iter(self._entries(lab)))
+
+        stranger = R.GoldenItem("R1", "hostname R1\n ip routing\n",
+                                "203.0.113.1",
+                                device_uid="11111111-2222-3333-4444-555555555555")
+        assert stranger.identity.startswith("uid:")
+        result = R.save_golden("Lab", [stranger], allow_new=False)
+
+        assert result["ok"] is True
+        assert list(self._entries(lab)) == [original], (
+            "a uid naming nothing created a second entry")
+
+    def test_the_same_with_allow_new_creates_exactly_once(self, lab):
+        brand_new = R.GoldenItem("BRAND-NEW", "hostname X\n", "203.0.113.99",
+                                 device_uid="11111111-2222-3333-4444-555555555555")
+        R.save_golden("Lab", [brand_new], allow_new=True)
+        assert len(self._entries(lab)) == 1
+
+        R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n y\n",
+                                           "203.0.113.99")], allow_new=True)
+        assert len(self._entries(lab)) == 1, "the second save created another"
+
+    def test_a_csv_uid_that_names_nothing_never_becomes_an_entry(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        before = set(self._entries(lab))
+
+        for _ in range(3):
+            R.save_golden("Lab", [R.GoldenItem(
+                "R1", f"hostname R1\n x{_}\n", "203.0.113.1",
+                device_uid="deadbeef-0000-0000-0000-000000000000")],
+                allow_new=False)
+
+        assert set(self._entries(lab)) == before
+
+    def test_resolve_identity_cannot_create(self):
+        """The structural guarantee, asserted on the code itself."""
+        import inspect
+        source = inspect.getsource(R.resolve_identity)
+        assert "new_device_uid" not in source
+        assert "upsert_device" not in source
+
+    def test_adopt_identity_is_the_only_other_door(self):
+        import inspect
+        assert "new_device_uid" in inspect.getsource(R.adopt_identity)
+
+    def test_a_supplied_identity_the_manifest_holds_is_honoured(self, lab):
+        """The narrowing must not break the legitimate case.
+
+        A device whose CSV uid DOES match its manifest identity must resolve
+        through that identity, not fall back to an address lookup that happens
+        to agree.
+        """
+        # No NetBox id, so the manifest holds a minted uid.
+        R.save_golden("Lab", [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1")])
+        identity = next(iter(self._entries(lab)))
+        assert identity.startswith("uid:")
+
+        # Same uid, but a different address and name — only the identity can
+        # resolve this, so an address fallback would create a second entry.
+        supplied = R.GoldenItem("R1-renamed", "hostname R1\n y\n",
+                                "203.0.113.200",
+                                device_uid=identity.split(":", 1)[1])
+        result = R.save_golden("Lab", [supplied], allow_new=False)
+
+        assert result["ok"] is True
+        assert list(self._entries(lab)) == [identity]
+
+    def test_a_known_identity_still_wins(self, lab):
+        R.save_golden("Lab", [_item("R1", "hostname R1\n", nb_id=42)])
+        R.save_golden("Lab", [_item("R1", "hostname R1\n z\n", nb_id=42)])
+        assert list(self._entries(lab)) == ["nb:42"]
