@@ -603,6 +603,90 @@ had.
 
 ---
 
+## STAGE 0 — COMPLETE (2026-09-21)
+
+Executed and measured. Nothing was rotated; no device credential changed.
+
+### 1. OOB recovery demonstrated on r2
+
+```
+ssh dmarchak@10.0.0.210 → docker exec -i clab-rcn-lab1-r2 → 127.0.0.1:5000
+  received 22 bytes,  prompt reached: r2>
+  established sessions on :5000 afterwards: 0
+```
+
+The console lands in **user EXEC, unauthenticated** (`r2>`). With no
+`enable secret` configured, `enable` then gives privilege 15 without a
+password. That is the recovery path working — and worth stating plainly that
+the serial console is a complete authentication bypass, acceptable only because
+reaching `10.0.0.210` needs an SSH key.
+
+### 2–3. Oxidized moved to per-device credentials
+
+`router.db` `ip:model` → `ip:model:username:password`, nine rows, **every
+device still on its current password**. Config map gained `username: 2`,
+`password: 3` (indentation detected, not guessed — see below). Node list
+reloaded with `GET /reload` → HTTP 200. Oxidized 0.37.0.
+
+`router.db` is now **0600 `oxidized:oxidized`**; it was 0644 and has gained
+eight more secrets.
+
+### 4. Fetches confirmed — and the global credential removed to prove it
+
+A successful fetch with the global credential still present would prove
+nothing: it could be the fallback. So the global `username`/`password` were
+**removed from the config entirely**, making a successful fetch possible *only*
+via `router.db`.
+
+```
+fresh successes with NO global credential: 9 / 9
+```
+
+Net effect beyond the migration: the live `config` (0644, world-readable) no
+longer contains a plaintext password at all. Rollback copies that do were
+tightened to 0600.
+
+**Pre-existing condition recorded before any change:** `s1` (10.255.1.21) was
+`no_connection`, timing out at 30.9s, with `mtime` of 19 Sep — while NMAS
+logged into it fine with the same credentials. That is the direct cause of the
+stale `s1` startup file in write-up finding #1. It fetched successfully in both
+rounds afterwards, so it is intermittent rather than broken. **Not caused by
+this work**, and worth its own look.
+
+### 5. Sync run and verified on the clab VM
+
+Run **directly** as `/home/dmarchak/bin/clab-sync` — no sudoers, no polkit
+(§GAP 2). Validation passed on all nine, copied, committed.
+
+```
+clab VM ~/labs/lab/configs, before → after:
+  all nine files CHANGED, +1 / -1 lines each
+  the only difference in every file:
+    - ! <dev> - from Oxidized HEAD b774547
+    + ! <dev> - from Oxidized HEAD 14efa84
+  non-header changed lines across all nine: 0
+```
+
+Exactly the expected change — the header carries Oxidized's commit sha, and the
+fetches produced a new commit. **The loop is proven end to end on devices
+nothing has changed**, which is what stage 0 exists for.
+
+### A mistake worth recording
+
+Patching the Oxidized config by regex destroyed two lines — a `sub` that
+matched nothing reported success, and a follow-up `gsub` deleted `model: 1` and
+`username: 2`. Restored from the pre-edit backup and redone **line-based**:
+locate `map:`, walk its indented children, insert after them, then **prove it
+by parsing the YAML** rather than by reading a diff.
+
+This is the fourth scripted-edit destruction in this project, and the first
+outside the repository — where `scripts/check_removed_definitions.py` and the
+pre-commit hook do not reach. The countermeasure that worked here is the same
+one: make the edit assert its own effect (`abort unless it applied`, then parse
+and compare), rather than trusting that a pattern matched.
+
+---
+
 ## 10. Still open
 
 1. **Per-consumer account split** (GAP 1 option b) — recommended as its own
