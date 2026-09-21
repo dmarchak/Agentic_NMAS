@@ -337,3 +337,104 @@ class TestTheOutcomeNamesTheRightCause:
         _i, refusal = identity.require(
             _Req(token="eyJhbGciOiJSUzI1NiJ9.e30.sig"), "reveal")
         assert "connectivity problem" in refusal["error"]
+
+
+class TestTheStatusRoute:
+    """The end-to-end diagnostic, and the three things it must not do."""
+
+    @pytest.fixture
+    def client(self, configured):
+        import flask
+
+        import routes.identity as route_mod
+
+        app = flask.Flask(__name__)
+        app.register_blueprint(route_mod.bp)
+        return app.test_client()
+
+    def test_it_reports_an_unverified_request_rather_than_refusing(self, client):
+        """A diagnostic that hides behind identity is useless when identity breaks."""
+        response = client.get("/identity/status", environ_base={"REMOTE_ADDR": TUNNEL})
+
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["ok"] is True
+        assert body["token_present"] is False
+        assert body["verified"] is False
+        assert body["is_identified"] is False
+        assert body["email"] == ""
+        assert body["actor"] == identity.UNAUTHENTICATED
+
+    def test_a_verified_request_reports_the_email_to_the_requester(self, client, keys):
+        private, _ = keys
+        response = client.get(
+            "/identity/status",
+            headers={identity.JWT_HEADER: _token(private)},
+            environ_base={"REMOTE_ADDR": TUNNEL})
+
+        body = response.get_json()
+        assert body["token_present"] is True
+        assert body["verified"] is True
+        assert body["peer_trusted"] is True
+        assert body["is_identified"] is True
+        assert body["email"] == "dustin@example.com"
+        assert body["outcome"] == "ok"
+
+    def test_it_distinguishes_which_headers_survived_the_tunnel(self, client, keys):
+        """"Forwards the email but not the assertion" is its own bug."""
+        private, _ = keys
+        response = client.get(
+            "/identity/status",
+            headers={identity.EMAIL_HEADER: "dustin@example.com"},
+            environ_base={"REMOTE_ADDR": TUNNEL})
+
+        seen = response.get_json()["headers_seen"]
+        assert seen[identity.EMAIL_HEADER] is True
+        assert seen[identity.JWT_HEADER] is False
+
+    def test_it_never_echoes_the_team_domain_or_aud_tag(self, client, keys):
+        """A diagnostic is where a config dump creeps in."""
+        private, _ = keys
+        response = client.get(
+            "/identity/status",
+            headers={identity.JWT_HEADER: _token(private)},
+            environ_base={"REMOTE_ADDR": TUNNEL})
+
+        raw = response.get_data(as_text=True)
+        assert TEAM not in raw
+        assert AUD not in raw
+        assert response.get_json()["access_configured"] is True
+
+    def test_it_logs_no_email_and_no_token(self, client, keys, caplog):
+        import logging
+
+        private, _ = keys
+        token = _token(private)
+        with caplog.at_level(logging.DEBUG):
+            client.get("/identity/status",
+                       headers={identity.JWT_HEADER: token,
+                                identity.EMAIL_HEADER: "dustin@example.com"},
+                       environ_base={"REMOTE_ADDR": TUNNEL})
+
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "dustin@example.com" not in logged
+        assert token[:40] not in logged
+
+    def test_an_untrusted_peer_sees_the_refusal_not_the_email(self, client, keys):
+        private, _ = keys
+        response = client.get(
+            "/identity/status",
+            headers={identity.JWT_HEADER: _token(private)},
+            environ_base={"REMOTE_ADDR": "10.0.0.30"})
+
+        body = response.get_json()
+        assert body["verified"] is True
+        assert body["peer_trusted"] is False
+        assert body["is_identified"] is False
+        assert body["email"] == ""
+
+    def test_the_route_is_registered_on_the_real_app(self):
+        import app as app_module
+
+        rules = {r.rule for r in app_module.app.url_map.iter_rules()}
+        assert "/identity/status" in rules

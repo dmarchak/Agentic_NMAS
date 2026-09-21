@@ -1,0 +1,66 @@
+"""Identity diagnostics — read-only.
+
+Exists to answer one question end to end: **does the tunnel actually forward
+``Cf-Access-Jwt-Assertion``, and does this app verify it?** Every other check
+in ``modules/identity.py`` is unit-tested against a throwaway key pair, which
+proves the logic and proves nothing about the deployment.
+
+Three deliberate choices:
+
+* **Not gated by identity.** A diagnostic that refuses unverified callers is
+  useless precisely when it is needed — when identity is not working. It
+  reports the unauthenticated state instead of hiding behind it.
+* **No configuration is echoed.** Not the team domain, not the AUD tag. It
+  reports *whether* Access is configured, never with what. A diagnostic is a
+  natural place for a config dump to creep in, and that would hand an
+  unauthenticated caller the values the check depends on.
+* **The email goes to the requester and nowhere else.** It is returned in the
+  response body — to the person who just proved they are that person — and is
+  never logged. ``modules/identity`` already logs presence and outcome only.
+"""
+
+import logging
+
+from flask import Blueprint, jsonify, request
+
+log = logging.getLogger(__name__)
+
+bp = Blueprint("identity", __name__, url_prefix="/identity")
+
+
+@bp.route("/status", methods=["GET"])
+def status():
+    """Who does this app think is making *this* request?"""
+    from modules import identity as ident_mod
+
+    ident = ident_mod.identify(request)
+
+    return jsonify({
+        "ok": True,
+        # The end-to-end question: did the assertion survive the tunnel?
+        "token_present": ident.header_present,
+        "verified": ident.verified,
+        "peer": ident.peer,
+        "peer_trusted": ident.peer_trusted,
+        "is_identified": ident.is_identified,
+        "outcome": ident.outcome,
+        "reason": ident.reason,
+        # To the requester only. Empty unless an assertion verified.
+        "email": ident.email,
+        "actor": ident.actor,
+        # Presence only — this is how you tell "the tunnel forwards the email
+        # header but not the assertion" from "it forwards neither", which are
+        # different deployment problems with different fixes.
+        "headers_seen": {
+            ident_mod.JWT_HEADER: bool(request.headers.get(ident_mod.JWT_HEADER)),
+            ident_mod.EMAIL_HEADER: bool(request.headers.get(ident_mod.EMAIL_HEADER)),
+        },
+        # Whether, not with what.
+        "access_configured": ident_mod.is_configured(),
+        "trusted_peers_configured": bool(ident_mod.trusted_peers()),
+        "gates": {
+            action: bool(ident_mod._setting(f"require_identity_for_{action}",
+                                            action == "reveal"))
+            for action in ("reveal", "approve", "confirm")
+        },
+    })
