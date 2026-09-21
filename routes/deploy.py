@@ -400,7 +400,70 @@ def apply():
     if refused:
         report.setdefault("results", []).extend(refused)
         report["refused"] = refused
+
+    report["golden"] = _commit_batch_golden(list_name, report)
     return jsonify({"ok": True, "list": list_name, **report})
+
+
+def _commit_batch_golden(list_name: str, report: dict) -> dict:
+    """One commit for the batch, naming exactly the devices that succeeded.
+
+    A batch is an event, and the record should say so. Three per-device commits
+    are not wrong — each is truthful — but they leave no single reference for
+    "the network after this batch", because ``baseline/<ts>`` only appeared
+    when one call changed more than one device. Collecting here means the
+    baseline exists for any completed batch, including a single-device one.
+
+    The subject and trailers name the **successful subset** and the failures
+    alongside it, so a partial batch is legible from the commit rather than
+    only from a report someone has to still be holding.
+    """
+    import os as _os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot.deploy import DEPLOYED
+    from modules.nsot.repo import (GoldenItem, clear_post_deploy_staging,
+                                   save_golden)
+
+    results = report.get("results") or []
+    pending, succeeded, failed = [], [], []
+    for entry in results:
+        device = entry.get("device", "")
+        if entry.get("outcome") == DEPLOYED:
+            succeeded.append(device)
+            pending.extend(entry.pop("golden_pending", []) or [])
+        else:
+            failed.append(device)
+            entry.pop("golden_pending", None)
+
+    if not pending:
+        # Every device failed, or none had a capture. No empty commit, and no
+        # baseline tag — there is no post-batch state worth pointing at.
+        log.info("deploy: no successful captures to record for this batch")
+        return {"ok": True, "commit": "", "devices": [], "skipped": failed,
+                "reason": "no device completed successfully"}
+
+    batch_id = f"batch-{report.get('batch_id') or _os.urandom(3).hex()}"
+    subject = (f"golden: baseline {len(pending)} device(s) via pipeline "
+               f"{batch_id}")
+    trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
+
+    items = [GoldenItem(p["hostname"], p["config_text"], p["mgmt_ip"],
+                        netbox_id=p["netbox_id"], device_uid=p["device_uid"])
+             for p in pending]
+    result = save_golden(list_name, items, source="pipeline", actor="pipeline",
+                         message=subject, pipeline_id=batch_id,
+                         baseline=True, allow_new=False,
+                         extra_trailers=trailers)
+
+    if result.get("ok"):
+        repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
+        clear_post_deploy_staging(repo, [p["hostname"] for p in pending])
+    else:
+        log.error("deploy: batch golden commit failed: %s — captures remain in "
+                  ".nsot/staging/post_deploy/", result.get("error"))
+    return {**result, "batch_id": batch_id, "devices": succeeded,
+            "failed_devices": failed}
 
 
 def _deploy_one(entry, list_name: str, device_rows: dict,
@@ -454,6 +517,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # Confirmed, not merely pre-populated: rendered_commands derives from this,
     # so stage 2 cannot overwrite it and an attempt to do so raises.
     ctx.confirmed_commands = {device.get("ip", ""): commands}
+    # The batch commits; this device hands its capture back.
+    ctx.defer_golden = True
 
     try:
         result = PipelineRunner(ctx).run()
@@ -472,6 +537,7 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         "commands": commands,
         "failure_state": failure_state,
         "authorised": authorised,
+        "golden_pending": list(result.golden_pending or []),
         "rollback_commands": list(
             (result.rollback_commands or {}).get(device.get("ip", ""), [])),
         "rollback_failures": dict(result.rollback_failures or {}),

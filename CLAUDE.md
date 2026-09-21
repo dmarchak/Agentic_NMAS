@@ -447,6 +447,16 @@ The only part of the NSoT work that reaches a device.
   post-deploy config stage 7 now captures.
 - **Batch**: sequential by default, circuit breaker on repeated *verify*
   failures, drift skips rather than aborts, every device accounted for.
+- **A batch is an event: one golden commit, one baseline.** Stage 8.5 hands its
+  capture back (`defer_golden`) instead of committing, so `save_golden`'s "one
+  call is one commit" is preserved rather than special-cased. The subject and
+  `Devices:` name the successful subset, `Failed-Devices:` the rest. A baseline
+  tag marks any completed batch — **including a single-device one**, since a
+  baseline marks a moment rather than a device count. A batch where every
+  device fails commits nothing and tags nothing. Captures are staged to
+  `.nsot/staging/post_deploy/` as each device completes, so a crash between
+  8.5 and the commit is recoverable without re-reading devices that may have
+  changed since.
 
 `/configure/apply` is untouched and remains the quick path.
 

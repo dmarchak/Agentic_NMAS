@@ -358,9 +358,63 @@ def resolve_identity(repo: str, item, allow_new: bool):
         "for the first time.")
 
 
+POST_DEPLOY_STAGING_REL = os.path.join(".nsot", "staging", "post_deploy")
+
+
+def stage_post_deploy(repo: str, hostname: str, config_text: str) -> str:
+    """Park a post-deploy capture where a crashed batch can recover it.
+
+    Between stage 8.5 and the batch's single commit, a captured config exists
+    on the device and in this process and nowhere else. A crash in that window
+    loses the record of what was actually deployed — and the device cannot be
+    re-read later to reconstruct it, because by then it may have changed again.
+
+    Gitignored (``.nsot/staging/``): this is a crash file, not history. The
+    history is the commit that follows.
+    """
+    directory = os.path.join(repo, POST_DEPLOY_STAGING_REL)
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, f"{_safe_name(hostname)}.cfg")
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(config_text)
+    return path
+
+
+def staged_post_deploy(repo: str) -> dict:
+    """``{hostname: config}`` for captures a batch has not yet committed."""
+    directory = os.path.join(repo, POST_DEPLOY_STAGING_REL)
+    if not os.path.isdir(directory):
+        return {}
+    out = {}
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".cfg"):
+            continue
+        with open(os.path.join(directory, name), encoding="utf-8") as fh:
+            out[name[:-4]] = fh.read()
+    return out
+
+
+def clear_post_deploy_staging(repo: str, hostnames: list = None) -> None:
+    """Drop captures once they are committed."""
+    directory = os.path.join(repo, POST_DEPLOY_STAGING_REL)
+    if not os.path.isdir(directory):
+        return
+    for name in list(os.listdir(directory)):
+        if not name.endswith(".cfg"):
+            continue
+        if hostnames is not None and name[:-4] not in {
+                _safe_name(h) for h in hostnames}:
+            continue
+        try:
+            os.remove(os.path.join(directory, name))
+        except OSError:
+            pass
+
+
 def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = True,
-                pipeline_id: str = None) -> dict:
+                pipeline_id: str = None, baseline: bool = None,
+                extra_trailers: list = None) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
     Returns ``{"ok", "commit", "changed", "unchanged", "tags", "renamed", "error"}``.
@@ -427,6 +481,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             trailers.append(f"Device-Name: {c['hostname']}")
         if pipeline_id:
             trailers.append(f"Pipeline-Id: {pipeline_id}")
+        trailers.extend(extra_trailers or [])
 
         commit_message = f"{subject}\n\n" + "\n".join(trailers) + "\n"
         rc, _, err = git(repo, "commit", "-m", commit_message)
@@ -448,11 +503,19 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             if git(repo, "tag", "-a", tag, "-m",
                    f"golden {c['hostname']} via {source}")[0] == 0:
                 tags.append(tag)
-        if source in ("save_all", "migration") or len(changed) > 1:
-            baseline = _unique_tag(repo, f"baseline/{stamp}", sha)
-            if git(repo, "tag", "-a", baseline, "-m",
+        # A baseline marks the state of the network at a moment. That is true
+        # of a completed batch regardless of how many devices it changed, so a
+        # caller that knows it is one says so rather than the count implying
+        # it. Without this a single-device deploy left no reference to restore
+        # the network to — the change was recorded and the moment was not.
+        want_baseline = (baseline if baseline is not None
+                         else (source in ("save_all", "migration")
+                               or len(changed) > 1))
+        if want_baseline:
+            baseline_tag = _unique_tag(repo, f"baseline/{stamp}", sha)
+            if git(repo, "tag", "-a", baseline_tag, "-m",
                    f"network baseline — {len(changed)} device(s) via {source}")[0] == 0:
-                tags.append(baseline)
+                tags.append(baseline_tag)
 
         _prune_device_tags(repo, [c["hostname"] for c in changed])
         git(repo, "gc", "--auto")

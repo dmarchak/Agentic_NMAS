@@ -13,7 +13,10 @@ import hashlib
 
 import pytest
 
+import os
+
 from modules.nsot import deploy
+from modules.nsot import manifest as M
 from modules.nsot.deploy import (
     DEPLOYED, FAILED, REFUSED, SKIPPED_DRIFTED, SKIPPED_NOT_SELECTED, UNATTEMPTED,
     CircuitBreaker, plan_batch, run_batch,
@@ -940,3 +943,161 @@ class TestTheNotesListingEvaluatesApplicability:
 
         assert body["rolled_back"]["s4"]["applicability"] == "unknown"
         assert body["blocking_count"] == 1
+
+
+class TestABatchCommitsOnceAndLeavesABaseline:
+    """A batch is an event, and the record should say so.
+
+    Three per-device commits are not wrong — each is truthful — but they leave
+    no single reference for "the network after this batch". ``baseline/<ts>``
+    only appeared when one ``save_golden`` call changed more than one device,
+    so a three-device batch made three one-device calls and produced no
+    baseline at all. Run 2's golden has none either.
+    """
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        from modules.nsot import repo as R
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "nmas@localhost",
+                                "nsot_device_tag_retention": 50,
+                            }.get(key, default))
+        list_dir = tmp_path / "lab"
+        list_dir.mkdir()
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+        repo = str(list_dir / "config_repo")
+        R.init_repo(repo)
+        for name, ip in (("r2", "203.0.113.12"), ("s3", "203.0.113.23"),
+                         ("s4", "203.0.113.24")):
+            M.upsert_device(repo, f"uid:{name}", name, ip, platform="cisco_ios")
+        return repo
+
+    def _result(self, device, outcome="deployed", config=None):
+        from modules.nsot.deploy import DEPLOYED, FAILED
+        entry = {"device": device,
+                 "outcome": DEPLOYED if outcome == "deployed" else FAILED}
+        if outcome == "deployed":
+            entry["golden_pending"] = [{
+                "hostname": device,
+                "config_text": config or f"hostname {device}\n description batch 4\n",
+                "mgmt_ip": {"r2": "203.0.113.12", "s3": "203.0.113.23",
+                            "s4": "203.0.113.24"}[device],
+                "netbox_id": None, "device_uid": device}]
+        return entry
+
+    def _commit(self, lab, results):
+        from routes.deploy import _commit_batch_golden
+        return _commit_batch_golden("Lab", {"results": results})
+
+    def _tags(self, repo):
+        from modules.nsot import repo as R
+        _rc, out, _ = R.git(repo, "tag", "--list")
+        return sorted(out.split())
+
+    def test_three_of_three_makes_one_commit_three_tags_and_a_baseline(self, lab):
+        from modules.nsot import repo as R
+
+        outcome = self._commit(lab, [self._result(d) for d in ("r2", "s3", "s4")])
+        assert outcome["ok"] is True
+
+        _rc, subjects, _ = R.git(lab, "log", "--format=%s")
+        golden = [s for s in subjects.splitlines() if s.startswith("golden:")]
+        assert len(golden) == 1, f"expected one commit, got {golden}"
+        assert "3 device(s)" in golden[0]
+
+        tags = self._tags(lab)
+        assert len([t for t in tags if t.startswith("golden/")]) == 3
+        assert len([t for t in tags if t.startswith("baseline/")]) == 1
+
+    def test_two_of_three_names_the_subset_in_subject_and_trailers(self, lab):
+        from modules.nsot import repo as R
+
+        self._commit(lab, [self._result("r2"), self._result("s3"),
+                           self._result("s4", outcome="failed")])
+
+        _rc, body, _ = R.git(lab, "log", "-1", "--format=%s%n%b")
+        assert "2 device(s)" in body
+        assert "Devices: r2,s3" in body
+        assert "Failed-Devices: s4" in body
+
+        tags = self._tags(lab)
+        assert sorted(t.split("/")[1] for t in tags if t.startswith("golden/")) \
+            == ["r2", "s3"]
+        assert len([t for t in tags if t.startswith("baseline/")]) == 1
+
+    def test_zero_of_three_commits_nothing(self, lab):
+        from modules.nsot import repo as R
+
+        _rc, before, _ = R.git(lab, "rev-list", "--count", "HEAD")
+        outcome = self._commit(lab, [self._result(d, outcome="failed")
+                                     for d in ("r2", "s3", "s4")])
+        _rc, after, _ = R.git(lab, "rev-list", "--count", "HEAD")
+
+        assert outcome["commit"] == ""
+        assert before == after
+        assert self._tags(lab) == []
+
+    def test_a_single_device_batch_still_gets_a_baseline(self, lab):
+        """A baseline marks a moment, not a device count. Run 2 had none."""
+        self._commit(lab, [self._result("s4")])
+        tags = self._tags(lab)
+        assert [t for t in tags if t.startswith("golden/")] != []
+        assert len([t for t in tags if t.startswith("baseline/")]) == 1
+
+    def test_the_baseline_points_at_the_batch_commit(self, lab):
+        from modules.nsot import repo as R
+
+        self._commit(lab, [self._result(d) for d in ("r2", "s3")])
+        baseline = next(t for t in self._tags(lab) if t.startswith("baseline/"))
+        _rc, tagged, _ = R.git(lab, "rev-list", "-n", "1", baseline)
+        _rc, head, _ = R.git(lab, "rev-parse", "HEAD")
+        assert tagged.strip() == head.strip()
+
+
+class TestACrashedBatchCanRecoverItsCaptures:
+    """Between stage 8.5 and the batch commit, a capture is on the device and
+    in this process and nowhere else.
+
+    The device cannot be re-read later to reconstruct it — by then it may have
+    changed again — so a crash in that window loses the record of what was
+    actually deployed.
+    """
+
+    @pytest.fixture
+    def repo(self, tmp_path):
+        from modules.nsot import repo as R
+        path = str(tmp_path / "config_repo")
+        R.init_repo(path)
+        return path
+
+    def test_a_capture_is_staged_as_the_device_completes(self, repo):
+        from modules.nsot import repo as R
+        R.stage_post_deploy(repo, "s4", "hostname s4\n description batch 4\n")
+        assert R.staged_post_deploy(repo) == {
+            "s4": "hostname s4\n description batch 4\n"}
+
+    def test_staged_captures_survive_for_every_device(self, repo):
+        from modules.nsot import repo as R
+        for name in ("r2", "s3", "s4"):
+            R.stage_post_deploy(repo, name, f"hostname {name}\n")
+        assert sorted(R.staged_post_deploy(repo)) == ["r2", "s3", "s4"]
+
+    def test_committing_clears_them(self, repo):
+        from modules.nsot import repo as R
+        R.stage_post_deploy(repo, "s4", "hostname s4\n")
+        R.clear_post_deploy_staging(repo, ["s4"])
+        assert R.staged_post_deploy(repo) == {}
+
+    def test_a_failed_commit_leaves_them_for_recovery(self, repo):
+        from modules.nsot import repo as R
+        R.stage_post_deploy(repo, "s4", "hostname s4\n")
+        R.clear_post_deploy_staging(repo, ["r2"])    # a different device
+        assert "s4" in R.staged_post_deploy(repo)
+
+    def test_the_staging_area_is_gitignored(self, repo):
+        with open(os.path.join(repo, ".gitignore"), encoding="utf-8") as fh:
+            assert ".nsot/staging/" in fh.read()

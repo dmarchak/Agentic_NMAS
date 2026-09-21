@@ -161,6 +161,10 @@ class PipelineContext:
     rollback_commands: dict = field(default_factory=dict)
     #: ip -> why a rollback could not complete.
     rollback_failures: dict = field(default_factory=dict)
+    #: Set by a batch: stage 8.5 hands its captures back instead of committing.
+    defer_golden: bool = False
+    #: Captures handed to the batch when :attr:`defer_golden` is set.
+    golden_pending: list = field(default_factory=list)
     #: ip -> pushed lines the device rejected, so there was nothing to undo.
     rollback_not_undone: dict = field(default_factory=dict)
     #: ip -> rollback lines that would have tripped the CI gate, exempt by
@@ -1388,7 +1392,7 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
 
     from modules.config import get_current_list_name, get_list_data_dir
     from modules.nsot import manifest as _manifest
-    from modules.nsot.repo import GoldenItem, save_golden
+    from modules.nsot.repo import GoldenItem, save_golden, stage_post_deploy
 
     repo = _os.path.join(get_list_data_dir(get_current_list_name()), "config_repo")
     rolled_back = set(ctx.rolled_back_ips or [])
@@ -1437,6 +1441,29 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
         log.info("pipeline[8.5/save_golden]: nothing to record (%d skipped)",
                  len(skipped))
         ctx.golden_result = {"ok": True, "commit": "", "changed": []}
+        return
+
+    # Park each capture where a crashed batch can recover it. Between here and
+    # the batch's commit the config exists on the device and in this process
+    # and nowhere else, and the device cannot be re-read later to reconstruct
+    # it — by then it may have changed again.
+    for item in items:
+        stage_post_deploy(repo, item.hostname, item.config_text)
+
+    if ctx.defer_golden:
+        # A batch is an EVENT. One caller, one commit, one baseline — so the
+        # batch collects captures and commits once at the end rather than each
+        # device committing for itself. "One call is one commit" is preserved
+        # rather than special-cased: this simply is not the caller.
+        ctx.golden_pending = [
+            {"hostname": i.hostname, "config_text": i.config_text,
+             "mgmt_ip": i.mgmt_ip, "netbox_id": i.netbox_id,
+             "device_uid": i.device_uid}
+            for i in items]
+        ctx.golden_result = {"ok": True, "commit": "", "deferred": True,
+                             "changed": [i.hostname for i in items]}
+        log.info("pipeline[8.5/save_golden]: %d capture(s) handed to the batch",
+                 len(items))
         return
 
     # allow_new=False: a pipeline deploy targets a device the inventory
