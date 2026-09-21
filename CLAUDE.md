@@ -731,8 +731,25 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   a Linux Jenkins agent. Generated XML is byte-identical to pre-Phase-0 output
   while the default is unchanged.
 - `telnetlib.py` shim must stay in the root for Python 3.13+ compatibility
-- The app is intended for a trusted lab/management network — no auth layer. When
-  exposing it, bind to a specific address behind a reverse proxy or tunnel.
+- The app has no auth layer of its own. It sits behind a Cloudflare tunnel, and
+  **identity comes from a verified assertion, never from a header**
+  (`modules/identity.py`). `Cf-Access-Authenticated-User-Email` is an ordinary
+  HTTP header — measured before the firewall was closed, a LAN laptop sent a
+  forged one and got HTTP 200. What is verified is `Cf-Access-Jwt-Assertion`:
+  RS256, against `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`,
+  with `aud` and `iss` checked; the email is read from the verified claims.
+  **Two independent conditions**: a valid assertion *and* a raw-socket peer on
+  `cf_access_trusted_peers`. The peer check is not redundant — an assertion
+  captured from a browser and replayed from elsewhere on the LAN satisfies the
+  first — and it is the layer that survives a firewall rule being edited later.
+  `X-Forwarded-For` is never consulted and `ProxyFix` is never installed, both
+  pinned by tests. Nothing logs a value: only header presence and the
+  validation outcome.
+- Bind `NMAS_HOST` to a specific address rather than `0.0.0.0`, as a second
+  layer independent of the firewall — note this stops `localhost:5000` working
+  on the host. The firewall must cover **both address families**: port 5000 is
+  closed over IPv6 only because no `[::]` listener exists, not because anything
+  blocks it.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

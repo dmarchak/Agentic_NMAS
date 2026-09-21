@@ -119,6 +119,25 @@ DEFAULTS: dict = {
     "nsot_git_auth_mode":    "ssh_key",  # ssh_key | token
     "nsot_git_token":        "",
 
+    # ── Identity: Cloudflare Access ─────────────────────────────────────────
+    # The app has no auth layer of its own; identity comes from the tunnel in
+    # front of it. The EMAIL HEADER IS NOT EVIDENCE — anything that can reach
+    # the port can set it. What is verified is the signed assertion:
+    # `Cf-Access-Jwt-Assertion`, RS256, against the team's certs endpoint, with
+    # `aud` and `iss` checked. The email is then read from the verified claims.
+    "cf_access_team_domain": "",         # <team>.cloudflareaccess.com
+    "cf_access_aud":         "",         # Application Audience tag
+    #: Raw socket peers allowed to present an identity. The SECOND, independent
+    #: condition: a valid JWT replayed from elsewhere on the LAN still fails.
+    #: It is also the layer that survives a firewall rule being edited later.
+    "cf_access_trusted_peers": "",       # comma-separated; blank disables the check
+    "cf_access_jwks_ttl":    3600,       # key-cache seconds; survives a short outage
+    #: Default ON for reveal, because revealing a secret is the action whose
+    #: audit entry is worthless without a name attached to it.
+    "require_identity_for_reveal":  True,
+    "require_identity_for_approve": False,
+    "require_identity_for_confirm": False,
+
     # ── S3-compatible archive ───────────────────────────────────────────────
     "s3_endpoint":   "",
     "s3_bucket":     "",
@@ -288,6 +307,14 @@ SCHEMA: dict = {
         "nsot_git_author_email": _STR,
         "nsot_git_auto_push": _BOOL,
         "nsot_git_auth_mode": {"enum": ["ssh_key", "token"]},
+
+        "cf_access_team_domain": _STR,
+        "cf_access_aud": _STR,
+        "cf_access_trusted_peers": _STR,
+        "cf_access_jwks_ttl": {"type": "integer", "minimum": 0},
+        "require_identity_for_reveal": _BOOL,
+        "require_identity_for_approve": _BOOL,
+        "require_identity_for_confirm": _BOOL,
 
         "s3_endpoint": _STR,
         "s3_bucket": _STR,
