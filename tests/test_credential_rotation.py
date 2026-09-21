@@ -12,6 +12,8 @@ import os
 
 import pytest
 
+from cryptography.fernet import InvalidToken
+
 from modules.nsot import credential_rotation as cr
 
 
@@ -163,6 +165,14 @@ class TestPersistenceFailureIsNotRotationFailure:
         assert "survives redeploy" not in cr.summarise(
             {"state": cr.ROTATED_UNVERIFIED, "device": "r2"})
 
+    def test_a_local_fault_may_never_be_reported_as_a_device_verdict(self):
+        """The rule the r2 run broke, stated where it cannot drift."""
+        import inspect
+        assert "requires having asked the device" in inspect.getdoc(cr)
+        summary = cr.summarise({"state": cr.REVERTED_UNPROVEN, "device": "r2"})
+        assert "MAY BE LOCKED OUT" not in summary
+        assert "local fault" in summary
+
     def test_only_the_verify_step_is_named_as_reverting(self):
         """Documented in one place so the rule cannot drift."""
         import inspect
@@ -170,19 +180,104 @@ class TestPersistenceFailureIsNotRotationFailure:
         assert "Only :data:`VERIFY` failing reverts" in inspect.getdoc(cr)
 
 
-class _Session:
-    """A stand-in for the held-open original session."""
+ORIGINAL_LINE = "username admin privilege 15 password OldPlaintext"
+ORIGINAL_PLAINTEXT = "OldPlaintext"
+POST_CONFIG = "username admin privilege 15 secret 9 $9$saltsalt$hashhash"
 
-    def __init__(self, fail_on=None):
+
+class NetmikoAuthenticationException(Exception):
+    """Named to match the real one — the classifier keys on the class NAME."""
+
+
+class _Router:
+    """The device itself: it accepts exactly one password at a time.
+
+    The point of modelling this at all is that a fresh login must be judged by
+    what the device would do, not by a stubbed verdict. A dict carrying an
+    encrypted password, or a password the push never set, fails here the way
+    it would fail on hardware.
+    """
+
+    def __init__(self, password=ORIGINAL_PLAINTEXT):
+        self.password = password
+        self.logins = []            # every kwargs dict ConnectHandler received
+        self.running = ORIGINAL_LINE
+        self.stores = "9"           # what the running config shows after a push
+        self.honours_new_secret = True   # False: stores it, won't authenticate
+        self.dead = False           # refuses every credential
+        self.local_fault = None     # raised before any "connection" happens
+
+    def login(self, **kwargs):
+        if self.local_fault is not None:
+            raise self.local_fault
+        self.logins.append(dict(kwargs))
+        if self.dead or kwargs.get("password") != self.password:
+            raise NetmikoAuthenticationException(
+                f"Authentication to device {kwargs.get('ip')} failed")
+        return _Conn(self)
+
+    def apply(self, line):
+        """A ``username`` line replaces the login credential, as IOS does."""
+        parts = line.split()
+        if parts[:1] != ["username"]:
+            return
+        for keyword in ("secret", "password"):
+            if keyword in parts:
+                value = parts[parts.index(keyword) + 1]
+                break
+        else:
+            return
+
+        if "algorithm-type" in parts:
+            # IOS hashes it: the running config never shows the plaintext
+            # again, which is why the verify must carry the value from memory.
+            self.running = (f"username {parts[1]} privilege 15 "
+                            f"secret {self.stores} $9$saltsalt$hashhash")
+            if self.honours_new_secret:
+                self.password = value
+        else:
+            self.running = line
+            self.password = value
+
+
+class _Conn:
+    """A fresh Netmiko connection to a _Router."""
+
+    def __init__(self, router):
+        self.router = router
+        self.disconnected = False
+
+    def enable(self):
+        return ""
+
+    def send_command(self, *a, **k):
+        return "hostname r2\n" + self.router.running
+
+    def disconnect(self):
+        self.disconnected = True
+
+
+class _Session:
+    """A stand-in for the held-open original session.
+
+    Holding a reference to the router is what makes the push real: the line it
+    accepts is the line that changes which password a later fresh login needs.
+    """
+
+    def __init__(self, fail_on=None, router=None):
         self.sent = []
         self.fail_on = fail_on or []
         self.disconnected = False
+        self.router = router
 
     def send_config_set(self, commands, **kw):
         self.sent.extend(commands)
         for needle in self.fail_on:
             if any(needle in c for c in commands):
                 raise RuntimeError(f"device rejected: {needle}")
+        if self.router is not None:
+            for line in commands:
+                self.router.apply(line)
         return "ok"
 
     def send_command(self, *a, **k):
@@ -190,10 +285,6 @@ class _Session:
 
     def disconnect(self):
         self.disconnected = True
-
-
-ORIGINAL_LINE = "username admin privilege 15 password OldPlaintext"
-POST_CONFIG = "username admin privilege 15 secret 9 $9$saltsalt$hashhash"
 
 
 @pytest.fixture
@@ -205,7 +296,18 @@ def wired(monkeypatch, tmp_path):
     device = {"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
               "username": "admin", "password": "enc", "secret": "enc"}
 
-    state = {"session": _Session(), "verify": [], "commit_ok": True}
+    router = _Router()
+    state = {"router": router, "session": _Session(router=router),
+             "commit_ok": True}
+
+    # Mocked at the Netmiko boundary, NOT above it. The connection dict that
+    # verify_new_credential builds is therefore exercised for real — which is
+    # the whole reason this fixture exists in this shape. See
+    # TestTheConnectionDict.
+    import netmiko
+    monkeypatch.setattr(netmiko, "ConnectHandler",
+                        lambda **kw: state["router"].login(**kw))
+    monkeypatch.setattr(cr, "_SLEEP", lambda _s: None)
 
     monkeypatch.setattr(cr, "preflight", lambda ln, hn: {
         "ok": True, "device": hn, "repo": str(repo), "device_row": device,
@@ -214,8 +316,6 @@ def wired(monkeypatch, tmp_path):
         "capture": "hostname r2\n" + ORIGINAL_LINE, "checks": [],
     })
     monkeypatch.setattr(cr, "open_original_session", lambda d: state["session"])
-    monkeypatch.setattr(cr, "verify_new_credential",
-                        lambda d, u, p: state["verify"].pop(0))
     monkeypatch.setattr(cr, "_commit",
                         lambda *a, **k: {"ok": state["commit_ok"],
                                          "commit": "abc123"})
@@ -237,7 +337,6 @@ def _fingerprint(state):
 class TestTheFiveStates:
     def test_success_is_rotated_unverified_until_persistence_runs(self, wired):
         """The commit does not claim redeploy survival — persist() does."""
-        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         assert result["state"] == cr.ROTATED_UNVERIFIED
@@ -245,10 +344,8 @@ class TestTheFiveStates:
         assert any(s["name"] == cr.VERIFY and s["ok"] for s in result["steps"])
 
     def test_a_verify_failure_reverts_and_proves_it(self, wired):
-        wired["verify"] = [
-            {"ok": False, "error": "auth failed"},     # the new credential
-            {"ok": True, "config": ORIGINAL_LINE},     # the revert proof
-        ]
+        # The device stores the new secret but will not authenticate with it.
+        wired["router"].honours_new_secret = False
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         assert result["state"] == cr.REVERTED
@@ -256,26 +353,85 @@ class TestTheFiveStates:
         assert "device is unchanged" in cr.summarise(result)
 
     def test_a_failed_revert_says_locked_out(self, wired):
-        wired["verify"] = [
-            {"ok": False, "error": "auth failed"},
-            {"ok": False, "error": "auth failed again"},
-        ]
+        """Only this — the device ASKED and REFUSING — may claim a lockout."""
+        wired["router"].dead = True
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         assert result["state"] == cr.REVERT_FAILED
         assert "MAY BE LOCKED OUT" in cr.summarise(result)
         assert "serial console" in cr.summarise(result)
+        assert wired["router"].logins, "the device was actually asked"
+
+    def test_a_revert_push_failure_is_still_a_lockout_risk(self, wired):
+        """Device-side: the original never went back. The danger is real."""
+        wired["router"].honours_new_secret = False
+        wired["session"].fail_on = [ORIGINAL_PLAINTEXT]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.REVERT_FAILED
+        assert "revert command failed" in result["reason"]
+        assert "MAY BE LOCKED OUT" in cr.summarise(result)
+
+    def test_each_revert_failure_names_its_own_cause(self, wired):
+        """One state, three causes — the summary must not assert the wrong one."""
+        assert "refused the original" in cr.summarise(
+            {"state": cr.REVERT_FAILED, "device": "r2",
+             "reason": "the device refused the original credential after the revert"})
+        assert "revert command failed" in cr.summarise(
+            {"state": cr.REVERT_FAILED, "device": "r2",
+             "reason": "the revert command failed — recover on the console"})
+
+    def test_a_verify_that_could_not_run_is_not_a_lockout(self, wired):
+        """The r2 defect: a LOCAL fault reported as the device's verdict.
+
+        Nothing reached the device — no socket was opened — so the one thing
+        the result may not do is say the device might be lost.
+        """
+        wired["router"].local_fault = InvalidToken("bad Fernet ciphertext")
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.REVERTED_UNPROVEN
+        assert wired["router"].logins == [], "no connection was attempted"
+        assert ORIGINAL_LINE in wired["session"].sent, "the revert still ran"
+        summary = cr.summarise(result)
+        assert "MAY BE LOCKED OUT" not in summary
+        assert "LOCAL" in summary.upper()
+
+    def test_a_local_fault_is_retried_while_the_session_is_open(self, wired):
+        """Inconclusive is not a verdict: try again before acting on it."""
+        calls = {"n": 0}
+        real = wired["router"].login
+
+        def _flaky(**kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise InvalidToken("transient local fault")
+            return real(**kwargs)
+
+        wired["router"].login = _flaky
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert calls["n"] == 2, "the first attempt never reached the device"
+        assert result["state"] == cr.ROTATED_UNVERIFIED
+
+    def test_an_auth_refusal_is_not_retried(self, wired):
+        """A verdict is a verdict — retrying it only delays the revert."""
+        wired["router"].honours_new_secret = False
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        with_new = [k for k in wired["router"].logins
+                    if k["password"] != ORIGINAL_PLAINTEXT]
+        assert len(with_new) == 1, "one refusal, one attempt"
 
     def test_a_rejected_push_changes_nothing(self, wired):
-        wired["session"] = _Session(fail_on=["algorithm-type scrypt"])
-        wired["verify"] = []
+        wired["session"] = _Session(fail_on=["algorithm-type scrypt"],
+                                    router=wired["router"])
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         assert result["state"] == cr.NOT_STARTED
         assert "device is untouched" in cr.summarise(result)
 
     def test_a_stale_confirmation_is_refused_before_the_push(self, wired):
-        wired["verify"] = []
         result = cr.rotate("Lab", "r2", confirmed_fingerprint="not-the-hash")
 
         assert result["state"] == cr.NOT_STARTED
@@ -287,7 +443,6 @@ class TestTheFiveStates:
         def _boom(device):
             raise OSError("ssh refused")
         monkeypatch.setattr(cr, "open_original_session", _boom)
-        wired["verify"] = []
 
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
         assert result["state"] == cr.NOT_STARTED
@@ -296,27 +451,37 @@ class TestTheFiveStates:
 
 class TestTheStagingAndTheCacheOrdering:
     def test_the_plaintext_is_staged_before_the_push(self, wired):
-        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         names = [s["name"] for s in result["steps"]]
         assert names.index("stage") < names.index("push")
 
     def test_the_redaction_cache_is_invalidated_before_the_push(self, wired):
-        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         names = [s["name"] for s in result["steps"]]
         assert names.index("invalidate_redaction_cache") < names.index("push")
 
     def test_staging_is_cleared_on_success_and_on_revert(self, wired):
-        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
         cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
         assert cr.staged_plaintext(wired["repo"], "r2") is None
 
-        wired["verify"] = [{"ok": False, "error": "x"},
-                           {"ok": True, "config": ORIGINAL_LINE}]
-        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        wired["router"].honours_new_secret = False
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.REVERTED
+        assert cr.staged_plaintext(wired["repo"], "r2") is None
+
+    def test_staging_is_cleared_when_the_revert_fails(self, wired):
+        """The worst outcome still leaves no password lying in the repo."""
+        wired["router"].dead = True
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.REVERT_FAILED
+        assert cr.staged_plaintext(wired["repo"], "r2") is None
+
+    def test_staging_is_cleared_when_the_verify_could_not_run(self, wired):
+        wired["router"].local_fault = InvalidToken("bad ciphertext")
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.REVERTED_UNPROVEN
         assert cr.staged_plaintext(wired["repo"], "r2") is None
 
     def test_a_staged_password_round_trips(self, tmp_path):
@@ -331,12 +496,128 @@ class TestTheStagingAndTheCacheOrdering:
 
     def test_the_device_must_store_a_type_9(self, wired):
         """A device that stored type 5 is not what was asked for."""
-        wired["verify"] = [
-            {"ok": True, "config": "username admin privilege 15 secret 5 $1$x$y"},
-            {"ok": True, "config": ORIGINAL_LINE},
-        ]
+        wired["router"].stores = "5"
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
         assert result["state"] == cr.REVERTED
+
+
+class TestTheConnectionDict:
+    """The r2 defect: the dict handed to Netmiko, not the verdict above it.
+
+    The first hardware run pushed correctly, held the session correctly, and
+    reverted correctly — then reported that the device might be locked out,
+    because ``verify_new_credential`` built a device dict carrying a PLAINTEXT
+    password and passed it to ``with_temp_connection``, which Fernet-decrypts
+    whatever it is given. ``InvalidToken`` was raised before any socket opened.
+
+    Every test here mocks at the Netmiko boundary, so the dict construction is
+    exercised rather than stepped over. The old fixture replaced
+    ``verify_new_credential`` wholesale, which is exactly why nothing caught it.
+    """
+
+    def test_the_new_password_reaches_netmiko_in_plaintext(self, wired):
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.ROTATED_UNVERIFIED
+
+        logins = wired["router"].logins
+        assert len(logins) == 1
+        sent = logins[0]["password"]
+        assert sent == wired["router"].password
+        assert sent != wired["device"]["password"], "the stored form is ciphertext"
+
+    def test_the_revert_verify_uses_the_decrypted_original(self, wired):
+        """Decrypted once, by the caller — never handed on to decrypt again."""
+        wired["router"].honours_new_secret = False
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.REVERTED
+        assert wired["router"].logins[-1]["password"] == ORIGINAL_PLAINTEXT
+        assert all(k["password"] != "enc" for k in wired["router"].logins)
+
+    def test_no_encrypted_field_is_handed_to_netmiko(self, wired):
+        """`secret` is the field that made this survivable by accident."""
+        wired["router"].honours_new_secret = False
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        for kwargs in wired["router"].logins:
+            assert "enc" not in kwargs.values()
+
+    def test_the_verify_path_never_touches_with_temp_connection(
+            self, wired, monkeypatch):
+        """The regression, stated as the rule rather than as its symptom.
+
+        with_temp_connection() decrypts; the verify holds plaintext. Routing
+        one through the other is the defect, so the path may not reach it at
+        all — including on the revert.
+        """
+        import modules.connection as conn
+
+        def _forbidden(*a, **k):
+            raise AssertionError("the verify must not decrypt what it holds")
+
+        monkeypatch.setattr(conn, "with_temp_connection", _forbidden)
+        wired["router"].honours_new_secret = False
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.REVERTED
+
+    def test_the_dict_carries_what_netmiko_needs(self, wired):
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        kwargs = wired["router"].logins[0]
+        assert kwargs["device_type"] == "cisco_xe"
+        assert kwargs["ip"] == "203.0.113.12"
+        assert kwargs["username"] == "admin"
+
+    def test_an_auth_refusal_is_classified_as_a_device_verdict(self, wired):
+        out = cr.verify_new_credential(wired["device"], "admin", "WrongOne")
+        assert out["ok"] is False
+        assert out["attempted"] is True, "the device answered"
+
+    def test_a_fernet_failure_is_classified_as_a_local_fault(self, wired):
+        wired["router"].local_fault = InvalidToken("bad ciphertext")
+        out = cr.verify_new_credential(wired["device"], "admin", "AnyPassword")
+        assert out["ok"] is False
+        assert out["attempted"] is False, "nothing was asked of the device"
+
+    def test_an_unrecognised_error_takes_the_alarming_side(self, wired):
+        """The two ways to be wrong are not symmetrical.
+
+        A false lockout warning costs a console trip. A false "local fault"
+        leaves a device that may really be unreachable without one.
+        """
+        class SomethingNobodyListed(Exception):
+            pass
+
+        wired["router"].local_fault = SomethingNobodyListed("?")
+        out = cr.verify_new_credential(wired["device"], "admin", "pw")
+        assert out["attempted"] is True
+        assert out["recognised"] is False
+
+    def test_an_unrecognised_verdict_says_it_was_a_fallback(self, wired):
+        class SomethingNobodyListed(Exception):
+            pass
+
+        wired["router"].local_fault = SomethingNobodyListed("?")
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.REVERT_FAILED
+        assert "UNRECOGNISED" in result["reason"]
+        assert "SomethingNobodyListed" in result["reason"]
+
+    def test_both_classifications_are_positive(self):
+        """Neither answer may be reached by default alone."""
+        assert cr.classify_failure("InvalidToken") == {
+            "attempted": False, "recognised": True}
+        assert cr.classify_failure("NetmikoAuthenticationException") == {
+            "attempted": True, "recognised": True}
+        assert cr.classify_failure("WhoKnows")["recognised"] is False
+
+    def test_a_timeout_is_a_device_verdict_not_a_local_fault(self, wired):
+        """Unreachable is a fact about the device; retrying it is not free."""
+        class NetmikoTimeoutException(Exception):
+            pass
+
+        wired["router"].local_fault = NetmikoTimeoutException("timed out")
+        out = cr.verify_new_credential(wired["device"], "admin", "AnyPassword")
+        assert out["attempted"] is True
 
 
 class TestPersistenceNeverReverts:
@@ -431,7 +712,6 @@ class TestRotateCarriesWhatPersistNeeds:
     """
 
     def test_the_verified_hash_is_carried(self, wired):
-        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         assert result["new_hash"].startswith("9 $9$")
@@ -440,8 +720,7 @@ class TestRotateCarriesWhatPersistNeeds:
         assert result["username"] == "admin"
 
     def test_nothing_is_carried_when_the_rotation_did_not_happen(self, wired):
-        wired["verify"] = [{"ok": False, "error": "x"},
-                           {"ok": True, "config": ORIGINAL_LINE}]
+        wired["router"].honours_new_secret = False
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         assert "new_hash" not in result

@@ -3253,3 +3253,120 @@ Worth noting the ordering trap: adding `enable secret` *before* the console is
 proven as a recovery path would remove the recovery path for the rotation that
 adds it. The console has to stay open until the rotation work no longer depends
 on it.
+
+## The mechanism was right; the verdict was about the wrong thing
+
+The first hardware run of `set_credential` was against r2, with the serial
+console open in a second terminal. Everything the design was built to get right
+worked. The state machine and the lockout defence both behaved exactly as
+specified — on hardware, against a real device:
+
+- the original session opened and was **proven** with a read before anything
+  was pushed;
+- the new `username admin privilege 15 algorithm-type scrypt secret …` line was
+  **accepted** by the device;
+- the verify failed, so the tool **reverted** on the still-open original
+  session — and the console confirmed the original line back in the running
+  config, with the NMAS still able to log in.
+
+The run then reported `REVERT_FAILED` and printed **"THE DEVICE MAY BE LOCKED
+OUT — recover on the serial console"**.
+
+Nothing was locked out. Nothing was even asked.
+
+### The defect
+
+`verify_new_credential()` built a device dict carrying the **plaintext** new
+password and handed it to `with_temp_connection()`, which Fernet-decrypts
+whatever it is given because every other caller passes an inventory row. The
+decrypt raised `InvalidToken` **before a socket was opened**. The revert's
+re-proof took the same path with the original password and failed the same way.
+
+So the sequence was: push (worked, on hardware) → verify (failed locally) →
+revert (worked, on hardware) → re-proof (failed locally) → `REVERT_FAILED`.
+
+Two local exceptions, three feet from each other, were rendered as a statement
+about a device that was fine the entire time.
+
+### What made it worse than an ordinary bug
+
+The failure mode was **not** that a working thing was reported broken. It was
+that the most alarming message in the system — the one that exists to send a
+person to a serial console at speed — was produced by code that never contacted
+the device. A message like that is a resource: it is worth something precisely
+because it is rare and trustworthy. Producing it from a local `except Exception`
+spends that.
+
+And the error was unfalsifiable from the outside. "The device may be locked
+out" is not a claim the reader can check; it is a claim *about* the reader's
+inability to check. Had the console not been open, the honest next action would
+have been an out-of-band recovery on a device that needed nothing.
+
+### Why the tests did not catch it
+
+The test fixture monkeypatched `cr.verify_new_credential` **wholesale**, feeding
+`rotate()` a queue of verdicts:
+
+```python
+monkeypatch.setattr(cr, "verify_new_credential",
+                    lambda d, u, p: state["verify"].pop(0))
+```
+
+Every test of the five states passed, because the *sequence* — push, verify,
+revert, commit — was real and correct. The one thing never executed was the
+construction of the dict handed to Netmiko, which is the only place the bug
+lived. The seam was drawn above the defect.
+
+This is the same shape as [a whole function deleted, and 1133 tests
+passed](#a-whole-function-deleted-and-1133-tests-passed) and the overlay that
+[proved what the code would do, not what the process
+did](#i-tested-it-and-it-is-running-are-different-sentences): a test that
+exercises the part you were thinking about and stops exactly where the part you
+weren't begins. A mock is a claim about where the untrusted world starts. Put
+it in the wrong place and the tests verify the map.
+
+### The fix
+
+1. **`verify_new_credential()` connects directly**, through `ConnectHandler`
+   with the plaintext it was given. It never passes a plaintext value to
+   something whose contract is to decrypt.
+2. **Every result carries `attempted`.** An authentication refusal or a
+   timeout is a verdict *the device produced* (`attempted: True`). A local
+   fault is not (`attempted: False`). `classify_failure()` identifies **both**
+   sides positively, by exception name, rather than defaulting into either.
+   An unrecognised name resolves to `attempted` — and says so in the reason —
+   because the two errors are not symmetrical: a false lockout warning costs a
+   console trip, while a false "local fault" leaves a device that may really
+   be unreachable without one. The quiet outcome has to be earned.
+3. **Inconclusive is retried, not acted on.** `verify_with_retry()` returns a
+   verdict immediately and retries only local faults — which is free, because
+   the original session is still open. The device is never reverted on the
+   strength of a result that says nothing.
+4. **A sixth state.** `REVERT_FAILED` is now reserved for the device being
+   asked and refusing. `REVERTED_UNPROVEN` says the original was re-sent and
+   the proof could not run, and states explicitly that this is *not* evidence
+   about the device. Only the first may mention a lockout.
+5. **The regression is pinned as the rule, not the symptom.** One test drives a
+   full rotation with `with_temp_connection` monkeypatched to raise, so the
+   verify path may not reach it by any route.
+
+The new tests mock at the **Netmiko boundary** — a fake router that accepts
+exactly one password at a time, learns a new one from the line the push sends,
+and hashes it in its running config the way IOS does. Re-introducing the
+original defect fails **16** of them, including four that had passed against
+the stubbed verdict queue.
+
+### The general shape
+
+> A verdict about a remote system requires having asked it. A local failure is
+> evidence about this process and nothing else — and the louder the message it
+> produces, the more carefully that distinction has to be enforced.
+
+Worth separating two things the run proved, because they point in opposite
+directions. The **lockout defence works**: hold the original session, push,
+verify on a fresh connection, revert on the held session. That is the part that
+is hard to get right, and it was right, on hardware, on the first attempt. The
+**reporting** was wrong in a way that would have sent a person to a console for
+nothing. Designing the dangerous path carefully and the description of it
+casually produces a system that is safe and untrustworthy at the same time —
+and the second one is what people act on.

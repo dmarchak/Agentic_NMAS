@@ -19,11 +19,20 @@ the rotation has *happened*. A later failure to teach Oxidized about it, or to
 get it into a startup file, does not un-happen it — and reverting the device at
 that point would be destroying a completed change to fix a bookkeeping problem.
 Only :data:`VERIFY` failing reverts.
+
+**A verdict about the device requires having asked the device.** A failure
+local to this process — a bad decrypt, a missing import — is not evidence
+about anything on the network, so it is classified separately
+(``attempted: False``), retried while the held session is still open, and, if
+it persists, reported as :data:`REVERTED_UNPROVEN` rather than as a lockout.
+The first hardware run got this wrong and printed its most alarming message
+from code that never opened a socket.
 """
 
 import logging
 import secrets
 import string
+import time
 
 log = logging.getLogger(__name__)
 
@@ -46,11 +55,18 @@ CHARSET = (string.ascii_letters + string.digits + "-_.+=:@#%^&*,;~$!")
 
 LENGTH = 32
 
-#: States. Named rather than booleans because "did it work" has five answers.
+#: States. Named rather than booleans because "did it work" has six answers.
+#: The sixth was added after the first hardware run: a verdict about the
+#: device may only be reported when the device was actually asked.
 ROTATED_PERSISTED = "rotated_and_persisted"
 ROTATED_UNVERIFIED = "rotated_persistence_unverified"
 REVERTED = "reverted"
 REVERT_FAILED = "revert_failed"
+#: Reverted, and the proof could not RUN — a local fault, not a device verdict.
+#: Distinct from REVERT_FAILED, which means the device was asked and refused.
+#: The distinction exists because the first hardware run produced "MAY BE
+#: LOCKED OUT" from code that never opened a socket.
+REVERTED_UNPROVEN = "reverted_proof_inconclusive"
 NOT_STARTED = "failed_before_any_change"
 
 #: The only step whose failure reverts the device.
@@ -228,10 +244,19 @@ def summarise(result: dict) -> str:
         REVERTED: (
             f"{device}: the new credential did not verify, so the original was "
             "restored and proven. The device is unchanged."),
+        # Three ways to get here, all of them device-side: no original line
+        # was captured, the revert push failed, or the device refused the
+        # original afterwards. `reason` says which; the danger is the same.
         REVERT_FAILED: (
-            f"{device}: the new credential did not verify AND the revert "
-            "failed. THE DEVICE MAY BE LOCKED OUT — recover on the serial "
-            "console (see the plan's GAP 3)."),
+            f"{device}: the new credential did not verify and the revert did "
+            f"not succeed — {result.get('reason', 'no reason recorded')}. "
+            "THE DEVICE MAY BE LOCKED OUT — recover on the serial console "
+            "(see the plan's GAP 3)."),
+        REVERTED_UNPROVEN: (
+            f"{device}: the original credential was re-sent on the held "
+            "session, but the proof could not RUN — a local fault, with no "
+            "connection attempted. This is NOT evidence the device is "
+            "unreachable. Check it directly before assuming anything."),
         NOT_STARTED: (
             f"{device}: refused before anything was sent. The device is "
             "untouched."),
@@ -340,28 +365,118 @@ def push_rotation(session, command: str) -> dict:
     return {"ok": True, "output_len": len(output or "")}
 
 
+#: Netmiko/paramiko failures that mean "the device answered and refused us".
+#: Anything else that goes wrong before or around the socket is OUR fault, not
+#: a verdict about the device.
+#: Exception NAMES the device produced: it answered, or it could not be
+#: reached. Either way the network was consulted, so the result is a verdict.
+_AUTH_REFUSED = ("AuthenticationException", "NetmikoAuthenticationException",
+                 "SSHException", "BadAuthenticationType",
+                 "PasswordRequiredException")
+_REACHABILITY = ("NetmikoTimeoutException", "NetMikoTimeoutException",
+                 "socket.timeout", "TimeoutError", "ConnectionRefusedError",
+                 "NoValidConnectionsError", "OSError", "gaierror")
+
+#: Faults local to this process. `InvalidToken` is the r2 defect itself; the
+#: rest are the ways a bug in this module presents. Identified POSITIVELY —
+#: the quiet outcome must be earned, not fallen into.
+_LOCAL_FAULT = ("InvalidToken", "TypeError", "NameError", "AttributeError",
+                "ImportError", "ModuleNotFoundError", "KeyError", "IndexError",
+                "ValueError", "UnsendableCommand", "NonPrintableContent")
+
+
+def classify_failure(name: str) -> dict:
+    """Did the DEVICE produce this, or did this process?
+
+    Both lists are positive. An unrecognised name resolves to ``attempted``
+    — the alarming side — because the two ways to be wrong are not
+    symmetrical: a false lockout warning wastes a console trip, while a false
+    "local fault" leaves a possibly-unreachable device without one. The
+    fallback is flagged so the message can say it was a fallback.
+    """
+    if name in _LOCAL_FAULT:
+        return {"attempted": False, "recognised": True}
+    if name in _AUTH_REFUSED or name in _REACHABILITY:
+        return {"attempted": True, "recognised": True}
+    return {"attempted": True, "recognised": False}
+
+
 def verify_new_credential(device: dict, username: str, password: str) -> dict:
-    """Log in **again, from scratch**, with the new credential.
+    """Log in **again, from scratch**, with a PLAINTEXT credential.
 
     A fresh TCP session and a fresh authentication. Not the pooled connection
     and not the original session — the original is already authenticated and
     would succeed whatever the device now believes about passwords.
-    """
-    from modules.connection import with_temp_connection
 
-    probe = dict(device)
-    probe["username"] = username
-    probe["password"] = password
-    probe["secret"] = password
+    **The credential here is plaintext and stays plaintext.** The first version
+    built a device dict and handed it to ``with_temp_connection()``, which
+    Fernet-decrypts ``password``/``secret`` because every other caller passes a
+    CSV row. A plaintext password is not a Fernet token, so it raised
+    ``InvalidToken`` **before any socket was opened** — and the caller read that
+    as "the device refused us". Connecting directly keeps the encrypted-at-rest
+    convention where it belongs (the stored inventory) and out of a code path
+    whose whole input is a value that has never been stored.
+
+    Returns ``attempted``: whether a connection to the device was actually
+    made, from :func:`classify_failure`. ``ok=False, attempted=False`` is **not a verdict about the device** —
+    it is a local failure, and treating it as one produced the most alarming
+    message this tool can emit from code that never contacted anything.
+    """
+    from netmiko import ConnectHandler
+
+    from modules.connection import FAST_CLI
+
+    conn = None
     try:
-        out = with_temp_connection(
-            probe, lambda c: c.send_command("show running-config | include ^username",
-                                            read_timeout=60))
+        conn = ConnectHandler(
+            device_type=device["device_type"], ip=device["ip"],
+            username=username, password=password, secret=password,
+            port=22, fast_cli=FAST_CLI)
+        conn.enable()
+        out = conn.send_command("show running-config | include ^username",
+                                read_timeout=60)
     except Exception as exc:                  # noqa: BLE001
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200]}
+        name = type(exc).__name__
+        verdict = classify_failure(name)
+        return {"ok": False, "attempted": verdict["attempted"],
+                "recognised": verdict["recognised"], "error_type": name,
+                "error": f"{name}: {exc}"[:200]}
+    finally:
+        if conn is not None:
+            try:
+                conn.disconnect()
+            except Exception:                 # noqa: BLE001
+                pass
     if not out:
-        return {"ok": False, "error": "logged in but read nothing back"}
-    return {"ok": True, "config": out}
+        return {"ok": False, "attempted": True,
+                "error": "logged in but read nothing back"}
+    return {"ok": True, "attempted": True, "config": out}
+
+
+#: Indirection so a retry test does not spend six real seconds sleeping.
+_SLEEP = time.sleep
+
+
+def verify_with_retry(device: dict, username: str, password: str, *,
+                      attempts: int = 3, sleep=None) -> dict:
+    """Verify, retrying only while the failure is LOCAL.
+
+    An authentication refusal is a verdict and is returned immediately — there
+    is nothing to retry. A local fault is not a verdict, and the held session
+    is still open, so it costs nothing to try again rather than act on an
+    inconclusive result.
+    """
+    sleep = sleep or _SLEEP
+    last = {"ok": False, "attempted": False, "error": "not run"}
+    for attempt in range(attempts):
+        last = verify_new_credential(device, username, password)
+        if last["ok"] or last.get("attempted"):
+            return {**last, "tries": attempt + 1}
+        log.warning("rotate: verify could not run (%s) — retrying %d/%d",
+                    last.get("error_type", "?"), attempt + 1, attempts)
+        if attempt + 1 < attempts:
+            sleep(2 * (attempt + 1))
+    return {**last, "tries": attempts}
 
 
 # ---------------------------------------------------------------------------
@@ -572,12 +687,22 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
         _step("push", True)
 
         # ---- VERIFY: the only step whose failure reverts ------------------
-        check = verify_new_credential(device, username, password)
+        #
+        # And only a failure the DEVICE produced. A local fault is retried
+        # while the session is still open, because acting on an inconclusive
+        # result is how a working device gets reverted — or reported lost.
+        check = verify_with_retry(device, username, password)
         if not check["ok"]:
-            _step(VERIFY, False, check.get("error", ""))
+            conclusive = check.get("attempted", False)
+            _step(VERIFY, False,
+                  f"{check.get('error','')}"
+                  f"{'' if conclusive else '  [LOCAL FAULT — no connection made]'}")
+            result["verify_attempted"] = conclusive
             return _revert(result, _step, session, device, username,
-                           original_line, repo, hostname)
-        _step(VERIFY, True, "fresh login with the new credential")
+                           original_line, repo, hostname,
+                           inconclusive=not conclusive)
+        _step(VERIFY, True, f"fresh login with the new credential "
+                            f"(tries={check.get('tries', 1)})")
 
         new_hash = captured_hash(check["config"], username)
         if not new_hash.startswith("9 "):
@@ -613,8 +738,14 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
 
 
 def _revert(result, _step, session, device, username, original_line, repo,
-            hostname) -> dict:
-    """Put the original line back and prove it. Never called after the commit."""
+            hostname, *, inconclusive: bool = False) -> dict:
+    """Put the original line back and prove it. Never called after the commit.
+
+    *inconclusive* means the verify could not run rather than the device
+    refusing. The revert still happens — the device may be carrying a password
+    nothing has recorded, and leaving it there would lock this tool out — but
+    the verdict is never dressed up as a device verdict.
+    """
     clear_staged(repo, hostname)
     if not original_line:
         _step("revert", False, "no original line was captured")
@@ -634,13 +765,36 @@ def _revert(result, _step, session, device, username, original_line, repo,
         old = decrypt_field(device.get("password", ""))
     except Exception:                          # noqa: BLE001
         old = device.get("password", "")
-    proof = verify_new_credential(device, username, old)
-    _step("revert_verified", proof["ok"], proof.get("error", ""))
-    result["state"] = REVERTED if proof["ok"] else REVERT_FAILED
-    result["reason"] = ("the original credential was restored and proven"
-                        if proof["ok"] else
-                        "the original was re-sent but could not be proven — "
-                        "recover on the console")
+
+    # Plaintext, like the verify — the inventory's encrypted form was already
+    # decrypted above, and handing it back to something that decrypts again is
+    # exactly the bug this run found.
+    proof = verify_with_retry(device, username, old)
+    _step("revert_verified", proof["ok"],
+          f"{proof.get('error','')}"
+          f"{'' if proof.get('attempted') else '  [LOCAL FAULT — no connection made]'}")
+
+    if proof["ok"]:
+        result["state"] = REVERTED
+        result["reason"] = "the original credential was restored and proven"
+    elif proof.get("attempted"):
+        # The device was asked, and refused. This is the only path that may
+        # claim a lockout.
+        result["state"] = REVERT_FAILED
+        result["reason"] = ("the device refused the original credential after "
+                            "the revert — recover on the console")
+        if not proof.get("recognised", True):
+            result["reason"] += (
+                f" (classified from an UNRECOGNISED error, "
+                f"{proof.get('error_type', '?')} — treated as a device verdict "
+                f"because that is the safer error)")
+    else:
+        result["state"] = REVERTED_UNPROVEN
+        result["reason"] = ("the original was re-sent, but the proof could not "
+                            "run locally — no connection was attempted, so "
+                            "this says nothing about the device")
+    if inconclusive:
+        result["verify_was_inconclusive"] = True
     return result
 
 
