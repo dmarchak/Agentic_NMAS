@@ -151,6 +151,99 @@ data/user_settings.json
 `modules/secrets_store.py` owns encryption. Resolution order for portability
 settings is **environment → user setting → OS-appropriate default**.
 
+## Outside this repository: the config-persistence pipeline
+
+**Not part of this codebase, and the NSoT depends on it being true.** Documented
+here because the repo should at least say it exists, what it guarantees, and
+where it connects.
+
+### Why it exists
+
+Containerlab nodes are ephemeral. `write memory` saves to the *container's*
+NVRAM, but `containerlab deploy --cleanup` boots every node from the
+**startup-config files on the containerlab VM** (`10.0.0.210`,
+`~/labs/lab/configs/`). Anything not in those files is lost on redeploy.
+
+So there are two different claims, and only one of them was ever guaranteed:
+
+| claim | guaranteed by |
+|---|---|
+| "this is what the device is running" | the NSoT golden repo |
+| "this is what the device will boot as" | **nothing, until this pipeline** |
+
+### The pieces
+
+| path (on the NMAS, `10.0.0.211`) | what |
+|---|---|
+| `~/lab-configs/oxidized-to-config.sh` | the sanitiser/sync, 318 lines |
+| `~/bin/clab-sync` | `flock -n` wrapper, runs it with `--yes` |
+| `/etc/systemd/system/clab-sync.service` | `Type=oneshot`, **`User=dmarchak`** |
+| `/etc/systemd/system/clab-sync.timer` | `OnBootSec=10min`, `OnUnitActiveSec=30min`, `Persistent=true` |
+
+### What it does
+
+Reads Oxidized's stored configs from its git output backend
+(`/opt/oxidized/rcn-lab.git`, files named by **device IP** per `router.db`) and
+sanitises them into replayable startup-configs:
+
+- strips PKI certificate chains, the `clab-mgmt` VRF and `GigabitEthernet1` on
+  routers, banners, `license`/`platform` lines, `call-home`;
+- **re-injects `no shutdown`** into any interface carrying an address that does
+  not explicitly say `shutdown`. A running-config records `shutdown` but never
+  `no shutdown`, so harvesting a working device and replaying it brings every
+  routed port up administratively down. This cost a full rebuild on 2026-08-30.
+
+Then validates every file before anything is copied — a failure copies nothing
+and fails the unit:
+
+- exactly one `end`, exactly one `hostname` (an empty file has neither, and the
+  older check could not tell that from a good one);
+- no management-interface, certificate or banner leakage;
+- no addressed interface missing `no shutdown`;
+- a **truncation guard**: interface and `router` block counts in Oxidized's copy
+  must survive into the output. Proven by fault injection — a simulated
+  truncation at the first `router` block passed every older check on all nine
+  devices, and the guard refused all nine.
+
+On success: rsync to a stage dir on the clab VM, diff, timestamped backup, copy,
+and commit in `~/labs/lab` (identity `clab-sync`). The file header carries
+Oxidized's **commit sha**, not a timestamp — a timestamp made every run "change"
+every file.
+
+**No manual approval, by design.** Validation is the gate, and the output only
+affects the *next* redeploy — it never touches a live device.
+
+### How it connects to the NSoT
+
+```
+device ──SSH──> Oxidized ──git──> /opt/oxidized/rcn-lab.git
+                                        │
+                              oxidized-to-config.sh (sanitise + validate)
+                                        │
+                              10.0.0.210:~/labs/lab/configs/*.cfg
+                                        │
+                              containerlab deploy --cleanup
+```
+
+Two consequences the NSoT must respect:
+
+1. **Oxidized logs into the same devices with the same account NMAS uses.** Its
+   credentials are a *single global* `username`/`password` in
+   `/opt/oxidized/config`; `router.db` maps only `name: 0` (the IP). So rotating
+   that account breaks Oxidized for every device at once unless Oxidized is
+   updated too — see `docs/NSOT_SET_CREDENTIAL_PLAN.md` §GAP 1.
+2. **If Oxidized's login fails, the startup files silently stop updating.** The
+   sync reads Oxidized's repo, so a credential failure upstream looks like "no
+   changes" downstream, not like an error.
+
+### It should be version-controlled
+
+The script, the wrapper and the units live only on the NMAS filesystem. They are
+load-bearing — the truncation guard above is the kind of logic whose history
+matters — and they have no history at all. Once Phase 2b lands, `infra/` in the
+per-list config repo is the natural home, which also means they reach the
+private remote with everything else.
+
 ## Conventions
 
 - Return dicts shaped `{"ok": bool, "error": str, ...}`

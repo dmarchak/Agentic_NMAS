@@ -3125,3 +3125,73 @@ The check that actually settles it is the one the operator asked for: hit the
 real endpoint, through the real path, and read what the process says about
 itself. `GET /identity/status` exists for exactly that, and it answered in one
 request.
+
+---
+
+## Two claims that looked like one: what a device runs, and what it will boot
+
+The NSoT golden repo answers *"what is this device running?"* with a commit,
+a tag and a diff. It was easy — and wrong — to read that as also answering
+*"what will this device be after a rebuild?"*
+
+Containerlab nodes are ephemeral. `write memory` writes the **container's**
+NVRAM; `containerlab deploy --cleanup` boots every node from startup-config
+files on a different host entirely. Nothing connected the two. The config
+persistence pipeline (`docs/ARCHITECTURE.md`) closes that gap, and its first
+automated runs surfaced two things worth recording.
+
+### 1. A latent rebuild failure nobody could have seen
+
+The first automated run persisted an already-broken pair of startup files.
+`s1` and `s2`'s files dated from 15 September and lacked `vtp mode transparent`
+and the VLAN 10/20/30 definitions. With `--cleanup` wiping `vlan.dat`, a
+redeploy would have brought both switches up with **undefined VLANs**, and
+therefore dead SVIs and dead VRRP on every group they carry.
+
+Nothing was wrong on the running devices. Nothing was wrong in the golden repo.
+The defect existed only in the *third* copy — the one that decides what happens
+after a rebuild — and only a rebuild would have revealed it.
+
+> A stale artifact is not detected by looking at the systems it was derived
+> from. It is detected by regenerating it and comparing, which is what a
+> continuous sync does and an occasional one does not.
+
+This is the argument for continuous over occasional in a sentence: the files
+were wrong for six days, and the only reason it was not an outage is that
+nobody happened to redeploy.
+
+### 2. NMAS deploys had never reached a startup file
+
+The same run also persisted this week's NMAS work — the `r2`/`s3`/`s4`
+loopback descriptions from batch 4 and the smoke tests. **No NMAS deploy had
+ever reached a startup file before.**
+
+Every guarantee built in Phases 2 and 3 — one call one commit, the confirm
+hash, merge-only, rollback, the earned baseline — is a guarantee about *what
+the device is running and what was recorded about it*. All of it was true, and
+all of it would have evaporated on `--cleanup`.
+
+> "The source of truth records what devices run" and "the devices will come
+> back that way" are different claims. A system that makes the first one very
+> rigorously can still be silently failing the second.
+
+That is not a flaw in the golden repo — it is a boundary of it, and the
+interesting part is how long the boundary went unstated. It took building a
+pipeline *outside* the repo to notice that the repo's central claim had an
+unspoken "…until the next rebuild" attached to it.
+
+### The shape both share
+
+Both are **third-copy problems**. The device has one copy, the NSoT has a
+second, and the boot-time artifact is a third that neither of the first two can
+see. Anything derived-and-stored has this property, and the countermeasure is
+the same in each case: regenerate it on a schedule, validate it mechanically,
+and make a validation failure refuse to publish rather than publish something
+plausible.
+
+The truncation guard in that pipeline is the same lesson again, one level down.
+Every older check — `end` count, `hostname` count, cert/banner/mgmt leakage,
+missing `no shutdown` — passed on a **simulated truncation at the first
+`router` block**, on all nine devices. Each check asked "is what I am looking
+at well-formed?" and none asked "is it all here?". Counting blocks in and
+blocks out refused all nine.
