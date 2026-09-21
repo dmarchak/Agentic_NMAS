@@ -7,6 +7,21 @@
    The migration is **dry-run by default** — the report renders first and the
    apply button stays disabled until the operator has seen it. #}
 
+{# The remote card's container is SERVER-RENDERED, with text in it.
+
+   It used to be created by loadGoldenRepoPanel()'s innerHTML, and the call
+   into the card ran earlier in that same function — so getElementById found
+   nothing, the card returned quietly, and the result was a blank space with a
+   clean console and no request in the log.
+
+   Default text turns every failure mode into something visible. An empty div
+   can only ever look like success. #}
+<div id="remotePanel" class="mb-2">
+  <div class="alert alert-warning py-2 px-3 small mb-0" id="remotePanelDefault">
+    Remote card did not load — see the browser console.
+  </div>
+</div>
+
 <div id="goldenRepoPanel" class="mb-3" data-list-name="{{ current_list }}"></div>
 
 <div class="modal fade" id="goldenTimelineModal" tabindex="-1" aria-hidden="true">
@@ -215,7 +230,12 @@ window.confirmBaselineRestore = function (tag) {
    gated kinds, so it is an act of reading rather than of clicking. */
 async function loadRemotePanel() {
   const host = document.getElementById('remotePanel');
-  if (!host) return;
+  if (!host) {
+    // Nothing to render into is a defect, not a state. Saying so beats
+    // returning quietly, which is how this failed the first time.
+    console.error('remotePanel container missing — the card cannot render');
+    return;
+  }
   try {
     const s = await (await fetch('/remote/status')).json();
     if (!s.configured) {
@@ -266,7 +286,11 @@ async function loadRemotePanel() {
         </div>
         <div id="remoteOut" class="small mt-2"></div>
       </div></div>`;
-  } catch (e) { console.error('loadRemotePanel', e); }
+  } catch (e) {
+    console.error('loadRemotePanel', e);
+    host.innerHTML = `<div class="alert alert-danger py-2 px-3 small mb-0">
+      Remote card failed to load: ${_gEsc(String(e && e.message || e))}</div>`;
+  }
 }
 
 function _remoteOut(html) {
@@ -374,6 +398,13 @@ window.remotePush = async function () {
   loadRemotePanel();
 };
 
+/* Initialised HERE, by this block, on its own event.
+   Being called from another block made the card depend on that block's
+   internal ordering — and it lost: the call ran before the container the
+   other block was about to create. A component that needs another
+   component's call order is not isolated, whatever else is done to it. */
+document.addEventListener('DOMContentLoaded', loadRemotePanel);
+
 window.remoteEnableAuto = async function () {
   const r = await fetch('/remote/auto-push', {method: 'POST'});
   const d = await r.json();
@@ -397,15 +428,11 @@ async function loadGoldenRepoPanel() {
     ]);
 
     const baselines = (bRes.baselines || []).slice(0, 10);
-    // Guarded: if the Remote card's block failed to parse, this symbol does
-    // not exist, and Baselines must still render.
-    if (typeof loadRemotePanel === 'function') loadRemotePanel();
     window._gBaselineCache = baselines;
     const pending = (rRes.pending || []);
     const needsMigration = mRes.ok && mRes.device_count > 0 && !mRes.already_migrated;
 
     host.innerHTML = `
-      <div id="remotePanel"></div>
       ${needsMigration ? _migrationCard(mRes) : ''}
       ${pending.length ? `
         <div class="alert alert-info py-2 px-3 d-flex align-items-center gap-2">

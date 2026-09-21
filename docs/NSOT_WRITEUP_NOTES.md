@@ -4755,3 +4755,67 @@ Python would be a dependency and a maintenance burden for a project that
 vendors its front-end precisely to avoid those. This checks one defect class,
 runs everywhere, and cannot be skipped into uselessness — which the node check,
 skipped on both machines that matter, would otherwise have been.
+
+## The consumer ran before its own container existed
+
+The Remote card was in the served page and was never called. No console error,
+no request in the log, a blank space where the card should be.
+
+The hypothesis was script ordering: three blocks now, and the caller's
+`typeof` guard would be false if the card's block had not defined its function
+yet. Plausible, and wrong — the card's block is second and the caller's is
+third, so the symbol existed.
+
+The ordering that mattered was *inside one function*:
+
+```js
+async function loadGoldenRepoPanel() {
+  ...
+  if (typeof loadRemotePanel === 'function') loadRemotePanel();   // line 402
+  ...
+  host.innerHTML = `
+    <div id="remotePanel"></div>                                   // line 408
+```
+
+The call ran six lines before the container it renders into was created.
+`getElementById` returned null, and `loadRemotePanel` did what it had been
+written to do with a missing element: `return`.
+
+### Every guard here made it quieter
+
+The `typeof` guard was added so a broken card could not take the Baselines
+panel down. It worked — and it also meant a card that failed for an entirely
+different reason failed **silently**. The early `if (!host) return;` is the
+same shape: written for the case where the panel is not on screen, it
+swallowed the case where the panel was on screen and the container was not
+built yet.
+
+Three defensive patterns, each sensible alone, composing into a component that
+could not report its own absence.
+
+### An empty div can only look like success
+
+The structural fix is not about ordering at all. The container is now
+**server-rendered, with text in it**:
+
+```html
+<div id="remotePanel">
+  <div class="alert alert-warning">Remote card did not load — see the browser console.</div>
+</div>
+```
+
+A card that never runs now leaves a message; the script replaces it on
+success, and replaces it with an error on a failed fetch. Nothing
+distinguished "not loaded" from "loaded and empty" before, and the operator
+had to read the server log to find out which.
+
+The card also initialises itself on its own `DOMContentLoaded` rather than
+being called from another block. A component that depends on another
+component's internal call order is not isolated, whatever else was done to it
+— and "guarded with `typeof`" is not isolation, it is a quieter coupling.
+
+> Defensive code that returns early on a missing precondition is asserting the
+> precondition is optional. When it is not optional, the early return converts
+> a defect into an appearance.
+
+Seven of the ten new tests fail against the shipped state and pass now.
