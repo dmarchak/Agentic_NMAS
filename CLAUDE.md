@@ -751,6 +751,18 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   is an exemption for anything that has reached the box, which is exactly where
   an audit trail matters most. A test asserts no loopback address appears in
   `identity.py`.
+- **A verified service is still not a person.** `require_person_for_approve`
+  and `require_person_for_confirm` default ON: approve and confirm are where a
+  human is supposed to have read an exact command list before it reaches a
+  device, and the confirm hash is only worth something because somebody looked
+  at what it covers. The exception is `service_allowed_operations`, a list of
+  operation **kinds** that **starts empty** — Part 2 adds `credential_rotation`
+  by name. A list, not a boolean: "services may rotate credentials" and
+  "services may deploy" are different grants. Services may still `reveal`,
+  which is how they use a secret they need.
+- **Automation sends an honest User-Agent** (`nmas-automation/1.0`). Measured:
+  Cloudflare's integrity check accepts it and rejects `Python-urllib` with
+  403/1010. No browser impersonation was needed.
 - **Automation uses a Cloudflare Access service token**, not an exemption:
   `CF-Access-Client-Id` / `CF-Access-Client-Secret` through the tunnel, Access
   issues an assertion, and the identity layer verifies it like any other.

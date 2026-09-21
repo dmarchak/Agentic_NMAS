@@ -151,6 +151,19 @@ DEFAULTS: dict = {
     "require_identity_for_reveal":  True,
     "require_identity_for_approve": True,
     "require_identity_for_confirm": True,
+    #: A verified SERVICE is still not a person. Approve and confirm are the
+    #: points where a human is supposed to have looked at an exact command list
+    #: before it reaches a device; the confirm hash is only worth something
+    #: because somebody read what it covers. A non-expiring credential that can
+    #: skip that step holds a great deal of authority implicitly.
+    "require_person_for_approve": True,
+    "require_person_for_confirm": True,
+    #: The narrow exception: operation kinds a *service* may approve/confirm
+    #: despite the two settings above. **Starts empty**, so the exception grants
+    #: nothing until somebody names something. Part 2 adds
+    #: `credential_rotation` by name — one kind, chosen deliberately, rather
+    #: than a flag that opens all of them at once.
+    "service_allowed_operations": [],
 
     # ── S3-compatible archive ───────────────────────────────────────────────
     "s3_endpoint":   "",
@@ -330,6 +343,9 @@ SCHEMA: dict = {
         "require_identity_for_reveal": _BOOL,
         "require_identity_for_approve": _BOOL,
         "require_identity_for_confirm": _BOOL,
+        "require_person_for_approve": _BOOL,
+        "require_person_for_confirm": _BOOL,
+        "service_allowed_operations": {"type": "array", "items": _STR},
 
         "s3_endpoint": _STR,
         "s3_bucket": _STR,

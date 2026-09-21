@@ -45,9 +45,16 @@ def configured(monkeypatch, keys):
         "cf_access_aud": AUD,
         "cf_access_trusted_peers": TUNNEL,
         "cf_access_jwks_ttl": 3600,
+        # These mirror settings_schema.DEFAULTS deliberately. A fixture that
+        # encodes the OLD defaults lies about the system under test: it let an
+        # unidentified caller through a gate that is ON in production, and the
+        # only thing that noticed was a test written afterwards.
         "require_identity_for_reveal": True,
-        "require_identity_for_approve": False,
-        "require_identity_for_confirm": False,
+        "require_identity_for_approve": True,
+        "require_identity_for_confirm": True,
+        "require_person_for_approve": True,
+        "require_person_for_confirm": True,
+        "service_allowed_operations": [],
     }
     monkeypatch.setattr(identity, "_setting",
                         lambda key, default=None: values.get(key, default))
@@ -243,9 +250,11 @@ class TestFailClosedAndHonestMessages:
         assert refusal is None
         assert ident.actor == "dustin@example.com"
 
-    def test_approve_is_not_gated_by_default(self, configured):
+    def test_approve_is_gated_by_default(self, configured):
+        """Changed deliberately: approve puts configuration on a device."""
         _ident, refusal = identity.require(_Req(), action="approve")
-        assert refusal is None
+        assert refusal is not None
+        assert refusal["requires_identity"] is True
 
     def test_an_unreachable_verifier_says_so_rather_than_access_denied(
             self, configured, monkeypatch, keys):
@@ -512,13 +521,24 @@ class TestServiceTokensAreIdentifiedDistinctly:
         assert ident.outcome == "invalid_token"
         assert "names nobody" in ident.reason
 
-    def test_a_service_token_satisfies_the_gates(self, configured, keys):
-        """Automation must be able to work once it authenticates properly."""
+    def test_a_service_token_may_reveal_but_not_approve_or_confirm(
+            self, configured, keys):
+        """Automation authenticates — and is still not a person.
+
+        Reveal is how a service uses a secret it needs. Approve and confirm are
+        where a human is supposed to have read an exact command list before it
+        reaches a device.
+        """
         private, _ = keys
         request = _Req(token=self._service_token(private))
-        for action in ("reveal", "approve", "confirm"):
+
+        _ident, refusal = identity.require(request, "reveal")
+        assert refusal is None
+
+        for action in ("approve", "confirm"):
             _ident, refusal = identity.require(request, action)
-            assert refusal is None, action
+            assert refusal is not None, action
+            assert refusal["outcome"] == "person_required"
 
     def test_a_service_token_from_an_untrusted_peer_still_fails(self, configured,
                                                                  keys):
@@ -603,3 +623,128 @@ class TestServiceLabelsAreCosmeticOnly:
         private, _ = keys
         row = identity.identify(_Req(token=_token(private))).audit()
         assert "service" not in row
+
+
+class TestAServiceIsNotAPerson:
+    """A verified service still may not approve or confirm a change.
+
+    The confirm hash is only worth something because a human read what it
+    covers. A non-expiring credential that can skip that step holds a great
+    deal of authority implicitly — so the authority is made explicit instead,
+    one operation kind at a time.
+    """
+
+    CLIENT_ID = "e367826f93b8d71185e03fe518aff3b4.access"
+
+    def _svc(self, private):
+        import jwt
+        now = int(time.time())
+        return jwt.encode({"type": "app", "aud": AUD, "iss": f"https://{TEAM}",
+                           "common_name": self.CLIENT_ID, "iat": now,
+                           "exp": now + 600, "sub": ""},
+                          private, algorithm="RS256")
+
+    def _with(self, monkeypatch, configured, **over):
+        base = dict(configured)
+        base.update({"require_person_for_approve": True,
+                     "require_person_for_confirm": True,
+                     "service_allowed_operations": []})
+        base.update(over)
+        monkeypatch.setattr(identity, "_setting",
+                            lambda key, default=None: base.get(key, default))
+
+    def test_the_defaults_require_a_person(self):
+        from modules.settings_schema import DEFAULTS
+
+        assert DEFAULTS["require_person_for_approve"] is True
+        assert DEFAULTS["require_person_for_confirm"] is True
+
+    def test_the_allowlist_starts_empty(self):
+        from modules.settings_schema import DEFAULTS
+
+        assert DEFAULTS["service_allowed_operations"] == [], (
+            "the exception must grant nothing until somebody names an operation")
+
+    def test_a_person_is_unaffected(self, configured, keys, monkeypatch):
+        private, _ = keys
+        self._with(monkeypatch, configured)
+        for action in ("reveal", "approve", "confirm"):
+            _i, refusal = identity.require(_Req(token=_token(private)), action)
+            assert refusal is None, action
+
+    def test_a_service_is_refused_with_an_honest_reason(self, configured, keys,
+                                                        monkeypatch):
+        private, _ = keys
+        self._with(monkeypatch, configured)
+        ident, refusal = identity.require(_Req(token=self._svc(private)), "confirm")
+
+        assert ident.is_identified is True       # it DID authenticate
+        assert refusal["outcome"] == "person_required"
+        assert refusal["actor_kind"] == "service"
+        assert "may plan and queue work" in refusal["error"]
+
+    def test_an_empty_allowlist_permits_nothing(self, configured, keys,
+                                                 monkeypatch):
+        private, _ = keys
+        self._with(monkeypatch, configured)
+        for operation in ("credential_rotation", "deploy", "", "anything"):
+            _i, refusal = identity.require(
+                _Req(token=self._svc(private)), "confirm", operation=operation)
+            assert refusal is not None, operation
+
+    def test_a_named_operation_is_permitted_and_only_that_one(
+            self, configured, keys, monkeypatch):
+        """Part 2 adds `credential_rotation` — and nothing else comes with it."""
+        private, _ = keys
+        self._with(monkeypatch, configured,
+                   service_allowed_operations=["credential_rotation"])
+        request = _Req(token=self._svc(private))
+
+        _i, allowed = identity.require(request, "confirm",
+                                       operation="credential_rotation")
+        assert allowed is None
+
+        for other in ("deploy", "restore", "template_edit", ""):
+            _i, refusal = identity.require(request, "confirm", operation=other)
+            assert refusal is not None, other
+
+    def test_the_allowlist_does_not_rescue_an_unidentified_caller(
+            self, configured, monkeypatch):
+        """It is an exception for SERVICES, not a bypass for anyone."""
+        self._with(monkeypatch, configured,
+                   service_allowed_operations=["credential_rotation"])
+        _i, refusal = identity.require(_Req(), "confirm",
+                                       operation="credential_rotation")
+        assert refusal is not None
+        assert refusal.get("requires_identity") is True
+
+    def test_the_audit_row_records_kind_for_a_gated_action(self, configured,
+                                                            keys, monkeypatch):
+        private, _ = keys
+        self._with(monkeypatch, configured)
+        ident, _refusal = identity.require(_Req(token=self._svc(private)), "confirm")
+        assert ident.audit()["kind"] == "service"
+
+        ident2, _r2 = identity.require(_Req(token=_token(private)), "confirm")
+        assert ident2.audit()["kind"] == "person"
+
+
+class TestTheFixtureMatchesTheRealDefaults:
+    """A fixture that encodes stale defaults tests a system nobody runs.
+
+    The `configured` fixture above carried the original
+    `require_identity_for_{approve,confirm}: False`. When the defaults changed
+    to True, every test using that fixture went on exercising the permissive
+    system — and an unidentified caller passed a gate that is ON in production.
+    """
+
+    def test_every_gate_default_matches_settings_schema(self, configured):
+        from modules.settings_schema import DEFAULTS
+
+        for key, value in configured.items():
+            if key.startswith(("require_identity_", "require_person_",
+                               "service_allowed_")):
+                assert DEFAULTS[key] == value, (
+                    f"the fixture says {key}={value!r} but the real default is "
+                    f"{DEFAULTS[key]!r} — the fixture is testing a system that "
+                    "does not exist")

@@ -297,16 +297,55 @@ def identify(request) -> Identity:
                     header_present=True)
 
 
-def require(request, action: str = "reveal"):
+def service_may(operation: str) -> bool:
+    """May a service perform *operation* where a person is normally required?
+
+    The allowlist starts **empty**, so the exception grants nothing until
+    somebody names an operation. Naming kinds one at a time is the difference
+    between "services may rotate credentials" and "services may deploy" — a
+    boolean would have said both.
+    """
+    allowed = _setting("service_allowed_operations", []) or []
+    return bool(operation) and operation in allowed
+
+
+def require(request, action: str = "reveal", operation: str = ""):
     """``(identity, refusal)``. *refusal* is ``None`` when the action may proceed.
 
-    Fail-closed by setting, per action. ``reveal`` defaults ON because
-    revealing a secret is the action whose audit entry is worthless without a
-    name attached to it.
+    Two gates, in order, both fail-closed by setting:
+
+    1. **Is anyone identified?** ``require_identity_for_<action>``.
+    2. **Is a person required?** ``require_person_for_<action>``. A verified
+       service is still not a person, and *approve* and *confirm* are the
+       points where a human is supposed to have read an exact command list
+       before it reaches a device. The confirm hash is only worth something
+       because somebody looked at what it covers.
+
+    *operation* names the kind of work — a service may be allowed specific
+    kinds via ``service_allowed_operations`` without being allowed all of them.
     """
     ident = identify(request)
+
     if ident.is_identified:
-        return ident, None
+        if ident.kind != "service":
+            return ident, None
+        if not _setting(f"require_person_for_{action}", action in ("approve", "confirm")):
+            return ident, None
+        if service_may(operation):
+            log.info("identity: service permitted for operation=%s action=%s",
+                     operation, action)
+            return ident, None
+        what = f" for '{operation}'" if operation else ""
+        return ident, {
+            "ok": False,
+            "error": (f"'{action}'{what} requires a person. This request was "
+                      f"authenticated as a service ({service_label(ident.service_id)}), "
+                      "which may plan and queue work but may not approve or "
+                      "confirm a change to a device."),
+            "outcome": "person_required",
+            "requires_person": True,
+            "actor_kind": "service",
+        }
 
     key = f"require_identity_for_{action}"
     if not _setting(key, action == "reveal"):
