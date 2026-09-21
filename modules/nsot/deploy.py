@@ -397,11 +397,59 @@ def assert_rollback_provenance(rollback: list, pushed: list) -> None:
             "deploy pushed: %s" % (len(orphans), ", ".join(repr(o) for o in orphans[:5])))
 
 
-def command_fingerprint(commands: list) -> str:
-    """Stable hash of an exact command list, for the confirm-then-send check."""
-    import hashlib
+class NotAuthorised(RuntimeError):
+    """A dangerous command was not authorised, or an authorisation matched nothing."""
 
-    payload = "\n".join(commands)
+
+def dangerous_in(commands: list) -> list:
+    """Commands the CI gate treats as dangerous, as exact allow-list strings."""
+    from modules.pipeline import dangerous_commands
+    return dangerous_commands(commands)
+
+
+def assert_authorised(commands: list, authorised) -> None:
+    """Every dangerous line must be authorised, and every authorisation used.
+
+    Both halves matter. The first is the gate. The second stops an
+    authorisation list becoming a standing blanket: a string that matches
+    nothing in the program is either a typo — so the line it was meant to cover
+    is *not* authorised — or a leftover from an earlier plan, and neither
+    should pass quietly.
+    """
+    allowed = {a.strip() for a in (authorised or [])}
+    flagged = set(dangerous_in(commands))
+
+    unauthorised = sorted(flagged - allowed)
+    if unauthorised:
+        raise NotAuthorised(
+            "%d dangerous command(s) are not authorised: %s. Authorise the "
+            "exact string(s) at plan time." % (len(unauthorised),
+                                               ", ".join(repr(u) for u in unauthorised)))
+
+    unused = sorted(allowed - flagged)
+    if unused:
+        raise NotAuthorised(
+            "%d authorisation(s) match no dangerous command in this program: "
+            "%s. An authorisation that matches nothing is a typo or a leftover."
+            % (len(unused), ", ".join(repr(u) for u in unused)))
+
+
+def command_fingerprint(commands: list, authorised=None) -> str:
+    """Stable hash of what was confirmed: the exact program **and** what was
+    authorised within it.
+
+    The authorisation is part of the confirmation, not an argument added later.
+    "These lines, with these authorised" is one decision, and changing either
+    half after it was displayed makes the confirmation no longer describe what
+    would happen.
+    """
+    import hashlib
+    import json as _json
+
+    payload = _json.dumps(
+        {"commands": list(commands),
+         "authorised": sorted(a.strip() for a in (authorised or []))},
+        sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 

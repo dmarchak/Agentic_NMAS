@@ -637,3 +637,180 @@ class TestRollbackNegationsAreBounded:
         pushed = ["interface GigabitEthernet0/1", " description new", "exit"]
         assert_rollback_provenance(
             ["interface GigabitEthernet0/1", " description old", "exit"], pushed)
+
+
+class TestDangerousCommandsNeedAuthorisation:
+    """The CI gate offered an override the deploy path could not supply.
+
+    ``params['allowed_dangerous']`` has existed since Phase 0, and
+    ``_deploy_one()`` hardcoded ``params={"skip_route_check": True}`` — so any
+    template change containing ``shutdown``, ``no ip address``, ``no router
+    ospf``, ``reload``, ``erase nvram`` or ``crypto key zeroize`` was
+    permanently unrunnable through Phase 3c. Not refused pending authorisation:
+    refused with no authorisation mechanism reachable.
+
+    A gate that cannot be cleared is as broken as one that cannot fire. It just
+    fails in the safe direction, so it sits there until someone needs to shut
+    an interface — a routine operation.
+    """
+
+    PROGRAM = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+
+    def test_the_dangerous_line_is_flagged_as_an_exact_string(self):
+        from modules.nsot.deploy import dangerous_in
+        assert dangerous_in(self.PROGRAM) == ["shutdown"]
+
+    def test_a_clean_program_flags_nothing(self):
+        from modules.nsot.deploy import dangerous_in
+        assert dangerous_in(["interface GigabitEthernet0/1",
+                             " description x", "exit"]) == []
+
+    def test_an_authorised_line_proceeds(self):
+        from modules.nsot.deploy import assert_authorised
+        assert_authorised(self.PROGRAM, ["shutdown"])
+
+    def test_an_unauthorised_dangerous_line_is_refused(self):
+        from modules.nsot.deploy import NotAuthorised, assert_authorised
+        with pytest.raises(NotAuthorised) as exc:
+            assert_authorised(self.PROGRAM, [])
+        assert "shutdown" in str(exc.value)
+
+    def test_authorising_a_line_not_in_the_program_is_refused(self):
+        """A standing blanket, or a typo — and a typo means the line it was
+        meant to cover is not authorised."""
+        from modules.nsot.deploy import NotAuthorised, assert_authorised
+        with pytest.raises(NotAuthorised) as exc:
+            assert_authorised(self.PROGRAM, ["shutdown", "reload"])
+        assert "match no dangerous command" in str(exc.value)
+
+    def test_a_near_miss_authorisation_does_not_count(self):
+        from modules.nsot.deploy import NotAuthorised, assert_authorised
+        with pytest.raises(NotAuthorised):
+            assert_authorised(self.PROGRAM, ["shut"])
+
+    def test_the_authorisation_is_part_of_the_confirmation_hash(self):
+        from modules.nsot.deploy import command_fingerprint
+        assert (command_fingerprint(self.PROGRAM, [])
+                != command_fingerprint(self.PROGRAM, ["shutdown"]))
+
+    def test_changing_the_authorisation_between_plan_and_apply_is_caught(self):
+        from modules.nsot.deploy import command_fingerprint
+        confirmed = command_fingerprint(self.PROGRAM, ["shutdown"])
+        at_apply = command_fingerprint(self.PROGRAM, [])
+        assert at_apply != confirmed
+
+    def test_the_hash_is_order_insensitive_for_authorisations(self):
+        """Two authorisations are a set, not a sequence."""
+        from modules.nsot.deploy import command_fingerprint
+        program = ["interface GigabitEthernet0/1", " shutdown", "exit",
+                   "interface GigabitEthernet0/2", " no ip address", "exit"]
+        assert (command_fingerprint(program, ["shutdown", "no ip address"])
+                == command_fingerprint(program, ["no ip address", "shutdown"]))
+
+    def test_authorisation_is_scoped_per_device(self):
+        """Authorising a line for one device must not authorise it elsewhere."""
+        from modules.nsot.deploy import NotAuthorised, assert_authorised
+
+        authorise = {"s4": ["shutdown"], "s3": []}
+        assert_authorised(self.PROGRAM, authorise["s4"])
+        with pytest.raises(NotAuthorised):
+            assert_authorised(self.PROGRAM, authorise["s3"])
+
+    def test_the_gate_accepts_a_stripped_match(self):
+        """The gate compares cmd.strip(); the flag must produce that string."""
+        from modules.pipeline import _DANGEROUS_PATTERNS
+        from modules.nsot.deploy import dangerous_in
+
+        flagged = dangerous_in(self.PROGRAM)[0]
+        line = next(c for c in self.PROGRAM
+                    if any(p.search(c) for p in _DANGEROUS_PATTERNS))
+        assert line.strip() == flagged
+
+
+def _ctx(**overrides):
+    """A pipeline context for the rollback-path tests."""
+    import threading
+    from modules.pipeline import PipelineContext
+    base = dict(config_type="template", device_ips=["10.0.0.1"],
+                params={}, ip_params_map={},
+                selected_devices=[{"ip": "10.0.0.1", "hostname": "R1"}],
+                check_devices=[], connections_pool={},
+                pool_lock=threading.Lock(), config_id="t",
+                settle_sleep=lambda _s: None)
+    base.update(overrides)
+    return PipelineContext(**base)
+
+
+class TestRollbackIsExemptFromTheDangerousGate:
+    """Rolling back an authorised change produces a dangerous command.
+
+    Undoing ``no shutdown`` is ``shutdown``. If the gate blocked the repair,
+    the device would stay in the state the rollback was called to fix — a
+    safety check causing the damage it exists to prevent.
+
+    The exemption is structural: rollback never passes through stage 3. Its
+    authorisation is ``assert_rollback_provenance()``, which guarantees every
+    line inverts something this deploy just pushed.
+    """
+
+    def test_undoing_no_shutdown_emits_shutdown(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " no shutdown", "exit"],
+            "interface GigabitEthernet0/1\n shutdown\n")
+        assert undo == ["interface GigabitEthernet0/1", " shutdown", "exit"]
+
+    def test_that_rollback_would_trip_the_gate(self):
+        """Stated explicitly, so the exemption is not theoretical."""
+        from modules.nsot.deploy import dangerous_in, rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " no shutdown", "exit"],
+            "interface GigabitEthernet0/1\n shutdown\n")
+        assert dangerous_in(undo) == ["shutdown"]
+
+    def test_provenance_still_authorises_it(self):
+        from modules.nsot.deploy import (assert_rollback_provenance,
+                                         rollback_commands)
+        pushed = ["interface GigabitEthernet0/1", " no shutdown", "exit"]
+        undo = rollback_commands(pushed, "interface GigabitEthernet0/1\n shutdown\n")
+        assert_rollback_provenance(undo, pushed)
+
+    def test_undoing_a_shutdown_emits_no_shutdown(self):
+        """The 3A direction, which a config replay could not produce."""
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " shutdown", "exit"],
+            "interface GigabitEthernet0/1\n description x\n")
+        assert undo == ["interface GigabitEthernet0/1", " no shutdown", "exit"]
+
+    def test_the_rollback_path_never_calls_the_ci_gate(self):
+        import inspect
+        from modules.pipeline import _stage_rollback
+        source = inspect.getsource(_stage_rollback)
+        assert "_stage_ci_gate" not in source
+        assert "allowed_dangerous" not in source
+
+    def test_exempt_lines_are_recorded_not_silent(self):
+        from modules.pipeline import _stage_rollback
+        import modules.ai_assistant as A
+        import modules.connection as C
+        import modules.pipeline as P
+
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": True}}
+        ctx.confirmed_commands = {"10.0.0.1": ["interface GigabitEthernet0/0",
+                                               " no shutdown", "exit"]}
+        originals = (P._restore_config, A._load_pre_change_file,
+                     C.get_persistent_connection)
+        P._restore_config = lambda conn, cmds: None
+        A._load_pre_change_file = lambda ip: (
+            "interface GigabitEthernet0/0\n shutdown\n")
+        C.get_persistent_connection = lambda dev, pool, lock: object()
+        try:
+            _stage_rollback(ctx)
+        finally:
+            (P._restore_config, A._load_pre_change_file,
+             C.get_persistent_connection) = originals
+
+        assert ctx.rollback_dangerous["10.0.0.1"] == ["shutdown"]
+        assert ctx.rolled_back_ips == ["10.0.0.1"]

@@ -74,6 +74,21 @@ _DANGEROUS_PATTERNS: list[re.Pattern] = [
     re.compile(r"^\s*reload",                                  re.IGNORECASE),
 ]
 
+def dangerous_commands(commands) -> list:
+    """Every command in *commands* that the CI gate treats as dangerous.
+
+    Exposed so a **plan** can flag these before anyone confirms, rather than
+    the gate discovering them at stage 3 with no way to authorise them. The
+    gate compares ``cmd.strip()`` against the allow-list, so that is what is
+    returned — the exact string an authorisation must name.
+    """
+    flagged = []
+    for command in commands or []:
+        if any(pattern.search(command) for pattern in _DANGEROUS_PATTERNS):
+            flagged.append(command.strip())
+    return flagged
+
+
 # Lines stripped from running-config before diff (matches drift_check._SKIP_STARTSWITH).
 _SKIP_STARTSWITH = (
     "! Last configuration", "! NVRAM config", "! No configuration",
@@ -146,6 +161,9 @@ class PipelineContext:
     rollback_commands: dict = field(default_factory=dict)
     #: ip -> why a rollback could not complete.
     rollback_failures: dict = field(default_factory=dict)
+    #: ip -> rollback lines that would have tripped the CI gate, exempt by
+    #: provenance. Recorded so the exemption is visible in the report.
+    rollback_dangerous: dict = field(default_factory=dict)
 
     # ---- Phase 3c: convergence and golden-save state ---------------------
     convergence:         dict = field(default_factory=dict)  # Stage 8: ip -> checks
@@ -1225,6 +1243,20 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             if not undo:
                 log.info("pipeline[rollback]: %s — nothing to undo", hostname)
                 continue
+
+            # Rollback is EXEMPT from the dangerous-command gate, structurally:
+            # it never passes through stage 3. Rolling back an authorised
+            # `no shutdown` produces `shutdown`, and a gate that blocked the
+            # repair would leave the device in the failed state it was called
+            # to fix. assert_rollback_provenance() above is the authorisation —
+            # every line inverts something this deploy just pushed. Recorded so
+            # the exemption is visible rather than implicit.
+            would_trip = dangerous_commands(undo)
+            if would_trip:
+                ctx.rollback_dangerous[ip] = would_trip
+                log.warning("pipeline[rollback]: %s — %d rollback line(s) would "
+                            "trip the CI gate and are exempt by provenance: %s",
+                            hostname, len(would_trip), would_trip)
 
             conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
             _restore_config(conn, undo)

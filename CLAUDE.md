@@ -377,6 +377,20 @@ The only part of the NSoT work that reaches a device.
   is U+2022) and `blocking_reasons` carries them, so there is one answer to
   "can this go out" rather than an artifact saying yes and `merge_commands()`
   saying no later.
+- **Dangerous commands are authorised at plan time, per device.** The CI gate's
+  `allowed_dangerous` override existed since Phase 0 but `_deploy_one()` could
+  not supply it, so any program containing `shutdown`, `no ip address`,
+  `no router ospf`, `reload`, `erase nvram` or `crypto key zeroize` was
+  unrunnable. The plan flags each dangerous line as an exact string; the
+  authorisation is `{device: [lines]}`, is folded into the confirmation hash
+  alongside the commands, and apply recomputes both. An authorisation matching
+  nothing in the program is refused — a typo means the line it was meant to
+  cover is *not* authorised.
+- **Rollback is exempt from that gate, structurally** — it never passes through
+  stage 3. Undoing an authorised `no shutdown` is `shutdown`, and a gate that
+  blocked the repair would leave the device in the state the rollback was
+  called to fix. `assert_rollback_provenance()` is the authorisation; exempt
+  lines are recorded in the deploy result.
 - **Commands must be sendable.** `assert_sendable()` refuses any byte outside
   printable ASCII before connecting, and `hostvars.assert_printable()` refuses
   it at commit. An em dash is three UTF-8 bytes; IOS consumes the first, loses

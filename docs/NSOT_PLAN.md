@@ -688,6 +688,42 @@ the client proves only what the client saw.
 > A preview is a promise. Sending more than it showed breaks the promise even
 > when sending more is harmless.
 
+#### A gate that cannot be cleared is not a control
+
+The CI gate (stage 3) halts on `shutdown`, `no ip address`, `no router ospf`,
+`reload`, `erase nvram` and `crypto key zeroize` unless the exact string is in
+`params["allowed_dangerous"]`. That override has existed since Phase 0.
+`_deploy_one()` hardcoded `params={"skip_route_check": True}`, so the
+deploy-from-template path could never supply it — every one of those commands
+was permanently unrunnable through Phase 3c, refused with an error naming an
+override the caller had no way to reach.
+
+A gate that cannot be cleared fails in the safe direction, which is why it can
+sit unnoticed. Its real effect is to make a routine operation — shutting an
+unused access port — impossible through the supported path, which pushes the
+operator to an unsupported one.
+
+The authorisation is shaped like every other deliberate action in this phase:
+
+- **Confirmed at plan time, not added at apply.** The plan flags each dangerous
+  line as the exact string the gate compares, and the authorisation is folded
+  into the confirmation hash **with** the commands. "These lines, with these
+  authorised" is one decision; changing either half after it was displayed
+  makes the confirmation no longer describe what would happen.
+- **Scoped per device** — `{"s4": [" shutdown"]}`. Authorising a line for one
+  device never authorises it for another in the same batch.
+- **Exact strings, and every authorisation must be used.** One matching nothing
+  in the program is a typo or a leftover from an earlier plan, and a typo means
+  the line it was meant to cover is not authorised.
+
+**Rollback is exempt, structurally** — it never passes through stage 3. Undoing
+an authorised `no shutdown` produces `shutdown`; a gate that blocked the repair
+would leave the device in the state the rollback was called to fix, which is a
+safety check causing the damage it exists to prevent.
+`assert_rollback_provenance()` is the authorisation there: every rollback line
+inverts something this deploy just pushed. Exempt lines are recorded in the
+deploy result so the exemption is visible rather than implicit.
+
 #### The bounded exception: rollback generates negations
 
 "This tool never synthesises a `no` command" is the merge-only rule, and

@@ -248,12 +248,17 @@ def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
 @bp.route("/plan", methods=["POST"])
 def plan():
     """Per-device diff and deployability. Reads captured configs only."""
-    from modules.nsot.deploy import (DeployRefused, command_fingerprint,
-                                     merge_commands, merge_diff, prepare_device)
+    from modules.nsot.deploy import (DeployRefused, NotAuthorised,
+                                     assert_authorised, command_fingerprint,
+                                     dangerous_in, merge_commands, merge_diff,
+                                     prepare_device)
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
     hostnames = data.get("devices") or []
+    # Per device, always. Authorising a line for one device must never
+    # authorise it for another in the same batch.
+    authorise = data.get("authorise") or {}
     if not hostnames:
         return jsonify({"ok": False, "error": "No devices selected"}), 400
 
@@ -281,7 +286,20 @@ def plan():
             # confirms is this list, byte for byte.
             commands = merge_commands(prepared["config"], captured)
             entry["commands"] = commands
-            entry["command_hash"] = command_fingerprint(commands)
+            # Flagged HERE, so the operator sees them while deciding, rather
+            # than the CI gate discovering them at stage 3 with no reachable
+            # way to authorise them.
+            entry["dangerous"] = dangerous_in(commands)
+            authorised = [a.strip() for a in (authorise.get(hostname) or [])]
+            entry["authorised"] = authorised
+            entry["command_hash"] = command_fingerprint(commands, authorised)
+            if entry["dangerous"]:
+                try:
+                    assert_authorised(commands, authorised)
+                    entry["authorisation_ok"] = True
+                except NotAuthorised as exc:
+                    entry["authorisation_ok"] = False
+                    entry["authorisation_error"] = str(exc)
             # Every pushed line, attributed — before anyone confirms.
             entry["attribution"] = _attribute_additions(
                 _repo_for(list_name), hostname, artifact, captured,
@@ -310,7 +328,8 @@ def apply():
     whose fresh capture no longer matches is skipped and reported, never
     deployed against a diff the operator did not see.
     """
-    from modules.nsot.deploy import (CircuitBreaker, command_fingerprint,
+    from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
+                                     assert_authorised, command_fingerprint,
                                      merge_commands, plan_batch, prepare_device,
                                      run_batch)
 
@@ -326,6 +345,7 @@ def apply():
     # may be sent. Recomputed here and compared, never trusted from the
     # request — a hash the client supplies proves only what the client saw.
     command_hashes = data.get("command_hashes") or {}
+    authorise = data.get("authorise") or {}
 
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused = []
@@ -340,8 +360,15 @@ def apply():
         expected = command_hashes.get(hostname)
         if expected is not None:
             try:
-                now = command_fingerprint(
-                    merge_commands(prepare_device(artifact)["config"], captured))
+                recomputed = merge_commands(
+                    prepare_device(artifact)["config"], captured)
+                device_auth = [a.strip() for a in (authorise.get(hostname) or [])]
+                assert_authorised(recomputed, device_auth)
+                now = command_fingerprint(recomputed, device_auth)
+            except NotAuthorised as exc:
+                refused.append({"device": hostname, "outcome": "refused",
+                                "reason": str(exc)})
+                continue
             except Exception as exc:          # noqa: BLE001
                 refused.append({"device": hostname, "outcome": "refused",
                                 "reason": f"could not recompute commands: {exc}"})
@@ -367,7 +394,8 @@ def apply():
     batch = plan_batch(artifacts, confirmations, fresh_captures)
 
     report = run_batch(batch,
-                       lambda entry: _deploy_one(entry, list_name, device_rows),
+                       lambda entry: _deploy_one(entry, list_name, device_rows,
+                                                 authorise),
                        CircuitBreaker())
     if refused:
         report.setdefault("results", []).extend(refused)
@@ -375,7 +403,8 @@ def apply():
     return jsonify({"ok": True, "list": list_name, **report})
 
 
-def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
+def _deploy_one(entry, list_name: str, device_rows: dict,
+                authorise: dict = None) -> dict:
     """Run the pipeline for a single device. The only path that connects."""
     import threading
 
@@ -419,6 +448,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
         pool_lock=threading.Lock(),
         config_id=f"tpl-{hostname}",
     )
+    # Scoped to THIS device. The batch's other devices get their own list.
+    authorised = [a.strip() for a in ((authorise or {}).get(hostname) or [])]
+    ctx.params["allowed_dangerous"] = authorised
     # Confirmed, not merely pre-populated: rendered_commands derives from this,
     # so stage 2 cannot overwrite it and an attempt to do so raises.
     ctx.confirmed_commands = {device.get("ip", ""): commands}
@@ -439,9 +471,12 @@ def _deploy_one(entry, list_name: str, device_rows: dict) -> dict:
         "outcome": outcome,
         "commands": commands,
         "failure_state": failure_state,
+        "authorised": authorised,
         "rollback_commands": list(
             (result.rollback_commands or {}).get(device.get("ip", ""), [])),
         "rollback_failures": dict(result.rollback_failures or {}),
+        "rollback_dangerous_exempt": list(
+            (result.rollback_dangerous or {}).get(device.get("ip", ""), [])),
         "device_changed": any(e.get("device_changed") for e in failure_state),
         "stage": failed_stage,
         "reason": result.error or "",
