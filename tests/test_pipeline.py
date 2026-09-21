@@ -813,6 +813,7 @@ class TestFailureStateIsCaptured:
     """
 
     def _run_capture(self, running_after, pre="hostname R1\n"):
+        """Captures over a FRESH connection, never the pooled one."""
         from modules.pipeline import _capture_failure_state
         import modules.ai_assistant as A
         import modules.connection as C
@@ -824,15 +825,67 @@ class TestFailureStateIsCaptured:
             def send_command(self, _cmd):
                 return running_after
 
-        orig_load, orig_conn = A._load_pre_change_file, C.get_persistent_connection
+        orig_load = A._load_pre_change_file
+        orig_temp = C.with_temp_connection
         A._load_pre_change_file = lambda ip: pre
-        C.get_persistent_connection = lambda dev, pool, lock: _Conn()
+        C.with_temp_connection = lambda dev, func: func(_Conn())
         try:
             _capture_failure_state(ctx)
         finally:
             A._load_pre_change_file = orig_load
-            C.get_persistent_connection = orig_conn
+            C.with_temp_connection = orig_temp
         return ctx.failure_state["10.0.0.1"]
+
+    def test_it_does_not_use_the_pooled_connection(self):
+        """The pooled session is the one that just failed."""
+        from modules.pipeline import _capture_failure_state
+        import modules.ai_assistant as A
+        import modules.connection as C
+
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": False}}
+        used_pool = []
+
+        class _Conn:
+            def send_command(self, _cmd):
+                return "hostname R1\n"
+
+        orig = (A._load_pre_change_file, C.with_temp_connection,
+                C.get_persistent_connection)
+        A._load_pre_change_file = lambda ip: "hostname R1\n"
+        C.with_temp_connection = lambda dev, func: func(_Conn())
+        C.get_persistent_connection = lambda *a: used_pool.append(1)
+        try:
+            _capture_failure_state(ctx)
+        finally:
+            (A._load_pre_change_file, C.with_temp_connection,
+             C.get_persistent_connection) = orig
+
+        assert used_pool == [], "the capture reused the failed pooled session"
+
+    def test_a_failed_capture_drops_the_pooled_connection(self):
+        """A fresh connection could not read it, so the pooled one is no
+        better — and the rollback is the next thing to use it."""
+        from modules.pipeline import _capture_failure_state
+        import modules.connection as C
+
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": False}}
+        closed = []
+
+        def _boom(dev, func):
+            raise OSError("Pattern not detected")
+
+        orig = (C.with_temp_connection, C.close_persistent_connection)
+        C.with_temp_connection = _boom
+        C.close_persistent_connection = lambda ip, pool, lock: closed.append(ip)
+        try:
+            _capture_failure_state(ctx)
+        finally:
+            (C.with_temp_connection, C.close_persistent_connection) = orig
+
+        assert closed == ["10.0.0.1"]
+        assert ctx.failure_state["10.0.0.1"]["device_changed"] is None
 
     def test_a_partial_write_is_reported_as_a_change(self):
         entry = self._run_capture("hostname R1\n description NSoT-managed b\n")
@@ -855,16 +908,17 @@ class TestFailureStateIsCaptured:
 
         ctx = _ctx()
         ctx.push_results = {"10.0.0.1": {"ok": False}}
-        orig = C.get_persistent_connection
+        orig = (C.with_temp_connection, C.close_persistent_connection)
 
-        def _boom(dev, pool, lock):
+        def _boom(dev, func):
             raise OSError("unreachable")
 
-        C.get_persistent_connection = _boom
+        C.with_temp_connection = _boom
+        C.close_persistent_connection = lambda *a: None
         try:
             _capture_failure_state(ctx)
         finally:
-            C.get_persistent_connection = orig
+            (C.with_temp_connection, C.close_persistent_connection) = orig
 
         entry = ctx.failure_state["10.0.0.1"]
         assert entry["device_changed"] is None, "unknown must not read as unchanged"

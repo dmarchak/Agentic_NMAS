@@ -1161,9 +1161,21 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
     looking; the pipeline had the connection and did not look.
 
     Runs before rollback, so the record survives the repair.
+
+    **On a fresh connection, deliberately.** This function runs only after
+    something has gone wrong on the pooled session, which makes it the path
+    most likely to be handed a broken one — and its failure mode is losing the
+    evidence it exists to collect. On the first real rollback the pooled
+    connection returned NUL bytes where a prompt should be
+    (``Pattern not detected`` on a NUL prompt) and the capture reported nothing;
+    ``is_alive()`` had returned true, because it checks that the transport is
+    up, not that the channel is synchronised. One occurrence, plausible
+    mechanism, not reproduced — the fix does not depend on knowing the trigger.
+
+    A fresh SSH handshake costs nothing on a path that only runs on failure.
     """
     from modules.ai_assistant import _load_pre_change_file
-    from modules.connection import get_persistent_connection
+    from modules.connection import close_persistent_connection, with_temp_connection
 
     for ip, result in ctx.push_results.items():
         if result.get("skipped"):
@@ -1174,8 +1186,8 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
         hostname = dev.get("hostname", ip)
         entry = {"device": hostname, "ip": ip, "push_ok": bool(result.get("ok"))}
         try:
-            conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-            post = conn.send_command("show running-config")
+            post = with_temp_connection(
+                dev, lambda c: c.send_command("show running-config"))
             pre = _load_pre_change_file(ip) or ""
             pre_lines = [l.rstrip() for l in pre.splitlines()]
             post_lines = [l.rstrip() for l in post.splitlines()]
@@ -1196,6 +1208,12 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
             entry.update({"error": str(exc), "device_changed": None})
             log.error("pipeline[failure-state]: could not read %s back: %s",
                       hostname, exc)
+            # A fresh connection could not read it either, so the pooled one is
+            # certainly no better. Drop it rather than leave a suspect session
+            # for the rollback — which is the next thing to use it.
+            close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
+            log.warning("pipeline[failure-state]: dropped the pooled "
+                        "connection to %s", hostname)
         ctx.failure_state[ip] = entry
 
 

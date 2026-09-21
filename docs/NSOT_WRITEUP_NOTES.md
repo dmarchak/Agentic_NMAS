@@ -2341,3 +2341,63 @@ wrong the moment anything moves, which is the general form of the error.
 Scheme 1 records are not silently accepted under scheme 2. A stored gate whose
 meaning has changed is worse than no gate: it passes for a reason nobody
 holds any more.
+
+---
+
+## Reading the evidence over the connection that just broke
+
+Small, and worth recording because the reasoning generalises past the specific
+bug — which was never reproduced.
+
+`_capture_failure_state()` exists to answer the question an operator has after
+a failed deploy: *what is actually on the device now?* It ran over the pooled
+connection — the same session the push, the snapshots and the verify had used,
+and therefore the same session that had just been through whatever went wrong.
+
+On the first real rollback it returned:
+
+```
+Pattern not detected: '\^@' in output
+```
+
+`^@` is NUL. Netmiko was expecting a prompt string of NUL bytes, which means
+`find_prompt()` had read garbage — a dead or desynchronised channel, not
+malformed output. The connection pool *does* check liveness via
+`is_alive()`, and `is_alive()` had returned true: it verifies the transport is
+up, not that the channel is in sync.
+
+### What was not established
+
+The trigger. A fresh connection doing push-then-read reproduced nothing —
+prompt intact before and after, 170 lines read back. Syslog interleaving was
+ruled out (no `terminal monitor` is issued, and `logging trap critical`
+excludes the `%LINK-5` notices), as were exec-timeout (the whole run was 107
+seconds) and the management path (a different interface entirely).
+
+One occurrence, plausible mechanism, not reproduced. Recorded that way on
+purpose: naming a cause here would be a guess wearing the clothes of a finding,
+and the next person would stop looking.
+
+### Why it is worth fixing without knowing the cause
+
+The argument does not depend on the trigger:
+
+> A diagnostic path runs **only** when something has already gone wrong on the
+> thing it is diagnosing. That makes it the path most likely to be handed a
+> broken instrument, and its failure mode is losing the evidence.
+
+A fresh SSH handshake costs nothing on a path that by definition only runs on
+failure. Reusing the pooled session buys an optimisation in the one situation
+where the optimisation is least likely to hold.
+
+The second half follows from the same reasoning: if a *fresh* connection cannot
+read the device, the pooled one is certainly no better, so it is dropped rather
+than left for the next caller — and the next caller is the rollback.
+
+### The part that worked
+
+`device_changed` came back `None`, not `False`. The capture failed, and the
+report said "unknown" rather than "unchanged". That distinction was written in
+deliberately — *"an unreadable answer is not a clean bill of health"* — and it
+is the only reason the failure was legible at all rather than an incorrect
+all-clear sitting in a deploy report.
