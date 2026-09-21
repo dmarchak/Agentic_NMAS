@@ -4982,3 +4982,101 @@ The AI assistant has a test of its own asserting it neither passes
 that an unknown device is refused with the reason. Structural and behavioural
 together, because the structural check alone would pass a module that reached
 minting through an import alias.
+
+---
+
+## The same character, twice, because the rule was attached to the wrong thing
+
+An em dash has now broken this project in two places that shared no code:
+
+1. **A pushed command.** `description NSoT-managed b` reached a device as
+   three UTF-8 bytes where IOS expected one character. IOS consumed the first,
+   lost sync, and truncated the line. Netmiko then failed on an echo mismatch,
+   so what surfaced was a *timeout*, and nothing in the message pointed at the
+   character.
+
+2. **A comment in a startup config.** `docs/bootstrap-probe/configs/bp-vios.cfg`
+   carried explanatory comments, one of which used an em dash. The node hung
+   during boot and never reached "Startup complete".
+
+The fix for (1) was `assert_sendable()`, and it was correct. What was wrong
+was where it lived: on the **deploy path**, guarding a *command list* about to
+be pushed. A startup config is not a command list, so nothing checked it.
+
+### Why the second one was invisible until a specific platform hit it
+
+The probe deployed both platforms with configs written the same way. The
+C8000v booted fine. The vIOS hung.
+
+The difference is in how vrnetlab applies a startup config per kind. For the
+C8000v it is `gen_bootstrap_config() + startup_cfg` handed over as a **file** —
+the bytes are never parsed a line at a time by a CLI, and a comment is just
+bytes in a file. For vIOS there is no such path, so the launch script **types
+the config into the console**, line by line, waiting for a prompt after each
+one. Every line is a CLI interaction, including the comments. The line
+beginning `!` never produced the prompt it was waiting for, and the boot
+stopped there.
+
+So the same content is inert on one platform and fatal on the other, and no
+amount of testing the first one finds it. A rule scoped to "the deploy path"
+was never going to cover this, because the thing that made a comment dangerous
+was not what the file *was* — it was what a particular launch script *did*
+with it.
+
+### The rule, restated
+
+**Anything that reaches a CLI is printable ASCII — comments included.** Not
+"commands we push". Not "the deploy path". The boundary is the CLI, and a
+comment crosses it whenever something replays the file through a console.
+
+`modules/nsot/bootstrap_config.py` is where that is now enforced for generated
+configs. It runs `assert_sendable()` over the **entire rendered text**, not
+over a filtered subset — a guard applied to "the commands" would pass exactly
+the file that hung the boot. `test_bootstrap_config.py` asserts the guard runs
+on `text.splitlines()` and not on anything narrower, because "we check the
+output" is a claim that stays true while the thing being checked quietly
+shrinks.
+
+On console-replayed platforms the generator emits **no prose comments at all**
+(`CONSOLE_REPLAYED`). Bare `!` separators stay — IOS emits those itself, so
+removing them would make the capture differ from the file — but commentary
+goes. This is not caution about the character; it is that every line costs a
+console round trip and is a chance to desync, and a comment buys a device
+nothing. The explanations live in `docs/bootstrap-probe/README.md`, which
+nothing types into a console.
+
+### One generator for the probe and the wizard
+
+The probe measures what the wizard will emit, or it measures nothing. That
+only holds if they are the same code, so `render_bootstrap()` is the single
+producer and the probe's fixtures are compared against it directly
+(`TestItMatchesTheMeasuredProbeConfigs`) — every non-comment line, byte for
+byte. Two files that happen to agree today are two files that will disagree
+later.
+
+The generator also carries the two platform asymmetries the probe established,
+rather than leaving them as facts in a document:
+
+* **`VRNETLAB_INJECTS_USER`** — on IOS-XE, vrnetlab applies
+  `username admin privilege 15 password admin` *before* the startup config, so
+  a `secret` line for the same user is refused with
+  `ERROR: Can not have both a user password and a user secret` — the same
+  refusal measured on r2 during stage 1. `secret_clause()` emits the password
+  form there and the secret form on vIOS.
+* **The management interface** — absent on the C8000v because vrnetlab owns
+  it; configured explicitly on vIOS because with
+  `CLAB_MGMT_PASSTHROUGH=false` nothing else gives it an address. A generator
+  that treated both platforms alike would produce an unreachable switch.
+
+An unknown platform raises `UnsupportedPlatform` with a message saying to
+measure a fresh node rather than write a guess. That is the whole point of
+having a probe: the bootstrap profile is measured, and a platform nobody has
+booted has no profile.
+
+### The scope of the ASCII test
+
+`TestEveryProbeFileIsAscii` walks `docs/bootstrap-probe/configs/` only — the
+files that reach a node. The topology YAML is read by containerlab's parser
+and the README by people; neither is a CLI. Widening the rule to them would
+turn a safety property into a house style, and a rule that fires on prose is
+a rule people learn to ignore.

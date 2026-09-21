@@ -90,6 +90,9 @@ tracked in git.
 - **[modules/nsot/hostvars.py](modules/nsot/hostvars.py)** — YAML staging,
   secret handoff
 - **[modules/nsot/ifnames.py](modules/nsot/ifnames.py)** — canonical interface names
+- **[modules/nsot/bootstrap_config.py](modules/nsot/bootstrap_config.py)** —
+  the minimal config a new device boots with; one producer for the measurement
+  probe and the Phase 4 wizard, ASCII-guarded over its whole output
 - **[modules/nsot/render_artifact.py](modules/nsot/render_artifact.py)** — the
   deployability gate; frozen, computed, no override
 - **[modules/nsot/templates_repo.py](modules/nsot/templates_repo.py)** — the
@@ -555,11 +558,19 @@ The only part of the NSoT work that reaches a device.
   blocked the repair would leave the device in the state the rollback was
   called to fix. `assert_rollback_provenance()` is the authorisation; exempt
   lines are recorded in the deploy result.
-- **Commands must be sendable.** `assert_sendable()` refuses any byte outside
-  printable ASCII before connecting, and `hostvars.assert_printable()` refuses
-  it at commit. An em dash is three UTF-8 bytes; IOS consumes the first, loses
-  sync, and truncates the line, which surfaces as a Netmiko echo timeout rather
-  than as an invalid character.
+- **Anything that reaches a CLI is printable ASCII — comments included.**
+  `assert_sendable()` refuses any other byte before connecting, and
+  `hostvars.assert_printable()` refuses it at commit. An em dash is three UTF-8
+  bytes; IOS consumes the first, loses sync, and truncates the line, which
+  surfaces as a Netmiko echo timeout rather than as an invalid character. The
+  rule is **not** "the deploy path": the same character later hung a vIOS boot
+  from a *comment* in a startup config, because vrnetlab types that file into
+  the console line by line and waits for a prompt after each one. The C8000v
+  booted the identical content, since it loads its startup config as a file —
+  so one platform can never reveal the property. Everything
+  `modules/nsot/bootstrap_config.py` emits goes through `assert_sendable()`
+  over the **whole** rendered text, and on console-replayed platforms it emits
+  no prose comments at all.
 - **Rollback undoes what LANDED, not what was pushed.** On a partial push those
   differ by definition, and with `error_pattern` live a rollback line answering
   a rejected push line can itself be refused and take the repair down. Rejected
@@ -710,6 +721,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
 | `test_deploy_batch.py` | drift skip, breaker, every device accounted for |
 | `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
+| `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |

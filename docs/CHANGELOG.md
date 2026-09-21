@@ -9,6 +9,40 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Added — one bootstrap-config generator, ASCII over its whole output
+
+`modules/nsot/bootstrap_config.py` produces the minimal config a new device
+boots with, for both the measurement probe and the Phase 4 wizard. The probe
+measures what the wizard emits only if they are the same code, so
+`test_bootstrap_config.py` compares the probe's fixtures against the generator
+line for line.
+
+- `assert_sendable()` runs over the **entire rendered text**, comments
+  included — not over a filtered subset. A test pins that.
+- `CONSOLE_REPLAYED` platforms (vIOS) get **no prose comments at all**: every
+  line is typed into a console and waited on.
+- `VRNETLAB_INJECTS_USER` (IOS-XE) selects the `password` form, because
+  vrnetlab applies its own `username ... password ...` first and a `secret`
+  line for the same user is refused.
+- `generated_secret()` for the bootstrap credential; never a fixed word, since
+  it lands in a startup file and stays in history after rotation.
+- An unknown platform raises `UnsupportedPlatform` naming the probe, rather
+  than guessing a shape.
+
+### Fixed — a startup-config comment hung a node, because the ASCII rule was scoped to the deploy path
+
+An em dash in `docs/bootstrap-probe/configs/bp-vios.cfg` stopped the vIOS
+during boot: vrnetlab types that file into the console line by line and waits
+for a prompt after each, so a comment is a CLI interaction. The C8000v booted
+identical content, because it loads its startup config as a file. Same
+character as the earlier truncated `description` push; different mechanism,
+and nothing covered it because `assert_sendable()` guarded *command lists*.
+
+- All four probe config files are ASCII; the vIOS one carries no prose.
+- `TestEveryProbeFileIsAscii` walks `docs/bootstrap-probe/configs/` — the files
+  that reach a node, not the topology YAML or the README.
+- The rule in CLAUDE.md is restated as **anything that reaches a CLI**.
+
 ### Fixed — template secrets collided across device lists (audit A)
 
 The credential-store key was `<hostname>:<ref>` in one installation-wide file,
