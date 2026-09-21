@@ -191,8 +191,21 @@ def identify(request) -> Identity:
         outcome = {"ExpiredSignatureError": "expired",
                    "InvalidAudienceError": "wrong_audience",
                    "InvalidIssuerError": "wrong_issuer",
-                   "PyJWKClientError": "verifier_unavailable",
                    }.get(type(exc).__name__, "invalid_token")
+
+        if type(exc).__name__ == "PyJWKClientError":
+            # PyJWKClient raises the SAME error for "could not fetch the key
+            # set" and "the token's kid is not in the key set I fetched". Those
+            # are opposite diagnoses: one is our connectivity, the other is a
+            # bad token. Found live — a forged token reported
+            # `verifier_unavailable`, and the refusal then told the operator to
+            # check their configuration while someone was presenting a forgery.
+            # Ask the verifier whether IT is healthy, and let that decide.
+            outcome = "invalid_token"
+            try:
+                client.get_jwk_set()
+            except Exception:                 # noqa: BLE001
+                outcome = "verifier_unavailable"
         log.warning("identity: assertion rejected (%s) peer_trusted=%s",
                     outcome, peer_trusted)
         return Identity(outcome=outcome, peer=peer, peer_trusted=peer_trusted,

@@ -290,3 +290,50 @@ class TestNothingLogsAValue:
     def test_the_unidentified_actor_has_a_name(self):
         """An audit row with actor "" reads as a bug, not as an absence."""
         assert identity.UNAUTHENTICATED == "unauthenticated"
+
+
+class TestTheOutcomeNamesTheRightCause:
+    """`verifier_unavailable` and `invalid_token` are opposite diagnoses.
+
+    PyJWKClient raises PyJWKClientError both when it cannot fetch the key set
+    and when a token's `kid` is absent from a key set it fetched successfully.
+    Mapping the exception type alone reported a forged token as
+    `verifier_unavailable`, and `require()` then told the operator this was
+    "a configuration or connectivity problem, not a permissions one" — while
+    somebody was presenting a forgery. Found by running against the real
+    Cloudflare endpoint, which no unit test would have shown.
+    """
+
+    def _client(self, *, keyset_ok):
+        class _Client:
+            def get_signing_key_from_jwt(self, token):
+                from jwt.exceptions import PyJWKClientError
+                raise PyJWKClientError("unable to find a signing key")
+
+            def get_jwk_set(self):
+                if not keyset_ok:
+                    raise OSError("certs endpoint unreachable")
+                return object()
+        return _Client()
+
+    def test_an_unknown_kid_with_a_healthy_verifier_is_an_invalid_token(
+            self, configured, monkeypatch):
+        monkeypatch.setattr(identity, "_get_jwks_client",
+                            lambda: self._client(keyset_ok=True))
+        ident = identity.identify(_Req(token="eyJhbGciOiJSUzI1NiJ9.e30.sig"))
+
+        assert ident.outcome == "invalid_token"
+        _i, refusal = identity.require(
+            _Req(token="eyJhbGciOiJSUzI1NiJ9.e30.sig"), "reveal")
+        assert "connectivity problem" not in refusal["error"]
+
+    def test_an_unreachable_keyset_is_a_verifier_problem(self, configured,
+                                                          monkeypatch):
+        monkeypatch.setattr(identity, "_get_jwks_client",
+                            lambda: self._client(keyset_ok=False))
+        ident = identity.identify(_Req(token="eyJhbGciOiJSUzI1NiJ9.e30.sig"))
+
+        assert ident.outcome == "verifier_unavailable"
+        _i, refusal = identity.require(
+            _Req(token="eyJhbGciOiJSUzI1NiJ9.e30.sig"), "reveal")
+        assert "connectivity problem" in refusal["error"]
