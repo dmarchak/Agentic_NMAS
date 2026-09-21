@@ -27,6 +27,12 @@ pysnmp>=6.2.0           # SNMP v1/v2c polling (pure Python, async API in v6+)
 
 # Security & Encryption
 cryptography==41.0.7
+# Cloudflare Access JWT validation (Cf-Access-Jwt-Assertion). Present on the
+# deployment host but previously unpinned, so a rebuild could have produced a
+# version without PyJWKClient — which arrived in PyJWT 2.0 and gained the
+# `lifespan` key-cache TTL later. An identity check that silently loses its
+# verifier is worse than one that was never added.
+PyJWT>=2.7.0,<3
 
 # HTTP client
 # Already imported at module level by modules/netbox_client.py but was never

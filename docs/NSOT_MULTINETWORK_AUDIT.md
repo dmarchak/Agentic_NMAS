@@ -193,3 +193,92 @@ inert. That question should be answered before the mechanism is built.
 5. Then queued item (4), then Phase 2b's adopt-first increment.
 
 A, B and C are each small. D is the one with real surface area.
+
+---
+
+## F. Deployment exposure: the identity header is currently unauthenticated
+
+Measured 2026-09-21, before any firewall change. Recorded here because the
+identity work in D3 depends on every one of these being false.
+
+### What listens
+
+```
+ss -4:  LISTEN 0 128 0.0.0.0:5000   python3
+ss -6:  (empty — no [::]:5000 listener)
+```
+
+IPv4 only, but on **every** interface: LAN (`10.0.0.211`), both lab networks
+(`10.255.0.10`, `10.255.1.10`) and the docker bridges.
+
+Request sources in `logs/device_manager.log`:
+
+| source | requests | what |
+|---|---|---|
+| `10.0.0.21` | 21,581 | cloudflared — the tunnel |
+| `127.0.0.1` | 151 | local |
+| `10.0.0.30` | 2 | the probes below |
+
+### The header can be forged by any LAN host
+
+From a laptop on the LAN, not the tunnel:
+
+```
+curl -H "Cf-Access-Authenticated-User-Email: forged@example.com" \
+     http://10.0.0.211:5000/          →  HTTP 200
+```
+
+`Cf-Access` appears **nowhere** in the codebase, so nothing consumes it yet —
+this is greenfield rather than a live authorisation bypass. It does mean the
+header on its own can never be the actor.
+
+### IPv6 — reachable from the LAN, internet exposure NOT established
+
+The host carries globally-scoped IPv6 (`2601:280:4a02:5ed0::b3b9`, plus a
+SLAAC address). Port 22 answered over IPv6 and port 5000 did not.
+
+**A first pass read that as internet exposure. It is not, and the distinction
+matters.** The probing machine sits in `2601:280:4a02:5ed0::/64` — the *same
+/64* — so the traffic was on-link neighbour traffic and never crossed the
+router's inbound v6 filter. The correct claim is **reachable from the LAN over
+IPv6**; whether anything reaches it from outside is untested and needs an
+off-net probe.
+
+> Reachability is only ever a statement about a path. A test run from inside
+> the same broadcast domain has not tested the firewall between domains, and
+> reporting it as though it had converts an unknown into a false certainty.
+
+What does hold regardless: port 5000 is closed over IPv6 **only because no
+`[::]` listener exists**, not because anything blocks it. `NMAS_HOST=::`, or
+any future dual-stack bind, would open it — so the restriction must cover both
+address families, and `NMAS_HOST` should name a specific address rather than
+`0.0.0.0`, giving two independent layers instead of one accidental one.
+Binding to `10.0.0.211` also stops `localhost:5000` working on the host.
+
+### Not established
+
+- **Firewall rules** — `sudo` requires a password; `ufw`, `iptables` and `nft`
+  are installed but unreadable.
+- **The tunnel's origin URL** — SSH to `10.0.0.21` failed host-key
+  verification, and accepting an unknown host key is a trust decision. If the
+  origin is a *hostname* rather than `http://10.0.0.211:5000`, whatever
+  resolver `10.0.0.21` uses could return a AAAA record.
+- **Whether the header arrives through the tunnel** — needs root for
+  `tcpdump`, or a consumer in the app. The consumer is the better answer: it
+  is needed anyway, and makes the confirmation a by-product of the feature.
+
+### The design consequence
+
+The email header is not evidence. `Cf-Access-Jwt-Assertion` is validated
+instead — RS256, signature against
+`https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, with `aud` and
+`iss` checked — and the email is read from the **verified claims**. Per
+Cloudflare: *"You should validate the token with your public key to ensure that
+the request came from Access and not a malicious third party."*
+
+The peer address is a **second, independent** condition, read from the raw
+socket. No `ProxyFix`, no `X-Forwarded-For` trust — verified absent from the
+codebase today, and to be pinned by a test. Same shape as
+`netbox_allow_writes` plus the one-shot token: two conditions, neither
+sufficient alone, and the peer check is the one that survives a firewall rule
+being edited later.
