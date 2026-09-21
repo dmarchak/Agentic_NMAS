@@ -747,6 +747,16 @@ def plan(list_name: str, hostname: str) -> dict:
         "ok": True, "device": hostname, "mgmt_ip": pre["mgmt_ip"],
         "username": pre["username"], "privilege": pre["privilege"],
         "current_form": _mask_line(pre["current_line"]),
+        # The WHOLE program, masked — not just the credential line. The
+        # program became two commands when the device turned out to refuse a
+        # secret over an existing password entry, and `new_form` kept showing
+        # only the second one. An operator would have confirmed a one-line
+        # change while the line that DELETES the account went unshown, which
+        # is the opposite of "what you confirm is what is sent".
+        #
+        # Not a fingerprint change: both commands are a pure function of
+        # username and privilege, and the fingerprint already binds those.
+        "new_program": masked_commands(pre["username"], pre["privilege"]),
         "new_form": masked_command(pre["username"], pre["privilege"]),
         "capture_hash": capture_hash, "fingerprint": fingerprint,
         "length": LENGTH, "charset_size": len(CHARSET),
@@ -760,6 +770,9 @@ def _mask_line(line: str) -> str:
     return redact.redact_positional(line) if line else ""
 
 
+import os                                    # noqa: E402  (used below)
+
+
 def consumer_report(hostname: str, mgmt_ip: str) -> list:
     """Who else logs in as this account. See the plan's GAP 1."""
     return [
@@ -767,9 +780,50 @@ def consumer_report(hostname: str, mgmt_ip: str) -> list:
          "action": "updated automatically"},
         {"name": "Oxidized", "where": f"router.db row for {mgmt_ip}",
          "action": "updated automatically, then a fetch is confirmed"},
-        {"name": "yang-push-sub.py", "where": "hardcoded literal, line 21",
-         "action": "NOT updated — reported as broken"},
+        _yang_push_consumer(mgmt_ip),
     ]
+
+
+def _yang_push_consumer(mgmt_ip: str) -> dict:
+    """Does the NETCONF script's hardcoded credential target THIS device?
+
+    It holds a literal password, so this tool cannot update it — that much was
+    always reported. What was not reported is *which* device it points at, and
+    that is the difference between a generic caveat and a consequence: the
+    script takes a host argument but falls back to a default, and rotating
+    that default's credential stops the no-argument invocation working.
+
+    The address is read out of the file rather than written here — partly
+    because it can change, and partly because an IPv4 literal in this package
+    fails `test_no_ip_literals`.
+    """
+    import re
+
+    from modules.settings_schema import get_setting
+
+    generic = {"name": "yang-push-sub.py",
+               "where": "hardcoded literal (set yang_push_script to check)",
+               "action": "NOT updated — may break"}
+    path = get_setting("yang_push_script", "")
+    if not path or not os.path.exists(path):
+        return generic
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return generic
+
+    line_no = next((i for i, line in enumerate(text.splitlines(), 1)
+                    if "password" in line and "=" in line), 0)
+    default = re.search(r"""HOST\s*=.*?["'](\d{1,3}(?:\.\d{1,3}){3})["']""",
+                        text)
+    where = f"hardcoded literal, line {line_no or '?'}"
+    if default and default.group(1) == mgmt_ip:
+        return {"name": "yang-push-sub.py", "where": where,
+                "action": "NOT updated — THIS DEVICE IS ITS DEFAULT TARGET; "
+                          "running it with no argument will fail after this"}
+    return {"name": "yang-push-sub.py", "where": where,
+            "action": "NOT updated — its default target is another device"}
 
 
 def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,

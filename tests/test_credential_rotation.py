@@ -974,6 +974,114 @@ class TestTheDeviceRefusesASecretOverAPassword:
                                   password=ORIGINAL_PLAINTEXT)
 
 
+class TestTheConfirmScreenShowsTheWholeProgram:
+    """What the operator confirms must be what is sent — both lines of it.
+
+    The program became two commands when the device turned out to refuse a
+    secret over an existing password entry. `plan()` went on reporting
+    `new_form` from `masked_command` (singular), so the confirm screen showed
+    only the credential line and the line that DELETES the account was never
+    displayed. The most alarming command in the program was the invisible one.
+    """
+
+    def test_the_plan_carries_the_whole_masked_program(self, wired):
+        plan = cr.plan("Lab", "r2")
+        assert plan["new_program"] == ["no username admin",
+                                       "username admin privilege 15 "
+                                       "algorithm-type scrypt secret <generated>"]
+
+    def test_the_plan_program_matches_what_rotate_actually_sends(self, wired):
+        """The two must not be able to drift apart."""
+        plan = cr.plan("Lab", "r2")
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        sent = [c for c in wired["session"].sent if c.strip()]
+        shown = plan["new_program"]
+        assert len(sent) == len(shown)
+        assert sent[0] == shown[0], "the deletion must be shown verbatim"
+        assert sent[1].startswith("username admin privilege 15 "
+                                  "algorithm-type scrypt secret ")
+        assert "<generated>" in shown[1], "the value is masked, the shape is not"
+
+    def test_the_program_never_shows_a_real_secret(self, wired):
+        plan = cr.plan("Lab", "r2")
+        for line in plan["new_program"]:
+            assert ORIGINAL_PLAINTEXT not in line
+            assert "<generated>" in line or line.startswith("no username")
+
+    def test_the_fingerprint_still_binds_what_determines_the_program(self):
+        """Both commands derive from username and privilege, which are bound.
+
+        So showing the whole program needs no fingerprint change — but if the
+        program ever stops being a function of bound inputs, this is the test
+        that should start failing.
+        """
+        a = cr.rotation_commands("admin", 15, "x")
+        b = cr.rotation_commands("admin", 15, "y")
+        assert [l.replace("x", "").replace("y", "") for l in a] == \
+               [l.replace("x", "").replace("y", "") for l in b]
+        assert cr.rotation_commands("other", 15, "x")[0] == "no username other"
+
+
+class TestTheConsumerReportNamesTheDefaultTarget:
+    """A caveat and a consequence are different things on the screen.
+
+    yang-push-sub.py holds a literal password, so the rotation cannot update
+    it — always reported. What was missing is WHICH device it points at. It
+    takes a host argument with a fallback default, so rotating that default's
+    credential stops the no-argument invocation working. For most devices that
+    is a caveat; for the default target it is a consequence.
+    """
+
+    SCRIPT = ('import sys\n'
+              'HOST = sys.argv[1] if len(sys.argv) > 1 else "203.0.113.11"\n'
+              'X = 1\n'
+              'with connect(host=HOST, username="admin", password="literal"):\n'
+              '    pass\n')
+
+    def _report(self, tmp_path, monkeypatch, mgmt_ip):
+        script = tmp_path / "yang-push-sub.py"
+        script.write_text(self.SCRIPT, encoding="utf-8")
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: (str(script)
+                                               if k == "yang_push_script" else d))
+        return next(c for c in cr.consumer_report("x", mgmt_ip)
+                    if c["name"] == "yang-push-sub.py")
+
+    def test_the_default_target_is_named_as_such(self, tmp_path, monkeypatch):
+        entry = self._report(tmp_path, monkeypatch, "203.0.113.11")
+        assert "DEFAULT TARGET" in entry["action"]
+        assert "no argument will fail" in entry["action"]
+
+    def test_another_device_is_reported_as_unaffected_by_default(
+            self, tmp_path, monkeypatch):
+        entry = self._report(tmp_path, monkeypatch, "203.0.113.99")
+        assert "another device" in entry["action"]
+        assert "DEFAULT TARGET" not in entry["action"]
+
+    def test_the_line_number_is_found_not_hardcoded(self, tmp_path, monkeypatch):
+        """It was pinned at 'line 21' in a string."""
+        entry = self._report(tmp_path, monkeypatch, "203.0.113.11")
+        assert "line 4" in entry["where"], entry["where"]
+
+    def test_an_unconfigured_script_degrades_to_the_generic_warning(
+            self, monkeypatch):
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: "" if k == "yang_push_script" else d)
+        entry = next(c for c in cr.consumer_report("x", "203.0.113.11")
+                     if c["name"] == "yang-push-sub.py")
+        assert "may break" in entry["action"]
+        assert "set yang_push_script" in entry["where"]
+
+    def test_a_missing_file_does_not_raise(self, monkeypatch):
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: ("/nonexistent/yang.py"
+                                               if k == "yang_push_script" else d))
+        entry = next(c for c in cr.consumer_report("x", "203.0.113.11")
+                     if c["name"] == "yang-push-sub.py")
+        assert entry["action"].startswith("NOT updated")
+
+
 class TestTheRevertHitsTheSameRefusalMirrored:
     """After a successful push the account holds a SECRET entry.
 

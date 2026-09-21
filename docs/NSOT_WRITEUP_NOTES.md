@@ -3950,3 +3950,55 @@ with the suffix present.
 The test that matters is not that each form parses. It is that every parsed
 value is comparable with every other, which is the property the code depends on
 and the one a future timestamp source could break.
+
+## The most alarming command was the one not shown
+
+The rotation program became two commands when the device turned out to refuse
+a secret on a username that still has a password entry. `rotate()` was updated
+to send both. `plan()` was not: it kept building the confirm screen's
+`new_form` from `masked_command` — singular — so the operator saw
+
+```
+new form   username admin privilege 15 algorithm-type scrypt secret <generated>
+```
+
+and never saw `no username admin`.
+
+Every guard still held. The fingerprint binds username and privilege, and both
+commands are a pure function of those, so nothing could have been substituted.
+The program that ran was the program that was intended. What failed is the
+claim this project makes about its own confirm screens — **what the operator
+confirms is what is sent** — and it failed on the single most consequential
+line in the program: the one that deletes the account being rotated.
+
+It survived because the display and the sender were updated in different
+commits, and because the thing that went missing was *added* rather than
+changed. A wrong line on a confirm screen is conspicuous. A missing line is
+not: the screen still looked complete, still described a rotation, still named
+the algorithm and the fingerprint.
+
+> A confirm screen is code with an audience of one, and the failure mode is
+> omission rather than error. Diffing it against what is sent is the only
+> check that catches a line that is simply not there.
+
+The screen now prints the numbered program and says plainly that the account is
+removed and recreated, and why the held session survives it. A test asserts the
+plan's program equals what `rotate()` actually puts on the wire — element for
+element, deletion first — so the two cannot drift apart again.
+
+### A caveat and a consequence
+
+`consumer_report()` listed `yang-push-sub.py` as "hardcoded literal, line 21 —
+NOT updated". True for every device, and useful for none of them: it does not
+say whether rotating *this* device breaks it.
+
+It does, for exactly one device. The script takes a host argument and falls
+back to a default, and that default is r1 — which is the next device to be
+rotated. Reading the file instead of asserting a caveat turns a line the
+operator learns to skip into one that says "running this with no argument will
+fail after this". The line number is read from the file too; "line 21" was
+already a stale literal in a string.
+
+The general point is not about NETCONF scripts. It is that a warning which is
+identical for every device carries no information about any of them, and an
+operator is right to stop reading it.

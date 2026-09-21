@@ -187,6 +187,10 @@ DEFAULTS: dict = {
     # process exercising docker-group access, which is root-equivalent.
     "oxidized_reload_command": "",
     "clab_sync_script":     "",          # the flock wrapper
+    # A credential consumer this tool cannot update: it holds a literal.
+    # Configured so the confirm screen can say whether THIS device is the one
+    # it will stop being able to reach, instead of warning generically.
+    "yang_push_script":     "",
     "clab_host":            "",          # user@host of the containerlab VM
     "clab_configs_dir":     "labs/lab/configs",
 
@@ -377,6 +381,7 @@ SCHEMA: dict = {
         "oxidized_router_db": _STR,
         "oxidized_reload_command": _STR,
         "clab_sync_script": _STR,
+        "yang_push_script": _STR,
         "clab_host": _STR,
         "clab_configs_dir": _STR,
 
