@@ -145,7 +145,14 @@ dashboard), `device.html` (1,239 — per-device page), and
   config and protect nothing.
 - **Config push workflow:** backup → push → Jenkins CI → save golden → update
   variables. CI pass = auto-approve.
-- **Approval queue:** destructive AI actions go through `approval_queue.py`
+- **Approval queue:** destructive AI actions go through `approval_queue.py`.
+  **Nothing resolves an item without a human**: the only callers of `resolve()`
+  are three HTTP routes, expiry marks items `expired` and never executes, and
+  neither `agent_runner` nor `event_monitor` nor any AI tool can approve — they
+  only *add*. `revert_to_golden`'s executor is **retired**: it pushed a stored
+  diff with no confirm hash, no mask check, no sendability check, and an
+  unbounded `no <command>` per added line. It now refuses and redirects to the
+  Baselines panel.
 - **Connection pool:** Netmiko SSH connections reused via `modules/connection.py`;
   background ping worker tracks online/offline
 - **Auto-continue:** the AI agent loops tool calls until the task completes

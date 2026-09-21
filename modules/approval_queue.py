@@ -232,109 +232,50 @@ def _exec_update_golden(entry: dict) -> dict:
 
 
 def _exec_revert_golden(entry: dict) -> dict:
-    """Push the golden config back to the device using Python SSH.
+    """Refused. Restore goes through the confirmed deploy path.
 
-    Parses the unified diff stored in the entry to build targeted remediation
-    commands rather than blindly pushing the entire config:
+    This executor parsed a stored unified diff and pushed the result straight
+    at a device: every ``-`` line applied verbatim, every ``+`` line turned into
+    ``no <command>``. It had none of the guarantees the deploy path has been
+    given since:
 
-      - Lines present in golden but missing from running (diff ``-`` lines)
-        are pushed directly in config mode.
-      - Lines present in running but absent from golden (diff ``+`` lines)
-        are negated with ``no <command>`` in config mode.
+    * **no confirm hash** — the program was recomputed from a diff captured at
+      queue time, so what executed was never what anyone reviewed;
+    * **no mask check** — ``assert_no_mask()`` is called nowhere in this module,
+      and the agent can propose configuration containing mask strings it read;
+    * **no sendability check** — a non-ASCII byte truncates the line on IOS;
+    * **unbounded negation** — ``no <line>`` for every added line, with no
+      provenance test. ``assert_rollback_provenance()`` exists precisely to
+      bound the one place this tool is allowed to generate ``no``, and this
+      path bypassed it entirely;
+    * **no failure capture and no rollback** — a half-applied program left no
+      record of what landed.
 
-    After all commands are applied, ``write memory`` saves the result.
+    ``restore.invalidate_queued_restores()`` already rejects these items when
+    the Baselines panel is used. That left the hole open in the other
+    direction: an item approved through the normal queue UI still reached this
+    function.
+
+    The capability is not being removed — a single-device ``revert_to_golden``
+    **is** a Mode A re-apply of that device's golden at HEAD, and the restore
+    path already implements it with the confirm hash, the ASCII guard,
+    provenance, ``error_pattern``, failure capture, rollback and the circuit
+    breaker. Approving one should open that preview. Until it does, this
+    refuses rather than executes.
     """
-    from modules.device import get_current_device_list, load_saved_devices
-    from modules.connection import get_persistent_connection
-    from modules.commands import run_device_command
-    import threading
+    hostname = entry.get("device_hostname", entry.get("device_ip", "")) or "this device"
+    log.warning("approval_queue: refused revert_to_golden for %s — the "
+                "unguarded executor is retired", hostname)
+    return {"error": (
+        f"Reverting {hostname} no longer runs from the approval queue. The "
+        "stored diff was captured earlier and would be pushed without a "
+        "confirmation hash, without an ASCII check, and with an unbounded "
+        "'no <command>' for every added line. Re-apply this device from the "
+        "Baselines panel instead: it computes the program now, shows it to "
+        "you, and sends exactly what you confirm."),
+        "redirect": "baselines",
+        "device": entry.get("device_ip", ""),
+        "hostname": entry.get("device_hostname", ""),
+        "refused_reason": "unguarded_executor_retired"}
 
-    device_ip = entry.get("device_ip", "")
-    hostname  = entry.get("device_hostname", device_ip)
-    if not device_ip:
-        return {"error": "No device_ip in approval entry"}
 
-    diff_text = entry.get("diff", "")
-    if not diff_text:
-        return {"error": "No diff stored in approval entry — cannot revert"}
-
-    # Parse unified diff into remediation command lists
-    to_add:    list[str] = []   # in golden but not running  → re-apply
-    to_remove: list[str] = []   # in running but not golden  → negate with "no"
-
-    for line in diff_text.splitlines():
-        if line.startswith(("---", "+++", "@@", "[...")):
-            continue
-        if line.startswith("-") and not line.startswith("---"):
-            stripped = line[1:].strip()
-            if stripped and not stripped.startswith("!"):
-                to_add.append(stripped)
-        elif line.startswith("+") and not line.startswith("+++"):
-            stripped = line[1:].strip()
-            if stripped and not stripped.startswith("!"):
-                to_remove.append(f"no {stripped}")
-
-    if not to_add and not to_remove:
-        return {"note": "No actionable differences found in stored diff — nothing to revert"}
-
-    # Load device credentials
-    _, list_file = get_current_device_list()
-    all_devices  = load_saved_devices(list_file)
-    dev = next((d for d in all_devices if d["ip"] == device_ip), None)
-    if not dev:
-        return {"error": f"Device {device_ip} not found in current device list"}
-
-    _pool      = {}
-    _pool_lock = threading.Lock()
-
-    try:
-        conn = get_persistent_connection(dev, _pool, _pool_lock)
-    except Exception as exc:
-        return {"error": f"SSH connection failed to {hostname} ({device_ip}): {exc}"}
-
-    applied: list[str] = []
-    failed:  list[dict] = []
-
-    _IOS_ERR = ("% Invalid", "% Incomplete", "% Ambiguous", "% Unknown", "% Error",
-                "% Bad", "% Command rejected", "% Not supported")
-
-    def _ios_error(out: str) -> str:
-        for ln in out.splitlines():
-            if any(pat in ln for pat in _IOS_ERR):
-                return ln.strip()
-        return ""
-
-    try:
-        conn.config_mode()
-        try:
-            for cmd in (to_add + to_remove):
-                out = run_device_command(conn, cmd)
-                err = _ios_error(out)
-                if err:
-                    failed.append({"cmd": cmd, "error": err})
-                    log.warning("drift_check revert: %s rejected '%s': %s", hostname, cmd, err)
-                else:
-                    applied.append(cmd)
-        finally:
-            conn.exit_config_mode()
-
-        # Persist to startup config
-        run_device_command(conn, "write memory")
-    except Exception as exc:
-        return {"error": f"SSH error during revert on {hostname}: {exc}",
-                "applied": applied, "failed": failed}
-
-    log.info(
-        "approval_queue: revert_to_golden on %s — %d applied, %d failed",
-        hostname, len(applied), len(failed),
-    )
-    return {
-        "device":           device_ip,
-        "hostname":         hostname,
-        "applied":          len(applied),
-        "failed":           len(failed),
-        "commands_applied": applied,
-        "commands_failed":  failed,
-        "note":             ("Some commands were rejected by IOS — review manually."
-                             if failed else "Revert complete — config saved to startup."),
-    }

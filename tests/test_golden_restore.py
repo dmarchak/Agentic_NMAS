@@ -445,3 +445,76 @@ class TestRestoreUsesTheListItWasGiven:
                      if "get_current_device_list" in l
                      and not l.strip().startswith(("#", "devices from"))]
         assert offending == [], offending
+
+
+class TestTheUnguardedRevertExecutorIsRetired:
+    """`revert_to_golden` pushed a stored diff straight at a device.
+
+    Every `-` line applied verbatim, every `+` line turned into `no <command>` —
+    unbounded negation, with no confirm hash, no `assert_no_mask()`, no
+    sendability check, no failure capture and no rollback.
+    `invalidate_queued_restores()` already rejected these items *from the
+    Baselines panel*, which left the other direction open: approving one
+    through the normal queue UI still reached the executor.
+    """
+
+    ENTRY = {"id": "abc123", "action_type": "revert_to_golden",
+             "device_ip": "203.0.113.1", "device_hostname": "R1",
+             "diff": "--- golden\n+++ running\n-ip route 0.0.0.0 0.0.0.0 1.1.1.1\n"
+                     "+ip route 0.0.0.0 0.0.0.0 2.2.2.2\n"}
+
+    def test_it_refuses_instead_of_pushing(self):
+        from modules import approval_queue
+
+        result = approval_queue._exec_revert_golden(dict(self.ENTRY))
+        assert result.get("error")
+        assert result.get("refused_reason") == "unguarded_executor_retired"
+
+    def test_the_refusal_names_the_device_and_where_to_go(self):
+        from modules import approval_queue
+
+        result = approval_queue._exec_revert_golden(dict(self.ENTRY))
+        assert "R1" in result["error"]
+        assert "Baselines" in result["error"]
+        assert result["redirect"] == "baselines"
+
+    def test_it_opens_no_connection(self, monkeypatch):
+        """The decisive property: nothing reaches a device."""
+        from modules import approval_queue
+
+        def _boom(*a, **k):
+            raise AssertionError("the retired executor opened a connection")
+        monkeypatch.setattr("modules.connection.get_persistent_connection", _boom)
+        monkeypatch.setattr("modules.connection.with_temp_connection", _boom)
+
+        approval_queue._exec_revert_golden(dict(self.ENTRY))
+
+    def test_no_negation_is_generated_anywhere_in_the_module(self):
+        """The `no <line>` construction is gone, not merely unreached."""
+        import inspect
+
+        from modules import approval_queue
+
+        source = inspect.getsource(approval_queue)
+        assert 'f"no {' not in source, (
+            "approval_queue still builds a negation; the one place this tool "
+            "may generate 'no' is deploy.rollback_commands(), bounded by "
+            "assert_rollback_provenance()")
+
+    def test_the_other_action_type_still_works(self, monkeypatch):
+        """Only the pushing path is retired. Promoting a capture is fine."""
+        from modules import approval_queue
+
+        called = {}
+        monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
+                            lambda ip, host: "hostname R1\n")
+        monkeypatch.setattr("modules.ai_assistant._save_golden_config_file",
+                            lambda ip, host, text: called.setdefault("saved", host))
+        monkeypatch.setattr("modules.ai_assistant._safe_device_name", lambda h: h)
+        monkeypatch.setattr("modules.ai_assistant._get_golden_configs_dir",
+                            lambda: "/tmp")
+
+        result = approval_queue._exec_update_golden(
+            {"device_ip": "203.0.113.1", "device_hostname": "R1"})
+        assert called.get("saved") == "R1"
+        assert "error" not in result

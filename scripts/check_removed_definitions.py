@@ -41,8 +41,11 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#: `-` then optional indent then a definition. Captures the name.
-REMOVED = re.compile(r"^-\s*(?:async\s+)?(def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+#: `-` then optional indent then a definition. Captures indent and name, because
+#: a NESTED def is an implementation detail of the function around it: removing
+#: one alongside its parent is correct, and reporting it as a lost definition is
+#: how a checker earns `--no-verify`.
+REMOVED = re.compile(r"^-(\s*)(?:async\s+)?(def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
 DEFINED = re.compile(r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
 
 
@@ -103,13 +106,19 @@ def _called_in(name: str, path: str, rev: str = "") -> bool:
 
 
 def _referenced_elsewhere(name: str, path: str, rev: str = "") -> list:
-    """Files other than *path* that still mention *name*."""
+    """Files other than *path* that still mention *name* AND do not define it.
+
+    A file carrying its own function of the same name is not a caller of the
+    removed one. ``_ios_error`` existed as a private helper inside two
+    unrelated modules; removing one was reported as breaking the other.
+    """
     args = ["grep", "-l", "-w"]
     if rev:
         args.append(rev)
     out = _git(*args, name, "--", "*.py", "*.html")
     files = [l.split(":", 1)[-1] if rev else l for l in out.splitlines()]
-    return sorted(f for f in files if f and f != path)
+    return sorted(f for f in files
+                  if f and f != path and name not in _defined_now(f, rev))
 
 
 def main() -> int:
@@ -133,7 +142,8 @@ def main() -> int:
             continue
         match = REMOVED.match(line)
         if match:
-            removed.append((path, match.group(1), match.group(2)))
+            removed.append((path, match.group(2), match.group(3),
+                            len(match.group(1))))
 
     if not removed:
         print("no definitions removed by this diff")
@@ -142,7 +152,13 @@ def main() -> int:
     after = _after(args)
     still_defined = {}
     findings = []
-    for path, kind, name in removed:
+    for path, kind, name, indent in removed:
+        if indent:
+            # Nested. It lived inside something else, and if that something
+            # else survived, the name is still defined in this file — which the
+            # check below establishes. Reported as `local`, never as BROKEN.
+            findings.append(("local", path, kind, name, []))
+            continue
         if path not in still_defined:
             still_defined[path] = _defined_now(path, after)
         if name in still_defined[path]:
@@ -159,7 +175,7 @@ def main() -> int:
         callers = _referenced_elsewhere(name, path, after)
         findings.append(("GONE" if callers else "gone", path, kind, name, callers))
 
-    order = {"BROKEN": 0, "GONE": 1, "gone": 2, "moved": 3}
+    order = {"BROKEN": 0, "GONE": 1, "gone": 2, "local": 3, "moved": 4}
     findings.sort(key=lambda f: (order[f[0]], f[1], f[3]))
 
     width = max(len(f[3]) for f in findings)
