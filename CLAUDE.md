@@ -165,10 +165,26 @@ dashboard), `device.html` (1,239 — per-device page), and
   **Nothing resolves an item without a human**: the only callers of `resolve()`
   are three HTTP routes, expiry marks items `expired` and never executes, and
   neither `agent_runner` nor `event_monitor` nor any AI tool can approve — they
-  only *add*. `revert_to_golden`'s executor is **retired**: it pushed a stored
-  diff with no confirm hash, no mask check, no sendability check, and an
-  unbounded `no <command>` per added line. It now refuses and redirects to the
-  Baselines panel.
+  only *add*. `revert_to_golden` **hands off to the confirmed restore path**
+  instead of executing. It used to push a stored diff with no confirm hash, no
+  mask check, no sendability check, and an unbounded `no <command>` per added
+  line. Approving one now opens the restore preview for that device **at
+  HEAD** — a single-device revert *is* a Mode A re-apply of its HEAD golden —
+  and the operator confirms a program computed **now**, from the device as it
+  is now.
+- **The queued diff never reaches a device.** It was computed when the drift
+  was noticed, which is not when the operator is looking; a program the
+  approver never read is what the confirm hash exists to prevent. It travels as
+  **advisory context** ("what the agent saw"), is displayed above the fresh
+  program labelled *not what will be sent*, and is echoed by the route and
+  nothing else — a test asserts the only line mentioning it is the echo.
+- **Approving a confirm-ending item does not resolve it.** It stays pending
+  with an "Awaiting confirmation" note, because marking it approved would have
+  the queue claiming a change nobody has sent. `mark_done()` closes it when the
+  restore succeeds, and **only** for devices that actually succeeded — an item
+  closed on a failed push is the queue claiming work that did not happen.
+  Without it, items linger and the operator learns to clear the queue by
+  rejecting things, which is the habit that makes an approval queue worthless.
 - **Connection pool:** Netmiko SSH connections reused via `modules/connection.py`;
   background ping worker tracks online/offline
 - **Auto-continue:** the AI agent loops tool calls until the task completes
