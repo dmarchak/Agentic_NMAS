@@ -743,8 +743,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   captured from a browser and replayed from elsewhere on the LAN satisfies the
   first — and it is the layer that survives a firewall rule being edited later.
   `X-Forwarded-For` is never consulted and `ProxyFix` is never installed, both
-  pinned by tests. Nothing logs a value: only header presence and the
-  validation outcome.
+  pinned by tests. Nothing logs a value: only header presence, the validation
+  outcome, and the actor **kind**.
+- **Reveal, approve and confirm all require a verified identity** by default.
+  Reveal exposes a secret; approve and confirm put configuration on a device.
+  **There is no localhost exemption** — an exemption for requests from the box
+  is an exemption for anything that has reached the box, which is exactly where
+  an audit trail matters most. A test asserts no loopback address appears in
+  `identity.py`.
+- **Automation uses a Cloudflare Access service token**, not an exemption:
+  `CF-Access-Client-Id` / `CF-Access-Client-Secret` through the tunnel, Access
+  issues an assertion, and the identity layer verifies it like any other.
+  Cloudflare issues the **same shape** for people and services — `type: "app"`
+  either way, so `type` is not a discriminator. A person carries `email` with a
+  UUID `sub`; a service carries `common_name` (its Client ID) with `sub: ""`
+  and no `email`. `_actor_from_claims()` handles that explicitly, and the
+  service actor is prefixed `service:` so no reader mistakes a Client ID for a
+  person. The audit row records `kind`, because "a person approved this" and
+  "a script approved this" are different facts about a change.
+- `GET /identity/status` is the end-to-end diagnostic: not gated by identity
+  (a diagnostic that hides behind identity is useless when identity breaks),
+  echoes no configuration, and returns the email only to the requester.
 - Bind `NMAS_HOST` to a specific address rather than `0.0.0.0`, as a second
   layer independent of the firewall — note this stops `localhost:5000` working
   on the host. The firewall must cover **both address families**: port 5000 is

@@ -48,6 +48,11 @@ def status():
         # To the requester only. Empty unless an assertion verified.
         "email": ident.email,
         "actor": ident.actor,
+        # person | service | "". A service token carries no email, so an
+        # empty `email` beside a set `actor` is the normal service shape
+        # rather than a fault.
+        "kind": ident.kind,
+        "service_id": ident.service_id,
         # Presence only — this is how you tell "the tunnel forwards the email
         # header but not the assertion" from "it forwards neither", which are
         # different deployment problems with different fixes.

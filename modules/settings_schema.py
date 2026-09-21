@@ -132,11 +132,20 @@ DEFAULTS: dict = {
     #: It is also the layer that survives a firewall rule being edited later.
     "cf_access_trusted_peers": "",       # comma-separated; blank disables the check
     "cf_access_jwks_ttl":    3600,       # key-cache seconds; survives a short outage
-    #: Default ON for reveal, because revealing a secret is the action whose
-    #: audit entry is worthless without a name attached to it.
+    #: All three default ON. Reveal exposes a secret; approve and confirm are
+    #: the two actions that put configuration **on a device**. An audit entry
+    #: for any of them is worthless without a name attached to it, and the two
+    #: device-pushing actions are the ones whose consequences are physical.
+    #:
+    #: There is deliberately **no localhost exemption**. An exemption for
+    #: "requests from the box itself" is an exemption for anything that has
+    #: reached the box, which is precisely the situation where the audit trail
+    #: matters most. Automation authenticates the same way everyone does — a
+    #: Cloudflare Access **service token** through the tunnel, verified as a
+    #: normal assertion and recorded as the service.
     "require_identity_for_reveal":  True,
-    "require_identity_for_approve": False,
-    "require_identity_for_confirm": False,
+    "require_identity_for_approve": True,
+    "require_identity_for_confirm": True,
 
     # ── S3-compatible archive ───────────────────────────────────────────────
     "s3_endpoint":   "",

@@ -61,6 +61,12 @@ class Identity:
 
     actor: str = UNAUTHENTICATED
     email: str = ""
+    #: ``person`` | ``service`` | ``""``. Cloudflare issues the same *shape* of
+    #: assertion for both, so this is derived from the claims — see
+    #: :func:`_actor_from_claims`.
+    kind: str = ""
+    #: The service token's Client ID (its ``common_name``), for a service only.
+    service_id: str = ""
     verified: bool = False
     #: Machine-readable outcome, safe to log: ok | no_header | invalid_token |
     #: wrong_audience | expired | untrusted_peer | not_configured | verifier_unavailable
@@ -75,10 +81,48 @@ class Identity:
         return self.verified and self.peer_trusted
 
     def audit(self) -> dict:
-        """What an audit row should carry. Never the email, never the token."""
-        return {"actor": self.actor, "verified": self.verified,
-                "outcome": self.outcome, "peer": self.peer,
-                "peer_trusted": self.peer_trusted}
+        """What an audit row should carry. Never the token.
+
+        ``kind`` is recorded alongside the actor because "a person approved
+        this" and "a script approved this" are different facts about a change,
+        and an audit trail that cannot distinguish them cannot answer the
+        question it exists to answer.
+        """
+        return {"actor": self.actor, "kind": self.kind,
+                "verified": self.verified, "outcome": self.outcome,
+                "peer": self.peer, "peer_trusted": self.peer_trusted}
+
+
+#: Service actors are prefixed so no reader can mistake a Client ID for a
+#: person. `e367826f93b8….access` and `dustin@example.com` are both opaque
+#: strings in a log line; only one of them is a human being.
+SERVICE_ACTOR_PREFIX = "service:"
+
+
+def _actor_from_claims(claims: dict) -> tuple:
+    """``(actor, email, kind, service_id)`` from verified claims.
+
+    Cloudflare issues the **same shape** of assertion for a person and for a
+    service token — both carry ``type: "app"``, so ``type`` is not the
+    discriminator it looks like. What differs is which identity claim is
+    present:
+
+    * person  — ``email`` set, ``sub`` a user UUID, plus ``identity_nonce``
+    * service — ``common_name`` set (the token's Client ID), ``sub`` empty,
+      and **no** ``email`` at all
+
+    Handled explicitly rather than by ``email or common_name``, which collapsed
+    both into one field and would have recorded a service token's Client ID in
+    a column every reader takes to be a person's address.
+    """
+    email = (claims.get("email") or "").strip()
+    common_name = (claims.get("common_name") or "").strip()
+
+    if email:
+        return email, email, "person", ""
+    if common_name:
+        return f"{SERVICE_ACTOR_PREFIX}{common_name}", "", "service", common_name
+    return "", "", "", ""
 
 
 def _setting(key, default=None):
@@ -212,15 +256,17 @@ def identify(request) -> Identity:
                         header_present=True,
                         reason=f"the Access assertion was rejected ({outcome})")
 
-    email = (claims.get("email") or claims.get("common_name") or "").strip()
-    if not email:
+    actor, email, kind, service_id = _actor_from_claims(claims)
+    if not actor:
         return Identity(outcome="invalid_token", peer=peer,
                         peer_trusted=peer_trusted, header_present=True,
-                        reason="the assertion carried no identity claim")
+                        reason=("the assertion carried neither an email nor a "
+                                "common_name, so it names nobody"))
 
     if not peer_trusted:
-        log.warning("identity: valid assertion from an untrusted peer %s", peer)
-        return Identity(actor=UNAUTHENTICATED, email="", verified=True,
+        log.warning("identity: valid %s assertion from an untrusted peer %s",
+                    kind, peer)
+        return Identity(actor=UNAUTHENTICATED, email="", kind="", verified=True,
                         outcome="untrusted_peer", peer=peer,
                         peer_trusted=False, header_present=True,
                         reason=(f"the assertion is valid but arrived from {peer}, "
@@ -228,9 +274,11 @@ def identify(request) -> Identity:
                                 "assertion replayed from elsewhere looks like "
                                 "this"))
 
-    log.info("identity: verified (outcome=ok peer=%s)", peer)
-    return Identity(actor=email, email=email, verified=True, outcome="ok",
-                    peer=peer, peer_trusted=True, header_present=True)
+    # kind is safe to log; the actor is not.
+    log.info("identity: verified (outcome=ok kind=%s peer=%s)", kind, peer)
+    return Identity(actor=actor, email=email, kind=kind, service_id=service_id,
+                    verified=True, outcome="ok", peer=peer, peer_trusted=True,
+                    header_present=True)
 
 
 def require(request, action: str = "reveal"):

@@ -285,7 +285,9 @@ class TestNothingLogsAValue:
         row = identity.identify(_Req(token=_token(private))).audit()
         assert row["actor"] == "dustin@example.com"      # the actor IS the point
         assert "email" not in row                         # but not twice over
-        assert set(row) == {"actor", "verified", "outcome", "peer", "peer_trusted"}
+        assert set(row) == {"actor", "kind", "verified", "outcome", "peer",
+                            "peer_trusted"}
+        assert row["kind"] == "person"
 
     def test_the_unidentified_actor_has_a_name(self):
         """An audit row with actor "" reads as a bug, not as an absence."""
@@ -438,3 +440,120 @@ class TestTheStatusRoute:
 
         rules = {r.rule for r in app_module.app.url_map.iter_rules()}
         assert "/identity/status" in rules
+
+
+class TestServiceTokensAreIdentifiedDistinctly:
+    """Automation authenticates the same way people do — and is recorded apart.
+
+    Cloudflare issues the **same shape** of assertion for both: `type: "app"`
+    either way, so `type` is not the discriminator it looks like. What differs
+    is the identity claim — a person carries `email` with a UUID `sub`; a
+    service token carries `common_name` (its Client ID) with `sub: ""` and no
+    `email` at all.
+
+    The first implementation read `email or common_name` into one field, which
+    would have written a Client ID into the column every reader takes to be a
+    person's address.
+    """
+
+    def _service_token(self, private, **overrides):
+        import jwt
+
+        now = int(time.time())
+        claims = {"type": "app", "aud": AUD, "iss": f"https://{TEAM}",
+                  "common_name": "e367826f93b8d71185e03fe518aff3b4.access",
+                  "iat": now, "exp": now + 600, "sub": ""}
+        claims.update(overrides)
+        return jwt.encode(claims, private, algorithm="RS256")
+
+    def test_a_service_token_identifies_as_a_service(self, configured, keys):
+        private, _ = keys
+        ident = identity.identify(_Req(token=self._service_token(private)))
+
+        assert ident.is_identified is True
+        assert ident.kind == "service"
+        assert ident.service_id == "e367826f93b8d71185e03fe518aff3b4.access"
+        assert ident.email == "", "a service token has no email to report"
+
+    def test_the_service_actor_cannot_be_mistaken_for_a_person(self, configured,
+                                                                keys):
+        private, _ = keys
+        ident = identity.identify(_Req(token=self._service_token(private)))
+
+        assert ident.actor.startswith(identity.SERVICE_ACTOR_PREFIX)
+        assert "@" not in ident.actor
+
+    def test_a_person_is_still_a_person(self, configured, keys):
+        private, _ = keys
+        ident = identity.identify(_Req(token=_token(private)))
+
+        assert ident.kind == "person"
+        assert ident.email == "dustin@example.com"
+        assert ident.service_id == ""
+        assert not ident.actor.startswith(identity.SERVICE_ACTOR_PREFIX)
+
+    def test_the_audit_row_distinguishes_them(self, configured, keys):
+        private, _ = keys
+        person = identity.identify(_Req(token=_token(private))).audit()
+        service = identity.identify(
+            _Req(token=self._service_token(private))).audit()
+
+        assert person["kind"] == "person"
+        assert service["kind"] == "service"
+        assert person["actor"] != service["actor"]
+
+    def test_an_assertion_naming_nobody_is_refused(self, configured, keys):
+        """Valid signature, valid audience, no identity claim."""
+        private, _ = keys
+        ident = identity.identify(
+            _Req(token=self._service_token(private, common_name="")))
+
+        assert ident.verified is False
+        assert ident.outcome == "invalid_token"
+        assert "names nobody" in ident.reason
+
+    def test_a_service_token_satisfies_the_gates(self, configured, keys):
+        """Automation must be able to work once it authenticates properly."""
+        private, _ = keys
+        request = _Req(token=self._service_token(private))
+        for action in ("reveal", "approve", "confirm"):
+            _ident, refusal = identity.require(request, action)
+            assert refusal is None, action
+
+    def test_a_service_token_from_an_untrusted_peer_still_fails(self, configured,
+                                                                 keys):
+        private, _ = keys
+        ident = identity.identify(
+            _Req(token=self._service_token(private), peer="10.0.0.30"))
+        assert ident.is_identified is False
+        assert ident.kind == ""
+
+
+class TestAllThreeActionsRequireIdentityByDefault:
+    """Reveal exposes a secret; approve and confirm put config on a device."""
+
+    def test_the_defaults(self):
+        from modules.settings_schema import DEFAULTS
+
+        for action in ("reveal", "approve", "confirm"):
+            assert DEFAULTS[f"require_identity_for_{action}"] is True, action
+
+    def test_an_unidentified_request_is_refused_for_each(self, configured,
+                                                          monkeypatch):
+        base = dict(configured, require_identity_for_approve=True,
+                    require_identity_for_confirm=True)
+        monkeypatch.setattr(identity, "_setting",
+                            lambda key, default=None: base.get(key, default))
+        for action in ("reveal", "approve", "confirm"):
+            _ident, refusal = identity.require(_Req(), action)
+            assert refusal is not None, action
+
+    def test_there_is_no_localhost_exemption(self):
+        """An exemption for the box is an exemption for anything on the box."""
+        import inspect
+
+        source = inspect.getsource(identity)
+        for loopback in ("127.0.0.1", "localhost", "::1"):
+            assert loopback not in source, (
+                f"{loopback} appears in identity.py — a loopback exemption "
+                "bypasses the audit trail exactly where it matters most")
