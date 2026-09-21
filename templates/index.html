@@ -421,6 +421,29 @@
   <h2 class="text-primary mb-0">Network Topology</h2>
 </div>
 
+<p class="text-muted small mb-3">The topology as rendered by the rcn-topology service.</p>
+
+{% include 'partials/topology_service.html' %}
+
+<!-- ============================================================== -->
+<!-- Built-in discovery (legacy) — CDP/LLDP/OSPF/BGP rediscovery,    -->
+<!-- a second implementation of what the topology service already    -->
+<!-- does. Collapsed, not removed: behaviour is unchanged.           -->
+<!-- ============================================================== -->
+<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body py-2">
+    <button class="btn btn-link text-decoration-none p-0 text-muted"
+            type="button" data-bs-toggle="collapse"
+            data-bs-target="#legacyDiscovery"
+            aria-expanded="false" aria-controls="legacyDiscovery">
+      &#9656; Built-in discovery (legacy)
+    </button>
+    <span class="text-muted small ms-2">CDP/LLDP, OSPF, BGP, tunnels — discovered by NMAS itself</span>
+  </div>
+</div>
+
+<div class="collapse" id="legacyDiscovery">
+
 <!-- Sub-view tabs -->
 <ul class="nav nav-tabs" id="topoViewTabs" role="tablist">
   <li class="nav-item" role="presentation">
@@ -669,6 +692,8 @@
   </div>
 
 </div><!-- end topoViewContent -->
+
+</div><!-- end Built-in discovery (legacy) collapse -->
 
 </div><!-- end Topology tab pane -->
 
