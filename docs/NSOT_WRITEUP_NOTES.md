@@ -4876,3 +4876,51 @@ any render, carry a timestamp, and have a dismiss button; only the
 > Any region that is rebuilt wholesale will eventually destroy something
 > important that was placed in it. Output that outlives an action belongs
 > outside the thing the action refreshes.
+
+## What the first push actually published
+
+`dmarchak/rcn-nsot-config`, private, 61 commits, 1 branch, 33 tags, `main`
+matching the local HEAD. The SNMP communities were acknowledged through the
+UI by a verified person; auto-push is on.
+
+The material in that history, measured rather than asserted:
+
+| kind | count | state |
+|---|---|---|
+| plaintext router passwords | 5 | **dead** — rotated to type 9 |
+| switch type-5 secrets | 4 | **dead** — rotated to type 9 |
+| type-9 secrets | 9 | live, salted, not recoverable |
+| SNMP communities | 9 | **live**, read-only, ACL-restricted, acknowledged |
+
+**This is the reason every device was rotated before anything was
+published.** A push is not a snapshot: it publishes every commit, so the
+question was never "what is in the configuration now" but "what has ever been
+in it". Rotating afterwards would have changed the devices and left the
+history exactly as exposed — the credentials would have been dead on the
+devices and perfectly usable to anyone who had already cloned.
+
+So the ordering was not a preference about tidiness. Publication is
+irreversible in a way rotation is not, and the only moment at which the
+exposure could be reduced was before the push. Everything that survives in
+that history is either dead, unrecoverable, or a read-only community somebody
+read the count of and agreed to.
+
+The communities remain the one live exposure, and the honest statement about
+them is the one that justified acknowledging: v2c communities are cleartext in
+every golden by design, so rotating them first would only have shortened how
+long the published values stayed current. The real fix is SNMPv3, and it is a
+Part 2 item rather than a condition of publishing.
+
+### Queued: a resolved list reference
+
+The display-name/slug split has now caused three separate defects — the
+pipeline reading `get_current_list_name()` after a push, `restore`'s
+`_devices_of()`, and the remote's uniqueness check comparing a list against
+itself. Each was found only after it misbehaved, and each fix was the same
+shape: stop comparing names, compare identities.
+
+A `ListRef` resolved once at the edge, from either spelling, and passed
+instead of raw strings would make the third recurrence the last. Same move as
+making a leaf a type rather than a string. Queued deliberately rather than
+done in passing: it touches every call site that takes a list name, which is
+a change to make on purpose and not while finishing something else.
