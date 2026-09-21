@@ -204,6 +204,14 @@ if not app.debug:
     # actually contained the module's log.error() call. app.logger still
     # propagates to root by default, so this also keeps capturing its messages
     # without needing a second handler on it directly.
+    # The third place secrets leave this process, after the model API and the
+    # HTTP API — and the easiest to forget, because nobody logs a password on
+    # purpose. It arrives inside a config dump, an exception message, a Netmiko
+    # echo, or a diff. Attached to the HANDLER, so it covers every module's own
+    # getLogger(__name__) without each having to remember.
+    from modules.redact import install_log_redaction
+    install_log_redaction(file_handler)
+
     logging.getLogger().addHandler(file_handler)
     logging.getLogger().setLevel(logging.INFO)
 

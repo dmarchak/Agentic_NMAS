@@ -765,6 +765,23 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   empty** — Part 2 adds `credential_rotation` by name. A list, not a boolean:
   "services may rotate credentials" and "services may deploy" are different
   grants.
+- **Config is masked by default on the way out.** `/golden/version/<host>` and
+  `/golden/diff/<host>` return `redact_text()` output unless `?reveal=1`, which
+  **requires a person** and is recorded in `data/reveal_audit.jsonl`. A diff
+  carries the same secrets as either config on its `-`/`+` lines, so both go
+  through one helper rather than each remembering. A refused reveal returns the
+  **masked** text, not the secret with an error beside it.
+- **The reveal trail records what was looked at, never what was seen** — device,
+  ref, actor, kind, time, peer. A trail that copies the secret it records has
+  become a second place the secret lives. Masked reads record nothing; the trail
+  logs reveals, not requests.
+- **The app log is redacted at the handler** (`redact.RedactingFilter` on the
+  root file handler), so every module's `getLogger(__name__)` is covered without
+  each remembering. Arguments are redacted as well as format strings — a secret
+  is far more often in an arg — and exception text too. It **fails open**: if
+  redaction raises, the record is written unredacted rather than dropped,
+  because a log that silently loses entries is the worse failure in the file an
+  operator reaches for when something has already gone wrong.
 - `GET /identity/status` reports **`may`** — what *this caller* can do, with a
   reason when false — not which gates are enabled. The earlier `gates` field
   reported configuration, and `gates: {reveal: true}` reads as permission while

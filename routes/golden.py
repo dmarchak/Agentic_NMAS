@@ -21,6 +21,42 @@ def _active_list(payload=None) -> str:
     return name.strip() or get_current_list_name()
 
 
+def _serve_config(text: str, *, what: str, target: str, detail: str = ""):
+    """``(payload, status)`` for config text — **masked unless revealed**.
+
+    Masked is the default because the caller who wants to read a diff or check
+    a hostname is the common case, and none of them need the SNMP community to
+    do it. Revealing is the exception, it requires a person, and it leaves a
+    mark.
+
+    The mask is the same `redact_text` used at the provider and log boundaries:
+    positional first, so a 6-character community is covered even though it is
+    below the value floor.
+    """
+    from modules import identity as ident_mod
+    from modules import redact, reveal_audit
+
+    wants_reveal = (request.args.get("reveal", "") or "").lower() in (
+        "1", "true", "yes")
+    if not wants_reveal:
+        return {"ok": True, "masked": True, "text": redact.redact_text(text)}, 200
+
+    ident, refusal = ident_mod.require(request, "reveal", operation=what)
+    if refusal is not None:
+        # The refusal is not an error about the config — say which it is.
+        log.warning("golden: reveal of %s/%s refused (%s)", what, target,
+                    refusal.get("outcome"))
+        return {**refusal, "masked": True,
+                "text": redact.redact_text(text)}, 403
+
+    reveal_audit.record(actor=ident.actor, kind=ident.kind, what=what,
+                        target=target, detail=detail, peer=ident.peer,
+                        extra={"audit_name": ident_mod.service_label(ident.service_id)
+                               if ident.kind == "service" else ident.actor})
+    return {"ok": True, "masked": False, "text": text,
+            "revealed_by": ident.actor}, 200
+
+
 @bp.route("/history/<path:hostname>", methods=["GET"])
 def history(hostname):
     """Promotion timeline for one device, following renames."""
@@ -49,7 +85,11 @@ def version(hostname):
     if content is None:
         return jsonify({"ok": False,
                         "error": f"No golden config for {hostname} at {ref}"}), 404
-    return jsonify({"ok": True, "hostname": hostname, "ref": ref, "config": content})
+
+    payload, status = _serve_config(content, what="golden_config",
+                                    target=hostname, detail=ref)
+    payload["config"] = payload.pop("text")
+    return jsonify({**payload, "hostname": hostname, "ref": ref}), status
 
 
 @bp.route("/diff/<path:hostname>", methods=["GET"])
@@ -73,8 +113,16 @@ def diff(hostname):
     lines = list(difflib.unified_diff(
         left.splitlines(), right.splitlines(),
         fromfile=f"{hostname}@{ref_a}", tofile=f"{hostname}@{ref_b}", lineterm=""))
-    return jsonify({"ok": True, "hostname": hostname, "a": ref_a, "b": ref_b,
-                    "diff": "\n".join(lines), "changed": bool(lines)})
+
+    # A diff of two configs carries the same secrets as either of them, on the
+    # `-` and `+` lines. Easy to leave masked-by-default behind when adding a
+    # view, which is why both go through one helper.
+    payload, status = _serve_config("\n".join(lines), what="golden_diff",
+                                    target=hostname,
+                                    detail=f"{ref_a}..{ref_b}")
+    payload["diff"] = payload.pop("text")
+    return jsonify({**payload, "hostname": hostname, "a": ref_a, "b": ref_b,
+                    "changed": bool(lines)}), status
 
 
 @bp.route("/baselines", methods=["GET"])

@@ -232,3 +232,63 @@ def contains_known_secret(payload) -> list:
 
     _walk(payload)
     return sorted(set(found))
+
+
+# ---------------------------------------------------------------------------
+# The log boundary
+# ---------------------------------------------------------------------------
+
+class RedactingFilter(logging.Filter):
+    """Redact secrets from log records. Attach to the **handler**, not a logger.
+
+    The app log is the third place secrets leave the process, after the model
+    API and the HTTP API. It is also the easiest to forget, because nobody
+    writes ``log.info(password)`` on purpose — it arrives inside a config dump,
+    an exception message, a Netmiko echo, or a diff.
+
+    Attached to the root handler, so it covers every module's own
+    ``logging.getLogger(__name__)`` without each having to remember — the same
+    reasoning that put redaction at the provider boundary rather than at each
+    reader.
+
+    **Fails open, deliberately.** If redaction raises, the record is written
+    unredacted rather than dropped. A log that silently loses entries is a
+    worse failure than one that occasionally keeps something it should not:
+    the first destroys the record of what happened, and this is the file an
+    operator reaches for when something has already gone wrong. The failure is
+    itself logged, once, so the gap is visible.
+    """
+
+    _warned = False
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            values = known_secret_values()
+            # Format once here so args are interpolated; a secret is far more
+            # often in an arg than in the format string.
+            message = record.getMessage()
+            cleaned = redact_text(message, values)
+            if cleaned != message:
+                record.msg = cleaned
+                record.args = ()
+            if record.exc_info:
+                # An exception's text can quote a config line verbatim.
+                record.exc_text = redact_text(
+                    record.exc_text or logging.Formatter().formatException(
+                        record.exc_info), values)
+                record.exc_info = None
+        except Exception as exc:              # noqa: BLE001
+            if not RedactingFilter._warned:
+                RedactingFilter._warned = True
+                logging.getLogger(__name__).error(
+                    "redact: log redaction failed (%s) — records are being "
+                    "written UNREDACTED", type(exc).__name__)
+        return True
+
+
+def install_log_redaction(handler) -> bool:
+    """Attach :class:`RedactingFilter` to *handler*. Idempotent."""
+    if any(isinstance(f, RedactingFilter) for f in handler.filters):
+        return False
+    handler.addFilter(RedactingFilter())
+    return True
