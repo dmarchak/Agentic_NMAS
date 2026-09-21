@@ -192,6 +192,14 @@ DEFAULTS: dict = {
     # Per-device golden/<device>/* tags are pruned beyond the last N.
     # 0 = keep all. Commits retain full history regardless of tag pruning.
     "nsot_device_tag_retention": 50,
+    # Seconds to wait for a full `show running-config` when reading a device
+    # back after a failed deploy. Generous on purpose: this read happens
+    # moments after `write memory`, and on an emulated device NVRAM writes
+    # leave it slow for tens of seconds. Measured on a containerlab vIOS-L2 —
+    # 5.5s idle, >16s immediately after a save. A number that happens to work
+    # on one lab is the kind of assumption this project keeps out of the code,
+    # so it is a setting with a wide default rather than a constant.
+    "nsot_config_read_timeout": 120,
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -309,6 +317,7 @@ SCHEMA: dict = {
         },
 
         "nsot_device_tag_retention": {"type": "integer", "minimum": 0},
+        "nsot_config_read_timeout": {"type": "integer", "minimum": 5},
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {

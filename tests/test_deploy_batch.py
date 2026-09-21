@@ -713,3 +713,96 @@ def _config_text():
     fleet = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
     with open(os.path.join(fleet, "s1.cfg"), encoding="utf-8") as fh:
         return fh.read()
+
+
+class TestARejectedCommandFailsCapturesAndRollsBack:
+    """3B's premise, confirmed on a mocked transport before any device sees it.
+
+    Netmiko does not treat ``% Invalid input detected`` as an error by default,
+    so before ``error_pattern`` a cleanly rejected line returned normally: the
+    push logged success, verify passed because nothing had changed and
+    therefore nothing had broken, and stage 8.5 committed a golden that
+    correctly recorded a device which was never configured.
+
+    This asserts the whole chain for each pattern — detection, failure-state
+    capture, and rollback — rather than only that the exception is raised.
+    """
+
+    REJECTIONS = [
+        "% Invalid input detected at '^' marker.",
+        "% Incomplete command.",
+        '% Ambiguous command: "des"',
+        "% Unrecognized host or address.",
+    ]
+
+    PUSHED = ["interface GigabitEthernet0/1", " description x", "exit"]
+
+    def _ctx(self):
+        import threading
+        from modules.pipeline import PipelineContext
+
+        ctx = PipelineContext(
+            config_type="template", device_ips=["10.0.0.1"],
+            params={}, ip_params_map={},
+            selected_devices=[{"ip": "10.0.0.1", "hostname": "s4"}],
+            check_devices=[], connections_pool={},
+            pool_lock=threading.Lock(), config_id="tpl-s4",
+            settle_sleep=lambda _s: None)
+        ctx.confirmed_commands = {"10.0.0.1": list(self.PUSHED)}
+        return ctx
+
+    @pytest.mark.parametrize("rejection", REJECTIONS)
+    def test_the_push_raises_on_each_pattern(self, rejection):
+        import re
+        from modules.pipeline import IOS_ERROR_PATTERN
+        assert re.search(IOS_ERROR_PATTERN, rejection), (
+            f"{rejection!r} would be pushed and reported as success")
+
+    @pytest.mark.parametrize("rejection", REJECTIONS)
+    def test_capture_then_rollback_run_for_each_pattern(self, rejection):
+        """A rejected push must still be read back and undone."""
+        import modules.ai_assistant as A
+        import modules.connection as C
+        import modules.pipeline as P
+        from modules.pipeline import _capture_failure_state, _stage_rollback
+
+        ctx = self._ctx()
+        # The push failed partway; something may already be on the device.
+        ctx.push_results = {"10.0.0.1": {"ok": False, "error": rejection}}
+        sent = []
+
+        class _Fresh:
+            def send_command(self, _cmd, read_timeout=None):
+                # The device kept the interface line, rejected the description.
+                return "hostname s4\ninterface GigabitEthernet0/1\n"
+
+        orig = (A._load_pre_change_file, C.with_temp_connection,
+                C.get_persistent_connection, P._restore_config)
+        A._load_pre_change_file = lambda ip: "hostname s4\n"
+        C.with_temp_connection = lambda dev, func: func(_Fresh())
+        C.get_persistent_connection = lambda dev, pool, lock: object()
+        P._restore_config = lambda conn, cmds: sent.extend(cmds)
+        try:
+            _capture_failure_state(ctx)
+            _stage_rollback(ctx)
+        finally:
+            (A._load_pre_change_file, C.with_temp_connection,
+             C.get_persistent_connection, P._restore_config) = orig
+
+        state = ctx.failure_state["10.0.0.1"]
+        assert state["push_ok"] is False
+        assert state["device_changed"] is True, (
+            "a partially applied push must be reported as a change")
+        assert "interface GigabitEthernet0/1" in state["landed"]
+
+        assert ctx.rollback_performed is True
+        assert ctx.rolled_back_ips == ["10.0.0.1"]
+        assert sent == ["interface GigabitEthernet0/1",
+                        " no description x", "exit"], sent
+
+    def test_a_rejected_push_is_a_rollback_target(self):
+        """The filter that once excluded exactly this device."""
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(self.PUSHED, "hostname s4\n")
+        assert undo == ["interface GigabitEthernet0/1",
+                        " no description x", "exit"]

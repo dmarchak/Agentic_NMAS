@@ -420,6 +420,13 @@ The only part of the NSoT work that reaches a device.
 - **Rollback fires whenever a push was attempted**, and targets every device
   not explicitly skipped — including one whose push failed mid-stream, which is
   the state most in need of restoring.
+- **A failed push reports what landed** over a **fresh** connection, never the
+  pooled one — that path runs only after something went wrong on the pooled
+  session, so it is the most likely to be handed a broken instrument. A failed
+  capture drops the pooled connection too. The read timeout is
+  `nsot_config_read_timeout` (default 120s): `write memory` leaves an emulated
+  device slow for tens of seconds, measured at 5.5s idle and >16s straight
+  after a save, and Netmiko's 10s default sits inside that window.
 - **A failed push reports what landed.** `_capture_failure_state()` reads each
   attempted device back and diffs against the pre-change snapshot before any
   rollback. "The push failed" and "the device is unchanged" are different

@@ -1186,8 +1186,16 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
         hostname = dev.get("hostname", ip)
         entry = {"device": hostname, "ip": ip, "push_ok": bool(result.get("ok"))}
         try:
+            # Netmiko's default read_timeout is 10s. This read happens moments
+            # after `write memory`, and on an emulated device that leaves the
+            # box slow for tens of seconds — measured at 5.5s idle and >16s
+            # straight after a save. A timeout here loses the evidence, which
+            # is the one thing this function exists to preserve.
+            from modules.settings_schema import get_setting
+            timeout = get_setting("nsot_config_read_timeout", 120)
             post = with_temp_connection(
-                dev, lambda c: c.send_command("show running-config"))
+                dev, lambda c: c.send_command("show running-config",
+                                              read_timeout=timeout))
             pre = _load_pre_change_file(ip) or ""
             pre_lines = [l.rstrip() for l in pre.splitlines()]
             post_lines = [l.rstrip() for l in post.splitlines()]

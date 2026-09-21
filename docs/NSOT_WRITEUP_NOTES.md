@@ -2401,3 +2401,70 @@ report said "unknown" rather than "unchanged". That distinction was written in
 deliberately — *"an unreadable answer is not a clean bill of health"* — and it
 is the only reason the failure was legible at all rather than an incorrect
 all-clear sitting in a deploy report.
+
+---
+
+## Measuring before raising the number
+
+A follow-up to the fresh-connection fix, and a small case of a habit worth
+keeping: the failure-state capture was timing out, and the obvious response is
+to raise the timeout.
+
+Raising it first would have worked, and would have hidden which of two very
+different things was happening.
+
+### The measurement
+
+```
+idle connection:
+  show running-config (10s)     5.49s   169 lines, ends with `end`   OK
+
+after write memory:
+  write memory                 11.85s
+  show running-config (10s)    10.47s   ReadTimeout
+  show running-config (10s)    16.44s   ReadTimeout
+  show running-config (30s)    13.91s   169 lines                    OK
+```
+
+### What it distinguishes
+
+Two candidate causes produce the same symptom:
+
+* **an unanswered `--More--`** — `terminal length 0` not applied on that
+  session, so the device waits forever for a keypress
+* **a genuinely slow device**
+
+They are told apart by what arrives, not by how long it takes. Paging returns
+**partial** output, cut mid-config at the pager prompt. Here the output was
+complete every time it arrived — 169 lines terminating in `end` — and the same
+command on an idle connection finished in 5.5s. A session missing `terminal
+length 0` would fail identically regardless of device load.
+
+So: a slow device, and specifically one made slow by `write memory`.
+`_push_via_netmiko()` saves immediately after every push, NVRAM on this
+platform is emulated on disk, and the box stays slow for tens of seconds
+afterwards. The capture runs a few stages later — sometimes inside that window,
+sometimes not, which is exactly why the first occurrence looked intermittent.
+
+It also established that the earlier NUL failure and this timeout were
+**different faults**. The connection fix did not fail to solve this one; it
+converted an unreadable desynced session into an honest timeout, which is what
+made the measurement possible at all.
+
+### Why it is a setting
+
+The number that works here is a fact about one containerlab vIOS-L2 with
+emulated NVRAM. A real 9300 writes NVRAM in under a second; a busier or slower
+platform could be worse than this one. Hardcoding 120 would be the same
+category of mistake as the hardcoded TFTP server address and the reference
+topology in the AI prompts — a local truth compiled into code that travels.
+
+`nsot_config_read_timeout`, default 120, minimum 5. The default is generous
+rather than tuned, because the cost of being too generous is waiting longer on
+a path that only runs after a failure, and the cost of being too tight is
+losing the evidence.
+
+> When a limit needs raising, measure first — the measurement usually
+> distinguishes two causes that the raised limit would have made
+> indistinguishable. Then make it configurable, because the number you measured
+> is a fact about the thing you measured.

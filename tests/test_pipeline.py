@@ -822,7 +822,8 @@ class TestFailureStateIsCaptured:
         ctx.push_results = {"10.0.0.1": {"ok": False, "error": "boom"}}
 
         class _Conn:
-            def send_command(self, _cmd):
+            def send_command(self, _cmd, read_timeout=None):
+                self.read_timeout = read_timeout
                 return running_after
 
         orig_load = A._load_pre_change_file
@@ -847,7 +848,7 @@ class TestFailureStateIsCaptured:
         used_pool = []
 
         class _Conn:
-            def send_command(self, _cmd):
+            def send_command(self, _cmd, read_timeout=None):
                 return "hostname R1\n"
 
         orig = (A._load_pre_change_file, C.with_temp_connection,
@@ -923,6 +924,41 @@ class TestFailureStateIsCaptured:
         entry = ctx.failure_state["10.0.0.1"]
         assert entry["device_changed"] is None, "unknown must not read as unchanged"
         assert "unreachable" in entry["error"]
+
+    def test_the_read_timeout_comes_from_settings(self):
+        """Not a constant. A number that works on one lab is an assumption."""
+        from modules.pipeline import _capture_failure_state
+        import modules.ai_assistant as A
+        import modules.connection as C
+        import modules.settings_schema as S
+
+        seen = {}
+
+        class _Conn:
+            def send_command(self, _cmd, read_timeout=None):
+                seen["read_timeout"] = read_timeout
+                return "hostname R1\n"
+
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": False}}
+        orig = (A._load_pre_change_file, C.with_temp_connection, S.get_setting)
+        A._load_pre_change_file = lambda ip: "hostname R1\n"
+        C.with_temp_connection = lambda dev, func: func(_Conn())
+        S.get_setting = lambda key, default=None: (
+            999 if key == "nsot_config_read_timeout" else default)
+        try:
+            _capture_failure_state(ctx)
+        finally:
+            (A._load_pre_change_file, C.with_temp_connection,
+             S.get_setting) = orig
+
+        assert seen["read_timeout"] == 999
+
+    def test_the_default_is_generous(self):
+        """Measured: 5.5s idle, >16s straight after `write memory` on an
+        emulated device. Netmiko's default of 10s sits inside that window."""
+        from modules.settings_schema import DEFAULTS
+        assert DEFAULTS["nsot_config_read_timeout"] >= 60
 
     def test_capture_runs_before_rollback(self):
         """Or the repair destroys the evidence."""
