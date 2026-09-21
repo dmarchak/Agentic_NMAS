@@ -271,12 +271,19 @@ async function syncGoldenRenames() {
 // them straight to apply: they were skipped, so they have no command list and
 // no hash, and confirming commands nobody was shown is exactly what the
 // confirm hash exists to prevent.
-async function previewBaselineRestore(tag, unOnboard) {
+// `from` carries an approval-queue handoff: the devices to scope to, the id to
+// close on success, and the diff the agent saw. That diff is CONTEXT ONLY — it
+// is displayed beside the freshly computed program and is never sent.
+async function previewBaselineRestore(tag, unOnboard, from) {
   unOnboard = unOnboard || [];
+  from = from || {};
   try {
     const r = await fetch('/golden/restore/preview', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ref: tag, un_onboard: unOnboard}),
+      body: JSON.stringify({ref: tag, un_onboard: unOnboard,
+                            devices: from.devices || null,
+                            advisory_diff: from.advisoryDiff || '',
+                            approval_id: from.approvalId || ''}),
     });
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); return; }
@@ -322,12 +329,22 @@ async function previewBaselineRestore(tag, unOnboard) {
           + `un-does the onboarding review. It is a forward commit, so the `
           + `intent stays recoverable from git history.\n\n`
           + `OK = show me what that would send.  Cancel = leave them skipped.`)) {
-        return previewBaselineRestore(tag, offerable.map(s => s.hostname));
+        return previewBaselineRestore(tag, offerable.map(s => s.hostname), from);
       }
     }
 
+    // What the agent saw, when it saw it — shown above the program so the
+    // operator can compare, and labelled so it cannot be mistaken for what
+    // will be sent.
+    const advisory = from.advisoryDiff
+      ? `WHAT THE AGENT SAW when the drift was detected (context only, NOT `
+        + `what will be sent):\n${from.advisoryDiff.trim().split('\n').slice(0, 12)
+            .map(l => '  ' + l).join('\n')}\n\n`
+        + `${from.advisoryNote || ''}\n\n${'-'.repeat(60)}\n\n`
+      : '';
+
     if (!confirm(
-        `${d.summary}\n\n${lines.join('\n')}${skippedText}\n\n`
+        advisory + `${d.summary}\n\n${lines.join('\n')}${skippedText}\n\n`
         + `SCOPE: ${d.scope}\n\n`
         + `This ADDS and REPLACES. It does not remove lines a device has gained.\n\nContinue?`)) return;
 
@@ -344,7 +361,8 @@ async function previewBaselineRestore(tag, unOnboard) {
     const ar = await fetch('/golden/restore/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ref: tag, confirmations, command_hashes: hashes,
-                            un_onboard: unOnboard}),
+                            un_onboard: unOnboard,
+                            approval_id: from.approvalId || ''}),
     });
     const ad = await ar.json();
     const done = (ad.deployed || []).length;

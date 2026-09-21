@@ -222,6 +222,10 @@ def restore_preview():
         "ok": True, "ref": ref, "list": list_name, "mode": "re-apply",
         "devices": devices, "skipped": skipped,
         "intent_restored": intent_restored, "un_onboarding": un_onboarding,
+        # Echoed back so the confirm dialog can show "what the agent saw"
+        # beside the freshly computed program. Never an input to anything.
+        "advisory_diff": (data.get("advisory_diff") or ""),
+        "approval_id": (data.get("approval_id") or ""),
         "scope": ("Device configuration AND committed intent from this ref — "
                   "one unit per device, one commit. Never templates, bindings "
                   "or approvals: those are code, and rolling them back to fix "
@@ -317,6 +321,29 @@ def restore_apply():
                          label=f"re-apply {ref}", source_ref=ref)
     report.update({"ref": ref, "mode": "re-apply", "skipped": skipped,
                    "invalidated_queue_items": invalidated["rejected"]})
+
+    # Close the queue item that handed off to this, but ONLY for devices that
+    # actually succeeded. An item left pending for ever teaches the operator to
+    # clear the queue by rejecting things, which is the habit that makes an
+    # approval queue worthless; an item closed on a failed push would be the
+    # queue claiming work that did not happen.
+    approval_id = (data.get("approval_id") or "").strip()
+    if approval_id:
+        from modules.approval_queue import mark_done
+        from modules.nsot.deploy import DEPLOYED
+
+        succeeded = [r.get("device") for r in (report.get("results") or [])
+                     if r.get("outcome") == DEPLOYED]
+        if succeeded:
+            closed = mark_done(approval_id,
+                               f"Re-applied {ref} to {', '.join(succeeded)} "
+                               "through the confirmed deploy path")
+            report["approval_closed"] = closed.get("ok", False)
+        else:
+            report["approval_closed"] = False
+            report["approval_note"] = (
+                "left pending: no device completed successfully")
+
     return jsonify({"ok": True, "list": list_name, **report})
 
 

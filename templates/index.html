@@ -5893,6 +5893,21 @@ async function resolveApproval(id, action) {
 
     const exec = data.execution || {};
     if (action === 'approve') {
+      // A confirm-ending action is not finished by approving it. Approving
+      // opens the preview; the exact program is computed NOW, from the device
+      // as it is now, and the operator confirms that. The queued diff — what
+      // the agent saw when the drift was detected — is passed along as
+      // context and never reaches a device.
+      if (exec.needs_confirmation && exec.restore) {
+        showToast(exec.message || 'Confirmation required', 'info');
+        loadApprovalsTab();
+        return previewBaselineRestore(exec.restore.ref, null, {
+          devices: exec.restore.devices,
+          approvalId: exec.restore.approval_id,
+          advisoryDiff: exec.advisory_diff || '',
+          advisoryNote: exec.advisory_note || '',
+        });
+      }
       if (exec.error) {
         showToast(`Approved but execution failed: ${exec.error}`, 'warning');
       } else if (exec.note) {

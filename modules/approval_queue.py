@@ -173,6 +173,24 @@ def resolve(entry_id: str, action: str) -> dict:
     execution = {}
     if action == "approve":
         execution = _execute(entry)
+
+        # A confirm-ending action is not finished by approving it. Approving
+        # opens the preview; the work happens when the operator confirms the
+        # program. Marking it approved here would leave the queue claiming a
+        # change was made that nobody has sent yet — and would hide the item
+        # from the operator who still has to act on it.
+        if execution.get("needs_confirmation"):
+            entry["status"] = "pending"
+            entry["resolved_at"] = None
+            entry["context"] = (
+                "Awaiting confirmation: the command list is computed fresh and "
+                "must be confirmed before anything is sent.")
+            _save_queue(entries)
+            log.info("approval_queue: %s handed to the confirmed restore path",
+                     entry.get("device_hostname", entry["id"]))
+            return {"ok": True, "entry": entry, "execution": execution,
+                    "needs_confirmation": True}
+
         # If execution failed, revert the entry to pending so it can be retried.
         # A silent "approved" with a failed execution would let the drift check
         # generate the same approval again on the next restart.
@@ -192,6 +210,29 @@ def resolve(entry_id: str, action: str) -> dict:
 # ---------------------------------------------------------------------------
 # Action executors — called when user approves
 # ---------------------------------------------------------------------------
+
+def mark_done(entry_id: str, note: str = "") -> dict:
+    """Close an item whose work completed elsewhere.
+
+    A confirm-ending item is finished by the restore it handed off to, not by
+    ``resolve()``. Without this the item stays pending for ever and the
+    operator learns to clear the queue by rejecting things — which is the habit
+    that makes an approval queue worthless.
+    """
+    entries = _expire_old(_load_queue())
+    entry = next((e for e in entries if e["id"] == entry_id), None)
+    if not entry:
+        return {"ok": False, "error": f"Approval {entry_id!r} not found"}
+    if entry["status"] != "pending":
+        return {"ok": False, "error": f"Approval is already {entry['status']}"}
+
+    entry["status"] = "approved"
+    entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    entry["context"] = note or "Completed via the confirmed restore path"
+    _save_queue(entries)
+    log.info("approval_queue: [%s] closed — %s", entry_id, entry["context"])
+    return {"ok": True, "entry": entry}
+
 
 def _execute(entry: dict) -> dict:
     """Dispatch to the correct executor based on action_type."""
@@ -249,50 +290,39 @@ def _exec_update_golden(entry: dict) -> dict:
 
 
 def _exec_revert_golden(entry: dict) -> dict:
-    """Refused. Restore goes through the confirmed deploy path.
+    """Hand off to the confirmed restore path. Sends nothing.
 
-    This executor parsed a stored unified diff and pushed the result straight
-    at a device: every ``-`` line applied verbatim, every ``+`` line turned into
-    ``no <command>``. It had none of the guarantees the deploy path has been
-    given since:
+    A single-device ``revert_to_golden`` **is** a Mode A re-apply of that
+    device's golden at HEAD, and the restore path already implements it with
+    the confirm hash, the ASCII guard, provenance, ``error_pattern``, failure
+    capture, rollback and the circuit breaker.
 
-    * **no confirm hash** — the program was recomputed from a diff captured at
-      queue time, so what executed was never what anyone reviewed;
-    * **no mask check** — ``assert_no_mask()`` is called nowhere in this module,
-      and the agent can propose configuration containing mask strings it read;
-    * **no sendability check** — a non-ASCII byte truncates the line on IOS;
-    * **unbounded negation** — ``no <line>`` for every added line, with no
-      provenance test. ``assert_rollback_provenance()`` exists precisely to
-      bound the one place this tool is allowed to generate ``no``, and this
-      path bypassed it entirely;
-    * **no failure capture and no rollback** — a half-applied program left no
-      record of what landed.
+    This executor used to parse the stored diff and push the result straight at
+    a device: every ``-`` line verbatim, every ``+`` line as ``no <command>``.
+    No confirm hash, no mask check, no sendability check, no failure capture,
+    and unbounded negation — which is precisely what
+    ``assert_rollback_provenance()`` exists to bound.
 
-    ``restore.invalidate_queued_restores()`` already rejects these items when
-    the Baselines panel is used. That left the hole open in the other
-    direction: an item approved through the normal queue UI still reached this
-    function.
-
-    The capability is not being removed — a single-device ``revert_to_golden``
-    **is** a Mode A re-apply of that device's golden at HEAD, and the restore
-    path already implements it with the confirm hash, the ASCII guard,
-    provenance, ``error_pattern``, failure capture, rollback and the circuit
-    breaker. Approving one should open that preview. Until it does, this
-    refuses rather than executes.
+    **The queued diff never reaches a device.** It was computed when the drift
+    was noticed, which is not when the operator is looking, and a program the
+    approver never read is what the confirm hash exists to prevent. It is
+    returned as *advisory context* — what the agent saw — beside a program
+    computed now, from the device as it is now.
     """
-    hostname = entry.get("device_hostname", entry.get("device_ip", "")) or "this device"
-    log.warning("approval_queue: refused revert_to_golden for %s — the "
-                "unguarded executor is retired", hostname)
-    return {"error": (
-        f"Reverting {hostname} no longer runs from the approval queue. The "
-        "stored diff was captured earlier and would be pushed without a "
-        "confirmation hash, without an ASCII check, and with an unbounded "
-        "'no <command>' for every added line. Re-apply this device from the "
-        "Baselines panel instead: it computes the program now, shows it to "
-        "you, and sends exactly what you confirm."),
-        "redirect": "baselines",
-        "device": entry.get("device_ip", ""),
-        "hostname": entry.get("device_hostname", ""),
-        "refused_reason": "unguarded_executor_retired"}
-
-
+    hostname = entry.get("device_hostname") or entry.get("device_ip", "")
+    return {
+        "needs_confirmation": True,
+        "restore": {"ref": "HEAD", "devices": [hostname],
+                    "approval_id": entry.get("id", "")},
+        # What the agent saw, when it saw it. Context for the reader, never an
+        # input to anything that runs.
+        "advisory_diff": entry.get("diff", ""),
+        "advisory_note": (
+            "This diff was captured when the drift was detected. The program "
+            "you confirm is computed fresh from the device's current state — "
+            "the two may differ, and the fresh one is what is sent."),
+        "message": (
+            f"Re-applying {hostname}'s golden config needs your confirmation. "
+            "The exact command list is computed now and shown before anything "
+            "is sent."),
+    }

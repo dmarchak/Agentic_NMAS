@@ -447,7 +447,7 @@ class TestRestoreUsesTheListItWasGiven:
         assert offending == [], offending
 
 
-class TestTheUnguardedRevertExecutorIsRetired:
+class TestRevertHandsOffToTheConfirmedPath:
     """`revert_to_golden` pushed a stored diff straight at a device.
 
     Every `-` line applied verbatim, every `+` line turned into `no <command>` —
@@ -463,20 +463,21 @@ class TestTheUnguardedRevertExecutorIsRetired:
              "diff": "--- golden\n+++ running\n-ip route 0.0.0.0 0.0.0.0 1.1.1.1\n"
                      "+ip route 0.0.0.0 0.0.0.0 2.2.2.2\n"}
 
-    def test_it_refuses_instead_of_pushing(self):
+    def test_it_hands_off_instead_of_pushing(self):
         from modules import approval_queue
 
         result = approval_queue._exec_revert_golden(dict(self.ENTRY))
-        assert result.get("error")
-        assert result.get("refused_reason") == "unguarded_executor_retired"
+        assert result["needs_confirmation"] is True
+        assert "error" not in result
 
-    def test_the_refusal_names_the_device_and_where_to_go(self):
+    def test_it_points_at_this_device_at_HEAD(self):
+        """A single-device revert IS a Mode A re-apply of its HEAD golden."""
         from modules import approval_queue
 
         result = approval_queue._exec_revert_golden(dict(self.ENTRY))
-        assert "R1" in result["error"]
-        assert "Baselines" in result["error"]
-        assert result["redirect"] == "baselines"
+        assert result["restore"] == {"ref": "HEAD", "devices": ["R1"],
+                                     "approval_id": "abc123"}
+        assert "R1" in result["message"]
 
     def test_it_opens_no_connection(self, monkeypatch):
         """The decisive property: nothing reaches a device."""
@@ -563,3 +564,191 @@ class TestApproveAllSkipsConfirmEndingItems:
         assert body["skipped"][0]["device"] == "r2"
         assert body["skipped"][0]["reason"] == "requires individual review"
         assert "individual review" in body["message"]
+
+
+class TestTheQueuedDiffNeverReachesADevice:
+    """D2 part 1: approving opens the preview; the program is computed fresh.
+
+    The queued diff was computed when the drift was noticed, which is not when
+    the operator is looking. A program the approver never read is exactly what
+    the confirm hash exists to prevent — so the stored diff is advisory context
+    ("what the agent saw") beside a program computed now, from the device as it
+    is now.
+    """
+
+    ENTRY = {"id": "q1", "action_type": "revert_to_golden", "status": "pending",
+             "resolved_at": None,
+             "device_ip": "203.0.113.1", "device_hostname": "R1",
+             "diff": "--- golden\n+++ running\n-ip route 0.0.0.0 0.0.0.0 1.1.1.1\n"
+                     "+ip route 0.0.0.0 0.0.0.0 2.2.2.2\n"}
+
+    @pytest.fixture
+    def queue(self, tmp_path, monkeypatch):
+        from modules import approval_queue
+
+        path = tmp_path / "approval_queue.json"
+        monkeypatch.setattr(approval_queue, "_queue_path", lambda: str(path))
+        monkeypatch.setattr(approval_queue, "_load_queue",
+                            lambda: [dict(self.ENTRY)])
+        saved = {}
+        monkeypatch.setattr(approval_queue, "_save_queue",
+                            lambda entries: saved.update({"entries": entries}))
+        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
+        return approval_queue, saved
+
+    def test_the_advisory_diff_is_carried_but_labelled(self):
+        from modules import approval_queue
+
+        result = approval_queue._exec_revert_golden(dict(self.ENTRY))
+        assert result["advisory_diff"] == self.ENTRY["diff"]
+        assert "computed fresh" in result["advisory_note"]
+        assert "may differ" in result["advisory_note"]
+
+    def test_approving_does_not_mark_the_item_done(self, queue):
+        """The work has not happened — it is awaiting a confirmation."""
+        approval_queue, saved = queue
+
+        result = approval_queue.resolve("q1", "approve")
+
+        assert result["needs_confirmation"] is True
+        assert result["entry"]["status"] == "pending"
+        assert result["entry"]["resolved_at"] is None
+        assert "Awaiting confirmation" in result["entry"]["context"]
+
+    def test_approving_opens_no_connection(self, queue, monkeypatch):
+        approval_queue, _saved = queue
+
+        def _boom(*a, **k):
+            raise AssertionError("approving opened a connection")
+        monkeypatch.setattr("modules.connection.get_persistent_connection", _boom)
+        monkeypatch.setattr("modules.connection.with_temp_connection", _boom)
+
+        approval_queue.resolve("q1", "approve")
+
+    def test_mark_done_closes_it(self, queue):
+        approval_queue, _saved = queue
+
+        result = approval_queue.mark_done("q1", "Re-applied HEAD to R1")
+        assert result["ok"] is True
+        assert result["entry"]["status"] == "approved"
+        assert result["entry"]["resolved_at"]
+        assert "Re-applied" in result["entry"]["context"]
+
+    def test_mark_done_refuses_an_already_resolved_item(self, queue,
+                                                         monkeypatch):
+        approval_queue, _saved = queue
+        monkeypatch.setattr(approval_queue, "_load_queue",
+                            lambda: [dict(self.ENTRY, status="approved")])
+        assert approval_queue.mark_done("q1")["ok"] is False
+
+    def test_the_restore_closes_the_item_only_on_success(self, monkeypatch):
+        """An item closed on a failed push is the queue claiming work that
+        did not happen."""
+        import flask
+
+        import routes.golden as golden
+        from modules.nsot.deploy import DEPLOYED
+
+        closed = {}
+
+        def _mark_done(entry_id, note=""):
+            closed["id"] = entry_id
+            return {"ok": True}
+        monkeypatch.setattr("modules.approval_queue.mark_done", _mark_done)
+        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
+        monkeypatch.setattr("modules.nsot.restore.invalidate_queued_restores",
+                            lambda: {"rejected": []})
+        monkeypatch.setattr("modules.nsot.restore.build_targets",
+                            lambda *a, **k: ([object()], []))
+
+        app = flask.Flask(__name__)
+        app.register_blueprint(golden.bp)
+
+        # Failure first: nothing may be closed.
+        monkeypatch.setattr("routes.deploy.run_targets",
+                            lambda *a, **k: {"results": [
+                                {"device": "R1", "outcome": "failed"}]})
+        body = app.test_client().post("/golden/restore/apply", json={
+            "ref": "HEAD", "confirmations": {"R1": "h"},
+            "approval_id": "q1"}).get_json()
+        assert body["approval_closed"] is False
+        assert "no device completed" in body["approval_note"]
+        assert closed == {}
+
+        # Then success.
+        monkeypatch.setattr("routes.deploy.run_targets",
+                            lambda *a, **k: {"results": [
+                                {"device": "R1", "outcome": DEPLOYED}]})
+        body = app.test_client().post("/golden/restore/apply", json={
+            "ref": "HEAD", "confirmations": {"R1": "h"},
+            "approval_id": "q1"}).get_json()
+        assert body["approval_closed"] is True
+        assert closed["id"] == "q1"
+
+    def test_no_approval_id_means_no_queue_interaction(self, monkeypatch):
+        """An ordinary restore must not touch the queue."""
+        import flask
+
+        import routes.golden as golden
+        from modules.nsot.deploy import DEPLOYED
+
+        def _boom(*a, **k):
+            raise AssertionError("mark_done called without an approval_id")
+        monkeypatch.setattr("modules.approval_queue.mark_done", _boom)
+        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
+        monkeypatch.setattr("modules.nsot.restore.invalidate_queued_restores",
+                            lambda: {"rejected": []})
+        monkeypatch.setattr("modules.nsot.restore.build_targets",
+                            lambda *a, **k: ([object()], []))
+        monkeypatch.setattr("routes.deploy.run_targets",
+                            lambda *a, **k: {"results": [
+                                {"device": "R1", "outcome": DEPLOYED}]})
+
+        app = flask.Flask(__name__)
+        app.register_blueprint(golden.bp)
+        body = app.test_client().post("/golden/restore/apply", json={
+            "ref": "HEAD", "confirmations": {"R1": "h"}}).get_json()
+        assert "approval_closed" not in body
+
+
+class TestTheHandoffScopesToOneDevice:
+    """Approving one device's item must not preview a fleet-wide re-apply."""
+
+    def test_the_preview_honours_the_devices_list(self, monkeypatch):
+        import flask
+
+        import routes.golden as golden
+
+        seen = {}
+
+        def _build(list_name, ref, devices=None, un_onboard=None):
+            seen["ref"] = ref
+            seen["devices"] = devices
+            return [], []
+
+        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
+        monkeypatch.setattr("modules.nsot.restore.build_targets", _build)
+
+        app = flask.Flask(__name__)
+        app.register_blueprint(golden.bp)
+        body = app.test_client().post("/golden/restore/preview", json={
+            "ref": "HEAD", "devices": ["R1"],
+            "advisory_diff": "--- golden\n+++ running\n-a\n+b\n",
+            "approval_id": "q1"}).get_json()
+
+        assert seen["ref"] == "HEAD"
+        assert seen["devices"] == ["R1"]
+        # Echoed for the confirm dialog, never an input to anything.
+        assert body["advisory_diff"].startswith("--- golden")
+        assert body["approval_id"] == "q1"
+
+    def test_the_advisory_diff_is_not_used_to_build_anything(self, monkeypatch):
+        """It is displayed. It is not parsed, rendered, or sent."""
+        import inspect
+
+        import routes.golden as golden
+
+        source = inspect.getsource(golden.restore_preview)
+        # The only thing done with it is echoing it back.
+        uses = [l.strip() for l in source.splitlines() if "advisory_diff" in l]
+        assert uses == ['"advisory_diff": (data.get("advisory_diff") or ""),'], uses
