@@ -309,6 +309,40 @@ def service_may(operation: str) -> bool:
     return bool(operation) and operation in allowed
 
 
+#: Actions that are gated. Listed once so the diagnostic and the gates cannot
+#: drift apart — the route used to report which gates were ENABLED, which is a
+#: fact about configuration and not about the caller asking.
+GATED_ACTIONS = ("reveal", "approve", "confirm")
+
+
+def may(ident: "Identity", action: str, operation: str = "") -> tuple:
+    """``(allowed, reason)`` for *ident* performing *action*.
+
+    Split out from :func:`require` so a caller that already has an ``Identity``
+    can ask about several actions without re-validating the assertion each
+    time, and so the diagnostic answers the same question the gate does, using
+    the same code.
+    """
+    if not ident.is_identified:
+        if not _setting(f"require_identity_for_{action}", True):
+            return True, ""
+        return False, (ident.reason or "requires a verified identity")
+
+    if ident.kind != "service":
+        return True, ""
+
+    if not _setting(f"require_person_for_{action}", True):
+        return True, ""
+
+    if service_may(operation):
+        return True, ""
+
+    if operation:
+        return False, (f"operation {operation!r} is not in the service "
+                       "allowlist")
+    return False, "requires a person"
+
+
 def require(request, action: str = "reveal", operation: str = ""):
     """``(identity, refusal)``. *refusal* is ``None`` when the action may proceed.
 
@@ -325,31 +359,27 @@ def require(request, action: str = "reveal", operation: str = ""):
     kinds via ``service_allowed_operations`` without being allowed all of them.
     """
     ident = identify(request)
-
-    if ident.is_identified:
-        if ident.kind != "service":
-            return ident, None
-        if not _setting(f"require_person_for_{action}", action in ("approve", "confirm")):
-            return ident, None
-        if service_may(operation):
+    allowed, reason = may(ident, action, operation)
+    if allowed:
+        if ident.kind == "service" and operation:
             log.info("identity: service permitted for operation=%s action=%s",
                      operation, action)
-            return ident, None
-        what = f" for '{operation}'" if operation else ""
+        return ident, None
+
+    if ident.is_identified and ident.kind == "service":
+        what = f" for {operation!r}" if operation else ""
         return ident, {
             "ok": False,
             "error": (f"'{action}'{what} requires a person. This request was "
-                      f"authenticated as a service ({service_label(ident.service_id)}), "
-                      "which may plan and queue work but may not approve or "
-                      "confirm a change to a device."),
+                      f"authenticated as a service "
+                      f"({service_label(ident.service_id)}), which may plan and "
+                      "queue work but may not reveal a secret or change a "
+                      "device."),
             "outcome": "person_required",
             "requires_person": True,
             "actor_kind": "service",
+            "reason": reason,
         }
-
-    key = f"require_identity_for_{action}"
-    if not _setting(key, action == "reveal"):
-        return ident, None
 
     # An honest message: "we could not verify you" is a different fact from
     # "you are not allowed", and only one of them tells the operator what to fix.

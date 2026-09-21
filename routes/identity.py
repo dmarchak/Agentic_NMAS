@@ -69,9 +69,18 @@ def status():
         # Whether, not with what.
         "access_configured": ident_mod.is_configured(),
         "trusted_peers_configured": bool(ident_mod.trusted_peers()),
-        "gates": {
-            action: bool(ident_mod._setting(f"require_identity_for_{action}",
-                                            action == "reveal"))
-            for action in ("reveal", "approve", "confirm")
+        # What THIS caller may do — not which gates are switched on.
+        #
+        # This field used to report the latter, and it was misread within
+        # minutes of first being shown: `gates: {reveal: true}` looks like
+        # permission and means the opposite, that the gate is *closed*. A
+        # diagnostic whose most prominent field inverts on the reader is worse
+        # than one that omits it. Computed through `identity.may()` — the same
+        # function the gates use — so the answer here cannot drift from the
+        # answer at the gate.
+        "may": {
+            action: dict(zip(("allowed", "reason"),
+                             ident_mod.may(ident, action)))
+            for action in ident_mod.GATED_ACTIONS
         },
     })

@@ -154,8 +154,15 @@ DEFAULTS: dict = {
     #: A verified SERVICE is still not a person. Approve and confirm are the
     #: points where a human is supposed to have looked at an exact command list
     #: before it reaches a device; the confirm hash is only worth something
-    #: because somebody read what it covers. A non-expiring credential that can
-    #: skip that step holds a great deal of authority implicitly.
+    #: because somebody read what it covers.
+    #:
+    #: Reveal is included because the service credential lives in a file on a
+    #: workstation, and if it leaks, reveal is the largest blast radius it has.
+    #: Nothing planned needs it: Part 2's rotation runs in-process and never
+    #: calls the HTTP reveal route. Services authenticate, plan and queue;
+    #: anything that exposes a secret or changes a device has a person behind
+    #: it.
+    "require_person_for_reveal":  True,
     "require_person_for_approve": True,
     "require_person_for_confirm": True,
     #: The narrow exception: operation kinds a *service* may approve/confirm
@@ -343,6 +350,7 @@ SCHEMA: dict = {
         "require_identity_for_reveal": _BOOL,
         "require_identity_for_approve": _BOOL,
         "require_identity_for_confirm": _BOOL,
+        "require_person_for_reveal": _BOOL,
         "require_person_for_approve": _BOOL,
         "require_person_for_confirm": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},

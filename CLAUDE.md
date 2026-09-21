@@ -755,11 +755,22 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   and `require_person_for_confirm` default ON: approve and confirm are where a
   human is supposed to have read an exact command list before it reaches a
   device, and the confirm hash is only worth something because somebody looked
-  at what it covers. The exception is `service_allowed_operations`, a list of
-  operation **kinds** that **starts empty** — Part 2 adds `credential_rotation`
-  by name. A list, not a boolean: "services may rotate credentials" and
-  "services may deploy" are different grants. Services may still `reveal`,
-  which is how they use a secret they need.
+  at what it covers. `require_person_for_reveal` is ON too: the service
+  credential lives in a file on a workstation, and if it leaks, reveal is the
+  largest blast radius it has — and nothing planned needs it, since Part 2's
+  rotation runs in-process and never calls the HTTP reveal route. **Services
+  authenticate, plan and queue; anything that exposes a secret or changes a
+  device has a person behind it.** The exception is
+  `service_allowed_operations`, a list of operation **kinds** that **starts
+  empty** — Part 2 adds `credential_rotation` by name. A list, not a boolean:
+  "services may rotate credentials" and "services may deploy" are different
+  grants.
+- `GET /identity/status` reports **`may`** — what *this caller* can do, with a
+  reason when false — not which gates are enabled. The earlier `gates` field
+  reported configuration, and `gates: {reveal: true}` reads as permission while
+  meaning the gate is *closed*; it was misread within minutes of first being
+  shown. Computed through `identity.may()`, the same function the gates use, so
+  the diagnostic cannot drift from the gate.
 - **Automation sends an honest User-Agent** (`nmas-automation/1.0`). Measured:
   Cloudflare's integrity check accepts it and rejects `Python-urllib` with
   403/1010. No browser impersonation was needed.

@@ -521,24 +521,22 @@ class TestServiceTokensAreIdentifiedDistinctly:
         assert ident.outcome == "invalid_token"
         assert "names nobody" in ident.reason
 
-    def test_a_service_token_may_reveal_but_not_approve_or_confirm(
+    def test_a_service_token_may_do_none_of_the_gated_actions(
             self, configured, keys):
         """Automation authenticates — and is still not a person.
 
-        Reveal is how a service uses a secret it needs. Approve and confirm are
-        where a human is supposed to have read an exact command list before it
-        reaches a device.
+        Reveal is included deliberately: the service credential lives in a file
+        on a workstation, and if it leaks, reveal is the largest blast radius
+        it has. Nothing planned needs it — Part 2's rotation runs in-process
+        and never calls the HTTP reveal route.
         """
         private, _ = keys
         request = _Req(token=self._service_token(private))
 
-        _ident, refusal = identity.require(request, "reveal")
-        assert refusal is None
-
-        for action in ("approve", "confirm"):
+        for action in identity.GATED_ACTIONS:
             _ident, refusal = identity.require(request, action)
             assert refusal is not None, action
-            assert refusal["outcome"] == "person_required"
+            assert refusal["outcome"] == "person_required", action
 
     def test_a_service_token_from_an_untrusted_peer_still_fails(self, configured,
                                                                  keys):
@@ -806,3 +804,98 @@ class TestTheDiagnosticShowsTheAuditName:
                           headers={identity.JWT_HEADER: _token(private)},
                           environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
         assert body["audit_name"] == "dustin@example.com"
+
+
+class TestTheDiagnosticReportsCapabilityNotConfiguration:
+    """`gates` reported which gates were ENABLED. It was misread immediately.
+
+    `gates: {reveal: true}` looks like permission and means the opposite — the
+    gate is *closed*. A diagnostic whose most prominent field inverts on the
+    reader is worse than one that omits it. `may` answers the question the
+    reader is actually asking, through the same `identity.may()` the gates use,
+    so the two cannot drift apart.
+    """
+
+    CLIENT_ID = "e367826f93b8d71185e03fe518aff3b4.access"
+
+    @pytest.fixture
+    def client(self, configured):
+        import flask
+
+        import routes.identity as route_mod
+
+        app = flask.Flask(__name__)
+        app.register_blueprint(route_mod.bp)
+        return app.test_client()
+
+    def _svc(self, private):
+        import jwt
+        now = int(time.time())
+        return jwt.encode({"type": "app", "aud": AUD, "iss": f"https://{TEAM}",
+                           "common_name": self.CLIENT_ID, "iat": now,
+                           "exp": now + 600, "sub": ""},
+                          private, algorithm="RS256")
+
+    def test_the_old_inverted_field_is_gone(self, client):
+        body = client.get("/identity/status",
+                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+        assert "gates" not in body
+        assert "may" in body
+
+    def test_a_service_may_do_nothing_and_says_why(self, client, keys):
+        """nmas-automation today: false, false, false."""
+        private, _ = keys
+        body = client.get("/identity/status",
+                          headers={identity.JWT_HEADER: self._svc(private)},
+                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+
+        assert body["kind"] == "service"
+        for action in ("reveal", "approve", "confirm"):
+            entry = body["may"][action]
+            assert entry["allowed"] is False, action
+            assert entry["reason"] == "requires a person", action
+
+    def test_a_person_may_do_everything(self, client, keys):
+        private, _ = keys
+        body = client.get("/identity/status",
+                          headers={identity.JWT_HEADER: _token(private)},
+                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+        for action in ("reveal", "approve", "confirm"):
+            assert body["may"][action] == {"allowed": True, "reason": ""}, action
+
+    def test_an_unidentified_caller_is_told_identity_is_missing(self, client):
+        body = client.get("/identity/status",
+                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+        for action in ("reveal", "approve", "confirm"):
+            entry = body["may"][action]
+            assert entry["allowed"] is False
+            assert "no Cf-Access-Jwt-Assertion" in entry["reason"]
+
+    def test_an_allowlisted_operation_shows_as_allowed_at_the_gate(
+            self, configured, keys, monkeypatch):
+        """The diagnostic reports the no-operation case; the gate knows more.
+
+        `may()` is the single implementation, so an allowlisted operation is
+        permitted at the gate even though the diagnostic — which asks without
+        naming an operation — shows false.
+        """
+        private, _ = keys
+        base = dict(configured)
+        base["service_allowed_operations"] = ["credential_rotation"]
+        monkeypatch.setattr(identity, "_setting",
+                            lambda key, default=None: base.get(key, default))
+
+        ident = identity.identify(_Req(token=self._svc(private)))
+        assert identity.may(ident, "confirm") == (False, "requires a person")
+        assert identity.may(ident, "confirm", "credential_rotation") == (True, "")
+        assert identity.may(ident, "confirm", "deploy") == (
+            False, "operation 'deploy' is not in the service allowlist")
+
+    def test_the_diagnostic_and_the_gate_use_the_same_function(self):
+        """Drift here would mean the diagnostic lies about the gate."""
+        import inspect
+
+        import routes.identity as route_mod
+
+        assert "ident_mod.may(" in inspect.getsource(route_mod.status)
+        assert "may(ident, action, operation)" in inspect.getsource(identity.require)
