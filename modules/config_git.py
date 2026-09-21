@@ -135,9 +135,13 @@ def write_and_stage(list_name: str, hostname: str, config_text: str,
     """
     from modules.nsot.repo import GoldenItem, save_golden
 
+    # allow_new=False, stated rather than defaulted: a manual golden save is
+    # a save for a device that exists. Onboarding is the wizard and the Add
+    # Device form, and nothing else should acquire the ability by a default
+    # moving under it.
     result = save_golden(list_name,
                          [GoldenItem(hostname, config_text, device_ip)],
-                         source="manual", actor="user")
+                         source="manual", actor="user", allow_new=False)
     if not result.get("ok"):
         log.warning("config_git: golden save failed for %s/%s: %s",
                     list_name, hostname, result.get("error"))

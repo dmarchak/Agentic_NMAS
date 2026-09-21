@@ -29,6 +29,17 @@ DEVICES = [
 ]
 
 
+def _seed(list_name, items, **kw):
+    """Onboard devices into a fresh test repo.
+
+    Named for what it does. These fixtures ARE onboarding — a new repo has an
+    empty manifest — so they pass `allow_new=True` explicitly, and the flag
+    lives in one place rather than being implied by a default. Tests that
+    exercise resolution or refusal call `R.save_golden` directly.
+    """
+    kw.setdefault("allow_new", True)
+    return R.save_golden(list_name, items, **kw)
+
 @pytest.fixture
 def lab(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.settings_schema.get_setting",
@@ -47,7 +58,7 @@ def lab(tmp_path, monkeypatch):
 
     items = [R.GoldenItem(d["hostname"], f"hostname {d['hostname']}\n", d["ip"],
                           netbox_id=i) for i, d in enumerate(DEVICES, start=1)]
-    result = R.save_golden("Lab", items, source="save_all")
+    result = _seed("Lab", items, source="save_all")
     baseline = next(t for t in result["tags"] if t.startswith("baseline/"))
     return {"dir": list_dir, "repo": str(list_dir / "config_repo"),
             "baseline": baseline}
@@ -330,7 +341,7 @@ class TestIntentCommitsWithTheDevice:
         hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nx: 1\n")
         items = [R.GoldenItem("R1", "hostname R1\nnew line\n", "203.0.113.1",
                               netbox_id=1)]
-        result = R.save_golden("Lab", items, source="pipeline")
+        result = _seed("Lab", items, source="pipeline")
 
         _rc, files, _e = R.git(lab["repo"], "show", "--name-only",
                                "--format=", result["commit"])
@@ -342,7 +353,7 @@ class TestIntentCommitsWithTheDevice:
         hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nx: 1\n")
         items = [R.GoldenItem("R1", "hostname R1\nnew line\n", "203.0.113.1",
                               netbox_id=1)]
-        result = R.save_golden("Lab", items, source="pipeline",
+        result = _seed("Lab", items, source="pipeline",
                                extra_paths=["host_vars"])
 
         _rc, files, _e = R.git(lab["repo"], "show", "--name-only",
@@ -361,7 +372,7 @@ class TestIntentCommitsWithTheDevice:
 
         hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nx: 1\n")
         items = [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1", netbox_id=1)]
-        result = R.save_golden("Lab", items, source="pipeline",
+        result = _seed("Lab", items, source="pipeline",
                                extra_paths=["host_vars"])
 
         assert result["changed"] == []
@@ -374,7 +385,7 @@ class TestIntentCommitsWithTheDevice:
         """The guard must not have been traded away for the case above."""
         before = R.git(lab["repo"], "rev-parse", "HEAD")[1].strip()
         items = [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1", netbox_id=1)]
-        result = R.save_golden("Lab", items, source="pipeline",
+        result = _seed("Lab", items, source="pipeline",
                                extra_paths=["host_vars"])
 
         assert result["commit"] == ""

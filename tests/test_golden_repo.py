@@ -37,6 +37,17 @@ def lab(tmp_path, monkeypatch):
     return str(list_dir / "config_repo")
 
 
+def _seed(list_name, items, **kw):
+    """Onboard devices into a fresh test repo.
+
+    Named for what it does. These fixtures ARE onboarding — a new repo has an
+    empty manifest — so they pass `allow_new=True` explicitly, and the flag
+    lives in one place rather than being implied by a default. Tests that
+    exercise resolution or refusal call `R.save_golden` directly.
+    """
+    kw.setdefault("allow_new", True)
+    return R.save_golden(list_name, items, **kw)
+
 def _item(name="R1", body="hostname R1\n", ip="203.0.113.1", nb_id=42):
     return R.GoldenItem(name, body, ip, netbox_id=nb_id)
 
@@ -48,7 +59,7 @@ def _commit_count(repo):
 
 class TestOneCallOneCommit:
     def test_single_device_creates_one_commit(self, lab):
-        result = R.save_golden("Lab", [_item()])
+        result = _seed("Lab", [_item()])
         assert result["ok"] and result["commit"]
         assert result["changed"] == ["R1"]
 
@@ -58,14 +69,14 @@ class TestOneCallOneCommit:
         items = [_item(f"R{i}", f"hostname R{i}\n", f"203.0.113.{i}", nb_id=i)
                  for i in range(1, 10)]
         before = _commit_count(lab)
-        result = R.save_golden("Lab", items, source="save_all")
+        result = _seed("Lab", items, source="save_all")
         assert len(result["changed"]) == 9
         assert _commit_count(lab) == before + 1
 
     def test_unchanged_device_creates_no_commit(self, lab):
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         after_first = _commit_count(lab)
-        result = R.save_golden("Lab", [_item()])
+        result = _seed("Lab", [_item()])
         assert result["commit"] == ""
         assert result["unchanged"] == ["R1"]
         assert _commit_count(lab) == after_first
@@ -75,13 +86,13 @@ class TestOneCallOneCommit:
         items = [_item("R1", "hostname R1\n", "203.0.113.1", 1),
                  _item("R3", "hostname R3\n", "203.0.113.3", 3),
                  _item("S3", "hostname S3\n", "203.0.113.13", 13)]
-        first = R.save_golden("Lab", items, source="save_all")
+        first = _seed("Lab", items, source="save_all")
         assert len(first["changed"]) == 3
         assert sum(1 for t in first["tags"] if t.startswith("golden/")) == 3
         assert sum(1 for t in first["tags"] if t.startswith("baseline/")) == 1
 
         items[1] = _item("R3", "hostname R3\n ip routing\n", "203.0.113.3", 3)
-        second = R.save_golden("Lab", items, source="save_all")
+        second = _seed("Lab", items, source="save_all")
         assert second["changed"] == ["R3"]
         assert second["unchanged"] == ["R1", "S3"]
         assert _commit_count(lab) == 3          # init + two golden commits
@@ -89,27 +100,27 @@ class TestOneCallOneCommit:
 
 class TestFileContent:
     def test_one_stable_header_line(self, lab):
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         content = open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read()
         assert content.startswith("! Golden config — R1 (203.0.113.1)")
 
     def test_no_saved_or_source_headers(self, lab):
         """They created a diff on every save even when nothing changed."""
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         content = open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read()
         assert "! Saved:" not in content
         assert "! Source:" not in content
 
     def test_identical_config_produces_identical_file(self, lab):
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         first = open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read()
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         assert open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read() == first
 
 
 class TestTrailersAndTags:
     def test_trailers_carry_provenance(self, lab):
-        R.save_golden("Lab", [_item()], source="pipeline", actor="dustin",
+        _seed("Lab", [_item()], source="pipeline", actor="dustin",
                       pipeline_id="cfg-7f3a")
         _rc, out, _ = R.git(lab, "log", "-1", "--format=%B")
         assert "Source: pipeline" in out
@@ -119,17 +130,17 @@ class TestTrailersAndTags:
         assert "Device-Name: R1" in out
 
     def test_tags_are_utc_without_colons(self, lab):
-        result = R.save_golden("Lab", [_item()])
+        result = _seed("Lab", [_item()])
         tag = result["tags"][0]
         assert tag.startswith("golden/R1/") and tag.endswith("Z")
         assert ":" not in tag
 
     def test_baseline_tag_on_save_all(self, lab):
-        result = R.save_golden("Lab", [_item()], source="save_all")
+        result = _seed("Lab", [_item()], source="save_all")
         assert any(t.startswith("baseline/") for t in result["tags"])
 
     def test_single_manual_save_has_no_baseline_tag(self, lab):
-        result = R.save_golden("Lab", [_item()], source="manual")
+        result = _seed("Lab", [_item()], source="manual")
         assert not any(t.startswith("baseline/") for t in result["tags"])
 
 
@@ -137,14 +148,14 @@ class TestRenamePreservesHistory:
     """The acceptance test: git log --follow must survive a rename."""
 
     def test_follow_returns_pre_rename_commits(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
-        R.save_golden("Lab", [_item("R1", "hostname R1\n ip routing\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n ip routing\n")])
 
         # An inventory refresh notices the rename — manifest only, no git.
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
         assert len(M.pending_renames(lab)) == 1
 
-        R.save_golden("Lab", [_item("R1-CORE", "hostname R1-CORE\n ip routing\n")])
+        _seed("Lab", [_item("R1-CORE", "hostname R1-CORE\n ip routing\n")])
 
         history = R.golden_history(lab, "R1-CORE")
         assert len(history) >= 3, "history did not survive the rename"
@@ -154,9 +165,9 @@ class TestRenamePreservesHistory:
 
     def test_rename_is_its_own_commit(self, lab):
         """A rename mixed with content edits defeats git's rename detection."""
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
-        R.save_golden("Lab", [_item("R1-CORE", "hostname R1-CORE\n")])
+        _seed("Lab", [_item("R1-CORE", "hostname R1-CORE\n")])
 
         _rc, out, _ = R.git(lab, "log", "--format=%s")
         subjects = out.splitlines()
@@ -174,22 +185,22 @@ class TestRenamePreservesHistory:
         assert statuses.get(".nsot/manifest.json") == "M"
 
     def test_old_file_is_gone_after_rename(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
-        R.save_golden("Lab", [_item("R1-CORE", "hostname R1-CORE\n")])
+        _seed("Lab", [_item("R1-CORE", "hostname R1-CORE\n")])
         assert not os.path.exists(os.path.join(lab, "golden", "R1.cfg"))
         assert os.path.exists(os.path.join(lab, "golden", "R1-CORE.cfg"))
 
     def test_manifest_resolves_both_names_while_pending(self, lab):
         """The golden config must stay reachable under either name."""
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
         assert M.find_by_name(lab, "R1")[0] == "nb:42"
         assert M.find_by_name(lab, "R1-CORE")[0] == "nb:42"
 
     def test_refresh_does_not_commit(self, lab):
         """Amendment 1: recording a rename must not create a commit."""
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         before = _commit_count(lab)
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
         assert _commit_count(lab) == before
@@ -197,28 +208,28 @@ class TestRenamePreservesHistory:
 
 class TestHistoryReading:
     def test_history_reports_source_and_actor(self, lab):
-        R.save_golden("Lab", [_item()], source="ai", actor="ai-agent")
+        _seed("Lab", [_item()], source="ai", actor="ai-agent")
         entry = R.golden_history(lab, "R1")[0]
         assert entry["source"] == "ai" and entry["actor"] == "ai-agent"
         assert entry["timestamp"]                  # from the commit, not file mtime
 
     def test_golden_at_returns_the_old_version(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         first_sha = R.golden_history(lab, "R1")[0]["sha"]
-        R.save_golden("Lab", [_item("R1", "hostname R1\n ip routing\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n ip routing\n")])
         old = R.golden_at(lab, "R1", first_sha)
         assert "ip routing" not in old
         assert "ip routing" in R.golden_at(lab, "R1", "HEAD")
 
     def test_devices_at_lists_the_tagged_tree(self, lab):
         items = [_item("R1", "a\n", "203.0.113.1", 1), _item("R2", "b\n", "203.0.113.2", 2)]
-        result = R.save_golden("Lab", items, source="save_all")
+        result = _seed("Lab", items, source="save_all")
         baseline = next(t for t in result["tags"] if t.startswith("baseline/"))
         assert set(R.devices_at(lab, baseline)) == {"R1", "R2"}
 
     def test_baselines_are_listed_newest_first(self, lab):
-        R.save_golden("Lab", [_item("R1", "a\n", "203.0.113.1", 1)], source="save_all")
-        R.save_golden("Lab", [_item("R1", "b\n", "203.0.113.1", 1)], source="save_all")
+        _seed("Lab", [_item("R1", "a\n", "203.0.113.1", 1)], source="save_all")
+        _seed("Lab", [_item("R1", "b\n", "203.0.113.1", 1)], source="save_all")
         baselines = R.list_baselines(lab)
         assert len(baselines) == 2, "two save_all runs must yield two baseline tags"
         assert all("tag" in b and "created" in b for b in baselines)
@@ -226,7 +237,7 @@ class TestHistoryReading:
 
 class TestCiNotes:
     def test_note_attaches_to_the_exact_commit(self, lab):
-        result = R.save_golden("Lab", [_item()])
+        result = _seed("Lab", [_item()])
         sha = result["commit"]
         assert R.add_ci_note(lab, sha, "verify-ospf", 17, "SUCCESS",
                              "http://ci.invalid/17")["ok"]
@@ -234,7 +245,7 @@ class TestCiNotes:
         assert note["job"] == "verify-ospf" and note["result"] == "SUCCESS"
 
     def test_absent_note_returns_none(self, lab):
-        result = R.save_golden("Lab", [_item()])
+        result = _seed("Lab", [_item()])
         assert R.get_ci_note(lab, result["commit"]) is None
 
 
@@ -246,7 +257,7 @@ class TestRobustness:
 
         def worker(n):
             try:
-                results.append(R.save_golden(
+                results.append(_seed(
                     "Lab", [_item(f"R{n}", f"hostname R{n}\n", f"203.0.113.{n}", n)]))
             except Exception as exc:          # noqa: BLE001
                 errors.append(exc)
@@ -269,7 +280,7 @@ class TestRobustness:
         old = _time.time() - (R.STALE_LOCK_SECONDS + 60)
         os.utime(lock_path, (old, old))
 
-        result = R.save_golden("Lab", [_item()])
+        result = _seed("Lab", [_item()])
         assert result["ok"], result.get("error")
         assert not os.path.exists(lock_path)
 
@@ -289,7 +300,7 @@ class TestRobustness:
                                 "nsot_device_tag_retention": 3,
                             }.get(key, default))
         for i in range(6):
-            R.save_golden("Lab", [_item("R1", f"hostname R1\n line {i}\n")],
+            _seed("Lab", [_item("R1", f"hostname R1\n line {i}\n")],
                           source="save_all")
 
         _rc, device_tags, _ = R.git(lab, "tag", "--list", "golden/R1/*")
@@ -306,7 +317,7 @@ class TestRobustness:
                                 "nsot_device_tag_retention": 2,
                             }.get(key, default))
         for i in range(5):
-            R.save_golden("Lab", [_item("R1", f"hostname R1\n line {i}\n")])
+            _seed("Lab", [_item("R1", f"hostname R1\n line {i}\n")])
         assert len(R.golden_history(lab, "R1")) == 5
 
 
@@ -372,14 +383,14 @@ class TestGitignoreReachesExistingRepos:
 
     def test_migration_backups_are_ignored_not_committed(self, lab):
         """What the live repo got wrong, end to end."""
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         backup = os.path.join(lab, ".nsot", "migration-backup")
         os.makedirs(backup, exist_ok=True)
         with open(os.path.join(backup, "golden_configs-R1.cfg"), "w",
                   encoding="utf-8") as fh:
             fh.write("! backup\n")
 
-        R.save_golden("Lab", [_item("R1", "hostname R1\n ip routing\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n ip routing\n")])
 
         _rc, tracked, _ = R.git(lab, "ls-files", ".nsot/migration-backup")
         assert tracked.strip() == "", "a migration backup reached version control"
@@ -399,13 +410,13 @@ class TestManifestTravelsWithTheCommit:
         return out.split()
 
     def test_golden_commit_carries_the_manifest(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         assert ".nsot/manifest.json" in self._tracked_at_head(lab)
 
     def test_rename_commit_carries_the_manifest(self, lab):
         """The bug: the manifest was updated *after* the rename commit, so the
         commit that moved the file did not record where it moved to."""
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
         R.apply_pending_renames(lab)
 
@@ -415,7 +426,7 @@ class TestManifestTravelsWithTheCommit:
 
     def test_the_manifest_at_the_rename_commit_names_the_new_file(self, lab):
         import json
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
         R.apply_pending_renames(lab)
 
@@ -426,7 +437,7 @@ class TestManifestTravelsWithTheCommit:
         assert entry["pending_rename"] is None
 
     def test_the_manifest_is_never_left_uncommitted(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         M.record_pending_rename(lab, "nb:42", "R1-CORE")
         R.apply_pending_renames(lab)
         _rc, status, _ = R.git(lab, "status", "--porcelain", ".nsot/manifest.json")
@@ -435,7 +446,7 @@ class TestManifestTravelsWithTheCommit:
     def test_a_template_commit_does_not_touch_the_manifest(self, lab):
         """Confirming the other half: save_templates has no business changing
         identity, so a template commit must not carry a manifest diff."""
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         _rc, before, _ = R.git(lab, "rev-parse", "HEAD:.nsot/manifest.json")
 
         os.makedirs(os.path.join(lab, "templates"), exist_ok=True)
@@ -468,24 +479,24 @@ class TestIdentityIsResolvedNotMinted:
         return M.load(repo)["devices"]
 
     def test_a_second_save_without_identity_reuses_the_first(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         assert len(self._entries(lab)) == 1
 
-        R.save_golden("Lab", [R.GoldenItem("R1", "hostname R1\n ip routing\n",
+        _seed("Lab", [R.GoldenItem("R1", "hostname R1\n ip routing\n",
                                            "203.0.113.1")])
         assert len(self._entries(lab)) == 1, "a second entry was minted"
 
     def test_it_matches_on_management_ip(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         identity = next(iter(self._entries(lab)))
-        R.save_golden("Lab", [R.GoldenItem("R1-renamed-in-csv", "hostname R1\n x\n",
+        _seed("Lab", [R.GoldenItem("R1-renamed-in-csv", "hostname R1\n x\n",
                                            "203.0.113.1")])
         assert list(self._entries(lab)) == [identity]
 
     def test_it_matches_on_hostname_when_the_ip_is_absent(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         identity = next(iter(self._entries(lab)))
-        R.save_golden("Lab", [R.GoldenItem("R1", "hostname R1\n y\n")])
+        _seed("Lab", [R.GoldenItem("R1", "hostname R1\n y\n")])
         assert list(self._entries(lab)) == [identity]
 
     def test_allow_new_false_refuses_an_unknown_device(self, lab):
@@ -499,8 +510,10 @@ class TestIdentityIsResolvedNotMinted:
     def test_the_refusal_says_what_to_do(self, lab):
         result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n")],
                                allow_new=False)
+        assert "Onboard it first" in result["error"]
         assert "allow_new=True" in result["error"]
-        assert "onboarded" in result["error"]
+        assert "onboarding wizard" in result["error"], (
+            "the refusal must name where an identity IS created")
 
     def test_allow_new_true_still_onboards(self, lab):
         """Minting happens in exactly one place, and it still happens there."""
@@ -511,8 +524,8 @@ class TestIdentityIsResolvedNotMinted:
         assert len(self._entries(lab)) == 1
 
     def test_an_explicit_identity_always_wins(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n", nb_id=42)])
-        R.save_golden("Lab", [_item("R1", "hostname R1\n z\n", nb_id=42)])
+        _seed("Lab", [_item("R1", "hostname R1\n", nb_id=42)])
+        _seed("Lab", [_item("R1", "hostname R1\n z\n", nb_id=42)])
         assert list(self._entries(lab)) == ["nb:42"]
 
 
@@ -535,7 +548,7 @@ class TestTwoConsecutiveDeploysMakeOneEntry:
                 existing, _e = _m.find_by_name(lab, "s4")
             if existing and existing.startswith("uid:"):
                 device_uid = existing.split(":", 1)[1]
-        return R.save_golden("Lab", [R.GoldenItem("s4", body, "203.0.113.24",
+        return _seed("Lab", [R.GoldenItem("s4", body, "203.0.113.24",
                                                   netbox_id=netbox_id,
                                                   device_uid=device_uid)],
                              source="pipeline", allow_new=False)
@@ -582,7 +595,7 @@ class TestReadsNeverCommit:
             fh.write("*.swp\n")
 
     def test_a_read_appends_but_does_not_commit(self, lab):
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         before = self._count(lab)
         self._degrade(lab)
 
@@ -595,7 +608,7 @@ class TestReadsNeverCommit:
             assert ".nsot/migrated.json" in fh.read(), "hygiene did not append"
 
     def test_hygiene_itself_never_commits(self, lab):
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         before = self._count(lab)
         self._degrade(lab)
         R.ensure_repo_hygiene(lab)
@@ -603,7 +616,7 @@ class TestReadsNeverCommit:
 
     def test_the_next_write_path_folds_it_in(self, lab):
         """Left dirty by a read, committed by the next real write."""
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         self._degrade(lab)
         R.git(lab, "status", "--porcelain")
 
@@ -615,14 +628,14 @@ class TestReadsNeverCommit:
         assert subject == "repo: update .gitignore"
 
     def test_the_top_up_commit_touches_only_gitignore(self, lab):
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         self._degrade(lab)
         R.init_repo(lab)
         rc, files, _ = R.git(lab, "show", "--name-only", "--format=", "HEAD")
         assert files.split() == [".gitignore"]
 
     def test_init_repo_is_idempotent_once_clean(self, lab):
-        R.save_golden("Lab", [_item()])
+        _seed("Lab", [_item()])
         R.init_repo(lab)
         before = self._count(lab)
         R.init_repo(lab)
@@ -652,7 +665,7 @@ class TestMintingIsNotReachableFromTheResolver:
 
     def test_a_well_formed_unknown_identity_resolves_by_address(self, lab):
         """The live case: a CSV uid the manifest has never held."""
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         original = next(iter(self._entries(lab)))
 
         stranger = R.GoldenItem("R1", "hostname R1\n ip routing\n",
@@ -676,11 +689,11 @@ class TestMintingIsNotReachableFromTheResolver:
         assert len(self._entries(lab)) == 1, "the second save created another"
 
     def test_a_csv_uid_that_names_nothing_never_becomes_an_entry(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n")])
+        _seed("Lab", [_item("R1", "hostname R1\n")])
         before = set(self._entries(lab))
 
         for _ in range(3):
-            R.save_golden("Lab", [R.GoldenItem(
+            _seed("Lab", [R.GoldenItem(
                 "R1", f"hostname R1\n x{_}\n", "203.0.113.1",
                 device_uid="deadbeef-0000-0000-0000-000000000000")],
                 allow_new=False)
@@ -706,7 +719,7 @@ class TestMintingIsNotReachableFromTheResolver:
         to agree.
         """
         # No NetBox id, so the manifest holds a minted uid.
-        R.save_golden("Lab", [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1")])
+        _seed("Lab", [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1")])
         identity = next(iter(self._entries(lab)))
         assert identity.startswith("uid:")
 
@@ -721,8 +734,8 @@ class TestMintingIsNotReachableFromTheResolver:
         assert list(self._entries(lab)) == [identity]
 
     def test_a_known_identity_still_wins(self, lab):
-        R.save_golden("Lab", [_item("R1", "hostname R1\n", nb_id=42)])
-        R.save_golden("Lab", [_item("R1", "hostname R1\n z\n", nb_id=42)])
+        _seed("Lab", [_item("R1", "hostname R1\n", nb_id=42)])
+        _seed("Lab", [_item("R1", "hostname R1\n z\n", nb_id=42)])
         assert list(self._entries(lab)) == ["nb:42"]
 
 class TestSaveGoldenRefusesToLoseSections:
@@ -762,6 +775,7 @@ class TestSaveGoldenRefusesToLoseSections:
         """`lab` yields the repo path; the list name resolves through the
         patched get_list_data_dir, so any name reaches the same directory."""
         from modules.nsot.repo import GoldenItem, save_golden
+        kw.setdefault("allow_new", True)      # these fixtures onboard
         return save_golden("lab",
                            [GoldenItem("r1", text, "203.0.113.1")],
                            source="manual", actor="test", **kw)
@@ -846,7 +860,8 @@ class TestSaveGoldenRefusesToLoseSections:
         assert save_golden("lab",
                            [GoldenItem("r1", self.FULL, "203.0.113.1"),
                             GoldenItem("r9", good, "203.0.113.9")],
-                           source="manual", actor="test")["ok"] is True
+                           source="manual", actor="test",
+                           allow_new=True)["ok"] is True
 
         before = {h: open(os.path.join(lab, "golden", f"{h}.cfg"),
                           encoding="utf-8").read() for h in ("r1", "r9")}
@@ -858,7 +873,7 @@ class TestSaveGoldenRefusesToLoseSections:
         out = save_golden("lab",
                           [GoldenItem("r1", grown, "203.0.113.1"),
                            GoldenItem("r9", self.FILTERED, "203.0.113.9")],
-                          source="manual", actor="test")
+                          source="manual", actor="test", allow_new=True)
 
         assert out["ok"] is False
         assert "r9" in out["error"]
@@ -911,13 +926,15 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2", "r3"]
         first = save_golden("lab", self._items(names), source="save_all",
-                            actor="user", inventory_size=3, skipped=[])
+                            actor="user", inventory_size=3, skipped=[],
+                            allow_new=True)
         assert first["ok"] and first["commit"]
         head_before = self._head(lab)
         baselines_before = set(self._tags(lab))
 
         again = save_golden("lab", self._items(names), source="save_all",
-                            actor="user", inventory_size=3, skipped=[])
+                            actor="user", inventory_size=3, skipped=[],
+                            allow_new=True)
 
         assert again["ok"] is True
         assert again["commit"] == "", "no empty commit may be created"
@@ -933,11 +950,12 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2"]
         save_golden("lab", self._items(names), source="save_all", actor="user",
-                    inventory_size=2, skipped=[])
+                    inventory_size=2, skipped=[], allow_new=True)
         head = self._head(lab)
 
         out = save_golden("lab", self._items(names), source="save_all",
-                          actor="user", inventory_size=2, skipped=[])
+                          actor="user", inventory_size=2, skipped=[],
+                          allow_new=True)
         tagged = git(lab, "rev-parse", f"{out['baseline']}^{{commit}}")[1].strip()
         assert tagged == head
 
@@ -946,9 +964,10 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2"]
         save_golden("lab", self._items(names), source="save_all", actor="user",
-                    inventory_size=2, skipped=[])
+                    inventory_size=2, skipped=[], allow_new=True)
         out = save_golden("lab", self._items(names), source="save_all",
-                          actor="user", inventory_size=2, skipped=[])
+                          actor="user", inventory_size=2, skipped=[],
+                          allow_new=True)
 
         body = git(lab, "tag", "-n99", "-l", out["baseline"])[1]
         assert "verified equal" in body
@@ -961,10 +980,12 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2", "r3"]
         save_golden("lab", self._items(names), source="save_all", actor="user",
-                    inventory_size=3, skipped=[])
+                    inventory_size=3, skipped=[], allow_new=True)
         head_before = self._head(lab)
         before = set(self._tags(lab))
 
+        # No allow_new: these devices are already onboarded, so this is a
+        # resolution, and it must succeed as one.
         out = save_golden("lab", self._items(["r1", "r2"]), source="save_all",
                           actor="user", inventory_size=3,
                           skipped=[{"hostname": "r3", "reason": "offline"}])
@@ -986,11 +1007,11 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2"]
         save_golden("lab", self._items(names), source="save_all", actor="user",
-                    inventory_size=2, skipped=[])
+                    inventory_size=2, skipped=[], allow_new=True)
         before = set(self._tags(lab))
 
         out = save_golden("lab", self._items(names), source="save_all",
-                          actor="user")
+                          actor="user", allow_new=True)
         assert out["commit"] == ""
         assert out.get("baseline", "") == ""
         assert set(self._tags(lab)) == before
@@ -1001,12 +1022,12 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2"]
         save_golden("lab", self._items(names), source="save_all", actor="user",
-                    inventory_size=2, skipped=[])
+                    inventory_size=2, skipped=[], allow_new=True)
         edited = self._items(names)
         edited[0].config_text += "ntp server 203.0.113.99\n"
 
         out = save_golden("lab", edited, source="save_all", actor="user",
-                          inventory_size=2, skipped=[])
+                          inventory_size=2, skipped=[], allow_new=True)
         assert out["commit"], "a real change must still commit"
         assert out["baseline"].startswith("baseline/")
 
@@ -1016,9 +1037,11 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2"]
         committed = save_golden("lab", self._items(names), source="save_all",
-                                actor="user", inventory_size=2, skipped=[])
+                                actor="user", inventory_size=2, skipped=[],
+                                allow_new=True)
         unchanged = save_golden("lab", self._items(names), source="save_all",
-                                actor="user", inventory_size=2, skipped=[])
+                                actor="user", inventory_size=2, skipped=[],
+                                allow_new=True)
 
         assert "baseline" in committed and "baseline" in unchanged
         assert committed["baseline"].startswith("baseline/")
@@ -1031,12 +1054,13 @@ class TestABaselineNeedsNoCommit:
 
         names = ["r1", "r2"]
         save_golden("lab", self._items(names), source="save_all", actor="user",
-                    inventory_size=2, skipped=[])
+                    inventory_size=2, skipped=[], allow_new=True)
         count_before = len(git(lab, "log", "--format=%h")[1].splitlines())
 
         for _ in range(3):
             save_golden("lab", self._items(names), source="save_all",
-                        actor="user", inventory_size=2, skipped=[])
+                        actor="user", inventory_size=2, skipped=[],
+                        allow_new=True)
 
         count_after = len(git(lab, "log", "--format=%h")[1].splitlines())
         assert count_after == count_before

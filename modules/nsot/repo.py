@@ -444,6 +444,21 @@ def adopt_identity(repo: str, item) -> str:
     from :func:`resolve_identity` so that "I am looking this up" and "I am
     onboarding something new" cannot be the same call with a different
     argument.
+
+    **That separation was a convention, not a rule, until the default moved.**
+    ``save_golden``'s ``allow_new`` defaulted to ``True``, so four of its seven
+    call sites could mint without anybody deciding they should: Save All, a
+    pipeline path, ``config_git``, and a path reachable from the AI assistant.
+    A device that appeared in the inventory got an identity as a side effect of
+    the next routine capture, and the caller that was least entitled to create
+    one — the assistant — was among those that could.
+
+    The default is now ``False``. Exactly two callers pass ``True``: the
+    onboarding wizard and the Add Device form, both of which exist to onboard.
+    Everything else resolves or refuses.
+
+        A rule enforced by a parameter whose default breaks it is a
+        convention. The default is the behaviour.
     """
     identity = item.identity or _manifest.new_device_uid()
     log.info("repo: adopting %s (%s) as %s", item.hostname,
@@ -546,7 +561,7 @@ def _covers_inventory(measured: list, inventory_size: int, skipped) -> bool:
 
 
 def save_golden(list_name: str, items: list, source: str = "manual",
-                actor: str = "nmas", message: str = "", allow_new: bool = True,
+                actor: str = "nmas", message: str = "", allow_new: bool = False,
                 pipeline_id: str = None, baseline: bool = None,
                 extra_trailers: list = None, extra_paths: list = None,
                 acknowledge_structural_change: bool = False,
@@ -575,9 +590,11 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 if not allow_new:
                     error = (
                         f"{item.hostname} ({item.mgmt_ip or 'no ip'}) is not in "
-                        "the manifest. Pass the device's identity, or call with "
-                        "allow_new=True if this really is a device being "
-                        "onboarded for the first time.")
+                        f"the manifest, so this save has nothing to attach it "
+                        f"to. Onboard it first — the onboarding wizard, or the "
+                        f"Add Device form for an existing device — which is "
+                        f"where an identity is created. Only those two callers "
+                        f"pass allow_new=True.")
                     log.error("repo: %s", error)
                     return {"ok": False, "error": error, "changed": [],
                             "unchanged": unchanged, "tags": [],

@@ -4924,3 +4924,61 @@ instead of raw strings would make the third recurrence the last. Same move as
 making a leaf a type rather than a string. Queued deliberately rather than
 done in passing: it touches every call site that takes a list name, which is
 a change to make on purpose and not while finishing something else.
+
+## The rule was a convention, because the default said otherwise
+
+`resolve_identity()` cannot create an identity. That was made true
+structurally, after a resolver that *could* mint trusted a supplied uid the
+manifest had never seen and every deploy created a duplicate entry. Creation
+lives in `adopt_identity()`, "called only by a caller that has decided this
+really is a new device".
+
+The gate in front of it was `save_golden(allow_new=True)` — a default.
+
+Four of seven call sites took it: **Save All**, a pipeline golden save,
+`config_git`'s manual save, and a path reachable from the **AI assistant**. So
+a device that appeared in the inventory acquired an identity as a side effect
+of the next routine capture. The answer to "when was this device onboarded"
+was "whenever somebody next pressed Save All", and the caller least entitled
+to create an identity was among those that could.
+
+Nothing had gone wrong yet. Every identity minted that way was for a device
+somebody had genuinely added. But the property being relied on was "no caller
+does the wrong thing", which is a different and much weaker property than the
+one the separation of `resolve_identity` from `adopt_identity` was built to
+provide.
+
+> A rule enforced by a parameter whose default breaks it is a convention. The
+> default is the behaviour.
+
+### What the flip exposed
+
+Flipping to `allow_new=False` broke **71 tests across two files** — every one
+of them a fixture seeding a fresh repository, which is genuinely onboarding
+and now says so through a `_seed()` helper that passes the flag in one place.
+No production caller broke, which is worth stating precisely: it means none of
+the four was minting in the cases the tests cover, not that none of them
+could.
+
+The four now pass `allow_new=False` **explicitly**, along with the two that
+already did. Stating a decision that matches the default looks redundant until
+the default moves under you, which is exactly what this commit did to
+everybody else.
+
+### Where an identity is created now
+
+**Add Device**, which is where onboarding actually happens for an existing
+device, and where it had never happened: the form wrote a CSV row and left the
+identity to whichever `save_golden` ran first. It now resolves by name and by
+IP, mints through `adopt_identity()` only when neither finds anything, writes
+the manifest entry, and records the uid on the CSV row — because an identity
+nobody records is minted again next time.
+
+**The onboarding wizard**, which does not exist yet. Phase 4 adds the second
+and last one.
+
+The AI assistant has a test of its own asserting it neither passes
+`allow_new=True` nor names `adopt_identity` anywhere, plus a behavioural one
+that an unknown device is refused with the reason. Structural and behavioural
+together, because the structural check alone would pass a module that reached
+minting through an import alias.

@@ -501,11 +501,16 @@ def _save_golden_config_file(device_ip: str, hostname: str, config_text: str,
     list_name = get_current_list_name()
     netbox_id, device_uid = _identity_parts_for_ip(device_ip)
 
+    # allow_new=False, and this is the caller it matters most for. The AI
+    # agent must never create a device identity: identity is what every
+    # golden, every intent commit and every deploy is keyed on, and a wrong
+    # one is indistinguishable from a new device. The agent saves configs for
+    # devices a person onboarded.
     result = save_golden(
         list_name,
         [GoldenItem(hostname, config_text, device_ip,
                     netbox_id=netbox_id, device_uid=device_uid)],
-        source=source, actor=actor,
+        source=source, actor=actor, allow_new=False,
     )
     if not result.get("ok"):
         logger.error("golden: save failed for %s (%s): %s",

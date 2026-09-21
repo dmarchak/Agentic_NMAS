@@ -445,6 +445,25 @@ def add_device():
         role = request.form.get("role", "router").strip() or "router"
         if role not in ("router", "switch", "firewall"):
             role = "router"
+        # An identity is minted HERE, at add time, by the one function that
+        # creates them.
+        #
+        # It used to be minted silently by whichever save_golden ran first —
+        # usually a routine Save All — because allow_new defaulted to True.
+        # So "when does this device get an identity" had no answer anybody
+        # could point at, and the answer was "as a side effect of an unrelated
+        # capture". Adding a device IS onboarding, so this is where it belongs.
+        from modules.config import get_list_data_dir as _list_dir
+        from modules.nsot import manifest as _m
+        from modules.nsot.repo import GoldenItem, adopt_identity, init_repo
+
+        repo = os.path.join(_list_dir(current_list_name), "config_repo")
+        init_repo(repo)
+        identity = _m.find_by_name(repo, hostname)[0] \
+            or _m.find_by_ip(repo, ip)[0] \
+            or adopt_identity(repo, GoldenItem(hostname, "", ip))
+        _m.upsert_device(repo, identity, hostname, ip)
+
         save_device(
             {
                 "device_type": "cisco_ios",
@@ -454,10 +473,12 @@ def add_device():
                 "secret": secret,
                 "hostname": hostname,
                 "role": role,
+                "device_uid": identity.split(":", 1)[1]
+                if identity.startswith("uid:") else "",
             },
             current_list_file,
         )
-        app.logger.info(f'Device added successfully: {hostname} ({ip})')
+        app.logger.info(f'Device added successfully: {hostname} ({ip}) as {identity}')
         flash(f"Device {hostname} ({ip}) added successfully!", "success")
     except Exception as e:
         app.logger.error(f'Failed to add device {ip}: {e}', exc_info=True)
@@ -5054,9 +5075,14 @@ def golden_configs_save_all():
     # The inventory size and the skip list travel WITH the save, because only
     # this route knows them — and a baseline may not be claimed for a fleet
     # one of whose members was never measured.
+    # allow_new=False: Save All is a capture, not an onboarding. It used to
+    # mint by default, so a device that appeared in the inventory got its
+    # identity as a side effect of the next routine capture — which meant the
+    # answer to "when was this device onboarded" was "whenever someone next
+    # pressed Save All".
     commit_result = save_golden(list_name, items, source="save_all",
                                 actor="user", inventory_size=len(devices),
-                                skipped=failed)
+                                skipped=failed, allow_new=False)
     if not commit_result.get("ok"):
         return jsonify({"ok": False, "saved": [], "failed": failed,
                         "message": commit_result.get("error", "commit failed")}), 500
