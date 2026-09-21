@@ -205,6 +205,20 @@ def merge_commands(intended_config: str, running_config: str) -> list:
 
     _close()
 
+    # The forward path's own notion of "the lines I am adding" must equal what
+    # program_structure() calls a leaf. Asserting it here is what keeps the two
+    # from drifting apart again: change either and this fails loudly, instead
+    # of the rollback quietly disagreeing later.
+    from modules.nsot import ifnames as _ifnames
+    classified = {_ifnames.canonicalise_line(e["line"])
+                  for e in program_leaves(commands)}
+    expected = {_ifnames.canonicalise_line(l) for l in wanted
+                if l not in remaining}
+    if classified != expected:
+        raise RuntimeError(
+            "merge_commands and program_structure disagree about which lines "
+            f"are configuration: {sorted(classified ^ expected)}")
+
     # Before anything connects. A command list that cannot be sent is a defect
     # in the intent, not a transport problem, and it should never become
     # something an operator confirms.
@@ -285,25 +299,25 @@ def rollback_commands(pushed: list, pre_config: str) -> list:
 
     # Recover each pushed line's chain from the pushed program itself: the
     # headers are in it, which is the point of merge_commands().
-    chain, commands, open_chain = [], [], []
+    # **Leaves only.** Ancestry is context, not a setting: undoing
+    # `interface GigabitEthernet0/1` is meaningless, and treating it as a value
+    # reduced it to the key `interface`, matched the first `interface` line in
+    # the pre-change config, and sent `interface Loopback0` to a device. The
+    # classification comes from program_structure(), the same one
+    # merge_commands() asserts against, so the two cannot disagree again.
+    commands, open_chain = [], []
     pending = []
-    for raw in pushed:
-        line = raw.rstrip()
-        if line.strip() in CONTROL_WORDS:
-            if chain:
-                chain.pop()
-            continue
+    for entry in program_leaves(pushed):
+        line = entry["line"]
+        chain = list(entry["chain"])
         indent = len(line) - len(line.lstrip())
-        while chain and (len(chain[-1]) - len(chain[-1].lstrip())) >= indent:
-            chain.pop()
         canonical = ifnames.canonicalise_line(line)
         previous = _previous(chain, canonical)
         if previous is not None and previous != canonical:
-            pending.append((list(chain), previous))
+            pending.append((chain, previous))
         elif previous is None:
-            pending.append((list(chain), f"{' ' * indent}no {line.strip()}"))
+            pending.append((chain, f"{' ' * indent}no {line.strip()}"))
         # previous == canonical: the pushed line was already there, nothing to do
-        chain.append(line)
 
     def _close():
         for _level in reversed(open_chain):
@@ -320,6 +334,49 @@ def rollback_commands(pushed: list, pre_config: str) -> list:
 
     assert_sendable(commands)
     return commands
+
+
+def program_structure(commands: list) -> list:
+    """``[{line, chain, leaf}]`` for a command program.
+
+    **The single classification of ancestry vs. leaf**, derived from the
+    program's own indentation and consumed by every path that needs it.
+
+    It exists because the forward and rollback paths each had their own notion
+    and they disagreed. ``merge_commands()`` knew perfectly well that
+    ``interface GigabitEthernet0/1`` was context — it emitted that line
+    *because* a diff line sat under it — while ``rollback_commands()``
+    re-derived the question from key shapes, reduced the header to the key
+    ``interface``, matched it against ``interface Loopback0`` in the
+    pre-change config, and "restored" it onto a device. A line is ancestry if
+    something deeper follows it before its level closes; nothing about that
+    needs a second opinion.
+    """
+    entries, stack = [], []
+    for raw in commands:
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        if line.strip() in CONTROL_WORDS:
+            if stack:
+                stack.pop()
+            continue
+        indent = len(line) - len(line.lstrip())
+        while stack and (len(entries[stack[-1]]["line"])
+                         - len(entries[stack[-1]]["line"].lstrip())) >= indent:
+            stack.pop()
+        entries.append({"line": line,
+                        "chain": tuple(entries[i]["line"] for i in stack),
+                        "leaf": True})
+        for index in stack:
+            entries[index]["leaf"] = False
+        stack.append(len(entries) - 1)
+    return entries
+
+
+def program_leaves(commands: list) -> list:
+    """The configuration-bearing lines of a program, with their chains."""
+    return [e for e in program_structure(commands) if e["leaf"]]
 
 
 def program_lines(commands: list) -> frozenset:
@@ -371,30 +428,72 @@ class RollbackNotInverse(RuntimeError):
 
 
 def assert_rollback_provenance(rollback: list, pushed: list) -> None:
-    """Every ``no X`` in a rollback must answer an ``X`` in the pushed list.
+    """Every rollback line must trace to the pushed program. No exceptions.
 
-    The bounded exception to "this tool never synthesises a negation". Bounded
-    means checkable: a negation that does not undo something this deploy did is
-    removing configuration nobody asked to remove.
+    Exactly three things may appear in a rollback:
+
+    * an **inverse** — ``no X`` where ``X`` is a pushed leaf
+    * a **restored prior value** — a line setting the same thing as a pushed
+      leaf, in the same section
+    * **ancestry** of one of those — a header that also headed a pushed line
+
+    Anything else was synthesised, and synthesised configuration reaching a
+    device is the failure this phase exists to prevent.
+
+    The previous version examined only lines starting with ``no ``. A
+    synthesised *non-negating* line passed free, which is how ``interface
+    Loopback0`` reached a device: it is the inverse of nothing, so the check
+    never looked at it. A guard that inspects one category and waves the rest
+    through is the same family as a guard positioned where it cannot fail — it
+    reads as a check, and the thing that went wrong was never in its scope.
     """
     from modules.nsot import ifnames
 
-    pushed_keys = set()
-    for command in pushed:
-        if command.strip() in CONTROL_WORDS:
-            continue
-        pushed_keys.update(_command_keys(ifnames.canonicalise_line(command)))
+    pushed_leaves, pushed_ancestry = {}, set()
+    for entry in program_structure(pushed):
+        chain = tuple(ifnames.canonicalise_line(c) for c in entry["chain"])
+        canonical = ifnames.canonicalise_line(entry["line"])
+        if entry["leaf"]:
+            precise, broad = _command_keys(canonical)
+            pushed_leaves.setdefault(chain, set()).update(
+                {canonical.strip(), f"key:{precise}", f"key:{broad}"})
+        else:
+            pushed_ancestry.add((chain, canonical))
+
     orphans = []
-    for command in rollback:
-        stripped = command.strip()
-        if stripped in CONTROL_WORDS or not stripped.startswith("no "):
+    for entry in program_structure(rollback):
+        chain = tuple(ifnames.canonicalise_line(c) for c in entry["chain"])
+        canonical = ifnames.canonicalise_line(entry["line"])
+
+        if not entry["leaf"]:
+            if (chain, canonical) not in pushed_ancestry:
+                orphans.append((entry["line"],
+                                "is not a section this deploy entered"))
             continue
-        if not set(_command_keys(ifnames.canonicalise_line(command))) & pushed_keys:
-            orphans.append(command)
+
+        known = pushed_leaves.get(chain, set())
+        stripped = canonical.strip()
+        precise, broad = _command_keys(canonical)
+
+        if stripped.startswith("no "):
+            if stripped[3:].strip() in known:
+                continue
+            if f"key:{precise}" in known or f"key:{broad}" in known:
+                continue
+            orphans.append((entry["line"], "negates nothing this deploy pushed"))
+            continue
+
+        if f"key:{precise}" in known or f"key:{broad}" in known:
+            continue
+        orphans.append((entry["line"],
+                        "restores a setting this deploy did not touch"))
+
     if orphans:
         raise RollbackNotInverse(
-            "refusing to roll back %d negation(s) that undo nothing this "
-            "deploy pushed: %s" % (len(orphans), ", ".join(repr(o) for o in orphans[:5])))
+            "refusing to send %d rollback line(s) that do not trace to this "
+            "deploy: %s" % (len(orphans),
+                            "; ".join(f"{line!r} {why}"
+                                      for line, why in orphans[:5])))
 
 
 class NotAuthorised(RuntimeError):

@@ -1913,6 +1913,7 @@ runs, it passes, and its passing means nothing.
 | 3 | `assert_merge_only(to_push, intended)` | `to_push` *was* `intended`, so the subset test was trivially true |
 | 4 | automatic rollback | two conditions that together excluded the only scenario it exists for |
 | 5 | `_restore_config` | replayed a config through config mode — a *merge*, which cannot remove a line |
+| 6 | `assert_rollback_provenance` | inspected only `no X` lines, so a synthesised non-negating line was never in scope |
 
 Number one is the honest version — it never pretended to work, it just looked
 like it did. Numbers two and three are worse, because both are real
@@ -2059,6 +2060,60 @@ def test_shutdown_is_undone_with_no_shutdown(self):
                              "interface GigabitEthernet0/1\n description old text\n")
     assert undo == ["interface GigabitEthernet0/1", " no shutdown", "exit"]
 ```
+
+### Number six: a guard whose scope excluded the thing that went wrong
+
+``assert_rollback_provenance()`` enforces the project's most important promise:
+this tool never sends a command it did not derive from something it was asked
+to do. It was written carefully, checks provenance rather than syntax, and has
+a test asserting it raises.
+
+It looked at lines starting with ``no ``. Only those.
+
+A rollback also contains section headers and restored prior values, and neither
+is a negation, so neither was examined. When ``rollback_commands()``
+misclassified ``interface GigabitEthernet0/1`` as a setting and "restored" it
+to ``interface Loopback0``, the guard saw a line that did not start with ``no``
+and moved on. A synthesised command reached a live device through the check
+written to stop exactly that.
+
+This is subtler than #1–#5. The guard is not in the wrong place, it is not
+handed the wrong input, and its logic is right. Its **scope** is narrower than
+the property it is named for, and the gap is invisible unless you enumerate
+what can legitimately appear in the thing being checked — which is a different
+exercise from reviewing the check.
+
+> A guard named for a property must cover every category of input that
+> property ranges over. Enumerate the categories; a category nobody listed is a
+> category nobody checks.
+
+For a rollback there are exactly three: an inverse, a restored prior value, and
+ancestry of one of those. Writing that list down is what makes the old
+implementation obviously incomplete — and the list did not exist anywhere until
+the defect forced it.
+
+### The same defect, twice, from opposite directions
+
+Worth noting together, because they were one bug in the product and two
+different mistakes:
+
+* ``rollback_commands()`` **re-derived** a classification the forward path
+  already had. ``merge_commands()`` knew ``interface GigabitEthernet0/1`` was
+  context — it emitted that line *because* a diff line sat under it. The
+  rollback asked the question again, from key shapes, and got a different
+  answer.
+* ``assert_rollback_provenance()`` would have caught the resulting bad line if
+  its scope had covered headers.
+
+Two independent safeguards, both defeated by the same input, for unrelated
+reasons. The fix is correspondingly two-sided: the classification now lives in
+one function (``program_structure``) that both paths consume, and
+``merge_commands`` asserts its own notion agrees with it — so a future change
+to either fails loudly instead of the rollback quietly disagreeing.
+
+> Where two paths must agree about the same fact, they must **share** the
+> computation, not each compute it. Agreement by convention is agreement until
+> someone edits one of them.
 
 ### What makes this family hard
 

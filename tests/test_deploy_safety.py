@@ -814,3 +814,146 @@ class TestRollbackIsExemptFromTheDangerousGate:
 
         assert ctx.rollback_dangerous["10.0.0.1"] == ["shutdown"]
         assert ctx.rolled_back_ips == ["10.0.0.1"]
+
+
+class TestAncestryIsNotASetting:
+    """`interface GigabitEthernet0/1` is context, not a value to restore.
+
+    ``rollback_commands()`` ran its key lookup over **every** pushed line,
+    headers included. ``interface GigabitEthernet0/1`` reduces to the key
+    ``interface``, which matched the first ``interface`` line in the
+    pre-change config — so the rollback "restored the old value" of a section
+    header and sent ``interface Loopback0`` to a live device.
+
+    No harm on that device, by luck: the next line entered a different
+    interface, and Loopback0 already existed. ``interface X`` on IOS *creates*
+    X when it does not, and ``router bgp 65001`` reduces to ``router``, which
+    matches ``router ospf 1``.
+    """
+
+    S4_PRE = ("interface Loopback0\n"
+              " description mgmt identity\n"
+              " ip address 10.255.1.24 255.255.255.255\n"
+              "interface GigabitEthernet0/1\n"
+              " description NSoT-managed - CSCI 5840 Lab 4\n"
+              " negotiation auto\n")
+
+    def test_the_s4_case_produces_exactly_three_lines(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " shutdown", "exit"], self.S4_PRE)
+        assert undo == ["interface GigabitEthernet0/1", " no shutdown", "exit"]
+
+    def test_no_other_interface_is_ever_entered(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface GigabitEthernet0/1", " shutdown", "exit"], self.S4_PRE)
+        assert "interface Loopback0" not in undo
+
+    def test_router_bgp_is_never_matched_against_router_ospf(self):
+        """Both reduce to the key `router`."""
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["router bgp 65001", " bgp log-neighbor-changes", "exit"],
+            "router ospf 1\n router-id 10.0.0.1\n")
+        assert undo == ["router bgp 65001", " no bgp log-neighbor-changes", "exit"]
+        assert "router ospf 1" not in undo
+
+    def test_the_classification_is_shared_not_re_derived(self):
+        """The forward and rollback paths consume one function."""
+        import inspect
+        from modules.nsot import deploy
+
+        rollback_src = inspect.getsource(deploy.rollback_commands)
+        assert "program_leaves(" in rollback_src
+        merge_src = inspect.getsource(deploy.merge_commands)
+        assert "program_leaves(" in merge_src, (
+            "merge_commands must assert against the shared classification, or "
+            "the two can drift apart again")
+
+    def test_merge_commands_fails_loudly_if_they_disagree(self):
+        from modules.nsot.deploy import program_leaves, program_structure
+
+        program = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+        assert [e["line"] for e in program_leaves(program)] == [" shutdown"]
+        assert [e["leaf"] for e in program_structure(program)] == [False, True]
+
+    def test_a_nested_header_is_ancestry_too(self):
+        from modules.nsot.deploy import program_structure
+        entries = program_structure(
+            ["router bgp 65001", " address-family ipv4",
+             "  neighbor 10.0.0.1 activate", "exit", "exit"])
+        assert [e["leaf"] for e in entries] == [False, False, True]
+
+    def test_a_top_level_leaf_is_a_leaf(self):
+        from modules.nsot.deploy import program_leaves
+        assert [e["line"] for e in program_leaves(["ip routing"])] == ["ip routing"]
+
+
+class TestRollbackProvenanceCoversEveryLine:
+    """The check examined only `no ` lines, so a synthesised non-negating line
+    passed free.
+
+    That is how ``interface Loopback0`` reached a device: it is the inverse of
+    nothing, so the guard never looked at it. A guard that inspects one
+    category and waves the rest through reads as a check while the thing that
+    went wrong was never in its scope.
+    """
+
+    PUSHED = ["interface GigabitEthernet0/1", " shutdown", "exit"]
+
+    def test_the_real_inverse_passes(self):
+        from modules.nsot.deploy import assert_rollback_provenance
+        assert_rollback_provenance(
+            ["interface GigabitEthernet0/1", " no shutdown", "exit"], self.PUSHED)
+
+    def test_a_restored_prior_value_passes(self):
+        from modules.nsot.deploy import assert_rollback_provenance
+        pushed = ["interface GigabitEthernet0/1", " description new", "exit"]
+        assert_rollback_provenance(
+            ["interface GigabitEthernet0/1", " description old", "exit"], pushed)
+
+    def test_a_synthesised_header_is_refused(self):
+        """The exact line that reached s4."""
+        from modules.nsot.deploy import (RollbackNotInverse,
+                                         assert_rollback_provenance)
+        with pytest.raises(RollbackNotInverse) as exc:
+            assert_rollback_provenance(
+                ["interface Loopback0", "interface GigabitEthernet0/1",
+                 " no shutdown", "exit"], self.PUSHED)
+        assert "interface Loopback0" in str(exc.value)
+
+    def test_a_synthesised_non_negating_leaf_is_refused(self):
+        from modules.nsot.deploy import (RollbackNotInverse,
+                                         assert_rollback_provenance)
+        with pytest.raises(RollbackNotInverse) as exc:
+            assert_rollback_provenance(
+                ["interface GigabitEthernet0/1", " no shutdown",
+                 " ip address 203.0.113.1 255.255.255.0", "exit"], self.PUSHED)
+        assert "did not touch" in str(exc.value)
+
+    def test_an_orphan_negation_is_still_refused(self):
+        from modules.nsot.deploy import (RollbackNotInverse,
+                                         assert_rollback_provenance)
+        with pytest.raises(RollbackNotInverse):
+            assert_rollback_provenance(
+                ["interface GigabitEthernet0/1", " no ip routing", "exit"],
+                self.PUSHED)
+
+    def test_a_line_in_a_section_the_deploy_never_entered_is_refused(self):
+        from modules.nsot.deploy import (RollbackNotInverse,
+                                         assert_rollback_provenance)
+        with pytest.raises(RollbackNotInverse):
+            assert_rollback_provenance(
+                ["interface GigabitEthernet0/2", " no shutdown", "exit"],
+                self.PUSHED)
+
+    def test_the_refusal_says_which_category_failed(self):
+        from modules.nsot.deploy import (RollbackNotInverse,
+                                         assert_rollback_provenance)
+        with pytest.raises(RollbackNotInverse) as exc:
+            assert_rollback_provenance(
+                ["interface Loopback0", " no shutdown", "exit"], self.PUSHED)
+        message = str(exc.value)
+        assert "not a section this deploy entered" in message or \
+               "did not touch" in message
