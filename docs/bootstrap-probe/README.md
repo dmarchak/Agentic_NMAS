@@ -13,6 +13,10 @@ which is all nine of ours.
 Nothing in this directory has been run. It is a proposal for shared
 infrastructure.
 
+**Revised after the first attempt failed.** See "What the first probe got
+wrong" below — both causes were divergences from `rcn-lab1` that the first
+version claimed to mirror and did not, which is worth more than the fix.
+
 ---
 
 ## Why a separate topology
@@ -21,14 +25,16 @@ infrastructure.
 useless for this measurement, and it is the thing the whole project manages,
 which makes experimenting in it a bad trade.
 
-`nmas-bootstrap-probe.clab.yml` shares nothing with it:
+`nmas-bootstrap-probe.clab.yml` shares no *state* with it, while matching
+everything that affects how a node boots:
 
 | | rcn-lab1 | the probe |
 |---|---|---|
 | lab name | `rcn-lab1` | `nmas-bootstrap-probe` |
 | docker network | default `clab` | `clab-bootstrap-probe` |
 | subnet | 172.20.20.0/24 | 172.30.30.0/24 |
-| startup configs | per node | **none** |
+| startup configs | per node | per node, **minimal** |
+| c8000v launch patch | bound from `patches/` | **copied** into its own dir |
 | nodes | 9 + hosts | 2 |
 
 The separate subnet is not fussiness. `rcn-lab1` carries a comment explaining
@@ -44,28 +50,65 @@ free RAM. Two nodes (one C8000v, one vIOS-L2) fit comfortably.
 
 ## Commands
 
-Run on `10.0.0.210`. Steps 1 and 5 are the only ones that change anything, and
-step 5 undoes step 1.
+Run on `10.0.0.210`. Steps 2 and 6 are the only ones that change anything,
+and step 6 undoes step 2.
 
-### 1. Deploy
+### 1. Stage the files
+
+The launch patch is **copied**, not referenced. A read-only bind from
+`~/labs/lab` would still be a shared file, and a throwaway lab whose
+destruction can touch the production lab is not throwaway.
 
 ```bash
-mkdir -p ~/labs/bootstrap-probe/captures
-# copy nmas-bootstrap-probe.clab.yml into ~/labs/bootstrap-probe/
+mkdir -p ~/labs/bootstrap-probe/{configs,patches,captures}
 cd ~/labs/bootstrap-probe
+cp ~/labs/lab/patches/c8000v-launch.py patches/
+# copy nmas-bootstrap-probe.clab.yml here, and configs/bp-*.cfg into configs/
+
+# Confirm the patch is the one rcn-lab1 uses — one line, smp="2".
+diff ~/labs/lab/patches/c8000v-launch.py patches/c8000v-launch.py && echo "patch identical"
+grep -n 'smp=' patches/c8000v-launch.py
+```
+
+### 2. Deploy, and watch for the thing that failed last time
+
+```bash
 containerlab deploy -t nmas-bootstrap-probe.clab.yml
 ```
 
-The C8000v takes several minutes to boot. Wait for both to answer:
+Measured on rcn-lab1: **r1 completes in 5m19s, s1 in 4m38s.** Anything past
+**15 minutes is a failure**, not slowness — the first probe sat for ~40
+minutes and was never going to finish.
 
 ```bash
-until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 admin@172.30.30.11 \
-      'show version | include uptime' 2>/dev/null; do sleep 20; done
-until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 admin@172.30.30.21 \
-      'show version | include uptime' 2>/dev/null; do sleep 20; done
+# Both nodes, with a hard deadline. Prints the line that decides it.
+end=$(( $(date +%s) + 900 ))
+for n in bp-c8k bp-vios; do
+  c=clab-nmas-bootstrap-probe-$n
+  while [ "$(date +%s)" -lt "$end" ]; do
+    if docker logs "$c" 2>&1 | grep -q "Startup complete"; then
+      echo "$n: $(docker logs "$c" 2>&1 | grep -m1 'Startup complete')"; break
+    fi
+    sleep 15
+  done
+  docker logs "$c" 2>&1 | grep -qE "Startup complete" || {
+    echo "$n: FAILED to complete within 15m — capture the reason and stop:"
+    docker logs "$c" 2>&1 | tail -20; }
+done
+
+# The two symptoms that identified the first failure, checked explicitly:
+for n in bp-c8k bp-vios; do
+  c=clab-nmas-bootstrap-probe-$n
+  echo "--- $n ---"
+  docker logs "$c" 2>&1 | grep -iE "startup configuration|SMP|vCPU|memory" | head -5
+done
 ```
 
-### 2. Capture
+`bp-c8k` must report **2 SMP/vCPU** and must *not* say "User provided startup
+configuration is not found". If it says either of those, stop: the lab is not
+mirroring rcn-lab1 and its capture would describe a node type we do not run.
+
+### 3. Capture
 
 The same command the application uses, so the profile is measured against the
 text the wizard will actually compare:
@@ -91,7 +134,7 @@ no IP path at all:
   | timeout 60 docker exec -i clab-nmas-bootstrap-probe-bp-c8k telnet localhost 5000
 ```
 
-### 3. Hand the captures back
+### 4. Hand the captures back
 
 ```bash
 # from the NMAS
@@ -103,14 +146,14 @@ They land in the repository as fixtures, with their provenance, at
 code and tested against them, so a future image change is a failing test
 rather than a wrong answer.
 
-### 4. Verify the captures are what they claim
+### 5. Verify the captures are what they claim
 
 Before trusting them: each should contain a hostname, a management interface,
 **no routing process**, and **no addressed data interface**. If either capture
 shows a routing process, the node is not fresh and the profile must not be
 built from it.
 
-### 5. Destroy
+### 6. Destroy
 
 ```bash
 cd ~/labs/bootstrap-probe
@@ -135,3 +178,46 @@ The profile is per platform, and it records *shapes*, not exact strings:
 containerlab-created user, the `clab-mgmt` VRF if present, and unaddressed
 interface stubs in any number. Recording exact strings would make the profile
 break on a hostname, which is the one line guaranteed to differ.
+
+
+---
+
+## What the first probe got wrong
+
+Worth recording, because the fix is small and the mistake is not.
+
+| | rcn-lab1 | first probe | effect |
+|---|---|---|---|
+| startup config | every node | **none** | different vrnetlab path; vIOS never got a management address |
+| c8000v vCPUs | 2, via a bound launch patch | **1** (stock) | never completed in ~40 min; r1 takes 5m19s |
+
+The first version of this file said it mirrored `rcn-lab1` and listed the
+things it had matched: images, kind env, network isolation. Everything on that
+list was correct. The two things that mattered were not on it, because they
+were not in the part of the topology I had read — `binds:` and
+`startup-config:` are per *node*, and I had read the `kinds:` block and
+inferred the rest.
+
+> "Mirrors X" is a claim about everything X does, and it is only as good as
+> the part of X you looked at. Approximating an environment reproduces the
+> parts you already knew about, which are exactly the parts that were never
+> going to be the problem.
+
+The vIOS failure is the sharper one. Its management interface works *because
+a startup config asks it to* — `CLAB_MGMT_PASSTHROUGH=false` plus
+`ip address dhcp` on Gi0/0. A "clean" node with no configuration at all is
+therefore not a fresh node in this lab; it is an unreachable one. There is no
+such thing as an unconfigured vIOS here, and a bootstrap profile that assumed
+otherwise would have been measuring a device that never exists.
+
+## The minimal bootstrap config is the wizard's output
+
+`configs/bp-c8k.cfg` and `configs/bp-vios.cfg` are not probe scaffolding. They
+are the management-plane lines of `r1.cfg` and `s1.cfg` with everything else
+removed, and they are what the wizard must generate for a new device — so
+they are designed once, here, and the probe measures the result.
+
+The asymmetry between them is real and load-bearing: the C8000v's `Gi1` is
+absent because vrnetlab owns it, while the vIOS's `Gi0/0` is configured
+explicitly because nothing else will. A wizard that treated the two platforms
+the same would produce an unreachable switch.

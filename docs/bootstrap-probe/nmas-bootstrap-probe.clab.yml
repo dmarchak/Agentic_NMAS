@@ -1,35 +1,33 @@
 name: nmas-bootstrap-probe
 
 # ---------------------------------------------------------------------------
-# Throwaway topology whose ONLY purpose is to measure what a freshly booted
-# node looks like, so Phase 4's bootstrap profile is captured rather than
-# written from knowledge of containerlab and vrnetlab.
+# REVISED after the first probe failed. Both failures were divergences from
+# rcn-lab1 that this file had aimed to mirror and did not:
 #
-# A profile that is wrong in one direction blocks every real deploy; wrong in
-# the other, it passes a configured device off as new. Neither is detectable
-# from reading the code that produced it.
+#   1. NO STARTUP CONFIG. Every rcn-lab1 node has one. Without it vrnetlab
+#      takes a different code path ("User provided startup configuration is
+#      not found"), and for vIOS-L2 the management plane never comes up at
+#      all — its Gi0/0 only gets an address because s1.cfg says
+#      `ip address dhcp`. The probe's vIOS stalled and reset SSH.
 #
-# SHARES NOTHING WITH rcn-lab1
-#   - its own lab name, so containerlab's own state is separate
-#   - its own docker network AND subnet. rcn-lab1 deliberately has no `mgmt:`
-#     block because the default `clab` network already owns 172.20.20.0/24 and
-#     a second network on that subnet fails to create. This lab therefore
-#     declares a different network on a different subnet, which is the only
-#     way to be isolated rather than merely polite.
-#   - no startup-config, no binds: whatever appears in the running config is
-#     what the image and containerlab put there, which is the thing being
-#     measured.
+#   2. ONE vCPU. Every c8000v in rcn-lab1 binds a PATCHED launch script:
+#         binds: [patches/c8000v-launch.py:/launch.py]
+#      The patch is one line — `smp="2"` — against a stock script that
+#      otherwise matches (ram=4096 either way). Measured: r1 boots in 5m19s
+#      on 2 vCPU; the probe never completed in ~40 minutes on 1.
 #
-# THE LINK IS DELIBERATE
-#   One link, unaddressed. Without it neither node would have a data
-#   interface at all, and the profile would not record what an unconfigured
-#   data interface looks like — which is exactly the line the wizard must
-#   tolerate on a genuinely fresh device.
+# So "mirror rcn-lab1" now means reading rcn-lab1 rather than approximating
+# it. The patch is COPIED into this directory rather than bound from
+# ~/labs/lab: a read-only reference would still be a shared file, and the
+# point of a throwaway lab is that destroying it cannot affect anything.
 #
-# KIND ENV MIRRORS rcn-lab1
-#   CLAB_MGMT_PASSTHROUGH=false is set on the vIOS kind there, and it changes
-#   what containerlab injects. The profile has to describe a fresh node in
-#   THIS environment, so the setting is mirrored rather than defaulted.
+# ISOLATION (unchanged, and still required)
+#   Own lab name, own docker network, own subnet. rcn-lab1 has no `mgmt:`
+#   block precisely because a second network on 172.20.20.0/24 fails to
+#   create. No br-mgmt dependency: this lab has no bridge node.
+#
+# THE LINK is unaddressed on purpose — it is what makes the capture record
+# an *unconfigured* data interface, the line the wizard must tolerate.
 # ---------------------------------------------------------------------------
 
 mgmt:
@@ -39,19 +37,23 @@ mgmt:
 topology:
   kinds:
     cisco_c8000v:
-      image: vrnetlab/cisco_c8000v:17.06.01a       # same image as r1-r5
+      image: vrnetlab/cisco_c8000v:17.06.01a       # identical to r1-r5
     cisco_vios:
-      image: vrnetlab/cisco_vios:L2-20180619       # same image as s1-s4
+      image: vrnetlab/cisco_vios:L2-20180619       # identical to s1-s4
       env:
-        CLAB_MGMT_PASSTHROUGH: "false"
+        CLAB_MGMT_PASSTHROUGH: "false"             # required for 'ip address dhcp'
 
   nodes:
     bp-c8k:
       kind: cisco_c8000v
       mgmt-ipv4: 172.30.30.11
+      startup-config: configs/bp-c8k.cfg
+      binds:
+        - patches/c8000v-launch.py:/launch.py      # smp="2" — the boot fix
     bp-vios:
       kind: cisco_vios
       mgmt-ipv4: 172.30.30.21
+      startup-config: configs/bp-vios.cfg
 
   links:
     - endpoints: ["bp-c8k:Gi2", "bp-vios:Gi0"]
