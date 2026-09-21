@@ -800,10 +800,19 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 - **The filter is re-entrant-guarded and the secret table is cached.**
   `known_secret_values()` logs on failure, and that record re-enters the
   filter — unbounded recursion that can hang the process. A thread-local guard
-  passes such records through unredacted. The table is cached for 30s so a
-  burst of records does not decrypt the credential store per line, and
-  `set_template_secret()` invalidates it, because the window right after an
-  extraction is exactly when config carrying that secret is flowing.
+  skips the **value lookup** (the part that recurses) but still applies
+  **positional** redaction, which needs no store: the reentrant record is a
+  credential-store failure whose exception text can quote a config line or a
+  ciphertext, so the one record most likely to carry a secret must not be the
+  one written in the clear.
+- **The secret table is cached 30s, and every credential write invalidates it.**
+  The invalidation lives in `credentials._save()` — the one chokepoint every
+  profile, override, deletion, template secret and scope migration passes
+  through — plus `device.write_devices_csv()`, since device passwords live in
+  the CSV rather than the store. Six call sites would be six chances to add a
+  seventh and forget. This is what item (4)'s rotation depends on: a brand-new
+  router password must be redacted on the very next record, not at the next TTL
+  expiry, because rotation logs its commands and its verify output immediately.
 - `GET /identity/status` reports **`may`** — what *this caller* can do, with a
   reason when false — not which gates are enabled. The earlier `gates` field
   reported configuration, and `gates: {reveal: true}` reads as permission while

@@ -251,6 +251,14 @@ def get_device_context(dev: dict, filesystem: str | None = None):
 def write_devices_csv(devices: list[dict], filename: str | None = None) -> None:
     _refuse_if_netbox_sourced(filename, "rewrite the device list for")
     #Write a list of device dicts to the CSV file.
+    # Device passwords and enable secrets live here and are part of what
+    # redaction matches, so a rewrite must invalidate the cached table — a new
+    # password is otherwise unredacted until the TTL expires.
+    try:
+        from modules.redact import invalidate_cache
+        invalidate_cache()
+    except Exception:                          # noqa: BLE001
+        pass
     if not filename:
         filename = DEVICES_FILE
     fieldnames = DEVICE_CSV_FIELDS

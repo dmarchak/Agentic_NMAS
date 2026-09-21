@@ -304,10 +304,25 @@ class RedactingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         if getattr(RedactingFilter._local, "active", False):
-            # A record emitted from inside redaction. Pass it through
-            # unredacted rather than recursing: it is our own diagnostic, and
-            # dropping or looping on it loses the only notice that redaction
-            # is failing.
+            # A record emitted from inside redaction — typically a credential
+            # store failure. Skip the VALUE lookup, which is what would recurse,
+            # but still redact POSITIONALLY: positional needs no store, and the
+            # exception text that brought us here can quote a config line or a
+            # ciphertext verbatim. The diagnostic survives, and it survives
+            # masked.
+            try:
+                message = record.getMessage()
+                cleaned = redact_positional(message)
+                if cleaned != message:
+                    record.msg = cleaned
+                    record.args = ()
+                if record.exc_info or record.exc_text:
+                    record.exc_text = redact_positional(
+                        record.exc_text
+                        or logging.Formatter().formatException(record.exc_info))
+                    record.exc_info = None
+            except Exception:                 # noqa: BLE001
+                pass                          # never lose the diagnostic
             return True
         RedactingFilter._local.active = True
         try:

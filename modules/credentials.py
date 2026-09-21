@@ -64,6 +64,18 @@ def _save(data: dict) -> None:
         json.dump(data, fh, indent=2)
     os.replace(tmp, _FILE)
 
+    # EVERY write to the credential store, not just template secrets. Profiles,
+    # device overrides, deletions and the scope migration all change what
+    # redaction must match, and this is the one place they all pass through.
+    # Invalidating at six call sites is six chances to add a seventh and forget;
+    # the rotation in item (4) is precisely when a stale table would leave a
+    # brand-new router password unredacted while the rotation logs its commands.
+    try:
+        from modules.redact import invalidate_cache
+        invalidate_cache()
+    except Exception:                         # noqa: BLE001
+        pass                                  # never fail a write over a cache
+
 
 def save_profile(name: str, username: str, password: str, secret: str = "",
                  rotation_policy: str = "") -> dict:
@@ -316,16 +328,6 @@ def set_template_secret(name: str, value: str, secret_kind: str = "plaintext",
             "last_rotated": time.time() if secret_kind != "hash" else None,
         }
         _save(data)
-    # Redaction caches the secret table for 30s so a burst of log records does
-    # not decrypt the store per line. A freshly stored secret must be redacted
-    # from the very next record, not from the next cache expiry — the window
-    # right after an extraction is exactly when config carrying it is flowing.
-    try:
-        from modules.redact import invalidate_cache
-        invalidate_cache()
-    except Exception:                         # noqa: BLE001
-        pass                                  # never fail a write over a cache
-
     log.info("credentials: stored template secret '%s' (kind=%s, list=%s)",
              name, secret_kind, slug or "unscoped")
     return {"ok": True}

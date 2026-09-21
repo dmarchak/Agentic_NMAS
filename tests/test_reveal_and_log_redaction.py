@@ -465,3 +465,208 @@ class TestTheSecretTableIsCached:
             "a freshly stored secret must be redacted from the next record, "
             "not from the next cache expiry")
         assert "<redacted:snmp_community_ro>" in out
+
+
+class TestTheReentrantPathStillMasks:
+    """A reentrant record is a credential-store failure — the riskiest kind.
+
+    Its exception text can quote a config line or a ciphertext verbatim.
+    Skipping ALL redaction to avoid recursion would mean the one record most
+    likely to carry a secret is the one written in the clear. Only the VALUE
+    lookup recurses; positional needs no store, so positional still runs.
+    """
+
+    def _capture(self):
+        records = []
+
+        class _Cap(logging.Handler):
+            def emit(self, record):
+                records.append(self.format(record))
+        h = _Cap()
+        h.setFormatter(logging.Formatter("%(message)s"))
+        redact.install_log_redaction(h)
+        return h, records
+
+    def _exploding_store(self, monkeypatch):
+        from modules import credentials
+
+        def _boom(*a, **k):
+            raise RuntimeError(
+                "store read failed near: snmp-server community public RO")
+        monkeypatch.setattr(credentials, "list_template_secrets", _boom)
+        redact.invalidate_cache()
+
+    def test_a_reentrant_record_is_still_positionally_masked(self, monkeypatch):
+        self._exploding_store(monkeypatch)
+        h, out = self._capture()
+        logger = logging.getLogger("reentrant.mask")
+        logger.handlers = [h]
+        logger.propagate = False
+        logger.setLevel(logging.DEBUG)
+
+        # The outer record triggers the store failure; the inner diagnostic it
+        # produces is the reentrant one.
+        logger.error("config seen: username admin privilege 15 password s3cret99")
+
+        joined = "\n".join(out)
+        assert "s3cret99" not in joined
+        assert "<redacted:user_password>" in joined
+        assert len(out) >= 1
+
+    def test_the_diagnostic_itself_is_masked(self, monkeypatch):
+        """The inner record quotes a config line in its exception text."""
+        from modules import credentials
+
+        def _boom(*a, **k):
+            raise RuntimeError("x")
+        monkeypatch.setattr(credentials, "list_template_secrets", _boom)
+        redact.invalidate_cache()
+
+        h, out = self._capture()
+        logger = logging.getLogger("modules.redact")
+        logger.handlers = [h]
+        logger.propagate = False
+        logger.setLevel(logging.DEBUG)
+
+        # Emit a record from *inside* redaction by marking the guard active.
+        redact.RedactingFilter._local.active = True
+        try:
+            logger.error("store failure near snmp-server community public RO")
+        finally:
+            redact.RedactingFilter._local.active = False
+
+        assert out, "the diagnostic must survive"
+        assert "community public" not in out[0]
+        assert "<redacted:snmp_community>" in out[0]
+
+    def test_it_still_does_not_recurse(self, monkeypatch):
+        self._exploding_store(monkeypatch)
+        h, out = self._capture()
+        logger = logging.getLogger("reentrant.norecurse")
+        logger.handlers = [h]
+        logger.propagate = False
+        logger.setLevel(logging.DEBUG)
+
+        logger.error("a record")
+        assert len(out) == 1
+
+
+class TestEveryCredentialWriteInvalidatesTheCache:
+    """Rotation is the case this exists for.
+
+    Item (4) rotates the router passwords. With only set_template_secret()
+    invalidating, a brand-new password would be unredacted for up to 30
+    seconds — exactly while the rotation logs its commands and its verify
+    output.
+    """
+
+    @pytest.fixture
+    def store(self, tmp_path, monkeypatch):
+        from modules import credentials
+
+        monkeypatch.setattr(credentials, "_FILE",
+                            str(tmp_path / "credential_profiles.json"))
+        monkeypatch.setattr(credentials, "device_credential_values", dict)
+        return credentials
+
+    def _warm(self):
+        """Populate the cache, and return the view it holds."""
+        return dict(redact.known_secret_values())
+
+    def _stale(self):
+        """True if the cache is still serving the view captured by _warm()."""
+        return redact._cache["values"] is not None
+
+    def test_storing_a_template_secret_is_visible_immediately(self, store):
+        """Not at the next TTL expiry.
+
+        Note the cache may be repopulated within the same call — the write's
+        own `log.info` passes through the redacting filter, which rebuilds it.
+        That is the behaviour working: the log line announcing the write is
+        already redacted against the value it just stored.
+        """
+        before = self._warm()
+        assert "AValueLongEnough" not in before
+
+        store.set_template_secret("lab:r1:x", "AValueLongEnough", list_name="lab")
+        assert "AValueLongEnough" in redact.known_secret_values()
+
+    def test_saving_a_profile_is_visible_immediately(self, store, monkeypatch):
+        from modules import credentials
+
+        monkeypatch.undo()          # let the real device_credential_values run
+        monkeypatch.setattr(credentials, "_FILE", store._FILE)
+        monkeypatch.setattr("modules.config.LISTS_DIR", "/nonexistent")
+        self._warm()
+
+        store.save_profile("default", "admin", "ProfilePassword1")
+        assert "ProfilePassword1" in redact.known_secret_values()
+
+    def test_a_device_override_is_visible_immediately(self, store, monkeypatch):
+        from modules import credentials
+
+        monkeypatch.undo()
+        monkeypatch.setattr(credentials, "_FILE", store._FILE)
+        monkeypatch.setattr("modules.config.LISTS_DIR", "/nonexistent")
+        self._warm()
+
+        store.set_device_override("203.0.113.1", "admin", "OverridePassword1")
+        assert "OverridePassword1" in redact.known_secret_values()
+
+    def test_deleting_a_profile_drops_it_from_the_table(self, store, monkeypatch):
+        from modules import credentials
+
+        monkeypatch.undo()
+        monkeypatch.setattr(credentials, "_FILE", store._FILE)
+        monkeypatch.setattr("modules.config.LISTS_DIR", "/nonexistent")
+        store.save_profile("temp", "admin", "TempPassword123")
+        assert "TempPassword123" in self._warm()
+
+        store.delete_profile("temp")
+        assert "TempPassword123" not in redact.known_secret_values()
+
+    def test_the_scope_migration_invalidates(self, store):
+        store.set_template_secret("r1:legacy", "LegacyValue123")
+        self._warm()
+        redact.invalidate_cache()
+        redact.known_secret_values()
+        assert self._stale()
+
+        store.migrate_template_secrets_to_list_scope("Default", dry_run=False)
+        # The value is unchanged by a re-key, but the table was rebuilt.
+        assert "LegacyValue123" in redact.known_secret_values()
+
+    def test_rewriting_devices_csv_invalidates(self, tmp_path, monkeypatch):
+        """Device passwords live in the CSV, not the credential store."""
+        from modules import device
+
+        monkeypatch.setattr(device, "_refuse_if_netbox_sourced",
+                            lambda f, w: None)
+        redact.invalidate_cache()
+        redact.known_secret_values()
+        assert self._stale()
+
+        device.write_devices_csv([], str(tmp_path / "devices.csv"))
+        assert redact._cache["values"] is None, (
+            "a CSV rewrite must drop the cached table")
+
+    def test_the_invalidation_is_at_the_store_chokepoint(self):
+        """Six call sites is six chances to add a seventh and forget."""
+        import inspect
+
+        from modules import credentials
+
+        assert "invalidate_cache" in inspect.getsource(credentials._save)
+
+    def test_a_rotated_password_is_redacted_on_the_very_next_record(
+            self, store, monkeypatch):
+        """The end-to-end property item (4) depends on."""
+        prose = "verify output: banner motd ^Rotated-Password-99^"
+        assert redact.redact_text(prose) == prose
+
+        store.set_template_secret("lab:r1:user_admin_password",
+                                  "Rotated-Password-99", list_name="lab")
+
+        out = redact.redact_text(prose)
+        assert "Rotated-Password-99" not in out
+        assert "<redacted:user_admin_password>" in out
