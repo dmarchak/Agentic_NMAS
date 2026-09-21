@@ -33,14 +33,44 @@ def _active_list(payload=None) -> str:
 # Captured configs — the only inputs. No device contact.
 # ---------------------------------------------------------------------------
 
-def _captured_golden(hostname: str):
-    """The device's current golden config, or None."""
-    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
-    entry = next((e for e in _list_golden_configs()
-                  if e.get("hostname") == hostname), None)
-    if not entry:
+def _captured_golden(hostname: str, list_name: str = ""):
+    """The device's current golden config at repo HEAD, or None.
+
+    Reads through the NSoT path -- ``repo.golden_at()``, the same function
+    restore (`restore.py`) and `/golden/version` use -- NOT the legacy
+    ``golden_configs/`` store.
+
+    It used to locate the entry with `ai_assistant._list_golden_configs()`,
+    which lists the deprecated `golden_configs/` directory and takes
+    ``saved_at`` from each file's mtime. Measured on s1: the preview reported
+    "captured 2026-09-15 22:35", exactly that file's mtime, while
+    `config_repo/golden/s1.cfg` had been committed the same day.
+
+    The date was provably wrong. Whether the *content* was also stale depended
+    on a second lookup -- `_load_golden_config_file()` resolves through the
+    manifest first and only falls back to the legacy scan -- so it was stale
+    for any device the manifest could not resolve by IP, and correct for the
+    rest. A view whose correctness varies per device by which of two stores
+    answers first is the two-stores problem, not a date bug.
+
+    That mattered beyond the diff, because `preview()` does
+    ``source = golden or running``: whatever this returns is what the artifact
+    is BUILT from, so the render, its coverage and its deployability all rest
+    on it. Reading one store, through the path deploy and restore use, removes
+    the question rather than answering it.
+
+    The timestamp comes from the commit rather than the file's mtime, because
+    in this repository the commit *is* the record: the `! Saved:` header was
+    removed precisely so a save would not produce a diff on every write.
+    """
+    from modules.nsot import repo as _repo
+
+    repo_dir = _repo_for(list_name or _active_list())
+    content = _repo.golden_at(repo_dir, hostname, "HEAD")
+    if content is None:
         return None, ""
-    return _load_golden_config_file(entry["device_ip"]), entry.get("saved_at", "")
+    history = _repo.golden_history(repo_dir, hostname, limit=1)
+    return content, (history[0]["timestamp"] if history else "")
 
 
 def _captured_running(list_name: str, hostname: str):
@@ -284,14 +314,14 @@ def preview(hostname):
     import difflib
 
     from modules.nsot import approval, templates_repo
-    from modules.nsot.normalize import strip_for_roundtrip
+    from modules.nsot.normalize import strip_for_diff, strip_for_roundtrip
     from modules.nsot.render_artifact import build_artifact
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
     repo = _repo_for(list_name)
 
-    golden, golden_at = _captured_golden(hostname)
+    golden, golden_at = _captured_golden(hostname, list_name)
     running, running_at = _captured_running(list_name, hostname)
     source = golden or running
     if not source:
@@ -314,8 +344,16 @@ def preview(hostname):
         if not other:
             return {"available": False,
                     "message": f"No captured {label}. Use Refresh capture."}
-        left = strip_for_roundtrip(other)
-        right = strip_for_roundtrip(artifact.rendered_masked)
+        # BOTH filters, in the order `roundtrip.configs_equivalent()` applies
+        # them. They do different jobs: strip_for_roundtrip removes what a
+        # template *cannot render*, strip_for_diff normalises for comparison
+        # and is the one that drops bare `!` separators.
+        #
+        # Applying only the first left every `!` in the diff -- a wall of
+        # `-!` lines around the handful of real differences, which is how a
+        # correct render reads as a broken one.
+        left = strip_for_diff("\n".join(strip_for_roundtrip(other)))
+        right = strip_for_diff("\n".join(strip_for_roundtrip(artifact.rendered_masked)))
         lines = list(difflib.unified_diff(left, right,
                                           fromfile=f"{label} ({hostname})",
                                           tofile=f"rendered ({hostname})", lineterm=""))
@@ -374,7 +412,7 @@ def approval_status(rel_path):
     repo = _repo_for(list_name)
     host_vars = {}
     for entry in templates_repo.devices_for_template(repo, rel_path):
-        golden, _ = _captured_golden(entry["device"])
+        golden, _ = _captured_golden(entry["device"], list_name)
         if golden:
             host_vars[entry["device"]] = get_parser(entry["platform"]).parse(golden)
     return jsonify({"ok": True, "path": rel_path,
@@ -393,7 +431,7 @@ def approve(rel_path):
     devices = []
     missing = []
     for entry in templates_repo.devices_for_template(repo, rel_path):
-        golden, _ = _captured_golden(entry["device"])
+        golden, _ = _captured_golden(entry["device"], list_name)
         if not golden:
             missing.append(entry["device"])
             continue
@@ -420,10 +458,11 @@ def validate(rel_path):
     """Dry-run the approval gate without approving."""
     from modules.nsot import approval, templates_repo
 
-    repo = _repo_for(_active_list())
+    list_name = _active_list()
+    repo = _repo_for(list_name)
     devices = []
     for entry in templates_repo.devices_for_template(repo, rel_path):
-        golden, _ = _captured_golden(entry["device"])
+        golden, _ = _captured_golden(entry["device"], list_name)
         if golden:
             devices.append({"device": entry["device"], "platform": entry["platform"],
                             "running_config": golden})
