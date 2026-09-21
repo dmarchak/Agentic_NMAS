@@ -2840,3 +2840,145 @@ A deploy baseline is not measured against content, because the goldens in that
 commit *are* the post-deploy captures — measuring them against the render would
 report every unmodelled construct as a difference and deny a whole-fleet deploy
 a tag it had earned.
+
+---
+
+## The corpus had the right shape; the comparison could not see it
+
+The single most instructive defect in the project. For three weeks the fleet
+reported **100% modeled, 100% round-trip fidelity, zero unmodeled constructs**
+across nine devices. Three of those devices were wrong, and the number was
+produced by the thing that was wrong.
+
+### What was broken
+
+`cisco_iosxe/base.j2` rendered r3, r4 and r5 like this:
+
+```
+ address-family ipv4
+ no neighbor 2001:DB8:51::2 activate
+ exit-address-family
+ !
+ address-family ipv6
+ exit-address-family
+ neighbor 198.51.100.1 activate      <- outside every family
+ network 2001:DB8::/32               <- an IPv6 prefix, outside ipv6
+```
+
+Every network and neighbor activation was hoisted out of its address-family to
+the top level of `router bgp`. A deploy would have sent an IPv6 prefix where
+IOS does not accept one, and `no neighbor … activate` where it changes a
+different family.
+
+### Why nothing caught it
+
+`parsers.base.split_blocks()` appends **every** indented line to one flat
+`children` list regardless of depth — correct for a parser, which wants a block
+and its body. `roundtrip._sections()` was built on it, so a two-level block was
+compared as one level. Every line was present on both sides. Score: 100%.
+
+Three properties conspired, and each is worth naming separately:
+
+1. **Parse and render flattened symmetrically.** The parser threw the nesting
+   away and the template re-emitted the same flat list, so the two sides agreed
+   with each other while both disagreed with the device. A round-trip test
+   compares a system against itself; two mirrored bugs cancel.
+2. **The corpus was fine.** This is the part worth dwelling on. The instinct
+   after a miss like this is "we need a fixture with BGP address-families" —
+   but `tests/fixtures/configs/fleet/` had carried them from the day r3–r5 were
+   added, and `r5.cfg` is a full dual-stack PE. Adding more fixtures would have
+   changed nothing. **Test data cannot compensate for an instrument that cannot
+   measure.**
+3. **There was a named test, and it asserted the defect.**
+
+```python
+def test_bgp_address_families_on_r3_r4_r5(self):
+    bgp = report["host_vars"]["routing"]["bgp"]
+    assert any("address-family" in s for s in bgp["settings"])
+```
+
+That asserts the address-family *header* is an ordinary setting — which is
+exactly the flattening. Written after the implementation, it encoded the
+implementation, and it did so under a name that made the construct look
+covered. Anyone auditing would have read "BGP address families: tested" and
+moved on. **A test named for a feature that checks for a substring is worse
+than no test: it spends the name.**
+
+### Where the right answer already lived
+
+`deploy._section_chains()` has been depth-aware since Phase 3c, and its
+docstring names this exact hazard:
+
+> A partial chain is worse than none: sending `neighbor … activate` after only
+> `router bgp 65001` applies it to the wrong address family, silently and
+> successfully.
+
+So `merge_commands()` — the function that decides what goes on the wire — knew.
+Running it against each device's own golden produced 7 spurious lines for r3
+and r4 and 14 for r5. **The tool could compute the right answer and
+simultaneously report that there was nothing to compute.** Two components held
+opposite models of the same config and nothing compared them, because the
+comparison *was* one of the two.
+
+### How it was actually found
+
+Not by a test, and not by the metric. By a human asking for a **named-item
+check**: "report what the extraction actually modelled for BGP address-families
+and neighbors." The answer came back `address_families=0` on a device whose
+config plainly has two, next to a coverage figure of 100%. The contradiction
+was only visible because someone asked the model to state *what* it had
+modelled rather than *how much*.
+
+> A percentage is a claim about a measurement. Ask what was measured, in the
+> vocabulary of the domain, and an instrument that cannot see a construct has
+> to say so.
+
+### The fix, and the two regressions it introduced
+
+`modules/nsot/sections.py` now holds the indentation→ancestry algorithm alone,
+and `_sections()` keys on a line's full container path
+(`router bgp 65002 > address-family ipv4`). Normalisation deliberately stays
+with the caller — the filters in `normalize.py` are four different jobs, and
+folding one in would have made this the fifth place that decides which lines
+count.
+
+Making the measurement stricter broke two things that had nothing to do with
+BGP, and both are the same mistake in miniature — *a change meant to add depth
+quietly added a rule*:
+
+* the global scope became an ordered section, so every device reported one
+  reordered section named `""`;
+* the global scope counted as a matched *section*, so a wholly unknown config
+  scored 16.7% instead of 0.
+
+Both are now pinned by tests. The general lesson: when you sharpen an
+instrument, the first thing to check is what it now says about the cases that
+were already correct.
+
+### The second defect, found because the first one needed fixing
+
+Landing the BGP fix meant editing `templates/_common.j2`, which holds the
+routing, interface and service macros for **both** platforms. `template_hash`
+hashed only `base.j2`. So editing the shared macros would have changed what
+every template renders while leaving `cisco_ios/base.j2` approved for s1–s4 —
+a gate certifying a template on the strength of a hash of a file that did not
+change.
+
+Same shape as the round-trip metric, found three hours apart: **a gate that
+measures less than its claim.** An approval says "this template reproduces
+every bound device", and a template is `base.j2` plus everything it imports.
+The fingerprint now covers the whole import closure, path-labelled so moving a
+macro between files changes the hash even when the total text does not.
+
+### Revocation as a record
+
+`approval.revoke()` popped the record, which made a withdrawal indistinguishable
+from "never approved". Both block a deploy, so the gate was never wrong — but
+an approval is withdrawn for a *reason*, and deleting the record throws the
+finding away. It now requires a reason and writes a tombstone carrying it,
+refused by `is_approved()` **first**, ahead of every computed check. A test
+forces the scheme and fingerprint to agree that the template is fine and
+asserts the revocation still stands.
+
+> A decision recorded by a person must not be overturnable by a computation
+> that runs afterwards.

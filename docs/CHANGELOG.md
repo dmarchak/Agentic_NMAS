@@ -7,6 +7,67 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — The round-trip metric could not see nesting depth
+
+### Fixed — BGP address-families were flattened by parse, render, and the metric
+
+`roundtrip._sections()` was built on `split_blocks()`, which appends every
+indented line to one list regardless of depth, so a two-level block compared as
+one level. `cisco_iosxe/base.j2` hoisted every BGP network and neighbor
+activation out of its address-family to the top of `router bgp`, and scored
+**100%** — on the three devices whose configs the comparison least understood.
+
+`merge_commands()`, which decides what goes on the wire, has been depth-aware
+since Phase 3c and would have sent 7 spurious lines for r3/r4 and 14 for r5,
+including an IPv6 prefix outside `address-family ipv6`. The tool could compute
+the right answer and simultaneously report there was nothing to compute.
+
+The fixtures carried BGP address-families all along; parse and render flattened
+symmetrically, so both sides agreed with each other while both disagreed with
+the device. The existing `test_bgp_address_families_on_r3_r4_r5` asserted
+`any("address-family" in s for s in bgp["settings"])` — it pinned the
+flattening as correct, under a name that made the construct look covered.
+
+- `modules/nsot/sections.py` — the indentation→ancestry algorithm, alone.
+- `_sections()` keys on a line's full container path.
+- `section_is_unordered()` tests every path component; order-significant wins.
+- `routing.bgp.address_families` is `[{afi, networks, neighbors, settings}]`.
+- `scripts/nsot_metric_diff.py` — flat vs depth-aware, per device, plus every
+  nested construct in the corpus. The two now agree everywhere.
+
+Two regressions the stricter metric introduced, both caught and pinned: the
+global scope was counted as a section (unknown config scored 16.7%, not 0) and
+compared as ordered (every device reported one reordered section named `""`).
+
+### Fixed — approval hashed only `base.j2`, not the macros it imports
+
+Found while landing the above: editing `templates/_common.j2` — the routing,
+interface and service macros for **both** platforms — would have left
+`cisco_ios/base.j2` approved for s1–s4. The fingerprint now covers the whole
+import closure, path-labelled. Editing any file revokes every approval whose
+closure contains it.
+
+### Changed — revocation is a recorded finding
+
+`approval.revoke()` requires a reason and writes a tombstone instead of deleting
+the record. `is_approved()` refuses a revoked record **first**, ahead of the
+scheme and fingerprint checks: a decision recorded by a person must not be
+overturnable by a computation that runs afterwards.
+`POST /templates/revoke/<path>` makes it reachable.
+
+### Live
+
+- `cisco_iosxe/base.j2` revoked (`14e61b8`) naming the defect; verified no harm
+  reached a device — every deploy in repo history touched only r2/s3/s4 and
+  changed only loopback descriptions.
+- Shared macro fixed in the repo (`c8e07cc`), both approvals revoked by closure,
+  both re-approved (`9cebd59`) with all nine devices at 100%.
+- r1, r3, r4, r5, s1, s2 onboarded; all nine now have committed intent, resolvable
+  secrets, an approved template, and **zero commands to send**.
+- Save All: one commit `7f5b0f5`, `baseline/20260921T033554Z`, nine devices.
+
+---
+
 ## [Unreleased] — Restore, item 2: intent moves with the device
 
 ### Fixed — `_deploy_one()` was deleted and the suite did not notice
