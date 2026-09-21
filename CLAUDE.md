@@ -135,6 +135,14 @@ dashboard), `device.html` (1,239 — per-device page), and
   on every inventory change — not only at migration.
 - **AI read-first:** the agent checks golden configs and variables before opening
   any SSH session
+- **Secrets are redacted at the provider boundary** (`modules/redact.py`),
+  immediately before `messages.create()` — `system`, `messages` and `tools`.
+  Not at the golden reader: `show running-config`, backups, drift diffs and any
+  free-form command carry the same values, so per-reader redaction is N places
+  that must each remember and a new tool inherits the gap. Values are replaced
+  by `<redacted:<ref>>`, so the model still knows a secret is there. Values
+  shorter than 8 characters are left alone — redacting `RO` would corrupt every
+  config and protect nothing.
 - **Config push workflow:** backup → push → Jenkins CI → save golden → update
   variables. CI pass = auto-approve.
 - **Approval queue:** destructive AI actions go through `approval_queue.py`

@@ -6886,12 +6886,22 @@ def run_chat(
                     # verification sweep) instead of letting it all ride in every
                     # request for the rest of the turn — mitigates "context rot" on
                     # long tool-loops without needing to change how history is stored.
+                    # THE PROVIDER BOUNDARY. Everything the agent has read —
+                    # golden configs, live `show run`, backups, drift diffs,
+                    # command output — converges here on its way off this host.
+                    # Redacting at each reader is N places that must each
+                    # remember; redacting here is one place a new tool cannot
+                    # bypass. Values only: the model still sees
+                    # `<redacted:snmp_community_ro>` and can reason about the
+                    # config. See modules/redact.py.
+                    from modules.redact import known_secret_values, redact_payload
+                    _secret_table = known_secret_values()
                     _resp = _get_anthropic_client().beta.messages.create(
                         model=model,
                         max_tokens=max_tokens_out,
-                        system=_system_blocks,
-                        messages=_cached_messages,
-                        tools=cached_tools,
+                        system=redact_payload(_system_blocks, _secret_table),
+                        messages=redact_payload(_cached_messages, _secret_table),
+                        tools=redact_payload(cached_tools, _secret_table),
                         betas=["context-management-2025-06-27"],
                         context_management={"edits": [{"type": "clear_tool_uses_20250919"}]},
                         **({"output_config": {"effort": effort}} if effort else {}),

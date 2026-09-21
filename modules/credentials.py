@@ -213,6 +213,54 @@ def split_template_secret_key(name: str) -> tuple:
     return "", "", name or ""
 
 
+def device_credential_values() -> dict:
+    """``{value: label}`` for every credential this installation stores.
+
+    Profiles, per-device overrides, and the devices.csv rows of every list.
+    Used only by :mod:`modules.redact` to keep these out of payloads leaving
+    the process — a device password reaches the agent through
+    ``show running-config``, a failed-login message, or a connection error,
+    none of which go through the template-secret store.
+
+    Values only, never names. Failures are logged and skipped rather than
+    raised: redaction must degrade to "redact what we could read", and a
+    credential store that will not open is a separate problem.
+    """
+    import csv as _csv
+    import glob as _glob
+
+    from modules.config import LISTS_DIR
+
+    out = {}
+
+    def _add(value, label):
+        value = (value or "").strip()
+        if value:
+            out.setdefault(value, label)
+
+    try:
+        data = _load()
+        for name, profile in (data.get("profiles") or {}).items():
+            _add(decrypt_value(profile.get("password", "")), "device-password")
+            _add(decrypt_value(profile.get("secret", "")), "enable-secret")
+        for ip, override in (data.get("device_overrides") or {}).items():
+            _add(decrypt_value(override.get("password", "")), "device-password")
+            _add(decrypt_value(override.get("secret", "")), "enable-secret")
+    except Exception as exc:                  # noqa: BLE001
+        log.error("credentials: could not read profiles for redaction: %s", exc)
+
+    # Every list, not the active one: a payload is redacted for what it holds.
+    for path in _glob.glob(os.path.join(LISTS_DIR, "*", "devices.csv")):
+        try:
+            with open(path, newline="", encoding="utf-8") as fh:
+                for row in _csv.DictReader(fh):
+                    _add(decrypt_value(row.get("password", "")), "device-password")
+                    _add(decrypt_value(row.get("secret", "")), "enable-secret")
+        except Exception as exc:              # noqa: BLE001
+            log.debug("credentials: skipping %s for redaction: %s", path, exc)
+    return out
+
+
 def set_template_secret(name: str, value: str, secret_kind: str = "plaintext",
                         list_name: str = "") -> dict:
     """Store a named secret referenced by a template.

@@ -7,6 +7,49 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ---
 
+## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
+
+### Fixed — template secrets collided across device lists (audit A)
+
+The credential-store key was `<hostname>:<ref>` in one installation-wide file,
+built by four f-strings in three modules. Two lists each holding an `r1` shared
+a key; the second extraction silently replaced the first, and the first network
+then deployed the second's SNMP community with every deploy guard satisfied.
+
+- `credentials.template_secret_key()` is the one construction site
+  (`<list-slug>:<hostname>:<ref>`); a grep test allows only its own body.
+- `set_template_secret()` records the owning list and refuses a cross-list
+  overwrite. A list updating its own secret still works.
+- `migrate_template_secrets_to_list_scope()` runs at startup, idempotent.
+- `assert_no_secret_values()` deliberately scans **every** list, narrowed only
+  by device: scoping it by list made a wrong derivation check nothing.
+
+### Fixed — the deploy path asked a global which network it was writing to (audit B)
+
+`PipelineContext.list_name` is set once by the originating request. The pipeline
+called `get_current_list_name()` at three points after the push, including the
+golden commit; that function reads a file on disk, so switching lists during a
+45–90s convergence window committed one network's captures into another's repo.
+`allow_new=False` hid it until two networks shared a device name or address.
+
+### Fixed — restore read its inventory from the active list (audit C)
+
+`plan_restore()` and `build_targets()` took `list_name`, used it for the repo,
+and read devices from `get_current_device_list()`. Now `_devices_of(list_name)`.
+
+### Added — secrets are redacted at the provider boundary (audit D1)
+
+`modules/redact.py`, applied to `system`, `messages` and `tools` immediately
+before `messages.create()`. Nothing was masked on any outbound path before
+this, and the AI read-first workflow loads golden configs into prompts — so the
+plaintext router passwords and every SNMP community had very likely already
+left the host. Redaction is at the boundary rather than at each reader because
+`show running-config`, backups, drift diffs and free-form commands carry the
+same values. Values become `<redacted:<ref>>`; values under 8 characters are
+left alone.
+
+---
+
 ## [Unreleased] — The round-trip metric could not see nesting depth
 
 ### Fixed — BGP address-families were flattened by parse, render, and the metric
