@@ -52,3 +52,26 @@ class KeaIntegration(IntegrationClient):
         if not r["ok"]:
             return r
         return {"ok": True, "message": "Control Agent responding"}
+
+    def monitor(self) -> dict:
+        """Active lease count.
+
+        `lease4-get-all` rather than a statistic: the statistics names are
+        per-subnet and differ between deployments, so reading them means
+        guessing a subnet id. Counting what comes back cannot be wrong about
+        which subnet it counted.
+        """
+        r = self.command("lease4-get-all")
+        if not r["ok"]:
+            return r
+        payload = r.get("result")
+        if isinstance(payload, list):
+            payload = payload[0] if payload else {}
+        leases = ((payload or {}).get("arguments") or {}).get("leases") or []
+        return {
+            "ok": True,
+            "metrics": [{"label": "active leases", "value": str(len(leases))}],
+            "detail": [{"text": lease.get("hostname") or lease.get("hw-address") or "?",
+                        "value": lease.get("ip-address", "")}
+                       for lease in leases[:10]],
+        }

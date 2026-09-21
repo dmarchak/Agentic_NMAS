@@ -7,6 +7,7 @@ link mode exists and is preferred.
 
 from modules.integrations.base import IntegrationClient
 from modules.secrets_store import get_secret
+from modules.settings_schema import get_setting
 
 
 class GrafanaIntegration(IntegrationClient):
@@ -35,3 +36,22 @@ class GrafanaIntegration(IntegrationClient):
         if r.get("status") in (401, 403):
             return {"ok": True, "message": "Reachable (authentication required)"}
         return r
+
+    def monitor(self) -> dict:
+        """Reachable, plus the dashboard link.
+
+        No embedding and no iframe: the browser reaches NMAS through the
+        Cloudflare tunnel and Grafana is LAN-only, so an iframe would render
+        a broken frame for every remote viewer. The link is honest about
+        being a link.
+        """
+        probe = self.test_connection()
+        if not probe.get("ok"):
+            return probe
+        url = get_setting("grafana_device_dashboard_url", "") or self.url
+        return {
+            "ok": True,
+            "metrics": [{"label": "status", "value": probe.get("message", "Connected")}],
+            "link": {"href": url, "text": "Open Grafana",
+                     "note": "reachable from the LAN only"},
+        }

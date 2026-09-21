@@ -2103,7 +2103,28 @@
   <button class="btn btn-outline-secondary btn-sm" onclick="loadMonitoringTab()">Refresh</button>
 </div>
 
-<p class="text-muted small mb-3">SNMP polling, trap collection, and NetFlow analysis for this list. The AI uses the collector IP when generating device configurations.</p>
+<p class="text-muted small mb-3">The lab's monitoring stack as seen from the NMAS.</p>
+
+{% include 'partials/monitoring_stack.html' %}
+
+<!-- ============================================================== -->
+<!-- Built-in collectors (legacy) — everything below predates the    -->
+<!-- NSoT work. Collapsed, not removed: behaviour is unchanged and   -->
+<!-- the AI still uses the collector IP when generating configs.     -->
+<!-- ============================================================== -->
+<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body py-2">
+    <button class="btn btn-link text-decoration-none p-0 text-muted"
+            type="button" data-bs-toggle="collapse"
+            data-bs-target="#legacyCollectors"
+            aria-expanded="false" aria-controls="legacyCollectors">
+      &#9656; Built-in collectors (legacy)
+    </button>
+    <span class="text-muted small ms-2">SNMP polling, traps, NetFlow, collector IP</span>
+  </div>
+</div>
+
+<div class="collapse" id="legacyCollectors">
 
 <!-- Collector IP card -->
 <div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
@@ -2207,6 +2228,8 @@
     </div>
   </div>
 </div>
+
+</div><!-- end Built-in collectors (legacy) collapse -->
 
 </div><!-- end Monitoring tab pane -->
 

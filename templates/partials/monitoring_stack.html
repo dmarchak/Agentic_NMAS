@@ -1,0 +1,144 @@
+{# Integrations panel — the lab's monitoring stack as seen from the NMAS.
+
+   Every card is SERVER-RENDERED with its own placeholder, and the fetch
+   replaces it. A card whose script never runs therefore leaves a visible
+   "did not load" message rather than whitespace — the same correction the
+   Remote card needed, where an empty div was indistinguishable from success.
+
+   All data is fetched server-side (/monitoring/stack/<tool>). The browser
+   arrives through the Cloudflare tunnel and these tools are LAN-only, so a
+   browser-side fetch or an iframe would show nothing to a remote viewer. #}
+
+<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body">
+    <div class="d-flex align-items-center mb-1">
+      <h6 class="text-primary mb-0 me-auto">Integrations</h6>
+      <span class="text-muted small me-2" id="stackStamp"></span>
+      <button class="btn btn-outline-secondary btn-sm" onclick="loadMonitoringStack()">Refresh</button>
+    </div>
+    <p class="text-muted small mb-3">
+      Read-only. Fetched by the NMAS server, not your browser — these tools
+      are reachable on the lab LAN only.
+    </p>
+
+    <div class="row g-2" id="stackCards">
+      {% for tool in ['netbox', 'prometheus', 'loki', 'oxidized', 'kea', 'grafana'] %}
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100" style="background:#0f172a;border:1px solid #334155">
+          <div class="card-body p-3">
+            <div class="d-flex align-items-center mb-2">
+              <span class="badge bg-secondary me-2" id="stackBadge-{{ tool }}">…</span>
+              <strong class="text-light text-capitalize">{{ tool }}</strong>
+            </div>
+            <div id="stackBody-{{ tool }}" class="text-muted small">
+              did not load — check the browser console
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{# Its own script element, and it starts itself.
+
+   The Remote card shipped in the page and was never called, because another
+   block invoked it six lines before creating its container. A component that
+   depends on another block's internal call order is not isolated, so this one
+   registers its own initialiser and nothing else calls it. #}
+<script>
+const STACK_TOOLS = ['netbox', 'prometheus', 'loki', 'oxidized', 'kea', 'grafana'];
+
+function _stackEscape(text) {
+  const d = document.createElement('div');
+  d.textContent = text === null || text === undefined ? '' : String(text);
+  return d.innerHTML;
+}
+
+function _stackBadge(state) {
+  if (state === 'up') return ['bg-success', 'up'];
+  if (state === 'down') return ['bg-danger', 'down'];
+  if (state === 'not_configured') return ['bg-secondary', 'off'];
+  return ['bg-secondary', '?'];
+}
+
+function _stackRender(tool, data) {
+  const badge = document.getElementById('stackBadge-' + tool);
+  const body = document.getElementById('stackBody-' + tool);
+  if (!body) { console.error('monitoring stack: no container for ' + tool); return; }
+
+  const [cls, text] = _stackBadge(data.state);
+  if (badge) { badge.className = 'badge me-2 ' + cls; badge.textContent = text; }
+
+  // Every branch writes something. A card that goes quiet on an unexpected
+  // shape looks identical to a card that never ran.
+  if (data.state === 'not_configured') {
+    body.innerHTML = '<span class="text-muted">' + _stackEscape(data.message) + '</span>';
+    return;
+  }
+  if (!data.ok) {
+    body.innerHTML = '<span class="text-danger">' + _stackEscape(data.error || 'unreachable') + '</span>';
+    return;
+  }
+
+  let html = '';
+  (data.metrics || []).forEach(function (m) {
+    const colour = m.state === 'down' ? 'text-danger' : 'text-info';
+    html += '<div class="d-flex justify-content-between">'
+          + '<span class="text-muted">' + _stackEscape(m.label) + '</span>'
+          + '<span class="' + colour + '">' + _stackEscape(m.value)
+          + (m.suffix ? ' <span class="text-muted">' + _stackEscape(m.suffix) + '</span>' : '')
+          + '</span></div>';
+  });
+
+  const rows = data.detail || [];
+  if (rows.length) {
+    html += '<div class="mt-2 pt-2" style="border-top:1px solid #334155;max-height:11rem;overflow:auto">';
+    rows.forEach(function (row) {
+      const colour = row.state === 'down' ? 'text-danger' : 'text-muted';
+      html += '<div class="' + colour + '" style="font-size:.75rem;white-space:nowrap;'
+            + 'overflow:hidden;text-overflow:ellipsis">' + _stackEscape(row.text)
+            + (row.value ? ' <span class="text-secondary">' + _stackEscape(row.value) + '</span>' : '')
+            + (row.note ? ' <span class="text-warning">' + _stackEscape(row.note) + '</span>' : '')
+            + '</div>';
+    });
+    html += '</div>';
+  }
+
+  if (data.link && data.link.href) {
+    html += '<a class="btn btn-outline-info btn-sm mt-2" target="_blank" rel="noopener" href="'
+          + _stackEscape(data.link.href) + '">' + _stackEscape(data.link.text || 'Open') + '</a>';
+    if (data.link.note) {
+      html += '<div class="text-muted mt-1" style="font-size:.7rem">'
+            + _stackEscape(data.link.note) + '</div>';
+    }
+  }
+
+  body.innerHTML = html || '<span class="text-muted">no data</span>';
+}
+
+function loadMonitoringStack() {
+  const stamp = document.getElementById('stackStamp');
+  if (stamp) stamp.textContent = 'checking…';
+
+  // Six independent requests. One tool being slow or dead must not hold up
+  // or blank the other five, which is why this is not one aggregate call.
+  const each = STACK_TOOLS.map(function (tool) {
+    const body = document.getElementById('stackBody-' + tool);
+    if (body) body.innerHTML = '<span class="text-muted">checking…</span>';
+    return fetch('/monitoring/stack/' + tool)
+      .then(function (r) { return r.json(); })
+      .then(function (data) { _stackRender(tool, data); })
+      .catch(function (e) {
+        _stackRender(tool, {ok: false, state: 'down', error: 'request failed: ' + e});
+      });
+  });
+
+  Promise.all(each).then(function () {
+    if (stamp) stamp.textContent = 'checked ' + new Date().toLocaleTimeString();
+  });
+}
+
+document.addEventListener('DOMContentLoaded', loadMonitoringStack);
+</script>

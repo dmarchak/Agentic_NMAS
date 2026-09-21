@@ -48,3 +48,25 @@ class NetBoxIntegration(IntegrationClient):
                     "version": data.get("netbox-version", "")}
         except Exception:
             return {"ok": True, "message": "Connected"}
+
+    def monitor(self) -> dict:
+        """Device and site counts -- the source of truth's own size.
+
+        Asks for `limit=1` and reads `count`: the list is not wanted and a
+        full fetch of every device to call `len()` on it is a page load an
+        operator would notice.
+        """
+        counts = []
+        for label, path in (("devices", "api/dcim/devices/"),
+                            ("sites", "api/dcim/sites/")):
+            r = self._get(path, limit=1, brief=1)
+            if not r["ok"]:
+                return r
+            try:
+                counts.append({"label": label,
+                               "value": str(r["response"].json().get("count", "?"))})
+            except Exception as exc:          # noqa: BLE001
+                return {"ok": False, "error": f"unreadable response: {exc}"}
+        return {"ok": True, "metrics": counts,
+                "link": {"href": self.url, "text": "Open NetBox",
+                         "note": "reachable from the LAN only"}}
