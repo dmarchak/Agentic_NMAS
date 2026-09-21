@@ -586,7 +586,14 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
             return _revert(result, _step, session, device, username,
                            original_line, repo, hostname)
         _step("captured_type_9", True)
+        # Carried so the persistence chain does not have to re-derive them.
+        # Re-deriving the hash from a later capture would read the device
+        # again, and the answer that matters is the one the verify saw.
         result["captured_kind"] = "hash"
+        result["new_hash"] = new_hash
+        result["repo"] = repo
+        result["mgmt_ip"] = device.get("ip", "")
+        result["username"] = username
     finally:
         if session is not None:
             try:

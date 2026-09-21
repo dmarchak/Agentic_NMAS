@@ -8,6 +8,7 @@ problem.
 """
 
 import math
+import os
 
 import pytest
 
@@ -419,3 +420,63 @@ class TestPersistenceNeverReverts:
                                sleep=lambda s: None)
         assert out["ok"] is False
         assert "no successful fetch after the rotation" in out["error"]
+
+
+class TestRotateCarriesWhatPersistNeeds:
+    """persist() must not re-read the device to find the hash.
+
+    The hash that matters is the one the VERIFY saw — re-deriving it from a
+    later capture would ask the device again and could pick up a different
+    answer, which defeats the point of having verified.
+    """
+
+    def test_the_verified_hash_is_carried(self, wired):
+        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["new_hash"].startswith("9 $9$")
+        assert result["repo"]
+        assert result["mgmt_ip"] == "203.0.113.12"
+        assert result["username"] == "admin"
+
+    def test_nothing_is_carried_when_the_rotation_did_not_happen(self, wired):
+        wired["verify"] = [{"ok": False, "error": "x"},
+                           {"ok": True, "config": ORIGINAL_LINE}]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert "new_hash" not in result
+        assert result["state"] == cr.REVERTED
+
+
+class TestTheInteractiveScript:
+    """The confirm lives in the script because the HTTP gates do not apply."""
+
+    SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "scripts", "nmas-rotate-credential")
+
+    def test_it_refuses_a_non_interactive_stdin(self):
+        """A typed confirmation that can be piped in is not a confirmation."""
+        import subprocess
+        import sys
+
+        proc = subprocess.run([sys.executable, self.SCRIPT, "--device", "r2"],
+                              input="r2\n", capture_output=True, text=True)
+        assert proc.returncode == 2
+        assert "not a terminal" in proc.stderr
+
+    def test_it_requires_the_exact_hostname(self):
+        source = open(self.SCRIPT, encoding="utf-8").read()
+        assert 'typed != device' in source
+        assert "Nothing was sent" in source
+
+    def test_it_records_a_distinct_actor_kind(self):
+        """A local CLI session is not Access-verified, and must not look like it."""
+        source = open(self.SCRIPT, encoding="utf-8").read()
+        assert 'actor_kind="person_cli"' in source
+        assert '"access_verified": False' in source
+        assert "NOT Access-verified" in source
+
+    def test_it_states_why_the_confirm_is_in_the_script(self):
+        doc = open(self.SCRIPT, encoding="utf-8").read()
+        assert "does not pass through them" in doc
+        assert "bypass the gate" in doc
