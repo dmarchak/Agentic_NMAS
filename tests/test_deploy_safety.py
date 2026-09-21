@@ -865,7 +865,8 @@ class TestAncestryIsNotASetting:
         from modules.nsot import deploy
 
         rollback_src = inspect.getsource(deploy.rollback_commands)
-        assert "program_leaves(" in rollback_src
+        assert "landed_leaves(" in rollback_src
+        assert "program_leaves(" in inspect.getsource(deploy.landed_leaves)
         merge_src = inspect.getsource(deploy.merge_commands)
         assert "program_leaves(" in merge_src, (
             "merge_commands must assert against the shared classification, or "
@@ -957,3 +958,109 @@ class TestRollbackProvenanceCoversEveryLine:
         message = str(exc.value)
         assert "not a section this deploy entered" in message or \
                "did not touch" in message
+
+
+class TestTheBroadKeyOnlyAppliesToFreeFormCommands:
+    """`ip mtu` and `ip address` are different settings sharing a first word.
+
+    The broad fallback existed because ``description some free text`` has its
+    value in *everything* after the first token, so a precise key of
+    ``description some free`` never matches ``description other text``. Applied
+    to every command, it made ``ip mtu 20000`` match ``ip address 10.255.1.24
+    255.255.255.255`` — and a rollback for a rejected MTU would have re-sent a
+    management address.
+
+    The distinction is structural, not positional: in one shape the second
+    token is part of the command, in the other everything after the first is
+    the value. A second-word rule separates those two by accident and picks
+    wrong on the third shape it meets.
+    """
+
+    LOOPBACK = ("interface Loopback0\n"
+                " description mgmt identity\n"
+                " ip address 10.255.1.24 255.255.255.255\n")
+
+    def test_ip_mtu_is_negated_not_matched_to_ip_address(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface Loopback0", " ip mtu 20000", "exit"], self.LOOPBACK)
+        assert undo == ["interface Loopback0", " no ip mtu 20000", "exit"]
+        assert not any("ip address" in c for c in undo)
+
+    def test_a_description_still_restores_its_prior_value(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface Loopback0", " description new text", "exit"], self.LOOPBACK)
+        assert undo == ["interface Loopback0", " description mgmt identity", "exit"]
+
+    def test_a_helper_address_is_negated_not_matched_to_the_interface_ip(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface Vlan10", " ip helper-address 10.0.0.9", "exit"],
+            "interface Vlan10\n ip address 10.0.0.1 255.255.255.0\n")
+        assert undo == ["interface Vlan10", " no ip helper-address 10.0.0.9", "exit"]
+
+    def test_a_precise_match_still_wins_for_a_non_free_form_command(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(
+            ["interface Vlan10", " ip mtu 9000", "exit"],
+            "interface Vlan10\n ip mtu 1500\n")
+        assert undo == ["interface Vlan10", " ip mtu 1500", "exit"]
+
+    def test_provenance_refuses_a_broad_match_on_a_non_free_form_command(self):
+        """Or the narrowing would be undone by the guard accepting it anyway."""
+        from modules.nsot.deploy import (RollbackNotInverse,
+                                         assert_rollback_provenance)
+        pushed = ["interface Loopback0", " ip mtu 20000", "exit"]
+        with pytest.raises(RollbackNotInverse):
+            assert_rollback_provenance(
+                ["interface Loopback0",
+                 " ip address 10.255.1.24 255.255.255.255", "exit"], pushed)
+
+    def test_the_free_form_list_is_explicit(self):
+        from modules.nsot.deploy import FREE_FORM_COMMANDS
+        assert set(FREE_FORM_COMMANDS) == {"description", "banner", "remark", "name"}
+
+
+class TestRollbackUndoesWhatLandedNotWhatWasPushed:
+    """On a partial push the two differ by definition.
+
+    Undoing what was *pushed* is the same derive-from-the-wrong-source error as
+    taking intent from current state, one level down. With ``error_pattern``
+    live, a rollback line answering a rejected push line can itself be refused
+    and take the repair down with it.
+    """
+
+    PUSHED = ["interface Loopback0", " description 3B test", " ip mtu 20000", "exit"]
+    PRE = ("interface Loopback0\n description mgmt identity\n"
+           " ip address 10.255.1.24 255.255.255.255\n")
+
+    def test_only_the_landed_line_is_undone(self):
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(self.PUSHED, self.PRE,
+                                 landed=[" description 3B test"])
+        assert undo == ["interface Loopback0", " description mgmt identity", "exit"]
+        assert not any("mtu" in c for c in undo)
+
+    def test_the_rejected_line_is_reported(self):
+        from modules.nsot.deploy import landed_leaves
+        _applied, rejected = landed_leaves(self.PUSHED, [" description 3B test"])
+        assert [e["line"] for e in rejected] == [" ip mtu 20000"]
+
+    def test_nothing_landed_means_nothing_to_undo(self):
+        from modules.nsot.deploy import rollback_commands
+        assert rollback_commands(self.PUSHED, self.PRE, landed=[]) == []
+
+    def test_an_unknown_capture_undoes_everything(self):
+        """Conservative: None means the capture could not read the device."""
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(self.PUSHED, self.PRE, landed=None)
+        assert " description mgmt identity" in undo
+        assert " no ip mtu 20000" in undo
+
+    def test_provenance_holds_for_a_landed_only_rollback(self):
+        from modules.nsot.deploy import (assert_rollback_provenance,
+                                         rollback_commands)
+        undo = rollback_commands(self.PUSHED, self.PRE,
+                                 landed=[" description 3B test"])
+        assert_rollback_provenance(undo, self.PUSHED)

@@ -161,6 +161,8 @@ class PipelineContext:
     rollback_commands: dict = field(default_factory=dict)
     #: ip -> why a rollback could not complete.
     rollback_failures: dict = field(default_factory=dict)
+    #: ip -> pushed lines the device rejected, so there was nothing to undo.
+    rollback_not_undone: dict = field(default_factory=dict)
     #: ip -> rollback lines that would have tripped the CI gate, exempt by
     #: provenance. Recorded so the exemption is visible in the report.
     rollback_dangerous: dict = field(default_factory=dict)
@@ -1241,7 +1243,7 @@ def _stage_rollback(ctx: PipelineContext) -> None:
     log.warning("pipeline[rollback]: restoring %d device(s): %s", len(targets), targets)
 
     from modules.nsot.deploy import (assert_rollback_provenance,
-                                     rollback_commands)
+                                     landed_leaves, rollback_commands)
 
     for ip in targets:
         dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
@@ -1262,7 +1264,19 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             # shutdown has no line to re-apply — the replay would leave the
             # interface down, save the config, and report success.
             pushed = ctx.rendered_commands.get(ip, [])
-            undo = rollback_commands(pushed, pre_cfg)
+            # What actually reached the device, from the capture that ran
+            # moments ago. On a partial push this is not the same as what was
+            # pushed, and undoing a line the device rejected would send a
+            # command answering something that never happened.
+            state = ctx.failure_state.get(ip) or {}
+            landed = state.get("landed") if state.get("landed") is not None else None
+            undo = rollback_commands(pushed, pre_cfg, landed=landed)
+            _applied, rejected = landed_leaves(pushed, landed)
+            if rejected:
+                ctx.rollback_not_undone[ip] = [e["line"] for e in rejected]
+                log.info("pipeline[rollback]: %s — %d line(s) not undone, never "
+                         "applied: %s", hostname, len(rejected),
+                         [e["line"] for e in rejected])
             assert_rollback_provenance(undo, pushed)
             ctx.rollback_commands[ip] = undo
 

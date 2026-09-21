@@ -795,10 +795,57 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
             "a partially applied push must be reported as a change")
         assert "interface GigabitEthernet0/1" in state["landed"]
 
+        # The description was REJECTED — it is not in what landed — so there is
+        # nothing to undo and it is reported instead. Undoing a line the device
+        # refused would send a command answering something that never happened,
+        # and with error_pattern live that command could itself be refused and
+        # take the repair down.
+        assert ctx.rollback_not_undone["10.0.0.1"] == [" description x"]
+        assert sent == [], sent
+
+    @pytest.mark.parametrize("rejection", REJECTIONS)
+    def test_a_line_that_DID_land_is_undone(self, rejection):
+        """The other half: a partial push undoes the part that applied."""
+        import modules.ai_assistant as A
+        import modules.connection as C
+        import modules.pipeline as P
+        from modules.pipeline import _capture_failure_state, _stage_rollback
+
+        ctx = self._ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": False, "error": rejection}}
+        sent = []
+
+        class _Fresh:
+            def send_command(self, _cmd, read_timeout=None):
+                # This time the description landed; something later was refused.
+                return ("hostname s4\ninterface GigabitEthernet0/1\n"
+                        " description x\n")
+
+        orig = (A._load_pre_change_file, C.with_temp_connection,
+                C.get_persistent_connection, P._restore_config)
+        A._load_pre_change_file = lambda ip: "hostname s4\n"
+        C.with_temp_connection = lambda dev, func: func(_Fresh())
+        C.get_persistent_connection = lambda dev, pool, lock: object()
+        P._restore_config = lambda conn, cmds: sent.extend(cmds)
+        try:
+            _capture_failure_state(ctx)
+            _stage_rollback(ctx)
+        finally:
+            (A._load_pre_change_file, C.with_temp_connection,
+             C.get_persistent_connection, P._restore_config) = orig
+
         assert ctx.rollback_performed is True
         assert ctx.rolled_back_ips == ["10.0.0.1"]
         assert sent == ["interface GigabitEthernet0/1",
                         " no description x", "exit"], sent
+        assert ctx.rollback_not_undone.get("10.0.0.1") is None
+
+    def test_an_unreadable_capture_undoes_everything_pushed(self):
+        """Conservative when you do not know what landed."""
+        from modules.nsot.deploy import rollback_commands
+        undo = rollback_commands(self.PUSHED, "hostname s4\n", landed=None)
+        assert undo == ["interface GigabitEthernet0/1",
+                        " no description x", "exit"]
 
     def test_a_rejected_push_is_a_rollback_target(self):
         """The filter that once excluded exactly this device."""

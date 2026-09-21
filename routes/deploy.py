@@ -475,6 +475,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         "rollback_commands": list(
             (result.rollback_commands or {}).get(device.get("ip", ""), [])),
         "rollback_failures": dict(result.rollback_failures or {}),
+        "rollback_not_undone": list(
+            (result.rollback_not_undone or {}).get(device.get("ip", ""), [])),
         "rollback_dangerous_exempt": list(
             (result.rollback_dangerous or {}).get(device.get("ip", ""), [])),
         "device_changed": any(e.get("device_changed") for e in failure_state),

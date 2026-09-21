@@ -396,6 +396,15 @@ The only part of the NSoT work that reaches a device.
   it at commit. An em dash is three UTF-8 bytes; IOS consumes the first, loses
   sync, and truncates the line, which surfaces as a Netmiko echo timeout rather
   than as an invalid character.
+- **Rollback undoes what LANDED, not what was pushed.** On a partial push those
+  differ by definition, and with `error_pattern` live a rollback line answering
+  a rejected push line can itself be refused and take the repair down. Rejected
+  lines are reported as *not undone — never applied*. An unreadable capture
+  means everything pushed is undone, which is the conservative answer.
+- **The broad command key applies only to free-form values** (`description`,
+  `banner`, `remark`, `name`). Everything else needs a precise-key match; a
+  miss means there is no prior value and the answer is to negate. Searching
+  harder is what matched `ip mtu 20000` to `ip address …`.
 - **Rollback is computed, not replayed.** `rollback_commands()` inverts exactly
   what was pushed — re-send the old line where the pre-change config set the
   same thing differently, negate where it did not set it at all. A replay is a

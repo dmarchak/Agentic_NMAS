@@ -231,6 +231,20 @@ def merge_commands(intended_config: str, running_config: str) -> list:
     return commands
 
 
+#: Commands whose value is *everything* after the first token, so the first
+#: token alone identifies the setting. Every other command encodes part of its
+#: identity in later tokens — ``ip mtu`` and ``ip address`` are different
+#: settings that share a first word, and matching them on ``ip`` put a
+#: management address into a rollback for an MTU line.
+#:
+#: This is a structural distinction, not a positional one. A second-word rule
+#: would separate those two by accident and pick wrong on the third shape it
+#: met. When the precise key misses, there is no prior value and the answer is
+#: to negate — searching harder is what produced both this bug and the header
+#: bug.
+FREE_FORM_COMMANDS = ("description", "banner", "remark", "name")
+
+
 def _command_keys(line: str) -> tuple:
     """``(precise, broad)`` keys identifying *which setting* a line sets.
 
@@ -259,7 +273,28 @@ def _command_keys(line: str) -> tuple:
     return precise, words[0]
 
 
-def rollback_commands(pushed: list, pre_config: str) -> list:
+def landed_leaves(pushed: list, landed) -> tuple:
+    """Split a pushed program into ``(applied, rejected)`` leaves.
+
+    *landed* is the set of lines the failure-state capture saw on the device
+    that were not there before. ``None`` means the capture could not read the
+    device, in which case everything pushed is treated as applied — the
+    conservative answer when you do not know.
+    """
+    from modules.nsot import ifnames
+
+    leaves = program_leaves(pushed)
+    if landed is None:
+        return leaves, []
+
+    seen = {ifnames.canonicalise_line(l).strip() for l in landed}
+    applied = [e for e in leaves
+               if ifnames.canonicalise_line(e["line"]).strip() in seen]
+    rejected = [e for e in leaves if e not in applied]
+    return applied, rejected
+
+
+def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     """The inverse of exactly what was pushed, and nothing else.
 
     A config-mode replay of the pre-change snapshot cannot undo a change. It is
@@ -280,6 +315,19 @@ def rollback_commands(pushed: list, pre_config: str) -> list:
     bounded: every negation corresponds to a line this deploy added, verified by
     :func:`assert_rollback_provenance`. It is not "remove what the template does
     not mention" — that remains a warning, never an action.
+
+    *landed* is what the failure-state capture actually saw reach the device.
+    Undoing what was **pushed** rather than what **landed** is the same
+    derive-from-the-wrong-source error as taking intent from current state, one
+    level down: on a partial push the two differ by definition, and with
+    ``error_pattern`` live a rollback line answering a rejected push line now
+    raises — so a rejected command could take the repair down with it. Rejected
+    lines are reported as *not undone — never applied*; provenance stays total
+    because every emitted line traces to something that reached the device.
+
+    ``None`` means the capture could not read the device. Everything pushed is
+    then treated as applied, which is the conservative answer when you do not
+    know what happened.
     """
     from modules.nsot import ifnames
 
@@ -294,6 +342,8 @@ def rollback_commands(pushed: list, pre_config: str) -> list:
         hit = precise_index.get((tuple(chain), precise))
         if hit is not None:
             return hit
+        if broad not in FREE_FORM_COMMANDS:
+            return None          # no prior value: the answer is to negate
         candidates = broad_index.get((tuple(chain), broad), [])
         return candidates[0] if len(candidates) == 1 else None
 
@@ -307,7 +357,8 @@ def rollback_commands(pushed: list, pre_config: str) -> list:
     # merge_commands() asserts against, so the two cannot disagree again.
     commands, open_chain = [], []
     pending = []
-    for entry in program_leaves(pushed):
+    applied, _rejected = landed_leaves(pushed, landed)
+    for entry in applied:
         line = entry["line"]
         chain = list(entry["chain"])
         indent = len(line) - len(line.lstrip())
@@ -455,8 +506,10 @@ def assert_rollback_provenance(rollback: list, pushed: list) -> None:
         canonical = ifnames.canonicalise_line(entry["line"])
         if entry["leaf"]:
             precise, broad = _command_keys(canonical)
-            pushed_leaves.setdefault(chain, set()).update(
-                {canonical.strip(), f"key:{precise}", f"key:{broad}"})
+            keys = {canonical.strip(), f"key:{precise}"}
+            if broad in FREE_FORM_COMMANDS:
+                keys.add(f"key:{broad}")
+            pushed_leaves.setdefault(chain, set()).update(keys)
         else:
             pushed_ancestry.add((chain, canonical))
 
@@ -474,16 +527,17 @@ def assert_rollback_provenance(rollback: list, pushed: list) -> None:
         known = pushed_leaves.get(chain, set())
         stripped = canonical.strip()
         precise, broad = _command_keys(canonical)
+        broad_ok = broad in FREE_FORM_COMMANDS and f"key:{broad}" in known
 
         if stripped.startswith("no "):
             if stripped[3:].strip() in known:
                 continue
-            if f"key:{precise}" in known or f"key:{broad}" in known:
+            if f"key:{precise}" in known or broad_ok:
                 continue
             orphans.append((entry["line"], "negates nothing this deploy pushed"))
             continue
 
-        if f"key:{precise}" in known or f"key:{broad}" in known:
+        if f"key:{precise}" in known or broad_ok:
             continue
         orphans.append((entry["line"],
                         "restores a setting this deploy did not touch"))
