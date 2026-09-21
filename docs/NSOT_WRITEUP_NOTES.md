@@ -4002,3 +4002,103 @@ already a stale literal in a string.
 The general point is not about NETCONF scripts. It is that a warning which is
 identical for every device carries no information about any of them, and an
 operator is right to stop reading it.
+
+## One read serving two purposes, and two devices' goldens gone
+
+Checking whether r3/r4/r5 needed anything different before rotating them, a
+table of per-device facts came back wrong in a way that had nothing to do with
+the question:
+
+```
+host   bytes  lines  top-level  sections
+r1       134      2          1  username
+r2       134      2          1  username
+r3      9891    367         89  boot-start-marker cdp crypto hostname interface ip ipv6 ...
+r4      9899    367         89  ...
+r5      8623    325         74  ...
+```
+
+r1 and r2 are routers with interfaces, OSPF and services. Their golden configs
+were a header and a single `username` line. Git says exactly when:
+
+```
+r1  5a548fe  credential: r1 rotated to a device-generated type-9   8879B -> 134B
+r2  bf11668  credential: r2 rotated to a device-generated type-9   8718B -> 134B
+```
+
+The rotation destroyed them.
+
+### The cause
+
+`verify_new_credential()` proves the new credential by logging in and running
+`show running-config | include ^username`. That is the right command for its
+job: it proves authentication and returns the one line the type-9 hash is read
+from.
+
+`rotate()` then passed that same output to `_commit()` as the post-rotation
+capture, and `_commit()` handed it to `save_golden()`.
+
+```python
+commit = _commit(..., new_hash, check["config"], actor)
+                                ^^^^^^^^^^^^^^^^
+                                the FILTERED read
+```
+
+One read, two purposes: *prove the credential* and *record the device*. The
+first has no minimum length — a one-line answer is a complete answer. The
+second does, and nothing checked it.
+
+### Everything else worked
+
+The commit was well-formed. The trailers were right, the tag was right, the
+intent was updated correctly in the same commit, `git log --follow` still
+works, the credential is live and recorded, and the device itself is fine. A
+reviewer reading `git show 5a548fe` would see a clean, small, plausible commit
+titled "credential: r1 rotated to a device-generated type-9".
+
+Every guard in this project fired correctly on content that was completely
+wrong, because none of them are about content. `save_golden()` checks identity,
+emptiness and commit shape; the ASCII guard checks bytes; the confirm hash
+covers what is sent to the device, not what is stored afterwards. The one
+property nobody asserted was *is this plausibly a device's configuration*.
+
+> A value that is legitimate for one purpose does not announce that it is
+> wrong for another. `show running-config | include ^username` returns a
+> perfectly good string; it is only a catastrophe once something calls it a
+> golden config.
+
+### The fix, and the shape of it
+
+`capture_running_config()` is a second, unfiltered read taken on the held
+session before it closes, and it exists as a separate function so the two
+purposes cannot share a value again. `looks_like_a_full_config()` is a cheap
+plausibility gate — not a fidelity check, which belongs to the round-trip
+work, but an answer to the question nobody asked before overwriting a config.
+
+The interesting part of the fix was what to do when the capture *is* bad. The
+first version returned early without committing, which is wrong in a way worth
+recording: the commit is also what writes the credential to `devices.csv` and
+the credential store, so skipping it would leave the new password on the
+device and in the staging file and nowhere else — the exact crash window the
+staging file exists to cover. Protecting the golden by discarding the
+credential is a worse trade than the bug.
+
+So a bad capture now commits everything *except* a golden change: the existing
+golden content is passed through unchanged (so `save_golden` writes no
+difference while the staged `host_vars` keep the commit alive), or, if the
+device has no golden at all, no golden item is committed. The step is reported
+as failed and names what to do.
+
+### Why the tests did not catch it
+
+The fake device answered every read with the same short string, so a rotation
+that stored a filtered read and one that stored a whole config produced
+identical fakes. The double now has a `full_config()` that looks like a
+running config and a filtered read that does not, which is the only reason the
+new assertions can tell them apart — the same lesson as the fake router that
+had to be taught the device's actual refusal rule.
+
+And the check that found it was not a test at all. It was a table printed while
+answering a different question, with r3/r4/r5 in it as a control. Nothing in
+the r1 or r2 runs looked wrong on its own; the defect was only visible next to
+a device that had not been rotated.

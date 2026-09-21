@@ -243,6 +243,23 @@ class _Router:
                 f"Authentication to device {kwargs.get('ip')} failed")
         return _Conn(self)
 
+    def full_config(self):
+        """A plausible whole running-config, as `show running-config` gives.
+
+        The fake used to answer every read with the same short string, so a
+        rotation that stored a FILTERED read as the golden looked identical to
+        one that stored the real thing. That is how two devices' goldens were
+        replaced by a two-line fragment with every test passing.
+        """
+        body = "\n".join(f"interface GigabitEthernet0/{n}\n"
+                          f" description link {n}\n ip address 203.0.113.{n} "
+                          "255.255.255.0\n no shutdown"
+                          for n in range(1, 9))
+        return ("version 17.6\nhostname r2\n!\n"
+                f"{self.running}\n!\n{body}\n!\n"
+                "router ospf 1\n network 203.0.113.0 0.0.0.255 area 0\n!\n"
+                "line vty 0 4\n transport input ssh\n!\nend\n")
+
     def apply(self, line):
         """Apply one config line; return what the device would print.
 
@@ -320,7 +337,9 @@ class _Conn:
     def enable(self):
         return ""
 
-    def send_command(self, *a, **k):
+    def send_command(self, command="", *a, **k):
+        if "running-config" in command and "include" not in command:
+            return self.router.full_config()
         return "hostname r2\n" + self.router.running
 
     def disconnect(self):
@@ -373,7 +392,9 @@ class _Session:
                 raise RuntimeError(f"device rejected: {needle}")
         return self.router.apply(line) if self.router is not None else ""
 
-    def send_command(self, *a, **k):
+    def send_command(self, command="", *a, **k):
+        if "running-config" in command and "include" not in command:
+            return self.router.full_config() if self.router else ""
         return "clock"
 
     def disconnect(self):
@@ -428,11 +449,11 @@ def _fingerprint(state):
 
 
 class TestTheFiveStates:
-    def test_success_is_rotated_unverified_until_persistence_runs(self, wired):
+    def test_success_is_pending_persist_until_persistence_runs(self, wired):
         """The commit does not claim redeploy survival — persist() does."""
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
-        assert result["state"] == cr.ROTATED_UNVERIFIED
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
         assert "survives redeploy" not in cr.summarise(result)
         assert any(s["name"] == cr.VERIFY and s["ok"] for s in result["steps"])
 
@@ -505,7 +526,7 @@ class TestTheFiveStates:
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         assert calls["n"] == 2, "the first attempt never reached the device"
-        assert result["state"] == cr.ROTATED_UNVERIFIED
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
 
     def test_an_auth_refusal_is_not_retried(self, wired):
         """A verdict is a verdict — retrying it only delays the revert."""
@@ -610,7 +631,7 @@ class TestTheConnectionDict:
 
     def test_the_new_password_reaches_netmiko_in_plaintext(self, wired):
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
-        assert result["state"] == cr.ROTATED_UNVERIFIED
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
 
         logins = wired["router"].logins
         assert len(logins) == 1
@@ -962,7 +983,7 @@ class TestTheDeviceRefusesASecretOverAPassword:
 
     def test_a_full_rotation_now_lands_a_secret(self, wired):
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
-        assert result["state"] == cr.ROTATED_UNVERIFIED
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
         assert wired["router"].entry == "secret"
         assert wired["router"].password != ORIGINAL_PLAINTEXT
 
@@ -1480,6 +1501,248 @@ class TestTimestampsAreTimezoneAware:
         out = cr.confirm_fetch("10.255.1.12", cr.as_utc(start), attempts=1,
                                base_delay=0, sleep=lambda _s: None)
         assert out["ok"] is expect, out
+
+
+#: Wording that must never appear during a run that succeeds. Each of these
+#: was, at some point, printed at a moment when it was not true.
+FAILURE_WORDING = [
+    "FAILED", "Nothing is retrying", "fix the cause", "MAY BE LOCKED OUT",
+    "recover on the console", "serial console", "do not redeploy",
+    "REFUSED", "could not", "did not verify", "may be locked out",
+]
+
+
+class TestNoFailureWordingDuringASuccessfulRun:
+    """Fourth status message in a week that described the wrong state.
+
+    The end-of-rotation summary printed the FAILED-persistence wording —
+    "Persistence to the startup config FAILED at the persistence chain.
+    Nothing is retrying ... fix the cause" — *before persistence had started*,
+    on a run that then succeeded. An operator reading it would have stopped a
+    run that was about to work.
+
+    The cause was not the wording. `ROTATED_UNVERIFIED` meant both "not
+    attempted yet" and "attempted and failed", and one string cannot carry two
+    states — so the summary had to guess, and guessed failure. Fixing the
+    sentence would have left the next reader of that state to guess again.
+    :data:`ROTATED_PENDING_PERSIST` makes the two distinguishable, which is
+    the only reason the message can now be right.
+    """
+
+    def test_the_state_between_rotate_and_persist_says_what_happens_next(self, wired):
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        summary = cr.summarise(result)
+
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
+        assert "runs next" in summary
+        for word in FAILURE_WORDING:
+            assert word not in summary, f"{word!r} before persistence started"
+
+    def test_every_state_a_successful_run_passes_through_is_clean(self, wired):
+        """The whole happy path, not just its ends."""
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        summaries = [cr.summarise(result)]
+        result["state"] = cr.ROTATED_PERSISTED
+        summaries.append(cr.summarise(result))
+
+        for summary in summaries:
+            for word in FAILURE_WORDING:
+                assert word not in summary, f"{word!r} in {summary!r}"
+
+    def test_a_successful_persist_prints_no_failure_wording(self, monkeypatch):
+        for name, value in (("update_oxidized_row", {"ok": True}),
+                            ("reload_oxidized", {"ok": True,
+                                                 "mechanism": "rest_reload"}),
+                            ("confirm_fetch", {"ok": True, "end": "x"}),
+                            ("run_sync", {"ok": True}),
+                            ("verify_startup_file", {"ok": True, "matches": 1})):
+            monkeypatch.setattr(cr, name, (lambda v: (lambda *a, **k: v))(value))
+
+        out = cr.persist({"device": "r2", "state": cr.ROTATED_PENDING_PERSIST,
+                          "steps": []},
+                         mgmt_ip="203.0.113.12", username="admin",
+                         password="pw", hostname="r2",
+                         new_hash="9 $9$s$h", after_iso=cr.utc_now())
+        assert out["state"] == cr.ROTATED_PERSISTED
+        summary = cr.summarise(out)
+        for word in FAILURE_WORDING:
+            assert word not in summary, f"{word!r} in a successful summary"
+        assert "survives redeploy" in summary
+
+    def test_failure_wording_appears_only_after_persistence_actually_failed(
+            self, monkeypatch):
+        monkeypatch.setattr(cr, "update_oxidized_row",
+                            lambda *a, **k: {"ok": False, "error": "no sudo"})
+        out = cr.persist({"device": "r2", "state": cr.ROTATED_PENDING_PERSIST,
+                          "steps": []},
+                         mgmt_ip="203.0.113.12", username="admin",
+                         password="pw", hostname="r2",
+                         new_hash="9 $9$s$h", after_iso=cr.utc_now())
+
+        assert out["state"] == cr.ROTATED_UNVERIFIED
+        summary = cr.summarise(out)
+        assert "FAILED" in summary
+        assert "Nothing is retrying" in summary
+        assert "oxidized_row" in summary, "it must name the stage"
+
+    def test_entering_persist_is_what_makes_attempted_true(self, monkeypatch):
+        """Not reaching a stage: crossing the threshold."""
+        result = {"device": "r2", "state": cr.ROTATED_PENDING_PERSIST,
+                  "steps": []}
+        seen = {}
+
+        def _first_stage(*_a, **_k):
+            # The state must already say "attempted" by the time the FIRST
+            # stage runs — not only once one of them has failed.
+            seen["state_on_entry"] = result["state"]
+            return {"ok": False, "error": "no sudo"}
+
+        monkeypatch.setattr(cr, "update_oxidized_row", _first_stage)
+        cr.persist(result, mgmt_ip="203.0.113.12", username="admin",
+                   password="pw", hostname="r2", new_hash="9 $9$s$h",
+                   after_iso=cr.utc_now())
+        assert seen["state_on_entry"] == cr.ROTATED_UNVERIFIED
+        assert result["state"] == cr.ROTATED_UNVERIFIED
+
+    def test_rotation_succeeded_covers_every_post_rotation_state(self):
+        """"Is the device rotated" must not depend on the persistence phase."""
+        for state in (cr.ROTATED_PENDING_PERSIST, cr.ROTATED_UNVERIFIED,
+                      cr.ROTATED_PERSISTED):
+            assert cr.rotation_succeeded({"state": state}) is True
+        for state in (cr.REVERTED, cr.REVERT_FAILED, cr.REVERTED_UNPROVEN,
+                      cr.NOT_STARTED):
+            assert cr.rotation_succeeded({"state": state}) is False
+
+    def test_persistence_failed_is_not_true_before_it_is_attempted(self):
+        assert cr.persistence_failed({"state": cr.ROTATED_PENDING_PERSIST}) is False
+        assert cr.persistence_failed({"state": cr.ROTATED_UNVERIFIED}) is True
+
+    def test_every_state_has_its_own_summary(self):
+        """A state with no message falls through to "unknown state"."""
+        for state in (cr.ROTATED_PERSISTED, cr.ROTATED_PENDING_PERSIST,
+                      cr.ROTATED_UNVERIFIED, cr.REVERTED, cr.REVERT_FAILED,
+                      cr.REVERTED_UNPROVEN, cr.NOT_STARTED):
+            summary = cr.summarise({"state": state, "device": "r2"})
+            assert "unknown state" not in summary, state
+            assert summary.startswith("r2: ")
+
+
+class TestTheGoldenIsTheWholeConfigNotTheVerifyRead:
+    """The rotation replaced two devices' goldens with a two-line fragment.
+
+    `verify_new_credential()` reads ``show running-config | include ^username``
+    — the right command for proving a login and reading back one hash. Its
+    output was then passed straight to `save_golden()` as the post-rotation
+    capture, so the NSoT recorded r1 and r2 as devices with no interfaces, no
+    routing and no services:
+
+        r1  8879 bytes / 337 lines  ->  134 bytes / 2 lines
+        r2  8718 bytes / 331 lines  ->  134 bytes / 2 lines
+
+    Every guard held. The commit was well-formed, the trailers were right, the
+    tags were right, and the content was wrong — because one read was serving
+    two purposes and only one of them had a length nobody would question.
+    """
+
+    def _commits(self, wired):
+        saved = {}
+        import modules.nsot.credential_rotation as mod
+        real = mod._commit
+
+        def _spy(list_name, repo, hostname, device, username, privilege,
+                 password, new_hash, post_config, actor):
+            saved["config"] = post_config
+            return {"ok": True, "commit": "abc123"}
+
+        mod._commit = _spy
+        try:
+            result = cr.rotate("Lab", "r2",
+                               confirmed_fingerprint=_fingerprint(wired))
+        finally:
+            mod._commit = real
+        return result, saved.get("config", "")
+
+    def test_the_committed_golden_is_the_whole_config(self, wired):
+        _result, config = self._commits(wired)
+
+        assert len(config.splitlines()) > 20, "a golden is not two lines"
+        assert "interface GigabitEthernet0/1" in config
+        assert "router ospf 1" in config
+        assert config.rstrip().endswith("end")
+
+    def test_the_committed_golden_is_not_the_verify_read(self, wired):
+        """The exact substitution that happened."""
+        _result, config = self._commits(wired)
+        verify_read = cr.verify_new_credential(
+            wired["device"], "admin", wired["router"].password,
+            secret=cr.enable_secret(wired["device"]))["config"]
+
+        assert config != verify_read
+        assert len(config) > len(verify_read) * 5
+
+    def test_the_capture_is_a_separate_unfiltered_read(self, wired):
+        """`| include` in the golden read is the defect, restated."""
+        asked = []
+        session = _Session(router=wired["router"])
+        real = session.send_command
+        session.send_command = lambda c="", *a, **k: (asked.append(c)
+                                                      or real(c, *a, **k))
+        cr.capture_running_config(session)
+
+        assert asked, "it must actually read"
+        assert all("include" not in c for c in asked), asked
+        assert any(c.strip() == "show running-config" for c in asked), asked
+
+    def test_a_short_capture_leaves_the_golden_alone(self, wired, monkeypatch):
+        """The guard: never overwrite a config with a fragment."""
+        monkeypatch.setattr(cr, "capture_running_config",
+                            lambda _s: "username admin privilege 15 secret 9 $9$x")
+        _result, config = self._commits(wired)
+
+        assert config == "", (
+            f"a fragment reached the golden path: {config!r}")
+
+    def test_a_short_capture_still_records_the_credential(self, wired, monkeypatch):
+        """The rotation happened. Skipping the commit would lose the password.
+
+        Returning early on a bad capture would leave the new credential on the
+        device and in the staging file and nowhere else — which is exactly the
+        crash window the staging file exists to cover.
+        """
+        monkeypatch.setattr(cr, "capture_running_config", lambda _s: "")
+        committed = {}
+        import modules.nsot.credential_rotation as mod
+        real = mod._commit
+        mod._commit = lambda *a, **k: committed.setdefault("ran", True) and \
+            {"ok": True, "commit": "abc"} or {"ok": True, "commit": "abc"}
+        try:
+            result = cr.rotate("Lab", "r2",
+                               confirmed_fingerprint=_fingerprint(wired))
+        finally:
+            mod._commit = real
+
+        assert committed.get("ran") is True, "the credential must still be recorded"
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
+        assert result["golden_updated"] is False
+
+    def test_looks_like_a_full_config_rejects_what_got_committed(self):
+        fragment = ("! Golden config — r1 (10.255.1.11)\n"
+                    "username admin privilege 15 secret 9 $9$abc$def\n")
+        assert cr.looks_like_a_full_config(fragment) is False
+        assert cr.looks_like_a_full_config("") is False
+
+    def test_looks_like_a_full_config_accepts_a_real_one(self, wired):
+        assert cr.looks_like_a_full_config(wired["router"].full_config()) is True
+
+    def test_a_failed_capture_is_reported_as_a_step(self, wired, monkeypatch):
+        monkeypatch.setattr(cr, "capture_running_config", lambda _s: "")
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        names = [st["name"] for st in result["steps"]]
+        assert "golden_capture" in names
+        step = next(st for st in result["steps"] if st["name"] == "golden_capture")
+        assert step["ok"] is False
+        assert "LEFT UNCHANGED" in step.get("detail", "")
 
 
 class TestPersistenceNeverReverts:

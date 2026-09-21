@@ -70,6 +70,17 @@ LENGTH = 32
 #: The sixth was added after the first hardware run: a verdict about the
 #: device may only be reported when the device was actually asked.
 ROTATED_PERSISTED = "rotated_and_persisted"
+#: Rotated and committed; persistence has NOT BEEN ATTEMPTED yet. This is the
+#: state between the commit and the first persistence stage.
+#:
+#: It exists because :data:`ROTATED_UNVERIFIED` used to mean both this and
+#: "persistence ran and failed", and one string cannot carry two states. The
+#: end-of-rotation summary therefore printed the FAILURE wording — "FAILED at
+#: the persistence chain. Nothing is retrying ... fix the cause" — before
+#: persistence had started, on a run that then succeeded. Telling an operator
+#: to abandon a run that is about to work is worse than saying nothing.
+ROTATED_PENDING_PERSIST = "rotated_persistence_not_attempted"
+#: Persistence was ATTEMPTED and did not complete.
 ROTATED_UNVERIFIED = "rotated_persistence_unverified"
 REVERTED = "reverted"
 REVERT_FAILED = "revert_failed"
@@ -293,8 +304,14 @@ def operation_fingerprint(*, device_identity: str, username: str,
 
 
 def persistence_failed(result: dict) -> bool:
-    """Did the device rotate but the record of it not reach the boot path?"""
+    """Did persistence RUN and fail? Not "has it finished"."""
     return result.get("state") == ROTATED_UNVERIFIED
+
+
+def rotation_succeeded(result: dict) -> bool:
+    """Is the device rotated, whatever became of the persistence chain?"""
+    return result.get("state") in (ROTATED_PENDING_PERSIST,
+                                   ROTATED_UNVERIFIED, ROTATED_PERSISTED)
 
 
 def _failed_stage(result: dict) -> str:
@@ -312,6 +329,11 @@ def summarise(result: dict) -> str:
         ROTATED_PERSISTED: (
             f"{device}: rotated, verified, committed, and confirmed present in "
             "the startup config — survives redeploy."),
+        # Rotated, persistence not yet attempted. Says what happens NEXT,
+        # and nothing about failure — there is none to report yet.
+        ROTATED_PENDING_PERSIST: (
+            f"{device}: ROTATED, verified and committed. The new credential is "
+            "live and recorded. Persistence to the startup config runs next."),
         # No "retrying": by the time this is printed the process has exited
         # and nothing is retrying. A terminal message that describes work
         # which is not happening is worse than no message — it tells the
@@ -436,6 +458,64 @@ def open_original_session(device: dict):
     # Prove it, rather than trusting that connect() succeeding means usable.
     conn.send_command("show clock", read_timeout=30)
     return conn
+
+
+#: A config with fewer top-level lines than this is not a device's
+#: configuration, whatever produced it. A real IOS running-config here is
+#: 300+ lines; the fragment that got committed was two.
+MIN_CONFIG_LINES = 20
+
+
+def capture_running_config(session) -> str:
+    """The WHOLE running config, from the held session.
+
+    Deliberately separate from the verify's read. The verify runs
+    ``show running-config | include ^username`` — exactly right for proving a
+    login and reading back one hash, and exactly wrong as a golden config.
+    Sharing one read between "prove the credential" and "record the device"
+    is what silently replaced two devices' goldens with a two-line fragment.
+    """
+    from modules.settings_schema import get_setting
+
+    timeout = float(get_setting("nsot_config_read_timeout", 120))
+    try:
+        return session.send_command("show running-config",
+                                    read_timeout=timeout) or ""
+    except Exception as exc:                   # noqa: BLE001
+        log.error("rotate: post-rotation capture failed: %s",
+                  type(exc).__name__)
+        return ""
+
+
+def _current_golden(repo: str, hostname: str) -> str:
+    """What the golden already holds, so a bad capture can leave it alone."""
+    import os
+
+    from modules.nsot import manifest as _m
+
+    try:
+        _identity, entry = _m.find_by_name(repo, hostname)
+        path = _m.golden_path_for(repo, entry) if entry else ""
+        if path and os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+    except Exception:                          # noqa: BLE001
+        pass
+    return ""
+
+
+def looks_like_a_full_config(text: str) -> bool:
+    """Cheap guard against storing a fragment as a golden.
+
+    Not a fidelity check — a fidelity check belongs to the round-trip work.
+    This only answers "could this plausibly be a device's whole config", which
+    is the question nobody asked before overwriting one.
+    """
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    if len(lines) < MIN_CONFIG_LINES:
+        return False
+    top = [l for l in lines if l and not l.startswith((" ", "!"))]
+    return len(top) >= 10
 
 
 def push_rotation(session, commands) -> dict:
@@ -956,6 +1036,22 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
         result["repo"] = repo
         result["mgmt_ip"] = device.get("ip", "")
         result["username"] = username
+
+        # ---- the POST-ROTATION capture, for the golden -------------------
+        #
+        # Read here, on the held session, while it is still open. This is a
+        # WHOLE config and is deliberately a second read: the verify's read
+        # is `show running-config | include ^username`, which is the right
+        # command for proving a login and reading back one hash, and
+        # catastrophically the wrong thing to store as a golden.
+        #
+        # It was stored as one. r1 and r2's goldens went from ~330 lines to
+        # two — a header and a username line — and the NSoT then recorded
+        # those devices as having no interfaces, no routing and no services.
+        post_config = capture_running_config(session)
+        _step("post_capture", bool(post_config),
+              f"{len(post_config.splitlines())} lines" if post_config
+              else "read nothing back")
     finally:
         if session is not None:
             try:
@@ -964,11 +1060,35 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
                 pass
 
     # ---- from here the rotation HAS HAPPENED -----------------------------
+    # An unusable capture must NOT skip the commit. The commit is what writes
+    # the credential to devices.csv and the credential store, and returning
+    # early here would leave the new password on the device and in the staging
+    # file and nowhere else — which is the crash window this whole design
+    # exists to keep shut.
+    #
+    # So commit as normal, but feed save_golden the EXISTING golden content
+    # instead of the fragment. Identical content means save_golden writes no
+    # change to golden/, while the staged host_vars keep the commit alive, so
+    # the intent and the credential still land.
+    golden_config, capture_ok = post_config, True
+    if not looks_like_a_full_config(post_config):
+        capture_ok = False
+        # The existing golden, so save_golden sees identical content and
+        # writes no change. Empty when the device has no golden yet, which
+        # `_commit` reads as "commit the intent, write no golden at all" —
+        # a fragment stored as a whole configuration is worse than none.
+        golden_config = _current_golden(repo, hostname)
+        _step("golden_capture", False,
+              f"capture was {len(post_config.splitlines())} lines — not a "
+              "config. The golden is LEFT UNCHANGED; the credential is still "
+              "recorded. Re-capture this device's golden.")
+
     commit = _commit(list_name, repo, hostname, device, username, privilege,
-                     password, new_hash, check["config"], actor)
+                     password, new_hash, golden_config, actor)
+    result["golden_updated"] = capture_ok
     _step("commit", commit["ok"], commit.get("error", commit.get("commit", "")))
     result["commit"] = commit
-    result["state"] = ROTATED_UNVERIFIED
+    result["state"] = ROTATED_PENDING_PERSIST
     result["reason"] = "rotated and committed; persistence not yet verified"
     clear_staged(repo, hostname)
     return result
@@ -1120,11 +1240,20 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
             pass
 
         # 5. Golden + intent, one commit.
-        item = GoldenItem(hostname, post_config, device.get("ip", ""),
-                          netbox_id=device.get("_netbox_id"),
-                          device_uid=device.get("device_uid", ""))
+        #
+        # `post_config` empty means the capture was unusable AND there was no
+        # existing golden to leave in place. Committing a fragment as a
+        # device's whole configuration is worse than having no golden, so the
+        # golden is skipped and only the intent and credential land — the
+        # staged host_vars keep the commit from being empty.
+        items = []
+        if post_config:
+            items.append(GoldenItem(hostname, post_config,
+                                    device.get("ip", ""),
+                                    netbox_id=device.get("_netbox_id"),
+                                    device_uid=device.get("device_uid", "")))
         commit = save_golden(
-            list_name, [item], source="rotation", actor=actor or "operator",
+            list_name, items, source="rotation", actor=actor or "operator",
             message=f"credential: {hostname} rotated to a device-generated "
                     "type-9 secret",
             allow_new=False, extra_paths=["host_vars"])
@@ -1413,6 +1542,10 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     ``startup_file``     a grep. Pure read.
     """
     chain = []
+    # Entering the chain is what makes "attempted" true. Any stage failing
+    # now leaves ROTATED_UNVERIFIED, which is the state that means attempted
+    # and unfinished; reaching the end sets ROTATED_PERSISTED.
+    result["state"] = ROTATED_UNVERIFIED
 
     def _stage(name, outcome):
         chain.append({"name": name, **outcome})
