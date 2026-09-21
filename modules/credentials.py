@@ -339,6 +339,24 @@ def get_template_secret(name: str) -> str:
     return decrypt_value(entry.get("value", "")) if entry else ""
 
 
+def delete_template_secret(name: str) -> dict:
+    """Remove a secret from the store — e.g. one that has just been rotated.
+
+    The old plaintext is dead the moment the device stops accepting it, and a
+    dead credential kept in the store is a live copy of something nobody needs.
+    Returns ``existed`` so a caller can tell "removed" from "was not there".
+    """
+    with _lock:
+        data = _load()
+        existed = name in (data.get("template_secrets") or {})
+        if existed:
+            del data["template_secrets"][name]
+            _save(data)
+    if existed:
+        log.info("credentials: deleted template secret '%s'", name)
+    return {"ok": True, "existed": existed}
+
+
 def list_template_secrets(list_name: str = "") -> list:
     """Names and kinds only — never values. Filtered to *list_name* when given."""
     from modules.config import list_slug

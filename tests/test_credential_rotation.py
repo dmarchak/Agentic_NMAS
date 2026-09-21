@@ -167,3 +167,255 @@ class TestPersistenceFailureIsNotRotationFailure:
         import inspect
         assert cr.VERIFY == "verify_new_credential"
         assert "Only :data:`VERIFY` failing reverts" in inspect.getdoc(cr)
+
+
+class _Session:
+    """A stand-in for the held-open original session."""
+
+    def __init__(self, fail_on=None):
+        self.sent = []
+        self.fail_on = fail_on or []
+        self.disconnected = False
+
+    def send_config_set(self, commands, **kw):
+        self.sent.extend(commands)
+        for needle in self.fail_on:
+            if any(needle in c for c in commands):
+                raise RuntimeError(f"device rejected: {needle}")
+        return "ok"
+
+    def send_command(self, *a, **k):
+        return "clock"
+
+    def disconnect(self):
+        self.disconnected = True
+
+
+ORIGINAL_LINE = "username admin privilege 15 password OldPlaintext"
+POST_CONFIG = "username admin privilege 15 secret 9 $9$saltsalt$hashhash"
+
+
+@pytest.fixture
+def wired(monkeypatch, tmp_path):
+    """Everything around the device replaced; the sequence itself is real."""
+    repo = tmp_path / "config_repo"
+    (repo / ".nsot").mkdir(parents=True)
+
+    device = {"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
+              "username": "admin", "password": "enc", "secret": "enc"}
+
+    state = {"session": _Session(), "verify": [], "commit_ok": True}
+
+    monkeypatch.setattr(cr, "preflight", lambda ln, hn: {
+        "ok": True, "device": hn, "repo": str(repo), "device_row": device,
+        "mgmt_ip": device["ip"], "identity": "uid:r2", "username": "admin",
+        "privilege": "15", "current_line": ORIGINAL_LINE,
+        "capture": "hostname r2\n" + ORIGINAL_LINE, "checks": [],
+    })
+    monkeypatch.setattr(cr, "open_original_session", lambda d: state["session"])
+    monkeypatch.setattr(cr, "verify_new_credential",
+                        lambda d, u, p: state["verify"].pop(0))
+    monkeypatch.setattr(cr, "_commit",
+                        lambda *a, **k: {"ok": state["commit_ok"],
+                                         "commit": "abc123"})
+    monkeypatch.setattr("modules.device.decrypt_field", lambda v: "OldPlaintext")
+    state["repo"] = str(repo)
+    state["device"] = device
+    return state
+
+
+def _fingerprint(state):
+    import hashlib
+    pre = cr.preflight("Lab", "r2")
+    return cr.operation_fingerprint(
+        device_identity=pre["identity"], username=pre["username"],
+        privilege=pre["privilege"],
+        capture_hash=hashlib.sha256(pre["capture"].encode()).hexdigest()[:16])
+
+
+class TestTheFiveStates:
+    def test_success_is_rotated_unverified_until_persistence_runs(self, wired):
+        """The commit does not claim redeploy survival — persist() does."""
+        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.ROTATED_UNVERIFIED
+        assert "survives redeploy" not in cr.summarise(result)
+        assert any(s["name"] == cr.VERIFY and s["ok"] for s in result["steps"])
+
+    def test_a_verify_failure_reverts_and_proves_it(self, wired):
+        wired["verify"] = [
+            {"ok": False, "error": "auth failed"},     # the new credential
+            {"ok": True, "config": ORIGINAL_LINE},     # the revert proof
+        ]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.REVERTED
+        assert ORIGINAL_LINE in wired["session"].sent, "the original was re-sent"
+        assert "device is unchanged" in cr.summarise(result)
+
+    def test_a_failed_revert_says_locked_out(self, wired):
+        wired["verify"] = [
+            {"ok": False, "error": "auth failed"},
+            {"ok": False, "error": "auth failed again"},
+        ]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.REVERT_FAILED
+        assert "MAY BE LOCKED OUT" in cr.summarise(result)
+        assert "serial console" in cr.summarise(result)
+
+    def test_a_rejected_push_changes_nothing(self, wired):
+        wired["session"] = _Session(fail_on=["algorithm-type scrypt"])
+        wired["verify"] = []
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        assert result["state"] == cr.NOT_STARTED
+        assert "device is untouched" in cr.summarise(result)
+
+    def test_a_stale_confirmation_is_refused_before_the_push(self, wired):
+        wired["verify"] = []
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint="not-the-hash")
+
+        assert result["state"] == cr.NOT_STARTED
+        assert wired["session"].sent == [], "nothing may reach the device"
+        assert "re-run the plan" in result["reason"]
+
+    def test_no_original_session_means_no_push(self, wired, monkeypatch):
+        """Without a revert path, the push must not happen at all."""
+        def _boom(device):
+            raise OSError("ssh refused")
+        monkeypatch.setattr(cr, "open_original_session", _boom)
+        wired["verify"] = []
+
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.NOT_STARTED
+        assert "no way to revert" in result["reason"]
+
+
+class TestTheStagingAndTheCacheOrdering:
+    def test_the_plaintext_is_staged_before_the_push(self, wired):
+        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        names = [s["name"] for s in result["steps"]]
+        assert names.index("stage") < names.index("push")
+
+    def test_the_redaction_cache_is_invalidated_before_the_push(self, wired):
+        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        names = [s["name"] for s in result["steps"]]
+        assert names.index("invalidate_redaction_cache") < names.index("push")
+
+    def test_staging_is_cleared_on_success_and_on_revert(self, wired):
+        wired["verify"] = [{"ok": True, "config": POST_CONFIG}]
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert cr.staged_plaintext(wired["repo"], "r2") is None
+
+        wired["verify"] = [{"ok": False, "error": "x"},
+                           {"ok": True, "config": ORIGINAL_LINE}]
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert cr.staged_plaintext(wired["repo"], "r2") is None
+
+    def test_a_staged_password_round_trips(self, tmp_path):
+        repo = str(tmp_path)
+        cr.stage_plaintext(repo, "r2", "RecoverMe123")
+        assert cr.staged_plaintext(repo, "r2") == "RecoverMe123"
+
+    def test_the_stage_file_is_owner_only(self, tmp_path):
+        import os
+        path = cr.stage_plaintext(str(tmp_path), "r2", "RecoverMe123")
+        assert os.stat(path).st_mode & 0o777 == 0o600
+
+    def test_the_device_must_store_a_type_9(self, wired):
+        """A device that stored type 5 is not what was asked for."""
+        wired["verify"] = [
+            {"ok": True, "config": "username admin privilege 15 secret 5 $1$x$y"},
+            {"ok": True, "config": ORIGINAL_LINE},
+        ]
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.REVERTED
+
+
+class TestPersistenceNeverReverts:
+    BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
+                hostname="r2", new_hash="9 $9$salt$hash",
+                after_iso="2026-09-21 08:00:00")
+
+    def _result(self):
+        return {"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []}
+
+    def test_a_router_db_failure_leaves_the_device_rotated(self, monkeypatch):
+        monkeypatch.setattr(cr, "update_oxidized_row",
+                            lambda *a, **k: {"ok": False, "error": "no sudo"})
+        out = cr.persist(self._result(), **self.BASE)
+
+        assert out["state"] == cr.ROTATED_UNVERIFIED
+        assert out["persistence"][0]["ok"] is False
+        assert "ROTATED and committed" in cr.summarise(out)
+
+    def test_a_fetch_failure_leaves_the_device_rotated(self, monkeypatch):
+        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "confirm_fetch",
+                            lambda *a, **k: {"ok": False, "error": "timeout"})
+        out = cr.persist(self._result(), **self.BASE)
+
+        assert out["state"] == cr.ROTATED_UNVERIFIED
+        assert [s["name"] for s in out["persistence"]] == \
+            ["oxidized_row", "fetch_confirmed"]
+
+    def test_a_startup_file_miss_leaves_the_device_rotated(self, monkeypatch):
+        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "confirm_fetch", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
+        monkeypatch.setattr(cr, "verify_startup_file",
+                            lambda *a, **k: {"ok": False, "matches": 0})
+        out = cr.persist(self._result(), **self.BASE)
+
+        assert out["state"] == cr.ROTATED_UNVERIFIED
+        assert "redeploy would restore the old password" in cr.summarise(out)
+
+    def test_the_full_chain_reaches_persisted(self, monkeypatch):
+        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "confirm_fetch", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
+        monkeypatch.setattr(cr, "verify_startup_file",
+                            lambda *a, **k: {"ok": True, "matches": 1})
+        out = cr.persist(self._result(), **self.BASE)
+
+        assert out["state"] == cr.ROTATED_PERSISTED
+        assert "survives redeploy" in cr.summarise(out)
+
+    def test_persist_never_touches_the_device(self):
+        """Structural: nothing in the chain can send a command."""
+        import inspect
+        source = inspect.getsource(cr.persist)
+        for forbidden in ("push_rotation", "_revert", "open_original_session",
+                          "send_config_set"):
+            assert forbidden not in source, forbidden
+
+    def test_confirm_fetch_requires_success_AFTER_the_rotation(self, monkeypatch):
+        """A stale success is not a fetch of the new config."""
+        import json
+
+        class _Resp:
+            def __init__(self, payload):
+                self._p = json.dumps(payload).encode()
+            def read(self):
+                return self._p
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+
+        stale = [{"name": "203.0.113.12",
+                  "last": {"status": "success", "end": "2026-09-21 07:00:00 UTC"}}]
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _Resp(stale))
+        monkeypatch.setattr(cr, "_setting_rest", None, raising=False)
+
+        out = cr.confirm_fetch("203.0.113.12", "2026-09-21 08:00:00",
+                               attempts=2, base_delay=0, rest="http://x",
+                               sleep=lambda s: None)
+        assert out["ok"] is False
+        assert "no successful fetch after the rotation" in out["error"]

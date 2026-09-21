@@ -172,6 +172,17 @@ DEFAULTS: dict = {
     #: than a flag that opens all of them at once.
     "service_allowed_operations": [],
 
+    # ── Config persistence (Oxidized → containerlab startup files) ──────────
+    # The pipeline lives outside this repo; see docs/ARCHITECTURE.md. These are
+    # settings rather than constants because they are deployment facts, and
+    # because modules/nsot/ may not contain IP literals — a rule that caught
+    # them here.
+    "oxidized_rest_url":    "",          # e.g. http://127.0.0.1:8888
+    "oxidized_router_db":   "/opt/oxidized/router.db",
+    "clab_sync_script":     "",          # the flock wrapper
+    "clab_host":            "",          # user@host of the containerlab VM
+    "clab_configs_dir":     "labs/lab/configs",
+
     # ── S3-compatible archive ───────────────────────────────────────────────
     "s3_endpoint":   "",
     "s3_bucket":     "",
@@ -354,6 +365,12 @@ SCHEMA: dict = {
         "require_person_for_approve": _BOOL,
         "require_person_for_confirm": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
+
+        "oxidized_rest_url": _STR,
+        "oxidized_router_db": _STR,
+        "clab_sync_script": _STR,
+        "clab_host": _STR,
+        "clab_configs_dir": _STR,
 
         "s3_endpoint": _STR,
         "s3_bucket": _STR,
