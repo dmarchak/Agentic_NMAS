@@ -3195,3 +3195,61 @@ missing `no shutdown` — passed on a **simulated truncation at the first
 `router` block**, on all nine devices. Each check asked "is what I am looking
 at well-formed?" and none asked "is it all here?". Counting blocks in and
 blocks out refused all nine.
+
+---
+
+## Where the real security boundary turned out to be
+
+Demonstrating out-of-band recovery for the credential rotation produced a
+finding about the lab that had nothing to do with credentials.
+
+The recovery path is the qemu serial console inside each container:
+
+```
+ssh dmarchak@10.0.0.210
+docker exec -it clab-rcn-lab1-r2 telnet localhost 5000
+```
+
+It works. It reaches `r2>` with **no authentication at all** — no username, no
+password, no prompt. And because none of these devices has an `enable secret`,
+typing `enable` at that prompt yields **privilege 15**.
+
+So the device's `username admin privilege 15 …` line — the thing this whole
+item exists to strengthen — protects the *SSH* path and nothing else. Anyone
+who can reach the serial console already has full configuration access to
+every device in the lab, before and after any rotation.
+
+### What actually guards it
+
+```
+SSH key to 10.0.0.210  →  membership of the `docker` group  →  serial console
+                                                            →  privilege 15
+```
+
+Two OS-level controls, neither of which is a network credential. Rotating
+router passwords from cleartext to scrypt is still worth doing — it removes
+five live secrets from git history — but it should be described accurately:
+**it hardens one path into the devices, not the devices.**
+
+### The general shape
+
+> A credential is only a boundary where it is the *only* way in. Before
+> hardening one, enumerate the others — otherwise the work produces a real
+> improvement and a false sense of how much.
+
+This is the same error as reporting reachability from inside the same /64: a
+test that exercises one path and a conclusion drawn about all of them. It is
+easy to make because the path you are working on is the one you are looking at.
+
+### The fix, and why it belongs to Part 2
+
+Configuring `enable secret` closes it: the console would still reach `r2>`
+unauthenticated, but privilege 15 would need a secret. That makes the console a
+read-only diagnostic rather than an unauthenticated root shell — and it creates
+a second credential per device, which then becomes a **Part 2 rotation target**
+with exactly the same machinery (`set_and_capture_hash`).
+
+Worth noting the ordering trap: adding `enable secret` *before* the console is
+proven as a recovery path would remove the recovery path for the rotation that
+adds it. The console has to stay open until the rotation work no longer depends
+on it.
