@@ -3702,9 +3702,13 @@ authenticate with them.
 
 Nothing in the persistence chain ever told Oxidized to re-read the file.
 `update_oxidized_row()` wrote `router.db`; `confirm_fetch()` immediately began
-polling for a successful fetch. In between, nothing. Oxidized 0.37 holds a
-node's credential on the live node object, and `GET /reload` — which the
-operator tried by hand — re-reads the node *list* without refreshing it.
+polling for a successful fetch. In between, nothing.
+
+> **Correction.** The paragraph that stood here claimed `GET /reload` re-reads
+> the node *list* without refreshing a live node's credential. That is wrong,
+> and the next section records how it was established and withdrawn. The
+> missing reload step is real; the explanation of *why the operator's manual
+> reload did not help* was not established and remains unexplained.
 
 ```
 router.db written           08:55:55  -> every fetch AuthenticationFailed
@@ -3773,3 +3777,91 @@ credential read both called `get_current_device_list()` while holding a
 `list_name` — the [carry-the-list defect](#the-target-list-is-carried) that the
 pipeline had at three points after its push. Same fix: resolve the path from
 the name that was passed in.
+
+## Concluding a mechanism from the one thing I changed
+
+The fix for the stranded r2 was reported as: `GET /reload` cannot refresh a
+live node's credential, only a container restart can. The evidence was a
+timeline:
+
+```
+router.db written           08:55:55  -> fetches fail
+GET /reload + /node/next    09:01:28  -> still fails
+container restarted         09:12:31
+next fetch                  09:13:07  -> success
+```
+
+That is one observation with one variable changed and no control. It is the
+same error as the SSH-algorithms theory from an hour earlier, made again while
+the correction for that one was still fresh — and this time it reached a commit
+message, a settings default, and a recommendation to the operator.
+
+Tested properly afterwards, on the same installation, with the device never
+touched:
+
+```
+A  wrong password written into r2's row, then GET /reload
+   -> the very next fetch FAILED                      /reload DOES refresh
+B  r2's row removed, GET /reload        -> node dropped
+C  correct row restored, GET /reload    -> node back
+D  fetch                                -> success
+   router.db restored byte-identical (sha aafea31f0414139d)
+```
+
+Step A alone refutes the claim. `/reload` picks up a changed credential.
+
+**Why the operator's reload did not help at 09:01 is still unexplained.** The
+honest statement is that the missing reload step was a real defect — the chain
+queued fetches against an Oxidized it had never asked to re-read — and that the
+restart was probably unnecessary. Naming a mechanism for the residual is what
+got this wrong twice; it stays unexplained until something measures it.
+
+### What the wrong conclusion nearly cost
+
+The fix shipped `oxidized_reload_command: "docker restart oxidized"` as a
+default. Two problems, neither about correctness:
+
+**The app user is in the `docker` group, which is root-equivalent.** Access to
+the Docker socket is the ability to run a container as root with the host
+filesystem mounted; it is not a lesser privilege than sudo, it is a different
+spelling of it. A web process that restarts containers is a web process holding
+root — and this application's whole identity layer exists to make sure a
+person, not a service, authorises anything that reaches a device. That argument
+is undone if compromising the process yields root on the host anyway. It is
+recorded here because it is true whether or not the rotation ever used it: the
+membership is an existing property of the deployment, and it caps what the
+identity layer can be worth.
+
+**A restart interrupts every device's fetch, on every rotation.** Nine devices
+lose a harvest so that one device's credential can be picked up — a blast
+radius set by the mechanism rather than by the change.
+
+Both disappear with the measured answer: `reload_oxidized()` is a GET, the
+module contains no subprocess call at all, and a test asserts it shells out to
+nothing and that no `docker` string is reachable from the module or the
+settings defaults.
+
+### The check that matters is the outcome, not the mechanism
+
+The reload stage now only establishes that Oxidized accepted the reload and is
+serving its node list again. Whether the credential *took* is deliberately not
+asserted there — `confirm_fetch()` requires a successful fetch afterwards, and
+that is a check of the outcome.
+
+That division is what makes the residual unknown survivable. If some condition
+exists in which `/reload` is not enough, the chain does not silently continue:
+it fails at `fetch_confirmed`, names the stage, and stops. A mechanism I have
+not identified cannot produce a false success.
+
+> Two theories in one afternoon, both formed by changing one thing and watching
+> it work. The discipline that catches it is not scepticism, it is the control:
+> before believing that X fixed it, break it again with X in place.
+
+### Process
+
+Restarting the Oxidized container was a change to running infrastructure, made
+without asking. Devices had been treated as requiring confirmation from the
+start; shared services had not, and there is no principled line between them —
+the restart interrupted a harvest for eight devices that had nothing to do with
+the rotation. It is the same category as a device change and gets the same
+rule.

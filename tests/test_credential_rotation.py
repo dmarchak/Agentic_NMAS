@@ -1142,35 +1142,73 @@ class TestTheChainMakesOxidizedRereadRouterDb:
         assert out["state"] == cr.ROTATED_UNVERIFIED
         assert [s["name"] for s in out["persistence"]][-1] == "oxidized_reload"
 
-    def test_reload_without_a_command_reports_itself_unverified(self, monkeypatch):
-        """The /reload-only path is the one measured NOT to work."""
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: {"oxidized_rest_url": "http://x",
-                                               "oxidized_reload_command": ""}.get(k, d))
-        import urllib.request
-        monkeypatch.setattr(urllib.request, "urlopen",
-                            lambda *a, **k: (_ for _ in ()).throw(OSError("no")))
+    def test_the_reload_never_runs_a_subprocess(self, monkeypatch):
+        """The app must not drive Docker. Structural, not a promise.
 
-        out = cr.reload_oxidized()
-        assert out["verified"] is False
-        assert out["mechanism"] == "rest_reload_only"
-
-    def test_a_restart_is_not_ok_until_the_api_answers(self, monkeypatch):
-        """A queued fetch against a restarting Oxidized goes nowhere."""
+        The app user is in the `docker` group, which is root-equivalent, so a
+        container restart issued by the web process would hand root-equivalent
+        capability to anything that compromised it — and it would interrupt
+        every other device's fetch on every rotation. Measured: GET /reload
+        refreshes a credential on its own, so none of that is needed.
+        """
         import subprocess
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {"oxidized_rest_url": "http://x"}.get(k, d))
+
+        def _forbidden(*a, **k):
+            raise AssertionError("reload_oxidized must not shell out")
+
+        monkeypatch.setattr(subprocess, "run", _forbidden)
+        monkeypatch.setattr(subprocess, "Popen", _forbidden)
+
+        import urllib.request
+        monkeypatch.setattr(urllib.request, "urlopen",
+                            lambda *a, **k: type("R", (), {"read": lambda s: b"[]"})())
+        assert cr.reload_oxidized()["ok"] is True
+
+    def test_no_docker_command_is_reachable_from_the_module(self):
+        """A default of `docker restart oxidized` used to live in settings."""
+        import ast
+        import io as _io
+
+        tree = ast.parse(_io.open("modules/nsot/credential_rotation.py",
+                                  encoding="utf-8").read())
+        literals = [n.value for n in ast.walk(tree)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        code_strings = [v for v in literals if "\n" not in v and len(v) < 200]
+        assert not [v for v in code_strings if "docker" in v.lower()], (
+            "a docker command is reachable as a string literal again")
+
+        from modules.settings_schema import DEFAULTS
+        assert "docker" not in DEFAULTS.get("oxidized_reload_command", "").lower()
+
+    def test_the_reload_is_not_ok_until_the_node_list_is_served(self, monkeypatch):
+        """A fetch queued against a reloading Oxidized goes nowhere."""
         import urllib.request
         monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: {"oxidized_rest_url": "http://x",
-                                               "oxidized_reload_command": "true"}.get(k, d))
-        monkeypatch.setattr(subprocess, "run",
-                            lambda *a, **k: type("P", (), {"returncode": 0,
-                                                           "stdout": "", "stderr": ""})())
-        monkeypatch.setattr(urllib.request, "urlopen",
-                            lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
+                            lambda k, d=None: {"oxidized_rest_url": "http://x"}.get(k, d))
+        calls = {"n": 0}
 
+        def _urlopen(url, **k):
+            calls["n"] += 1
+            if "nodes.json" in str(url):
+                raise OSError("still reloading")
+            return type("R", (), {"read": lambda s: b"ok"})()
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
         out = cr.reload_oxidized(timeout=0.01, sleep=lambda _s: None)
         assert out["ok"] is False
-        assert "did not answer" in out["error"]
+        assert "node list not served" in out["error"]
+
+    def test_a_failed_reload_call_is_reported_not_swallowed(self, monkeypatch):
+        import urllib.request
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {"oxidized_rest_url": "http://x"}.get(k, d))
+        monkeypatch.setattr(urllib.request, "urlopen",
+                            lambda *a, **k: (_ for _ in ()).throw(OSError("refused")))
+        out = cr.reload_oxidized()
+        assert out["ok"] is False
+        assert "/reload failed" in out["error"]
 
 
 class TestPersistenceNeverReverts:

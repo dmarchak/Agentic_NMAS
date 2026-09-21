@@ -1117,89 +1117,66 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
     return body
 
 
-def reload_oxidized(*, rest: str = "", reload_command: str = "",
-                    timeout: float = 120.0, sleep=None) -> dict:
-    """Make Oxidized actually re-read router.db. **Measured, not assumed.**
+def reload_oxidized(*, rest: str = "", timeout: float = 30.0, sleep=None,
+                    **_ignored) -> dict:
+    """Tell Oxidized to re-read router.db. **GET /reload, and nothing else.**
 
-    Writing the file is not enough, and the chain used to do nothing else —
-    ``update_oxidized_row`` wrote router.db and ``confirm_fetch`` immediately
-    queued a fetch against an Oxidized that still held the OLD credential in
-    memory. So the persistence chain could never have succeeded on a rotated
-    device, for the same reason the one-line rotation command could never have
-    worked: the step was reasoned rather than run.
+    Writing the file is not enough on its own: the chain used to do nothing
+    between ``update_oxidized_row`` and ``confirm_fetch``, so a fetch could be
+    queued against a node list Oxidized had not re-read.
 
-    Measured on Oxidized 0.37.0, r2, with the correct credential already in
-    router.db::
+    **What this deliberately does NOT do is restart the container.** An
+    earlier version defaulted to ``docker restart oxidized`` on the conclusion
+    that ``/reload`` could not refresh a live node's credential. That
+    conclusion was drawn from a single incident in which a restart was the
+    only thing varied, and it is wrong. Measured directly afterwards, on the
+    same installation:
 
-        router.db written 08:55:55   -> every fetch AuthenticationFailed
-        GET /reload + /node/next     -> still AuthenticationFailed at 09:01:28
-        container restarted 09:12:31 -> success 09:13:07
+        wrong password written to r2's row, then GET /reload
+          -> the very next fetch FAILED
 
-    Net::SSH from inside the container authenticated with that same row
-    throughout, under Oxidized's exact option set, so the credential was never
-    the problem. `/reload` re-reads the node LIST; it does not refresh the
-    credential a live node object is holding.
+    ``/reload`` picked the change up. It refreshes credentials.
 
-    An empty *reload_command* falls back to `/reload` alone and says so — the
-    result carries ``verified: False``, because that path is the one observed
-    NOT to work and nothing here should imply otherwise.
+    Restarting would also have been the wrong mechanism even if it worked:
+    the app runs as a user in the ``docker`` group, so driving the Docker
+    socket is root-equivalent access exercised by a web process, and a
+    restart interrupts every other device's fetch on every rotation.
+
+    This stage only establishes that Oxidized accepted the reload and is
+    serving its node list again. Whether the credential actually took is not
+    asserted here — :func:`confirm_fetch` requires a SUCCESSFUL fetch
+    afterwards, which is the real check, and it is a check of the outcome
+    rather than of the mechanism.
     """
-    import subprocess
     import time
     import urllib.request
 
     from modules.settings_schema import get_setting
 
     rest = rest or get_setting("oxidized_rest_url", "")
-    reload_command = reload_command or get_setting("oxidized_reload_command", "")
     sleep = sleep or time.sleep
-    out = {"ok": False, "mechanism": "", "verified": False}
-
-    if rest:
-        try:                                   # best effort, cheap, harmless
-            urllib.request.urlopen(f"{rest}/reload", timeout=10).read()
-            out["reload_called"] = True
-        except Exception as exc:               # noqa: BLE001
-            out["reload_called"] = f"{type(exc).__name__}"
-
-    if not reload_command:
-        out["mechanism"] = "rest_reload_only"
-        out["ok"] = bool(rest)
-        out["error"] = ("oxidized_reload_command is not set, so only "
-                        "GET /reload was called — which is the path measured "
-                        "NOT to refresh a rotated credential")
-        return out
+    if not rest:
+        return {"ok": False, "mechanism": "rest_reload",
+                "error": "oxidized_rest_url is not configured"}
 
     try:
-        proc = subprocess.run(reload_command, shell=True, capture_output=True,
-                              text=True, timeout=60)
+        urllib.request.urlopen(f"{rest}/reload", timeout=15).read()
     except Exception as exc:                   # noqa: BLE001
-        out["mechanism"] = "restart"
-        out["error"] = f"{type(exc).__name__}: {exc}"[:160]
-        return out
-    if proc.returncode != 0:
-        out["mechanism"] = "restart"
-        out["error"] = (proc.stderr or proc.stdout or
-                        f"exit {proc.returncode}")[:160]
-        return out
+        return {"ok": False, "mechanism": "rest_reload",
+                "error": f"GET {rest}/reload failed: {type(exc).__name__}"}
 
-    # Up again? Until the REST API answers, a queued fetch goes nowhere.
-    out["mechanism"] = "restart"
-    if not rest:
-        out["ok"] = True
-        out["error"] = "no oxidized_rest_url, so readiness was not confirmed"
-        return out
+    # Serving again? A fetch queued against a reloading Oxidized goes nowhere.
     deadline = time.time() + timeout
-    while time.time() < deadline:
+    while True:
         try:
             urllib.request.urlopen(f"{rest}/nodes.json", timeout=5).read()
-            out["ok"] = True
-            out["verified"] = True
-            return out
+            return {"ok": True, "mechanism": "rest_reload"}
         except Exception:                      # noqa: BLE001
+            if time.time() >= deadline:
+                return {"ok": False, "mechanism": "rest_reload",
+                        "error": f"node list not served within {timeout}s "
+                                 f"of the reload"}
             sleep(2)
-    out["error"] = f"Oxidized did not answer {rest}/nodes.json within {timeout}s"
-    return out
 
 
 def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
@@ -1320,8 +1297,7 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
                                          if k in kw})):
         return result
     if not _stage("oxidized_reload",
-                  reload_oxidized(**{k: kw[k] for k in ("rest", "reload_command",
-                                                        "sleep")
+                  reload_oxidized(**{k: kw[k] for k in ("rest", "sleep")
                                      if k in kw})):
         return result
     if not _stage("fetch_confirmed",

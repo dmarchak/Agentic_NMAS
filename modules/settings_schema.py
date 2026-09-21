@@ -179,11 +179,13 @@ DEFAULTS: dict = {
     # them here.
     "oxidized_rest_url":    "",          # e.g. http://127.0.0.1:8888
     "oxidized_router_db":   "/opt/oxidized/router.db",
-    # Writing router.db is not enough: measured on Oxidized 0.37.0, a node's
-    # credential is held in memory and GET /reload does not refresh it. A
-    # restart does. Empty means "only call /reload", which is the unverified
-    # path and is reported as such.
-    "oxidized_reload_command": "docker restart oxidized",
+    # DEPRECATED, and deliberately empty. An earlier version defaulted this
+    # to `docker restart oxidized`, on the mistaken conclusion that GET
+    # /reload could not refresh a credential. Measured afterwards: it can.
+    # The key is kept because settings keys are never deleted, and it is no
+    # longer consulted — a container restart from the app would mean the web
+    # process exercising docker-group access, which is root-equivalent.
+    "oxidized_reload_command": "",
     "clab_sync_script":     "",          # the flock wrapper
     "clab_host":            "",          # user@host of the containerlab VM
     "clab_configs_dir":     "labs/lab/configs",
