@@ -240,10 +240,12 @@ tools refuse to act on it, and its pooled SSH session is closed.
   `save_golden` or via "Sync device names to repo". Both names resolve while
   pending.
 - **Re-apply goes through the confirmed deploy path**, not the approval queue.
-  `build_targets()` reads `golden/<device>.cfg` at the ref and **nothing else**
-  — never `templates/`, `bindings.yml` or `.approvals.json`, because templates
-  are code and rolling them back to restore a network would silently revert
-  template fixes. `RestoreTarget` duck-types what `plan_batch()` reads, so the
+  Every read at a ref goes through `repo.RefSource`, whose allowlist is a
+  **constructor argument** — restore declares `("golden/",)`, so asking for
+  `templates/`, `bindings.yml` or `.approvals.json` raises `ScopeRefused`.
+  Templates are code; rolling them back to restore a *network* would silently
+  revert template fixes. A second restore path inherits the bound by declaring
+  its own scope: item 2's intent restore will say `("golden/", "host_vars/")`. `RestoreTarget` duck-types what `plan_batch()` reads, so the
   confirm hash, ASCII guard, provenance, `error_pattern`, failure capture,
   circuit breaker, staging and single golden commit all apply unchanged.
 - **It is additive, and labelled as such.** The button says *Re-apply this

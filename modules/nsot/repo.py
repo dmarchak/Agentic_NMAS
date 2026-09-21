@@ -689,6 +689,78 @@ def golden_history(repo: str, hostname: str, limit: int = 50) -> list:
     return entries
 
 
+class ScopeRefused(PermissionError):
+    """A read at a ref asked for a path the caller did not declare."""
+
+
+class RefSource:
+    """Read-only access to a declared subset of the repo at a ref.
+
+    The scope rule for restore was a sentence in a docstring and a test that
+    inspected one function's AST. That guards ``build_targets``; it does not
+    guard the *capability*. A second restore path — item 2's intent restore is
+    already scheduled — would read whatever it liked and inherit nothing.
+
+    So the allowlist is a **constructor argument**. Widening it is a visible,
+    deliberate act at the call site:
+
+        RefSource(repo, ref)                          # golden/ only
+        RefSource(repo, ref, allow=("golden/", "host_vars/"))
+
+    Restore takes the first. It must never read ``templates/``,
+    ``bindings.yml`` or ``.approvals.json``: templates are code, and rolling
+    them back to restore a *network* would silently revert template fixes.
+    Item 2 will take the second, and saying so at the call site is the point.
+
+    Same move as ``resolve_identity`` losing the ability to mint and
+    ``_command_keys`` refusing a raw line: turn "this function is careful" into
+    "this capability is bounded".
+    """
+
+    def __init__(self, repo: str, ref: str, allow: tuple = ("golden/",)):
+        self.repo = repo
+        self.ref = ref
+        self.allow = tuple(allow)
+
+    def _check(self, rel_path: str) -> str:
+        rel = (rel_path or "").lstrip("./")
+        if ".." in rel.split("/"):
+            raise ScopeRefused(f"{rel_path!r} escapes the repository")
+        if not any(rel.startswith(prefix) for prefix in self.allow):
+            raise ScopeRefused(
+                f"{rel_path!r} is outside this source's declared scope "
+                f"{self.allow}. Widen `allow` at the call site if the read is "
+                "intended — restore must never read templates, bindings or "
+                "approvals, because templates are code.")
+        return rel
+
+    def read(self, rel_path: str):
+        """File content at the ref, or ``None`` if absent. Refuses out of scope."""
+        rel = self._check(rel_path)
+        rc, out, _ = git(self.repo, "show", f"{self.ref}:{rel}")
+        return out if rc == 0 else None
+
+    def listdir(self, rel_dir: str) -> list:
+        """Names in a directory at the ref. Refuses out of scope."""
+        rel = self._check(rel_dir.rstrip("/") + "/")
+        rc, out, _ = git(self.repo, "ls-tree", "--name-only",
+                         f"{self.ref}:{rel.rstrip('/')}")
+        if rc != 0 or not out:
+            return []
+        return out.splitlines()
+
+    # ── the two reads restore actually makes ───────────────────────────────
+
+    def devices(self) -> list:
+        """Device names with a golden config at this ref."""
+        return [os.path.splitext(n)[0] for n in self.listdir("golden")
+                if n.endswith(".cfg")]
+
+    def golden(self, hostname: str):
+        """One device's golden config at this ref."""
+        return self.read(f"golden/{_safe_name(hostname)}.cfg")
+
+
 def golden_at(repo: str, hostname: str, ref: str):
     """The golden config for *hostname* as of *ref*."""
     rel = f"golden/{_safe_name(hostname)}.cfg"

@@ -83,11 +83,16 @@ def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
 def build_targets(list_name: str, ref: str, devices: list = None) -> tuple:
     """``(targets, skipped)`` for a re-apply of *ref*. Reads only.
 
-    **Scope: ``golden/`` at the ref and nothing else.** Never ``templates/``,
-    ``bindings.yml`` or ``.approvals.json`` — templates are code, and rolling
-    them back to restore a network would silently revert template fixes,
-    including this week's. Enforced by only ever asking for
-    ``golden/<device>.cfg``, and asserted by test.
+    **Scope is declared, not remembered.** Every read goes through a
+    ``RefSource`` constructed with ``golden/`` only, so asking for
+    ``templates/``, ``bindings.yml`` or ``.approvals.json`` raises rather than
+    returning content. Templates are code; rolling them back to restore a
+    *network* would silently revert template fixes, including this week's.
+
+    A future second restore path inherits the bound by constructing its own
+    source and saying what it needs — item 2's intent restore will declare
+    ``("golden/", "host_vars/")``, and declaring it at the call site is the
+    point.
     """
     import os as _os
 
@@ -97,7 +102,8 @@ def build_targets(list_name: str, ref: str, devices: list = None) -> tuple:
     from modules.nsot.platform import platform_for_device
 
     repo = _repo_for(list_name)
-    at_ref = _repo.devices_at(repo, ref)
+    source = _repo.RefSource(repo, ref)          # golden/ only, by construction
+    at_ref = source.devices()
     if not at_ref:
         return [], [{"hostname": "", "reason": f"no golden configs at '{ref}'"}]
 
@@ -121,7 +127,7 @@ def build_targets(list_name: str, ref: str, devices: list = None) -> tuple:
                             "detail": stale_message(mgmt_ip, list_name)})
             continue
 
-        stored = _repo.golden_at(repo, hostname, ref)
+        stored = source.golden(hostname)
         if stored is None:
             skipped.append({"hostname": hostname, "ip": mgmt_ip,
                             "reason": f"no golden config at {ref}"})

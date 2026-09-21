@@ -121,31 +121,53 @@ class TestRestoreGoesThroughTheConfirmedPath:
         from modules.nsot import restore
         assert not hasattr(restore, "execute_restore")
 
-    def test_build_targets_reads_only_golden_at_the_ref(self, lab):
-        """Scope: never templates, bindings or approvals.
+    def test_build_targets_reads_through_a_scoped_source(self, lab):
+        """The bound is the object, not the author's care.
 
-        Templates are code. Rolling them back to restore a network would
-        silently revert template fixes — including the ones made this week.
+        A docstring and an AST scan guard one function. A second restore path
+        would read whatever it liked and inherit nothing — and item 2's intent
+        restore is already scheduled.
         """
-        import ast
         import inspect
-        import textwrap
-
         from modules.nsot import restore
 
-        # Code only: the docstring names what must not be touched, and would
-        # otherwise trip its own guard.
-        tree = ast.parse(textwrap.dedent(inspect.getsource(restore.build_targets)))
-        function = tree.body[0]
-        if (function.body and isinstance(function.body[0], ast.Expr)
-                and isinstance(function.body[0].value, ast.Constant)):
-            function.body = function.body[1:]
-        code = ast.unparse(function)
+        source = inspect.getsource(restore.build_targets)
+        assert "RefSource(" in source
+        assert "golden_at(" not in source, "bypasses the scoped source"
+        assert "devices_at(" not in source, "bypasses the scoped source"
 
-        for forbidden in ("templates/", "bindings.yml", ".approvals.json",
-                          "templates_repo", "approval"):
-            assert forbidden not in code, f"restore must not touch {forbidden}"
-        assert "golden_at" in code
+    def test_the_scoped_source_refuses_tooling_paths(self):
+        from modules.nsot.repo import RefSource, ScopeRefused
+
+        src = RefSource("/nonexistent", "HEAD")
+        for path in ("templates/cisco_ios/base.j2", "templates/bindings.yml",
+                     "templates/.approvals.json", ".nsot/manifest.json"):
+            with pytest.raises(ScopeRefused):
+                src.read(path)
+
+    def test_it_refuses_paths_that_escape_the_repo(self):
+        from modules.nsot.repo import RefSource, ScopeRefused
+        with pytest.raises(ScopeRefused):
+            RefSource("/nonexistent", "HEAD").read("../../etc/passwd")
+
+    def test_the_refusal_says_how_to_widen_it_deliberately(self):
+        from modules.nsot.repo import RefSource, ScopeRefused
+        with pytest.raises(ScopeRefused) as exc:
+            RefSource("/nonexistent", "HEAD").read("host_vars/s4.yml")
+        assert "Widen `allow` at the call site" in str(exc.value)
+
+    def test_a_wider_scope_is_declared_at_construction(self):
+        """What item 2 will do, and it has to say so."""
+        from modules.nsot.repo import RefSource
+        src = RefSource("/nonexistent", "HEAD", allow=("golden/", "host_vars/"))
+        assert src._check("host_vars/s4.yml") == "host_vars/s4.yml"
+        assert src._check("golden/s4.cfg") == "golden/s4.cfg"
+
+    def test_widening_does_not_admit_templates(self):
+        from modules.nsot.repo import RefSource, ScopeRefused
+        src = RefSource("/nonexistent", "HEAD", allow=("golden/", "host_vars/"))
+        with pytest.raises(ScopeRefused):
+            src.read("templates/cisco_ios/base.j2")
 
     def test_queued_restore_items_are_rejected_not_executed(self, monkeypatch):
         from modules.nsot import restore
