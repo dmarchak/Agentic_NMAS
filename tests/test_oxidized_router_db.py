@@ -197,3 +197,127 @@ class TestSafetyOfTheWriteItself:
         assert code == 1
         assert "exactly one changed row" in body["error"]
         assert rows_of(db) == first
+
+
+class TestTheShebangIsPartOfTheSecurity:
+    """A root-run script must not let its caller choose the interpreter."""
+
+    def test_it_is_exactly_the_isolated_absolute_interpreter(self):
+        first = open(HELPER, encoding="utf-8").readline().rstrip("\n")
+        assert first == "#!/usr/bin/python3 -I", repr(first)
+
+    def test_it_does_not_use_env(self):
+        """`env` resolves through PATH, which the caller controls."""
+        first = open(HELPER, encoding="utf-8").readline()
+        assert "/usr/bin/env" not in first
+
+    def test_isolated_mode_is_requested(self):
+        """-I ignores PYTHON* and the CALLING user's site-packages.
+
+        sudo's env_reset and secure_path give the same properties — but they
+        are defaults in a file someone else maintains, and a script that is
+        safe only while a sudoers option stays set is safe by coincidence.
+        """
+        assert open(HELPER, encoding="utf-8").readline().rstrip().endswith(" -I")
+
+    def test_the_script_still_runs_under_that_interpreter(self, db):
+        """The shebang has to be correct, not merely well-intentioned."""
+        import stat
+        os.chmod(HELPER, os.stat(HELPER).st_mode | stat.S_IXUSR)
+        proc = subprocess.run(
+            [HELPER, "--file", str(db), "--ip", "10.255.1.12", "--no-backup"],
+            input=json.dumps({"username": "admin", "password": "NewPassword2"}),
+            capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+        assert json.loads(proc.stdout)["ok"] is True
+
+    def test_isolated_mode_actually_ignores_pythonpath(self, db, tmp_path):
+        """Prove -I, rather than trusting the flag is spelled right.
+
+        A module planted on PYTHONPATH that would break the script must have
+        no effect.
+        """
+        evil = tmp_path / "evil"
+        evil.mkdir()
+        (evil / "json.py").write_text("raise RuntimeError('hijacked')\n",
+                                      encoding="utf-8")
+        proc = subprocess.run(
+            [HELPER, "--file", str(db), "--ip", "10.255.1.12", "--no-backup"],
+            input=json.dumps({"username": "admin", "password": "NewPassword2"}),
+            capture_output=True, text=True,
+            env={**os.environ, "PYTHONPATH": str(evil)})
+        assert "hijacked" not in proc.stderr
+        assert proc.returncode == 0, proc.stderr
+
+
+class TestTheInstalledHelperMustMatchTheRepo:
+    """The installed copy is a snapshot; the tests describe the repo copy.
+
+    A repo whose tests pass while a different script runs as root is a test
+    suite describing something that is not deployed.
+    """
+
+    def test_a_missing_install_is_refused_with_the_command(self, monkeypatch):
+        from modules.nsot import credential_rotation as cr
+
+        monkeypatch.setattr(cr, "HELPER_INSTALLED", "/nonexistent/nmas-helper")
+        status = cr.helper_status()
+
+        assert status["ok"] is False
+        assert status["state"] == "not_installed"
+        assert "sudo install -o root -g root -m 0755" in status["reinstall"]
+        assert status["reinstall"].endswith("/nonexistent/nmas-helper")
+
+    def test_drift_is_detected_and_named(self, tmp_path, monkeypatch):
+        from modules.nsot import credential_rotation as cr
+
+        fake = tmp_path / "installed"
+        fake.write_text("# an older copy\n", encoding="utf-8")
+        monkeypatch.setattr(cr, "HELPER_INSTALLED", str(fake))
+
+        status = cr.helper_status()
+        assert status["ok"] is False
+        assert status["state"] == "drifted"
+        assert "describe the repo copy" in status["reason"]
+        assert status["installed_sha"] != status["source_sha"]
+
+    def test_an_identical_copy_passes_the_hash_check(self, tmp_path,
+                                                      monkeypatch):
+        import shutil
+
+        from modules.nsot import credential_rotation as cr
+
+        fake = tmp_path / "installed"
+        shutil.copyfile(HELPER, fake)
+        monkeypatch.setattr(cr, "HELPER_INSTALLED", str(fake))
+
+        status = cr.helper_status()
+        # Ownership will not be root in a test, which is the next check —
+        # but the hashes must match.
+        assert status["installed_sha"] == status["source_sha"]
+        assert status["state"] in ("ok", "not_root_owned")
+
+    def test_a_world_writable_install_is_refused(self, tmp_path, monkeypatch):
+        """A sudoers entry pointing at a writable file is a root shell."""
+        import shutil
+
+        from modules.nsot import credential_rotation as cr
+
+        fake = tmp_path / "installed"
+        shutil.copyfile(HELPER, fake)
+        os.chmod(fake, 0o777)
+        monkeypatch.setattr(cr, "HELPER_INSTALLED", str(fake))
+        monkeypatch.setattr(os, "stat", os.stat)
+
+        status = cr.helper_status()
+        assert status["ok"] is False
+        assert status["state"] in ("not_root_owned", "group_or_world_writable")
+
+
+class TestTheReinstallHintNamesTheRightDestination:
+    def test_it_follows_a_changed_install_path(self, monkeypatch):
+        """Built at call time. Baking it in at import named the old path."""
+        from modules.nsot import credential_rotation as cr
+
+        monkeypatch.setattr(cr, "HELPER_INSTALLED", "/opt/custom/nmas-helper")
+        assert cr.helper_status()["reinstall"].endswith("/opt/custom/nmas-helper")

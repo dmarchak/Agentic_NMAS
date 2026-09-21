@@ -61,6 +61,81 @@ class RotationRefused(Exception):
     """Refused before anything reached the device."""
 
 
+#: Where the root-owned helper is installed, and where its source of truth is.
+HELPER_INSTALLED = "/usr/local/sbin/nmas-oxidized-cred"
+HELPER_SOURCE_REL = "scripts/nmas-oxidized-cred"
+
+#: Built at CALL time, not at import: baking HELPER_INSTALLED in with `+`
+#: meant the reinstall hint named the original destination even after the path
+#: changed — a message telling the operator to install to the wrong place.
+INSTALL_TEMPLATE = "sudo install -o root -g root -m 0755 {source} {dest}"
+
+
+def install_command(source: str) -> str:
+    return INSTALL_TEMPLATE.format(source=source, dest=HELPER_INSTALLED)
+
+
+def _repo_root() -> str:
+    import os
+    return os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+
+
+def helper_status() -> dict:
+    """Is the installed helper the same script this repo ships?
+
+    The installed copy is a **snapshot**. It is root-owned and deliberately
+    outside the repository, so it does not move when the repo does — and the
+    repo is where the helper's tests live. A repo whose tests pass while a
+    different script actually runs as root is a test suite describing something
+    that is not deployed.
+
+    Checked in preflight and refused on mismatch, rather than discovered when
+    the installed version does something the tested one does not.
+    """
+    import hashlib
+    import os
+
+    source = os.path.join(_repo_root(), HELPER_SOURCE_REL)
+    out = {"installed_path": HELPER_INSTALLED, "source_path": source,
+           "reinstall": install_command(source)}
+
+    if not os.path.exists(source):
+        return {**out, "ok": False, "state": "source_missing",
+                "reason": f"{HELPER_SOURCE_REL} is missing from the repository"}
+    if not os.path.exists(HELPER_INSTALLED):
+        return {**out, "ok": False, "state": "not_installed",
+                "reason": (f"{HELPER_INSTALLED} is not installed — "
+                           "router.db cannot be updated")}
+
+    def _sha(path):
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+
+    installed_sha, source_sha = _sha(HELPER_INSTALLED), _sha(source)
+    out.update({"installed_sha": installed_sha[:12],
+                "source_sha": source_sha[:12]})
+    if installed_sha != source_sha:
+        return {**out, "ok": False, "state": "drifted",
+                "reason": (f"the installed helper differs from "
+                           f"{HELPER_SOURCE_REL}. The tests in this repository "
+                           "describe the repo copy, not the one that would "
+                           "run as root.")}
+
+    st = os.stat(HELPER_INSTALLED)
+    if st.st_uid != 0:
+        return {**out, "ok": False, "state": "not_root_owned",
+                "reason": (f"{HELPER_INSTALLED} is owned by uid {st.st_uid}, "
+                           "not root — a sudoers entry pointing at it would be "
+                           "a root shell for whoever can write it")}
+    if st.st_mode & 0o022:
+        return {**out, "ok": False, "state": "group_or_world_writable",
+                "reason": (f"{HELPER_INSTALLED} is writable by group or other "
+                           f"(mode {oct(st.st_mode & 0o777)})")}
+
+    return {**out, "ok": True, "state": "ok"}
+
+
 def generate_password(hostname: str = "device", length: int = LENGTH) -> str:
     """A fresh random password. ``secrets``, never ``random``.
 

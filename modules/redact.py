@@ -462,8 +462,29 @@ def _handler_coverage() -> dict:
 #: masked?* Inspecting `handler.filters` answers a weaker question — a filter
 #: can be present and disabled, shadowed by an earlier filter returning False,
 #: or installed on a handler that was later replaced.
-CANARY_LINE = "snmp-server community CanaryNotARealSecret RO"
-CANARY_TOKEN = "CanaryNotARealSecret"
+#: One line per secret SHAPE, each with its own token so a failure names which
+#: shape leaked rather than only that something did.
+#:
+#: The `algorithm-type` line is here because its absence was a live gap: the
+#: pattern allowed `username X [privilege N] secret <v>` but not an
+#: `algorithm-type` clause between them, so the exact line the credential
+#: rotation sends matched nothing. A canary that only ever tested the shapes we
+#: already handled would not have found it, and will not find the next one —
+#: so every shape the tool itself EMITS belongs here.
+CANARY_LINES = (
+    ("snmp_community", "snmp-server community CanaryTokenA1 RO"),
+    ("user_password", "username admin privilege 15 password CanaryTokenB2"),
+    ("user_secret_algo",
+     "username admin privilege 15 algorithm-type scrypt secret CanaryTokenC3"),
+    ("enable_secret", "enable secret 9 CanaryTokenD4"),
+)
+CANARY_TOKENS = {label: line.split()[-1] if label != "snmp_community"
+                 else "CanaryTokenA1"
+                 for label, line in CANARY_LINES}
+
+#: Kept for callers that want a single representative line.
+CANARY_LINE = CANARY_LINES[0][1]
+CANARY_TOKEN = "CanaryTokenA1"
 
 
 def canary(handler) -> dict:
@@ -475,7 +496,8 @@ def canary(handler) -> dict:
     """
     record = logging.LogRecord(
         name="redact.canary", level=logging.INFO, pathname=__file__, lineno=0,
-        msg=CANARY_LINE, args=(), exc_info=None)
+        msg="\n".join(line for _label, line in CANARY_LINES),
+        args=(), exc_info=None)
     try:
         for f in list(handler.filters):
             result = f.filter(record) if hasattr(f, "filter") else f(record)
@@ -483,9 +505,12 @@ def canary(handler) -> dict:
                 # Dropped before reaching the formatter — nothing to leak here.
                 return {"ok": True, "dropped": True,
                         "handler": type(handler).__name__}
-        leaked = CANARY_TOKEN in record.getMessage()
+        message = record.getMessage()
+        leaked = sorted(label for label, token in CANARY_TOKENS.items()
+                        if token in message)
         return {"ok": not leaked, "dropped": False,
                 "handler": type(handler).__name__,
+                "leaked_shapes": leaked,
                 "target": _handler_target(handler)}
     except Exception as exc:                  # noqa: BLE001
         return {"ok": False, "dropped": False, "handler": type(handler).__name__,

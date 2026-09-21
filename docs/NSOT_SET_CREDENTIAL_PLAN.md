@@ -731,7 +731,37 @@ Three properties, each pinned by a test:
   which is why the row-editing logic lives in the helper and the tests drive it
   as a subprocess rather than importing it.
 - **Install it root-owned and not writable by the caller**, or the sudoers
-  entry becomes a root shell.
+  entry becomes a root shell. Preflight checks ownership and mode, not just
+  presence.
+- **The shebang is `#!/usr/bin/python3 -I`**, and that is part of the security
+  rather than a style choice. Absolute, because `env` resolves the interpreter
+  through `PATH` and a root-run script must not let its caller choose which
+  interpreter runs it. Isolated (`-I`), because otherwise `PYTHONPATH` and the
+  **calling user's** `~/.local/lib/pythonX/site-packages` are on the path of a
+  root process. sudo's `env_reset` and `secure_path` give both properties too —
+  but they are defaults in a file someone else maintains, and a script that is
+  safe only while a sudoers option stays set is safe by coincidence. Tested by
+  planting a hostile `json.py` on `PYTHONPATH` and asserting it has no effect.
+
+### Preflight refuses on helper drift
+
+The installed copy is a **snapshot**: root-owned, outside the repository, and
+therefore unmoved when the repo moves. The repo is where the helper's tests
+live, so a repo whose tests pass while a *different* script runs as root is a
+test suite describing something that is not deployed.
+
+`credential_rotation.helper_status()` compares the installed file's SHA-256
+against `scripts/nmas-oxidized-cred` and refuses `set_credential` on any of:
+
+| state | meaning |
+|---|---|
+| `not_installed` | the helper is absent; router.db cannot be updated |
+| `drifted` | installed ≠ repo — the tests describe the wrong script |
+| `not_root_owned` | a sudoers entry pointing at it would be a root shell |
+| `group_or_world_writable` | same, by a different route |
+
+Every refusal names the exact reinstall command, built at call time so it
+follows a changed install path rather than naming the one compiled in.
 
 ### The edit itself (amendment 2)
 

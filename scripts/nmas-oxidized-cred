@@ -1,5 +1,19 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """Update exactly one row of Oxidized's router.db. Root-owned helper.
+
+THE SHEBANG IS PART OF THE SECURITY OF THIS SCRIPT
+    ``/usr/bin/python3`` absolutely, not ``/usr/bin/env python3``: ``env``
+    resolves the interpreter through ``PATH``, and a root-run script must not
+    let its caller choose which interpreter runs it.
+
+    ``-I`` is isolated mode: ignore ``PYTHONPATH``, ``PYTHONHOME`` and the rest
+    of the ``PYTHON*`` environment, and skip the user site-packages directory.
+    Without it, a writable ``~/.local/lib/pythonX/site-packages`` belonging to
+    the *calling* user is on the path of a root process.
+
+    sudo's ``env_reset`` and ``secure_path`` give both properties too — but
+    they are defaults in a file someone else maintains. A script that is safe
+    only while a sudoers option stays set is safe by coincidence.
 
     sudo /usr/local/sbin/nmas-oxidized-cred --file <router.db> --ip <device-ip>
     (credentials arrive as JSON on STDIN: {"username": …, "password": …})

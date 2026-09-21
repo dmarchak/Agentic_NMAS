@@ -797,3 +797,50 @@ class TestAMentionIsNotASetting:
             out = redact.redact_positional(line)
             assert token not in out, line
             assert "<redacted:" in out, line
+
+
+class TestTheCanaryCoversEveryShapeTheToolEmits:
+    """A canary that only tests shapes we already handle finds nothing new.
+
+    The `algorithm-type` shape was a live gap: the pattern allowed
+    `username X [privilege N] secret <v>` but not an `algorithm-type` clause
+    between them, so the exact line the credential rotation sends matched
+    nothing and the password would have reached the log in clear.
+    """
+
+    def test_the_rotation_command_shape_is_a_canary(self):
+        shapes = dict(redact.CANARY_LINES)
+        assert "user_secret_algo" in shapes
+        assert "algorithm-type scrypt secret" in shapes["user_secret_algo"]
+
+    def test_every_canary_shape_is_masked_by_a_protected_handler(self):
+        h = logging.StreamHandler()
+        redact.install_log_redaction(h)
+        result = redact.canary(h)
+        assert result["ok"] is True
+        assert result["leaked_shapes"] == []
+
+    def test_an_unprotected_handler_names_every_leaking_shape(self):
+        result = redact.canary(logging.StreamHandler())
+        assert result["ok"] is False
+        assert set(result["leaked_shapes"]) == set(dict(redact.CANARY_LINES))
+
+    def test_a_broken_pattern_is_caught_by_shape(self, monkeypatch):
+        """Remove the user-password pattern; only that shape must leak."""
+        kept = tuple(p for p in redact._POSITIONAL if p[0] != "user_password")
+        monkeypatch.setattr(redact, "_POSITIONAL", kept)
+
+        h = logging.StreamHandler()
+        redact.install_log_redaction(h)
+        result = redact.canary(h)
+
+        assert result["ok"] is False
+        assert set(result["leaked_shapes"]) == {"user_password",
+                                                "user_secret_algo"}
+
+    def test_the_rotation_command_the_tool_builds_is_the_shape_covered(self):
+        """Not a hand-written approximation of it."""
+        from modules.nsot import credential_rotation as cr
+
+        real = cr.rotation_command("admin", 15, "CanaryTokenC3")
+        assert real == dict(redact.CANARY_LINES)["user_secret_algo"]
