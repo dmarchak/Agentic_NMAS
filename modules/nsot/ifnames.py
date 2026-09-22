@@ -97,12 +97,41 @@ _LINE_RE = re.compile(
 )
 
 
+#: Commands whose argument is free text, not configuration this tool may
+#: rewrite. Defined here because this is the leaf module both readers import;
+#: ``deploy.FREE_FORM_COMMANDS`` is the same tuple, not a second copy.
+#:
+#: `deploy` needs it to decide whether a broad command key may match a prior
+#: value; `canonicalise_line` needs it for the reason below. Two lists would
+#: drift, and this one has already been wrong once in each direction.
+FREE_FORM_COMMANDS = ("description", "banner", "remark", "name")
+
+_FREE_FORM_RE = re.compile(
+    r"^(\s*(?:no\s+)?(?:" + "|".join(FREE_FORM_COMMANDS) + r")\b)(.*)$")
+
+
 def canonicalise_line(line: str) -> str:
     """Expand every interface reference in a config line.
 
     Applies to lines like ``passive-interface Gi0/2`` and
     ``track 1 interface Gi0/2 line-protocol``, not just interface headers.
+
+    **Free-form arguments are left alone.** A description reading
+    ``link to Gi0/1 spare`` is prose that happens to mention an interface, and
+    rewriting it to ``GigabitEthernet0/1`` changes what the device was
+    configured to say. Worse, it hid itself: both sides of a comparison went
+    through this function, so the expanded text matched the expanded text and
+    the diff was clean while `host_vars` and the device disagreed.
+
+    The keyword is still canonicalised — only its argument is exempt — so
+    ``interface Gi3`` headers and ``description …`` bodies both do the right
+    thing on the same pass.
     """
     if not line:
         return line
+    free_form = _FREE_FORM_RE.match(line)
+    if free_form:
+        # The command word itself contains no interface reference, so there
+        # is nothing to expand on the left; the right is the operator's text.
+        return free_form.group(1) + free_form.group(2)
     return _LINE_RE.sub(lambda m: canonical(f"{m.group(1)}{m.group(2)}"), line)

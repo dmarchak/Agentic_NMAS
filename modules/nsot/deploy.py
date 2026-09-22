@@ -24,6 +24,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
+from modules.nsot import ifnames as _ifnames_module
 from modules.nsot.render_artifact import assert_no_mask
 
 log = logging.getLogger(__name__)
@@ -419,7 +420,10 @@ def merge_commands(intended_config: str, running_config: str) -> list:
 #: met. When the precise key misses, there is no prior value and the answer is
 #: to negate — searching harder is what produced both this bug and the header
 #: bug.
-FREE_FORM_COMMANDS = ("description", "banner", "remark", "name")
+#: Imported, not redeclared: `ifnames.canonicalise_line()` needs the same
+#: list to know whose argument it must NOT rewrite, and two copies of a rule
+#: that has already been wrong in both directions would drift.
+FREE_FORM_COMMANDS = _ifnames_module.FREE_FORM_COMMANDS
 
 
 class Leaf(NamedTuple):

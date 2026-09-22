@@ -9,6 +9,37 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — interface expansion rewrote description text (Stage 1.4)
+
+`canonicalise_line()` expanded every interface reference in a line, including
+inside a `description`. `P2P to r1 Gi3` became `P2P to r1 GigabitEthernet3` in
+`host_vars`, so committed intent said the device should be configured to say
+something it does not say.
+
+**It hid itself.** Both sides of every comparison go through that function, so
+the expanded text matched the expanded text and the diff came back clean —
+the same shape as the flattened BGP address-families, where parse and render
+were symmetric and both disagreed with the device.
+
+- Free-form arguments (`description`, `banner`, `remark`, `name`) are exempt;
+  the keyword is still canonicalised, only its argument is left alone.
+- `FREE_FORM_COMMANDS` moved to `ifnames`, the leaf module both readers
+  import. `deploy` now takes it from there — one list, not two copies of a
+  rule that has already been wrong in both directions.
+- `scripts/nsot_fix_description_ifnames.py` corrects committed intent from
+  each device's own `golden/<device>.cfg` at HEAD. Dry run by default.
+  **Descriptions only**, and only where the difference is exactly the
+  expansion: a description that genuinely differs is drift waiting to be
+  deployed, and rewriting it would discard somebody's pending change.
+
+### Fixed — auto-push never recorded `last_push` (Stage 1.2b)
+
+Two code paths pushed; only `remote.push()` (the button) recorded it, so the
+field meant "when somebody last clicked" on a card labelled "last push".
+`remote.record_push()` is now the one producer. A tag-only push is recorded as
+such, and a **failed** push writes `last_push_failure` instead — a timestamp
+on a push that did not happen reads as durability that does not exist.
+
 ### Fixed — a baseline earned with no commit never reached the remote (Stage 1.2)
 
 `save_golden()` can earn a `baseline/<ts>` tag with **no commit**: every
