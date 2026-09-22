@@ -25,6 +25,8 @@ import re
 
 import pytest
 
+from tests.astcheck import calls_in
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -33,25 +35,6 @@ def page():
     import app as nmas
 
     return nmas.app.test_client().get("/").get_data(as_text=True)
-
-
-def calls_in(func, name):
-    """How many times *func* CALLS *name*, ignoring prose.
-
-    Counting occurrences in `inspect.getsource()` counts the docstring and
-    comments too. That has now bitten this project three times -- a
-    `save_host_vars` count matched the comment saying it commits once, a
-    `key.key` search matched the paragraph explaining why the module never
-    reads it, and this file's first version matched a docstring naming
-    `save_golden()`. Prose about code is not code.
-    """
-    import ast
-    import textwrap
-
-    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    return sum(1 for node in ast.walk(tree)
-               if isinstance(node, ast.Call)
-               and getattr(node.func, "attr", getattr(node.func, "id", "")) == name)
 
 
 def _pane(page, pane_id, end_marker):

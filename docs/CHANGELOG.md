@@ -9,6 +9,34 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Added — `ListRef`: a device list resolved once and carried (Stage 1.7)
+
+Three defects had one shape — a function told which list to work on, then
+asking a global which list was current. `modules/nsot/listref.py` carries the
+display name, the slug, and the paths derived from them.
+
+- **It is a type, not a convention**, because of the third defect: a list has
+  two names (`Default` / `default`), and a comparison between them is always
+  false. `matches()` compares identity, so no site has to get that right
+  again — `check_right_repository()`'s private `_identity()` helper, the third
+  per-site repair for one shape, is gone.
+- `active()` is named so that reading ambient state is visible at the call
+  site; the three defects all looked like ordinary calls.
+- **One derivation.** The first version joined `LISTS_DIR` with the registry's
+  slug and fell back to `get_list_data_dir()` — a *second* derivation of the
+  thing this module exists to derive once. It broke immediately: a caller that
+  had overridden the accessor still got the real directory, so a uniqueness
+  check enumerated the wrong parent and found no rival to refuse.
+- A test walks the **AST** of the NSoT paths and fails on any function that
+  takes a list and then reads the active one. Verified by injecting one.
+
+### Added — `tests/astcheck.py`
+
+`inspect.getsource()` returns docstrings and comments, so a test that greps it
+searches the explanation alongside the code. **Four** false positives in one
+stage, the last inside a test written to confirm the third was fixed. `calls_in()`
+and `code_of()` make the fix one import rather than a decision each time.
+
 ### Fixed — the Git and NetBox tabs described flows that no longer existed (Stage 1.6)
 
 Both were written from the design and never revisited.

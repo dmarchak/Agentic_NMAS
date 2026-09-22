@@ -88,9 +88,35 @@ def _read_at(path: str, rev: str) -> str:
 
 
 def _defined_now(path: str, rev: str = "") -> set:
-    return {m.group(1)
-            for m in (DEFINED.match(l) for l in _read_at(path, rev).splitlines())
-            if m}
+    """Names this file can still resolve: defined here, or imported.
+
+    **Imports count.** Moving a helper into a shared module and importing it
+    back is not a deletion, but the first version only looked for `def` and
+    `class`, so a move read as BROKEN -- the helper gone, every call site
+    still calling it. That fires on exactly the refactor it should welcome,
+    and a check that cries wolf on a good change is one people learn to pass
+    with --no-verify.
+
+    The genuine finding it exists for is unchanged: a name with no definition
+    AND no import, still called.
+    """
+    text = _read_at(path, rev)
+    names = {m.group(1)
+             for m in (DEFINED.match(l) for l in text.splitlines()) if m}
+
+    # Imports via the parser: `from x import (a,\n b)` spans lines, and
+    # regex over a multi-line form is how this kind of check goes quietly
+    # wrong. A revision that does not parse falls back to what we have.
+    try:
+        import ast
+
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    names.add(alias.asname or alias.name.split(".")[0])
+    except (SyntaxError, ValueError):
+        pass
+    return names
 
 
 def _called_in(name: str, path: str, rev: str = "") -> bool:

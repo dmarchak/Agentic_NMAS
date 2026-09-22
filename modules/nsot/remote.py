@@ -302,16 +302,16 @@ def check_right_repository(config: dict, list_name: str, repo_dir: str) -> dict:
     # uniqueness check, reporting itself as the other list that already owns
     # the repository. No list could ever pass verification.
     #
-    # Resolving both sides to a data directory makes the comparison answer
-    # "is this the same list", which is the question, rather than "do these
-    # two strings match", which was never it.
-    def _identity(name):
-        return os.path.realpath(get_list_data_dir(name))
+    # `ListRef.matches()` now owns that comparison. The local `_identity()`
+    # helper this replaces was correct, but it was the third private fix for
+    # one shape; a type that carries both names makes the mistake
+    # unrepresentable instead of repaired per site.
+    from modules.nsot.listref import resolve as _resolve
 
-    mine = _identity(list_name)
-    lists_dir = os.path.dirname(get_list_data_dir(list_name))
+    mine = _resolve(list_name)
+    lists_dir = os.path.dirname(mine.data_dir)
     for slug in sorted(os.listdir(lists_dir)):
-        if _identity(slug) == mine:
+        if mine.matches(slug):
             continue
         other = load_remote(slug)
         if other and f"{other.get('owner')}/{other.get('repo')}".lower() == target:

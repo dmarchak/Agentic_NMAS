@@ -1077,6 +1077,12 @@ against the routes each tab calls — not rewritten from the plan, which is what
 they were written from the first time.
 
 **1.7 `ListRef`.**
+*Status: **DONE**.* `modules/nsot/listref.py`. It is a **type** rather
+than a convention because of defect 3: a list has two names, and passing
+"the list name" as a string leaves every caller to decide which one it
+meant. `matches()` compares identity, so the display-name/slug question
+cannot be got wrong per site. A test walks the AST of the NSoT paths and
+fails on any function that takes a list and then reads the active one.
 A resolved list reference — slug, display name, data directory, repo path —
 constructed once and passed, so a list name cannot be re-derived from global
 state mid-operation. **Three defects had exactly this shape**: the pipeline
