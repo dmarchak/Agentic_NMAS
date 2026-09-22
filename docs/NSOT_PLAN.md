@@ -991,6 +991,12 @@ wildcard refspec appears; a test asserts a second unrelated local tag is
 tag-only push must not bypass the history scan.
 
 **1.3 Preview diff is order-sensitive and whitespace-sensitive.**
+*Status: **DONE** (`7ab6ac1`).* `roundtrip.canonical_lines()` /
+`canonical_diff()` sort children only where `section_is_unordered()`
+says order is insignificant; ACLs, prefix-lists, route-maps and `ip sla`
+keep their sequence. The machinery already existed — `compare()` has
+used it since Phase 3a — and the preview was the one comparison not
+using it.
 The `vs current golden` diff in Template preview reports differences for
 reordered set-like sections and for indentation-only changes.
 `roundtrip.configs_equivalent()` already knows both answers — it is
@@ -1003,6 +1009,11 @@ whitespace within a block shows no diff; a genuinely reordered **ordered**
 section (an ACL) still shows a diff. Tests for all three.
 
 **1.4 `Gi` → `GigabitEthernet` expansion corrupts description text.**
+*Status: **DONE**, verified on real data 2026-09-22.* Parser fix in
+`447a72c`; committed intent corrected by `2443892` (9 files, 22
+insertions / 22 deletions, every changed line a `description:`), which
+is published. Template preview for s1 and r3 shows no description
+differences.
 `ifnames` canonicalisation rewrites interface references inside lines, which
 is correct for `ip route ... Gi0/0` and wrong inside a `description` — a
 description reading `link to Gi0/1 spare` is rewritten in `host_vars`, so the
@@ -1020,6 +1031,21 @@ committed intent is corrected by a reviewed commit — descriptions only, with
 the diff shown before it is made — and Template preview for s1 shows no
 description differences.** Proof on the real data, not only on a fixture: the
 fixture was written by the same person as the fix.
+
+**1.3b Masked lines cannot be compared, and the preview does not say so.**
+Raised while closing 1.3. The preview renders with secrets masked
+(`render_artifact.MASK`, `••••••••`) while the golden holds real values, so
+**every secret-bearing line shows as a difference for ever**. That is not a
+defect in masking — `intended/` and previews are masked precisely so neither
+can be a deploy source — but it means a device with an SNMP community can
+never show a clean preview, and a permanent difference is one people learn to
+scroll past.
+*Acceptance:* a masked line is reported as **masked, not compared** rather
+than as a difference; the count of them is shown, so "three lines could not be
+compared" is visible rather than inferred; a genuinely changed *unmasked* line
+on the same device still shows; and a masked line whose **surrounding text**
+changed (a community moving to a different ACL, say) is still reported,
+because only the value is unknowable, not the line.
 
 **1.5 The three allowlisted functions with no caller.**
 `_deployList`, `invalidateTopologyCache`, `loadJenkinsResults`, currently in
