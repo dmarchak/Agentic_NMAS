@@ -10,6 +10,12 @@
 
 ---
 
+> **Reading order as of 2026-09-22:** Part 1 is submitted. Sections 1–5 are the
+> standing architecture and constraints. Section 6 describes what each phase
+> *is*. **[Section 9](#9-completion-plan-after-part-1-submission-2026-09-22) is
+> the order the remaining work happens in and what "done" means for each
+> stage** — it supersedes Section 6's ordering.
+
 ## 1. Goal
 
 Turn Agentic NMAS from a free-form management tool into an industry-style
@@ -888,3 +894,281 @@ creates an `nsot` bucket and enters its endpoint and keys in Settings.
     workflow owns that), so golden configs are the durable record.
   - Silent failures are the dominant failure mode in this stack. Every
     integration call must log and surface its failures, never swallow them.
+
+---
+
+## 9. Completion plan (after Part 1 submission, 2026-09-22)
+
+Part 1 is submitted. Phases 0–3c and 2b are built; Phase 4 and 5 are not.
+**This section supersedes the phase ordering in Section 6 for what happens
+next.** Section 6 still describes what each phase *is*; this describes the
+order the remaining work happens in, and what "done" means for each stage.
+
+### Standing rules
+
+These are not aspirations. Each one is here because ignoring it cost real
+time in Part 1, and the cost is named.
+
+1. **Measure on hardware; do not infer.** A reading of a launch script said
+   r1–r5 would fail to boot their own credential. Booting one said the same
+   thing — but only the boot could have been believed, and only the boot
+   revealed that the node comes up *healthy* while holding the wrong
+   credential.
+2. **Every GUI feature ships with its entry point.** Four times, working
+   backends shipped with no button. `tests/test_no_unreachable_ui.py` now
+   fails on a fifth; it is not to be worked around by allowlisting a new
+   entry.
+3. **A check must verify the property, not a proxy.** The startup-file check
+   asked "is the hash in the file" when the question was "does the file
+   apply". The remote-relatedness check compared root commits to ref tips.
+   Both passed. Both were asking something else.
+4. **No redeploy of rcn-lab1** until Stage 2's checklist passes. Including
+   `--reconfigure`. Including adding r6.
+5. **Ask before changing shared infrastructure.** The lab host, the Oxidized
+   container, the topology service and the clab topology are shared; the user
+   runs those changes, or approves them first.
+6. **A fixture that cannot fail is not a fixture.** Tests that build real git
+   repositories found two traps in a single afternoon that stubbed SHAs would
+   have hidden.
+
+---
+
+### STAGE 1 — the deadline-night bug batch (code only)
+
+No infrastructure changes, no device contact. Seven items, each independently
+committable.
+
+**1.1 Remote Verify falsely refuses after the first push.**
+*Status: fixed in `5f3325d`, NOT yet verified against the live remote.*
+The reported hypothesis — peeled `refs/tags/x^{}` entries inflating the count —
+was wrong. The count was a symptom. The check intersected the local **root
+commit** with the remote's **ref tips**, which coincide only in a repository
+with exactly one commit, so it passed on an empty remote and refused every
+remote with history. It now tests ancestry over every advertised SHA this
+clone holds.
+*Acceptance:* Verify (read-only) passes against `dmarchak/rcn-nsot-config`
+with all five checks green, **on the deployed instance**; a deliberately
+unrelated repository is still refused with the "interleave" wording; the
+real-git tests in `tests/test_remote_relatedness.py` stay green.
+
+**1.2 Auto-push does not publish tag-only baselines.**
+*Status: MEASURED, not yet fixed.* `save_golden()`'s no-commit path
+(`repo.py`, the `_baseline_wanted` branch at existing HEAD) tags the baseline
+and **returns without calling `run_post_commit` at all** — so the hook that
+pushes never fires. Independently, `push()` uses `git push --follow-tags`,
+which pushes only tags reachable from commits **being pushed**; with no new
+commit there is nothing to carry the tag. Two causes, either of which alone
+leaves the tag local.
+*Acceptance:* a Save All that changes nothing but earns a baseline results in
+that `baseline/<ts>` tag existing on the remote; a test asserts the hook fires
+on the no-commit path; a test asserts the push refspec carries a tag whose
+commit is already on the remote. The acknowledgement gate still applies — a
+tag-only push must not bypass the history scan.
+
+**1.3 Preview diff is order-sensitive and whitespace-sensitive.**
+The `vs current golden` diff in Template preview reports differences for
+reordered set-like sections and for indentation-only changes.
+`roundtrip.configs_equivalent()` already knows both answers — it is
+section-aware and consults `section_is_unordered()`. The preview does a flat
+`difflib` over normalised lines instead.
+*Acceptance:* a device whose golden differs from the render only by the order
+of an unordered section (ACL entries are ordered; `snmp-server community`
+lines are not) shows **no** diff; a device differing only in leading
+whitespace within a block shows no diff; a genuinely reordered **ordered**
+section (an ACL) still shows a diff. Tests for all three.
+
+**1.4 `Gi` → `GigabitEthernet` expansion corrupts description text.**
+`ifnames` canonicalisation rewrites interface references inside lines, which
+is correct for `ip route ... Gi0/0` and wrong inside a `description` — a
+description reading `link to Gi0/1 spare` is rewritten in `host_vars`, so the
+render no longer matches the device and the difference is invisible in the
+diff because both sides were canonicalised.
+*Acceptance:* a fixture device with an interface reference inside a
+`description` round-trips byte-identically; expansion still applies to the
+lines that need it; the free-form keywords already recognised elsewhere
+(`description`, `banner`, `remark`, `name` — see the rollback broad-key rule)
+are the ones exempted, so there is one list rather than two.
+
+**1.5 The three allowlisted functions with no caller.**
+`_deployList`, `invalidateTopologyCache`, `loadJenkinsResults`, currently in
+`KNOWN_DEAD` in `tests/test_no_unreachable_ui.py`. Each needs a decision, not
+a default: wire it up or delete it.
+*Acceptance:* `KNOWN_DEAD` is empty, and the test asserts it is empty rather
+than merely consistent. Deleting a function goes through
+`scripts/check_removed_definitions.py`.
+
+**1.6 Stale Git-tab and NetBox-tab descriptions.**
+Both tabs describe behaviour that predates the NSoT work.
+*Acceptance:* every sentence on both tabs is true of the code as it is, checked
+against the routes each tab calls — not rewritten from the plan, which is what
+they were written from the first time.
+
+**1.7 `ListRef`.**
+A resolved list reference — slug, display name, data directory, repo path —
+constructed once and passed, so a list name cannot be re-derived from global
+state mid-operation. **Three defects had exactly this shape**: the pipeline
+asking `get_current_list_name()` after the push, `plan_restore()` reading the
+active list's inventory, and `check_right_repository()` comparing a display
+name to a slug.
+*Acceptance:* `ListRef` exists and carries slug, display name, data dir and
+repo dir; the deploy, restore, remote and templates paths take it; a test
+greps those modules for `get_current_list_name` / `get_current_device_list`
+and fails on any call reached from a function that already has a list in hand.
+
+**Stage 1 is done when:** all seven acceptance criteria hold, the full suite
+passes, and 1.1 and 1.2 have been confirmed **on the deployed instance against
+the real remote** — the two that were only ever exercised in states that no
+longer occur.
+
+---
+
+### STAGE 2 — lift the redeploy ban
+
+The ban is lifted by a **successful redeploy**, not by the four items being
+built. Built is not deployed; proven on a probe is not adopted here.
+
+**2.1 Adopt the launch patch.** `docs/bootstrap-probe/patches/patch-skip-injected-user.py`
+applies the user-skip to a copy of `~/labs/lab/patches/c8000v-launch.py` and
+prints the real diff. **The user applies it** — shared infrastructure.
+*Acceptance:* the diff is reviewed and applied; the adopted file differs from
+stock by exactly `smp="2"` plus the skip helper; running nodes are unaffected
+(binds are read at container start, so adoption changes nothing until a
+redeploy).
+
+**2.2 Wire the applicability check and break-glass.**
+Both are built and tested (`verify_startup_applies()`, `modules/breakglass.py`)
+and neither is called by the running app.
+*Acceptance:* the persistence chain's `startup_applies` stage runs on a real
+rotation and passes for a C8000v **because the launch script carries the
+skip**, demonstrably failing if the skip is removed; a break-glass record for
+r1–r5 exists on removable media, has been **opened with `verify`** on the
+medium it lives on, and its location is recorded somewhere that is not the
+NMAS.
+
+**2.3 Generator fixes re-proven on the probe.**
+`crypto key generate rsa` on vIOS and the per-platform domain keyword are
+**unmeasured on a console-replayed platform**: key generation takes real time
+and vrnetlab waits for a prompt after each typed line. This is stage D in
+`docs/bootstrap-probe/README.md`.
+*Acceptance:* a throwaway vIOS boots a generator-produced startup config,
+reaches `Startup complete`, and **answers SSH** — the capture is taken over
+SSH, not the console, which is the whole point of the key. A C8000v boots one
+with `ip domain name` and logs no `%CVAC-4-CLI_FAILURE`.
+
+**2.4 The planned redeploy, with a verification checklist.**
+Written **before** the redeploy, not after. At minimum: every node reaches
+`Startup complete`; every node answers SSH **with the credential NMAS holds**,
+not `admin`; `show running-config | include ^username admin` shows `secret 9`
+on all five routers; Oxidized fetches all nine; a Save All produces no
+unexpected diff against the pre-redeploy goldens.
+*Acceptance:* the checklist passes in full. **The redeploy is the proof.** If
+any item fails, the ban stays and the failure is measured before anything is
+changed. Only then are the three ban notices (CLAUDE.md, the probe README, the
+Phase 4 plan) updated — and to "lifted, and here is what proved it", not
+deleted.
+
+---
+
+### STAGE 3 — GUI correctness
+
+**3.1 Can committed intent be edited from the GUI? Measure first.**
+The deploy path's stated rule is that a change is made by *editing committed
+intent*, not by configuring the device. If there is no GUI path to edit
+`host_vars`, that rule describes something only reachable by hand-editing YAML
+and committing — which would make Phase 3c's central design claim untrue in
+practice.
+*Acceptance:* the answer is established by reading the routes and templates
+(as with the three missing buttons — **not** from the plan or from memory) and
+written down. If no path exists, building one is the first item of this stage
+and ships with its entry point.
+
+**3.2 Settings audit.** Dead controls; Test buttons that do not exercise the
+path the feature actually uses; the duplicate Oxidized setting.
+*Acceptance:* every control changes behaviour or is removed; every Test button
+calls the same client the feature calls — a Test that passes while the feature
+fails is worse than no Test; one Oxidized configuration, not two.
+
+**3.3 Retire the legacy `golden_configs/` store.**
+Remaining readers: `agent_runner.py`, `check_runner.py`,
+`/list/golden_configs`. Template preview was the fourth and was fixed in
+`2751e62`; it had been serving a six-day-old config while the repo held a
+same-day commit.
+*Acceptance:* no code path reads `golden_configs/` except
+`_find_golden_config_file()`'s documented fallback; a test enumerates the
+readers so a new one fails; the directory itself is left on disk — deleting it
+is a separate, later decision.
+
+---
+
+### STAGE 4 — Phase 4 onboarding wizard, then r6
+
+Per the decisions already recorded in `docs/NSOT_PHASE4_ONBOARDING.md`:
+measured bootstrap profile, one commit per wizard run, a random one-time
+bootstrap credential rotated at the end, `allow_new` minting confined to the
+wizard and Add Device, and **the AI assistant can never mint**.
+
+Additional item: **remove vrnetlab's RW public community.** The history scan
+acknowledged nine read-only communities; anything RW arriving with a new node
+is a different matter and is removed as part of onboarding, not after.
+
+**The user decides r6's topology first.** The wizard is proven against the
+throwaway probe before it touches rcn-lab1, and r6 is added last.
+
+*Acceptance:* the wizard onboards a probe node end to end — NetBox objects,
+identity minted once, startup config generated and ASCII-guarded, bootstrap
+credential rotated to a stored value, golden captured, one commit; the same
+run against r6 succeeds; `r6` appears in the inventory, the manifest, Oxidized
+and the topology service; no RW community exists on it.
+
+---
+
+### STAGE 5 — Phase 5: per-device monitoring
+
+Per Section 6's Phase 5, narrowed by what Part 1 built: the Integrations panel
+already gives the fleet view. This stage is the **per-device** view.
+
+*Acceptance:* a device page shows its own Prometheus series, its own Loki
+lines, its own Oxidized fetch history and its own leases; the legacy
+SNMP/NetFlow collector is retired rather than collapsed (it is currently
+collapsed under "Built-in collectors (legacy)"); switch syslog is restored —
+**it stopped around 2026-09-09 and the Loki card showed 0 lines during the
+demo**; `logging trap` level is set deliberately and recorded in intent, not
+configured by hand.
+
+---
+
+### STAGE 6 — security
+
+**6.1 Docker publishes past ufw.** Measured on the deployment host: NetBox
+`:8000`, Loki `:3100` and oxidized-web `:8888` are reachable from the whole
+LAN despite ufw's default deny, because Docker's rules in `DOCKER`/`DOCKER-USER`
+are evaluated ahead of ufw's chains. **oxidized-web serves every device's full
+running configuration** and is the largest of the three by a wide margin. It
+surfaced only by contrast: Grafana runs as a native process and *was* blocked.
+*Acceptance:* the three ports are unreachable from another LAN host — verified
+**from another host**, not by reading a rule table, which is the presence-check
+mistake again. Bind to `127.0.0.1` or add `DOCKER-USER` rules.
+
+**6.2 Per-consumer accounts.** One `admin` credential is shared by NMAS,
+Oxidized and any future consumer, so a rotation moves the floor under all of
+them at once and no audit trail distinguishes them.
+
+**6.3 The `yang-push-sub` credential**, and **6.4 enable secret vs console
+recovery** — the console is the break-glass path, and an enable secret nobody
+holds turns a recoverable node into a rebuild.
+
+*Acceptance:* each is measured before and after; 6.2 ends with a rotation that
+changes one consumer's credential without disturbing another's.
+
+---
+
+### STAGE 7 — redesign the remaining pre-NSoT tabs
+
+Ansible, Jenkins, History, Agent, Approvals, Configure, Logs. The NSoT work
+added capabilities faster than the interface reorganised around them; the
+Monitoring and Topology tabs were done under deadline and each still sits
+above a collapsed legacy section.
+
+*Acceptance:* every tab's primary action is the NSoT path where one exists;
+nothing is hidden behind a collapse that should have been removed; the
+unreachable-function test stays at an empty `KNOWN_DEAD`.
