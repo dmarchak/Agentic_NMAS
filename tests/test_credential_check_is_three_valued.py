@@ -116,3 +116,197 @@ class TestTheSuppliedPasswordPathIsDistinct:
             lambda row, user, pw, secret=None: seen.update(pw=pw) or {"ok": True})
         check("Default", "r1")
         assert seen["pw"] == "stored-pw"
+
+
+class TestAPostLoginFailureIsNotARefusal:
+    """`stage: after_login` means authentication SUCCEEDED.
+
+    `verify_new_credential()` returns `attempted=True, ok=False,
+    stage="after_login"` when the login worked and `enable()` or the
+    `show running-config` read did not. Mapping that to REFUSED says the
+    device rejected a credential it actually accepted.
+
+    On the checklist's second loop -- `--password admin --expect refused` --
+    it would have reported REFUSED and **passed**, while `admin` logged in
+    perfectly well. That is the key-exchange false pass again, in a different
+    place: a verdict about the credential decided by something that is not
+    about the credential.
+    """
+
+    def test_it_reads_as_accepted(self, world):
+        world["result"] = {"ok": False, "attempted": True,
+                           "error": "ValueError: Failed to enter enable mode",
+                           "stage": "after_login"}
+        assert check("Default", "r1")["verdict"] == ACCEPTED
+
+    def test_it_carries_a_warning(self, world):
+        world["result"] = {"ok": False, "attempted": True,
+                           "error": "ValueError: Failed to enter enable mode",
+                           "stage": "after_login"}
+        out = check("Default", "r1")
+        assert "post-login step failed" in out["warning"]
+        assert "credential is good" in out["warning"]
+
+    def test_reading_nothing_back_is_the_same_case(self, world):
+        world["result"] = {"ok": False, "attempted": True,
+                           "error": "logged in but read nothing back",
+                           "stage": "after_login"}
+        assert check("Default", "r1")["verdict"] == ACCEPTED
+
+    def test_a_refusal_at_LOGIN_is_still_a_refusal(self, world):
+        """The distinction is the stage, not the `attempted` flag alone."""
+        world["result"] = {"ok": False, "attempted": True,
+                           "error": "Authentication failed", "stage": "connect"}
+        assert check("Default", "r1")["verdict"] == REFUSED
+
+
+class TestAcceptedSaysNothingAboutFailure:
+    """A success carrying a failure word is the output people learn to skim,
+    on a line that has to be read nine times after a redeploy."""
+
+    def test_a_clean_accept_has_no_warning(self, world):
+        out = check("Default", "r1")
+        assert out["verdict"] == ACCEPTED
+        assert "warning" not in out
+
+    def test_a_clean_accept_says_what_succeeded(self, world):
+        out = check("Default", "r1")
+        assert "read the running config back" in out["reason"]
+
+    def test_no_verdict_carries_a_stage_field(self, world):
+        """`stage` was printed as "failed at:" for every verdict, including
+        success, where it means how far it GOT."""
+        for result in (
+                {"ok": True, "attempted": True, "stage": "after_login"},
+                {"ok": False, "attempted": True, "stage": "connect",
+                 "error": "nope"},
+                {"ok": False, "attempted": True, "stage": "after_login",
+                 "error": "nope"}):
+            world["result"] = result
+            assert "stage" not in check("Default", "r1")
+
+    def test_inconclusive_names_what_was_never_reached(self, world):
+        world["result"] = {"ok": False, "attempted": False,
+                           "error": "no matching key exchange method",
+                           "stage": "connect"}
+        out = check("Default", "r1")
+        assert out["verdict"] == INCONCLUSIVE
+        assert out["unreached"] == "connect"
+
+
+class TestTheExitCodes:
+    """`|| echo` in the checklist loops must catch everything but a clean
+    pass, or a warning scrolls by unread."""
+
+    def _run(self, monkeypatch, result, argv):
+        import sys
+
+        from tests.nmas_check_credential import _module as tool
+
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda p: [ROW])
+        monkeypatch.setattr("modules.device.decrypt_field", lambda v: "pw")
+        monkeypatch.setattr("modules.nsot.credential_rotation.enable_secret",
+                            lambda row: "en")
+        monkeypatch.setattr(
+            "modules.nsot.credential_rotation.verify_new_credential",
+            lambda *a, **k: result)
+        monkeypatch.setattr("modules.nsot.listref.resolve",
+                            lambda name: type("R", (), {
+                                "name": "Default", "csv_path": "/x"})())
+        monkeypatch.setattr("modules.config.get_current_list_name",
+                            lambda: "Default")
+        saved = sys.argv
+        sys.argv = ["nmas-check-credential", *argv]
+        try:
+            return tool.main()
+        finally:
+            sys.argv = saved
+
+    def test_clean_pass_is_zero(self, monkeypatch):
+        assert self._run(monkeypatch,
+                         {"ok": True, "attempted": True, "stage": "after_login"},
+                         ["r1", "--expect", "accepted"]) == 0
+
+    def test_wrong_verdict_is_one(self, monkeypatch):
+        assert self._run(monkeypatch,
+                         {"ok": False, "attempted": True, "stage": "connect",
+                          "error": "no"},
+                         ["r1", "--expect", "accepted"]) == 1
+
+    def test_inconclusive_is_two(self, monkeypatch):
+        assert self._run(monkeypatch,
+                         {"ok": False, "attempted": False, "stage": "connect",
+                          "error": "kex"},
+                         ["r1", "--expect", "accepted"]) == 2
+
+    def test_accepted_with_a_warning_is_three_not_zero(self, monkeypatch):
+        """The expectation held and something else did not."""
+        assert self._run(monkeypatch,
+                         {"ok": False, "attempted": True,
+                          "stage": "after_login", "error": "enable failed"},
+                         ["r1", "--expect", "accepted"]) == 3
+
+    def test_admin_logging_in_fails_the_refused_expectation(self, monkeypatch):
+        """The dangerous case: a post-login failure on the OLD credential
+        must not read as 'admin was refused'."""
+        assert self._run(monkeypatch,
+                         {"ok": False, "attempted": True,
+                          "stage": "after_login", "error": "enable failed"},
+                         ["r1", "--password", "admin", "--expect", "refused"]) == 1
+
+
+class TestItNeverTracebacks:
+    """A device-name typo at 2am must report, not crash.
+
+    Two INCONCLUSIVE branches returned without `unreached`, and the printer
+    indexed it directly -- so `nmas-check-credential s9` raised KeyError
+    instead of saying s9 is not in the list. Found by running the four
+    outputs rather than by reading them.
+    """
+
+    def _run(self, monkeypatch, argv, devices=None):
+        import sys
+
+        from tests.nmas_check_credential import _module as tool
+
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda p: devices if devices is not None else [ROW])
+        monkeypatch.setattr("modules.device.decrypt_field", lambda v: "pw")
+        monkeypatch.setattr("modules.nsot.credential_rotation.enable_secret",
+                            lambda row: "en")
+        monkeypatch.setattr(
+            "modules.nsot.credential_rotation.verify_new_credential",
+            lambda *a, **k: {"ok": True, "attempted": True,
+                             "stage": "after_login"})
+        monkeypatch.setattr("modules.nsot.listref.resolve",
+                            lambda name: type("R", (), {
+                                "name": "Default", "csv_path": "/x"})())
+        monkeypatch.setattr("modules.config.get_current_list_name",
+                            lambda: "Default")
+        saved = sys.argv
+        sys.argv = ["nmas-check-credential", *argv]
+        try:
+            return tool.main()
+        finally:
+            sys.argv = saved
+
+    def test_an_unknown_device_reports_rather_than_raises(self, monkeypatch):
+        assert self._run(monkeypatch, ["s9", "--expect", "accepted"]) == 2
+
+    def test_an_empty_inventory_reports_rather_than_raises(self, monkeypatch):
+        assert self._run(monkeypatch, ["s1", "--expect", "accepted"],
+                         devices=[]) == 2
+
+    def test_every_inconclusive_branch_names_what_was_unreached(self):
+        """The field the printer needs, set at every site that returns it."""
+        import ast
+
+        from tests.astcheck import tree_of
+        from tests.nmas_check_credential import check as fn
+
+        for node in ast.walk(tree_of(fn)):
+            if not isinstance(node, ast.Return):
+                continue
+            dumped = ast.dump(node)
+            if "INCONCLUSIVE" in dumped:
+                assert "unreached" in dumped, ast.unparse(node)

@@ -179,7 +179,11 @@ rm -f configs/bp-vios-d2.cfg
         python3 scripts/nmas-check-credential $d --password admin --expect refused || echo "^^ $d"
       done
       ```
-      `INCONCLUSIVE` (exit 2) is **not** a pass — nothing was established.
+      Exit codes, so the `|| echo` catches everything but a clean pass:
+      **0** the expectation held and nothing else was wrong · **1** wrong
+      verdict · **2** `INCONCLUSIVE`, nothing established — **not** a pass ·
+      **3** the expectation held but a post-login step failed (the credential
+      is fine; something else on that device is not).
 - [ ] **4.8 Oxidized fetches all nine**, with times after 3.3.
 - [ ] **4.9 A Save All produces no unexpected diff** against 1.4's commit.
       Uptime and counters aside, a difference means a node did not come back

@@ -20,3 +20,4 @@ ACCEPTED = _module.ACCEPTED
 REFUSED = _module.REFUSED
 INCONCLUSIVE = _module.INCONCLUSIVE
 check = _module.check
+_module = _module
