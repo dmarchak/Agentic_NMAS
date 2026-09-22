@@ -1,0 +1,54 @@
+name: nmas-vios-d2
+
+# ---------------------------------------------------------------------------
+# STAGE D2 - has a vIOS ever booted a pre-computed `secret 9` line?
+#
+# Measured answer before running this: NO. The only vIOS ever booted
+# (bp-vios, stage A) carried `secret 0 admin` - plaintext, which IOS hashes on
+# entry. Every secret 9 boot so far was a C8000v: bp-c8k-b (stage B) and
+# bp-c8k-c (stage C).
+#
+# So the switches are as unproven as the routers were, on two properties, and
+# only the first is shared with the routers:
+#
+#   1. CONSUMPTION. The rotation sends `algorithm-type scrypt secret <plain>`,
+#      so the DEVICE computes the hash; clab-sync then harvests
+#      `show running-config`, which writes `secret 9 $9$...` into the startup
+#      file. The device emits a form it has never been asked to read back.
+#
+#   2. CONSOLE REPLAY. vrnetlab TYPES a vIOS startup config into the console
+#      line by line and waits for a prompt after each one. The routers' file
+#      is loaded as a file, so stages B and C prove nothing about this path -
+#      and this is the platform where a comment hung a boot.
+#
+# Without D2 the production redeploy is the first test of four switches at
+# once, which is what stage B exists to have taught us not to do.
+#
+# ONE node. Own lab name, own network, destroyed after - same isolation as
+# every other stage. Run AFTER stages A-C are destroyed so nothing contends
+# for the subnet.
+#
+# The startup config is NOT in the repository: it carries a hash generated on
+# the probe at run time. configs/bp-vios-secret9.cfg.template is the shape.
+#
+# CLAB_MGMT_PASSTHROUGH=false is required, exactly as in stage A: without it
+# `ip address dhcp` on Gi0/0 gives the node no management address and the
+# capture has to come over the console - which would defeat the SSH check.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-bootstrap-probe
+  ipv4-subnet: 172.30.30.0/24
+
+topology:
+  kinds:
+    cisco_vios:
+      image: vrnetlab/cisco_vios:L2-20180619       # identical to s1-s4
+      env:
+        CLAB_MGMT_PASSTHROUGH: "false"
+
+  nodes:
+    bp-vios-d2:
+      kind: cisco_vios
+      mgmt-ipv4: 172.30.30.51
+      startup-config: configs/bp-vios-d2.cfg

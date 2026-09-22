@@ -210,6 +210,89 @@ Destroy afterwards, and remove the generated configs.
 
 ---
 
+## 2.3b Stage D2 — has a vIOS ever booted a `secret 9` line?
+
+**Measured answer: no.** The only vIOS ever booted (`bp-vios`, stage A)
+carried `username admin privilege 15 secret 0 admin` — *plaintext*, which IOS
+hashes on entry. Every `secret 9` boot so far was a **C8000v**: `bp-c8k-b`
+(stage B) and `bp-c8k-c` (stage C), both single-node router topologies.
+
+So the switches are as unproven as the routers were, on **two** properties —
+and only the first is shared with the routers:
+
+1. **Consumption.** The rotation sends
+   `username admin privilege 15 algorithm-type scrypt secret <plaintext>`, so
+   the **device computes** the hash. `clab-sync` then harvests
+   `show running-config`, which emits `secret 9 $9$salt$hash` into the startup
+   file. **The device emits a form it has never been asked to read back at
+   boot.** That was equally true of the routers until stage B.
+2. **Console replay.** vrnetlab *types* a vIOS startup config into the console
+   line by line, waiting for a prompt after each; the routers' file is loaded
+   as a file. This is the platform where a comment hung a boot. The routers'
+   proof does not transfer, because the mechanism differs.
+
+> Without D2, **the redeploy is the first test of four switches at once** —
+> which is precisely what stage B taught us not to do.
+
+### D2, by stage B's method, on the other platform
+
+The hash must come from a vIOS, and only a device can produce one.
+
+```bash
+cd ~/labs/bootstrap-probe
+# 1. Boot the KNOWN-GOOD vIOS shape (stage A's, already proven).
+cp configs/bp-vios.cfg configs/bp-vios-d2.cfg
+containerlab deploy -t nmas-vios-d2.clab.yml
+```
+
+On the node, generate a throwaway type-9 hash and remove the scratch account:
+
+```
+configure terminal
+username hashgen privilege 1 algorithm-type scrypt secret ProbeSecretValue2
+do show running-config | include ^username hashgen
+no username hashgen
+end
+```
+
+```bash
+# 2. Destroy, fill the template with that hash, redeploy.
+containerlab destroy -t nmas-vios-d2.clab.yml --cleanup
+sed "s|@@HASH@@|<the $9$ token>|" configs/bp-vios-secret9.cfg.template \
+  > configs/bp-vios-d2.cfg
+grep -c '@@HASH@@' configs/bp-vios-d2.cfg      # must print 0
+containerlab deploy -t nmas-vios-d2.clab.yml
+```
+
+### Pass criteria
+
+```bash
+c=clab-nmas-vios-d2-bp-vios-d2
+time docker logs -f $c 2>&1 | grep -m1 "Startup complete"    # expect < 15 min
+docker logs $c 2>&1 | grep -iE "invalid|rejected|%.*ERROR"   # expect nothing
+sshpass -p 'ProbeSecretValue2' ssh -o StrictHostKeyChecking=no \
+  admin@<probe-ip> 'show running-config | include ^username admin'
+```
+
+- [ ] `Startup complete` reached
+- [ ] **no** refusal for the username line in the boot log
+- [ ] running config shows `secret 9`, not `secret 0` and not absent
+- [ ] `ProbeSecretValue2` is **accepted** over SSH
+- [ ] the replay did not stall — the whole config applied, not just the part
+      before the username line
+
+**If the line is refused**, the switches are in the routers' pre-stage-C
+position and the redeploy must not proceed for them. The fix is not the same
+one: no username is injected on vIOS, so the cause would be the *hash form or
+the replay*, not coexistence — measure which before designing anything.
+
+The template carries **no prose comments**, like stage A's. A first draft of
+it had nineteen, which on this platform is nineteen lines typed into a console
+for no reason — the exact shape that hung run 2. A test now enforces it for
+every `vios` config in the probe directory.
+
+---
+
 ## 2.4 The redeploy, and its checklist
 
 **Written before the redeploy. Do not edit it afterwards to match what
@@ -221,6 +304,8 @@ happened** — if an item fails, the ban stays and the failure is measured.
 - [ ] 2.2a passed **and** demonstrated failing with the marker hidden
 - [ ] 2.2b record written, verified **on the USB stick**, location noted off-box
 - [ ] 2.3 passed, or its failure understood and the generator changed
+- [ ] **2.3b (D2) passed** — a vIOS has booted a `secret 9` startup line.
+      Without this the redeploy is the first test of four switches at once
 - [ ] `config_repo` clean and pushed — `git status` clean, local HEAD == remote main
 - [ ] A **Save All** run now, so the pre-redeploy goldens are the comparison point
 - [ ] `~/labs/lab/configs/r1–r5.cfg` still carry `secret 9` (`grep -c 'secret 9'` → 5)
@@ -244,6 +329,9 @@ containerlab deploy  -t rcn-lab1.clab.yml
        `docker logs <node> 2>&1 | grep -i "not injecting"`
 4. [ ] **Each router's running config shows `secret 9`**, not `password 0`:
        `show running-config | include ^username admin`
+4b. [ ] **Each switch's too.** Nothing is injected on vIOS, so the failure
+        mode differs — a refused hash or a stalled console replay, not
+        coexistence. Check the boot log as well as the running config.
 5. [ ] **Each device answers SSH with the credential NMAS holds** — and
        **`admin`/`admin` is REFUSED** on the routers. Two separate attempts,
        not one inference. *This is the item the whole stage exists for.*

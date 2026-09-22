@@ -199,6 +199,27 @@ class TestEveryProbeFileIsAscii:
         """An empty walk would make the test above vacuously true."""
         assert len(list(self._files())) >= 3
 
+    def test_no_vios_config_carries_a_prose_comment(self):
+        """vrnetlab TYPES a vIOS startup config into the console, so a
+        comment is a CLI interaction. One hung a boot; a second nearly
+        shipped in the stage-D2 template, which is why this is a test rather
+        than a habit.
+
+        The C8000v files are exempt: they are loaded as a file.
+        """
+        import os
+
+        offenders = []
+        for path in self._files():
+            name = os.path.basename(path)
+            if "vios" not in name:
+                continue
+            with open(path, encoding="utf-8") as handle:
+                for number, line in enumerate(handle, 1):
+                    if line.startswith("! "):
+                        offenders.append(f"{name}:{number} {line.strip()[:50]}")
+        assert not offenders, offenders
+
 
 class TestTheBootstrapSecretIsGenerated:
     def test_it_is_not_a_fixed_word(self):

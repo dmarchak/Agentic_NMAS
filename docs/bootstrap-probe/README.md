@@ -648,6 +648,47 @@ does **not** lift the redeploy ban by itself. Lifting it needs, in order:
 
 ---
 
+## Stage D2 — the switches are unproven too
+
+Asked before the production redeploy was scheduled, and the repository
+answered it: **no vIOS has ever booted a `secret 9` line.**
+
+| stage | node | username line | result |
+|---|---|---|---|
+| A | `bp-vios` | `secret 0 admin` (**plaintext**) | booted |
+| B | `bp-c8k-b` | `secret 9 $9$…` | refused — hazard confirmed |
+| C | `bp-c8k-c` | `secret 9 $9$…` | applied — fix proven |
+
+Every `secret 9` boot was a **C8000v**. The switches were rotated the same
+day and their startup files carry the same shape, and that shape has never
+been fed back to the platform that emits it.
+
+Two properties are untested, and only the first is shared with the routers:
+
+1. **Consumption.** Rotation sends `algorithm-type scrypt secret <plaintext>`
+   — the *device* computes the hash. `clab-sync` harvests
+   `show running-config`, which writes `secret 9 $9$salt$hash`. The device
+   emits a form it has never been asked to read back at boot. That was equally
+   true of the routers until stage B measured it.
+2. **Console replay.** vrnetlab *types* a vIOS startup config into the console
+   line by line; the routers' is loaded as a file. Stages B and C therefore
+   prove nothing about this path — and it is the path where a comment hung a
+   boot.
+
+`nmas-vios-d2.clab.yml` and `configs/bp-vios-secret9.cfg.template` run it by
+stage B's method on the other platform: boot the known-good shape, generate a
+throwaway hash on the device, destroy, refill, reboot.
+
+The template carries **no prose comments**. A first draft had nineteen, which
+on a console-replayed platform is nineteen lines typed into a console for no
+reason — the shape that hung run 2. `test_bootstrap_config.py` now fails on a
+prose comment in any `vios` config here.
+
+**Without D2, the production redeploy is the first test of four switches at
+once.**
+
+---
+
 ## What the persistence chain must check instead
 
 `verify_startup_file()` currently greps the startup file for the new hash.
