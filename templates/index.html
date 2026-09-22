@@ -797,12 +797,16 @@
 </div>
 
 <p class="text-muted small mb-3">
-  NetBox acts as the network source of truth. Each device list is mirrored as a
-  NetBox <em>region</em> (with a same-named site beneath it). Every device is
-  scanned via SSH to pull model, serial number, platform, and software version,
-  and its IPv4 interface addresses are pushed into NetBox <strong>IPAM</strong>
-  as prefixes and IP addresses assigned to DCIM interfaces — with the
-  management IP set as the device's primary IPv4.
+  NetBox is the intended source of truth for inventory; <strong>this tab is the
+  opposite direction</strong> — a one-way discovery import that pushes what NMAS
+  already knows into NetBox, so a hand-curated NetBox is exactly what the write
+  gate below exists to protect. Each device list is mirrored as a NetBox
+  <em>region</em> (with a same-named site beneath it). Each device's model,
+  serial number, platform and software version are read from its
+  <strong>saved golden config</strong> — no SSH session is opened — and its IPv4
+  interface addresses are pushed into NetBox <strong>IPAM</strong> as prefixes
+  and IP addresses assigned to DCIM interfaces, with the management IP set as
+  the device's primary IPv4.
 </p>
 
 <!-- Not-configured banner (shown when URL/token missing) -->
@@ -836,16 +840,21 @@
       </button>
     </div>
     <p class="text-muted small mb-0">
-      Importing connects to every online device in the selected list(s), pulls
-      <code>show version</code>, <code>show inventory</code>, and
-      <code>show ip interface</code>, then writes the results into NetBox DCIM
-      + IPAM. Each list becomes its own region. Unreachable devices are
-      reported but not created in NetBox.
+      Importing reads each device's <strong>saved golden config</strong> and
+      writes the results into NetBox DCIM + IPAM; each list becomes its own
+      region. It opens no SSH session, so <strong>an offline device is still
+      imported</strong> provided it has a golden config — what gets skipped is a
+      device with <em>no golden config saved</em>, reported with that reason.
+      The one part that needs a live session is CDP/LLDP neighbour discovery,
+      attempted only for devices already known to be online.
     </p>
     <p class="text-muted small mb-0 mt-2">
       You will see a read-only preview of every object to be created or updated
-      before anything is written. Objects NMAS creates are tagged
-      <code>nmas-managed</code>, and Remove only ever deletes those.
+      before anything is written, and confirming is one-shot. Objects NMAS
+      creates are tagged <code>nmas-managed</code> <em>and</em> recorded in its
+      own created-object list; Remove deletes only what appears in
+      <strong>both</strong>, so a region, site, VRF or device a human curated is
+      reported as skipped rather than deleted.
     </p>
   </div>
 </div>
@@ -2284,10 +2293,14 @@
   <button class="btn btn-outline-secondary btn-sm" onclick="loadGitTab()">↻ Refresh</button>
 </div>
 <p class="text-muted small mb-3">
-  Each <strong>Save All Configs</strong> stages device configs and, if Jenkins is configured,
-  creates a validation pipeline for them. Commit here to version the configs in Git —
-  with a passing pipeline selected for CI-verified changes, or directly if Jenkins isn't
-  configured or you don't need one for this commit.
+  <strong>Save All Configs commits by itself</strong> — one commit for the whole batch,
+  with per-device <code>golden/&lt;device&gt;/&lt;timestamp&gt;</code> tags and a
+  <code>baseline/&lt;timestamp&gt;</code> when it covers the inventory. Nothing is left
+  staged, and a device whose config has not changed produces no commit but is still
+  reported. If Jenkins is configured, a validation pipeline is created when the save
+  actually produced a commit.
+  Commit <em>here</em> for <code>infra/</code> files and anything else you version by
+  hand — with a passing pipeline selected to attach CI evidence to that commit.
 </p>
 
 <!-- Status bar -->

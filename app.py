@@ -5020,12 +5020,16 @@ def golden_configs_auto_create():
 @app.route("/golden_configs/save_all", methods=["POST"])
 def golden_configs_save_all():
     """
-    Fetch running-config from every online device, save as golden config,
-    stage the changes in the list's Git repository, and create a Jenkins
-    validation pipeline for this batch.
+    Fetch running-config from every online device and promote all of them in
+    ONE commit, then create a Jenkins validation pipeline if that produced a
+    commit.
 
     This is the 'Save All Configs' action — the frontend should call this
     instead of /bulk_execute for write-memory-only saves.
+
+    It does NOT stage-and-wait. That was the pre-Phase-2 flow, and this
+    docstring still described it long after `save_golden()` became the single
+    write path — which is how the Git tab's own description stayed wrong too.
     """
     from modules.ai_assistant import (
         _save_golden_config_file,

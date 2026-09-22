@@ -1064,6 +1064,13 @@ than merely consistent. Deleting a function goes through
 `scripts/check_removed_definitions.py`.
 
 **1.6 Stale Git-tab and NetBox-tab descriptions.**
+*Status: **DONE**.* Both checked against the routes they call. The Git
+tab described the pre-Phase-2 stage-then-commit flow — and so did the
+route's own docstring, which is how the tab text kept agreeing with
+something. The NetBox tab claimed import scans by SSH; it reads golden
+configs and `_scan_device` has no callers, so **an offline device IS
+imported** — the old text was wrong in the dangerous direction.
+`test_tab_descriptions_are_true.py` pins each claim to the code.
 Both tabs describe behaviour that predates the NSoT work.
 *Acceptance:* every sentence on both tabs is true of the code as it is, checked
 against the routes each tab calls — not rewritten from the plan, which is what

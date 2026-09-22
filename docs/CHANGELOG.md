@@ -9,6 +9,30 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — the Git and NetBox tabs described flows that no longer existed (Stage 1.6)
+
+Both were written from the design and never revisited.
+
+- **Git tab** said Save All *stages* configs. Phase 2 made `save_golden()` the
+  single write path and one call one commit; nothing is staged, and the manual
+  commit is for `infra/` and ad-hoc files. The route's own docstring said the
+  same stale thing — which is how the tab text kept agreeing with something.
+- **NetBox tab** said importing "connects to every online device" and pulls
+  `show version`. It reads the **saved golden config** and opens no session;
+  `_scan_device`, the SSH scanner, has no callers. So "unreachable devices are
+  reported but not created" was wrong **in the dangerous direction**: an
+  offline device *is* imported. What gets skipped is a device with no golden
+  config. The one genuine live session — CDP/LLDP neighbours — is now named
+  rather than dropped, since removing the SSH claim entirely would replace one
+  untruth with another.
+- The removal claim is precise: tagged `nmas-managed` **and** in NMAS's own
+  created-object record, not merely tagged.
+- The direction is stated. "NetBox acts as the network source of truth" sat
+  directly above a description of pushing into it.
+
+`test_tab_descriptions_are_true.py` checks each claim against the code, not
+against the text — the text agreeing with itself is what happened for months.
+
 ### Removed — three functions with no caller (Stage 1.5)
 
 Each decided from evidence, not defaulted. `KNOWN_DEAD` in
