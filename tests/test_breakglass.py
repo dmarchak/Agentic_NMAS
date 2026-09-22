@@ -99,17 +99,29 @@ class TestItDoesNotShareAFailureWithWhatItRecovers:
         assert one["salt"] != two["salt"]
         assert one["ciphertext"] != two["ciphertext"]
 
-    def test_the_envelope_metadata_leaks_nothing(self, payload):
-        """The parts an onlooker can read: everything except the ciphertext.
+    def test_the_envelope_carries_only_known_fields(self, payload):
+        """Structure, not substrings.
 
-        The first version searched the WHOLE envelope, ciphertext included,
-        for `"r1"`. Base64 of a random token contains a given two-character
-        pair often, so it passed alone and failed in the full suite -- a test
-        that fails on correct code, from the matcher rather than the property.
+        Two earlier versions of this test searched the envelope's text for
+        `"r1"`. Both were wrong for the same reason, one field apart: the
+        ciphertext is random base64, and so is the SALT, so a given
+        two-character pair turns up by chance -- measured at roughly 1 run in
+        200 for the salt alone. It passed locally and failed in the suite.
+
+        The property is that the envelope holds a FIXED set of fields and
+        none of the non-random ones is derived from the payload. Asserting
+        the key set says that; grepping random bytes never could.
         """
         envelope = json.loads(bg.seal(payload, PASS))
-        readable = json.dumps({k: v for k, v in envelope.items()
-                               if k != "ciphertext"})
+        assert set(envelope) == {"breakglass", "kdf", "scrypt", "salt",
+                                 "ciphertext"}
+
+    def test_the_non_random_fields_derive_from_nothing(self, payload):
+        """`kdf`, `scrypt` and the version are constants, so they are safe to
+        compare literally -- and must stay that way."""
+        envelope = json.loads(bg.seal(payload, PASS))
+        readable = json.dumps({k: envelope[k]
+                               for k in ("breakglass", "kdf", "scrypt")})
         for value in ("same", "en1", "admin", "r1", "rcn"):
             assert value not in readable
 
