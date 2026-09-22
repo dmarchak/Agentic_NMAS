@@ -47,6 +47,9 @@ def status():
         "verified_at": config.get("verified_at"),
         "auto_push": config.get("auto_push"),
         "last_push": config.get("last_push"),
+        # Its own field, never folded into last_push: a timestamp on a push
+        # that did not happen reads as durability that does not exist.
+        "last_push_failure": config.get("last_push_failure"),
         "acknowledged": config.get("acknowledged_secrets"),
         "acknowledgement_covers": covers,
     })

@@ -276,7 +276,15 @@ async function loadRemotePanel() {
           <div>write probe: ${s.verified_at
                 ? `<span class="text-success">${_gEsc(s.verified_at)}</span>`
                 : '<span class="text-warning">not yet — required before Push</span>'}</div>
-          <div>last push: ${s.last_push ? _gEsc(s.last_push.at) : 'never'}</div>
+          <div>last push: ${s.last_push
+                ? _gEsc(s.last_push.at) + (s.last_push.by ? ' by ' + _gEsc(s.last_push.by) : '')
+                  + (s.last_push.kind === 'tags'
+                     ? ' <span class="text-muted">(tag only)</span>' : '')
+                  + ((s.last_push.tags || []).length
+                     ? ' <code>' + _gEsc((s.last_push.tags || []).join(', ')) + '</code>' : '')
+                : 'never'}</div>
+          ${s.last_push_failure ? `<div class="text-danger">push FAILED
+                ${_gEsc(s.last_push_failure.at)}: ${_gEsc(s.last_push_failure.reason)}</div>` : ''}
           <div>auto-push: ${s.auto_push
                 ? '<span class="badge bg-success-subtle text-success-emphasis">on</span>'
                 : '<span class="badge bg-secondary-subtle text-secondary-emphasis">off</span>'}</div>

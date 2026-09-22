@@ -278,3 +278,160 @@ class TestTheAcknowledgementGateStillApplies:
         world["archive"].push_hook({"list_name": "lab", "repo": world["local"],
                                     "tags": ["baseline/x"]})
         assert calls == [], calls
+
+
+class TestEverySuccessfulPushIsRecorded:
+    """The Remote card showed a push from the day before.
+
+    Measured on the deployed instance: a baseline tag was published at
+    ~17:24Z and "last push" still read `2026-09-21T19:57:47Z`. The card was
+    not stale -- it was answering a narrower question than it appeared to.
+    `remote.push()` (the button) recorded `last_push`; `archive.push_hook()`
+    (auto-push) pushed without ever writing it, so the field meant "when
+    somebody last clicked", which reads as "nothing has been published since".
+    """
+
+    def test_a_tag_only_auto_push_advances_last_push(self, world, monkeypatch):
+        from modules.nsot import remote as R
+
+        saved = {}
+        monkeypatch.setattr(R, "save_remote",
+                            lambda name, config: saved.update(config))
+        monkeypatch.setattr(R, "load_remote",
+                            lambda name: dict(saved) or {
+                                "owner": "o", "repo": "r", "auto_push": True,
+                                "branch": "main",
+                                "last_push": {"at": "2026-09-21T19:57:47Z",
+                                              "by": "person"}})
+        tag = "baseline/20260922T172405Z"
+        _git(world["local"], "tag", "-a", tag, "-m", tag)
+
+        world["archive"].push_hook({"list_name": "lab", "repo": world["local"],
+                                    "tags": [tag], "devices": []})
+        assert saved["last_push"]["at"] != "2026-09-21T19:57:47Z"
+        assert saved["last_push"]["by"] == "auto-push"
+
+    def test_it_names_the_tag_that_went_out(self, world, monkeypatch):
+        from modules.nsot import remote as R
+
+        saved = {}
+        monkeypatch.setattr(R, "save_remote",
+                            lambda name, config: saved.update(config))
+        monkeypatch.setattr(R, "load_remote", lambda name: dict(saved) or {
+            "owner": "o", "repo": "r", "auto_push": True, "branch": "main"})
+        tag = "baseline/20260922T172405Z"
+        _git(world["local"], "tag", "-a", tag, "-m", tag)
+
+        world["archive"].push_hook({"list_name": "lab", "repo": world["local"],
+                                    "tags": [tag], "devices": []})
+        assert saved["last_push"]["tags"] == [tag]
+
+    def test_a_tag_only_push_is_recorded_as_such(self, world, monkeypatch):
+        """"Pushed" is not one event. With no new commit the branch push is a
+        no-op and the tag is the entire publication."""
+        from modules.nsot import remote as R
+
+        saved = {}
+        monkeypatch.setattr(R, "save_remote",
+                            lambda name, config: saved.update(config))
+        monkeypatch.setattr(R, "load_remote", lambda name: dict(saved) or {
+            "owner": "o", "repo": "r", "auto_push": True, "branch": "main"})
+        _git(world["local"], "tag", "-a", "baseline/x", "-m", "x")
+
+        world["archive"].push_hook({"list_name": "lab", "repo": world["local"],
+                                    "tags": ["baseline/x"], "devices": []})
+        assert saved["last_push"]["kind"] == "tags"
+
+    def test_a_commit_push_is_recorded_as_a_commit(self, world, monkeypatch):
+        from modules.nsot import remote as R
+
+        saved = {}
+        monkeypatch.setattr(R, "save_remote",
+                            lambda name, config: saved.update(config))
+        monkeypatch.setattr(R, "load_remote", lambda name: dict(saved) or {
+            "owner": "o", "repo": "r", "auto_push": True, "branch": "main"})
+        with open(os.path.join(world["local"], "golden.cfg"), "w") as handle:
+            handle.write("hostname s1\n!\n")
+        _git(world["local"], "add", "-A")
+        _git(world["local"], "commit", "-m", "change")
+
+        world["archive"].push_hook({"list_name": "lab", "repo": world["local"],
+                                    "tags": [], "devices": ["s1"]})
+        assert saved["last_push"]["kind"] == "commit"
+        assert saved["last_push"]["commit"]
+
+
+class TestAFailedPushRecordsTheFailureNotATimestamp:
+    """A timestamp on a push that did not happen reads as durability that
+    does not exist."""
+
+    def test_last_push_is_not_advanced(self, world, monkeypatch):
+        from modules.nsot import remote as R
+
+        saved = {"last_push": {"at": "2026-09-21T19:57:47Z", "by": "person"}}
+        monkeypatch.setattr(R, "save_remote",
+                            lambda name, config: saved.update(config))
+        monkeypatch.setattr(R, "load_remote", lambda name: dict(
+            saved, owner="o", repo="r", auto_push=True, branch="main"))
+        # A remote that rejects: push to a path that is not a repository.
+        monkeypatch.setattr(R, "remote_url", lambda config: "/nonexistent.git")
+
+        out = world["archive"].push_hook({"list_name": "lab",
+                                          "repo": world["local"],
+                                          "tags": [], "devices": ["s1"]})
+        assert out["ok"] is False
+        assert saved["last_push"]["at"] == "2026-09-21T19:57:47Z"
+
+    def test_the_failure_is_recorded_with_its_reason(self, world, monkeypatch):
+        from modules.nsot import remote as R
+
+        saved = {}
+        monkeypatch.setattr(R, "save_remote",
+                            lambda name, config: saved.update(config))
+        monkeypatch.setattr(R, "load_remote", lambda name: dict(
+            saved, owner="o", repo="r", auto_push=True, branch="main"))
+        monkeypatch.setattr(R, "remote_url", lambda config: "/nonexistent.git")
+
+        world["archive"].push_hook({"list_name": "lab", "repo": world["local"],
+                                    "tags": [], "devices": ["s1"]})
+        assert saved["last_push_failure"]["at"]
+        assert saved["last_push_failure"]["reason"]
+
+    def test_a_later_success_clears_the_failure(self, world, monkeypatch):
+        """Otherwise the card reports a problem that has since been fixed."""
+        from modules.nsot import remote as R
+
+        saved = {"last_push_failure": {"at": "2026-09-22T00:00:00Z",
+                                       "reason": "it broke"}}
+        monkeypatch.setattr(R, "save_remote",
+                            lambda name, config: saved.clear() or
+                            saved.update(config))
+        monkeypatch.setattr(R, "load_remote", lambda name: dict(
+            saved, owner="o", repo="r", auto_push=True, branch="main"))
+        _git(world["local"], "tag", "-a", "baseline/y", "-m", "y")
+
+        world["archive"].push_hook({"list_name": "lab", "repo": world["local"],
+                                    "tags": ["baseline/y"], "devices": []})
+        assert "last_push_failure" not in saved
+
+
+class TestThereIsOneProducer:
+    def test_push_does_not_write_last_push_itself(self):
+        """Two writers of one field is how the two paths diverged."""
+        import ast
+        import inspect
+        import textwrap
+
+        from modules.nsot import remote as R
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(R.push)))
+        assert "last_push" not in ast.dump(tree).replace("record_push", ""), (
+            "push() assigns last_push directly instead of calling record_push")
+
+    def test_both_paths_call_the_recorder(self):
+        import inspect
+
+        from modules.nsot import archive, remote
+
+        assert "record_push(" in inspect.getsource(remote.push)
+        assert "record_push(" in inspect.getsource(archive.push_hook)

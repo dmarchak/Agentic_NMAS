@@ -89,10 +89,12 @@ def push_hook(context: dict) -> dict:
     if rc != 0:
         if "non-fast-forward" in err or "rejected" in err:
             # Never force-push: surface the conflict and stop.
-            return {"ok": False, "error": (
-                "remote has commits this repo does not — resolve the divergence "
-                "manually; NMAS will not force-push")}
-        return {"ok": False, "error": err[:300]}
+            reason = ("remote has commits this repo does not — resolve the "
+                      "divergence manually; NMAS will not force-push")
+        else:
+            reason = err[:300]
+        R.record_push_failure(list_name, actor="auto-push", reason=reason)
+        return {"ok": False, "error": reason}
 
     tags = [t for t in (context.get("tags") or []) if t]
     pushed_tags = []
@@ -105,6 +107,24 @@ def push_hook(context: dict) -> dict:
             log.warning("archive: tag %s not pushed: %s", tag, err[:200])
             continue
         pushed_tags.append(tag)
+
+    # Recorded here because auto-push never went through remote.push(), so
+    # nothing wrote `last_push` for it. The card then showed whenever somebody
+    # last clicked Push, which reads as "nothing has been published since" and
+    # is a different claim entirely.
+    #
+    # `kind` says which this was: with no new commit the branch push is a
+    # no-op and the baseline tag is the entire publication.
+    head = ""
+    rc_head, out_head, _ = git(repo, "rev-parse", "HEAD")
+    if rc_head == 0:
+        head = (out_head or "").strip()
+    # Tag-only iff the caller published tags for no devices -- which is
+    # exactly `save_golden()`'s no-commit baseline path. A golden commit names
+    # its changed devices; a template commit names no tags.
+    tag_only = bool(pushed_tags) and not context.get("devices")
+    R.record_push(list_name, actor="auto-push", branch=branch, commit=head,
+                  tags=pushed_tags, kind="tags" if tag_only else "commit")
 
     message = f"pushed to {branch}"
     if tags:

@@ -939,7 +939,10 @@ No infrastructure changes, no device contact. Seven items, each independently
 committable.
 
 **1.1 Remote Verify falsely refuses after the first push.**
-*Status: fixed in `5f3325d`, NOT yet verified against the live remote.*
+*Status: **DONE**, verified on the deployed instance 2026-09-22.* All four
+read-only checks green against `dmarchak/rcn-nsot-config`;
+`repository_is_empty_or_related` reported *"53 shared commit(s) on this list's
+history"*. The gated write probe passed at 17:21:54Z.
 The reported hypothesis — peeled `refs/tags/x^{}` entries inflating the count —
 was wrong. The count was a symptom. The check intersected the local **root
 commit** with the remote's **ref tips**, which coincide only in a repository
@@ -947,12 +950,18 @@ with exactly one commit, so it passed on an empty remote and refused every
 remote with history. It now tests ancestry over every advertised SHA this
 clone holds.
 *Acceptance:* Verify (read-only) passes against `dmarchak/rcn-nsot-config`
-with all five checks green, **on the deployed instance**; a deliberately
+with all **four** read-only checks green, **on the deployed instance** — the
+write probe is the gated fifth and is not part of a read-only verify, which
+this criterion originally got wrong; a deliberately
 unrelated repository is still refused with the "interleave" wording; the
 real-git tests in `tests/test_remote_relatedness.py` stay green.
 
 **1.2 Auto-push does not publish tag-only baselines.**
-*Status: FIXED.* `save_golden()`'s no-commit path (`repo.py`, the
+*Status: **DONE**, verified on the deployed instance 2026-09-22.* An unchanged
+Save All reported *"no commit … baseline baseline/20260922T172405Z"*; the
+remote went from 33 tags to 34, and the before/after difference was **exactly**
+`refs/tags/baseline/20260922T172405Z`. Nothing else was published — the
+property the explicit refspec exists for, measured rather than reasoned. `save_golden()`'s no-commit path (`repo.py`, the
 `_baseline_wanted` branch at existing HEAD) tagged the baseline and
 **returned without calling `run_post_commit` at all** — so the hook that
 pushes never fired. That was the whole cause, and it was sufficient alone.
@@ -1041,10 +1050,29 @@ repo dir; the deploy, restore, remote and templates paths take it; a test
 greps those modules for `get_current_list_name` / `get_current_device_list`
 and fails on any call reached from a function that already has a list in hand.
 
-**Stage 1 is done when:** all seven acceptance criteria hold, the full suite
-passes, and 1.1 and 1.2 have been confirmed **on the deployed instance against
-the real remote** — the two that were only ever exercised in states that no
-longer occur.
+**1.2b `last_push` is not recorded by auto-push.**
+*Status: FIXED, pending confirmation on the deployed instance.* Found while
+confirming 1.2: the baseline tag published at ~17:24Z left the Remote card
+still showing `2026-09-21T19:57:47Z`. The card was not stale — it was
+answering a narrower question than it appeared to. **Two code paths push**:
+`remote.push()` (the button) recorded `last_push`, and
+`archive.push_hook()` (auto-push) pushed without ever writing it, so the
+field meant "when somebody last clicked", which reads as "nothing has been
+published since".
+*Acceptance:* one producer, `remote.record_push()`, called by both paths; a
+successful push of either kind advances `last_push` and names what went out;
+a **tag-only** push is recorded as such, because "pushed" is not one event —
+with no new commit the branch push is a no-op and the tag is the entire
+publication; a **failed** push writes `last_push_failure` and leaves
+`last_push` pointing at the last thing that really went out, since a
+timestamp on a push that did not happen reads as durability that does not
+exist; a later success clears the failure; the card shows the tag and the
+failure.
+
+**Stage 1 is done when:** all eight acceptance criteria hold, the full suite
+passes, and 1.1, 1.2 and 1.2b have been confirmed **on the deployed instance
+against the real remote** — the ones that were only ever exercised in states
+that no longer occur.
 
 ---
 

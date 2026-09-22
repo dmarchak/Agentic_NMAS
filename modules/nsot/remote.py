@@ -787,6 +787,64 @@ def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
     return {"ok": True, "was": was, "now": now}
 
 
+def record_push(list_name: str, *, actor: str, branch: str = "",
+                commit: str = "", tags=None, kind: str = "commit") -> dict:
+    """Record a SUCCESSFUL push. The one producer of ``last_push``.
+
+    Two code paths push: :func:`push` (the button) and
+    ``archive.push_hook()`` (auto-push). Only the first ever wrote this, so
+    after an auto-push the Remote card showed a "last push" from whenever
+    somebody had last clicked — measured on the deployed instance, a
+    2026-09-21 timestamp beside a tag published 2026-09-22. The card was not
+    stale; it was answering a narrower question than it appeared to.
+
+    ``kind`` distinguishes them, because "pushed" is not one event: a
+    ``tags`` push publishes a baseline with no new commit, and a card that
+    cannot tell the two apart cannot show what actually went out.
+    """
+    from datetime import datetime, timezone
+
+    config = load_remote(list_name)
+    if not config:
+        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
+
+    config["last_push"] = {
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "by": actor,
+        "kind": kind,
+        "branch": branch,
+        "commit": commit,
+        "tags": list(tags or []),
+    }
+    # A previous failure is cleared by a success: leaving it would have the
+    # card reporting a problem that has since been fixed.
+    config.pop("last_push_failure", None)
+    save_remote(list_name, config)
+    return {"ok": True, "last_push": config["last_push"]}
+
+
+def record_push_failure(list_name: str, *, actor: str, reason: str) -> dict:
+    """Record a FAILED push — deliberately not as ``last_push``.
+
+    A timestamp on a push that did not happen is the worst kind of record:
+    it reads as durability that does not exist. The failure is its own field,
+    and ``last_push`` keeps pointing at the last thing that really went out.
+    """
+    from datetime import datetime, timezone
+
+    config = load_remote(list_name)
+    if not config:
+        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
+
+    config["last_push_failure"] = {
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "by": actor,
+        "reason": (reason or "")[:400],
+    }
+    save_remote(list_name, config)
+    return {"ok": True, "last_push_failure": config["last_push_failure"]}
+
+
 def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:
     """main + --follow-tags, then refs/notes/* IF any note ref exists.
 
@@ -842,12 +900,11 @@ def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:
              if len(l.split()) > 1}
     gained = after - before
 
-    config["last_push"] = {
-        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "by": actor, "commit": _run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
-                                    timeout=60).stdout.strip(),
-    }
-    save_remote(list_name, config)
+    record_push(list_name, actor=actor, branch=branch, kind="commit",
+                commit=_run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
+                            timeout=60).stdout.strip(),
+                tags=[r.split("refs/tags/", 1)[1] for r in gained
+                      if r.startswith("refs/tags/") and not r.endswith("^{}")])
 
     result = {
         "ok": True, "remote": url, "branch": branch,
