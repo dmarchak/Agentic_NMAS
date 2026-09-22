@@ -324,7 +324,109 @@ def check_right_repository(config: dict, list_name: str, repo_dir: str) -> dict:
     if not remote_refs:
         return {"ok": True, "name": "repository_is_empty_or_related",
                 "detail": "empty"}
+    return _relatedness(repo_dir, remote_refs)
 
+
+def remote_heads(remote_refs: list) -> list:
+    """Branch-tip SHAs from ``git ls-remote`` output.
+
+    Only ``refs/heads/*``, because those are always commits. A tag line gives
+    the *tag object's* SHA and the peeled ``refs/tags/x^{}`` line gives the
+    commit -- mixing the three kinds into one set was never the problem here,
+    but it is why a count of "refs" is not a count of anything comparable.
+    """
+    heads = []
+    for line in remote_refs:
+        parts = line.split()
+        if len(parts) >= 2 and parts[1].startswith("refs/heads/"):
+            heads.append(parts[0])
+    return heads
+
+
+def _have_commit(repo_dir: str, sha: str) -> bool:
+    return _run(["git", "-C", repo_dir, "cat-file", "-e",
+                 f"{sha}^{{commit}}"]).returncode == 0
+
+
+def _is_ancestor(repo_dir: str, older: str, newer: str) -> bool:
+    """True when *older* is an ancestor of *newer*, or the same commit.
+
+    ``merge-base --is-ancestor`` answers both: a commit is its own ancestor.
+    """
+    return _run(["git", "-C", repo_dir, "merge-base", "--is-ancestor",
+                 older, newer]).returncode == 0
+
+
+def _relatedness(repo_dir: str, remote_refs: list) -> dict:
+    """Does the remote hold this list's history?
+
+    THE DEFECT THIS REPLACES. The previous test intersected the local ROOT
+    commit with the remote's ref TIPS:
+
+        local_root = rev-list --max-parents=0 HEAD
+        if set(local_root) & {sha for each remote ref}: related
+
+    A root commit is a ref tip only in a repository with exactly one commit,
+    or one whose first commit happens to be tagged. So it passed on an empty
+    remote, passed by luck on a one-commit remote, and **refused every remote
+    with real history** -- including one holding nothing but our own 61
+    commits, pushed from this very repository an hour earlier. It was only
+    ever exercised against an empty remote, so "it passed" and "it works"
+    stayed the same sentence right up to the moment the first push made them
+    different.
+
+    The question is ancestry, so ancestry is what it asks: take every SHA the
+    remote advertises that this clone actually HAS, and see whether any of
+    them sits on this list's history -- an ancestor of HEAD, or HEAD an
+    ancestor of it.
+
+    **Every advertised SHA, not just branch heads.** A remote that is ahead of
+    us -- somebody pushed from another machine -- has a head we have never
+    seen, and testing heads alone would report our own repository as
+    unrelated for the sake of one unfetched commit. Its tags are still ours,
+    and one shared commit is all relatedness requires.
+
+    **Shared nothing means unrelated.** If not one advertised SHA exists in
+    this clone, there is no history in common to find, and the original
+    refusal stands unchanged.
+    """
+    advertised = []
+    for line in remote_refs:
+        parts = line.split()
+        if parts:
+            advertised.append(parts[0])
+
+    # Peeled `refs/tags/x^{}` entries are the reason tags are usable here at
+    # all: the unpeeled line carries the TAG OBJECT's sha, which is not a
+    # commit and can never be an ancestor of anything.
+    known = [sha for sha in dict.fromkeys(advertised)
+             if _have_commit(repo_dir, sha)]
+
+    related = [sha for sha in known
+               if _is_ancestor(repo_dir, sha, "HEAD")
+               or _is_ancestor(repo_dir, "HEAD", sha)]
+
+    if related:
+        heads = remote_heads(remote_refs)
+        ahead = [sha for sha in heads if not _have_commit(repo_dir, sha)]
+        detail = f"{len(related)} shared commit(s) on this list's history"
+        if ahead:
+            detail += f"; {len(ahead)} remote head(s) not yet fetched"
+        return {"ok": True, "name": "repository_is_empty_or_related",
+                "detail": detail}
+
+    # Nothing shared. Keep the root-commit test as a second opinion: it is
+    # sound when it fires, and costs one command.
+    return _shared_root(repo_dir, remote_refs)
+
+
+def _shared_root(repo_dir: str, remote_refs: list) -> dict:
+    """The original test, kept as a fallback: a shared root commit.
+
+    Sound when it fires -- two repositories sharing a root commit are the
+    same history -- and useless when it does not, which is what made it the
+    wrong primary test.
+    """
     local_root = _run(["git", "-C", repo_dir, "rev-list", "--max-parents=0",
                        "HEAD"]).stdout.split()
     remote_shas = {l.split()[0] for l in remote_refs}

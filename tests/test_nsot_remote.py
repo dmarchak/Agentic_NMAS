@@ -260,12 +260,25 @@ class TestTheRightRepository:
     def test_an_unrelated_non_empty_repository_is_refused(self, lab, tmp_path,
                                                           monkeypatch):
         # The remote has refs; the local root commit is a different sha. The
-        # mock must answer the two git calls DIFFERENTLY, or it accidentally
+        # mock must answer each git call DIFFERENTLY, or it accidentally
         # reports a shared root and proves nothing.
+        #
+        # `cat-file -e` must FAIL for the remote's sha. A stub that returns 0
+        # for every command is saying "this clone has that commit, and it is
+        # an ancestor of HEAD" -- so the unrelated repository would be
+        # reported as related, by the fixture rather than by the code. The
+        # relatedness test is ancestry now, so the stub has to model ancestry.
         def _run(args, **kw):
-            out = ("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\trefs/heads/main\n"
-                   if "ls-remote" in args else "cafebabecafebabecafebabe\n")
-            return type("P", (), {"stdout": out, "stderr": "", "returncode": 0})()
+            if "ls-remote" in args:
+                return type("P", (), {
+                    "stdout": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\trefs/heads/main\n",
+                    "stderr": "", "returncode": 0})()
+            if "cat-file" in args:          # we do not have the remote's commit
+                return type("P", (), {"stdout": "", "stderr": "", "returncode": 1})()
+            if "merge-base" in args:        # and it is on no shared history
+                return type("P", (), {"stdout": "", "stderr": "", "returncode": 1})()
+            return type("P", (), {"stdout": "cafebabecafebabecafebabe\n",
+                                  "stderr": "", "returncode": 0})()
 
         monkeypatch.setattr(R, "_run", _run)
         out = R.check_right_repository(
