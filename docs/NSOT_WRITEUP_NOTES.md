@@ -5270,3 +5270,54 @@ Items 2, 3 and 4 are **built and tested** (`verify_startup_applies()`,
 `modules/breakglass.py`, `DOMAIN_KEYWORD` / `GENERATES_SSH_KEY`) and none of
 them has been adopted into the lab. Built is not deployed, and a plan that
 treats the two as the same thing is how a redeploy happens by accident.
+
+---
+
+## A named pattern: prose about code is not code
+
+Three false positives in one stage, each a test that **passed while the thing
+it claimed to check was broken**. All three had the same shape: a test read
+`inspect.getsource()` and searched the text.
+
+`inspect.getsource()` returns the docstring and the comments as well as the
+code. So a test that greps it is searching the *explanation* of the code
+alongside the code — and an explanation that mentions the forbidden thing
+satisfies a search for the forbidden thing.
+
+| test | what it searched for | what actually matched |
+|---|---|---|
+| "`save_host_vars` is called once" | `source.count("save_host_vars(")` | the **comment** saying it commits once |
+| "break-glass never reads `data/key.key`" | `"key.key" not in source` | the **docstring paragraph** explaining why it must not |
+| "Save All calls `save_golden` once" | `source.count("save_golden(")` | a **docstring** naming `save_golden()` |
+
+The second is the sharpest. The module's docstring argues at length that
+encrypting with `data/key.key` would make the record share a failure with the
+thing it recovers — and that argument is what tripped the test written to
+enforce it. The better the explanation, the more likely it breaks the check.
+
+The first is the most expensive. It passed on a script that **could not run at
+all**: `write_committed()` was called with the wrong arity, every structural
+assertion about the call site was true, and `--write` crashed on its only real
+invocation.
+
+### The fix, and the lesson separately
+
+The fix is `calls_in()` — parse to an AST, walk it, count `ast.Call` nodes
+whose target matches. Docstrings and comments are not in the tree.
+
+The lesson is larger than the helper, because the helper only covers calls:
+
+> **Searching source text searches the prose too.** A codebase that explains
+> itself well has more prose to trip over, so the discipline that makes the
+> code readable is the same discipline that makes text-matching tests
+> unreliable. Ask the parsed structure, or run the thing.
+
+The same reasoning is why the three graded UI paths are tested by *executing*
+the helper with dukpy rather than inspecting it, and why the `--write` path
+now runs end to end against a real git repository. A structural test can
+confirm the shape of code that does not work; only running it can confirm it
+does.
+
+**Where text matching is still right:** asserting what a page *says*. The tab
+descriptions (1.6) are checked as rendered text on purpose — the claim there
+is about the prose, so the prose is the subject rather than the noise.

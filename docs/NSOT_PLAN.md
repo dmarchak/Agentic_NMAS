@@ -1206,6 +1206,29 @@ same-day commit.
 readers so a new one fails; the directory itself is left on disk — deleting it
 is a separate, later decision.
 
+**Two callerless functions belong to this stage, not to 1.5.** Both are
+remnants of the systems Stage 3 is retiring, so deleting them in a tidy-up
+would settle a design question by omission.
+
+* **`netbox_client._scan_device`** — the SSH scanner the NetBox import used
+  to run. Zero callers; import reads `_scan_device_from_golden` instead.
+  **Its being callerless is *why* the tab text was wrong** (1.6): the
+  description outlived the mechanism, promising that unreachable devices
+  would be skipped when nothing was reaching out to find out. So 3.3 decides
+  **explicitly whether NetBox import should ever do a live scan** — a live
+  scan is the only thing that can report a device as unreachable, and today's
+  golden-config path cannot make that claim at all. Deleting the function
+  first would make "no" the answer nobody chose.
+* **`config_git.write_and_stage`** — the stage-then-commit-later golden path.
+  Zero callers; `migrate.py` mentions it only in a docstring. It is the other
+  half of the Git tab's stale description, and its removal is part of
+  retiring that flow rather than a separate cleanup.
+
+*Acceptance for these two:* the live-scan question is answered in writing
+before either is touched; whatever is removed goes through
+`scripts/check_removed_definitions.py` (both are Python, so it does cover
+them — unlike 1.5's JavaScript).
+
 ---
 
 ### STAGE 4 — Phase 4 onboarding wizard, then r6
