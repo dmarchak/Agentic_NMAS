@@ -1127,6 +1127,10 @@ that no longer occur.
 
 ### STAGE 2 — lift the redeploy ban
 
+**The runbook is [docs/STAGE2_REDEPLOY.md](STAGE2_REDEPLOY.md)** — written
+before the redeploy, including the checklist in full. This section states
+what each item is *for*; that file is what gets followed at the machine.
+
 The ban is lifted by a **successful redeploy**, not by the four items being
 built. Built is not deployed; proven on a probe is not adopted here.
 
