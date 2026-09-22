@@ -247,12 +247,59 @@ def main() -> int:
         print("\n-- dry run. Re-run with --write to commit.")
         return 2 if skipped else 0
 
-    # write_committed() applies the secret guards; save_host_vars() makes ONE
-    # commit over the whole host_vars path. Not one commit per device: this is
-    # a single repair, and nine commits would make the history describe nine
-    # decisions that nobody took separately.
+    # write_committed(repo, host_vars) -- TWO arguments. It takes the
+    # hostname from the document itself, so a document missing that field
+    # would be written as `unknown.yml`. Checked rather than assumed.
+    missing = [h for h, d in touched if not d.get("hostname")]
+    if missing:
+        print(f"\nREFUSED: no `hostname` field in committed intent for "
+              f"{', '.join(missing)}. write_committed() names the file from "
+              f"that field; without it the repair would write unknown.yml.")
+        return 1
+
+    # ATOMIC. Validate every document before writing any, then keep the
+    # original bytes so a failure part-way through restores what was there.
+    # A repair that leaves four of nine devices rewritten is worse than one
+    # that does nothing: the next run reads a half-corrected repository as
+    # its starting point.
     for hostname, document in touched:
-        hostvars.write_committed(repo_dir, hostname, document)
+        text = hostvars.to_yaml(document)
+        try:
+            hostvars.assert_no_secret_values(text, hostname)
+            hostvars.assert_printable(text, hostname)
+        except Exception as exc:                # noqa: BLE001
+            print(f"\nREFUSED: {hostname} would not pass the committed-intent "
+                  f"guards: {type(exc).__name__}: {exc}")
+            return 1
+
+    originals = {}
+    for hostname, _document in touched:
+        path = hostvars.committed_path(repo_dir, hostname)
+        try:
+            with open(path, "rb") as handle:
+                originals[path] = handle.read()
+        except OSError:
+            originals[path] = None
+
+    try:
+        for _hostname, document in touched:
+            hostvars.write_committed(repo_dir, document)
+    except Exception as exc:                    # noqa: BLE001
+        for path, blob in originals.items():
+            if blob is None:
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                with open(path, "wb") as handle:
+                    handle.write(blob)
+        print(f"\nFAILED while writing: {type(exc).__name__}: {exc}")
+        print("every file was restored to its previous contents; "
+              "nothing was committed.")
+        return 1
+
+    # save_host_vars() makes ONE commit over the whole host_vars path. Not one
+    # commit per device: this is a single repair, and nine commits would make
+    # the history describe nine decisions that nobody took separately.
     result = _repo.save_host_vars(
         list_name, [h for h, _ in touched], actor="description-repair",
         message="host_vars: restore description text (ifname expansion, 1.4)")
