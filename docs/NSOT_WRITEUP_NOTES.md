@@ -5354,3 +5354,52 @@ That is the whole pattern in one place: `inspect.getsource()` returns the
 prose with the code, so a text search over it cannot distinguish a thing from
 a description of that thing. `tests/astcheck.py` exists so the fix is one
 import rather than a judgement call at each site.
+
+---
+
+## Coverage that was never designed, only inherited
+
+The drift checker enumerates the devices it will check from
+`ai_assistant._list_golden_configs()`, which lists
+`data/lists/<slug>/golden_configs/` — the **legacy** store. Phase 2 made
+`config_repo/golden/` the golden store and stopped writing to the legacy one;
+`_find_golden_config_file()` still reads it as a documented fallback, so the
+*content* the checker compares is resolved manifest-first and is current.
+
+What is not current is the **list of devices**.
+
+> All nine devices are drift-checked only because their legacy files predate
+> the migration. The coverage is accidental. Nothing has maintained that
+> directory since, so the set it describes is frozen at the moment migration
+> ran.
+
+Every device onboarded after that point is outside drift detection from
+birth, and nothing anywhere reports it. The check does not fail for such a
+device — it never considers it. A run that says "checked 9, all clean" is
+indistinguishable from one that should have said "checked 9 of 10".
+
+That is the third time this shape has appeared in one week:
+
+| | reads as | actually |
+|---|---|---|
+| NetBox tab (1.6) | "unreachable devices are reported but not created" | nothing reaches out; an offline device is imported |
+| Template preview (1.3b) | a clean diff | secret-bearing lines were never compared |
+| Drift check | "checked 9, all clean" | 9 is the size of a directory nobody maintains |
+
+Each is a **protection that reads as present because nothing says it is
+absent**, and each was found by asking what a passing result actually
+measured rather than whether it passed. The first two were found by reading
+the code behind a claim. The third was found by asking a question about a
+*different* subject — whether anything compares real secret values — and
+following the answer past the point where it had already said "yes".
+
+The fix in each case is to make the absence visible rather than to widen the
+check: the tab names what it does and does not do, the preview counts the
+lines it could not compare, and the drift run reports what it checked
+**against what the inventory holds**. A count beside a count is something an
+operator can act on. A clean result alone is not.
+
+**Why it is a prerequisite rather than a follow-up.** r6 is the first device
+this project will onboard after the migration. Onboarding it before this is
+fixed produces a device outside drift detection from the moment it exists,
+and the only signal would be a number that has always looked right.
