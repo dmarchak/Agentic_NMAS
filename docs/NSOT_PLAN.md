@@ -1142,6 +1142,22 @@ path the feature actually uses; the duplicate Oxidized setting.
 calls the same client the feature calls — a Test that passes while the feature
 fails is worse than no Test; one Oxidized configuration, not two.
 
+**3.4 `nmas-deploy` compares against a ref it never fetches.**
+Measured 2026-09-22: the deploy host sat at `90af74d` and reported "already
+up to date" while origin held `40e8a87`. A `git fetch` moved its `origin/main`
+by two commits. The tool was reading a **local tracking ref**, which is a
+cached answer, not the remote's answer — so it would have reported up to date
+indefinitely however many commits landed.
+
+Third instance of that shape in Stage 1 alone: `check_right_repository()`
+compared local roots instead of asking the remote, and the Remote card read a
+field only one code path wrote. `git ls-remote` is the only thing that asks.
+
+The script lives on the NMAS, outside this repository.
+*Acceptance:* `nmas-deploy` fetches (or uses `git ls-remote`) before deciding,
+and says which commit it compared against — a tool that reports "up to date"
+without naming the reference it used cannot be checked.
+
 **3.3 Retire the legacy `golden_configs/` store.**
 Remaining readers: `agent_runner.py`, `check_runner.py`,
 `/list/golden_configs`. Template preview was the fourth and was fixed in
