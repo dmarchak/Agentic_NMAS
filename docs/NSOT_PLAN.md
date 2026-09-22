@@ -1048,6 +1048,11 @@ changed (a community moving to a different ACL, say) is still reported,
 because only the value is unknowable, not the line.
 
 **1.5 The three allowlisted functions with no caller.**
+*Status: **DONE**.* All three deleted, each decided from evidence rather
+than defaulted; `KNOWN_DEAD` is empty and a test asserts it stays empty.
+`invalidateTopologyCache` turned out to be inside the chat panel's IIFE,
+so the deploy code could never have called it — and the staleness it was
+written to mitigate was fixed at the reader instead.
 `_deployList`, `invalidateTopologyCache`, `loadJenkinsResults`, currently in
 `KNOWN_DEAD` in `tests/test_no_unreachable_ui.py`. Each needs a decision, not
 a default: wire it up or delete it. For `invalidateTopologyCache`

@@ -4575,17 +4575,6 @@ async function _renderBuildHistory(jobs) {
   panel.innerHTML = html;
 }
 
-async function loadJenkinsResults() {
-  try {
-    const r = await fetch('/jenkins/results');
-    if (!r.ok) throw new Error('Request failed');
-    _renderJenkinsResults(await r.json());
-  } catch (err) {
-    const c = document.getElementById('jenkinsResultsPanel');
-    if (c) c.innerHTML = `<div class="alert alert-danger">Failed to load CI results: ${_escHtml(err.message)}</div>`;
-  }
-}
-
 async function loadJenkinsTab() {
   await _loadJenkinsPipelineSelect();
   // Sync from Jenkins first (no AI needed — pure API), then load history in parallel.

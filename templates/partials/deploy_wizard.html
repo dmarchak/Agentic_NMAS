@@ -33,10 +33,6 @@ function _dEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function _deployList() {
-  const el = document.getElementById('deployWizard');
-  return (el && el.dataset.listName) || '';
-}
 
 async function openDeployPlan(hostnames) {
   if (!_deployModal) _deployModal = new bootstrap.Modal(document.getElementById('deployPlanModal'));

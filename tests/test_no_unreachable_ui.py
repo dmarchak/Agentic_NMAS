@@ -30,23 +30,28 @@ import re
 import pytest
 
 #: Functions defined with no reference anywhere in the rendered page, each
-#: with the reason it is tolerated. An allowlist without reasons becomes a
-#: place findings go to be forgotten.
+#: with the reason it is tolerated.
 #:
-#: These are all PRE-EXISTING and none is on a graded path. They are recorded
-#: here rather than fixed under a feature freeze -- deleting a function is a
-#: behaviour change, and each needs deciding on its own.
-KNOWN_DEAD = {
-    "_deployList": (
-        "leftover helper in deploy_wizard.html: reads the list name from the "
-        "container's data attribute. The plan carries the list instead."),
-    "invalidateTopologyCache": (
-        "base.html: topology cache invalidation, never wired up. The cache is "
-        "currently only cleared by a full reload."),
-    "loadJenkinsResults": (
-        "index.html: the Jenkins tab loads its results by another path. This "
-        "one is a second implementation nothing reaches."),
-}
+#: **Empty, and a test asserts it stays empty.** An allowlist with entries is
+#: a place findings go to be forgotten; one that must stay empty is a gate.
+#: Adding an entry is therefore a deliberate act with a reason attached, not
+#: the path of least resistance when a test goes red.
+#:
+#: The three it held were each decided rather than defaulted (Stage 1.5):
+#:
+#: * ``_deployList`` -- a helper reading the list name off the wizard
+#:   container. The plan carries the list, so nothing needed it. Deleted.
+#: * ``loadJenkinsResults`` -- a second implementation. ``loadJenkinsTab()``
+#:   is the live path and calls the same ``_renderJenkinsResults()`` renderer
+#:   from ``/jenkins/sync``; this one fetched ``/jenkins/results``. Deleted.
+#:   The route itself is left alone: it is API surface, not dead UI.
+#: * ``invalidateTopologyCache`` -- inside the chat panel's IIFE, so the
+#:   deploy code could not have called it even if someone had wanted to, and
+#:   the legacy discovery keeps no such cache. Deleted -- and the staleness it
+#:   was written to mitigate was fixed at the reader instead: the local-answer
+#:   path read the topology cache with no age check at all, while a matching
+#:   TTL had existed beside it the whole time.
+KNOWN_DEAD = {}
 
 
 def _rendered():
@@ -137,7 +142,20 @@ class TestNothingIsDefinedWithoutACaller:
             f"these are reachable now and should leave KNOWN_DEAD: "
             f"{sorted(stale)}")
 
+    def test_the_allowlist_is_empty(self):
+        """A gate, not a parking space.
+
+        An allowlist with entries is somewhere findings go to be forgotten.
+        Keeping it empty makes adding one a deliberate act with a reason
+        attached, rather than the path of least resistance when a test goes
+        red.
+        """
+        assert KNOWN_DEAD == {}, (
+            f"{sorted(KNOWN_DEAD)} are allowlisted. Wire each to something a "
+            f"human can click, or delete it.")
+
     def test_every_allowlist_entry_gives_a_reason(self):
+        """Still enforced, for whenever an entry is genuinely warranted."""
         for name, reason in KNOWN_DEAD.items():
             assert reason and len(reason) > 30, name
 

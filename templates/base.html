@@ -1633,9 +1633,17 @@
       let devices = [];
       try { devices = JSON.parse(rawDev).devices || []; } catch {}
 
+      // The SAME age check `getTopologyContext()` applies. This path read the
+      // cache with no timestamp check at all, so it could answer from
+      // arbitrarily old topology -- which is the staleness the deleted
+      // `invalidateTopologyCache()` was written to mitigate and never wired
+      // up. The TTL already existed; only this reader was not using it.
       const rawTopo = localStorage.getItem(TOPO_CACHE_KEY);
       let topo = null;
-      try { const tc = JSON.parse(rawTopo); topo = tc.topology || null; } catch {}
+      try {
+        const tc = JSON.parse(rawTopo);
+        if (Date.now() - tc.timestamp < TOPO_CACHE_TTL) topo = tc.topology || null;
+      } catch {}
 
       const t = text.toLowerCase().trim();
 
@@ -1818,11 +1826,6 @@
       } catch (e) { /* non-critical */ }
 
       return null;
-    }
-
-    /* Invalidate topology cache after a config change that could affect topology */
-    function invalidateTopologyCache() {
-      localStorage.removeItem(TOPO_CACHE_KEY);
     }
 
     /* ---- Main send function ------------------------------------------- */

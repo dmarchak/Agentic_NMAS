@@ -9,6 +9,28 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Removed — three functions with no caller (Stage 1.5)
+
+Each decided from evidence, not defaulted. `KNOWN_DEAD` in
+`test_no_unreachable_ui.py` is now **empty, and a test asserts it stays
+empty** — an allowlist with entries is somewhere findings go to be forgotten.
+
+- `_deployList` — read the list name off the wizard container. The plan
+  carries the list.
+- `loadJenkinsResults` — a second implementation. `loadJenkinsTab()` is the
+  live path and feeds the same `_renderJenkinsResults()` renderer from
+  `/jenkins/sync`. The `/jenkins/results` route is left alone: API surface,
+  not dead UI.
+- `invalidateTopologyCache` — inside the chat panel's IIFE, so the deploy code
+  could never have called it, and the legacy discovery keeps no such cache.
+
+### Fixed — the chat panel answered from topology of any age
+
+The gap the deleted invalidator pointed at. `tryAnswerLocally()` read the
+topology cache with **no timestamp check at all**, while
+`getTopologyContext()` applied a 10-minute TTL to the same key four lines
+away. The TTL already existed; only this reader was not using it.
+
 ### Fixed — the preview diff reported ordering and whitespace as differences (Stage 1.3)
 
 Reviewed on real data after the 1.4 repair: every description matched the
