@@ -959,10 +959,18 @@ pushes never fires. Independently, `push()` uses `git push --follow-tags`,
 which pushes only tags reachable from commits **being pushed**; with no new
 commit there is nothing to carry the tag. Two causes, either of which alone
 leaves the tag local.
+*Fix narrowly.* Push **exactly the new `baseline/<ts>` tag**, by explicit
+refspec, through the same acknowledgement scan. **Not `git push --tags`**,
+which publishes every local tag — including per-device tags that pruning is
+supposed to keep local, and any tag a future feature creates for its own
+purposes. A broad fix would satisfy "the tag is on the remote" while changing
+what publishing means.
 *Acceptance:* a Save All that changes nothing but earns a baseline results in
 that `baseline/<ts>` tag existing on the remote; a test asserts the hook fires
-on the no-commit path; a test asserts the push refspec carries a tag whose
-commit is already on the remote. The acknowledgement gate still applies — a
+on the no-commit path; a test asserts the push command carries **that one
+tag's refspec and no other**, and specifically that neither `--tags` nor a
+wildcard refspec appears; a test asserts a second unrelated local tag is
+**not** published by that push. The acknowledgement gate still applies — a
 tag-only push must not bypass the history scan.
 
 **1.3 Preview diff is order-sensitive and whitespace-sensitive.**
@@ -983,16 +991,26 @@ is correct for `ip route ... Gi0/0` and wrong inside a `description` — a
 description reading `link to Gi0/1 spare` is rewritten in `host_vars`, so the
 render no longer matches the device and the difference is invisible in the
 diff because both sides were canonicalised.
+**The parser fix stops new damage; it does not undo the damage already
+committed.** `host_vars` already carry expanded descriptions — s1 holds
+`GigabitEthernet3` where the device says `Gi3`, and others are likely.
 *Acceptance:* a fixture device with an interface reference inside a
 `description` round-trips byte-identically; expansion still applies to the
 lines that need it; the free-form keywords already recognised elsewhere
 (`description`, `banner`, `remark`, `name` — see the rollback broad-key rule)
-are the ones exempted, so there is one list rather than two.
+are the ones exempted, so there is one list rather than two. **Then the
+committed intent is corrected by a reviewed commit — descriptions only, with
+the diff shown before it is made — and Template preview for s1 shows no
+description differences.** Proof on the real data, not only on a fixture: the
+fixture was written by the same person as the fix.
 
 **1.5 The three allowlisted functions with no caller.**
 `_deployList`, `invalidateTopologyCache`, `loadJenkinsResults`, currently in
 `KNOWN_DEAD` in `tests/test_no_unreachable_ui.py`. Each needs a decision, not
-a default: wire it up or delete it.
+a default: wire it up or delete it. For `invalidateTopologyCache`
+specifically: if the collapsed legacy discovery still keeps a cache, wire it
+there; otherwise delete it through
+`scripts/check_removed_definitions.py`.
 *Acceptance:* `KNOWN_DEAD` is empty, and the test asserts it is empty rather
 than merely consistent. Deleting a function goes through
 `scripts/check_removed_definitions.py`.
