@@ -288,3 +288,184 @@ class TestItCarriesTheListRatherThanAskingWhichIsActive:
         source = inspect.getsource(cr.platform_of)
         assert "get_current_list_name" not in source
         assert "get_current_device_list" not in source
+
+
+# ---------------------------------------------------------------------------
+# The negative control, as a test
+# ---------------------------------------------------------------------------
+
+PATCHED_LAUNCH_FILE = '''#!/usr/bin/env python3
+import datetime, logging, os, re, signal, sys, telnetlib
+import vrnetlab
+
+
+def _skip_users_defined_in_startup(bootstrap, startup):
+    defined = set(re.findall(r"(?m)^\\s*username\\s+(\\S+)\\s", startup or ""))
+    if not defined:
+        return bootstrap
+    return bootstrap
+
+
+class C8000v_vm(vrnetlab.VM):
+    def bootstrap_spin(self):
+        startup_cfg = self.read_startup_config()
+        cfg = _skip_users_defined_in_startup(
+            self.gen_bootstrap_config(), startup_cfg) + startup_cfg
+        self.write_config(cfg)
+'''
+
+STOCK_LAUNCH_FILE = '''#!/usr/bin/env python3
+import datetime, logging, os, re, signal, sys, telnetlib
+import vrnetlab
+
+
+class C8000v_vm(vrnetlab.VM):
+    def bootstrap_spin(self):
+        startup_cfg = self.read_startup_config()
+        cfg = self.gen_bootstrap_config() + startup_cfg
+        self.write_config(cfg)
+'''
+
+
+@pytest.fixture
+def launch_file(tmp_path, monkeypatch):
+    """A REAL file on disk, read through the same code path.
+
+    `_ssh_read` is redirected to `cat` the local file rather than stubbed
+    with a string, so the check exercises its own parsing of real content --
+    and so the negative control edits a file the way an operator does.
+    """
+    startup = tmp_path / "r1.cfg"
+    startup.write_text("hostname r1\n!\n"
+                       "username admin privilege 15 secret 9 $9$salt$hash\n!\nend\n",
+                       encoding="utf-8")
+    launch = tmp_path / "c8000v-launch.py"
+    launch.write_text(PATCHED_LAUNCH_FILE, encoding="utf-8")
+
+    def _fake_ssh_read(clab, command, **kwargs):
+        # Behaves like `cat`: a missing file is a non-zero exit, not an
+        # exception. Raising here would make the missing-file tests fail for
+        # the fixture's reason rather than the code's.
+        for path in (startup, launch):
+            if str(path) in command:
+                if not path.exists():
+                    return {"ok": False,
+                            "error": f"cat: {path}: No such file or directory"}
+                return {"ok": True, "text": path.read_text(encoding="utf-8")}
+        return {"ok": False, "error": "No such file or directory"}
+
+    monkeypatch.setattr(cr, "_ssh_read", _fake_ssh_read)
+    monkeypatch.setattr("modules.settings_schema.get_setting",
+                        lambda key, default=None: {
+                            "clab_host": "user@lab",
+                            "clab_configs_dir": str(tmp_path),
+                            "clab_launch_patch": str(launch)}.get(key, default))
+    return {"launch": launch, "startup": startup}
+
+
+def _verdict(launch_file):
+    return cr.verify_startup_applies("r1", platform="cisco_iosxe",
+                                     username="admin")
+
+
+class TestTheNegativeControl:
+    """It failed on the live host, and that is why it is a test now.
+
+    With the marker renamed to `_skip_users_defined_in_startupX`, the routers
+    still reported APPLIES with the same reason text. The check did
+    `LAUNCH_SKIP_MARKER in text` -- and the renamed identifier CONTAINS the
+    marker. The control could not fail, and nine APPLIES lines were about to
+    go into a redeploy as evidence.
+    """
+
+    def test_the_patched_file_applies(self, launch_file):
+        assert _verdict(launch_file)["ok"] is True
+
+    def test_renaming_the_helper_makes_it_refuse(self, launch_file):
+        """The exact edit the runbook prescribes -- `sed s/X/XY/`."""
+        text = launch_file["launch"].read_text(encoding="utf-8")
+        launch_file["launch"].write_text(
+            text.replace("_skip_users_defined_in_startup",
+                         "_skip_users_defined_in_startupX"),
+            encoding="utf-8")
+        out = _verdict(launch_file)
+        assert out["ok"] is False, (
+            "the renamed identifier still contains the marker; a substring "
+            "test cannot tell them apart")
+
+    def test_a_stock_launch_script_refuses(self, launch_file):
+        launch_file["launch"].write_text(STOCK_LAUNCH_FILE, encoding="utf-8")
+        assert _verdict(launch_file)["ok"] is False
+
+    def test_the_helper_defined_but_never_called_refuses(self, launch_file):
+        """Half-undone: the function is there, the call site is not."""
+        launch_file["launch"].write_text(
+            PATCHED_LAUNCH_FILE.replace(
+                "        cfg = _skip_users_defined_in_startup(\n"
+                "            self.gen_bootstrap_config(), startup_cfg) + startup_cfg",
+                "        cfg = self.gen_bootstrap_config() + startup_cfg"),
+            encoding="utf-8")
+        out = _verdict(launch_file)
+        assert out["ok"] is False
+
+    def test_a_mere_comment_mentioning_it_refuses(self, launch_file):
+        launch_file["launch"].write_text(
+            STOCK_LAUNCH_FILE + "\n# TODO: _skip_users_defined_in_startup\n",
+            encoding="utf-8")
+        assert _verdict(launch_file)["ok"] is False
+
+    def test_a_half_patched_file_refuses_and_says_so(self, launch_file):
+        """Both forms present: which one runs decides whether the device
+        boots, and that is not something to guess."""
+        launch_file["launch"].write_text(
+            PATCHED_LAUNCH_FILE
+            + "\n    def other(self):\n"
+              "        cfg = self.gen_bootstrap_config() + startup_cfg\n",
+            encoding="utf-8")
+        out = _verdict(launch_file)
+        assert out["ok"] is False
+        assert "Half-patched" in out["error"]
+
+    def test_restoring_the_marker_makes_it_apply_again(self, launch_file):
+        launch_file["launch"].write_text(STOCK_LAUNCH_FILE, encoding="utf-8")
+        assert _verdict(launch_file)["ok"] is False
+        launch_file["launch"].write_text(PATCHED_LAUNCH_FILE, encoding="utf-8")
+        assert _verdict(launch_file)["ok"] is True
+
+
+class TestItNamesWhatItRead:
+    """A verdict about a remote file that does not say which file, on which
+    host, at what content, is a verdict nobody can check -- and it is read in
+    a session where the operator has just edited that file."""
+
+    def test_the_pass_names_host_path_and_digest(self, launch_file):
+        out = _verdict(launch_file)
+        assert "user@lab:" in out["launch_patch"]
+        assert str(launch_file["launch"]) in out["launch_patch"]
+        assert "@" in out["launch_patch"].rsplit("@", 1)[-1] or \
+            len(out["launch_patch"].rsplit("@", 1)[-1]) == 12
+
+    def test_the_digest_changes_with_the_file(self, launch_file):
+        first = _verdict(launch_file)["launch_patch"]
+        launch_file["launch"].write_text(
+            PATCHED_LAUNCH_FILE + "\n# a change\n", encoding="utf-8")
+        assert _verdict(launch_file)["launch_patch"] != first
+
+    def test_the_refusal_names_it_too(self, launch_file):
+        launch_file["launch"].write_text(STOCK_LAUNCH_FILE, encoding="utf-8")
+        assert str(launch_file["launch"]) in _verdict(launch_file)["error"]
+
+
+class TestAMissingLaunchScriptIsNeverAPass:
+    def test_it_refuses(self, launch_file):
+        launch_file["launch"].unlink()
+        out = _verdict(launch_file)
+        assert out["ok"] is False
+
+    def test_it_is_marked_unknown_not_will_not_apply(self, launch_file):
+        """"We could not look" and "we looked and it will not apply" are
+        different facts."""
+        launch_file["launch"].unlink()
+        out = _verdict(launch_file)
+        assert out.get("unknown") is True
+        assert out.get("applies") is not False or "unknown" in out["error"]

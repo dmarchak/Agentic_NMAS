@@ -5511,3 +5511,62 @@ It also corrected an earlier conclusion. Stage D2 had recorded that "SSH
 needed a hand-typed key" — true of the probe, and stated as though it were
 true of the platform. A property of a test fixture had been promoted to a
 property of the system.
+
+---
+
+## Four controls that could not fail, in one stage
+
+Each was introduced as the fix for a previous silent failure. Each was
+verified only in the state where it passes. None was run against the state it
+was built to detect until somebody tried.
+
+| # | the control | what it was guarding | why it could not fail |
+|---|---|---|---|
+| 1 | `nmas-persist-credential --dry-run` as a negative control | that `startup_applies` refuses when the launch patch is absent | the dry run returns **before** entering the persist chain, so the stage never ran. Same output with the patch present or absent |
+| 2 | `sshpass ... \|\| echo "PASS: admin refused"` | that the old credential stops working after a rotation | the connection died at **key exchange**, so `ssh` exited non-zero and the check printed PASS. It would print PASS with the device powered off |
+| 3 | `assert save_golden(...)` counted in `inspect.getsource()` | that the repair makes one commit | the count matched the **comment** saying it commits once, on a script that could not run at all |
+| 4 | `LAUNCH_SKIP_MARKER in patch["text"]` | that the launch script skips its username injection | `_skip_users_defined_in_startupX` **contains** `_skip_users_defined_in_startup`, so renaming the helper — the obvious negative control — left the check passing |
+
+The fourth is the one that mattered. It ran against the live host with the
+marker renamed and reported **APPLIES for all five routers**, with the same
+reason text naming the helper. Nine APPLIES lines were about to enter a
+redeploy as evidence that the hazard was handled.
+
+### The shape
+
+> Every one of these was **the fix for a silent failure**, written by someone
+> who had just been bitten and was being careful. Care is what produced them;
+> care is not what validates them.
+
+A check is a claim about a property. Running it where the property holds
+tests the *claim*, not the check — the two are indistinguishable from a green
+result. The only evidence that a check measures anything is watching it
+**fail when the property is false.**
+
+That is the same argument as "measure, don't infer", turned on the
+instruments: a reading is only worth what the instrument is worth, and an
+instrument that has only ever been used on a known-good sample has not been
+calibrated.
+
+### And the fourth was a presence check
+
+`verify_startup_applies()` exists because `verify_startup_file()` asked "is
+the hash in the file" when the question was "does the file apply". Its own
+launch-script check then asked "is this name in that file" when the question
+was "does the concatenation go through that helper" — the identical
+substitution, one level up, inside the function written to correct it.
+
+Three ways the name was present while the property was false: the renamed
+identifier containing the original; the helper defined with the call site
+reverted; a comment mentioning it. The check now requires the call **and** the
+absence of the unpatched form, and reports the host, path and sha256 of what
+it read — because a verdict about a remote file that does not say what it
+looked at is a verdict nobody can check, least of all in a session where the
+operator has just edited that file.
+
+### What changed as a practice
+
+The negative control is not an extra step after the check works. It is the
+step that determines whether there is a check at all, and it belongs in the
+suite rather than in a runbook — a control that lives only in a document is
+run once, by someone who already believes the answer.

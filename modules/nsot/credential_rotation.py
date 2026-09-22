@@ -30,6 +30,7 @@ from code that never opened a socket.
 """
 
 import logging
+import re
 import secrets
 import string
 import time
@@ -1902,22 +1903,64 @@ def verify_startup_applies(hostname: str, *, platform: str, username: str,
     # launch script skips its own injection for this user.
     patch = _ssh_read(clab, f"cat {shlex.quote(launch_patch)}")
     if not patch["ok"]:
-        return {"ok": False, "file": f"{clab}:{remote}",
+        return {"ok": False, "unknown": True, "file": f"{clab}:{remote}",
+                "launch_patch": f"{clab}:{launch_patch}",
                 "error": (f"could not read the launch script {clab}:"
                           f"{launch_patch} -- {patch['error']}. Whether this "
                           f"file applies depends on it, so this is unknown, "
                           f"not fine.")}
 
-    if LAUNCH_SKIP_MARKER in patch["text"]:
+    # WHAT WAS READ, named and fingerprinted. A verdict about a remote file
+    # that does not say which file, on which host, at which content, is a
+    # verdict nobody can check -- and this one is read in a session where the
+    # operator has just edited that file.
+    import hashlib
+
+    digest = hashlib.sha256(patch["text"].encode("utf-8")).hexdigest()[:12]
+    where = f"{clab}:{launch_patch}@{digest}"
+
+    # THE CALL SITE, not the name.
+    #
+    # This was `if LAUNCH_SKIP_MARKER in patch["text"]` -- a substring search
+    # for an identifier, which is a PRESENCE check: the exact defect class
+    # this function exists to replace, reproduced one level up inside it.
+    # Three ways it passed while the property was false:
+    #
+    #   * `_skip_users_defined_in_startupX` CONTAINS the marker, so renaming
+    #     the helper -- the obvious way to run a negative control -- left the
+    #     check passing. Measured on the live host: the routers reported
+    #     APPLIES with the marker renamed;
+    #   * the helper defined and the call site reverted, so the injection is
+    #     not skipped and the file says it is;
+    #   * a comment mentioning the name.
+    #
+    # The property is that the concatenation goes THROUGH the helper: the
+    # unpatched form absent, and the helper actually called.
+    raw_concat = re.search(
+        r"cfg\s*=\s*self\.gen_bootstrap_config\(\)\s*\+\s*startup_cfg",
+        patch["text"])
+    calls_skip = re.search(r"\b" + re.escape(LAUNCH_SKIP_MARKER) + r"\s*\(",
+                           patch["text"])
+
+    if calls_skip and not raw_concat:
         return {"ok": True, "applies": True, "kind": kind or "unknown",
-                "file": f"{clab}:{remote}", "launch_patch": launch_patch,
-                "reason": (f"the launch script skips its own username "
-                           f"injection for users the startup config defines "
-                           f"({LAUNCH_SKIP_MARKER}), so the `{kind or 'secret'}` "
+                "file": f"{clab}:{remote}", "launch_patch": where,
+                "reason": (f"{where} calls {LAUNCH_SKIP_MARKER}() at the "
+                           f"concatenation site and no longer carries the "
+                           f"unpatched form, so the `{kind or 'secret'}` "
                            f"form applies")}
 
+    if calls_skip and raw_concat:
+        return {"ok": False, "applies": False, "kind": kind or "unknown",
+                "file": f"{clab}:{remote}", "launch_patch": where,
+                "error": (f"{where} both calls {LAUNCH_SKIP_MARKER}() and "
+                          f"still contains the unpatched "
+                          f"`cfg = self.gen_bootstrap_config() + startup_cfg`. "
+                          f"Half-patched: which one runs decides whether this "
+                          f"device boots, and that is not something to guess.")}
+
     return {"ok": False, "applies": False, "kind": kind or "unknown",
-            "file": f"{clab}:{remote}", "launch_patch": launch_patch,
+            "file": f"{clab}:{remote}", "launch_patch": where,
             "error": (
                 f"the hash is in {remote} and the file WILL NOT APPLY. "
                 f"On {platform} the launch script injects `username {username} "
@@ -1927,7 +1970,7 @@ def verify_startup_applies(hostname: str, *, platform: str, username: str,
                 f"healthy on the injected credential and NMAS would be locked "
                 f"out. Fix: adopt the user-skip into {launch_patch} (see "
                 f"docs/bootstrap-probe/ stage C), or write the password form "
-                f"and rotate after boot.")}
+                f"and rotate after boot. Read: {where}")}
 
 
 def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
