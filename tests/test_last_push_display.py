@@ -31,13 +31,27 @@ PARTIAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
                        "templates", "partials", "golden_repo.html")
 
 
+def _slice_function(text, name):
+    """One top-level function declaration, cut at the NEXT declaration.
+
+    Slicing to `text.index("function loadGoldenRepoPanel")` was pinned to a
+    bug: the real text is `async function loadGoldenRepoPanel`, and while an
+    edit had wrongly stolen that `async`, the naive index worked. Restoring
+    the keyword left the slice ending in a dangling `async `, and the helper
+    failed to parse — the test broke *because* the code was fixed.
+    """
+    start = re.search(r"(?m)^(?:async )?function " + re.escape(name) + r"\b",
+                      text)
+    assert start, name
+    nxt = re.search(r"(?m)^(?:async )?function \w+", text[start.end():])
+    end = start.end() + nxt.start() if nxt else len(text)
+    return text[start.start():end]
+
+
 def _helper_source():
     with open(PARTIAL, encoding="utf-8") as handle:
         text = handle.read()
-    esc = text[text.index("function _gEsc"):text.index("function _gList")]
-    body = text[text.index("function _gLastPush"):
-                text.index("function loadGoldenRepoPanel")]
-    return esc + body
+    return _slice_function(text, "_gEsc") + _slice_function(text, "_gLastPush")
 
 
 def render(payload):

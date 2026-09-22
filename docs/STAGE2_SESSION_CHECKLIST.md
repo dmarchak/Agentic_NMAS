@@ -19,63 +19,41 @@ edited afterwards is a description.
 | 2.1 launch patch | **done** — adopted, `smp="2"` + skip, backup kept |
 | 2.2b break-glass | **done** — exported, verified on the NMAS **and on the laptop**, NMAS copy deleted, passphrase in the password manager |
 
-**2.3 (stage D) is NOT part of this session.** It tests `crypto key generate
+**Item 0 is withdrawn** — its premise was false (see below). **Stage D is
+not part of this session either.** It tests `crypto key generate
 rsa` in the *generator's* output for r6. No harvested config contains that
 line — `show running-config` never emits it — so the redeploy does not involve
 it. Stage D is a **Stage 4** prerequisite.
 
 ---
 
-## 0. D3 — will the switches come back with SSH?  ⚠ RUN THIS FIRST
+## 0. D3 — WITHDRAWN before the session. The premise was false.
 
-Nothing in s1–s4's startup files creates an RSA key. Two measured vIOS boots
-from the same image, with hostname + domain + `ip ssh version 2`, did **not**
-get an SSH server — stage A's capture came over the console, and D2's node
-needed `crypto key generate rsa` typed by hand.
+Kept rather than deleted, because how the premise was arrived at matters more
+than the item did.
 
-They answer SSH today, so the keys exist — most likely generated after the
-2026-09-19 deploy and living in **NVRAM, which a container destroy erases.**
+**The claim was:** nothing in s1–s4's startup files creates an RSA key, so a
+redeploy would return four switches with no SSH server.
 
-If that is right, the redeploy returns four switches with no SSH server. Not
-a credential problem — a reachability one, and item 5 would read
-`INCONCLUSIVE` for all four.
+**The measurement:** all four startup files contain
+`crypto key generate rsa modulus 2048` — s1 at line 187, one occurrence each.
+s1's key is timestamped 05:27:23 on 2026-09-19, four minutes after the 05:23
+deploy. **It was generated at boot, by the file.** Nothing depends on NVRAM
+surviving.
 
-The routers are unaffected: the C8000v answered SSH in stages A, B and C with
-no `ip ssh` line at all, because vrnetlab's bootstrap handles it.
+**How it went wrong:** the claim was reasoned from the *probe* configs —
+stage A's and D2's, which legitimately lack the line because they are minimal
+bootstraps — rather than read from `~/labs/lab/configs/s*.cfg`, the artifact
+the redeploy actually uses. Correct reasoning about the wrong object. One
+grep of the real file answered it.
 
-```bash
-# 0a. Confirm the switches have a key NOW, and that nothing in the file makes one.
-for s in s1 s2 s3 s4; do
-  echo "--- $s"; grep -c 'crypto key generate' ~/labs/lab/configs/$s.cfg
-done                                   # expect 0 for all four
+That is the same shape as asserting GUI click-paths from the design documents
+instead of the templates (Stage 1), and it reached a *more* alarming
+conclusion than the truth, which is the direction that wastes a session.
 
-# 0b. Boot s1's REAL startup file on a throwaway node, hash replaced.
-cd ~/labs/bootstrap-probe
-sed -e 's/^hostname s1$/hostname bp-vios-d3/' \
-    -e 's/^username admin privilege 15 secret 9 .*/username admin privilege 15 secret 9 <the D2 $9$ token>/' \
-    ~/labs/lab/configs/s1.cfg > configs/bp-vios-d2.cfg
-grep -n 'hostname\|username admin' configs/bp-vios-d2.cfg
-grep -c '^! ' configs/bp-vios-d2.cfg   # MUST be 0 — this file is typed into a console
-
-containerlab deploy -t nmas-vios-d2.clab.yml
-c=clab-nmas-vios-d2-bp-vios-d2
-time docker logs -f $c 2>&1 | grep -m1 "Startup complete"
-
-# 0c. The question: does SSH answer WITHOUT anyone generating a key?
-sshpass -p 'ProbeSecretValue2' ssh -o StrictHostKeyChecking=no \
-  admin@172.30.30.51 'show ip ssh' && echo "SSH IS UP" || echo "SSH IS NOT UP"
-```
-
-- [ ] **0 — result recorded.** `SSH IS UP` → the switches are fine, continue.
-      `SSH IS NOT UP` → **stop and tell me**. The redeploy needs a key-generation
-      step added to the switch startup files first, which is a change to
-      `~/labs/lab/configs/` and its own decision.
-
-```bash
-containerlab destroy -t nmas-vios-d2.clab.yml --cleanup
-docker network rm clab-bootstrap-probe 2>/dev/null || true
-rm -f configs/bp-vios-d2.cfg
-```
+**It also corrects a D2 conclusion:** "SSH needed a hand-typed key" was a
+property of the probe's config, not of the platform. A vIOS booting a real
+switch startup file gets SSH from the file.
 
 ---
 
@@ -93,8 +71,7 @@ rm -f configs/bp-vios-d2.cfg
       Record the commit: `________________`
 - [ ] **1.5** Record current uptimes, to compare against after:
       `for n in r1 r2 r3 r4 r5 s1 s2 s3 s4; do echo -n "$n "; ssh ... 'show version | include uptime'; done`
-- [ ] **1.6** D3 (item 0) passed, or its failure resolved.
-- [ ] **1.7** You have time to finish. Do not start this with 20 minutes.
+- [ ] **1.6** You have time to finish. Do not start this with 20 minutes.
 
 ---
 

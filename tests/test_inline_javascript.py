@@ -13,16 +13,27 @@ It reached a deployed page past 1656 tests, none of which had ever parsed a
 line of this JavaScript. Python tests had checked that markup *contained* the
 right strings; nothing checked the result was a program.
 
-Two checkers, deliberately:
+Three checkers now, and the middle one is why:
 
 * ``node --check`` when node exists, which is the real answer;
-* a string-literal scanner that always runs, because node is not installed on
-  the development machine OR on the deployment host, and a test that is
-  skipped everywhere protects nothing.
+* **a real parse via dukpy**, which is pinned in ``requirements.txt`` and so
+  runs everywhere;
+* a string-literal scanner, kept because it names the original defect
+  precisely.
 
-The scanner only looks for the defect that actually happened — a quoted
-string opened and not closed before the end of its line. That is a narrow
-check, and narrow is the point: it runs everywhere and cannot be waved away.
+**The dukpy parse was added after a second defect shipped past this file.**
+An edit replaced ``function loadGoldenRepoPanel(`` in a file where the text
+was ``async function loadGoldenRepoPanel(`` — so the ``async`` stayed behind
+and attached to the newly inserted function above it. The result was a
+function using ``await`` nine times without ``async``: a hard SyntaxError,
+which kills the **entire script block**, so every function in it became
+undefined and the Remote card reported ``_gLastPush is not defined``.
+
+The string scanner could not see it — it looks for unterminated quotes — and
+``node --check`` is skipped on both the development machine and the
+deployment host. So the file that exists to catch "the JavaScript does not
+parse" was, for this class, skipped everywhere. dukpy parses it for real and
+rejects exactly that construct.
 """
 
 import os
@@ -215,3 +226,93 @@ class TestNodeParsesEveryInlineScript:
                 finally:
                     os.unlink(tmp)
         assert not failures, failures
+
+
+# ---------------------------------------------------------------------------
+# A real parse, everywhere
+# ---------------------------------------------------------------------------
+
+def _parses(body: str):
+    """``(ok, message)`` from an actual JavaScript parser.
+
+    Wrapped in a function so a block's top-level ``return`` or ``await`` is
+    legal where it is legal, and illegal where it is not — which is the
+    distinction that matters here.
+    """
+    import dukpy
+
+    try:
+        dukpy.evaljs("function __syntax_check_wrapper__() {\n" + body + "\n}")
+        return True, ""
+    except Exception as exc:                  # noqa: BLE001
+        return False, str(exc).splitlines()[0]
+
+
+class TestEveryInlineScriptParses:
+    """Not skipped anywhere. dukpy is pinned, node is not installed."""
+
+    def test_dukpy_is_available(self):
+        """A parser that is not there checks nothing, and this file has
+        already been silently skipped once."""
+        import dukpy
+
+        assert dukpy.evaljs("1 + 1") == 2
+
+    def test_the_parser_rejects_the_defect_that_shipped(self):
+        """`await` without `async` — the construct that killed a whole block
+        and left every function in it undefined."""
+        ok, message = _parses("function f() { await g(); }")
+        assert not ok, "the parser accepts the bug it was added to catch"
+        assert "SyntaxError" in message
+
+    def test_the_parser_accepts_what_this_codebase_writes(self):
+        """A checker that rejects valid code gets removed. Template
+        literals, arrows, destructuring, async/await, optional chaining."""
+        for source in ("const f = (a) => `x ${a} y`;",
+                       "const [a, b] = [1, 2];",
+                       "async function f() { await g(); }",
+                       "var y = a?.b;"):
+            ok, message = _parses(source)
+            assert ok, f"{source!r} rejected: {message}"
+
+    def test_every_block_in_the_RENDERED_page_parses(self):
+        """The rendered page, not the template source.
+
+        A template is not JavaScript. `window.applyAiEnabled({{ ai_enabled |
+        tojson }})` is valid Jinja and, read as JS, is an object literal with
+        an invalid property name — so parsing the raw file reports a defect
+        in correct code. The browser receives the *rendered* output, so that
+        is what has to parse.
+
+        Rendering `/` covers base.html, index.html and every partial included
+        from them, which is where all of this project's inline script lives.
+        A template reachable only from another route is not covered here; the
+        string scanner above still walks every file on disk.
+        """
+        import re as _re
+
+        import app as nmas
+
+        html = nmas.app.test_client().get("/").get_data(as_text=True)
+        failures = []
+        for match in _re.finditer(r"<script([^>]*)>(.*?)</script>", html, _re.S):
+            attrs, body = match.group(1), match.group(2)
+            if "src=" in attrs or "application/json" in attrs:
+                continue
+            ok, message = _parses(body)
+            if not ok:
+                line = html[:match.start()].count("\n") + 1
+                failures.append(f"rendered page line {line} — {message}")
+        assert not failures, "\n".join(failures)
+
+    def test_the_rendered_page_actually_had_scripts(self):
+        """An empty sweep would make the check above vacuously true."""
+        import re as _re
+
+        import app as nmas
+
+        html = nmas.app.test_client().get("/").get_data(as_text=True)
+        inline = [m for m in _re.finditer(r"<script([^>]*)>(.*?)</script>",
+                                          html, _re.S)
+                  if "src=" not in m.group(1)]
+        assert len(inline) >= 5, len(inline)

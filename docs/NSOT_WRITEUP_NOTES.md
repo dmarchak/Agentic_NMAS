@@ -5467,3 +5467,47 @@ node that reloaded after its config was applied is a node whose running config
 may not be what the log says was applied.
 
 Three findings in one probe run, none of them the thing the run was for.
+
+---
+
+## Correct reasoning about the wrong object
+
+Twice in this project a confident, well-argued conclusion was drawn from an
+artifact that was not the one in question.
+
+**The GUI click-paths.** A hand-off listed the path to Deploy, Templatize and
+Golden tabs. None existed. The paths came from the design documents, which
+describe what the phases build, rather than from `templates/index.html`,
+which describes what is on the screen.
+
+**The switches' SSH keys.** Item 0 of the redeploy checklist claimed nothing
+in s1–s4's startup files creates an RSA key, and concluded the redeploy would
+return four switches with no SSH server. The reasoning was sound and the
+evidence was real — two measured vIOS boots, from the same image, with
+hostname and domain set and `ip ssh version 2`, that did **not** get an SSH
+server.
+
+But the evidence was about the **probe** configs. Those are minimal
+bootstraps and legitimately lack `crypto key generate rsa`. The real switch
+startup files contain it — s1 at line 187 — and s1's key is timestamped four
+minutes after the deploy that created it. Generated at boot, by the file.
+
+One `grep` of `~/labs/lab/configs/s1.cfg` answered a question that a page of
+correct inference got wrong.
+
+### Why this one is worth recording separately
+
+The conclusion was **more alarming than the truth**. That direction feels
+safe — it adds a check rather than removing one — and it is the direction
+that costs a scheduled session and erodes trust in the next warning. A false
+alarm and a missed defect are both wrong answers.
+
+The tell was available and unread: every measurement supporting the claim
+came from files in `docs/bootstrap-probe/`, and the claim was about files in
+`~/labs/lab/`. **When every piece of evidence comes from one artifact and the
+conclusion is about another, that gap is the thing to check first.**
+
+It also corrected an earlier conclusion. Stage D2 had recorded that "SSH
+needed a hand-typed key" — true of the probe, and stated as though it were
+true of the platform. A property of a test fixture had been promoted to a
+property of the system.

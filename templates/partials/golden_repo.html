@@ -466,7 +466,7 @@ window.remoteEnableAuto = async function () {
 
 <script>
 /* ── Baselines + migration ───────────────────────────────────────────────── */
-async function _gLastPush(p) {
+function _gLastPush(p) {
   // WHAT was published, not only who clicked.
   //
   // The first version showed the timestamp and the actor, and rendered `kind`
@@ -497,7 +497,7 @@ async function _gLastPush(p) {
   return _gEsc(p.at) + ' ' + how + who + ' — ' + what + tags;
 }
 
-function loadGoldenRepoPanel() {
+async function loadGoldenRepoPanel() {
   const host = document.getElementById('goldenRepoPanel');
   if (!host || !_gList()) return;
   try {
