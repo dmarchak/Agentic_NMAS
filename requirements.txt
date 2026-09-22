@@ -68,3 +68,10 @@ python-engineio==4.8.0
 # Development Dependencies
 pytest==7.4.3
 pytest-cov==4.1.0
+# Runs the templates' inline JavaScript in tests. Structural assertions about
+# JS source are what let a crashing script ship (`write_committed()` called
+# with the wrong arity, every shape test green), so the helpers that decide
+# what a card SAYS are executed rather than inspected. An embedded engine
+# rather than node: node is on neither the development machine nor the
+# deployment host, and a test skipped everywhere protects nothing.
+dukpy==0.6.0
