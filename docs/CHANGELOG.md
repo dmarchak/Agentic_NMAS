@@ -9,6 +9,39 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — masked lines showed as permanent differences (Stage 1.3b)
+
+The preview renders with secrets masked while the capture holds the real
+value, so every secret-bearing line differed for ever — and a permanent
+difference is one people learn to scroll past, in the section where real
+drift would appear.
+
+- Masked lines are neutralised to `<masked - not compared>` rather than shown
+  as a value that differs. `render_artifact.MASK` is a run of bullets, which
+  in a diff reads as a value.
+- **Only the value is unknowable.** Matching on the text around the mask keeps
+  the line under comparison: `RO` → `RW`, a changed trap host, a changed
+  privilege level and a line the capture lacks entirely all still report.
+- The count is **shown**, not just the silence. A preview that goes clean by
+  hiding what it could not check makes a stronger claim than it is entitled
+  to — the trap this project keeps hitting.
+- The panel states the consequence ("a value changed by hand on the device
+  would not show here") and names where the real comparison happens, so the
+  note does not read as "nothing checks this", which would be worse than the
+  truth and equally misleading.
+
+### Measured — the drift check enumerates a store nothing writes to
+
+Answering "does any path compare real secret values?": **yes**, `drift_check`
+diffs golden against a live `show running-config` raw, and `_clean()` strips
+nothing secret-related — a hand-changed community *is* detected.
+
+But it enumerates devices from the **legacy `golden_configs/` directory**, so
+**a device with no file there is never drift-checked at all**. Every device
+onboarded after the migration is outside drift detection, silently; r6 would
+be the first. Recorded as plan item **Stage 5b**, and a prerequisite for
+Stage 4's r6 rather than a follow-up.
+
 ### Added — `ListRef`: a device list resolved once and carried (Stage 1.7)
 
 Three defects had one shape — a function told which list to work on, then

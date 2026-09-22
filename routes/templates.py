@@ -354,10 +354,16 @@ def preview(hostname):
         # and indentation. The machinery to answer both already existed in
         # `roundtrip`; the preview simply was not using it, so a correct
         # render read as a broken one.
-        diff = roundtrip.canonical_diff(
+        diff, masked = roundtrip.canonical_diff(
             other, artifact.rendered_masked,
-            fromfile=f"{label} ({hostname})", tofile=f"rendered ({hostname})")
-        return {"available": True, "diff": diff, "changed": bool(diff)}
+            fromfile=f"{label} ({hostname})", tofile=f"rendered ({hostname})",
+            report_masked=True)
+        return {"available": True, "diff": diff, "changed": bool(diff),
+                # Counted, not merely absent. "Three lines could not be
+                # compared" is a fact the operator can act on; silence about
+                # them is a clean preview that quietly means less than it
+                # appears to.
+                "masked_not_compared": masked}
 
     return jsonify({
         "ok": True,

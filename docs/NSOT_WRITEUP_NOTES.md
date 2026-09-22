@@ -5321,3 +5321,36 @@ does.
 **Where text matching is still right:** asserting what a page *says*. The tab
 descriptions (1.6) are checked as rendered text on purpose — the claim there
 is about the prose, so the prose is the subject rather than the noise.
+
+### The fourth instance landed inside the test written to confirm the third was fixed
+
+Worth stating on its own, because it is the clearest the pattern ever got.
+
+`check_right_repository()` compared `slug == list_name` — `'default'` against
+`'Default'` — so every adopted list failed its own uniqueness check. The fix
+was `ListRef.matches()`, comparing identity rather than two different names.
+
+The test written to confirm that fix:
+
+```python
+source = inspect.getsource(remote.check_right_repository)
+assert "matches(" in source
+assert "slug == list_name" not in source
+```
+
+It failed **on the corrected code**. `slug == list_name` is in the comment
+that explains the defect:
+
+```python
+# ... so `slug == list_name` was false for the very list being verified —
+# and every adopted list failed its own uniqueness check ...
+```
+
+So the assertion written to prove the bug was gone was satisfied only while
+the bug was **undocumented**. Explaining the fix broke the test that checked
+it, and the better the explanation, the more certainly it breaks.
+
+That is the whole pattern in one place: `inspect.getsource()` returns the
+prose with the code, so a text search over it cannot distinguish a thing from
+a description of that thing. `tests/astcheck.py` exists so the fix is one
+import rather than a judgement call at each site.

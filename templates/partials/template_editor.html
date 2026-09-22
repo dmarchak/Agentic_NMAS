@@ -256,6 +256,28 @@ async function showRenderPreview(hostname) {
             line appears.</div>` : ''}
       </div>` : '';
 
+    /* A clean preview is only as strong as what it compared.
+
+       The render masks secrets and the capture holds the real values, so a
+       secret-bearing line can never be compared -- it is neutralised rather
+       than reported, or every such line would show as drift for ever and
+       train people to scroll past the section where real drift appears.
+
+       Saying so is the point. A gap that is NAMED is a finding; one that is
+       implied by masking is a clean panel that quietly means less than it
+       looks like it means. */
+    const _tMaskedNote = (obj) => {
+      if (!obj.available || !obj.masked_not_compared) return '';
+      const n = obj.masked_not_compared;
+      return `<p class="small text-warning-emphasis mb-0 mt-1">
+        ${n} secret-bearing line${n === 1 ? '' : 's'} could not be compared —
+        the render masks the value and the capture holds the real one, so only
+        the <em>rest</em> of each line was checked. A value changed by hand on
+        the device would not show here.
+        <span class="text-muted">Drift check compares the real values; this
+        preview cannot.</span></p>`;
+    };
+
     const diffPane = (label, obj) => `
       <h6 class="fw-semibold mt-3 mb-1">vs ${label}
         ${obj.captured_at ? `<span class="text-muted fw-normal small">captured ${_tEsc(obj.captured_at)}</span>` : ''}
@@ -266,7 +288,8 @@ async function showRenderPreview(hostname) {
             : '<p class="small text-success mb-0">No differences.</p>')
         : `<p class="small text-muted mb-0">${_tEsc(obj.message)}
              <button class="btn btn-outline-secondary btn-sm ms-2"
-                     onclick="refreshCapture('${_tEsc(hostname)}')">Refresh capture</button></p>`}`;
+                     onclick="refreshCapture('${_tEsc(hostname)}')">Refresh capture</button></p>`}
+      ${_tMaskedNote(obj)}`;
 
     body.innerHTML = `
       <div class="d-flex align-items-center gap-2 flex-wrap mb-2">

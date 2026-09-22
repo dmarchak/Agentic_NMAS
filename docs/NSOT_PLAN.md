@@ -1033,6 +1033,11 @@ description differences.** Proof on the real data, not only on a fixture: the
 fixture was written by the same person as the fix.
 
 **1.3b Masked lines cannot be compared, and the preview does not say so.**
+*Status: **DONE**.* Masked lines are neutralised to
+`<masked - not compared>` and counted; only the **value** is unknowable,
+so `RO`→`RW`, a changed trap host and a changed privilege all still
+report. The panel states the consequence and names where the real
+comparison happens.
 Raised while closing 1.3. The preview renders with secrets masked
 (`render_artifact.MASK`, `••••••••`) while the golden holds real values, so
 **every secret-bearing line shows as a difference for ever**. That is not a
@@ -1271,6 +1276,44 @@ collapsed under "Built-in collectors (legacy)"); switch syslog is restored —
 **it stopped around 2026-09-09 and the Loki card showed 0 lines during the
 demo**; `logging trap` level is set deliberately and recorded in intent, not
 configured by hand.
+
+---
+
+### STAGE 5b — the drift check enumerates a store nothing writes to
+
+**Measured while closing 1.3b, answering "does any path compare real secret
+values against what the device holds?"**
+
+It does. `drift_check` diffs the golden config against a live
+`show running-config`, raw — `_clean()` strips volatile and boilerplate lines
+and **nothing secret-related** (`_SKIP_STARTSWITH` has no SNMP or credential
+entry). So an SNMP community changed by hand on a device **is** detected, on
+the agent's timer, and raises an approval item. It is not invisible.
+
+The gap is elsewhere, and it is worse than the one being looked for:
+
+> `drift_check` enumerates devices with `ai_assistant._list_golden_configs()`,
+> which lists the **legacy `golden_configs/` directory**. Content is resolved
+> manifest-first, so what it compares is current — but **a device that has no
+> file in that legacy directory is never drift-checked at all**, and nothing
+> writes there any more.
+
+Every device onboarded after the migration is therefore outside drift
+detection entirely, silently. **r6 will be the first.** The nine existing
+devices are covered only because their legacy files predate the migration.
+
+That is the same shape as 1.6's NetBox line — a protection that reads as
+present because nothing says it is absent — and it is why this is recorded
+rather than folded into 3.3's cleanup.
+
+*Acceptance:* `drift_check` enumerates from the manifest (the same source
+`save_golden` writes); a test asserts a device present in `config_repo/golden/`
+and absent from `golden_configs/` is checked; the run reports how many devices
+it checked against how many the inventory holds, so "checked 9" and "there are
+10" cannot look alike.
+
+*Sequencing:* it is a **prerequisite for Stage 4's r6**, not a follow-up. r6
+onboarded before this is a device outside drift detection from birth.
 
 ---
 

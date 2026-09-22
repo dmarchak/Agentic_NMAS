@@ -271,14 +271,77 @@ def canonical_lines(text: str) -> list:
     return out
 
 
+#: What a neutralised secret value reads as in a canonical diff.
+#:
+#: Deliberately not the mask itself. `render_artifact.MASK` is a run of
+#: bullets, which in a diff looks like a value that differs from the real one;
+#: this says the comparison did not happen.
+MASKED_TOKEN = "<masked - not compared>"
+
+
+def _masked_pair(rendered: str, captured: str):
+    """Are these the same line differing ONLY inside the mask?
+
+    A preview renders with secrets masked while the capture holds the real
+    value, so a secret-bearing line differs on every comparison, for ever.
+    That is not drift and reporting it as drift trains people to scroll past
+    the section where real drift would appear.
+
+    Matching on the prefix and suffix around the mask is what keeps the line
+    itself under comparison: `snmp-server community ****** RO` and
+    `snmp-server community ****** RW` do NOT pair, because only the *value*
+    is unknowable, not the line.
+    """
+    from modules.nsot.render_artifact import MASK
+
+    if MASK not in rendered:
+        return None
+    head, _, tail = rendered.partition(MASK)
+    if not captured.startswith(head) or not captured.endswith(tail):
+        return None
+    # The mask must stand for at least something, or an empty value would
+    # pair with any line sharing the prefix and suffix.
+    if len(captured) < len(head) + len(tail):
+        return None
+    return head + MASKED_TOKEN + tail
+
+
+def _neutralise(left: list, right: list):
+    """Pair masked lines between the two sides. Returns (left, right, count).
+
+    *right* is the rendered side (the one carrying masks); *left* is the
+    capture. A masked line with no counterpart is left alone and shows as a
+    difference, because then something other than the value changed.
+    """
+    left, right, masked = list(left), list(right), 0
+    for index, rendered in enumerate(right):
+        for other, captured in enumerate(left):
+            paired = _masked_pair(rendered, captured)
+            if paired is None:
+                continue
+            right[index] = paired
+            left[other] = paired
+            masked += 1
+            break
+    return left, right, masked
+
+
 def canonical_diff(left: str, right: str, *, fromfile: str = "left",
-                   tofile: str = "right") -> str:
-    """Unified diff over :func:`canonical_lines`. Empty when equivalent."""
+                   tofile: str = "right", report_masked: bool = False):
+    """Unified diff over :func:`canonical_lines`. Empty when equivalent.
+
+    Masked lines are neutralised rather than reported: see :func:`_masked_pair`.
+    With ``report_masked`` the return is ``(diff, masked_count)``, so a caller
+    can say *how many* lines could not be compared instead of leaving the
+    operator to infer it from silence.
+    """
     import difflib
 
-    return "\n".join(difflib.unified_diff(
-        canonical_lines(left), canonical_lines(right),
-        fromfile=fromfile, tofile=tofile, lineterm=""))
+    left_lines, right_lines, masked = _neutralise(
+        canonical_lines(left), canonical_lines(right))
+    diff = "\n".join(difflib.unified_diff(
+        left_lines, right_lines, fromfile=fromfile, tofile=tofile, lineterm=""))
+    return (diff, masked) if report_masked else diff
 
 
 def compare(running_config: str, rendered_config: str, host_vars: dict = None) -> dict:
