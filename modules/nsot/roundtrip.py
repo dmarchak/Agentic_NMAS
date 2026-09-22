@@ -227,6 +227,60 @@ def configs_equivalent(left: str, right: str) -> dict:
             "only_left": only_left, "only_right": only_right}
 
 
+def canonical_lines(text: str) -> list:
+    """A config as path-qualified lines, for a diff a PERSON reads.
+
+    The Template preview diffed two normalised line lists with ``difflib``.
+    That reports two things as differences that are not differences in
+    configuration:
+
+    * **order**, in sections where the device itself does not care. IOS
+      reorders interface sub-commands on its own, so a render that emits them
+      in template order shows a wall of moved lines;
+    * **indentation**, which ``_norm`` already collapses but which survived
+      because the preview normalised and then compared raw strings anyway.
+
+    The machinery to answer both already existed and the preview was not
+    using it. :func:`section_is_unordered` knows which containers care about
+    order; :func:`_sections` knows what is inside each one.
+
+    Children are sorted **only** where order is insignificant. An ACL, a
+    prefix-list, a route-map or an ``ip sla`` keeps its sequence, because
+    reordering those changes what the device does — and a diff that hid that
+    would be worse than one that cries wolf.
+
+    Not a config: it is a canonical rendering for comparison. Each line
+    carries its container path, so a difference says where it is instead of
+    leaving the reader to count indentation in a unified diff.
+    """
+    # BOTH filters, in this order, and they do different jobs.
+    # `strip_for_roundtrip` removes what a template CANNOT render -- without
+    # it, every unrenderable line in the capture reads as a difference from a
+    # render that could never have contained it. `strip_for_diff` then
+    # normalises for comparison and drops bare `!` separators.
+    stripped = normalize.strip_for_diff(
+        "\n".join(normalize.strip_for_roundtrip(text or "")))
+    sections = _sections("\n".join(stripped))
+    out = []
+    for path in sorted(sections):
+        children = sections[path]
+        if section_is_unordered(path):
+            children = sorted(children)
+        out.append(path if path.strip() else "(global)")
+        out.extend(f"    {child}" for child in children)
+    return out
+
+
+def canonical_diff(left: str, right: str, *, fromfile: str = "left",
+                   tofile: str = "right") -> str:
+    """Unified diff over :func:`canonical_lines`. Empty when equivalent."""
+    import difflib
+
+    return "\n".join(difflib.unified_diff(
+        canonical_lines(left), canonical_lines(right),
+        fromfile=fromfile, tofile=tofile, lineterm=""))
+
+
 def compare(running_config: str, rendered_config: str, host_vars: dict = None) -> dict:
     """Compare a rendered config against the real one. Returns a coverage report."""
     running = _sections("\n".join(normalize.strip_for_roundtrip(running_config)))

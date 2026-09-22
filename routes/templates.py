@@ -313,8 +313,7 @@ def preview(hostname):
     """
     import difflib
 
-    from modules.nsot import approval, templates_repo
-    from modules.nsot.normalize import strip_for_diff, strip_for_roundtrip
+    from modules.nsot import approval, roundtrip, templates_repo
     from modules.nsot.render_artifact import build_artifact
 
     data = request.get_json(silent=True) or {}
@@ -344,20 +343,21 @@ def preview(hostname):
         if not other:
             return {"available": False,
                     "message": f"No captured {label}. Use Refresh capture."}
-        # BOTH filters, in the order `roundtrip.configs_equivalent()` applies
-        # them. They do different jobs: strip_for_roundtrip removes what a
-        # template *cannot render*, strip_for_diff normalises for comparison
-        # and is the one that drops bare `!` separators.
+        # `canonical_diff` is section-aware: it sorts children only where the
+        # device does not care about order, and keeps the sequence in an ACL,
+        # prefix-list, route-map or `ip sla`, where reordering changes what
+        # the device does.
         #
-        # Applying only the first left every `!` in the diff -- a wall of
-        # `-!` lines around the handful of real differences, which is how a
-        # correct render reads as a broken one.
-        left = strip_for_diff("\n".join(strip_for_roundtrip(other)))
-        right = strip_for_diff("\n".join(strip_for_roundtrip(artifact.rendered_masked)))
-        lines = list(difflib.unified_diff(left, right,
-                                          fromfile=f"{label} ({hostname})",
-                                          tofile=f"rendered ({hostname})", lineterm=""))
-        return {"available": True, "diff": "\n".join(lines), "changed": bool(lines)}
+        # The previous version normalised both sides and then compared them
+        # with a flat `difflib`, which reported two things that are not
+        # configuration differences: order in sections IOS reorders itself,
+        # and indentation. The machinery to answer both already existed in
+        # `roundtrip`; the preview simply was not using it, so a correct
+        # render read as a broken one.
+        diff = roundtrip.canonical_diff(
+            other, artifact.rendered_masked,
+            fromfile=f"{label} ({hostname})", tofile=f"rendered ({hostname})")
+        return {"available": True, "diff": diff, "changed": bool(diff)}
 
     return jsonify({
         "ok": True,

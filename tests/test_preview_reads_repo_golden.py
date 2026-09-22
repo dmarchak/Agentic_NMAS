@@ -173,9 +173,20 @@ class TestBothSidesAreNormalisedTheWayRoundTripDoes:
         assert list(difflib.unified_diff(left, right, lineterm="")) == []
 
     def test_the_route_applies_both(self):
+        """Through `canonical_diff` now, but both must still be applied.
+
+        The preview delegates to `roundtrip.canonical_diff()`, so the
+        composition moved rather than disappearing -- and it is checked where
+        it now lives. Dropping `strip_for_roundtrip` when the preview moved
+        over would have made every unrenderable line in the capture read as a
+        difference from a render that could never have contained it; this
+        test caught exactly that.
+        """
         import inspect
 
+        from modules.nsot import roundtrip
         from routes import templates as route_module
 
-        source = inspect.getsource(route_module.preview)
-        assert "strip_for_diff" in source and "strip_for_roundtrip" in source
+        assert "canonical_diff" in inspect.getsource(route_module.preview)
+        composed = inspect.getsource(roundtrip.canonical_lines)
+        assert "strip_for_diff" in composed and "strip_for_roundtrip" in composed

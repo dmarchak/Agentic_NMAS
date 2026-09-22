@@ -9,6 +9,30 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — the preview diff reported ordering and whitespace as differences (Stage 1.3)
+
+Reviewed on real data after the 1.4 repair: every description matched the
+device and the preview still showed diffs. They were ordering, whitespace and
+masking — none of them a difference in what the device is configured to do.
+
+The preview normalised both sides and then compared them with a flat
+`difflib`, so it reported order in sections the device reorders itself (IOS
+reorders interface sub-commands) and indentation that `_norm` had already
+collapsed.
+
+- `roundtrip.canonical_lines()` / `canonical_diff()` build a path-qualified
+  canonical form, sorting children **only** where `section_is_unordered()`
+  says order is insignificant. An ACL, prefix-list, route-map or `ip sla`
+  keeps its sequence, because reordering those changes what the device does.
+- The machinery already existed — `compare()` has used it since Phase 3a. The
+  preview was the one comparison not using it.
+- Both filters still apply (`strip_for_roundtrip` then `strip_for_diff`);
+  dropping the first would make every unrenderable line read as a difference
+  from a render that could never have contained it. A test caught exactly
+  that during the change.
+- Each line carries its container path, so a difference says *where* it is
+  instead of leaving the reader counting indentation.
+
 ### Fixed — a commit made outside a web request never pushed
 
 Measured: the 1.4 repair committed `2443892` from a CLI script, local HEAD
