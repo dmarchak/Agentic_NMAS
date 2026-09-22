@@ -300,8 +300,17 @@ def main() -> int:
     # save_host_vars() makes ONE commit over the whole host_vars path. Not one
     # commit per device: this is a single repair, and nine commits would make
     # the history describe nine decisions that nobody took separately.
+    # Actor is WHO, not WHAT: nobody is accountable to a program, and the
+    # person who typed the command is. See repo.ACTOR_CONVENTION.
+    import getpass
+
+    try:
+        person = getpass.getuser()
+    except Exception:                           # noqa: BLE001
+        person = "unknown"
     result = _repo.save_host_vars(
-        list_name, [h for h, _ in touched], actor="description-repair",
+        list_name, [h for h, _ in touched], actor=person,
+        tool="nsot_fix_description_ifnames", source="repair",
         message="host_vars: restore description text (ifname expansion, 1.4)")
     print(f"\n{result}")
     if not result.get("ok"):

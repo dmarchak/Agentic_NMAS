@@ -336,6 +336,22 @@ class TestTheWriteIsOneCommit:
     def test_the_devices_are_passed_for_the_trailer(self):
         assert "[h for h, _ in touched]" in self._main_source()
 
+    def test_the_actor_is_a_person_not_the_script(self):
+        """An actor is who is accountable, never what ran. Nobody is
+        accountable to a program; the person who typed the command is."""
+        source = self._main_source()
+        assert "getpass.getuser()" in source
+        assert 'actor="description-repair"' not in source
+        assert 'actor="nsot' not in source
+
+    def test_the_script_names_itself_in_tool(self):
+        assert 'tool="nsot_fix_description_ifnames"' in self._main_source()
+
+    def test_the_source_says_repair_not_extraction(self):
+        """A repair is not an extraction, and the Source trailer is what a
+        reader greps to find one."""
+        assert 'source="repair"' in self._main_source()
+
     def test_it_writes_through_the_guarded_writer(self):
         """`write_committed()` carries the secret guards; a direct file write
         would skip them.
@@ -611,3 +627,68 @@ class TestTheWriteIsAtomic:
         validate = source.index("assert_no_secret_values")
         write = source.index("hostvars.write_committed(")
         assert validate < write
+
+
+class TestTheActorConventionIsWrittenDown:
+    """`Actor: description-repair` was ad hoc. A convention nobody states is
+    re-invented by the next caller."""
+
+    def test_the_convention_exists(self):
+        from modules.nsot.repo import ACTOR_CONVENTION
+
+        assert "person" in ACTOR_CONVENTION
+        assert "Tool" in ACTOR_CONVENTION
+
+    def test_save_host_vars_accepts_a_tool(self):
+        import inspect
+
+        from modules.nsot import repo
+
+        params = inspect.signature(repo.save_host_vars).parameters
+        assert "tool" in params and "source" in params
+
+    def test_the_defaults_preserve_the_old_behaviour(self):
+        """Every existing caller must commit exactly as before."""
+        import inspect
+
+        from modules.nsot import repo
+
+        params = inspect.signature(repo.save_host_vars).parameters
+        assert params["source"].default == "extraction"
+        assert params["tool"].default == ""
+
+    def test_a_tool_trailer_appears_only_when_given(self, tmp_path,
+                                                    monkeypatch):
+        from modules.nsot import hostvars, repo as _repo
+
+        list_dir = tmp_path / "lab"
+        repo_dir = str(list_dir / "config_repo")
+        _repo.init_repo(repo_dir)
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(list_dir))
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "n@l"}.get(key, default))
+        monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+
+        hostvars.write_committed(repo_dir, {"hostname": "s1", "interfaces": []})
+        plain = _repo.save_host_vars("lab", ["s1"], actor="dmarchak")
+        assert plain["ok"], plain
+
+        body = TestTheWritePathActuallyRuns._git(
+            repo_dir, "log", "-1", "--format=%B")
+        assert "Actor: dmarchak" in body
+        assert "Tool:" not in body
+        assert "Source: extraction" in body
+
+        hostvars.write_committed(repo_dir, {
+            "hostname": "s1", "interfaces": [{"name": "Gi0/1"}]})
+        tooled = _repo.save_host_vars("lab", ["s1"], actor="dmarchak",
+                                      tool="some_script", source="repair")
+        assert tooled["ok"], tooled
+        body = TestTheWritePathActuallyRuns._git(
+            repo_dir, "log", "-1", "--format=%B")
+        assert "Actor: dmarchak" in body
+        assert "Tool: some_script" in body
+        assert "Source: repair" in body

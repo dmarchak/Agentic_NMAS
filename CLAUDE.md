@@ -282,6 +282,18 @@ tools refuse to act on it, and its pooled SSH session is closed.
   line; `! Saved:` / `! Source:` are gone because they produced a diff on every
   save. Commits carry `Source`, `Actor`, `Device-Id`, `Device-Name` trailers,
   and annotated tags `golden/<device>/<UTC>` and `baseline/<UTC>`.
+- **An `Actor:` trailer is WHO is accountable, never WHAT ran.**
+  `repo.ACTOR_CONVENTION`. Three kinds: a **person** (email, or the OS user
+  for a command run on the host); **`ai-agent`**, the exception that proves
+  the rule since it genuinely decides without anyone typing a command; and
+  **`service:<client-id>`**, matching the identity layer's own prefix. A
+  one-off script is none of these — nobody is accountable to a program — so
+  it records the person in `Actor:` and names itself in a `Tool:` trailer.
+  `Source:` names the workflow (`manual`, `save_all`, `pipeline`, `approval`,
+  `ai`, `onboarding`, `extraction`, `repair`) and is free text by design: an
+  enum would have to be edited before any new workflow could commit. The
+  first repair commit carries `Actor: description-repair` and predates this;
+  it is left alone, and is why the convention is written down.
 - **Identity, not filename.** The manifest keys on `nb:<netbox_id>` or
   `uid:<uuid4>`. A rename is a `git mv` committed **alone**, which is what keeps
   `git log --follow` working across it.

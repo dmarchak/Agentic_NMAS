@@ -853,18 +853,60 @@ def save_templates(list_name: str, files: list, actor: str = "user",
                          trailers, "template")
 
 
+#: What an ``Actor:`` trailer may hold, and why the distinction is load-bearing.
+#:
+#: **An actor is who is accountable — not what ran.** The identity layer
+#: already draws this line: it records a ``kind`` alongside the actor because
+#: "a person approved this" and "a script approved this" are different facts
+#: about a change, and it prefixes service tokens (``service:``) so no reader
+#: mistakes a client id for a person.
+#:
+#: Three legitimate kinds:
+#:
+#: * a **person** — an email, or the OS user for a command run on the host;
+#: * ``ai-agent`` — the autonomous agent, which is the exception that proves
+#:   the rule: it genuinely decides and acts without anyone typing a command;
+#: * ``service:<client-id>`` — a Cloudflare Access service token.
+#:
+#: A one-off script is **none of these**. Nobody is accountable to a program;
+#: the person who ran it is. So a script records the person in ``Actor:`` and
+#: names itself in ``Tool:``, which answers "what produced this commit"
+#: without the history claiming a program decided something.
+#:
+#: The first repair commit (`host_vars: restore description text (ifname
+#: expansion, 1.4)`) predates this and carries `Actor: description-repair`.
+#: It is left as it is — rewriting published history to tidy a trailer costs
+#: more than the inconsistency does — and is the reason the convention is
+#: written down.
+ACTOR_CONVENTION = ("person | ai-agent | service:<client-id>; a script names "
+                    "the person in Actor and itself in Tool")
+
+
 def save_host_vars(list_name: str, devices: list, actor: str = "user",
-                   message: str = "") -> dict:
-    """Commit extracted ``host_vars`` after human review.
+                   message: str = "", source: str = "extraction",
+                   tool: str = "") -> dict:
+    """Commit ``host_vars`` after human review.
 
     Phase 3a writes extractions to a gitignored staging area precisely so that
     this — the first commit of a device's modelled configuration — has a person
     looking at a diff first.
+
+    **``actor`` is who is accountable, never what ran.** See
+    :data:`ACTOR_CONVENTION`. A one-off repair script passes the person who
+    ran it and names itself in ``tool``; passing the script's own name as the
+    actor makes the history claim a program decided something.
+
+    ``source`` names the workflow (``extraction``, ``repair``, …) and is free
+    text by design — the vocabulary grows with the tool, and an enum here
+    would have to be edited before any new workflow could commit.
     """
     names = ", ".join(devices) if devices else "devices"
     subject = message or f"host_vars: commit extraction for {names}"
-    trailers = [f"Actor: {actor}", f"Devices: {','.join(devices)}"]
-    return _commit_paths(list_name, ["host_vars"], subject, trailers, "extraction")
+    trailers = [f"Actor: {actor}"]
+    if tool:
+        trailers.append(f"Tool: {tool}")
+    trailers.append(f"Devices: {','.join(devices)}")
+    return _commit_paths(list_name, ["host_vars"], subject, trailers, source)
 
 
 def _prune_device_tags(repo: str, hostnames: list) -> None:
