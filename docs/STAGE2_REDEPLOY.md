@@ -1,5 +1,14 @@
 # Stage 2 — lifting the redeploy ban
 
+> **For the session itself, use
+> [docs/STAGE2_SESSION_CHECKLIST.md](STAGE2_SESSION_CHECKLIST.md)** — one
+> self-contained document, in order, with the boxes to tick. This file is the
+> reasoning behind each item; that one is what you run.
+>
+> **2.3 (stage D) has moved to Stage 4.** It tests `crypto key generate rsa`
+> in the *generator's* output for r6. No harvested config contains that line —
+> `show running-config` never emits it — so the redeploy does not involve it.
+
 **Written for: Dustin, at the machine, running these by hand.** Nothing here
 is automated and nothing here should be run by an agent. Every step that
 touches shared infrastructure is yours.
@@ -159,8 +168,16 @@ printed**. The digest is salted per hostname, so two devices sharing a
 password do not show the same token.
 
 > **An untested break-glass record is a hope, not a record.** The verify step
-> is not optional, and it must run against the file on the USB stick, not the
-> copy that was just in memory.
+> is not optional, and it must run against the file where it will live, not
+> the copy that was just in memory.
+
+**Closed by measurement, 2026-09-22.** Exported for `Default`, verified on the
+NMAS, copied to the laptop with a matching sha256, and **verified again there**
+— nine devices, password and enable secret each, `complete: True`, no value
+printed. Passphrase and location in the password manager; the NMAS copy
+deleted. The laptop verify is the one that mattered: a matching sha256 proves
+the bytes, not that the record can be opened on a machine you will still have
+when the one you are recovering from is the problem.
 
 `reveal` exists for the outage itself and prints one device at a time. Do not
 run it now.
