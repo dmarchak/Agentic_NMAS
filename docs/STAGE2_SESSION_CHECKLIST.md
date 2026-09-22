@@ -77,27 +77,61 @@ switch startup file gets SSH from the file.
 
 ## 2. 2.2a — prove the applicability check, including that it can fail
 
+**Read-only. Nothing here rotates a credential or touches a device.**
+
+> **Corrected before the session.** This section previously said to run
+> `nmas-rotate-credential` on s1 and r1 to watch `startup_applies` pass. That
+> performs a **real rotation** — a new random password on a live device —
+> minutes before a redeploy whose post-items verify exactly those
+> credentials, invalidating 1.4's baseline and 1.5's snapshot taken moments
+> earlier.
+>
+> Worse, the negative control used `nmas-persist-credential --dry-run`, which
+> **returns before entering the persist chain** and so never runs this stage
+> at all. It prints the same line whether the launch script carries the skip
+> or not: a control that could not fail, guarding the one check whose purpose
+> is to fail when the skip is absent.
+>
+> `nmas-check-startup-applies` calls the check directly. It was always a pure
+> read — two `cat`s over SSH — and simply had no caller of its own.
+
 - [ ] **2.1** Setting points at the patched file:
       `grep clab_launch_patch ~/python/Agentic_NMAS/data/user_settings.json`
       → `labs/lab/patches/c8000v-launch.py`
-- [ ] **2.2** A switch, where nothing is injected and the stage short-circuits:
-      `python3 scripts/nmas-rotate-credential --list Default --device s1`
-      → `startup_applies` **ok**
-- [ ] **2.3** A router, where it does the real work:
-      `python3 scripts/nmas-rotate-credential --list Default --device r1`
-      → `startup_applies` **ok**, *because the launch script carries the skip*
-- [ ] **2.4** **The negative control.** Hide the marker and confirm it REFUSES:
+- [ ] **2.2** Every device, one command:
+      ```bash
+      python3 scripts/nmas-check-startup-applies --all
+      ```
+      Expect **APPLIES** for all nine.
+      - the four switches pass because **nothing is injected** on vIOS — the
+        stage short-circuits and never reads the launch script;
+      - the five routers pass **because the launch script carries the skip**.
+        That is the claim 2.1 established and this is where it is tested.
+- [ ] **2.3** Confirm the routers' pass is not vacuous — the reason text for
+      a router must name the skip (`_skip_users_defined_in_startup`), not
+      merely say "applies".
+- [ ] **2.4** **The negative control.** Hide the marker and confirm the
+      routers now REFUSE, while the switches are unaffected:
       ```bash
       sed -i 's/_skip_users_defined_in_startup/_skip_users_defined_in_startupX/g' \
           ~/labs/lab/patches/c8000v-launch.py
-      python3 scripts/nmas-persist-credential r1 --dry-run   # expect startup_applies to FAIL
+      python3 scripts/nmas-check-startup-applies --all   # routers: WILL NOT APPLY
       sed -i 's/_skip_users_defined_in_startupX/_skip_users_defined_in_startup/g' \
           ~/labs/lab/patches/c8000v-launch.py
-      python3 scripts/nmas-persist-credential r1 --dry-run   # expect PASS again
+      python3 scripts/nmas-check-startup-applies --all   # all nine: APPLIES again
       ```
-      **A check that only ever passes has not been shown to work.** If it passes
-      with the marker hidden it is reading something else — stop here.
-- [ ] **2.5** Marker restored (`grep -c` → 2) **before** going near the redeploy.
+      **A check that only ever passes has not been shown to work.** If the
+      routers still say APPLIES with the marker hidden, it is reading
+      something else — stop here.
+      The switches staying APPLIES throughout is part of the result, not
+      noise: it shows the check is platform-aware rather than keyed on the
+      file's presence.
+- [ ] **2.5** Marker restored — `grep -c '_skip_users_defined_in_startup'
+      ~/labs/lab/patches/c8000v-launch.py` → **2** — **before** going near
+      the redeploy.
+
+**No rotation happens in this session.** The credentials on the devices at
+3.2 are the ones 1.5 recorded, and the ones 4.7 verifies.
 
 ---
 

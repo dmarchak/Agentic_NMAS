@@ -117,29 +117,36 @@ grep clab_launch_patch ~/python/Agentic_NMAS/data/user_settings.json
 # expect: "labs/lab/patches/c8000v-launch.py"
 ```
 
-Then rotate **one** device — a switch, where nothing is injected and the
-stage short-circuits, then a router, where it does the real work:
+**Read-only, and it must be.** The first version of this section said to
+rotate s1 and r1 to watch `startup_applies` pass. That is a real rotation —
+new random passwords on live devices — immediately before a redeploy whose
+post-items verify exactly those credentials, invalidating the baseline and
+the credential snapshot taken minutes earlier. The negative control was
+`nmas-persist-credential --dry-run`, which **returns before entering the
+persist chain** and therefore never runs this stage: it printed the same line
+with the marker hidden or restored, so it could not fail.
+
+The check was always a pure read — two `cat`s over SSH to the clab host — and
+had no caller of its own until `scripts/nmas-check-startup-applies`.
 
 ```bash
-python3 scripts/nmas-rotate-credential --list Default --device s1   # expect: startup_applies ok
-python3 scripts/nmas-rotate-credential --list Default --device r1   # the real test
+python3 scripts/nmas-check-startup-applies --all
 ```
 
-`r1`'s `startup_applies` stage should pass **because the launch script now
-carries the skip**. To prove the check is measuring and not merely agreeing:
+Then the negative control, which is the half that matters:
 
 ```bash
-# Temporarily hide the marker, re-run the persist chain only, expect a REFUSAL.
 sed -i 's/_skip_users_defined_in_startup/_skip_users_defined_in_startupX/g' \
     ~/labs/lab/patches/c8000v-launch.py
-python3 scripts/nmas-persist-credential r1 --dry-run     # expect startup_applies to FAIL
+python3 scripts/nmas-check-startup-applies --all     # routers: WILL NOT APPLY
 sed -i 's/_skip_users_defined_in_startupX/_skip_users_defined_in_startup/g' \
     ~/labs/lab/patches/c8000v-launch.py
-python3 scripts/nmas-persist-credential r1 --dry-run     # expect it to PASS again
+python3 scripts/nmas-check-startup-applies --all     # all nine: APPLIES
 ```
 
-**A check that only ever passes has not been shown to work.** If it passes
-with the marker hidden, it is reading something else and Stage 2 stops here.
+**A check that only ever passes has not been shown to work.** The switches
+staying APPLIES throughout is part of the result: it shows the check is
+platform-aware rather than keyed on the file's presence.
 
 ### 2.2b — the break-glass record
 

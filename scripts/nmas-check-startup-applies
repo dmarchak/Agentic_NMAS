@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Will this device's startup file put it in the state the file describes?
+
+**Read-only.** Two `cat`s over SSH to the containerlab host — the device's
+startup config and the launch script it binds. It opens no session to the
+device, changes nothing, and rotates nothing.
+
+    python3 scripts/nmas-check-startup-applies r1
+    python3 scripts/nmas-check-startup-applies --all
+
+WHY THIS EXISTS
+---------------
+`verify_startup_applies()` runs as a stage of the persistence chain, and the
+only way to reach it was to perform a **real rotation** — a new random
+password on a live device. The Stage 2 runbook asked for exactly that,
+minutes before a redeploy whose post-items verify those same credentials,
+which would have invalidated the pre-redeploy baseline and credential
+snapshot taken moments earlier.
+
+`nmas-persist-credential --dry-run` looked like the read-only form and is
+not: it returns after the preconditions and never enters the chain, so it
+never runs this stage at all. A negative control built on it could not fail —
+it prints the same line whether the launch script carries the user-skip or
+not.
+
+The check itself was always a pure read. Nothing about it required a
+rotation; it simply had no caller of its own.
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def check_one(list_name: str, hostname: str) -> dict:
+    from modules.device import load_saved_devices
+    from modules.nsot import credential_rotation as cr
+    from modules.nsot.listref import resolve
+
+    ref = resolve(list_name)
+    row = next((d for d in load_saved_devices(ref.csv_path)
+                if d.get("hostname") == hostname), None)
+    if row is None:
+        return {"ok": False, "error": f"{hostname!r} is not in list {ref.name!r}"}
+
+    platform = cr.platform_of(ref.name, hostname)
+    if not platform:
+        return {"ok": False,
+                "error": f"no platform recorded for {hostname}; the check is "
+                         f"platform-specific and cannot guess"}
+
+    out = cr.verify_startup_applies(hostname, platform=platform,
+                                    username=row.get("username", "admin"))
+    out["platform"] = platform
+    return out
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("device", nargs="?", default="")
+    parser.add_argument("--list", dest="list_name", default="")
+    parser.add_argument("--all", action="store_true",
+                        help="every device in the list")
+    args = parser.parse_args()
+    if not args.device and not args.all:
+        parser.error("name a device, or pass --all")
+
+    from modules.config import get_current_list_name
+    from modules.device import load_saved_devices
+    from modules.nsot.listref import resolve
+
+    ref = resolve(args.list_name or get_current_list_name())
+    if args.all:
+        names = [d.get("hostname", "") for d in load_saved_devices(ref.csv_path)]
+        names = sorted(n for n in names if n)
+    else:
+        names = [args.device]
+
+    print(f"list: {ref.name}\n")
+    worst = 0
+    for name in names:
+        out = check_one(ref.name, name)
+        verdict = "APPLIES" if out.get("ok") else "WILL NOT APPLY"
+        print(f"  {name:<10} {verdict:<16} {out.get('platform', '')}")
+        detail = out.get("reason") or out.get("error") or ""
+        for line in _wrap(detail):
+            print(f"             {line}")
+        if not out.get("ok"):
+            worst = 1
+        print()
+    return worst
+
+
+def _wrap(text: str, width: int = 66) -> list:
+    words, lines, current = (text or "").split(), [], ""
+    for word in words:
+        if len(current) + len(word) + 1 > width:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        lines.append(current)
+    return lines
+
+
+if __name__ == "__main__":
+    sys.exit(main())
