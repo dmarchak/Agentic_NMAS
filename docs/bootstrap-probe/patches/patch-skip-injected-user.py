@@ -105,8 +105,25 @@ def patch(text):
     if "_skip_users_defined_in_startup" in text:
         raise Refused("already patched -- the helper is present")
 
+    # Imports via the PARSER. A regex for `^import re` misses
+    # `import datetime, logging, os, re, signal` -- the combined form these
+    # launch scripts actually use -- and would refuse the real file for a
+    # reason that is not true of it. A guard that cries wolf on a correct
+    # file is one somebody edits out.
+    imported = set()
+    try:
+        import ast
+
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Import):
+                imported.update(a.asname or a.name.split(".")[0] for a in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported.update(a.asname or a.name for a in node.names)
+    except SyntaxError as exc:
+        raise Refused(f"this file does not parse as Python: {exc}") from exc
+
     for module in ("re", "logging"):
-        if not re.search(r"(?m)^\s*import\s+%s\b" % module, text):
+        if module not in imported:
             raise Refused(
                 "the helper needs `import %s` and this file does not have it. "
                 "Add the import deliberately rather than letting this script "
