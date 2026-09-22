@@ -356,8 +356,19 @@ tools refuse to act on it, and its pooled SSH session is closed.
 - **`.gitignore` rules are applied on repo access, not only at creation.**
   `ensure_repo_hygiene()` runs from `git()`; `GITIGNORE_RULES` is the list. A
   repo created before a rule existed is topped up on first touch.
-- Post-commit hooks (git push, S3 archive) run on a background thread with
-  short timeouts and never block a commit. Push never force-pushes.
+- **Post-commit hooks register where the repo module is USED, not where the
+  app starts.** `hooks.run_post_commit()` calls `ensure_default_hooks()`
+  first. Registration lived in `app.py`, so a commit from any process without
+  Flask — a CLI repair, a cron job, a maintenance script — met an empty
+  registry and `run_post_commit()` returned silently: measured, a fresh
+  interpreter reports `[]` until `app` is imported. The 1.4 repair commit went
+  in that way and stayed local while the Remote card accurately showed the
+  previous push. An empty registry on a list that **has** a remote is now an
+  error and records `last_push_failure`, because "a commit that could have
+  been published and was not" must never be silent. A list with no remote
+  stays quiet, or the error stops meaning anything. Hooks run on a background
+  thread with short timeouts and never block a commit. Push never
+  force-pushes.
 - `nsot_device_tag_retention` (default 50) prunes per-device tags only;
   `baseline/*` tags and all commits are kept.
 

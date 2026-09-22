@@ -9,6 +9,27 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — a commit made outside a web request never pushed
+
+Measured: the 1.4 repair committed `2443892` from a CLI script, local HEAD
+moved, remote main stayed at `3d1fbf2`, and the log carried **no hooks line at
+all**. The Remote card still showed the previous day's push and was *right* —
+the defect was upstream of it.
+
+`register_default_hooks()` was called from `app.py` only, so registration
+followed the app starting rather than the repo module being used. A fresh
+interpreter reports `[]` until `app` is imported, and `run_post_commit()`
+returned at `if not hooks` without a word.
+
+- `hooks.run_post_commit()` calls `ensure_default_hooks()` first, so every
+  commit through `save_golden` / `save_host_vars` / `_commit_paths` publishes
+  in any process.
+- An empty registry on a list that **has** a remote logs an error and records
+  `last_push_failure`. A list with no remote stays silent, or the error stops
+  meaning anything.
+- Tested in a **separate interpreter** — importing `app` anywhere in the test
+  process would register the hooks and hide the thing under test.
+
 ### Fixed — interface expansion rewrote description text (Stage 1.4)
 
 `canonicalise_line()` expanded every interface reference in a line, including
