@@ -9,6 +9,25 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — a baseline earned with no commit never reached the remote (Stage 1.2)
+
+`save_golden()` can earn a `baseline/<ts>` tag with **no commit**: every
+capture was verified equal to HEAD, so an empty commit would be a false record
+of a change and the tag goes on the existing HEAD. That path returned
+**without calling `run_post_commit` at all**, so the push hook never fired and
+the restore point existed on one host and nowhere else — the single property
+an off-host archive exists to provide.
+
+- The hook now fires on that path, guarded on `tags`: a no-op save that earns
+  no baseline has nothing to publish, and waking the push path to do nothing
+  would put every unchanged Save All on the network.
+- `push_hook()` publishes **exactly the tags the caller names**, one explicit
+  refspec each. `--follow-tags` is gone and `--tags` is never used; both are
+  pinned absent by tests, because either would satisfy "the tag is on the
+  remote" while changing what publishing means.
+- A failed tag push names the tag and does not take the others with it.
+- The acknowledgement gate is unchanged: a held decision runs no git at all.
+
 ### Measured — the rcn-lab1 redeploy hazard is real (stage B, hardware)
 
 A throwaway C8000v booted a startup file in r1's exact current shape. The

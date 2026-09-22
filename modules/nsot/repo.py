@@ -689,6 +689,23 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                                  baseline_tag, head[:12], len(unchanged))
                     else:
                         baseline_tag = ""
+
+            # The hook fires here too, and for a reason that is easy to miss:
+            # a baseline earned with nothing to commit is still a new PUBLIC
+            # fact. Returning without it left the tag local forever -- the
+            # restore point existed on this host and nowhere else, which is
+            # the one property an off-host archive is for.
+            #
+            # Guarded on `tags`: a no-op save that earns no baseline has
+            # produced nothing to publish, and waking the push path to do
+            # nothing would make every unchanged Save All hit the network.
+            if tags:
+                from modules.nsot.hooks import run_post_commit
+                _rc, head_sha, _e = git(repo, "rev-parse", "HEAD")
+                run_post_commit({"list_name": list_name, "repo": repo,
+                                 "sha": (head_sha or "").strip(),
+                                 "source": source, "actor": actor,
+                                 "tags": tags, "devices": []})
             return {"ok": True, "commit": "", "changed": [],
                     "unchanged": unchanged, "tags": tags,
                     "baseline": baseline_tag,

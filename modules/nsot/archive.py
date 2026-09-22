@@ -74,8 +74,18 @@ def push_hook(context: dict) -> dict:
     if rc != 0:
         git(repo, "remote", "add", "origin", remote)
 
-    # --follow-tags carries the annotated golden/baseline tags with the commit.
-    rc, _, err = git(repo, "push", "--follow-tags", "origin", branch)
+    # The branch, then EXACTLY the tags this save created -- one explicit
+    # refspec each, named by the caller.
+    #
+    # `--follow-tags` used to carry them, and measurement showed it carries
+    # too much: it publishes every annotated tag reachable from the pushed
+    # ref that the remote lacks, so an unrelated older tag rides along with
+    # whatever commit happens to be pushed next. Publishing is irreversible,
+    # so what goes out is named rather than computed from reachability.
+    #
+    # `--tags` would be worse again, and is never used here: it publishes
+    # every local tag in the repository.
+    rc, _, err = git(repo, "push", "origin", f"HEAD:refs/heads/{branch}")
     if rc != 0:
         if "non-fast-forward" in err or "rejected" in err:
             # Never force-push: surface the conflict and stop.
@@ -83,7 +93,23 @@ def push_hook(context: dict) -> dict:
                 "remote has commits this repo does not — resolve the divergence "
                 "manually; NMAS will not force-push")}
         return {"ok": False, "error": err[:300]}
-    return {"ok": True, "message": f"pushed to {branch}"}
+
+    tags = [t for t in (context.get("tags") or []) if t]
+    pushed_tags = []
+    for tag in tags:
+        # One tag per invocation, so a single bad ref cannot take the others
+        # with it, and the failure names which tag.
+        rc, _, err = git(repo, "push", "origin",
+                         f"refs/tags/{tag}:refs/tags/{tag}")
+        if rc != 0:
+            log.warning("archive: tag %s not pushed: %s", tag, err[:200])
+            continue
+        pushed_tags.append(tag)
+
+    message = f"pushed to {branch}"
+    if tags:
+        message += f", {len(pushed_tags)}/{len(tags)} tag(s)"
+    return {"ok": True, "message": message, "tags_pushed": pushed_tags}
 
 
 def s3_archive_hook(context: dict) -> dict:

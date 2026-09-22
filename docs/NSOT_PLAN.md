@@ -952,13 +952,21 @@ unrelated repository is still refused with the "interleave" wording; the
 real-git tests in `tests/test_remote_relatedness.py` stay green.
 
 **1.2 Auto-push does not publish tag-only baselines.**
-*Status: MEASURED, not yet fixed.* `save_golden()`'s no-commit path
-(`repo.py`, the `_baseline_wanted` branch at existing HEAD) tags the baseline
-and **returns without calling `run_post_commit` at all** — so the hook that
-pushes never fires. Independently, `push()` uses `git push --follow-tags`,
-which pushes only tags reachable from commits **being pushed**; with no new
-commit there is nothing to carry the tag. Two causes, either of which alone
-leaves the tag local.
+*Status: FIXED.* `save_golden()`'s no-commit path (`repo.py`, the
+`_baseline_wanted` branch at existing HEAD) tagged the baseline and
+**returned without calling `run_post_commit` at all** — so the hook that
+pushes never fired. That was the whole cause, and it was sufficient alone.
+
+**The second cause written here originally was wrong**, and measuring it is
+what corrected the fix. It claimed `--follow-tags` pushes only tags reachable
+from commits *being pushed*, so a tag-only baseline had nothing to ride on.
+Against real repositories, git pushes annotated tags reachable from the pushed
+ref whether or not the ref advanced; the tag goes out fine.
+
+The measurement found the opposite problem. `--follow-tags` also published an
+**unrelated older tag** in the same breath, because it carries every reachable
+annotated tag the remote lacks. So the explicit refspec is still right — for
+the reason below rather than the reason first written.
 *Fix narrowly.* Push **exactly the new `baseline/<ts>` tag**, by explicit
 refspec, through the same acknowledgement scan. **Not `git push --tags`**,
 which publishes every local tag — including per-device tags that pruning is
