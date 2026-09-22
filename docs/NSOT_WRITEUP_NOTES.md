@@ -5403,3 +5403,67 @@ operator can act on. A clean result alone is not.
 this project will onboard after the migration. Onboarding it before this is
 fixed produces a device outside drift detection from the moment it exists,
 and the only signal would be a number that has always looked right.
+
+---
+
+## The check that passed because it never asked
+
+Stage D2 cleared the switches. It also found a defect in the checklist that
+was verifying it, and that finding is worth more than the clearance.
+
+The line was:
+
+```bash
+sshpass -p 'admin' ssh ... && echo "FAIL: old credential works" \
+                           || echo "PASS: admin refused"
+```
+
+The connection died at **key exchange** — a modern OpenSSH client against a
+2018 vIOS image — so `ssh` exited non-zero and the check printed **PASS**.
+
+It would have printed PASS with the device powered off. It would have printed
+PASS with the cable pulled. And the production redeploy checklist carried the
+identical line for item 5, the item the entire stage exists for: it would have
+reported *"the routers refuse the old credential"* while every router sat on
+`admin/admin` and unreachable — the precise hazard, announced as absent.
+
+> **Exit status conflates "the device refused us" with "we never reached the
+> device".** Those have opposite consequences, so they cannot share a verdict.
+> A two-valued check on a remote system is a check that can pass by not
+> asking.
+
+This is the same defect as the rotation verifier reporting a local
+`InvalidToken` as a device verdict, and the fix is the same one, already
+built: `verify_new_credential()`'s `attempted` flag, which exists precisely to
+separate "the device answered and said no" from "we never got far enough to be
+told anything". `scripts/nmas-check-credential` returns three verdicts and
+exits 2 on INCONCLUSIVE, so it cannot be mistaken for a refusal.
+
+### The correction that matters more than the third value
+
+The old check used the **shell's `ssh`**. The claim being made is *"NMAS can
+log in to this device"* — and NMAS connects through Netmiko/Paramiko, which
+still offers algorithms OpenSSH 9 dropped. The checklist was testing a
+different client's ability to reach the device and reading the answer as if
+it were about NMAS.
+
+`connection_params()`'s docstring had anticipated this exactly — *"legacy KEX
+or host-key algorithms for older IOS against a modern client"* — as a reason
+to have one builder. The runbook reached past it to a shell command anyway.
+
+> Test the property, not something adjacent to it. "Can NMAS log in" is
+> answered by making NMAS log in.
+
+### And a device that lied about its own uptime
+
+During D2's first boot a vIOS took a CPU exception (PnP Agent Discovery,
+SIGBUS) and **silently reloaded**. The container stayed healthy. `docker logs`
+said nothing. Only `show version | include uptime` revealed it.
+
+`Startup complete` had been printed — by the *first* boot. Every check keyed
+on that line would have been reading about a boot whose result no longer
+existed. The post-redeploy checklist now reads uptime per device, because a
+node that reloaded after its config was applied is a node whose running config
+may not be what the log says was applied.
+
+Three findings in one probe run, none of them the thing the run was for.

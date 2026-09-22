@@ -689,6 +689,55 @@ once.**
 
 ---
 
+## Stage D2 result: the switches are cleared (2026-09-22)
+
+| observation | value |
+|---|---|
+| hash generation | vIOS produces `secret 9` from `algorithm-type scrypt` — confirming what the rotation stored |
+| Startup complete | 2m03s |
+| boot log | no errors, rejections or CLI failures |
+| `username admin` | `privilege 15 secret 9 $9$…` — applied |
+| `transport input ssh` | present — the **last** section of the file |
+| Gi0/0 | up, DHCP address — also after the username line |
+| the file's credential | **accepted** over SSH |
+| `admin` | **refused** |
+
+Both the `transport input` and Gi0/0 checks sit *after* the username line, so
+the console replay did not stall. That was the point of checking something
+after the line under test: a stalled replay looks like a slow boot.
+
+### Two findings the run produced that the run was not looking for
+
+**1. The refusal check could not fail.** The first login attempts died at
+**key exchange** — a modern OpenSSH against this 2018 image — and
+`sshpass ... || echo PASS` printed PASS for that reason. It would print PASS
+with the device powered off. The production checklist carried the identical
+line, where it would have reported "the routers refuse `admin`" while every
+router sat on `admin/admin` and unreachable.
+
+`scripts/nmas-check-credential` replaces it: three verdicts (ACCEPTED /
+REFUSED / **INCONCLUSIVE**) from `verify_new_credential()`, which already
+separates a device verdict from a transport fault — and it connects **the way
+NMAS does**, through Netmiko, rather than through the shell's `ssh`. The claim
+is "NMAS can log in"; the shell is a different client, and that difference is
+what produced the false pass.
+
+**2. A vIOS silently reloaded.** A CPU exception (PnP Agent Discovery,
+SIGBUS) during the first boot; the container stayed healthy, `docker logs`
+said nothing, and only `show version | include uptime` revealed it. The
+post-redeploy checklist gains a per-device uptime check: a node that reloaded
+after its config was applied is a node whose running config may not be what
+the log says was applied, and `Startup complete` will have been printed by
+the first boot.
+
+### Free reading for stage D
+
+`crypto key generate rsa modulus 2048` took **3 seconds** on vIOS, typed
+interactively. That is not a boot-time console replay, so it does not close
+stage D — but it makes a stall on that line unlikely.
+
+---
+
 ## What the persistence chain must check instead
 
 `verify_startup_file()` currently greps the startup file for the new hash.

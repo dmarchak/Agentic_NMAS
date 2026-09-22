@@ -323,6 +323,15 @@ containerlab deploy  -t rcn-lab1.clab.yml
 
 1. [ ] **All nine nodes reach `Startup complete`.** Routers ~5–7 min, switches
        ~4–5. Anything past **15 minutes is a failure**, not slowness.
+1b. [ ] **Each device's uptime is consistent with the redeploy.**
+        `show version | include uptime`, per device.
+
+        On the D2 probe a vIOS took a CPU exception (PnP Agent Discovery,
+        SIGBUS) and **silently reloaded**: the container stayed healthy,
+        `docker logs` said nothing, and only uptime revealed it. A node that
+        reloaded after its config was applied is a node whose running config
+        may not be what the log says was applied — and `Startup complete`
+        will have been printed by the *first* boot.
 2. [ ] **No `%CVAC-4-CLI_FAILURE` for a username line** on any router:
        `docker logs <node> 2>&1 | grep CVAC`
 3. [ ] **The skip fired** on each router:
@@ -332,9 +341,32 @@ containerlab deploy  -t rcn-lab1.clab.yml
 4b. [ ] **Each switch's too.** Nothing is injected on vIOS, so the failure
         mode differs — a refused hash or a stalled console replay, not
         coexistence. Check the boot log as well as the running config.
-5. [ ] **Each device answers SSH with the credential NMAS holds** — and
-       **`admin`/`admin` is REFUSED** on the routers. Two separate attempts,
-       not one inference. *This is the item the whole stage exists for.*
+5. [ ] **Each device answers with the credential NMAS holds**, and the old
+       `admin`/`admin` is **REFUSED** on the routers. *This is the item the
+       whole stage exists for*, and it is the one that was broken.
+
+       **Do not use `ssh`/`sshpass` for this.** On the D2 probe the refusal
+       line passed because the connection died at **key exchange** — a modern
+       OpenSSH against a 2018 image — so `ssh` exited non-zero and the check
+       printed PASS. It would print PASS with the device powered off, and it
+       would print PASS here while every router sat on `admin/admin` and
+       unreachable. A two-valued check on a remote system can pass by not
+       asking.
+
+       Use the app's own connection path, which answers in **three** values
+       and negotiates the way NMAS negotiates:
+
+       ```bash
+       for d in r1 r2 r3 r4 r5 s1 s2 s3 s4; do
+         python3 scripts/nmas-check-credential $d --expect accepted || break
+       done
+       for d in r1 r2 r3 r4 r5; do
+         python3 scripts/nmas-check-credential $d --password admin --expect refused || break
+       done
+       ```
+
+       `INCONCLUSIVE` (exit 2) is **not** a pass. It means nothing was
+       established — find out why before reading anything into it.
 6. [ ] **Oxidized fetches all nine**, with times after the redeploy.
 7. [ ] **A Save All produces no unexpected diff** against the pre-redeploy
        goldens. Interface counters and uptime aside, a difference here means a
