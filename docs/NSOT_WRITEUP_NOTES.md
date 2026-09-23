@@ -7350,3 +7350,101 @@ Three controls guard the merge:
    pass.** This is the reason the check renders, pinned as an assertion
    rather than left in prose -- prose about code is not code, and the prose
    was already there and was already ignored.
+
+---
+
+## Merging two of three is how the remaining copy becomes the defect
+
+One list of form fields existed in three places:
+
+1. `_plan_args()` in `routes/onboard.py` -- what the server reads;
+2. `onboardFormPayload()` in the wizard -- what the client sends;
+3. an array of element ids -- what the client **watches** for changes.
+
+4C.8 added three fields. The first two were merged into single readers two
+commits earlier, precisely to stop them drifting. **The third was not
+touched, and it is the one that broke.**
+
+```js
+['obHostname', 'obPlatform', 'obMgmtIp', 'obMgmtIntf'].forEach(...)
+```
+
+The original four ids. So `obMgmtMask`, `obMgrIntf` and `obMgrGw` were
+**read and sent correctly** and were watched by nothing. An operator filling
+in the netmask saw *"no network mask"* sit there unchanged.
+
+**Nothing was wrong with the payload**, which is what made it hard to see
+from either end: reading the payload builder shows all seven fields, and
+reading the binding list shows four ids that are all real. The defect exists
+only in the relationship between them.
+
+Worse than a straightforward failure, too. A wizard that looks broken while
+working teaches the operator to stop trusting the panel -- and the panel is
+the only thing standing between them and a commit.
+
+**Found by the operator, on the live page, mid-probe.** Not by a test.
+
+`ONBOARD_FIELDS` is now the one list, read by the payload builder and by the
+binding loop. The general form is worth keeping:
+
+> Merging two of three copies is not a partial fix. It concentrates the
+> divergence in whichever copy was left.
+
+---
+
+## The target list: carried, never derived
+
+The same operator nearly onboarded into `Default` five minutes earlier. It
+was caught because the review screen names the list and they were reading at
+a hard stop built for exactly that -- **a line that is correct about 95% of
+the time, which nobody reads on an ordinary run.**
+
+`_active_list()` fell back to `get_current_list_name()` when the request did
+not name a list. That is the rule `PipelineContext.list_name` already
+established the expensive way: the pipeline asked `get_current_list_name()`
+at three points after the push, and a list switch during a 45-90s
+convergence window committed one network's captures into another's
+repository. **The wizard was on the wrong side of a rule this codebase
+already had.**
+
+### The asymmetry is what decides it
+
+Onboarding into the wrong list leaves a **commit, a NetBox object and a
+`devices.csv` row** in a live network. Repairing it means the
+provenance-based Remove plus a git revert -- and Remove is the mechanism the
+Stage 4C probe exists to prove, which is to say it has never run.
+
+**The failure mode is repaired by a mechanism that is itself unproven.**
+That is the argument for refusing rather than defaulting, and it is not
+about convenience.
+
+The list is also the one input that decides what every other input *means*:
+the name collision is checked in that list's manifest, the credential comes
+from that list's resolver, and the NetBox objects are recorded against that
+list's slug. It was the only field inherited rather than stated.
+
+`_target_list()` now raises `NoTargetList` rather than guessing; the wizard
+sends it as an ordinary `ONBOARD_FIELDS` entry, so it re-validates like
+everything else, and `/onboard/lists` populates the select on every open.
+
+### Three findings from writing the tests
+
+**`/onboard/create` answers 403, not 400** -- the identity gate runs before
+input validation, so an unauthenticated caller is refused without the route
+parsing their payload. The first version of the test asserted 400 and was
+wrong about the code rather than the other way round. The refusal itself is
+unit-tested instead, since the HTTP path never reaches it.
+
+**The scan matched its own docstring.** The first version was
+`"get_current_list_name" not in inspect.getsource(mod)` and it failed -- on
+`_target_list`'s docstring, which names the function to explain why it is
+not called. **Fourth instance of this shape in the project, and the first
+where the prose and the checker were written in the same edit.** Replaced
+with an `ast` walk over `Name`, `Attribute` and `ImportFrom`: a docstring
+naming a function is a mention, not a call. Controls both ways -- a
+re-added fallback is caught, and the real module is not.
+
+**Two existing route tests broke, correctly.** Both posted without a list
+and expected a plan. The contract changed deliberately, so they now send
+one; the test about a blocked rebuild still omits hostname and platform,
+which is what it was always about.

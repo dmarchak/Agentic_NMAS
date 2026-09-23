@@ -26,6 +26,12 @@
       <div class="modal-body">
         <div class="row g-2 mb-3">
           <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obList">Target list</label>
+            <select class="form-select form-select-sm" id="obList"></select>
+            <div class="form-text small">Chosen, not inherited &mdash; the wrong
+              one leaves a commit and a NetBox object behind.</div>
+          </div>
+          <div class="col-md-3">
             <label class="form-label small fw-semibold" for="obHostname">Name</label>
             <input class="form-control form-control-sm" id="obHostname" placeholder="r6">
           </div>
@@ -162,6 +168,11 @@ function onboardCanCreate(plan) {
    onboardFormPayload() here, and this binding list. The first two were
    merged and the third was left, which is what made it the one that broke. */
 const ONBOARD_FIELDS = {
+  /* First, because it decides what every other field MEANS: the name
+     collision is checked in this list's manifest, the credential comes from
+     this list's resolver, and the NetBox objects are recorded against this
+     list's slug. */
+  list_name:         'obList',
   hostname:          'obHostname',
   platform:          'obPlatform',
   mgmt_ip:           'obMgmtIp',
@@ -226,6 +237,18 @@ async function openOnboardWizard() {
       sel.innerHTML = (d.platforms || []).map(p =>
         `<option value="${p.platform}" ${p.blocked ? 'disabled' : ''}
                  title="${p.reason || ''}">${p.platform}${p.blocked ? ' — blocked' : ''}</option>`
+      ).join('');
+    } catch (_) { /* the plan call will report it */ }
+  }
+  const lsel = document.getElementById('obList');
+  if (lsel) {
+    try {
+      const ld = await (await fetch('/onboard/lists')).json();
+      /* Repopulated on every open, not cached: a list created since the last
+         open would otherwise be unselectable, and the operator's only way
+         out would be to reload the page. */
+      lsel.innerHTML = (ld.lists || []).map(l =>
+        `<option value="${l.name}" ${l.is_current ? 'selected' : ''}>${l.name} (${l.device_count})</option>`
       ).join('');
     } catch (_) { /* the plan call will report it */ }
   }

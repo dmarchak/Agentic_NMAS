@@ -31,11 +31,41 @@ def _dialect(platform: str) -> str:
     return platform_for_device({"platform": value}) if value else ""
 
 
-def _active_list(payload=None) -> str:
-    from modules.config import get_current_list_name
+class NoTargetList(ValueError):
+    """The request did not say which list to onboard into."""
 
-    name = (payload or {}).get("list_name") or request.args.get("list_name") or ""
-    return name.strip() or get_current_list_name()
+
+def _target_list(data) -> str:
+    """The list this request names. **Never the active one as a fallback.**
+
+    `PipelineContext.list_name` already established this rule the expensive
+    way: the pipeline asked `get_current_list_name()` at three points after
+    the push, and a list switch during a 45-90s convergence window committed
+    one network's captures into another's repository. The wizard was on the
+    wrong side of a rule this codebase already has.
+
+    The asymmetry is what decides it. Onboarding into the wrong list leaves a
+    **commit, a NetBox object and a `devices.csv` row** in a live network,
+    and repairing it means the provenance-based Remove plus a git revert --
+    where Remove is the very mechanism the Stage 4C probe exists to prove.
+    **The failure is repaired by something that is itself unproven.**
+
+    Inheriting the active list made that a one-click mistake caught only by
+    an operator reading a line on the review screen that is correct ~95% of
+    the time. It was very nearly made, and was caught only because the hard
+    stop at step 6 exists to be read.
+
+    So an absent list is refused rather than guessed. The wizard always sends
+    one; it is a field like any other.
+    """
+    name = ((data or {}).get("list_name") or "").strip()
+    if not name:
+        raise NoTargetList(
+            "no target list was chosen. The wizard sends the list it is "
+            "onboarding into rather than inheriting whichever list happens "
+            "to be active, because onboarding into the wrong one leaves a "
+            "commit and a NetBox object behind.")
+    return name
 
 
 def _plan_args(data, list_name: str, *, secret: str) -> dict:
@@ -100,6 +130,32 @@ def platforms():
     return jsonify({"ok": True, "platforms": out})
 
 
+@bp.route("/lists", methods=["GET"])
+def onboard_lists():
+    """The lists that can be onboarded into, and which one is active.
+
+    Its own endpoint rather than reusing `/device_lists`, for the reason
+    `/onboard/platforms` is: this blueprint answers `{"ok": ...}` and the
+    wizard reads one shape. `is_current` is a **default for the select**,
+    not a decision -- the operator chooses, and the request carries it.
+    """
+    try:
+        from modules.device import get_device_lists
+
+        lists = get_device_lists() or []
+        return jsonify({
+            "ok": True,
+            "lists": [{"name": row.get("name", ""),
+                       "slug": row.get("filename", ""),
+                       "device_count": row.get("device_count", 0),
+                       "is_current": bool(row.get("is_current"))}
+                      for row in lists],
+        })
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("onboard: could not list device lists")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @bp.route("/plan", methods=["POST"])
 def plan():
     """Build a plan and return it. **Creates nothing.**
@@ -111,7 +167,10 @@ def plan():
     from modules.nsot.onboard import build_plan
 
     data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
+    try:
+        list_name = _target_list(data)
+    except NoTargetList as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     try:
         # A placeholder secret so the render is exercised. The real one-time
         # credential is minted at create time and never round-trips through
@@ -153,7 +212,10 @@ def create():
     from modules.nsot.onboard import build_plan, real_steps, run_onboarding
 
     data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
+    try:
+        list_name = _target_list(data)
+    except NoTargetList as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
 
     # REBUILT HERE, not carried from the review. The stores can change

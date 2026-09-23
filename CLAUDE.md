@@ -1376,6 +1376,31 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   another, the same file at the same moment. Every "N passed" claimed during
   that stage was harness-only; the first real run was 2,638 passed / 6
   failed.
+- **The onboarding target list is carried, never derived.** `_active_list()`
+  fell back to `get_current_list_name()` — the same shape as
+  `PipelineContext.list_name`, which was corrected after a list switch during
+  a convergence window committed one network's captures into another's repo.
+  The asymmetry is what makes it worth a refusal rather than a default:
+  onboarding into the wrong list leaves a **commit, a NetBox object and a
+  CSV row** in a live network, and the repair is the provenance-based Remove
+  — **the mechanism Stage 4C exists to prove, and which has therefore never
+  run.** The list also decides what every other field *means* (collision
+  checked in that manifest, credential from that resolver, NetBox objects
+  under that slug) and was the only one inherited rather than stated.
+  `_target_list()` raises `NoTargetList`; the wizard sends it as an ordinary
+  field. Note `/onboard/create` answers **403 before 400** — identity gates
+  ahead of input validation, which is the right order.
+- **Merging two of three copies is not a partial fix; it concentrates the
+  divergence in the one left behind.** The onboard form's field list lived in
+  `_plan_args()`, `onboardFormPayload()` and a hardcoded array of element ids
+  bound to re-validation listeners. The first two were merged, the third was
+  not, and 4C.8's three new fields were **read and sent correctly while being
+  watched by nothing** — so filling in the netmask left "no network mask" on
+  screen. Nothing was wrong with the payload, which is why neither end showed
+  it: the defect existed only in the relationship. `ONBOARD_FIELDS` is now the
+  one list. **A tool that looks broken while working is worse than one that
+  fails** — it teaches the operator to stop reading the panel that is the last
+  thing between them and a commit.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
