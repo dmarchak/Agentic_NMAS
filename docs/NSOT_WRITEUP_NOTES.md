@@ -6205,3 +6205,75 @@ whose fix is to switch it off again. That is how the feature was lost the
 first time. A silenced check does not come back by being remembered — it comes
 back by someone making the thing it reports worth reading, and then enabling
 it.
+
+---
+
+## Seven of eight decisions were never made
+
+The security posture panel, on its first reading of the real install
+(2026-09-23):
+
+```
+require_identity_for_reveal          ON   set explicitly
+require_person_for_reveal            ON   defaulted (not in the file)
+require_identity_for_approve         ON   defaulted (not in the file)
+require_person_for_approve           ON   defaulted (not in the file)
+require_identity_for_confirm         ON   defaulted (not in the file)
+require_person_for_confirm           ON   defaulted (not in the file)
+require_identity_for_publish_remote  ON   defaulted (not in the file)
+require_person_for_publish_remote    ON   defaulted (not in the file)
+service_allowed_operations           []   defaulted (not in the file)
+```
+
+**The posture is correct. One of the eight decisions was ever recorded.**
+
+The other seven are right because the defaults happen to match what would
+have been chosen — which is a different claim from *configured*, and until
+this panel the two were indistinguishable by any means short of opening
+`data/user_settings.json` over SSH and noticing an absence. An absence is a
+hard thing to notice.
+
+The one explicit entry is `require_identity_for_reveal`, written during the
+D3 redaction work — the one occasion the decision was made deliberately at
+the time, and the only one the file records.
+
+### Why it was never written
+
+`migrate()` returns early once the stored `settings_schema_version` has
+caught up, and `SCHEMA_VERSION` is still 1. Every identity gate was added to
+`DEFAULTS` after this install reached v1, so none of them was ever seeded.
+`get_setting()` falls back to `DEFAULTS`, so everything worked, and nothing
+anywhere reported that the file and the schema had diverged.
+
+Measured directly: seed a store at v1, add a key to `DEFAULTS`, run
+`migrate()` — `added_keys` is empty, the key is absent from the file, and
+`get_setting()` returns its default regardless.
+
+### The shape
+
+A value believed configured, never written, indistinguishable from an unset
+key — on the settings that decide **who may reveal a secret and who may
+publish a network's history**. It is the silenced-check shape with the sign
+reversed: there the concern was a protection switched off and nobody
+noticing; here it is a protection that was never switched *on* in any
+recorded sense, and nobody noticing either. Both are invisible for the same
+reason, which is that nothing was showing the state.
+
+**The panel is what made it distinguishable.** Not a fix — nothing was
+broken, every gate was doing its job. It made a fact observable that had been
+true and unobservable for as long as the settings existed. That is the whole
+value of the thing, and it argues for building the observation before
+assuming the configuration.
+
+### And a trap sitting underneath it
+
+`migrate()`'s v0→v1 block seeds **every** absent key in `DEFAULTS`, and it is
+reached whenever `current < SCHEMA_VERSION`. Measured: with `SCHEMA_VERSION`
+bumped to 2, a v1 install has **98 keys seeded in one pass, including all
+eight identity gates**.
+
+So the next schema-version bump — for any reason, about any unrelated
+setting — would silently rewrite every "defaulted" as "set explicitly" across
+every install, and the distinction this panel exists to show would be gone in
+a single release, with nothing to say it had happened. Recorded here because
+the bump will look like an unrelated chore when it comes.

@@ -1556,6 +1556,58 @@ changes one consumer's credential without disturbing another's.
 
 ---
 
+### STAGE 3.2a — migrate() does NOT write a value nobody chose
+
+Decided 2026-09-23, after 3.2c made the state visible. On the real install
+**one of eight gate decisions had ever been recorded**; the other seven were
+correct because the defaults matched, which is a different claim from
+configured.
+
+**`migrate()` will not seed a default.** Writing one would make *defaulted*
+and *chosen* indistinguishable again, which is the defect 3.2c exists to
+remove — and it would do it to every install at once, permanently, since
+nothing afterwards could tell which writes were decisions.
+
+Three reasons beyond that one:
+
+1. **A seeded default freezes an install at the default-of-the-day.** The
+   standing rule is that every new default reproduces the behaviour that
+   predates the setting; changing one later is therefore a deliberate act
+   with a reason. An install whose file was seeded would silently **not**
+   receive that change, because an explicit value wins. Seeding converts
+   "follows the project's judgement" into "pinned to whatever it was on the
+   day you upgraded", invisibly.
+2. **Absence is information.** `origin: default` says nobody has considered
+   this. That is worth knowing and cannot be recovered once written.
+3. **It would be a write with no author.** Everything else gated in this
+   system records who decided — `Actor:` trailers, the reveal audit, the
+   approval queue. A settings write attributed to a migration is the one
+   decision in the program with nobody behind it.
+
+**Instead, recording a decision becomes an action.** The posture panel gains
+*Record this decision*, which writes the **currently effective value** with
+an actor and a timestamp. Writing then means somebody decided.
+
+**It can only ratify, never change** — it writes the value already in force.
+That keeps 3.2c's constraint intact: a browser session still cannot lower a
+gate, because the only value the control can write is the one already
+applying. Changing a gate stays a host-side edit, for the reason written on
+the panel.
+
+The panel then shows three states rather than two: **defaulted** (nobody
+decided), **ratified** (written, equals the default — somebody agreed), and
+**chosen** (written, differs from the default).
+
+**The v2 trap is part of this item.** `migrate()`'s v0→v1 block seeds every
+absent key and is reached whenever `current < SCHEMA_VERSION`. Measured: a
+bump to v2 seeds **98 keys on a v1 install, including all eight identity
+gates** — silently rewriting every "defaulted" as "set explicitly" across
+every install, in a release that will look like an unrelated chore. Seeding
+must be scoped to the keys a bump is actually about, and a test must fail if
+a version bump would seed a `require_*` key.
+
+---
+
 ### STAGE 7 — the interface, redesigned
 
 **Scope changed 2026-09-23: this is a GUI redesign, not a tab cleanup.**
