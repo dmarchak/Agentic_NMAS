@@ -253,15 +253,27 @@ class TestTheRoutes:
     def test_create_requires_a_person(self, client):
         assert client.post("/onboard/create", json={}).status_code == 403
 
-    def test_create_is_honest_about_not_being_wired(self, client,
-                                                    monkeypatch):
-        """It refuses with 501 rather than pretending. A button that appears
-        to work and does nothing is worse than one that says so."""
+    def test_create_refuses_a_plan_it_has_rebuilt_and_found_blocked(
+            self, client, monkeypatch):
+        """**Rebuilt at confirm, not carried from the review.** The stores can
+        change between the screen and the confirm — the same reason the
+        deploy path recomputes its program at apply rather than trusting what
+        was shown."""
         from modules import identity as ident_mod
 
         monkeypatch.setattr(ident_mod, "require",
                             lambda request, action="", operation="": (
                                 type("I", (), {"actor": "a@b"})(), None))
-        r = client.post("/onboard/create", json={})
-        assert r.status_code == 501
-        assert r.get_json()["not_implemented"] is True
+        r = client.post("/onboard/create", json={})   # no hostname, no platform
+        assert r.status_code == 409
+        assert r.get_json()["blocking_reasons"]
+
+    def test_create_runs_the_real_steps(self):
+        """Not stand-ins. The whole of 4C.7 is that the real adapters satisfy
+        the contract `run_onboarding` enforces."""
+        from tests.astcheck import calls_in
+
+        from routes import onboard
+
+        assert calls_in(onboard.create, "run_onboarding") == 1
+        assert calls_in(onboard.create, "real_steps") == 1

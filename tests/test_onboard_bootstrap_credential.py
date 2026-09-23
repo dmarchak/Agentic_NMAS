@@ -261,7 +261,43 @@ class TestItIsNeverADurableCredential:
             if callable(fn) and getattr(fn, "__module__", "") == onboard.__name__:
                 assert calls_in(fn, "write_devices_csv") == 0, name
 
-    def test_onboard_never_writes_it_to_the_credential_store(self):
+    def test_the_credential_store_override_is_written_and_then_replaced(self):
+        """Corrected in 4C.7, and the correction matters.
+
+        This asserted that **nothing** in `onboard.py` calls
+        `set_device_override`. That was too strong: the bootstrap credential
+        HAS to reach the credential store, or `load_saved_devices()` cannot
+        resolve credentials for the device and nothing — the connection pool,
+        the capture, drift — can reach it.
+
+        The agreed property is *never a **durable** credential*, and durable
+        is what rotation ends. So: exactly one writer, and `finish_bootstrap`
+        replaces it.
+        """
+        from tests.astcheck import calls_in
+
+        from modules.nsot import onboard
+
+        writers = [name for name in dir(onboard)
+                   if callable(getattr(onboard, name, None))
+                   and getattr(getattr(onboard, name), "__module__", "")
+                   == onboard.__name__
+                   and calls_in(getattr(onboard, name), "set_device_override")]
+        assert writers == ["bind_credentials_step"], writers
+
+    def test_it_is_staged_before_the_store_is_written(self):
+        """A crash between the two would leave a credential in the store and
+        nothing able to recover it — the staging file is what makes the
+        window survivable, so it comes first."""
+        from tests.astcheck import code_of
+
+        from modules.nsot import onboard
+
+        src = code_of(onboard.bind_credentials_step)
+        assert (src.index("stage_bootstrap_credential")
+                < src.index("set_device_override"))
+
+    def test_nothing_writes_it_to_the_devices_csv(self):
         from tests.astcheck import calls_in
 
         from modules.nsot import onboard
@@ -269,6 +305,4 @@ class TestItIsNeverADurableCredential:
         for name in dir(onboard):
             fn = getattr(onboard, name, None)
             if callable(fn) and getattr(fn, "__module__", "") == onboard.__name__:
-                for writer in ("set_device_override", "set_template_secret",
-                               "set_secret"):
-                    assert calls_in(fn, writer) == 0, (name, writer)
+                assert calls_in(fn, "write_devices_csv") == 0, name

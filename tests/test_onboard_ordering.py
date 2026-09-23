@@ -351,3 +351,139 @@ class TestTheControlItself:
         assert out["failed_at"] == "netbox"
         assert _state(world["repo"]) == before
         assert world["hook_fired"] == []
+
+
+class TestTheREALStepsSatisfyTheContract:
+    """**4C.7's whole point.** Everything above proves the contract holds for
+    injected steps; that proves the contract, not that the production steps
+    satisfy it.
+
+    "The unit was right and the wiring was absent" has already happened twice
+    in this stage — the slug/dialect gate, and six build steps declared
+    complete while `run_onboarding` had no caller. The tell was the same both
+    times: **every test that passed sat below the missing connection.**
+
+    So these run `run_onboarding` with `real_steps()` — the shipped adapters
+    — against faked *dependencies* rather than faked steps. The seam moves
+    from "above the adapters" to "below them".
+    """
+
+    @pytest.fixture
+    def wired(self, world, tmp_path, monkeypatch):
+        """The real adapters, with NetBox, the credential store and the clock
+        faked. Everything between `run_onboarding` and those is real code."""
+        from modules.nsot import onboard
+
+        list_dir = tmp_path / "probe"
+        repo = world["repo"]
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: os.path.dirname(repo))
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {
+                                "nsot_git_author_name": "NMAS",
+                                "nsot_git_author_email": "n@l",
+                                "netbox_allow_writes": True}.get(k, d))
+        monkeypatch.setattr("modules.secrets_store.KEY_FILE",
+                            str(tmp_path / "key.key"))
+        monkeypatch.setattr("modules.secrets_store._fernet", None)
+
+        overrides = {}
+        monkeypatch.setattr("modules.credentials.set_device_override",
+                            lambda lst, host, values: overrides.update(
+                                {(lst, host): values}))
+        synced = []
+        monkeypatch.setattr(
+            "modules.netbox_client.sync_list_to_netbox",
+            lambda lst, devices, **kw: synced.append(devices) or {"ok": True})
+        monkeypatch.setattr("modules.netbox_guard.get_created",
+                            lambda lst, endpoint="": {"dcim/devices/": {9: "bp"}})
+
+        class _Plan:
+            hostname = "bp-onboard-c"
+            list_name = "probe"
+            mgmt_ip = "203.0.113.60"
+            platform = "cisco_iosxe"
+            host_vars = {"hostname": "bp-onboard-c"}
+            bootstrap_config = "hostname bp-onboard-c\n!\nend\n"
+            onboardable = True
+            blocking_reasons = []
+
+        return {"plan": _Plan(), "repo": repo, "overrides": overrides,
+                "synced": synced, "onboard": onboard, "world": world}
+
+    def _run(self, wired, **over):
+        steps = wired["onboard"].real_steps(wired["repo"], actor="probe@lab")
+        steps.update(over)
+        return wired["onboard"].run_onboarding(
+            wired["plan"], repo=wired["repo"], **steps)
+
+    def test_a_clean_run_completes_every_step(self, wired):
+        out = self._run(wired)
+        assert out["ok"] is True, out
+        assert out["completed"] == ["credentials", "netbox", "commit", "render"]
+
+    def test_the_real_credential_step_stages_and_records(self, wired):
+        self._run(wired)
+        staged = wired["onboard"].staged_bootstrap_credential(
+            wired["repo"], "bp-onboard-c")
+        assert staged and len(staged) >= 20
+        assert wired["overrides"][("probe", "bp-onboard-c")]["password"] == staged
+
+    def test_the_real_commit_step_makes_exactly_one_commit(self, wired):
+        before = _state(wired["repo"])["count"]
+        self._run(wired)
+        assert int(_state(wired["repo"])["count"]) == int(before) + 1
+
+    def test_a_REAL_netbox_failure_creates_no_commit(self, wired, monkeypatch):
+        """The contract, against the shipped adapter rather than a stand-in.
+
+        `sync_list_to_netbox` returns `{"blocked": True}` when writes are off
+        — it does not raise — so the adapter turns that into a failure. A
+        blocked write read as a success would have carried the run into the
+        commit.
+        """
+        monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
+                            lambda lst, devices, **kw: {
+                                "ok": False, "blocked": True,
+                                "error": "NetBox writes are disabled."})
+        before = _state(wired["repo"])
+
+        out = self._run(wired)
+
+        assert out["ok"] is False
+        assert out["failed_at"] == "netbox"
+        assert "disabled" in out["reason"]
+        assert _state(wired["repo"]) == before, (
+            "a blocked NetBox write reached the commit")
+        assert wired["world"]["hook_fired"] == []
+
+    def test_a_blocked_write_is_not_read_as_success(self, wired, monkeypatch):
+        """The specific trap: the function RETURNS rather than raising."""
+        monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
+                            lambda lst, devices, **kw: {"blocked": True,
+                                                        "error": "off"})
+        assert self._run(wired)["failed_at"] == "netbox"
+
+    def test_the_credential_survives_a_failure_after_it_was_staged(
+            self, wired, monkeypatch):
+        """Between the device booting with it and rotation replacing it, it
+        is the only way in — and a run that failed at NetBox has bound it."""
+        monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
+                            lambda lst, devices, **kw: {"blocked": True,
+                                                        "error": "off"})
+        self._run(wired)
+        assert wired["onboard"].staged_bootstrap_credential(
+            wired["repo"], "bp-onboard-c")
+
+    def test_real_steps_is_assembled_in_one_place(self):
+        """Two copies of the mapping would be two orderings, and the ordering
+        is what this file exists to pin."""
+        from tests.astcheck import calls_in
+
+        from modules.nsot import onboard
+        from routes import onboard as route
+
+        assert calls_in(route.create, "real_steps") == 1
+        for name in ("bind_credentials_step", "create_netbox_step",
+                     "commit_step", "render_step"):
+            assert hasattr(onboard, name)

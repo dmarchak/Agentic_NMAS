@@ -102,6 +102,16 @@ class OnboardPlan:
     #: collision": a check that could not run has not passed.
     unchecked: tuple = field(default_factory=tuple)
 
+    #: Preconditions the RUN needs and the plan can already see are missing.
+    #:
+    #: **Found at plan time, never mid-run.** The review screen promises
+    #: *"nothing has been created yet"*; discovering that NetBox writes are
+    #: disabled after the credential has been bound breaks that promise, and
+    #: a run that stops halfway is a partial state the operator did not
+    #: agree to. Anything the run requires is checked before anything is
+    #: offered.
+    unmet_preconditions: tuple = field(default_factory=tuple)
+
     # ── the gate ────────────────────────────────────────────────────────────
 
     @property
@@ -157,6 +167,10 @@ class OnboardPlan:
                 "contain characters an IOS CLI cannot accept: "
                 + "; ".join(self.unsendable[:2])
                 + ("…" if len(self.unsendable) > 2 else ""))
+
+        # Preconditions, named individually. "The run would fail" is not
+        # actionable; "NetBox writes are disabled" is.
+        reasons.extend(self.unmet_preconditions)
 
         # A check that could not run has not passed. Reported as its own
         # refusal rather than folded into the collision flags, because
@@ -293,6 +307,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                                  mgmt_interface)
 
     return OnboardPlan(
+        unmet_preconditions=tuple(unmet_preconditions(netbox_plan)),
         hostname=hostname, platform=platform, list_name=list_name,
         source_kind=source_kind, mgmt_ip=mgmt_ip,
         bootstrap_config=config, cred_source=cred_source,
@@ -301,6 +316,42 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         name_taken_in_manifest=in_manifest, name_taken_in_netbox=in_netbox,
         unsendable=tuple(unsendable), unchecked=tuple(unchecked),
     )
+
+
+def unmet_preconditions(netbox_plan=()) -> list:
+    """What the RUN needs and does not have, checked before anything is offered.
+
+    **The master switch is never flipped as a side effect.** An operation
+    that enables NetBox writes because the operator confirmed something else
+    is the same defect as a push exceeding its preview: the operator agreed
+    to one thing and a second thing happened. `netbox_allow_writes` is a
+    persistent decision and stays one — so the wizard *reports* it as a
+    blocking reason and the operator turns it on deliberately.
+
+    Checked only when the plan would actually write to NetBox. A local list
+    on an installation with no NetBox needs no switch, and a precondition
+    that fires when it does not apply is a refusal people learn to ignore.
+    """
+    unmet = []
+
+    if netbox_plan:
+        try:
+            from modules.netbox_guard import writes_allowed
+
+            if not writes_allowed():
+                unmet.append(
+                    "NetBox writes are disabled, and this run would create "
+                    f"{len(netbox_plan)} object(s). Enable 'Allow writes to "
+                    "NetBox' in Settings → Integrations first — the wizard "
+                    "will not turn it on for you, because a switch flipped as "
+                    "a side effect of confirming something else is not a "
+                    "decision anybody made.")
+        except Exception as exc:               # noqa: BLE001
+            log.error("onboard: could not read the NetBox write gate: %s", exc)
+            unmet.append("could not read the NetBox write gate — a check that "
+                         "did not run has not passed")
+
+    return unmet
 
 
 def _template_for(repo: str, hostname: str, platform: str):
@@ -647,3 +698,119 @@ def rw_removal_plan(config_text: str) -> dict:
     return {"remove": [f"no {line.strip()}" for line in remove],
             "removing": remove,
             "keep": ro_communities(config_text)}
+
+
+# ---------------------------------------------------------------------------
+# 4C.7 — the real steps
+# ---------------------------------------------------------------------------
+#
+# `run_onboarding()` takes its steps as arguments so the ORDERING and the
+# failure behaviour can be tested without NetBox, git or a device. These are
+# the steps it takes in production, and `real_steps()` is the one place they
+# are assembled.
+#
+# **They are tested through `run_onboarding` itself**, with their
+# dependencies faked rather than the steps replaced. Testing the contract
+# against stand-ins proves the contract; it does not prove these satisfy it,
+# and "the unit was right and the wiring was absent" is the shape this stage
+# has already produced twice.
+
+
+def bind_credentials_step(plan, *, repo: str) -> str:
+    """Mint the one-time credential, stage it, and record the override.
+
+    Staged **before** the override is written: the staging file is what makes
+    the crash window survivable, and a crash between the two would otherwise
+    leave a credential in the store and nothing able to recover it.
+    """
+    from modules import credentials
+
+    secret = mint_bootstrap_credential()
+    stage_bootstrap_credential(repo, plan.hostname, secret)
+    credentials.set_device_override(plan.list_name, plan.hostname,
+                                    {"username": "admin", "password": secret,
+                                     "secret": secret})
+    return secret
+
+
+def create_netbox_step(plan) -> list:
+    """Create this device's NetBox objects, through the Phase 0 gate.
+
+    `sync_list_to_netbox` refuses when `netbox_allow_writes` is off and
+    returns `{"blocked": True}` rather than raising. **That refusal is turned
+    into an exception here**, because `run_onboarding` reads a raise as "this
+    step failed" and a returned dict as success — a blocked write that looked
+    like a success would carry the run into the commit.
+
+    The plan has already reported the switch as a blocking reason, so this is
+    the second line of defence rather than the first: the state can change
+    between the review and the confirm, which is the same reason the deploy
+    path recomputes its program at apply.
+    """
+    from modules.netbox_client import sync_list_to_netbox
+
+    device = {"hostname": plan.hostname, "ip": plan.mgmt_ip,
+              "platform": plan.platform, "role": "router"}
+    result = sync_list_to_netbox(plan.list_name, [device]) or {}
+    if result.get("blocked") or not result.get("ok", True):
+        raise RuntimeError(result.get("error")
+                           or "NetBox refused the write and did not say why")
+
+    from modules.netbox_guard import get_created
+
+    created = get_created(plan.list_name) or {}
+    return [f"{endpoint}:{obj_id}"
+            for endpoint, objects in created.items()
+            for obj_id in (objects or {})]
+
+
+def commit_step(plan, *, actor: str) -> str:
+    """One call, one commit: the identity and the device's initial intent.
+
+    `save_host_vars` is the existing path and carries the trailers. The
+    identity is minted here and only here, through `adopt_identity` — the
+    wizard is one of the two callers the decision permits.
+    """
+    import os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot import hostvars
+    from modules.nsot.repo import GoldenItem, adopt_identity, save_host_vars
+
+    repo = os.path.join(get_list_data_dir(plan.list_name), "config_repo")
+    adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))
+    hostvars.write_committed(repo, dict(plan.host_vars or {},
+                                        hostname=plan.hostname))
+    result = save_host_vars(plan.list_name, [plan.hostname], actor=actor,
+                            message=f"onboarding: {plan.hostname}",
+                            source="onboarding")
+    if not result.get("ok"):
+        raise RuntimeError(result.get("error") or "the commit did not succeed")
+    return result.get("commit", "")
+
+
+def render_step(plan) -> str:
+    """The downloadable artefact, from **committed** intent.
+
+    After the commit, deliberately: rendering first would let an operator
+    download a config built from intent the NSoT does not have. `build_plan`
+    has already proved the render succeeds, so a failure here is a surprise
+    rather than a foreseeable refusal — and it leaves a device that is
+    onboarded and an artefact that is missing, which `run_onboarding` reports
+    as two facts.
+    """
+    return plan.bootstrap_config
+
+
+def real_steps(repo: str, actor: str) -> dict:
+    """The production steps, assembled once.
+
+    Two copies of this mapping would be two orderings, and the ordering is
+    the thing `test_onboard_ordering.py` exists to pin.
+    """
+    return {
+        "bind_credentials": lambda plan: bind_credentials_step(plan, repo=repo),
+        "create_netbox":    create_netbox_step,
+        "commit":           lambda plan: commit_step(plan, actor=actor),
+        "render":           render_step,
+    }

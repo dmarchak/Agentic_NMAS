@@ -6992,3 +6992,68 @@ carrying a platform literal means, because three namespaces that overlap on
 `cisco_ios` cannot be told apart from the value. A file that grows a literal
 and is not declared fails; a declaration for a file that no longer has one
 fails too.
+
+---
+
+## "That closes every build step" — true of the list, false of the system
+
+Six steps were planned for Stage 4C, six were built, each with tests and
+negative controls, and the commit closing the last one said *"that closes the
+4C build steps."* It was accurate about the list and wrong about the system:
+**`run_onboarding()` had no caller outside tests, `/onboard/create` returned
+501, and the four step adapters did not exist.**
+
+The operator read that sentence, got ready to sit at the machine for the
+probe, and asked for the runbook. A runbook written that day would have
+dead-ended one step after their stop point — a node booted, a temporary list
+created, and the teardown that has never run still not exercised.
+
+### The same shape as the gate, one layer up
+
+This stage produced two of them:
+
+* **The slug/dialect gate.** `BLOCKED_PENDING_MEASUREMENT` was correct,
+  tested, and documented. `/onboard/platforms` looked NetBox slugs up in it,
+  missed, and reported every platform unblocked. The unit was right and the
+  wiring was wrong.
+* **This.** Six units right; the wiring absent entirely.
+
+**The tell is identical: every test that passed sat below the missing
+connection.** `test_onboard_ordering.py` proved the ordering contract holds —
+for injected steps. `test_onboard_plan.py` proved refusals work — called
+directly. Nothing asserted that anything *calls* them, because the thing that
+would have was the probe, and the probe was the last step.
+
+It is the third form of the boundary problem recorded this week, after the
+agent panel's three guards and the drift panel's inline renderer. The lesson
+each time: **a test asserts something about a layer, and the defect lives in
+the joint above it.**
+
+### What 4C.7 changed, and what it could not
+
+`real_steps()` assembles the four production adapters, `create` calls
+`run_onboarding` with them, and `test_onboard_ordering.py` gained a class
+that runs the **shipped adapters** against faked *dependencies* rather than
+faked steps — so the seam moved from above the adapters to below them. The
+first thing it caught was a real trap: `sync_list_to_netbox` **returns**
+`{"blocked": True}` when writes are off rather than raising, and
+`run_onboarding` reads a return as success. A blocked write would have
+carried the run into the commit.
+
+What no test arrangement fixes is the ordering mistake: **the assembly was
+never on the list.** The six steps were the pieces, and "assemble them" was a
+seventh nobody wrote down — which is why the closing sentence was possible to
+write in good faith.
+
+### And a negative control found the same shape inside the fix
+
+4C.7 added the write-gate precondition at plan time, so `netbox_allow_writes`
+being off is a blocking reason named on the review screen rather than a raise
+mid-run. Running the control — remove the precondition — changed **nothing**:
+27 tests passed either way.
+
+The check was written, correct, and **exercised by nothing**. Present,
+plausible, and proving nothing, which is the slug/dialect gate again inside
+the commit that was fixing it. Six tests now cover it, including the one that
+matters: with writes off and a NetBox plan, the reason reaches
+`summary["blocking_reasons"]`, which is what the review screen renders.

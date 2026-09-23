@@ -304,3 +304,66 @@ class TestThePlanCarriesNoSecret:
         """It has to — that is the config the device boots with. The point is
         that the config is the ONE place it appears."""
         assert "s3cr3t-bootstrap" in _plan(secret="s3cr3t-bootstrap").bootstrap_config
+
+
+class TestPreconditionsAreFoundAtPlanTime:
+    """The review screen promises *"nothing has been created yet"*.
+    Discovering that NetBox writes are disabled **after** the credential has
+    been bound breaks that promise, and leaves a partial state the operator
+    never agreed to. So anything the run requires is checked before anything
+    is offered.
+
+    **These tests exist because a negative control found they did not.**
+    Removing the precondition from `build_plan` changed nothing in this file
+    — the check was written and unexercised, which is the same shape as the
+    slug/dialect gate one layer along: present, correct, and proving nothing.
+    """
+
+    def test_the_write_gate_being_off_is_a_blocking_reason(self, lab,
+                                                           monkeypatch):
+        monkeypatch.setattr("modules.netbox_guard.writes_allowed",
+                            lambda: False)
+        plan = _plan(netbox_plan=("dcim/devices/",))
+        assert plan.onboardable is False
+        assert any("NetBox writes are disabled" in r
+                   for r in plan.blocking_reasons)
+
+    def test_it_says_the_wizard_will_not_turn_it_on(self, lab, monkeypatch):
+        """A switch flipped as a side effect of confirming something else is
+        not a decision anybody made — the same defect as a push exceeding its
+        preview."""
+        monkeypatch.setattr("modules.netbox_guard.writes_allowed",
+                            lambda: False)
+        reasons = _plan(netbox_plan=("dcim/devices/",)).blocking_reasons
+        assert any("will not turn it on for you" in r for r in reasons)
+
+    def test_with_writes_enabled_it_is_not_a_blocker(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.netbox_guard.writes_allowed",
+                            lambda: True)
+        plan = _plan(netbox_plan=("dcim/devices/",))
+        assert not any("NetBox writes" in r for r in plan.blocking_reasons)
+
+    def test_a_plan_that_creates_nothing_in_netbox_needs_no_switch(self, lab,
+                                                                   monkeypatch):
+        """A precondition that fires when it does not apply is a refusal
+        people learn to ignore."""
+        monkeypatch.setattr("modules.netbox_guard.writes_allowed",
+                            lambda: False)
+        plan = _plan()                       # no netbox_plan
+        assert not any("NetBox writes" in r for r in plan.blocking_reasons)
+
+    def test_an_unreadable_gate_blocks_rather_than_assuming(self, lab,
+                                                            monkeypatch):
+        monkeypatch.setattr("modules.netbox_guard.writes_allowed",
+                            lambda: (_ for _ in ()).throw(OSError("x")))
+        reasons = _plan(netbox_plan=("dcim/devices/",)).blocking_reasons
+        assert any("did not run has not passed" in r for r in reasons)
+
+    def test_the_reason_reaches_the_review_screen(self, lab, monkeypatch):
+        """Named on screen, not only in the object — `blocking_reasons` is
+        what `onboardReviewHtml` renders, and it renders all of them."""
+        monkeypatch.setattr("modules.netbox_guard.writes_allowed",
+                            lambda: False)
+        summary = _plan(netbox_plan=("dcim/devices/",)).summary
+        assert any("NetBox writes are disabled" in r
+                   for r in summary["blocking_reasons"])

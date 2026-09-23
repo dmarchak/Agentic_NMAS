@@ -318,6 +318,37 @@ check exits 0.
 
 ---
 
+### 4C.7 — assembly, and why it was missed
+
+**Six steps were built and "that closes every build step" was written.** True
+of the list, false of the system: `run_onboarding()` had no caller,
+`/onboard/create` returned 501, and the four adapters did not exist. The
+assembly was never on the list — the six were the *pieces*.
+
+* `real_steps()` assembles the four production adapters in one place. Two
+  copies would be two orderings.
+* `/onboard/create` **rebuilds the plan at confirm** rather than carrying the
+  review's, for the same reason the deploy path recomputes at apply.
+* **`test_onboard_ordering.py` runs the shipped adapters**, against faked
+  dependencies rather than faked steps. It immediately caught a real trap:
+  `sync_list_to_netbox` **returns** `{"blocked": True}` when writes are off
+  rather than raising, and `run_onboarding` reads a return as success — a
+  blocked write would have carried the run into the commit.
+* **Preconditions are found at plan time**, named on the review screen. The
+  screen promises *"nothing has been created yet"*; discovering the write
+  gate after the credential is bound breaks that promise.
+* **`netbox_allow_writes` is never flipped by the wizard.** It is a
+  persistent operator decision, and a switch turned on because somebody
+  confirmed something else is the same defect as a push exceeding its
+  preview. It is **step 0 of the probe runbook**.
+
+*Negative controls:* blocked write read as success → 2 fail; drop the
+precondition → **0 fail at first**, which is the finding — the check was
+written and exercised by nothing, so six tests were added and the control
+then fails 4; write the override before staging → 3.
+
+---
+
 ## 5. Decisions taken
 
 **1. The probe runs on a `local` list.** Immediate drift enrolment is the
@@ -407,4 +438,5 @@ with the census condition.
 | **4C.3** ordering | **done** — `tests/test_onboard_ordering.py`, 23 tests, three negative controls plus a positive control on the signals themselves |
 | **4C.4** routes + UI | **done** — `routes/onboard.py`, `templates/partials/onboard_wizard.html`, `tests/test_onboard_wizard_renders.py`, 26 tests, four negative controls each shown failing |
 | **4C.5** RW community | **done** — `tests/test_onboard_snmp.py` + `tests/test_platform_keying.py`, 44 tests, three negative controls each shown failing |
+| **4C.7** assembly — the real steps | **done** — `real_steps()`, `/onboard/create` wired, preconditions at plan time; `test_onboard_ordering.py` runs the SHIPPED adapters |
 | **4C.6** drift enrolment | **done** — `tests/test_onboard_drift_enrolment.py`, 19 tests, three negative controls each shown failing |

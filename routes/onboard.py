@@ -125,11 +125,32 @@ def create():
     if refusal:
         return jsonify(refusal), 403
 
-    return jsonify({
-        "ok": False,
-        "error": ("The create step is not wired yet — 4C.5 and 4C.6 add the "
-                  "RW-community removal and the drift-enrolment checks it "
-                  "must run. The wizard plans and reviews; it does not yet "
-                  "create."),
-        "not_implemented": True,
-    }), 501
+    import os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot.onboard import build_plan, real_steps, run_onboarding
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+
+    # REBUILT HERE, not carried from the review. The stores can change
+    # between the screen and the confirm -- the same reason the deploy path
+    # recomputes its program at apply rather than trusting what was shown.
+    plan = build_plan(
+        hostname=(data.get("hostname") or "").strip(),
+        platform=_dialect(data.get("platform")),
+        list_name=list_name,
+        mgmt_ip=(data.get("mgmt_ip") or "").strip(),
+        source_kind=data.get("source_kind") or "local",
+        secret="",                      # the real one is minted by the step
+        domain=(data.get("domain") or "rcn.lab").strip(),
+        mgmt_interface=(data.get("mgmt_interface") or "").strip(),
+    )
+    if not plan.onboardable:
+        return jsonify({"ok": False, "error": "; ".join(plan.blocking_reasons),
+                        "blocking_reasons": plan.blocking_reasons}), 409
+
+    result = run_onboarding(plan, repo=repo,
+                            **real_steps(repo, actor=ident.actor))
+    return jsonify(result), (200 if result.get("ok") else 500)
