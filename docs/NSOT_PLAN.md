@@ -1556,6 +1556,79 @@ changes one consumer's credential without disturbing another's.
 
 ---
 
+### DECISION TO MAKE — GitHub Actions or Jenkins for Part 2's pipeline
+
+**Not decided.** Recorded before Stages 7 and 8 because the Jenkins tab's
+fate in the redesign depends on the answer, and deciding it inside a UI
+stage would be deciding it by omission.
+
+Current lean: **GitHub Actions**, since commits already reach GitHub and
+auto-push works.
+
+**For Actions**
+
+* No server to run. Jenkins is a process to keep alive, patch and back up,
+  for a lab whose whole point is that the source of truth is a git
+  repository.
+* **The pipeline definition lives in the repo it tests.** A workflow file is
+  reviewed, versioned and reverted like any other change — which is the same
+  argument the NSoT work makes about configuration, applied to CI.
+* Push-triggered fits the model directly: a config change *is* a commit, so
+  "a config change triggers tests" needs no glue.
+
+**Against Actions**
+
+* **Cloud runners cannot reach the lab.** Anything that touches a device
+  needs a self-hosted runner inside the network — which is an agent on the
+  NMAS again, just a different one. Jenkins is already inside the network and
+  already has the credentials.
+
+**Likely answer: split by what the check needs.**
+
+| Check | Where | Needs a device? |
+|---|---|---|
+| Schema validation | cloud | no |
+| Jinja renders / template lint | cloud | no |
+| Round-trip against committed goldens | cloud | no |
+| Secret scanning | cloud | no |
+| `assert_sendable` / ASCII over rendered output | cloud | no |
+| Deploy verification, health, reachability | self-hosted | yes |
+
+**Most of what a CI gate should catch is repo-only**, which is the strongest
+argument for the split: the majority of the value needs nothing inside the
+network, and the minority that does is exactly the part that already has a
+home.
+
+**Two things need rethinking either way.**
+
+1. **CI results are recorded as git notes on the commit** (`refs/notes/ci`,
+   `repo.add_ci_note()`), so a workflow that records its own result needs
+   **write access to the repository** — and `remote.py` pushes `refs/notes/*`
+   through the same path as everything else. That interacts with the publish
+   gate: `publish_remote` requires a verified **person** by default, and the
+   HTTP publish routes enforce it. Note that the post-commit hook does *not*
+   go through that gate — it is unattended by design, and
+   `nsot_git_auto_push` defaults off — so there is already an asymmetry
+   between operator-initiated publishing and automatic publishing, and a CI
+   writer would be a third kind. **Measured while recording this:
+   `add_ci_note()` has no callers.** Notes are a built capability, not a
+   current practice, which makes this cheaper to decide now than later: there
+   is no existing behaviour to preserve.
+2. **`jenkins_step_shell` becomes moot for anything that moves.** The
+   `bat`/`sh` setting exists because a Windows Jenkins agent and a Linux one
+   need different step syntax. A workflow file declares its own runner, so
+   the setting covers only whatever stays on Jenkins — and if nothing does,
+   it is a setting with no subject.
+
+**What the decision gates.** Stage 7's redundancy pass currently folds the
+Jenkins tab into Fleet → Changes as a CI strip on the deploy record. That
+holds either way — the strip shows *a* CI result — but what it links to, and
+whether Jenkins pipeline management survives at all, follows from this.
+`modules/pipeline.py` and `pipeline_builder.py` stay regardless: the 9-stage
+pipeline is NMAS's own and is not Jenkins.
+
+---
+
 ### STAGE 3.2a — migrate() does NOT write a value nobody chose
 
 Decided 2026-09-23, after 3.2c made the state visible. On the real install
@@ -1664,6 +1737,11 @@ first answer.
 Recorded now so it is not rediscovered. **Plan when we get there** -- but the
 measurements below were taken 2026-09-23 while recording it, because two of
 them change how urgent this is.
+
+**8.0 Prerequisite:** the CI decision recorded above (GitHub Actions vs
+Jenkins) should be settled before the tool review, because eighteen of the
+seventy-three tools are `jenkins_*` — a quarter of the library classified
+against a system that may not survive.
 
 **8.1 Models.** `ai_assistant.py` carries three: `claude-sonnet-5`,
 `claude-opus-5`, `claude-haiku-4-5`. Confirm each is current, and check
