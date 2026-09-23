@@ -1540,13 +1540,46 @@ changes one consumer's credential without disturbing another's.
 
 ---
 
-### STAGE 7 — redesign the remaining pre-NSoT tabs
+### STAGE 7 — the interface, redesigned
 
-Ansible, Jenkins, History, Agent, Approvals, Configure, Logs. The NSoT work
-added capabilities faster than the interface reorganised around them; the
-Monitoring and Topology tabs were done under deadline and each still sits
-above a collapsed legacy section.
+**Scope changed 2026-09-23: this is a GUI redesign, not a tab cleanup.**
+Written up in full as **[NSOT_STAGE7_GUI.md](NSOT_STAGE7_GUI.md)**, posted
+early so that Stages 3.2 and 4-6 can land in the new structure rather than be
+rearranged twice. That document governs; this is the summary.
 
-*Acceptance:* every tab's primary action is the NSoT path where one exists;
-nothing is hidden behind a collapse that should have been removed; the
-unreachable-function test stays at an empty `KNOWN_DEAD`.
+The premise: the program's scope changed and the interface is a record of how
+it grew. Twelve tabs named after subsystems are a map of how the program is
+built, useful only to somebody who already knows. Almost nothing a person
+does here is "use NetBox" -- it is *look at this device*, *change this
+device*, *is the network healthy*, *what changed and who changed it*.
+
+Measured before proposing anything: **217 routes, 48 of them reachable from
+no page at all.** Nine are Phase 3 features with no entry point, including
+`authorise_retry()` -- a device can enter a rollback-blocked state from the
+GUI and can only leave it from a terminal -- and `approval.revoke()`, whose
+tombstone exists so a withdrawal is a recorded finding. Four are credential
+management, which is configurable only over HTTP.
+
+Shape: two destinations (**Fleet**, **Monitoring**) plus a per-device page at
+`/device/<hostname>`, and a service-status bar on every page.
+**Monitoring becomes a destination rather than a status board**: Grafana
+embedded (`grafana.dmarchak.dev` and `nmas.dmarchak.dev` are both public
+through Cloudflare, so no proxy is needed -- but Grafana needs
+`allow_embedding` plus `frame-ancestors`, and Access, if it fronts Grafana,
+blocks framing and needs a policy for the embed path; **both are named
+blockers, not measured ones, and the iframe test comes first**), Kea lease
+detail including expired leases, Loki made queryable, NetBox reduced to a
+summary. **The Git tab becomes the version-control home** -- commits, tags,
+baselines, per-device history, remote and push state, which are today
+scattered across Devices. **Topology's removal is not scheduled**: the
+NetworkX view stays until an embedded view actually shows the topology.
+
+A redundancy pass gives every pre-NSoT feature keep / fold in / remove with a
+reason. `/configure/apply` is deliberately left open pending a usage
+measurement -- deciding it from the plan would be deciding by omission.
+
+*Acceptance:* per-route reachability, with an allowlist that only shrinks;
+every inventoried action has exactly one home and a test asserting its entry
+point exists; every consequence line is pinned to what the code does; the
+Grafana embed either renders or names the blocker it hit; no behaviour
+changes -- Stage 7 moves controls and adds entry points.
