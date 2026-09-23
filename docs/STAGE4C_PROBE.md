@@ -27,6 +27,26 @@ than with r6.
 
 **Roughly 45 minutes**, most of it waiting for a C8000v to boot.
 
+### ⚠ Two names for this list, and the commands use different ones
+
+The list is created as **`nmas-probe`**. Its directory is **`nmas_probe`**.
+
+`config.list_slug()` replaces every non-word character with an underscore, so
+the hyphen becomes one. **That means:**
+
+| use the **name** `nmas-probe` | use the **slug** `nmas_probe` |
+|---|---|
+| every API call — `/device_lists`, the remove preview and apply | every **filesystem path** — `data/lists/nmas_probe/…` |
+
+This is `ListRef`'s distinction showing up in a shell rather than in code:
+*"`name` is what the operator sees, `slug` is the directory. They are
+different strings and comparing one to the other is always false."* The type
+makes that unrepresentable in Python; a runbook has no type, so it is written
+down here instead.
+
+**Found by running step 1.** Every filesystem path in the first draft used
+the name and pointed at a directory that does not exist.
+
 ### What touches what
 
 | | steps |
@@ -52,7 +72,7 @@ readable with:
 ```bash
 python -c "
 from modules.nsot.onboard import staged_bootstrap_credential
-print(staged_bootstrap_credential('data/lists/nmas-probe/config_repo','bp-onboard-c'))"
+print(staged_bootstrap_credential('data/lists/nmas_probe/config_repo','bp-onboard-c'))"
 ```
 
 That is the whole point of staging it (4C.2): between the node booting with
@@ -118,12 +138,23 @@ is the designed behaviour, not a problem to work around.
 curl -s -X POST localhost:5000/device_lists \
   -H 'Content-Type: application/json' \
   -d '{"name": "nmas-probe"}'
-ls -la data/lists/ | grep nmas-probe
+
+curl -s localhost:5000/device_lists | python -m json.tool | grep -A3 nmas-probe
 ```
 
-**Proves:** a `local` list exists, per the §5 decision — immediate drift
-enrolment is the property worth proving, and a NetBox-sourced list would make
-step 9 depend on the refresh loop instead of the wizard.
+**Proves:** the list is registered — it appears in `GET /device_lists` with
+`device_count: 0`.
+
+**Not** `ls data/lists/nmas_probe`. The directory is created **lazily**, by
+`get_list_data_dir()`'s `os.makedirs()` on the first write, so it does not
+exist yet and its absence here is correct. The registration lives in
+`data/device_lists.json`.
+
+*(The first draft asserted the directory. Worth noting because the same
+laziness was a real defect elsewhere: `build_plan()` resolved the repo path
+before validating its inputs, so a **refused** plan created a list directory
+for a device never onboarded — caught by the conftest guard in 4C.7.)*
+
 **If it fails:** stop. Everything after this writes into that list.
 
 ---
@@ -133,7 +164,7 @@ step 9 depend on the refresh loop instead of the wizard.
 **Reads the real NetBox. Writes nothing.**
 
 ```bash
-python scripts/nmas-netbox-census --out /home/dustin/nmas-probe-before.json
+python scripts/nmas-netbox-census --out /home/dmarchak/nmas-probe-before.json
 ```
 
 **Write that path down. Step 12 compares against it and nothing else can.**
@@ -151,13 +182,60 @@ and the teardown is the point.
 
 **SHARED — the containerlab host.**
 
+### 3a. Stage the launch patch first
+
+**Do not skip this.** The first attempt at step 3 did: the topology carried
+no `binds:` line, the node launched *"with 1 SMP/VCPU"* on the stock script,
+and at 112% CPU it ground for 25 minutes without reaching `Startup complete`
+— the original bootstrap probe's failure, reproduced exactly.
+
 ```bash
 cd ~/labs/bootstrap-probe
+cp ~/labs/lab/patches/c8000v-launch.py patches/c8000v-launch-adopted.py
+
+# Confirm it is the ADOPTED script, not the stage-A/B copy beside it.
+grep -c 'smp="2"' patches/c8000v-launch-adopted.py                 # want 1
+grep -c '_skip_users_defined_in_startup' patches/c8000v-launch-adopted.py  # want >= 2
+diff patches/c8000v-launch.py patches/c8000v-launch-adopted.py
+```
+
+**Proves:** the probe has its **own copy** of what `rcn-lab1` actually runs.
+The `diff` should show the user-skip helper and the wrapped concatenation
+and nothing else — `patches/c8000v-launch.py` is the stage-A/B copy, which
+predates the skip on purpose.
+
+**Why a copy and not the path:** a throwaway lab whose teardown can reach
+into production is not throwaway.
+
+**Why it matters more than the vCPU:** without the skip, vrnetlab puts
+`username admin privilege 15 password admin` ahead of the startup config,
+IOS-XE refuses a secret for a user that already has a password, and the node
+boots on `admin`/`admin` while the wizard's generated config says otherwise
+— reporting healthy throughout. The probe would **pass** while producing the
+exact hazard stage 2 exists to prevent.
+
+**If the greps come back 0:** stop. Either the adoption was not what stage C
+wrote, or `~/labs/lab/patches/` has moved, and both are worth knowing before
+a node boots.
+
+### 3b. Deploy
+
+```bash
 sudo containerlab deploy -t nmas-onboard-c.clab.yml
 docker logs -f clab-nmas-onboard-c-bp-onboard-c 2>&1 | ts
 ```
 
-Watch for `Startup complete`. Record how long it took.
+**First check the line the failure showed up on:**
+
+```bash
+docker logs clab-nmas-onboard-c-bp-onboard-c 2>&1 | grep -i 'SMP/VCPU'
+```
+
+Want **2 SMP/VCPU**. One means the bind did not take and 3a did not happen —
+stop there rather than waiting out another 40 minutes.
+
+Watch for `Startup complete`. Expect **~6m30s**, the r1–r5 figure. Record how
+long it took.
 
 **Proves:** a C8000v exists with **no startup config** — the wizard generates
 the one it will boot with. Its own lab name, own network, own subnet, nothing
@@ -262,21 +340,21 @@ partial run is a second run against a half-created device.
 
 ```bash
 # one commit, with its trailers
-git -C data/lists/nmas-probe/config_repo log --format='%h %s%n%b' -1
+git -C data/lists/nmas_probe/config_repo log --format='%h %s%n%b' -1
 
 # the identity was minted once
 python -c "
-import json;print(json.dumps(json.load(open('data/lists/nmas-probe/config_repo/.nsot/manifest.json')),indent=2))"
+import json;print(json.dumps(json.load(open('data/lists/nmas_probe/config_repo/.nsot/manifest.json')),indent=2))"
 
 # committed intent exists
-ls -la data/lists/nmas-probe/config_repo/host_vars/
+ls -la data/lists/nmas_probe/config_repo/host_vars/
 
 # the CSV row (local list)
-cat data/lists/nmas-probe/devices.csv
+cat data/lists/nmas_probe/devices.csv
 
 # the bootstrap credential was staged, and rotation cleared it
-ls -la data/lists/nmas-probe/config_repo/.nsot/staging/credential/ 2>/dev/null \
-  || echo "staging empty — rotation completed and cleared it"
+ls -la data/lists/nmas_probe/config_repo/.nsot/staging/credential/ 2>/dev/null \
+  || echo "staging empty - rotation completed and cleared it"
 ```
 
 **Proves:** **one commit**, one identity, intent committed, the CSV written,
@@ -306,7 +384,7 @@ population regressed to the legacy enumerator.
 **Local read of the capture.**
 
 ```bash
-grep -i 'snmp-server community' data/lists/nmas-probe/config_repo/golden/*.cfg
+grep -i 'snmp-server community' data/lists/nmas_probe/config_repo/golden/*.cfg
 ```
 
 **Proves:** no `RW` community remains. vrnetlab nodes arrive with a
@@ -370,7 +448,7 @@ curl -s -X POST localhost:5000/netbox/safety/remove/apply \
   -d "{\"list_name\":\"nmas-probe\",\"token\":\"$TOKEN\"}" \
   | python -m json.tool
 
-python scripts/nmas-netbox-census --compare /home/dustin/nmas-probe-before.json
+python scripts/nmas-netbox-census --compare /home/dmarchak/nmas-probe-before.json
 ```
 
 **The token expires in five minutes and is burned even on a failed

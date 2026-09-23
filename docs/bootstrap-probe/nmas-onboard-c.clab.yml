@@ -19,6 +19,32 @@ name: nmas-onboard-c
 # this path never emits, which is why the probe does not wait on it. A vIOS
 # probe needs stage D first, and the wizard refuses one until it has run.
 #
+# THE BIND IS LOAD-BEARING TWICE, and the second reason is the bigger one.
+# Measured 2026-09-23: this file shipped without it, the node launched
+# "with 1 SMP/VCPU" on the stock script, and at 112% CPU it was grinding
+# rather than stalled -- the first bootstrap probe's failure exactly, which
+# never completed in ~40 minutes.
+#
+#   1. `smp="2"`. Without it a C8000v never finishes booting on this host.
+#   2. The stage-C USER-SKIP. Without it vrnetlab concatenates
+#      `username admin privilege 15 password admin` ahead of the startup
+#      config, IOS-XE refuses a secret for a user that already has a
+#      password, and the node boots on admin/admin while the generated
+#      config says otherwise -- reporting healthy the whole way
+#      (%CVAC-4-CLI_FAILURE, stage B). Onboarding a C8000v without the skip
+#      would reproduce the exact hazard stage 2 exists to prevent, INSIDE
+#      the wizard's first run, and the probe would "pass".
+#
+# It binds the probe's OWN COPY, staged by runbook step 3 from
+# `~/labs/lab/patches/c8000v-launch.py`. Not the path itself: a throwaway
+# lab whose destruction can reach into production is not throwaway.
+#
+# `-adopted` rather than `c8000v-launch.py`, because THAT name is already
+# the stage-A/B copy, which deliberately predates the user-skip -- it is
+# what makes `nmas-bootstrap-probe.clab.yml` reproduce the hazard. Writing
+# the adopted script over it would silently retire the probe that measured
+# the thing.
+#
 # Run AFTER the earlier probe labs are destroyed so nothing contends for the
 # subnet. Runbook: docs/STAGE4C_PROBE.md
 # ---------------------------------------------------------------------------
@@ -37,3 +63,5 @@ topology:
       kind: cisco_c8000v
       mgmt-ipv4: 172.30.40.11
       # NO startup-config. See the header.
+      binds:
+        - patches/c8000v-launch-adopted.py:/launch.py   # smp=2 AND user-skip

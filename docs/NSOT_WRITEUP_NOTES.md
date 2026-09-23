@@ -7111,3 +7111,129 @@ That is the third inferred-signature finding in this stage — after
 `template_for_platform` / `get_device_by_name` and `rotate()` — and the first
 found by someone else asking. The pattern across all three: **the shape I
 assumed was the simpler one**, and the real one had a guard in it.
+
+---
+
+## Step 1: the name/slug split reappears where no type can catch it
+
+Running step 1 produced two corrections, both about the same thing: **the
+runbook is code that nothing type-checks.**
+
+### `nmas-probe` is not `nmas_probe`
+
+`config.list_slug()` replaces every non-word character with an underscore, so
+the list created as `nmas-probe` lives in `data/lists/nmas_probe/`. Steps 8
+and 10 and the credential-recovery command all used the **name** as a path
+and pointed at a directory that does not exist, while every API call in the
+same runbook correctly used the name.
+
+This is exactly what `ListRef` was built for in Stage 1.7 — its docstring
+says so: *"`name` is what the operator sees. `slug` is the directory. They
+are different strings and comparing one to the other is always false, which
+is the bug this type exists to make unrepresentable."*
+
+**Unrepresentable in Python. Perfectly representable in bash.** That is the
+finding. The fourth instance of this shape in the project, and the first
+outside the program:
+
+1. the drift state file — a `next_ts` key written and read by nobody
+2. the slug/dialect gate — an input format meeting a canonical-keyed table
+3. the blueprint-prefix grep — a route's full path present in no file
+4. **this** — a name where a slug belongs, in a document
+
+The first three were answered with types, tests or checkers. There is no
+equivalent for a runbook, so the answer is the table at the top of
+`STAGE4C_PROBE.md`: *these commands use the name, those use the slug.*
+Stating it is weaker than enforcing it, and it is what is available.
+
+### The directory does not exist yet, and that is correct
+
+Step 1's acceptance was `ls -la data/lists/ | grep nmas-probe` — wrong twice
+over. `get_list_data_dir()` calls `os.makedirs()` **on first write**, so a
+freshly created list has no directory at all. The registration lives in
+`data/device_lists.json` and shows up in `GET /device_lists` with
+`device_count: 0`, which is the thing that actually happened.
+
+Worth recording because that same laziness was a **real defect** two steps
+earlier in this stage: `build_plan()` resolved the repo path before
+validating its inputs, so a plan that was *refused* still created a list
+directory for a device that was never onboarded. The conftest guard caught
+it. Here the laziness is the correct behaviour and the assertion was wrong —
+the same mechanism, read correctly once and incorrectly once.
+
+**Both corrections came from running the step.** Step −1 verified every
+endpoint and could not have caught either: one is a filesystem path and the
+other is a claim about *when* a directory appears. A checker finds what it
+was pointed at.
+
+---
+
+## Step 3: the third time the binds line was the difference
+
+`nmas-onboard-c.clab.yml` shipped without a `binds:` entry. The node launched
+*"with 1 SMP/VCPU"* on the stock vrnetlab script and sat at 112% CPU —
+**grinding, not stalled**, which is the distinction that identified it: the
+very first bootstrap probe failed this way and never completed in ~40
+minutes. Diagnosed from the launch line rather than from the symptom.
+
+Steps 0-2 stand. The node was destroyed and the probe network removed before
+anything else was created, so the census baseline is still the baseline.
+
+### Twice is a coincidence
+
+1. The first bootstrap probe — stock script, one vCPU, no completion.
+2. Stage B — the injected `username admin ... password admin`.
+3. This.
+
+Each fix was a line somebody had to **know** to write, in a file nothing
+checks. The rule is mechanical, so `test_probe_topologies.py` now asserts it:
+every `cisco_c8000v` node under `docs/bootstrap-probe/` binds something over
+`/launch.py`, from a **relative** path inside the probe's own directory.
+
+### The half a probe cannot show you
+
+The patch does two things, and they fail in opposite directions:
+
+| | how it fails | what you learn |
+|---|---|---|
+| `smp="2"` | loudly — no `Startup complete` | after ~40 minutes |
+| the user-skip | **silently — it succeeds** | nothing |
+
+Without the skip the node boots, answers SSH, reports healthy, and holds
+`admin`/`admin` while the generated config says otherwise. Inside the Stage
+4C probe that is worse than a hang: **the probe would pass**, and what it
+would have proven is that the wizard can onboard a C8000v onto a credential
+nobody intended — the exact hazard stage 2 exists to prevent, reproduced
+inside the wizard's first run.
+
+This is the same shape as every silently-opening gate in this project. A
+node short a vCPU is an offender that announces itself; a node short the
+user-skip produces no offender at all.
+
+### Why the copy, and why the name
+
+The bind is staged from `~/labs/lab/patches/c8000v-launch.py` into the
+probe's own `patches/`, because **a throwaway lab whose teardown can reach
+into production is not throwaway**.
+
+It is named `c8000v-launch-adopted.py`, not `c8000v-launch.py`, because that
+name is already taken in that directory by the stage-A/B copy — which
+predates the user-skip **on purpose**. That copy is what makes
+`nmas-bootstrap-probe.clab.yml` reproduce the hazard stage B measured.
+Writing the adopted script over it would have silently retired the probe
+that measured the thing, while every file still parsed and every test still
+passed.
+
+### Negative control
+
+The in-suite control drives `unpatched_c8000v_nodes()` against three
+synthetic topologies: an unbound c8000v (caught), a c8000v bound over
+`/opt/launch.py` instead of `/launch.py` (caught — the near miss a reader
+would assume was covered), and an unbound vIOS (correctly not an offender,
+since nothing is injected ahead of its startup config and it boots on one
+vCPU).
+
+Separately, the real file was reverted to its as-shipped form in a temp
+directory and run through the same function: `['nmas-onboard-c.clab.yml:bp-onboard-c']`.
+**The check was shown failing against the artifact that actually failed**,
+not only against a fixture written to fail.

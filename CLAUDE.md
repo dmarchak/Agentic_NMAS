@@ -873,6 +873,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_platform_keying.py` | every consumer declares its namespace; one translation table; the boundary refuses a slug |
 | `test_onboard_drift_enrolment.py` | a device is covered the moment it is in the inventory; named before its first capture |
 | `test_scale.py` | 900 devices: the page cost pinned as a NUMBER, so bounding the list must update it |
+| `test_probe_topologies.py` | every `cisco_c8000v` probe node binds a launch patch, from its own copy |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
@@ -1278,6 +1279,31 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   with an empty `expected`, and any "no offenders" list comprehension.
   `test_blueprint_reachability.py` and `test_disabled_is_a_state.py` both
   carry a `_the_scan_finds_something` test for this reason.
+- **A `cisco_c8000v` probe node that binds no launch patch does not boot
+  here, and the worse half is silent.** Three times this one per-node line
+  has been the difference, each time measured on the lab host: the first
+  bootstrap probe (stock script, 1 vCPU, never completed in ~40 minutes),
+  stage B, and `nmas-onboard-c.clab.yml` on 2026-09-23 — shipped with no
+  `binds:`, launched *"with 1 SMP/VCPU"*, 112% CPU, **grinding rather than
+  stalled**, which is the first probe's failure exactly. The patch does two
+  things and **the second is the one a probe cannot show you**: `smp="2"`
+  fails loudly and costs 40 minutes, while a missing user-skip *succeeds* —
+  vrnetlab injects `username admin privilege 15 password admin` ahead of the
+  startup config, IOS-XE refuses a secret for a user that already has a
+  password, and the node boots on `admin`/`admin` **reporting healthy**. In
+  the Stage 4C onboarding probe that would mean the probe **passes by
+  reproducing the hazard stage 2 exists to prevent**, inside the wizard's
+  first run. `test_probe_topologies.py` asserts it instead of remembering
+  it, with floors on both the file and node counts and a negative control
+  driving the same function against a topology built to fail.
+- **The bind is the probe's own copy, never `~/labs/lab/patches/`** — a
+  throwaway lab whose teardown can reach into production is not throwaway.
+  Staged by runbook step 3a and named `c8000v-launch-adopted.py`, because
+  `c8000v-launch.py` in that directory is the stage-A/B copy that
+  **deliberately predates the user-skip**: it is what makes
+  `nmas-bootstrap-probe.clab.yml` reproduce the hazard, and writing the
+  adopted script over it would silently retire the probe that measured the
+  thing.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
