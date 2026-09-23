@@ -674,3 +674,149 @@ answering.
 domain.** `mgmt-ipv4` cannot provide it -- that addresses the docker network.
 How the containerlab host exposes that segment (bridge node, macvlan,
 physical uplink) is **not established**, and is the next thing to measure.
+
+
+## 8.10 No interface inventory. A decision, not a deferral.
+
+A dropdown of the platform's interfaces would remove a real typo class. It
+is **not being built**, and the reason is not cost:
+
+**An interface inventory is a device-TYPE fact, not a platform fact.**
+`cisco-ios-xe` is an operating system. A C8000v, an ISR 4451 and a Catalyst
+8500 all run it and have entirely different interface sets; `cisco-ios`
+covers vIOS-L2, a 2960 and a 3750. Putting
+`["GigabitEthernet1".."GigabitEthernet8"]` under `cisco-ios-xe` keys a model
+fact on a platform.
+
+That would be **a fourth namespace over the three this stage just
+separated** (dialect / NetBox slug / Netmiko driver). `test_platform_keying.py`
+exists because three namespaces overlapping on `cisco_ios` cannot be told
+apart from the value; a fourth that is *usually* right for a two-model fleet
+is worse than an absent one, because it is right until the third model.
+
+**NetBox device-type interface templates are the correct home** -- that is
+precisely what they model. NMAS's NetBox integration today creates
+`dcim/interfaces/` per device from observed config, so nothing a priori
+exists for a device that does not exist. Populating device-type templates is
+real work and it is NetBox's work.
+
+**Revisit when a third model arrives**, and go to NetBox for it then.
+
+## 8.11 A constant whose name stated a rule it did not enforce
+
+`VRNETLAB_OWNS_FIRST_INTERFACE = {"cisco_iosxe"}` was used in exactly one
+place: to pick which stanza *shape* to emit. Nothing consulted it as a
+reservation. So:
+
+    render_bootstrap("cisco_iosxe", manager_interface="GigabitEthernet1", ...)
+      -> interface GigabitEthernet1
+         ip address ...
+
+The management address on vrnetlab's own interface, emitted without
+complaint. **The stage-B shape reproduced inside the tool built to prevent
+it**: the node boots, reports healthy, answers its console, and is
+unreachable.
+
+**"The rule now holds from both ends" was asserted, agreed, and false at one
+end.** `test_probe_topologies.py` refused a topology that *cabled* Gi1;
+nothing refused a config that *addressed* it. Same family as a docstring
+teaching what the code does not do -- and this one had agreement on record,
+which is what kept it unexamined.
+
+Split into two constants named for what they decide:
+
+* `RESERVED_INTERFACES` -- per platform, **enforced**, carrying the reason,
+  raising `ReservedInterface`. Compared **after canonicalisation**, so `Gi1`
+  cannot walk past a check that only knows `GigabitEthernet1`.
+* `LAYER2_PLATFORMS` -- what actually selects the stanza shape
+  (`no switchport`). The two coincided on a two-platform fleet, which is how
+  one came to stand in for the other.
+
+Plus the same conflict reached dynamically: the manager interface may not be
+the interface this same render is configuring as the containerlab one.
+
+## 8.12 The spelling check, and the limit it must not hide
+
+`ifnames.canonical()` is now applied before anything compares or emits the
+name, and the spelling is validated **against `INTERFACE_PREFIXES`** rather
+than a second regex -- that table already owns interface spelling, and two
+display maps had drifted apart before `ifnames` existed.
+
+Measured: `Gi2`, `gi2`, `Gi0/0/1`, `Gi2.100` accepted and canonicalised;
+`GE2`, `Gig2`, `banana`, `2` refused.
+
+**`GigabitEthernet02` is accepted, and cannot be otherwise.** It is
+well-formed; whether the device has such a port is unknowable without §8.10's
+inventory. The help text says so, because **an operator who believes a field
+is validated stops checking it themselves** -- which would make a partial
+check worse than none. That is §9.3 applied to a form field.
+
+---
+
+# 9. The principle this tool can keep, and the one it cannot
+
+Recorded ahead of the Stage 7 GUI work and the remaining Stage 4 decisions,
+because it decides what those features owe the operator.
+
+## 9.1 What infrastructure-as-code protects here
+
+**Drift between intent and reality, and the recurrence of a fixed mistake.**
+The deploy path already delivers this: the preview *is* what is sent, byte
+for byte; merge-only adds and never negates; the program is recomputed at
+apply and refused if the device or the intent moved; a rollback is computed
+from what landed rather than replayed from what was pushed.
+
+## 9.2 What it cannot protect
+
+**A value that is wrong at the source.** A mistyped interface for a device
+that does not exist yet is faithfully recorded, faithfully rendered, and
+faithfully deployed. Every guard on the path is satisfied, because every
+guard asks whether the tool did what it was told.
+
+> IaC guarantees you did what you said. It cannot know that what you said
+> was wrong.
+
+Stating that limit is part of the principle. A tool that implies more has
+itself become a wrong thing that looks like a working thing.
+
+## 9.3 The requirement: never let a wrong thing look like a working thing
+
+This is the stronger and more specific claim, and the one that is keepable.
+
+**It is a design test, not a slogan.** For each new feature:
+
+1. name the state in which it would be **wrong and look right**;
+2. say what makes that state **visible**;
+3. **if the answer to (2) is "nothing", that is the gap to build.**
+
+Every mechanism in this project that has earned its place has this shape:
+
+| mechanism | the wrong-but-right-looking state it exposes |
+|---|---|
+| `outcome: inconclusive` | a run that established nothing, scoring as a pass |
+| "checked 7 of 9", others named | a clean badge over a population nobody counted |
+| "nothing has been created yet" | a review screen that is no longer true |
+| advisory vs blocking reason | a note that refuses, or a refusal that informs |
+| rollback reports what **landed** | an undo of commands that never applied |
+| `legacy` flag on a golden | content and enumeration from different stores |
+| the confirm hash | a program nobody read |
+| `_the_scan_finds_something` | a scan that could not run, reported as clean |
+
+The two rules already recorded in `CLAUDE.md` -- the vacuous set difference
+and the silently-opening gate -- are this same principle **stated as its
+failure modes**. This states it as a requirement.
+
+## 9.4 Applied immediately: three states found by asking the question
+
+Asking (1) of the onboarding wizard produced three answers in one sitting:
+
+- **`RESERVED_INTERFACES`** (§8.11) -- a constant named for a rule it did
+  not enforce, so a management address on vrnetlab's own interface rendered,
+  booted and went unreachable.
+- **`writes_devices_csv`** (§8.12) -- a review screen reporting a write that
+  no step performs.
+- **the device that exists nowhere operational** (§8.12) -- committed to git
+  and NetBox, absent from every inventory.
+
+None was found by a test. All three were found by naming the state in which
+the feature would be wrong and look right.

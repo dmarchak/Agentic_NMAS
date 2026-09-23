@@ -56,7 +56,12 @@
             <input class="form-control form-control-sm" id="obMgrIntf"
                    placeholder="GigabitEthernet2">
             <div class="form-text small">Where the address goes. On a C8000v
-              <strong>not Gi1</strong> &mdash; vrnetlab owns it.</div>
+              <strong>not Gi1</strong> &mdash; vrnetlab owns it, and it is
+              refused. Spelling is checked (<code>Gi2</code> and
+              <code>GigabitEthernet2</code> both work);
+              <strong>the interface is not checked against the device</strong>,
+              which does not exist yet &mdash; a valid name for a port this
+              model lacks will render, boot and be unreachable.</div>
           </div>
           <div class="col-md-3">
             <label class="form-label small fw-semibold" for="obMgrGw">Gateway</label>

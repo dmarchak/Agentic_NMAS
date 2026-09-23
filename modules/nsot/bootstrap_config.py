@@ -58,6 +58,7 @@ docstring.
 """
 
 import logging
+import re as _re
 
 log = logging.getLogger(__name__)
 
@@ -124,26 +125,90 @@ LAUNCH_SKIP_MARKER = "_skip_users_defined_in_startup"
 SSH_KEY_MODULUS = 2048
 
 
-#: Platforms where vrnetlab owns an interface this module must never touch.
+#: Interfaces the manager-facing address must NEVER be put on, and why.
 #:
-#: On a C8000v, Gi1 IS the containerlab management interface -- vrnetlab
-#: configures it, and a static address written there by the wizard would
-#: fight it. So the manager-facing address goes on Gi2 or later, and this
-#: module **refuses to guess which**: a C8000v whose management address
-#: landed on Gi1 is the exact failure 4C.8 exists to prevent, and a default
-#: is how a guess becomes a silent one.
+#: **This is enforced.** Its predecessor, `VRNETLAB_OWNS_FIRST_INTERFACE`,
+#: was a set named for a reservation and used only to pick a stanza *shape* --
+#: so `render_bootstrap(..., manager_interface="GigabitEthernet1")` on a
+#: C8000v emitted the address on vrnetlab's own interface without complaint.
+#: Measured, after "the rule now holds from both ends" had been asserted and
+#: agreed: it held at one end. `test_probe_topologies.py` refused a topology
+#: that cabled Gi1 and nothing refused the config that addressed it.
 #:
-#: The two coexist. r1-r5 run Gi1 in `vrf forwarding clab-mgmt` and their
-#: data interfaces in the global table simultaneously -- which is the proof
-#: that this is a naming problem and not a conflict.
-VRNETLAB_OWNS_FIRST_INTERFACE = {"cisco_iosxe"}
+#: **A constant whose name states a rule it does not enforce** is the same
+#: family as a docstring that teaches what the code does not do.
+#:
+#: The failure it prevents is the stage-B shape: a node that boots, reports
+#: healthy, answers its console and cannot be reached -- reproduced inside
+#: the tool built to prevent it.
+#:
+#: The two interfaces coexist happily when they are *different* ones: r1-r5
+#: run Gi1 in `vrf forwarding clab-mgmt` and their data interfaces in the
+#: global table at once.
+RESERVED_INTERFACES = {
+    "cisco_iosxe": {
+        "GigabitEthernet1":
+            "vrnetlab owns Gi1 on this platform and configures it as the "
+            "containerlab management interface. Data interfaces start at "
+            "Gi2.",
+    },
+    "cisco_ios": {
+        "GigabitEthernet0/0":
+            "this is the containerlab management interface on this "
+            "platform, and the bootstrap config already gives it "
+            "`ip address dhcp`. Two stanzas for one interface is not a "
+            "configuration, it is a race.",
+    },
+}
+
+#: Platforms whose ports are switchports unless told otherwise, so a routed
+#: management interface needs `no switchport`.
+#:
+#: **Keyed on what it actually decides.** The stanza shape was previously
+#: selected with `VRNETLAB_OWNS_FIRST_INTERFACE`, which happened to contain
+#: the right platform for an unrelated reason -- two facts that coincide on
+#: a two-platform fleet and diverge on the third.
+LAYER2_PLATFORMS = {"cisco_ios"}
 
 
 class UnsupportedPlatform(Exception):
     """No bootstrap shape is known for this platform."""
 
 
-class ManagementAddressRequired(Exception):
+def _is_known_interface_spelling(name: str) -> bool:
+    """Does *name* use a prefix `ifnames` recognises, followed by a slot?
+
+    **Derived from `INTERFACE_PREFIXES`, not from a second regex.** That
+    table already owns interface spelling for the whole program, and a
+    parallel pattern here would be a second answer to one question -- the
+    thing `ifnames` was created to stop, since two display maps had already
+    drifted apart before it existed.
+
+    This is a SPELLING check and nothing more. `GigabitEthernet02` passes:
+    it is well-formed, and whether the device has such a port cannot be
+    known without an inventory of that model's interfaces. That limit is
+    deliberate and is stated in the wizard's help text rather than implied
+    away -- an operator who believes a field is validated stops checking it
+    themselves, which would make this check worse than none.
+    """
+    from modules.nsot.ifnames import INTERFACE_PREFIXES
+
+    for prefix, _abbrevs in INTERFACE_PREFIXES:
+        if name.startswith(prefix):
+            slot = name[len(prefix):]
+            return bool(slot) and _SLOT.match(slot) is not None
+    return False
+
+
+#: What may follow a canonical prefix: 2, 0/0, 1/0/1, 0/0.100.
+_SLOT = _re.compile(r"^\d+(/\d+)*(\.\d+)?$")
+
+
+class ManagementInterfaceRefused(Exception):
+    """Base: the manager-facing interface stanza will not be emitted."""
+
+
+class ManagementAddressRequired(ManagementInterfaceRefused):
     """A bootstrap config with no manager-reachable address is unreachable.
 
     Raised rather than emitted, because the failure it prevents is silent:
@@ -152,8 +217,13 @@ class ManagementAddressRequired(Exception):
     """
 
 
+class ReservedInterface(ManagementInterfaceRefused):
+    """The chosen interface belongs to something else on this platform."""
+
+
 def manager_interface_lines(platform: str, *, interface: str, address: str,
-                            mask: str, gateway: str = "") -> list:
+                            mask: str, gateway: str = "",
+                            clab_interface: str = "") -> list:
     """The one stanza that makes the device reachable by the manager.
 
     **Why there is no default gateway unless one is given.** The NMAS sits on
@@ -189,7 +259,42 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
             "where vrnetlab owns the first interface this must be chosen, "
             "never defaulted")
 
-    if platform in VRNETLAB_OWNS_FIRST_INTERFACE:
+    # CANONICALISED BEFORE ANYTHING COMPARES IT. `Gi2`, `gi2` and
+    # `GigabitEthernet2` are one interface, and a reserved-interface check
+    # that matched only the long spelling would refuse `GigabitEthernet1`
+    # and wave `Gi1` through -- a gate that the shorter, likelier spelling
+    # walks past.
+    #
+    # **The limit is real and is stated rather than hidden**: `canonical()`
+    # returns an unrecognised name unchanged, so `GE2` and `Gig2` are
+    # refused below, while `GigabitEthernet02` is well-formed and cannot be
+    # told from a real interface without an inventory of the device's
+    # actual ports. See docs/NSOT_STAGE4C_PLAN.md 8.10.
+    from modules.nsot.ifnames import canonical
+
+    interface = canonical(interface.strip())
+    if not _is_known_interface_spelling(interface):
+        raise ReservedInterface(
+            f"'{interface}' is not a recognised interface name. Use the full "
+            f"form or a standard abbreviation -- GigabitEthernet2 or Gi2, "
+            f"not GE2 or Gig2.")
+
+    reserved = RESERVED_INTERFACES.get(platform, {})
+    if interface in reserved:
+        raise ReservedInterface(
+            f"'{interface}' cannot carry the management address: "
+            + reserved[interface])
+
+    # The same conflict, arrived at dynamically: whatever this render is
+    # already configuring as the containerlab interface cannot also be the
+    # manager-facing one, whichever platform it is and whatever it is called.
+    if clab_interface and canonical(clab_interface.strip()) == interface:
+        raise ReservedInterface(
+            f"'{interface}' is already being configured as the containerlab "
+            f"management interface in this same config. One interface cannot "
+            f"hold both a DHCP address and a static one.")
+
+    if platform not in LAYER2_PLATFORMS:
         body = [
             f"interface {interface}",
             " description NMAS management - manager is on this subnet",
@@ -292,7 +397,8 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
     if manager_address or manager_interface or manager_mask:
         manager_lines = manager_interface_lines(
             platform, interface=manager_interface, address=manager_address,
-            mask=manager_mask, gateway=manager_gateway)
+            mask=manager_mask, gateway=manager_gateway,
+            clab_interface=mgmt_interface)
 
     lines = []
     if platform == "cisco_iosxe":

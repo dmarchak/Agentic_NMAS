@@ -25,7 +25,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from modules.nsot.bootstrap_config import (  # noqa: E402
-    ManagementAddressRequired, render_bootstrap)
+    ManagementAddressRequired, ManagementInterfaceRefused,
+    ReservedInterface, render_bootstrap)
 
 #: The verified-free probe address. Confirmed three ways on 2026-09-23:
 #: NetBox held exactly one address in 10.255.0.0/24 (s3's Vlan99), .31/.32/.33
@@ -166,3 +167,103 @@ class TestTheGuardStillCoversEverything:
                                username="admin", secret="abc12345")
         assert "ip address" not in out
         assert out.rstrip().endswith("end")
+
+
+# ---------------------------------------------------------------------------
+# The interface belongs to something else, or is not a name at all
+# ---------------------------------------------------------------------------
+
+class TestTheReservedInterfaceIsRefused:
+    """`VRNETLAB_OWNS_FIRST_INTERFACE` was a set named for a reservation and
+    used only to pick a stanza SHAPE. Nothing consulted it as a rule, so
+
+        render_bootstrap("cisco_iosxe", manager_interface="GigabitEthernet1")
+
+    emitted the management address on vrnetlab's own interface. That is the
+    stage-B shape reproduced inside the tool built to prevent it: the node
+    boots, reports healthy, answers its console, and is unreachable.
+
+    *"The rule now holds from both ends"* had been asserted and agreed. It
+    held at one end — `test_probe_topologies.py` refused a topology that
+    **cabled** Gi1, and nothing refused a config that **addressed** it.
+    """
+
+    def test_the_platforms_own_interface_is_refused(self):
+        with pytest.raises(ReservedInterface) as excinfo:
+            _render(manager_interface="GigabitEthernet1")
+        assert "vrnetlab owns Gi1" in str(excinfo.value)
+
+    def test_the_short_spelling_is_refused_too(self):
+        """Canonicalised BEFORE comparison. A check that knew only the long
+        form would refuse `GigabitEthernet1` and wave `Gi1` through — the
+        shorter, likelier spelling walking past the gate."""
+        with pytest.raises(ReservedInterface):
+            _render(manager_interface="Gi1")
+        with pytest.raises(ReservedInterface):
+            _render(manager_interface="gi1")
+
+    def test_the_vios_clab_interface_is_refused(self):
+        """Its bootstrap already gives Gi0/0 `ip address dhcp`. Two stanzas
+        for one interface is not a configuration, it is a race."""
+        with pytest.raises(ReservedInterface):
+            _render("cisco_ios", manager_interface="GigabitEthernet0/0")
+
+    def test_the_conflict_is_also_caught_dynamically(self):
+        """Whatever THIS render is configuring as the containerlab
+        interface, whatever it is called and on whichever platform."""
+        with pytest.raises(ReservedInterface) as excinfo:
+            _render("cisco_ios", manager_interface="Gi0/2",
+                    mgmt_interface="GigabitEthernet0/2")
+        assert "already being configured" in str(excinfo.value)
+
+    def test_a_permitted_interface_still_renders(self):
+        """The control. A refusal that refused everything would pass every
+        test above and ship a generator that emits nothing."""
+        out = _render(manager_interface="GigabitEthernet2")
+        assert f"ip address {ADDRESS} {MASK}" in _lines(out)
+        out = _render("cisco_ios", manager_interface="Gi0/1")
+        assert "interface GigabitEthernet0/1" in _lines(out)
+
+
+class TestTheSpellingIsCheckedAgainstTheSharedTable:
+    """Validated against `ifnames.INTERFACE_PREFIXES`, not a second regex.
+
+    That table already owns interface spelling for the whole program, and
+    `ifnames` exists because two display maps had drifted apart. A parallel
+    pattern here would be a third.
+    """
+
+    def test_abbreviations_are_accepted_and_expanded(self):
+        for given in ("Gi2", "gi2", "GigabitEthernet2"):
+            assert "interface GigabitEthernet2" in _lines(
+                _render(manager_interface=given)), given
+
+    def test_slots_and_subinterfaces_survive(self):
+        for given, want in (("Gi0/0/1", "GigabitEthernet0/0/1"),
+                            ("Gi2.100", "GigabitEthernet2.100"),
+                            ("Te1/1", "TenGigabitEthernet1/1")):
+            assert f"interface {want}" in _lines(
+                _render(manager_interface=given)), given
+
+    def test_invented_abbreviations_are_refused(self):
+        """`GE2` and `Gig2` look plausible and are not names `ifnames`
+        knows, so they would reach the device verbatim."""
+        for given in ("GE2", "Gig2", "banana", "2", "Gi", ""):
+            with pytest.raises(ManagementInterfaceRefused):
+                _render(manager_interface=given)
+
+    def test_a_well_formed_name_for_a_missing_port_is_ACCEPTED(self):
+        """**The limit, pinned as a test so it cannot be quietly forgotten.**
+
+        `GigabitEthernet02` is well-formed. Whether the device has such a
+        port is unknowable without an inventory of that model's interfaces,
+        which is a device-TYPE fact and deliberately not built (§8.10).
+
+        This asserts the gap rather than hiding it. The wizard's help text
+        says the field is checked for spelling and **not** against the
+        device, because an operator who believes a field is validated stops
+        checking it themselves — which would make a partial check worse than
+        no check.
+        """
+        out = _render(manager_interface="GigabitEthernet02")
+        assert "interface GigabitEthernet02" in _lines(out)

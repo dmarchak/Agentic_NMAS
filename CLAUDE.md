@@ -1271,6 +1271,31 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `no snmp-server community public RW` against a device whose line reads
   `… RW 99` is a command that does not match. The plan reports what is
   **kept** as well as what is removed.
+- **NEVER LET A WRONG THING LOOK LIKE A WORKING THING.** The governing
+  design requirement, and the one this tool can actually keep.
+  **What infrastructure-as-code here genuinely protects:** drift between
+  intent and reality, and the recurrence of a fixed mistake — the deploy
+  path's preview *is* what is sent byte for byte, merge-only never negates,
+  and the program is recomputed at apply and refused if anything moved.
+  **What it cannot protect:** a value that is wrong at the source. A
+  mistyped interface for a device that does not exist yet is faithfully
+  recorded, rendered and deployed. *IaC guarantees you did what you said; it
+  cannot know that what you said was wrong.* Stating the limit is part of
+  the principle — a tool that implies more is itself a wrong thing looking
+  like a working one.
+  **Apply it as a design test, not a slogan:** for each new feature, name
+  the state in which it would be **wrong and look right**, and say what
+  makes that state visible. **If the answer is "nothing", that is the gap to
+  build.** Every mechanism that has earned its place here has this shape —
+  `inconclusive` rather than `failed` when nothing was established,
+  *"checked 7 of 9"* rather than a number that reads as complete,
+  *"nothing has been created yet"* printed only while it is still true, an
+  advisory that informs without blocking, a rollback that reports what
+  **landed** rather than what was pushed, and a device that must answer SSH
+  before it counts as onboarded.
+  The two rules below are this same principle stated as its failures: a
+  vacuous assertion and a silently-opening gate are both a wrong thing
+  wearing a passing result.
 - **An assertion over a set difference passes vacuously when either set is
   empty — it needs a floor on its inputs.** `assert not (A - B)` proves
   nothing until `A` is known non-empty, and a scan that found no offenders is
