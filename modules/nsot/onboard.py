@@ -1287,3 +1287,194 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
     result["verified_at"] = marked.get("verified_at", "")
     result["ok"] = True
     return result
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: reach the device, and diagnose when you cannot
+# ---------------------------------------------------------------------------
+
+#: What a verification attempt established. **Three outcomes, not two.**
+#:
+#: `ANSWERED` is a fact about the device: it proves the management interface
+#: was right, the node booted the generated config, and the address is the
+#: one the tool was told.
+#:
+#: The other two prove nothing about WHY. A device that did not answer may
+#: have a mistyped interface, may never have been booted with the config, or
+#: may be at a different address — and the tool cannot tell which from the
+#: outside. So the state records **what happened**, and the causes below are
+#: offered as possibilities in the order they are worth checking. Recording
+#: "wrong interface" on a timeout would be the classifier reading a
+#: connection failure as a device verdict, which is the mistake the rotation
+#: path already had to correct.
+ANSWERED = "answered"
+REFUSED_CREDENTIAL = "answered_but_refused_the_credential"
+DID_NOT_ANSWER = "did_not_answer"
+
+
+def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
+            hostname: str) -> list:
+    """Likely causes, most-worth-checking first, each with what settles it.
+
+    Ordered by *what the operator cannot otherwise find out*. The management
+    interface is first because it is the one thing the wizard could not
+    validate at plan time -- a well-formed name for a port the model does
+    not have renders, boots and goes unreachable, and nothing before this
+    moment could have caught it.
+    """
+    console = ("On the node's console (`docker logs`/`telnet` to it, or "
+               "`containerlab exec`), run:")
+    if state == REFUSED_CREDENTIAL:
+        return [{
+            "cause": "the credential was rotated or never applied",
+            "why": ("something answered SSH at this address, so the "
+                    "interface and the address are right — only the "
+                    "credential is wrong"),
+            "command": "show running-config | include ^username",
+            "where": console,
+        }]
+
+    return [
+        {
+            "cause": f"the management address is not on {interface or 'the chosen interface'}",
+            "why": ("the interface name is checked for spelling and **not** "
+                    "against the device, because the device did not exist "
+                    "when the config was generated. A valid name for a port "
+                    "this model does not have renders and boots and is "
+                    "unreachable — this is the first thing to rule out"),
+            "command": "show ip interface brief",
+            "where": console,
+        },
+        {
+            "cause": "the node did not boot the generated config",
+            "why": ("vrnetlab concatenates its own user line ahead of the "
+                    "startup config; if the launch patch is missing the "
+                    "node comes up on its injected credential and reports "
+                    "healthy either way"),
+            "command": "show running-config | include ^hostname|^username",
+            "where": console,
+        },
+        {
+            "cause": f"the address {mgmt_ip} is not the one it booted with",
+            "why": "nothing has confirmed the address since it was typed",
+            "command": f"ping {mgmt_ip}",
+            "where": "From the NMAS host:",
+        },
+    ]
+
+
+def _recovery(repo: str, hostname: str) -> dict:
+    """How to get back in while the bootstrap credential is still staged.
+
+    This is the reason 4C.2 stages it at all: between the device booting
+    with the value and rotation replacing it, it is the only way in. The
+    command is given with the **real repo path** rather than a placeholder,
+    because an operator reading this is already having a bad day.
+    """
+    staged = staged_bootstrap_credential(repo, hostname)
+    if not staged:
+        return {"available": False,
+                "note": ("no bootstrap credential is staged for this device "
+                         "— either rotation completed and cleared it, or "
+                         "onboarding never reached the credential step")}
+    return {
+        "available": True,
+        "note": ("the one-time bootstrap credential is still staged. It is "
+                 "what the node booted with, and the console accepts it."),
+        "command": (
+            'python -c "from modules.nsot.onboard import '
+            'staged_bootstrap_credential; '
+            f"print(staged_bootstrap_credential('{repo}', '{hostname}'))\""),
+    }
+
+
+def verify_device(repo: str, hostname: str, list_name: str, *,
+                  mgmt_ip: str = "", username: str = "admin",
+                  password: str = "", secret: str = "",
+                  device_type: str = "cisco_xe", interface: str = "",
+                  online=None, reach=None) -> dict:
+    """Reach the device. **Reaching is the verification; failing is not.**
+
+    Returns ``{"state", "answered", "prompt", "causes", "recovery",
+    "error"}``.
+
+    `online` and `reach` are injected so the whole diagnosis can be tested
+    without a network, and so that this function does exactly one thing:
+    turn two observations into an honest account of what is known.
+    """
+    from modules.nsot import manifest as _m
+
+    identity, entry = _m.find_by_name(repo, hostname)
+    if not identity:
+        return {"state": DID_NOT_ANSWER, "answered": False, "causes": [],
+                "recovery": {"available": False},
+                "error": f"'{hostname}' is not in this list's manifest"}
+
+    mgmt_ip = mgmt_ip or (entry or {}).get("mgmt_ip", "")
+    if online is None:
+        from modules.connection import is_device_online as online
+    if reach is None:
+        from modules.connection import verify_device_connection as reach
+
+    prompt, state, error = "", DID_NOT_ANSWER, ""
+    try:
+        if online(mgmt_ip):
+            try:
+                prompt = reach(mgmt_ip, username, password, secret,
+                               device_type)
+                state = ANSWERED
+            except Exception as exc:           # noqa: BLE001
+                # Something is at the address and would not let us in. That
+                # is a different fact from silence, and it rules out the two
+                # causes an operator would otherwise start with.
+                state = REFUSED_CREDENTIAL
+                error = str(exc)
+        else:
+            error = f"no response from {mgmt_ip} on ICMP or TCP/22"
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("verify: reachability check failed for %r", hostname)
+        state = DID_NOT_ANSWER
+        error = f"the reachability check itself failed: {exc}"
+
+    return {
+        "state": state,
+        "answered": state == ANSWERED,
+        "prompt": prompt,
+        "mgmt_ip": mgmt_ip,
+        "interface": interface,
+        "causes": [] if state == ANSWERED
+                  else _causes(state, mgmt_ip, interface, repo, hostname),
+        "recovery": {"available": False} if state == ANSWERED
+                    else _recovery(repo, hostname),
+        "error": error,
+    }
+
+
+def verify_and_promote(repo: str, hostname: str, list_name: str, *,
+                       actor: str = "", **kw) -> dict:
+    """Phase 2 end to end: reach the device, and promote it if it answered.
+
+    **Reaching the device is what verifies the management interface.** There
+    is no earlier moment at which that can be established, which is why the
+    wizard says the interface is unverified until this runs rather than
+    implying the field was checked.
+
+    Promotion is a separate function and is only called on `ANSWERED`, so
+    the thing that decides and the thing that records stay apart.
+    """
+    promote_kw = {k: kw.pop(k) for k in ("device_type", "username",
+                                         "password", "secret") if k in kw}
+    seen = verify_device(repo, hostname, list_name, **dict(kw, **promote_kw))
+    out = {"verify": seen, "promoted": False, "ok": False}
+    if not seen.get("answered"):
+        out["error"] = seen.get("error") or "the device did not answer"
+        return out
+
+    promoted = promote_device(repo, hostname, list_name, actor=actor,
+                              **promote_kw)
+    out["promote"] = promoted
+    out["promoted"] = bool(promoted.get("ok"))
+    out["ok"] = out["promoted"]
+    if not out["ok"]:
+        out["error"] = promoted.get("error", "promotion failed")
+    return out

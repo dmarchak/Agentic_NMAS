@@ -1,0 +1,89 @@
+{# Pending devices: onboarded, never reached.
+
+   A pending state nothing renders is the defect the state was built to
+   avoid, so this ships with it rather than after it.
+
+   The banner's own wrong-and-looks-right state is rendering "no pending
+   devices" because the QUERY FAILED — a reassuring sentence produced by a
+   broken read. `pendingBannerHtml` draws an error differently from an empty
+   list and says so in words; `/onboard/pending` answers `ok: false` rather
+   than an empty array. Same correction as the drift panel's "all 9 clean"
+   over a ten-device inventory. #}
+<div id="onboardPendingBanner" class="mb-2"></div>
+
+<script>
+/* Pure, so it can be executed in a test against every shape it must draw:
+   error, empty, in_flight, overdue, stale. */
+function pendingAgeText(seconds) {
+  const s = Math.max(0, Number(seconds) || 0);
+  if (s < 90) { return 'just now'; }
+  if (s < 5400) { return Math.round(s / 60) + ' minutes'; }
+  if (s < 172800) { return Math.round(s / 3600) + ' hours'; }
+  return Math.round(s / 86400) + ' days';
+}
+
+function pendingBannerHtml(data) {
+  const esc = s => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  /* FIRST, and deliberately: a failed read must never fall through to the
+     empty-list branch below, which says "nothing is pending" — a sentence
+     that would be reassuring and false. */
+  if (!data || data.ok !== true) {
+    const why = esc((data && data.error) || 'the request did not complete');
+    return `<div class="alert alert-danger py-2 px-3 mb-0">
+      <strong>Pending devices could not be read.</strong>
+      This is <em>not</em> the same as none being pending — a device may be
+      waiting and invisible. ${why}</div>`;
+  }
+
+  const rows = data.pending || [];
+  if (!rows.length) { return ''; }
+
+  const worst = rows.some(r => r.state === 'stale') ? 'stale'
+              : rows.some(r => r.state === 'overdue') ? 'overdue' : 'in_flight';
+  const tone = worst === 'in_flight' ? 'alert-secondary' : 'alert-warning';
+
+  const body = rows.map(r => {
+    const age = pendingAgeText(r.age_seconds);
+    const flag = r.state === 'stale'
+      ? `<span class="badge bg-danger ms-1">stale</span>`
+      : r.state === 'overdue'
+      ? `<span class="badge bg-warning text-dark ms-1">overdue</span>` : '';
+    /* The exit, inline. A state an operator cannot leave from the screen
+       that shows it is a state they will learn to ignore. Abandon is
+       offered only once it is stale, because offering a destructive action
+       beside a device that is five minutes old invites it to be used. */
+    const abandon = r.state === 'stale'
+      ? ` <button class="btn btn-sm btn-outline-danger py-0 px-1"
+            onclick="onboardAbandon('${esc(r.name)}')">Abandon</button>` : '';
+    return `<li><code>${esc(r.name)}</code> at <code>${esc(r.mgmt_ip)}</code>
+      — pending ${esc(age)}${flag}
+      <button class="btn btn-sm btn-outline-primary py-0 px-1"
+        onclick="onboardVerify('${esc(r.name)}')">Verify now</button>${abandon}</li>`;
+  }).join('');
+
+  return `<div class="alert ${tone} py-2 px-3 mb-0">
+    <div class="fw-semibold mb-1">${rows.length} device(s) onboarded and not
+      yet reached</div>
+    <div class="small mb-1">Their management interface is
+      <strong>unverified</strong> until the tool reaches them — it was
+      checked for spelling, never against the device. They are deliberately
+      not in the inventory until then.</div>
+    <ul class="mb-0 small">${body}</ul></div>`;
+}
+
+async function loadOnboardPending(listName) {
+  const host = document.getElementById('onboardPendingBanner');
+  if (!host) { return; }
+  let data;
+  try {
+    const r = await fetch('/onboard/pending?list_name=' +
+                          encodeURIComponent(listName || ''));
+    data = await r.json();
+  } catch (e) {
+    data = {ok: false, error: String(e)};
+  }
+  host.innerHTML = pendingBannerHtml(data);
+}
+</script>

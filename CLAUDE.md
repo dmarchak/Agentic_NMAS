@@ -876,6 +876,9 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_probe_topologies.py` | every `cisco_c8000v` probe node binds a launch patch, from its own copy |
 | `test_bootstrap_manager_address.py` | the bootstrap config reaches the manager AND stays a bootstrap: address emitted, no IGP/loopback/route |
 | `test_inline_javascript.py` | every parser available, one input: the RENDERED page; raw-Jinja control pinned |
+| `test_onboard_abandon.py` | release refuses while named; abandon reverses creation; a partial abandon never reclaims |
+| `test_onboard_pending.py` | pending has an exit; 24h/7d; promotion refuses the bootstrap credential |
+| `test_onboard_phase2.py` | reaching is the verification; silence is not a cause; the banner tells error from empty |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
@@ -1453,6 +1456,44 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   after `manifest.py`'s slug example and `render_bootstrap`'s "what remains
   is what makes the device reachable". All three were confident prose beside
   correct code, which is what lets them survive review.
+- **Onboarding is two phases, and a device is onboarded when the tool has
+  REACHED it.** Phase 1 (credentials -> NetBox -> commit -> render) touches
+  no device and leaves it **pending**: in the manifest, in NetBox, in git,
+  and deliberately **not in the inventory** — a device in the inventory is
+  one the program polls, backs up, drift-checks, pools a connection for and
+  offers in bulk ops, and one that has never answered would read as
+  unreachable in nine places and mean nothing in any of them. Phase 2
+  reaches it and `promote_device()` adds the row. `writes_devices_csv` used
+  to report **yes** while no step wrote one.
+- **Reaching the device is what verifies the management interface**, and
+  there is no earlier moment: the name is checked for spelling and never
+  against the device, because the device did not exist when the config was
+  generated. So the UI says *unverified until reached* rather than implying
+  the field was validated.
+- **Three verification states, not two.** `answered` is a fact about the
+  device. `answered_but_refused_the_credential` rules out the interface and
+  the address, because something is there. `did_not_answer` **proves nothing
+  about why** and must never be recorded as "wrong interface" — the causes
+  are offered as possibilities, most-worth-checking first, each with the
+  console command that settles it and the staged-credential recovery command
+  **with the real repo path**. Same distinction as `inconclusive` is to
+  `failed`; the rotation path already had to correct a classifier reading a
+  connection failure as a device verdict.
+- **A pending state nothing renders is the defect the state was built to
+  avoid**, so the banner shipped with the flag and `promote_device()` was
+  written before either — a state an operator cannot clear is a name that
+  cannot be released, wearing a new name. `in_flight` (<24h) is listed
+  quietly, `overdue` (>=24h) is flagged, `stale` (>=7d) offers abandon
+  inline. 24h because the gap is one human action against a 6m30s boot: an
+  hour is normal and must not draw attention, or the flag stops meaning
+  anything.
+- **A banner that renders "none pending" because the query FAILED is the
+  banner's own wrong-and-looks-right state.** `pendingBannerHtml` checks
+  `ok !== true` **first** and draws an error that says *this is not the same
+  as none being pending*; `/onboard/pending` answers `ok: false` rather than
+  an empty array. Same correction as "all 9 clean" over ten devices and the
+  agent panel's disabled read returning `[]`. Control: with the error branch
+  removed, a failed query renders the empty string.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

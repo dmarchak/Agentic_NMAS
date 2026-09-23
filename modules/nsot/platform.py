@@ -128,6 +128,35 @@ def platform_for_device(device: dict) -> str:
     return DEFAULT_PLATFORM
 
 
+def netmiko_type_for_dialect(dialect: str) -> str:
+    """Config dialect -> the Netmiko driver that opens a session to it.
+
+    Added for phase 2, which knows a device's **dialect** (that is what the
+    manifest stores) and must open an SSH session (which needs a driver).
+
+    **Here, and only here.** The alternative was a `device_type` default in
+    `routes/onboard.py`, which `test_platform_keying` caught as an
+    undeclared platform literal -- correctly, because hardcoding `cisco_xe`
+    is the C8000v's driver asserted as every device's. A second copy of the
+    mapping is how the two come to disagree, and a test asserts there is
+    exactly one.
+
+    Refuses rather than defaulting: opening a session with the wrong driver
+    fails in ways that read as the device's fault.
+    """
+    from modules.settings_schema import get_setting
+
+    wanted = assert_dialect(dialect, where="netmiko_type_for_dialect()")
+    for slug, entry in (get_setting("platform_map", {}) or {}).items():
+        if platform_for_device({"platform": slug}) == wanted:
+            driver = (entry.get("netmiko_device_type") or "").strip()
+            if driver:
+                return driver
+    raise ValueError(
+        f"no Netmiko driver is mapped for dialect '{wanted}'. Add one to "
+        f"platform_map in Settings -> Integrations.")
+
+
 def netmiko_type_for_device(device: dict) -> str:
     """The Netmiko driver — how to open a session. Unchanged by this module."""
     return (device.get("device_type") or DEFAULT_PLATFORM).strip() or DEFAULT_PLATFORM

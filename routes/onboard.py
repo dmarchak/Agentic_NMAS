@@ -130,6 +130,130 @@ def platforms():
     return jsonify({"ok": True, "platforms": out})
 
 
+def _driver_for(list_name: str, hostname: str, data) -> str:
+    """The Netmiko driver for a pending device.
+
+    Derived from the dialect the manifest stores, through the one
+    translator. A `device_type` default here would be one platform's driver
+    asserted as every platform's — `test_platform_keying` caught exactly
+    that, as an undeclared platform literal in this file.
+    """
+    given = (data.get("device_type") or "").strip()
+    if given:
+        return given
+
+    from modules.nsot import manifest as _m
+    from modules.nsot.platform import netmiko_type_for_dialect
+
+    _identity, entry = _m.find_by_name(_repo_for(list_name), hostname)
+    return netmiko_type_for_dialect((entry or {}).get("platform", ""))
+
+
+def _repo_for(list_name: str) -> str:
+    import os
+
+    from modules.config import get_list_data_dir
+
+    return os.path.join(get_list_data_dir(list_name), "config_repo")
+
+
+@bp.route("/pending", methods=["GET"])
+def pending():
+    """Devices onboarded and never reached, with age and state.
+
+    **An error here must not render as an empty list.** The banner's
+    wrong-and-looks-right state is showing "no pending devices" because the
+    query failed — a reassuring sentence produced by a broken read, which is
+    the shape this project has corrected in the drift panel ("all 9 clean"
+    over ten devices) and the agent panel (a disabled read returning `[]`).
+    So a failure answers `ok: false` with the reason, and the client is
+    required to draw that differently from an empty list.
+    """
+    try:
+        list_name = _target_list(request.args)
+    except NoTargetList as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    try:
+        from modules.nsot.manifest import (PENDING_OVERDUE_SECONDS,
+                                           PENDING_STALE_SECONDS,
+                                           pending_devices)
+
+        rows = pending_devices(_repo_for(list_name))
+        return jsonify({"ok": True, "list": list_name, "pending": rows,
+                        "counts": {"total": len(rows),
+                                   "overdue": sum(1 for r in rows
+                                                  if r["state"] != "in_flight")},
+                        "thresholds": {"overdue": PENDING_OVERDUE_SECONDS,
+                                       "stale": PENDING_STALE_SECONDS}})
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("onboard: could not list pending devices")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@bp.route("/verify/<hostname>", methods=["POST"])
+def verify(hostname):
+    """Phase 2: reach the device and promote it if it answered.
+
+    Requires a person: promotion puts a device into the population the tool
+    polls, backs up and deploys to, and reaching it uses a credential.
+    """
+    from modules import identity as ident_mod
+
+    ident, refusal = ident_mod.require(request, action="confirm",
+                                       operation="onboard_verify")
+    if refusal is not None:
+        return refusal
+
+    data = request.get_json(silent=True) or {}
+    try:
+        list_name = _target_list(data)
+    except NoTargetList as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    from modules.nsot.onboard import verify_and_promote
+
+    try:
+        out = verify_and_promote(
+            _repo_for(list_name), hostname, list_name, actor=ident.actor,
+            username=(data.get("username") or "admin").strip(),
+            password=data.get("password") or "",
+            secret=data.get("secret") or "",
+            device_type=_driver_for(list_name, hostname, data),
+            interface=(data.get("interface") or "").strip())
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("onboard: verify failed for %r", hostname)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify(out), (200 if out.get("ok") else 409)
+
+
+@bp.route("/abandon/<hostname>", methods=["POST"])
+def abandon(hostname):
+    """Undo an onboarding. Requires a person: it deletes from NetBox."""
+    from modules import identity as ident_mod
+
+    ident, refusal = ident_mod.require(request, action="confirm",
+                                       operation="onboard_abandon")
+    if refusal is not None:
+        return refusal
+
+    data = request.get_json(silent=True) or {}
+    try:
+        list_name = _target_list(data)
+    except NoTargetList as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    from modules.nsot.onboard import abandon_onboarding
+
+    try:
+        out = abandon_onboarding(_repo_for(list_name), hostname, list_name,
+                                 actor=ident.actor,
+                                 dry_run=bool(data.get("dry_run")))
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("onboard: abandon failed for %r", hostname)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify(out), (200 if out.get("ok") else 409)
+
+
 @bp.route("/lists", methods=["GET"])
 def onboard_lists():
     """The lists that can be onboarded into, and which one is active.
