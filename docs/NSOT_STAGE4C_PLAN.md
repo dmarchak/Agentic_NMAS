@@ -440,3 +440,185 @@ with the census condition.
 | **4C.5** RW community | **done** — `tests/test_onboard_snmp.py` + `tests/test_platform_keying.py`, 44 tests, three negative controls each shown failing |
 | **4C.7** assembly — the real steps | **done** — `real_steps()`, `/onboard/create` wired, preconditions at plan time; `test_onboard_ordering.py` runs the SHIPPED adapters |
 | **4C.6** drift enrolment | **done** — `tests/test_onboard_drift_enrolment.py`, 19 tests, three negative controls each shown failing |
+| **4C.8** the management address | **planned** — see §8; blocks the probe |
+
+---
+
+# 8. 4C.8 — teach the generator a management address
+
+**Blocks the probe.** Steps 3 and 7-10 cannot run until this exists, because
+nothing the generator emits today can put a node where the NMAS can reach it.
+
+## 8.1 How this surfaced
+
+**Not by a test. By trying to run it end to end on hardware.**
+
+Every unit passed throughout, and goes on passing: `render_bootstrap()`
+produces a valid, ASCII-clean, per-platform config; `test_bootstrap_config.py`
+asserts the probe fixtures equal the generator's output; the wizard plans,
+refuses, commits and renders exactly as specified. 4C.0 through 4C.7 are all
+green.
+
+What no unit asked was **"can the NMAS open a socket to a node holding this
+config"**, because the answer lives in three places none of them can see: the
+NMAS's routing table, s3's `Vlan99`, and the fact that `10.255.1.x` is a
+loopback range rather than a segment. The suite was complete with respect to
+the artefact and silent about the property the artefact exists for.
+
+Same lesson as *"nothing in the AI tool library has ever executed in
+production"*, arriving from the other direction: there, tests described code
+that had never run; here, tests described an artefact that had never been
+**used**. A generator's output is not the deliverable. A reachable device is.
+
+## 8.2 What was measured
+
+On the NMAS:
+
+| interface | address | what it is |
+|---|---|---|
+| `enp6s18` | `10.0.0.211/24` | LAN |
+| `enp6s19` | `10.255.0.10/24` | **the real path into the lab** |
+| `dummy0` | `10.255.1.10/32` | a loopback identity; no segment, nothing can be adjacent to it |
+
+`ip route`: `10.255.1.11 via 10.255.0.1 dev enp6s19`.
+
+In the fleet configs:
+
+| device | what it shows |
+|---|---|
+| s3 `Vlan99` | `10.255.0.1/24`, *"NMAS management segment"* — the gateway, L2-adjacent to `enp6s19` |
+| s3 `Vlan100` | `10.255.3.23/24`, *"CORE - OSPF segment with r1-r4 and s4"* |
+| r1 `Loopback0` | `10.255.1.11/32`, *"mgmt identity"*, **global table** |
+| r1 `GigabitEthernet1` | `vrf forwarding clab-mgmt` — the containerlab docker network |
+| r1 `router ospf 1` | `network 10.255.1.11 0.0.0.0 area 0` + `network 10.255.3.0 0.0.0.255 area 0` |
+
+**A device is reachable from the NMAS in exactly one way today:** its
+Loopback0 is advertised into OSPF area 0, s3 sits on that area and on
+`Vlan99`, and the NMAS routes through it. The `clab-mgmt` VRF is a parallel,
+unreachable world — and it is where `bootstrap_config` currently points.
+
+## 8.3 The tension, stated rather than resolved quietly
+
+The concern raised was *"if it needs a route to reach the NMAS across s3, say
+so."* **It is worse than a route, by the path we were about to take.**
+
+Reproducing how r1-r5 are reached means a bootstrap config containing a
+`Loopback0`, an address on the core segment, **and `router ospf 1` advertising
+both**. That is not a management plane. It is participation in the IGP, and it
+is what `host_vars` and the Phase 3 templates own. A "minimal bootstrap" that
+joins the routing domain has stopped being a bootstrap.
+
+Generally, and worth recording because it is not specific to this lab:
+
+> **In an in-band-managed network there is no config that is both minimal and
+> sufficient.** The bootstrap/deploy split assumes management reachability
+> that does not depend on the configuration being deployed. Where management
+> is in-band, "reachable" and "configured" are the same event.
+
+## 8.4 The resolution — and a correction
+
+**`10.255.0.0/24` is the correct segment, not `10.255.1.0/24`.** The earlier
+recommendation was the opposite, reasoned from *"addressed like r1-r5"*; the
+measurement shows r1-r5 are addressed on a **loopback range that requires
+OSPF to reach**. `10.255.1.31` is free and is not usable without an IGP
+adjacency.
+
+`10.255.0.0/24` is a **real L2 segment the NMAS is directly on**, with s3's
+`Vlan99` as its gateway. A node with a static address there is reachable
+directly, at layer 2:
+
+- no routing protocol
+- no `Loopback0`
+- **no route statement at all** — NMAS and node share a `/24`, and the NMAS
+  always initiates
+
+So the tension resolves in favour of the original design: **the bootstrap
+config stays management plane only**, gaining one interface stanza and
+nothing else. That is true *because the NMAS sits on that segment*, and the
+reason belongs at the emit site — in a network where the tool is not
+L2-adjacent to anything, §8.3 bites and this step has a different answer.
+
+## 8.5 What the wizard must collect
+
+| field | why |
+|---|---|
+| management address | the value the form already implies it collects |
+| mask / prefix length | a `/24` assumption is how a tool works in exactly one lab |
+| **interface** | cannot be defaulted per platform — see below |
+| gateway | **optional, omitted by default.** Needed only when the NMAS is not on the same subnet. A default gateway written when nothing needs one is a routing statement in a config whose point is to have none |
+
+### The interface, and the C8000v
+
+vrnetlab owns **Gi1** on a C8000v — it is the `clab-mgmt` VRF interface on the
+docker network. **The static management address goes on Gi2 or later**, the
+first data interface, cabled to `Vlan99`.
+
+**These do not conflict.** Different interfaces, different tables: Gi1 stays
+in `vrf forwarding clab-mgmt` for containerlab, Gi2 sits in the global table
+carrying the address the NMAS uses. r1-r5 run both at once today, which is the
+proof rather than the argument.
+
+What *does* conflict is the network design: the bootstrap management interface
+is a **data** interface, and the template that later configures the device may
+want it for something else. That is §8.7.
+
+## 8.6 Wire `finish_bootstrap()` (gap 1)
+
+`finish_bootstrap()` has no production caller — only
+`tests/test_onboard_bootstrap_credential.py`. Phase 2 is built and unwired,
+the same shape as `run_onboarding()` having no caller, found in 4C.7.
+
+It belongs in this step because **the probe's steps 8 and 10 cannot pass
+without it**: step 8 asserts the staged credential is gone *because rotation
+cleared it*, and step 10 greps a golden capture. Nothing captures and nothing
+rotates today.
+
+Onboarding is therefore **two phases, and the split is honest**:
+
+| phase | what runs | device contact |
+|---|---|---|
+| 1 — plan and generate | `STEPS = (credentials, netbox, commit, render)` | **none** |
+| 2 — complete | reach, capture, RW-community removal, `finish_bootstrap()` | **yes** |
+
+Phase 2 needs its own entry point, because it begins when the operator has
+booted the node — minutes or days later. A wizard step that blocks on a human
+booting hardware is not a wizard step.
+
+## 8.7 What changes for r6
+
+Stated plainly, since r6 gets whatever the probe proves:
+
+1. **r6 boots with a generated config carrying a static address on
+   `10.255.0.0/24`**, on a data interface cabled to `Vlan99`. It is reachable
+   the moment it boots — no OSPF, no loopback.
+2. **Its management interface is spoken for.** r6 is the branch router for the
+   eBGP site; when its template deploys, that interface either stays
+   management or is re-purposed — and if re-purposed, **the deploy cuts the
+   path it travelled over** unless the device is already reachable another
+   way. Decide this before r6's template is written, not during its first
+   deploy.
+3. The alternative is r6 keeping a permanent `Vlan99` leg as its management
+   path, which is effectively what s1-s4 have. Cleaner; costs one interface.
+4. **Nothing about r6 changes the credential lifecycle.** Mint, embed, stage,
+   boot, reach, capture, rotate, clear — already correct, and 4C.2's staging
+   covers a window that is now *longer*, because it spans an operator booting
+   a node.
+
+## 8.8 Acceptance
+
+- `render_bootstrap()` emits a static management interface on both platforms
+  from a supplied address, mask and interface — and **no gateway unless one
+  is given**.
+- A test asserts the emitted config contains **no** `router ospf`, **no**
+  `Loopback0` and **no** `ip route` when no gateway is supplied. The bootstrap
+  staying minimal is the property, so it is asserted rather than assumed.
+- **The interface is not defaulted on `cisco_iosxe`.** A C8000v whose
+  management address lands on Gi1 is the failure this step exists to prevent,
+  so it is refused rather than guessed.
+- A negative control, shown failing: a plan with no management address is
+  refused as a blocking reason, and the refusal is visible at the review step.
+- `assert_sendable()` still covers the whole output, comments included.
+- **The measurement on hardware**: boot the probe node with a generated config
+  carrying a static `10.255.0.x` address and open an SSH session to it from
+  the NMAS. Stage-B shaped question, stage-B shaped answer — and it is the
+  acceptance this step exists for, because it is the one no unit can ask.
