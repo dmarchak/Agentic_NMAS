@@ -135,3 +135,33 @@ def security_posture():
             "person only. They are what an assertion is checked against, so an "
             "unauthenticated caller must not be handed them.")
     return jsonify(body)
+
+
+@bp.route("/posture/ratify", methods=["POST"])
+def ratify_setting():
+    """Record a defaulted setting as a decision. **Ratify, never change.**
+
+    It writes the value already in force, so it cannot alter behaviour — which
+    is what lets the read-only posture panel offer it. A compromised browser
+    session still cannot lower a gate here: the only value this endpoint can
+    write is the one already applying.
+
+    It requires a **person**, through the same `identity.require()` the other
+    gated actions use. A decision needs somebody to have made it; a
+    ratification with nobody behind it is a seeded default wearing a better
+    name, which is exactly what `migrate()` was stopped from doing.
+
+    `approve` is the action kind: this is a person putting their name to a
+    setting, which is what approving is.
+    """
+    from modules import identity as ident_mod
+    from modules.settings_schema import ratify
+
+    ident, refusal = ident_mod.require(request, action="approve",
+                                       operation="ratify_setting")
+    if refusal:
+        return jsonify(refusal), 403
+
+    key = (request.get_json(silent=True) or {}).get("key", "")
+    result = ratify(key, actor=ident.actor)
+    return jsonify(result), (200 if result.get("ok") else 400)

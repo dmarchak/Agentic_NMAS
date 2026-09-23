@@ -34,6 +34,31 @@
 </div>
 
 <script>
+/* Ratifying writes the value ALREADY IN FORCE. It is offered from a
+   read-only panel precisely because it cannot change anything: the endpoint
+   writes get_setting(key), so a compromised session cannot use it to lower a
+   gate. What it adds is a name against a decision. */
+async function ratifySetting(key) {
+  try {
+    const r = await fetch('/identity/posture/ratify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    let body = null;
+    try { body = await r.json(); } catch (_) { body = null; }
+    if (!r.ok || !body || body.ok === false) {
+      const why = (body && body.error) || `HTTP ${r.status}`;
+      showToast('Could not record that decision: ' + why, 'danger');
+      return;
+    }
+    showToast(`Recorded: ${key} is now set explicitly.`, 'success');
+    loadSecurityPosture();
+  } catch (e) {
+    showToast('Could not record that decision: ' + e, 'danger');
+  }
+}
+
 /* One fetch, no polling: a posture does not change while you look at it. */
 async function loadSecurityPosture() {
   const host  = document.getElementById('securityPostureBody');
@@ -46,6 +71,7 @@ async function loadSecurityPosture() {
 
     const esc = s => String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    /* Hoisted out of the closure below so the origin helper can use it. */
 
     const gates = d.gates || [];
     const off   = gates.filter(g => !g.value);
@@ -59,17 +85,31 @@ async function loadSecurityPosture() {
         : `${gates.length} of ${gates.length} on`;
     }
 
+    /* THREE states, not two. "Present and equal to the default" and "absent"
+       are different facts: one was agreed to, the other was never considered.
+       Collapsing them is the defect the panel exists to remove, so ratifying
+       must not look like a seeded default. */
+    const _postureOrigin = g => {
+      if (g.origin === 'unknown')
+        return '<span class="text-warning">origin unknown</span>';
+      if (g.origin !== 'file')
+        return `<span class="text-muted">defaulted — nobody decided</span>
+                <button class="btn btn-link btn-sm p-0 ms-1"
+                        onclick="ratifySetting('${esc(g.key)}')"
+                        title="Records the value already in force, with your name on it. It cannot change the value.">
+                  record this decision</button>`;
+      return g.value === g.default
+        ? '<span class="text-body">ratified — agreed, equals the default</span>'
+        : '<span class="text-body fw-semibold">chosen — differs from the default</span>';
+    };
+
     const row = g => `
       <tr>
         <td class="font-monospace small">${esc(g.key)}</td>
         <td>${g.value
               ? '<span class="badge bg-success-subtle text-success-emphasis">ON</span>'
               : '<span class="badge bg-danger">OFF</span>'}</td>
-        <td class="small">${g.origin === 'file'
-              ? '<span class="text-body">set explicitly</span>'
-              : g.origin === 'default'
-                ? '<span class="text-muted">defaulted (not in the file)</span>'
-                : '<span class="text-warning">origin unknown</span>'}</td>
+        <td class="small">${_postureOrigin(g)}</td>
         <td class="text-muted small">${esc(g.means)}</td>
       </tr>`;
 

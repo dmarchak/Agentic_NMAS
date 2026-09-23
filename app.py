@@ -1522,25 +1522,36 @@ def save_settings():
             errors.append(f"NetBox settings failed: {exc}")
 
     # ── AI master switch + background agent + workflow flags ──────────────
+    # Through `write_settings()`, the one path into user_settings.json: it
+    # refuses a key the schema has never heard of rather than storing it. All
+    # eight keys here were undeclared until 3.2a, which is how they came to be
+    # written by a hand-built dict in this function and known to nothing else.
     try:
-        s = load_user_settings()
+        from modules.settings_schema import write_settings
+
+        updates = {}
         if "ai_enabled" in data:
-            s["ai_enabled"] = bool(data["ai_enabled"])
+            updates["ai_enabled"] = bool(data["ai_enabled"])
         if "background_agent_enabled" in data:
-            s["background_agent_enabled"] = bool(data["background_agent_enabled"])
-            # Pause/resume the running thread immediately without a restart.
-            try:
-                from modules.agent_runner import pause_agent, resume_agent
-                if s["background_agent_enabled"]:
-                    resume_agent()
-                else:
-                    pause_agent()
-            except Exception:
-                pass
+            updates["background_agent_enabled"] = bool(data["background_agent_enabled"])
         for flag in _WF_DEFAULTS:
             if flag in data:
-                s[flag] = bool(data[flag])
-        save_user_settings(s)
+                updates[flag] = bool(data[flag])
+
+        if updates:
+            result = write_settings(updates)
+            if not result["ok"]:
+                errors.append(result["error"])
+            elif "background_agent_enabled" in updates:
+                # Pause/resume the running thread immediately, and only once
+                # the write succeeded — a thread resumed against a setting
+                # that did not persist comes back paused on the next restart.
+                try:
+                    from modules.agent_runner import pause_agent, resume_agent
+                    (resume_agent if updates["background_agent_enabled"]
+                     else pause_agent)()
+                except Exception as exc:       # noqa: BLE001
+                    errors.append(f"Background agent state not applied: {exc}")
     except Exception as exc:
         errors.append(f"Workflow flags failed: {exc}")
 

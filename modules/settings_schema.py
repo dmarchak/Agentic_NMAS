@@ -25,6 +25,47 @@ log = logging.getLogger(__name__)
 # Bumped whenever a migration step is added below.
 SCHEMA_VERSION = 1
 
+#: **What each version bump seeds into the file, declared positively.**
+#:
+#: The default is *nothing*. A bump seeds the keys named here and no others,
+#: so a key added to :data:`DEFAULTS` between releases is read through the
+#: default and **left absent from the file** until some version deliberately
+#: claims it.
+#:
+#: This is a whitelist rather than "everything except a list of protected
+#: keys", for the reason `KNOWN_UNREACHABLE` has to stay empty: a denylist
+#: protects the keys somebody thought of, and the next security-relevant
+#: setting is unprotected until someone remembers it exists.
+#:
+#: What it prevents, measured: the previous version seeded every absent key
+#: whenever ``current < SCHEMA_VERSION``, so a bump to v2 would have written
+#: **98 keys on a v1 install, including all eight identity gates** --
+#: silently converting every "defaulted" into "set explicitly" across every
+#: install, in a release that would look like an unrelated chore. The origin
+#: distinction `/identity/posture` exists to show would have been gone in one
+#: step.
+#:
+#: **Absence is information.** ``origin: default`` says nobody has considered
+#: this setting; writing the value destroys that and cannot be undone. A
+#: default is also a live link to the project's judgement -- an explicit value
+#: wins for ever, so a seeded install silently stops receiving a considered
+#: change to a default. Recording a decision is
+#: :func:`ratify`, which has an actor.
+#:
+#: v1 is the original migration and seeded everything that existed at the
+#: time; it is recorded as ``"*"`` rather than rewritten, because changing
+#: what a released migration did is a lie about history. Every version after
+#: it must name its keys.
+SEEDS_BY_VERSION: dict = {
+    1: "*",
+}
+
+
+def _seeds_for(version: int):
+    """Keys version *version* seeds. ``"*"`` means every key in DEFAULTS."""
+    declared = SEEDS_BY_VERSION.get(version, ())
+    return tuple(DEFAULTS) if declared == "*" else tuple(declared)
+
 _IS_WINDOWS = os.name == "nt"
 
 
@@ -52,6 +93,30 @@ DEFAULTS: dict = {
 
     # ── File transfer ───────────────────────────────────────────────────────
     "tftp_root":      _default_tftp_root(),
+
+    # ── Keys the Settings form has always written, now declared ────────────
+    # `/settings` wrote these straight through `save_user_settings()`, so they
+    # lived in the same file as everything else while the schema -- which is
+    # where types, validation and encryption-at-rest are declared -- had never
+    # heard of them. A settings system that does not know about a setting
+    # cannot validate it, cannot migrate it, and cannot report it.
+    #
+    # Declaring them changes nothing on any install: they are absent from
+    # `SEEDS_BY_VERSION`, so no file gains a key, and an existing value still
+    # wins. What changes is that they are now describable.
+    #
+    # Every default here reproduces the value the code fell back to before --
+    # `_WF_DEFAULTS` in app.py and the `.get(key, True)` reads around it --
+    # per the standing rule that a new default reproduces the behaviour that
+    # predates the setting.
+    "ai_enabled":               True,
+    "background_agent_enabled": True,
+    "wf_read_first":            True,
+    "wf_auto_backup":           True,
+    "wf_run_jenkins":           True,
+    "wf_save_golden":           True,
+    "wf_update_vars":           True,
+    "wf_require_approval":      False,
     "tftp_server_ip": "",
 
     # ── NetBox ──────────────────────────────────────────────────────────────
@@ -331,6 +396,15 @@ SCHEMA: dict = {
         "auto_open_browser": _BOOL,
 
         "tftp_root": _STR,
+
+        "ai_enabled": _BOOL,
+        "background_agent_enabled": _BOOL,
+        "wf_read_first": _BOOL,
+        "wf_auto_backup": _BOOL,
+        "wf_run_jenkins": _BOOL,
+        "wf_save_golden": _BOOL,
+        "wf_update_vars": _BOOL,
+        "wf_require_approval": _BOOL,
         "tftp_server_ip": _STR,
 
         "netbox_url": _STR,
@@ -505,13 +579,14 @@ def migrate() -> dict:
             summary["changed"] = True
         return summary
 
-    # ── v0 → v1 ─────────────────────────────────────────────────────────────
-    # Seed any absent key with its default. Existing values win, so behaviour
-    # for a configured install is unchanged.
-    for key, value in DEFAULTS.items():
-        if key not in settings:
-            settings[key] = value
-            summary["added_keys"].append(key)
+    # ── Seed only what each version bump DECLARES ───────────────────────────
+    # Existing values always win, so behaviour for a configured install is
+    # unchanged either way.
+    for version in range(current + 1, SCHEMA_VERSION + 1):
+        for key in _seeds_for(version):
+            if key in DEFAULTS and key not in settings:
+                settings[key] = DEFAULTS[key]
+                summary["added_keys"].append(key)
 
     # Carry the legacy TFTP server IP forward if config.py had stored one.
     if not settings.get("tftp_server_ip"):
@@ -530,3 +605,103 @@ def migrate() -> dict:
              current, SCHEMA_VERSION, len(summary["added_keys"]),
              len(summary["encrypted_keys"]))
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Writing — one path, and a key it has never heard of is refused
+# ---------------------------------------------------------------------------
+
+def write_settings(updates: dict, actor: str = "") -> dict:
+    """Apply *updates* to ``user_settings.json``. **One write path.**
+
+    Every write to that file went through `save_user_settings()` directly,
+    from several places, each passing whatever dict it had built. A key with a
+    typo, a key from an older build, or a key nobody ever declared was stored
+    exactly like a real one — and then read back by nothing, for ever, while
+    looking in the file like configuration.
+
+    **A key not in :data:`DEFAULTS` is refused, not stored.** Silently keeping
+    it is what makes an unread setting indistinguishable from a read one, and
+    the whole of 3.2 is about that distinction. The refusal names the key, so
+    a caller that meant something real finds out immediately rather than
+    wondering why its setting does nothing.
+
+    Values are validated against :data:`SCHEMA` before anything is written, so
+    a rejected update leaves the file untouched rather than half-applied.
+
+    Returns ``{"ok", "error", "written", "refused"}``.
+    """
+    if not isinstance(updates, dict):
+        return {"ok": False, "error": "updates must be a mapping",
+                "written": [], "refused": []}
+
+    refused = [k for k in updates if k not in DEFAULTS]
+    if refused:
+        return {"ok": False,
+                "error": ("not a known setting: " + ", ".join(sorted(refused))
+                          + ". Declare it in settings_schema.DEFAULTS first — "
+                            "a setting the schema does not know cannot be "
+                            "validated, migrated or reported."),
+                "written": [], "refused": sorted(refused)}
+
+    settings = load_user_settings()
+    merged = dict(settings)
+    merged.update(updates)
+
+    ok, why = validate(merged)
+    if not ok:
+        return {"ok": False, "error": f"invalid settings: {why}",
+                "written": [], "refused": []}
+
+    save_user_settings(merged)
+    if actor:
+        # Names and keys, never values: this line goes to the app log.
+        log.info("settings: %s wrote %s", actor, ",".join(sorted(updates)))
+    return {"ok": True, "error": "", "written": sorted(updates), "refused": []}
+
+
+def origin_of(key: str) -> str:
+    """``"file"`` or ``"default"`` — whether *key* is recorded or inherited."""
+    try:
+        return "file" if key in (load_user_settings() or {}) else "default"
+    except Exception:                          # noqa: BLE001
+        log.error("settings: could not read stored settings for '%s'", key)
+        return "unknown"
+
+
+def ratify(key: str, actor: str) -> dict:
+    """Record the value already in force, as a decision, with an actor.
+
+    **Ratify, never change.** It writes `get_setting(key)` — the value that is
+    already applying — so the act cannot alter behaviour. That is what lets a
+    read-only panel offer it: a browser session cannot use this to lower a
+    gate, because the only value it can write is the one already in effect.
+
+    It exists because `migrate()` deliberately does **not** seed defaults. An
+    unwritten key means *nobody decided*, which is worth knowing and is
+    destroyed by writing it. So writing has to mean something, and it means
+    somebody looked at the effective value and said yes.
+
+    Three states result, and they carry different information:
+
+    * **defaulted** — absent from the file; nobody has considered it
+    * **ratified** — present and equal to the default; somebody agreed
+    * **chosen** — present and different from the default; somebody decided
+      otherwise
+
+    *actor* is required. A ratification with nobody behind it is a seeded
+    default wearing a better name, which is the thing this avoids.
+    """
+    if not actor:
+        return {"ok": False, "error": "ratifying a setting requires an actor"}
+    if key not in DEFAULTS:
+        return {"ok": False, "error": f"not a known setting: {key}"}
+    if origin_of(key) == "file":
+        return {"ok": True, "error": "", "already": True,
+                "key": key, "origin": "file"}
+
+    result = write_settings({key: get_setting(key)}, actor=actor)
+    if not result["ok"]:
+        return result
+    return {"ok": True, "error": "", "already": False,
+            "key": key, "origin": "file"}

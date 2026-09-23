@@ -690,6 +690,47 @@ All settings live in `data/user_settings.json` with a `settings_schema_version`.
 never deleted. **Every new default reproduces the behaviour that predates the
 setting** — `netbox_allow_writes` is the one deliberate exception.
 
+**A version bump seeds only the keys it declares.** `SEEDS_BY_VERSION` is a
+whitelist and the default is *nothing*: a key added to `DEFAULTS` between
+releases is read through its default and **left absent from the file** until
+some version deliberately claims it. A denylist ("a bump must not seed a
+`require_*` key") would protect the keys somebody thought of and leave the
+next security-relevant setting unprotected. Measured before the change: a
+bump to v2 seeded **98 keys on a v1 install, including all eight identity
+gates**, silently rewriting every "defaulted" as "set explicitly" everywhere.
+v1 is recorded as `"*"` rather than rewritten — changing what a released
+migration did is a lie about history.
+
+**`migrate()` never writes a value nobody chose.** Absence is information:
+`origin: default` means nobody has considered this setting, and writing it
+destroys that irrecoverably. A default is also a live link to the project's
+judgement — an explicit value wins for ever, so a seeded install silently
+stops receiving a considered change to a default.
+
+**Recording a decision is `ratify()`, and it can only ratify.** It writes
+`get_setting(key)` — the value already in force — so the act cannot alter
+behaviour, which is what lets the read-only posture panel offer it: a
+compromised session cannot lower a gate through a control that can only write
+the value already applying. It requires an actor, because a ratification with
+nobody behind it is a seeded default wearing a better name. Three states
+result: **defaulted** (nobody decided), **ratified** (written, equals the
+default), **chosen** (written, differs).
+
+**`write_settings()` is the one path into `user_settings.json`, and a key the
+schema does not declare is refused rather than stored.** A validation failure
+writes nothing at all — a half-applied settings write is worse than a
+rejected one. Eight keys the Settings form had always written
+(`ai_enabled`, `background_agent_enabled`, six `wf_*`) were undeclared and are
+now in the schema; every default reproduces the value the code fell back to
+before.
+
+**Secrets are in three stores, not one.** `user_settings.json` holds the ones
+`secrets_store.SECRET_KEYS` covers, encrypted. `anthropic_api_key` goes to
+`.env` and the four `jenkins_*` fields to `data/jenkins_checks.json` — neither
+is in `SECRET_KEYS`, so neither is encrypted at rest or masked by the settings
+API. `scripts/nmas-check-secret-storage` reports where each secret lives and
+whether it is plaintext, by name and never by value.
+
 Secrets (API tokens, passwords, access keys) are encrypted at rest with the
 existing Fernet key via `modules/secrets_store.py`. They are never logged, never
 committed, and masked in the UI as write-only fields with a set/unset badge. The
@@ -773,6 +814,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_check_removed_definitions.py` | the checker tells a use from a mention |
 | `test_drift_routes.py` | the routes exercised over HTTP; a crash is JSON+500, never 302; wrapper signatures |
 | `test_security_posture.py` | effective value vs origin; Access values withheld; the recorded posture still holds |
+| `test_settings_write_path.py` | positive seed declaration; unknown keys refused; ratify-never-change |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
