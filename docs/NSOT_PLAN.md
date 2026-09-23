@@ -1510,7 +1510,13 @@ site is a separate, later change.**
 
 Stage 4 is therefore three steps, in order:
 
-1. **The wizard, proven on a throwaway probe node.**
+1. **The wizard, proven on a throwaway probe node.** Implementation plan:
+   **[NSOT_STAGE4C_PLAN.md](NSOT_STAGE4C_PLAN.md)** — six build steps, each
+   with acceptance criteria and a negative control **in the suite**, plus the
+   probe topology and its teardown. Two things are left open there for a
+   decision: whether step C runs on a `local` or `netbox` list (it changes
+   what drift enrolment can assert), and whether the probe's NetBox objects
+   go into the real NetBox or the NetBox step is proven by dry-run only.
 2. **r6 onboarded management-only** — no data link, so **no existing node is
    touched**.
 3. **The branch site (eBGP to r5) as its own change**, afterwards.
