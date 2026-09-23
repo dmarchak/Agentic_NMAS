@@ -863,6 +863,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_secret_file_modes.py` | every secret file created 0600 by its creator; Jenkins credentials encrypted at rest |
 | `test_agent_failure_surfaces.py` | failure streak, same-error, ERROR log, red badge; the stale trigger stays fixed |
 | `test_disabled_is_a_state.py` | a disabled read still carries its history; every degraded GET classified |
+| `test_agent_panel_renders.py` | the shipped JS executed in duktape: what RENDERS while disabled, not what the endpoint carries |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -1151,6 +1152,22 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   every GET that *names* a degraded state in a return and requires each to be
   classified **reports** or **fetches** — a list that must not grow silently
   and must not keep ghosts.
+- **The client has its own guards, and server tests cannot see them.**
+  Three guards in one feature each hid the same data, and **every test passed
+  at each stage while the screen said nothing**: the route's 503, then
+  `success` meaning "no exception reached the top", then `loadAgentTab`'s own
+  *"AI is disabled — enable it in Settings"* branch. The boundary kept being
+  drawn above the last remaining guard. The render is now two **pure**
+  functions — `agentHealthBanner`, `agentBadgeState` — and
+  `test_agent_panel_renders.py` **executes the shipped source in duktape**
+  against the payload the deployed endpoint returns, asserting what lands in
+  a stub DOM. Duktape parses `async` but has no event loop, so the test
+  strips the asynchrony **and only that** — no branch is touched, and it
+  asserts the strip applied. Swept the templates: `loadAgentTimers` blanked
+  its panel and is fixed; `loadRemotePanel`, `topoSvcRefresh` and
+  `_stackRender` all render a reason and are correct; `base.html`'s single
+  `_aiEnabled` guard is on an auto-troubleshoot `setInterval`, an action,
+  correctly skipped.
 - **A route reports what was STORED, not what was asked for.**
   `/drift/settings` echoed its own input, so a save that did nothing returned
   success and the panel reverted the control on the next poll.

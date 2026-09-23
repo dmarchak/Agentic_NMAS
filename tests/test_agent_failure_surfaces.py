@@ -206,11 +206,15 @@ class TestItReachesTheUI:
         assert "health.last_error" in page
 
     def test_the_same_error_gets_its_own_sentence(self, page):
+        """The wording lives in `agentHealthBanner` now, and
+        `test_agent_panel_renders.py` asserts it by EXECUTING that function
+        against the payload. This keeps the string pinned in the shipped
+        page."""
         import re
 
         flat = re.sub(r"\s+", " ", page)
         assert "The same error every time" in flat
-        assert "configuration problem, not a transient one" in flat
+        assert "problem, not a transient one" in flat
 
     def test_pause_is_labelled_as_not_persistent(self, page):
         assert "Paused (until restart)" in page
@@ -298,8 +302,12 @@ class TestDisabledAndFailingAreBothTrue:
         return nmas.app.test_client().get("/").get_data(as_text=True)
 
     def test_disabled_outranks_failing_in_the_badge(self, page):
-        i = page.index("status.enabled === false")
-        j = page.index("} else if (health.failing) {")
+        """Structural only. The BEHAVIOUR is asserted by executing
+        `agentBadgeState` in `test_agent_panel_renders.py`, which is the test
+        that can actually see what renders."""
+        chain = page[page.index("function agentBadgeState("):]
+        i = chain.index("status.ai_enabled === false")
+        j = chain.index("health.failing")
         assert i < j, "a disabled agent must not be described as failing"
 
     def test_the_badge_carries_both(self, page):
@@ -321,8 +329,10 @@ class TestDisabledAndFailingAreBothTrue:
         assert "'alert-warning' : 'alert-danger'" in page
 
     def test_an_enabled_failing_agent_is_still_red(self, page):
-        """The softening must not swallow a live incident."""
-        assert "badgeEl.className = 'badge bg-danger';" in page
+        """The softening must not swallow a live incident. Executed for real
+        in `test_agent_panel_renders.py`; this pins the class in the source."""
+        chain = page[page.index("function agentBadgeState("):]
+        assert "'badge bg-danger'" in chain
 
 
 class TestSuccessMustMeanSomethingHappened:

@@ -5493,19 +5493,96 @@ async function clearNetflowBuffer() {
 
 let _agentPaused = false;
 
+/* THE RENDER, AS A PURE FUNCTION.
+ *
+ * Extracted so it can be executed in a test with a payload rather than only
+ * grepped for. Every test in this feature passed at each stage while the
+ * screen said nothing, because the boundary kept being drawn above the last
+ * remaining guard: the route guard, then the success flag, then this one.
+ * A test that asserts the endpoint carries the data cannot see a client that
+ * refuses to draw it.
+ *
+ * Returns the banner HTML for a status block, or '' when there is nothing to
+ * say. It takes no DOM and no network, so `test_agent_panel_renders.py` can
+ * call it directly through dukpy, against the shipped source.
+ */
+function agentHealthBanner(status) {
+  const health = (status && status.health) || {};
+  if (!health.failing && !health.never_succeeded) return '';
+
+  const esc = s => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const n    = health.consecutive_failures || 0;
+  const off  = status.enabled === false || status.ai_enabled === false;
+  const same = health.same_error
+    ? ' <strong>The same error every time</strong> — this is a configuration'
+      + ' problem, not a transient one.' : '';
+
+  return `
+    <div class="alert ${off ? 'alert-warning' : 'alert-danger'} py-2 px-3 small mb-2">
+      <div class="fw-semibold mb-1">
+        Background agent: ${n} consecutive failed run${n === 1 ? '' : 's'}
+        ${health.last_failure_at ? `— last ${esc(health.last_failure_at)}` : ''}
+      </div>
+      ${off ? `<div class="mb-1">It is <strong>disabled</strong>, so these
+        will not retry. The failures are what happened before it was switched
+        off — kept on screen because the reason a thing was switched off is
+        the part that goes missing.</div>` : ''}
+      <div class="font-monospace small">${esc(health.last_error || 'no error recorded')}</div>
+      <div class="mt-1">${same}</div>
+      ${health.never_succeeded ? `<div class="mt-1">
+        <strong>It has never completed a run.</strong>
+        ${health.runs_recorded} recorded, none successful.</div>` : ''}
+      ${health.tool_calls_total === 0 && health.runs_recorded ? `<div class="mt-1">
+        <strong>No tool has ever executed</strong> — zero tool calls across all
+        ${health.runs_recorded} runs. Nothing in the agent's tool library has
+        run in production.</div>` : ''}
+    </div>`;
+}
+
+/* The badge, also pure. `disabled` outranks `failing` -- it is the current
+ * state -- but carries the count, because the history is why it is off. */
+function agentBadgeState(status) {
+  const health = (status && status.health) || {};
+  if (status && status.current_task)
+    return {cls: 'badge bg-warning text-dark', text: 'Running…'};
+  if (status && status.ai_enabled === false)
+    return {cls: health.failing ? 'badge bg-secondary border border-danger'
+                                : 'badge bg-secondary',
+            text: health.failing ? `AI off · ${health.consecutive_failures} failed`
+                                 : 'AI disabled'};
+  if (status && status.enabled === false)
+    return {cls: health.failing ? 'badge bg-secondary border border-danger'
+                                : 'badge bg-secondary',
+            text: health.failing ? `Disabled · ${health.consecutive_failures} failed`
+                                 : 'Disabled'};
+  if (health.failing)
+    return {cls: 'badge bg-danger',
+            text: health.consecutive_failures > 1
+              ? `Failing (${health.consecutive_failures})` : 'Last run failed'};
+  if (status && status.paused)
+    return {cls: 'badge bg-secondary', text: 'Paused (until restart)'};
+  if (status && status.user_active)
+    return {cls: 'badge bg-info text-dark', text: 'Idle (user active)'};
+  return {cls: 'badge bg-success', text: 'Active'};
+}
+
 async function loadAgentTab() {
   const logEl    = document.getElementById('agentActivityLog');
   const badgeEl  = document.getElementById('agentStatusBadge');
   const pauseBtn = document.getElementById('agentPauseBtn');
   if (!logEl) return;
 
-  if (window._aiEnabled === false) {
-    logEl.innerHTML = '<div class="text-muted small py-4 text-center">AI is disabled — enable it in Settings to use the background agent.</div>';
-    if (badgeEl) { badgeEl.textContent = 'Disabled'; badgeEl.className = 'badge bg-secondary'; }
-    if (pauseBtn) pauseBtn.disabled = true;
-    document.getElementById('agentTimersPanel') && (document.getElementById('agentTimersPanel').innerHTML = '');
-    return;
-  }
+  /* NO "AI is disabled, show nothing" BRANCH.
+   *
+   * It used to return here, so the panel said "enable it in Settings" while
+   * the endpoint was returning 26 failures and the workspace-id rejection.
+   * Disabled is a state to render, not a reason to stop rendering -- the same
+   * correction made at the route, one layer further out, and the third guard
+   * in this one feature to have hidden the same data.
+   *
+   * The controls are disabled; the history is not. */
+  if (pauseBtn && window._aiEnabled === false) pauseBtn.disabled = true;
 
   try {
     const r    = await fetch('/ai/agent_log?limit=50');
@@ -5517,42 +5594,13 @@ async function loadAgentTab() {
     const ct     = status.current_task;
     const health = status.health || {};
 
-    /* FAILING OUTRANKS EVERYTHING BUT A RUNNING TASK.
-       Measured 2026-09-23: every attempt since 2026-08-28 failed at the
-       first API call with the same rejection, and this badge read "Active"
-       in green for four weeks. A component that fails every attempt is not
-       active, and "idle" and "broken" must not render the same. */
+    /* One producer: `agentBadgeState` decides, here and in the test. An
+       inline copy of this chain is how the badge and the banner came to
+       disagree about what "disabled" means. */
     if (badgeEl) {
-      if (ct) {
-        badgeEl.className = 'badge bg-warning text-dark';
-        badgeEl.textContent = 'Running…';
-      } else if (status.enabled === false) {
-        /* DISABLED AND FAILING ARE DIFFERENT FACTS AND IT CAN BE BOTH.
-           "Disabled" is the current state -- it will not run. "26 failures"
-           is what happened before it was switched off. Showing only the
-           second implies it is still trying; showing only the first loses
-           the reason it was switched off, which is the exact information
-           this whole change exists to keep. So the badge states the state
-           and CARRIES the history. */
-        badgeEl.className = health.failing ? 'badge bg-secondary border border-danger'
-                                           : 'badge bg-secondary';
-        badgeEl.textContent = health.failing
-          ? `Disabled · ${health.consecutive_failures} failed`
-          : 'Disabled';
-      } else if (health.failing) {
-        badgeEl.className = 'badge bg-danger';
-        badgeEl.textContent = health.consecutive_failures > 1
-          ? `Failing (${health.consecutive_failures})` : 'Last run failed';
-      } else if (status.paused) {
-        badgeEl.className = 'badge bg-secondary';
-        badgeEl.textContent = 'Paused (until restart)';
-      } else if (status.user_active) {
-        badgeEl.className = 'badge bg-info text-dark';
-        badgeEl.textContent = 'Idle (user active)';
-      } else {
-        badgeEl.className = 'badge bg-success';
-        badgeEl.textContent = 'Active';
-      }
+      const state = agentBadgeState(status);
+      badgeEl.className = state.cls;
+      badgeEl.textContent = state.text;
     }
 
     /* The tab badge, so a failure is visible without opening the tab -- the
@@ -5584,37 +5632,7 @@ async function loadAgentTab() {
       failEl.id = 'agentFailureBanner';
       logEl.parentNode.insertBefore(failEl, logEl);
     }
-    if (failEl) {
-      if (health.failing) {
-        const n    = health.consecutive_failures;
-        const same = health.same_error
-          ? ` <strong>The same error every time</strong> — this is a configuration
-              problem, not a transient one.` : '';
-        failEl.innerHTML = `
-          <div class="alert ${status.enabled === false ? 'alert-warning' : 'alert-danger'} py-2 px-3 small mb-2">
-            <div class="fw-semibold mb-1">
-              Background agent: ${n} consecutive failed run${n === 1 ? '' : 's'}
-              ${health.last_failure_at ? `— last ${_esc(health.last_failure_at)}` : ''}
-            </div>
-            ${status.enabled === false ? `<div class="mb-1">
-              It is <strong>disabled</strong>, so these will not retry. The
-              failures are what happened before it was switched off — kept on
-              screen because the reason a thing was switched off is the part
-              that goes missing.</div>` : ''}
-            <div class="font-monospace small">${_esc(health.last_error || 'no error recorded')}</div>
-            <div class="mt-1">${same}</div>
-            ${health.never_succeeded ? `<div class="mt-1">
-              <strong>It has never completed a run.</strong>
-              ${health.runs_recorded} recorded, none successful.</div>` : ''}
-            ${health.tool_calls_total === 0 && health.runs_recorded ? `<div class="mt-1">
-              <strong>No tool has ever executed</strong> — zero tool calls
-              across all ${health.runs_recorded} runs. Nothing in the agent's
-              tool library has run in production.</div>` : ''}
-          </div>`;
-      } else {
-        failEl.innerHTML = '';
-      }
-    }
+    if (failEl) failEl.innerHTML = agentHealthBanner(status);
     _agentPaused = !!status.paused;
     if (pauseBtn) pauseBtn.textContent = _agentPaused ? 'Resume' : 'Pause';
 
@@ -5764,12 +5782,22 @@ let _agentTimersData = [];
 async function loadAgentTimers() {
   const panel = document.getElementById('agentTimersPanel');
   if (!panel) return;
-  if (window._aiEnabled === false) { panel.innerHTML = ''; return; }
+  /* Not `panel.innerHTML = ''`. The schedule is configuration, and blanking
+     it when AI is off means you cannot see what the agent WOULD do, or that
+     a timer was left at some value — the same "disabled means show nothing"
+     instinct as the agent panel, one card over. The route returns the timers
+     regardless now; this renders them with the state said plainly. */
+  const off = window._aiEnabled === false;
   try {
     const r = await fetch('/ai/agent_timers');
     const j = await r.json();
     _agentTimersData = j.timers || [];
-    panel.innerHTML = _agentTimersData.map(t => `
+    const note = off
+      ? '<div class="alert alert-secondary py-2 px-3 small mb-2">AI is '
+        + 'disabled, so none of these will fire. They are shown because a '
+        + 'schedule you cannot see is one you cannot check.</div>'
+      : '';
+    panel.innerHTML = note + _agentTimersData.map(t => `
       <div class="row g-2 align-items-center mb-2">
         <div class="col-sm-3">
           <label class="form-label text-white small mb-0" for="timer_${t.key}">${t.label}</label>

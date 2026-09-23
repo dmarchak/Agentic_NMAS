@@ -6676,3 +6676,78 @@ far as its own record goes, it has never worked.** The failures are the
 visible part of a component that has produced no observable effect in its
 entire history — which is the strongest possible argument for the Stage 8
 ordering: fix the library, gate the authority, and only then let it run.
+
+---
+
+## Three guards, three fixes, and the screen still said nothing
+
+The same data was hidden three times in one feature, and **every test passed
+at each stage**:
+
+1. **The route.** `GET /ai/agent_log` returned `{"entries": [], "status": {}}`
+   with a 503 when AI was off. Fixed — and the endpoint then demonstrably
+   carried 26 failures and the workspace-id rejection.
+2. **The success flag.** `success` meant "no exception reached the top", so a
+   no-op run ended the failure streak. Fixed — and the streak then read 26.
+3. **The client.** `loadAgentTab` had its own
+   `if (window._aiEnabled === false) { … return; }`, so the page rendered
+   *"AI is disabled — enable it in Settings"* with no count, over an endpoint
+   that was returning everything.
+
+Each fix was correct and each was verified. **The boundary kept being drawn
+above the last remaining guard.** A test that asserts the endpoint carries
+the data cannot see a client that refuses to draw it; a test that greps a
+template for a string cannot see a branch that returns before reaching it.
+
+That is the lesson, and it is not "write more tests". It is that **a test
+asserts something about a layer, and the defect was always in the next layer
+out.** Each round the evidence was real and the conclusion — "fixed" — was
+wrong, because the thing being measured was never the screen.
+
+### So the test moved to the screen
+
+`agentHealthBanner` and `agentBadgeState` are now pure: no DOM, no network.
+`test_agent_panel_renders.py` lifts them **out of the rendered page**, not a
+copy, and executes them in duktape against the exact health block the
+deployed endpoint returned.
+
+That was still not enough, and the negative control said so. **Reinstating
+the client guard left nineteen of twenty tests passing**, because the pure
+functions sit *below* it — the same mistake, one layer down, made while
+fixing it. So `TestLoadAgentTabItself` executes `loadAgentTab` itself against
+a stub DOM and a stub `fetch`, and reads what lands in the elements. It is
+the only assertion in the file that spans the guard, and reinstating the
+guard fails four of its tests.
+
+Duktape parses `async` and has no event loop, so an async function returns a
+promise whose body never continues past the first `await` — measured, every
+element came back empty. The test strips the asynchrony **and only that**:
+`await X` becomes `X`, no branch is touched, and it asserts the strip applied
+so a silent no-op cannot make the class vacuous.
+
+### The sweep
+
+Client loaders that return early on a disabled or unconfigured state:
+
+| Loader | Verdict |
+|---|---|
+| `loadAgentTab` | **was hiding** — fixed |
+| `loadAgentTimers` | **was blanking its panel** — fixed; a schedule you cannot see is one you cannot check |
+| `loadRemotePanel` | correct — *"No remote for this list. Its history is on this host only."* |
+| `topoSvcRefresh` | correct — names the setting to change |
+| `_stackRender` | correct — shows the tool's own message; designed around the question |
+| `base.html` `setInterval` | correct — an auto-troubleshoot **action**, rightly skipped |
+
+The monitoring cards were right because somebody asked the question when
+writing them. Everything written before the question was asked is where the
+answers differ, which is exactly what made them worth sweeping for.
+
+### And the grep bit me one more time
+
+The first version of the test asserting `loadAgentTimers` no longer blanks
+its panel searched the function body for `panel.innerHTML = ''` — **and the
+comment explaining the fix quotes that exact code.** The test failed against
+correct code, for the third form this project has now seen of *prose about
+code is not code*: a test matching a docstring, a checker matching a
+docstring, and now a test matching its own explanatory comment. It asserts on
+the assignment statement instead.
