@@ -1,0 +1,69 @@
+name: nmas-vios-d3
+
+# ---------------------------------------------------------------------------
+# STAGE D - does `crypto key generate rsa` survive a CONSOLE REPLAY?
+#
+# THE UNMEASURED INTERSECTION. `cisco_ios` is the only platform in both
+# `GENERATES_SSH_KEY` and `CONSOLE_REPLAYED` (bootstrap_config.py). vrnetlab
+# TYPES a vIOS startup config into the console line by line and waits for a
+# prompt after each one; key generation takes real time and prints its own
+# progress. Nothing has ever measured what happens when the two meet.
+#
+# D2 measured `crypto key generate rsa modulus 2048` at 3 SECONDS, typed
+# INTERACTIVELY. That makes a stall unlikely and it is not the same test: an
+# interactive session waits for you, a replay waits for a prompt pattern with
+# a timeout.
+#
+# WHAT FAILS IF IT STALLS, precisely. The generator emits 25 lines and the
+# crypto line is 17. Lines 18-25 are:
+#
+#     ip ssh version 2
+#     line vty 0 4 / logging synchronous / login local / transport input ssh
+#
+# So a stall does not produce a broken-looking device. It produces one that
+# reaches `Startup complete`, answers ping, has a hostname and a management
+# address - and CANNOT BE REACHED OVER SSH, because the vty block never
+# landed. That is stage B's shape exactly: a startup file that reads
+# correctly and does not fully apply.
+#
+# TWO NODES, because a check that only ever passes has not been shown to
+# work. `bp-vios-d3` carries what the generator emits. `bp-vios-d3neg`
+# carries the same file TRUNCATED after the crypto line - the state a stall
+# would produce - and every check must FAIL on it. Five can't-fail controls
+# have been found in this project already; this one is built with its control
+# attached.
+#
+# The startup configs are NOT in the repository. They are rendered at run
+# time by `scripts/nmas-render-d3-probe`, from the generator itself, because
+# a hand-written fixture measures the fixture.
+#
+# Own lab name, own network, destroyed after - same isolation as every other
+# stage. Run AFTER earlier probe labs are destroyed so nothing contends for
+# the subnet.
+#
+# CLAB_MGMT_PASSTHROUGH=false as in stages A and D2: without it `ip address
+# dhcp` on Gi0/0 gives the node no management address, and the SSH check -
+# which is the whole point here - could not run.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-bootstrap-probe
+  ipv4-subnet: 172.30.30.0/24
+
+topology:
+  kinds:
+    cisco_vios:
+      image: vrnetlab/cisco_vios:L2-20180619       # identical to s1-s4
+      env:
+        CLAB_MGMT_PASSTHROUGH: "false"
+
+  nodes:
+    bp-vios-d3:
+      kind: cisco_vios
+      mgmt-ipv4: 172.30.30.53
+      startup-config: configs/bp-vios-d3.cfg
+
+    bp-vios-d3neg:
+      kind: cisco_vios
+      mgmt-ipv4: 172.30.30.54
+      startup-config: configs/bp-vios-d3neg.cfg

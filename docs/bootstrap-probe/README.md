@@ -773,3 +773,158 @@ launch script changes — which is the only time the answer can move.
 > applicability check asks whether the machine that reads it will end up in
 > the state those bytes describe. They differ exactly when something else
 > writes to the same place first, which is the case nobody thinks of.
+
+---
+
+## Stage D — does key generation survive a console replay?
+
+**Not yet run.** This is the last Stage 4 prerequisite.
+
+### The unmeasured intersection
+
+`cisco_ios` is the only platform in **both** `GENERATES_SSH_KEY` and
+`CONSOLE_REPLAYED` (`modules/nsot/bootstrap_config.py`). vrnetlab types a
+vIOS startup config into the console line by line and waits for a prompt
+after each; key generation takes real time and prints its own progress.
+Nothing has measured what happens when those two meet.
+
+D2 measured `crypto key generate rsa modulus 2048` at **3 seconds**, typed
+**interactively**. That makes a stall unlikely and **it is not the same
+test**: an interactive session waits for you, a replay waits for a prompt
+pattern with a timeout.
+
+### What a stall costs, precisely
+
+The generator emits **25 lines** for `cisco_ios` and the crypto line is
+**line 17**. Eight lines come after it, and this is all of them:
+
+```
+ip ssh version 2
+line vty 0 4
+ logging synchronous
+ login local
+ transport input ssh
+end
+```
+
+So a stall does **not** produce a device that looks broken. It produces one
+that reaches `Startup complete`, answers ping, has a hostname and a
+management address — **and cannot be reached over SSH**, because the vty
+block never landed.
+
+That is stage B's shape exactly: a startup file that reads correctly and does
+not fully apply. It is also why "did it boot?" is not the check.
+
+### Two nodes, because the control is not optional
+
+`bp-vios-d3` carries what the generator emits. **`bp-vios-d3neg` carries the
+same file truncated after the crypto line** — the state a stall would leave
+behind — and **every check below must fail on it.** Five can't-fail controls
+have been found in this project; this one ships with its control attached.
+
+### Running it
+
+**1. Render the configs from the generator.** Not by hand: a hand-written
+fixture measures the fixture. Neither file is committed; both carry a
+credential and both are gitignored.
+
+```bash
+cd ~/python/Agentic_NMAS
+python scripts/nmas-render-d3-probe --secret '<throwaway password>'
+```
+
+It prints the crypto line number and the lines that come after it. Confirm
+the count matches what is written above; if the generator has changed, this
+runbook is describing a different file.
+
+**2. Deploy the probe lab.** Destroy earlier probe labs first so nothing
+contends for `172.30.30.0/24`.
+
+```bash
+cd ~/labs/bootstrap-probe          # wherever the probe clab files live
+sudo containerlab deploy -t nmas-vios-d3.clab.yml
+```
+
+**3. Watch the replay on the good node.** This is the measurement; the checks
+afterwards only confirm what it shows.
+
+```bash
+docker logs -f clab-nmas-vios-d3-bp-vios-d3 2>&1 | ts
+```
+
+Record:
+* the timestamp of the line containing `crypto key generate rsa`
+* the timestamp of the **next** line the replay sends (`ip ssh version 2`)
+* whether `Startup complete` is reached, and when
+* any `% ` error, any timeout, any prompt-wait warning
+
+**The gap between those first two timestamps is the whole answer.** D2's
+interactive figure was 3 seconds.
+
+**4. Check the good node — every one of these must pass.**
+
+```bash
+N=clab-nmas-vios-d3-bp-vios-d3
+docker exec $N bash -lc 'echo ok'   # container up
+
+# a) the key exists
+ssh admin@172.30.30.53 'show crypto key mypubkey rsa | include Key name|Key Data' 
+
+# b) THE LINES AFTER THE CRYPTO LINE LANDED -- the actual property
+ssh admin@172.30.30.53 'show running-config | include ^ip ssh version 2'
+ssh admin@172.30.30.53 'show running-config | section line vty'
+
+# c) SSH works at all, which is (b) observed from the outside
+ssh admin@172.30.30.53 'show version | include uptime'
+```
+
+If (c) works you have already proved (b) — you could not have logged in
+without the vty block. Run both anyway: (b) names *which* line is missing
+when it fails, and (c) only says "no".
+
+**5. Check the negative node — every one of these must FAIL.**
+
+```bash
+ssh admin@172.30.30.54 'show version'      # expected: connection refused
+```
+
+A refused connection here is the control passing. **If SSH to `.54` works,
+stop**: the truncated file applied something it should not have, and the
+checks above cannot distinguish a stall from a success.
+
+Distinguish *refused* from *timed out* from *auth failed*, for the reason
+stage D2 recorded — a check that cannot tell a transport failure from an auth
+failure is a check that cannot fail. `scripts/nmas-check-credential` gives
+three-valued answers and is the right tool:
+
+```bash
+python scripts/nmas-check-credential --host 172.30.30.54 --username admin
+```
+
+**6. Per-device uptime**, per the D2 finding: a vIOS can take a CPU exception
+and silently reload, and `Startup complete` will have been printed by the
+first boot.
+
+```bash
+ssh admin@172.30.30.53 'show version | include uptime'
+```
+
+**7. Destroy and clean up.**
+
+```bash
+sudo containerlab destroy -t nmas-vios-d3.clab.yml --cleanup
+rm -f docs/bootstrap-probe/configs/bp-vios-d3.cfg \
+      docs/bootstrap-probe/configs/bp-vios-d3neg.cfg
+```
+
+### What a pass licenses, and what it does not
+
+A pass says: **on this image, at this modulus, key generation does not stall a
+console replay, and the lines after it land.** It says nothing about a larger
+modulus, a different vIOS image, or a slower host — and the margin is what
+matters, so **record the measured gap**, not just "it worked".
+
+A **fail** does not block Stage 4. It moves the key generation: either out of
+the startup file and into a post-boot step over the console, or ahead of the
+vty block so a stall costs nothing that matters. The point of measuring first
+is that either answer is cheap now and expensive after r6 is onboarded.

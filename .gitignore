@@ -62,3 +62,9 @@ UI_IMPROVEMENTS.md
 
 # Windows TFTP root accidentally created on Linux (see modules/config.py)
 C:/
+
+# Stage D probe configs: rendered from the generator at run time and carrying
+# a throwaway credential. `scripts/nmas-render-d3-probe` writes them; they are
+# deleted when the probe lab is destroyed.
+docs/bootstrap-probe/configs/bp-vios-d3.cfg
+docs/bootstrap-probe/configs/bp-vios-d3neg.cfg

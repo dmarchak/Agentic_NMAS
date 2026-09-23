@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Render the stage D probe configs FROM THE GENERATOR. Never by hand.
+
+The probe measures what the wizard emits, or it measures nothing —
+`test_bootstrap_config.py` already pins "probe fixtures == generator" for the
+earlier stages, and this keeps stage D in the same contract.
+
+Writes two files into `docs/bootstrap-probe/configs/`:
+
+* ``bp-vios-d3.cfg``     — exactly `render_bootstrap("cisco_ios", …)`
+* ``bp-vios-d3neg.cfg``  — the same file **truncated after the crypto line**,
+  which is the state a console stall would produce.
+
+The second is the negative control and it is not optional. Every check in the
+runbook must fail on it; a check that cannot fail has not been shown to work,
+and this project has found five of those.
+
+Neither file is committed: they carry a credential.
+"""
+
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+OUT = os.path.join(ROOT, "docs", "bootstrap-probe", "configs")
+
+
+def main() -> int:
+    import argparse
+
+    from modules.nsot.bootstrap_config import (CONSOLE_REPLAYED,
+                                               GENERATES_SSH_KEY,
+                                               render_bootstrap)
+
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--secret", required=True,
+                    help="throwaway probe password; not stored anywhere")
+    ap.add_argument("--hostname", default="bp-vios-d3")
+    args = ap.parse_args()
+
+    platform = "cisco_ios"
+    # State the premise the probe rests on, and fail if it stops holding.
+    if platform not in GENERATES_SSH_KEY or platform not in CONSOLE_REPLAYED:
+        print(f"'{platform}' is no longer in both GENERATES_SSH_KEY and "
+              "CONSOLE_REPLAYED — stage D measures an intersection that no "
+              "longer exists. Re-read bootstrap_config.py before running this.")
+        return 2
+
+    text = render_bootstrap(platform, hostname=args.hostname,
+                            username="admin", secret=args.secret,
+                            mgmt_interface="GigabitEthernet0/0")
+    lines = text.splitlines()
+
+    crypto = next((i for i, ln in enumerate(lines)
+                   if ln.startswith("crypto key generate rsa")), -1)
+    if crypto < 0:
+        print("the generator emitted no `crypto key generate rsa` line — "
+              "there is nothing for stage D to measure.")
+        return 2
+
+    after = lines[crypto + 1:]
+    os.makedirs(OUT, exist_ok=True)
+    _write(os.path.join(OUT, "bp-vios-d3.cfg"), lines)
+    # Truncated AFTER the crypto line: the device gets as far as starting key
+    # generation and no further, which is what a stalled replay leaves behind.
+    _write(os.path.join(OUT, "bp-vios-d3neg.cfg"), lines[:crypto + 1] + ["end"])
+
+    print(f"wrote {OUT}/bp-vios-d3.cfg      ({len(lines)} lines)")
+    print(f"wrote {OUT}/bp-vios-d3neg.cfg   ({crypto + 2} lines, truncated)")
+    print()
+    print(f"the crypto line is line {crypto + 1}; "
+          f"{len(after)} line(s) come after it and are what a stall loses:")
+    for ln in after:
+        if ln.strip() and ln.strip() != "!":
+            print(f"    {ln}")
+    print()
+    print("Neither file is committed. Delete both when the probe is destroyed.")
+    return 0
+
+
+def _write(path: str, lines: list) -> None:
+    from modules.config import open_secure
+
+    with open_secure(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
