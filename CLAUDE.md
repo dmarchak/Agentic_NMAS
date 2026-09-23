@@ -771,6 +771,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_drift_population.py` | the inventory is the population; every device in exactly one bucket |
 | `test_drift_scheduling.py` | per-list state, merge-not-replace, what a silenced check records |
 | `test_check_removed_definitions.py` | the checker tells a use from a mention |
+| `test_drift_routes.py` | the routes exercised over HTTP; a crash is JSON+500, never 302; wrapper signatures |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -996,6 +997,28 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   satisfied gets run with `--no-verify`. Whole-word, because
   `"_scan_device" in "_scan_device_from_golden"`. An unparseable file still
   counts as a reference.
+- **An unhandled exception must never present as a successful redirect.**
+  `@app.errorhandler(Exception)` redirected *everything* to the index, so
+  every JSON route in the app answered a crash with `302 /`: the `fetch`
+  followed it, got a page of HTML, and the caller either failed to parse it
+  or swallowed it. Measured on `POST /drift/settings` — a `TypeError` reached
+  the operator as a toggle that flicked back, with nothing on screen. The
+  handlers now redirect a **navigation** and return JSON with a real status
+  to anything else, decided on the literal `Accept` header: werkzeug's
+  `accept_mimetypes` cannot tell `*/*` from an explicit preference, so any
+  quality comparison picks a winner by tie-break. Error detail goes through
+  `redact_text()` — unlike the log, this leaves the host.
+- **A route reports what was STORED, not what was asked for.**
+  `/drift/settings` echoed its own input, so a save that did nothing returned
+  success and the panel reverted the control on the next poll.
+- **A wrapper method's signature is pinned against what it wraps.**
+  `DriftChecker.set_disabled` shadows the module-level `set_disabled` by name
+  and delegates to it; 3.3c added `actor` to one and not the other, and the
+  shared name is what made it look edited. Seventeen tests passed because all
+  of them called the module function while the route calls the method.
+  `test_drift_routes.py` exercises the route over HTTP and compares the two
+  signatures — a test asserting the *shape* of a call cannot see a signature
+  that does not exist.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

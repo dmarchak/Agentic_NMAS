@@ -9,6 +9,47 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — a crash delivered as a successful redirect (Stage 3.3c follow-up)
+
+`DriftChecker.set_disabled()` — the method the panel's toggle reaches — never
+gained the `actor` parameter added to the module-level `set_disabled()`, so
+every toggle raised `TypeError` before touching the state file. Seventeen
+scheduling tests passed because all of them called the module function.
+
+- The method forwards `actor`, and `test_drift_routes.py` exercises the
+  routes **over HTTP** rather than asserting the shape of a call. A test that
+  inspects a call cannot see a signature that does not exist.
+- The signature is pinned against the function it delegates to, and the
+  method is checked to actually forward what it accepts.
+
+**`@app.errorhandler(Exception)` redirected everything to the index**, so
+every JSON route in the app answered a crash with `302 /` — a success to
+`fetch`, which followed it and got HTML. The operator saw a toggle that
+flicked back and nothing else; the error was in the log.
+
+- Handlers redirect a **navigation** and return JSON with a real status to
+  anything else, decided on the literal `Accept` header: `accept_mimetypes`
+  cannot tell `*/*` from an explicit preference.
+- Error detail goes through `redact_text()` — unlike the log, an HTTP
+  response leaves the host.
+- `/drift/settings` reports what was **stored**, read back after the write,
+  not what was asked for.
+
+### Fixed — the drift summary always states its coverage (Stage 3.3b follow-up)
+
+The all-clean branch omitted it, so a full pass read "All 9 device(s) clean" —
+identical for 9 of 9 and 9 of 10, which is the sentence 3.3b exists to make
+unsayable. The panel now renders the accounting from the **fields**
+(`inventory`, `checked`, buckets) rather than from the sentence, and names
+every skipped and unreachable device.
+
+### Removed — `agent_runner._run_drift_check` (Stage 3.3)
+
+172 lines: a second drift checker with its own enumeration, diffing and
+approval wording, zero callers, sitting below a comment saying drift had
+moved to `modules/drift_check.py`. It still carried the pre-3.3b population,
+so wiring it up later would have reinstated the defect 3.3b removed.
+
 ### Fixed — enumeration and content came from different stores (Stage 3.3)
 
 `_list_golden_configs()` listed the deprecated `golden_configs/` directory and

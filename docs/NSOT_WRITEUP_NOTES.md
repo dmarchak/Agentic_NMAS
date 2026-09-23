@@ -6019,3 +6019,89 @@ Two bugs were found in the fix itself, both by tests rather than by reading:
 must not cost it its job: six tests assert a real caller is still found, five
 that prose is not, three that matching is whole-word, two that an unreadable
 file reports.
+
+---
+
+## A crash delivered as a successful redirect
+
+Stage 3.3c added `actor` to `drift_check.set_disabled()` and left
+`DriftChecker.set_disabled()` — the method the route actually calls — alone.
+Every attempt to toggle the scheduler from the panel raised
+
+```
+TypeError: DriftChecker.set_disabled() got an unexpected keyword argument 'actor'
+```
+
+before touching the state file. Seventeen tests in `test_drift_scheduling.py`
+passed throughout, because **every one of them called the module function
+directly**. The path the operator uses was the one path nothing ran. It is
+the same shape as the `write_committed()` crash in the 1.4 repair, and the
+shared name is what makes it easy: editing `set_disabled` felt like editing
+`set_disabled`.
+
+The interesting part is not the `TypeError`. It is what the operator saw.
+
+`@app.errorhandler(Exception)` redirected **everything** to the index page.
+So the POST returned `302` — which `fetch` treats as success, following it
+and receiving a page of HTML — the panel then refetched `/drift/status`, read
+the unchanged `disabled: true`, and set the toggle back. A control that
+silently reverts, nothing on screen, and the real error in a log the operator
+had no reason to open.
+
+That handler applies to every JSON route in the application. **Every
+unhandled exception anywhere in the app was being presented to the interface
+as a successful navigation.** The rule this project has written down since
+Phase 0 — silent failure is the dominant failure mode, every call must
+surface its failures — was defeated at the framework level by three lines
+that predate all of it.
+
+### Telling a navigation from a fetch
+
+The handlers now redirect a browser navigation and return JSON with a real
+status to anything else. The test is the **literal** `Accept` header, not
+werkzeug's `accept_mimetypes`: for `Accept: */*` both `accept_html` and
+`accept_json` are true with equal quality, so any comparison between them
+picks a winner by tie-break rather than by evidence. A browser navigating
+sends `text/html,…`; `fetch()` with no `Accept` header sends `*/*`. The
+literal test separates them and nothing else does.
+
+The error detail is redacted on the way out. The log is redacted by
+`redact_all_handlers()`; an HTTP response is not, and it leaves the host.
+
+### And the route stopped echoing its input
+
+`/drift/settings` returned `{"disabled": <what you asked for>}`. A save that
+did nothing therefore reported success, and the contradiction only appeared
+one request later when the panel refetched the real state. It reports what is
+**stored** now, read back after the write.
+
+### What the grep for other callers turned up
+
+Checking whether anything else called the functions 3.3c changed found
+`agent_runner._run_drift_check`: **172 lines that are a second drift
+checker** — its own enumeration, its own diffing, its own approval wording —
+with zero callers, sitting a few lines below a comment reading *"Drift
+checking is now handled by modules/drift_check.py … Nothing to do here."*
+
+The decision had been made and only the code was left behind. It still
+carried the pre-3.3b population, where a device with no golden config leaves
+no trace at all, so wiring it up later would have quietly reinstated the
+defect 3.3b was written to remove. Removed.
+
+### The guard
+
+`test_drift_routes.py` exercises the routes over HTTP — POST the toggle, GET
+the status, assert the stored value changed — because a test that asserts the
+*shape* of a call cannot see a signature that does not exist. It also
+compares `DriftChecker.set_disabled`'s signature against the module
+function's, and checks the method **forwards** what it accepts: a parameter
+accepted and dropped is the same defect wearing a signature that type-checks.
+
+Thirteen of the fifteen fail against the reverted code, including both
+persistence tests, which reproduce the reported bug exactly. The one that
+must pass under both — a browser navigation still gets its redirect — does.
+
+While writing that guard I called `code_of("modules.drift_check",
+"DriftChecker.set_disabled")`. It takes one argument. Inferring a signature
+instead of reading it, in the test written about inferring a signature
+instead of reading it.

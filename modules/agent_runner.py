@@ -94,7 +94,9 @@ _USER_IDLE_SECONDS  = 90   # wait this long after last user message before start
 
 # Event types handled by the AI agent via run_background_task.
 # Note: "config_drift" and "empty_variables" are handled directly in Python
-# (_run_drift_check, _run_variable_discovery) and do NOT go through this set.
+# and do NOT go through this set. Drift lives in `modules/drift_check.py`
+# (this module's own copy was removed in Stage 3.3); variable discovery is
+# `_run_variable_discovery` below.
 AUTO_HANDLE = {"jenkins_failure", "missing_golden_configs"}
 
 
@@ -621,178 +623,18 @@ def _run_variable_discovery() -> None:
         log.exception("agent_runner: variable discovery error: %s", exc)
 
 
-def _run_drift_check() -> None:
-    """
-    Run a drift check on all devices that have golden configs.
-    Done entirely in Python — no AI involvement. For each drifted device,
-    queues an approval request directly into approval_queue.
-    """
-    if not _devices_loader:
-        log.warning("agent_runner: drift check skipped — agent not initialized")
-        return
+# `_run_drift_check()` lived here: 172 lines that enumerated golden configs,
+# SSHed to each device, diffed against the capture and queued approvals --
+# a SECOND drift checker, with zero callers, sitting a few lines below the
+# comment saying drift moved to `modules/drift_check.py`. The decision had
+# been made; only the code was left behind.
+#
+# Removed in Stage 3.3, found by grepping for callers of the functions 3.3c
+# changed. It matters that it went: it still had the pre-3.3b population (a
+# device with no golden left no trace) and its own copy of the approval
+# wording, so wiring it up later would have quietly reinstated both.
 
-    try:
-        from modules.jenkins_runner import is_jenkins_building
-        if is_jenkins_building():
-            log.info("agent_runner: drift check deferred — Jenkins build in progress")
-            return
-    except Exception as exc:
-        log.debug("agent_runner: is_jenkins_building() error (ignored): %s", exc)
 
-    try:
-        from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
-        from modules.approval_queue import add_approval
-        from modules.device import get_current_device_list, load_saved_devices
-        from modules.connection import get_persistent_connection
-        from modules.commands import run_device_command
-        import difflib
-
-        golden = _list_golden_configs()
-        if not golden:
-            log.info("agent_runner: drift check — no golden configs saved yet, skipping")
-            return
-
-        log.info("agent_runner: drift check on %d device(s)", len(golden))
-
-        # Load device inventory for credentials
-        _, list_file = get_current_device_list()
-        all_devices  = load_saved_devices(list_file)
-        dev_by_ip    = {d["ip"]: d for d in all_devices}
-
-        # Lines stripped from BOTH sides before diffing.
-        # Covers: IOS show-run boilerplate, NTP drift, golden-file metadata headers,
-        # and other auto-generated lines that are not meaningful config changes.
-        _SKIP_STARTSWITH = (
-            "! Last configuration",   # IOS change timestamp
-            "! NVRAM config",          # NVRAM write timestamp
-            "! No configuration",      # empty config marker
-            "! Golden config",         # golden-file header added by this app
-            "! Saved:",                # golden-file save timestamp
-            "! Source:",               # golden-file source annotation
-            "Building configuration",  # show run / show start header line
-            "Current configuration",   # show run byte-count header
-            "ntp clock-period",        # NTP drift — changes every few minutes
-            "upgrade fpd",             # auto-inserted by IOS, not a user change
-            "version ",                # IOS version line at top of show run
-        )
-
-        def _clean(text):
-            return [
-                l for l in text.splitlines()
-                # skip blank lines, bare "!" separator lines, and known volatile prefixes
-                if l.strip() and l.strip() != "!" and not any(l.startswith(s) for s in _SKIP_STARTSWITH)
-            ]
-
-        # Shared connection pool for this drift check run
-        _drift_pool = {}
-        _drift_pool_lock = threading.Lock()
-
-        drifted   = []   # [(hostname, diff_line_count)]
-        clean     = []   # [hostname]
-        errors    = []   # [(hostname, reason)]
-
-        def _check_one(entry):
-            device_ip = entry["device_ip"]
-            hostname  = entry["hostname"] or device_ip
-            dev       = dev_by_ip.get(device_ip)
-            if not dev:
-                log.warning("agent_runner: drift check — %s not in inventory", device_ip)
-                errors.append((hostname, "not in inventory"))
-                return
-
-            golden_text = _load_golden_config_file(device_ip)
-            if golden_text is None:
-                log.debug("agent_runner: drift check — no golden for %s", device_ip)
-                return
-
-            try:
-                conn    = get_persistent_connection(dev, _drift_pool, _drift_pool_lock)
-                current = run_device_command(conn, "show running-config")
-            except Exception as exc:
-                log.warning("agent_runner: drift check — SSH error %s: %s", device_ip, exc)
-                errors.append((hostname, f"SSH error: {exc}"))
-                return
-
-            diff = list(difflib.unified_diff(
-                _clean(golden_text),
-                _clean(current),
-                fromfile=f"{hostname} — golden config",
-                tofile=f"{hostname} — running config",
-                lineterm="",
-            ))
-
-            if not diff:
-                log.debug("agent_runner: drift check — %s clean", hostname)
-                clean.append(hostname)
-                return
-
-            diff_text = "\n".join(diff[:200]) + ("\n[...truncated]" if len(diff) > 200 else "")
-            log.info("agent_runner: drift detected on %s (%d diff lines)", hostname, len(diff))
-            drifted.append((hostname, len(diff)))
-
-            add_approval(
-                action_type      = "update_golden_config",
-                description      = f"Config drift detected on {hostname} — {len(diff)} changed lines",
-                device_ip        = device_ip,
-                device_hostname  = hostname,
-                diff             = diff_text,
-                action_params    = {"device_ip": device_ip, "hostname": hostname},
-                context          = "Detected by scheduled drift check",
-            )
-
-        max_workers = min(len(golden), 6)
-        with __import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor(
-            max_workers=max_workers, thread_name_prefix="drift"
-        ) as executor:
-            list(executor.map(_check_one, golden))
-
-        # Always write an activity log entry so the user can confirm checks ran
-        checked = len(clean) + len(drifted) + len(errors)
-        if drifted:
-            summary = (
-                f"Drift detected on {len(drifted)} device(s): "
-                + ", ".join(f"{h} ({n} lines)" for h, n in drifted)
-                + ". Approval request(s) added."
-            )
-        elif errors and not clean:
-            summary = (
-                f"Drift check could not reach {len(errors)} device(s): "
-                + ", ".join(h for h, _ in errors)
-            )
-        else:
-            summary = (
-                f"All {len(clean)} device(s) clean — no config drift detected."
-                + (f" ({len(errors)} device(s) unreachable.)" if errors else "")
-            )
-
-        log.info("agent_runner: drift check complete — %s", summary)
-        _append_activity({
-            "id":              f"__drift_{uuid.uuid4().hex[:8]}__",
-            "started_at":      time.strftime("%Y-%m-%d %H:%M:%S"),
-            "task":            f"Scheduled config drift check ({checked} device(s))",
-            "trigger":         "scheduled",
-            "tools_used":      ["show running-config"],
-            "tool_call_count": checked,
-            "success":         not bool(errors) or bool(clean),
-            "errors":          [f"{h}: {r}" for h, r in errors][:5],
-            "cost_usd":        0.0,
-            "summary":         summary,
-        })
-
-    except Exception as exc:
-        log.exception("agent_runner: drift check error: %s", exc)
-        _append_activity({
-            "id":          f"__drift_{uuid.uuid4().hex[:8]}__",
-            "started_at":  time.strftime("%Y-%m-%d %H:%M:%S"),
-            "task":        "Scheduled config drift check",
-            "trigger":     "scheduled",
-            "tools_used":  [],
-            "tool_call_count": 0,
-            "success":     False,
-            "errors":      [str(exc)],
-            "cost_usd":    0.0,
-            "summary":     f"Drift check failed: {exc}",
-        })
 
 
 # ---------------------------------------------------------------------------

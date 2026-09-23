@@ -243,26 +243,70 @@ def favicon():
     """Return empty response for favicon to avoid 404 warnings."""
     return "", 204
 
+def _client_wants_html() -> bool:
+    """Is this a browser NAVIGATION, or a fetch() from the page?
+
+    Decided on the literal `Accept` header rather than on werkzeug's
+    `accept_mimetypes`, which cannot tell `*/*` from an explicit preference:
+    for `Accept: */*` both `accept_html` and `accept_json` are true with equal
+    quality, so any comparison between them picks a winner by tie-break. A
+    browser navigating sends `text/html,...`; `fetch()` with no Accept header
+    sends `*/*`. The literal test separates them and nothing else does.
+    """
+    return "text/html" in (request.headers.get("Accept", "") or "")
+
+
+def _error_response(error, status: int, message: str):
+    """Redirect a navigation; answer a fetch() with JSON and a real status.
+
+    **An unhandled exception must never present as a successful redirect.**
+    These handlers redirected everything to the index, so every JSON endpoint
+    in the app answered a crash with `302 /` — the fetch followed it, got a
+    page of HTML, and the caller either failed to parse it or swallowed it in
+    a `catch`. Measured on `POST /drift/settings`: a `TypeError` reached the
+    operator as a toggle that flicked back to its previous position, with
+    nothing on screen and the real error in the log.
+
+    That is the failure mode this project treats as the dominant one, wired
+    in at the framework level and applying to every route at once.
+
+    The message is redacted: it can quote a config line or an exception
+    carrying a credential, and unlike the log this goes out over HTTP.
+    """
+    if _client_wants_html():
+        flash(message, 'warning' if status == 404 else 'danger')
+        return redirect(url_for('index'))
+
+    from modules import redact
+
+    detail = str(error)
+    try:
+        detail = redact.redact_text(detail)
+    except Exception:                          # noqa: BLE001
+        detail = error.__class__.__name__      # never the raw text on failure
+    return jsonify({"ok": False, "error": message, "detail": detail,
+                    "status": status}), status
+
+
 @app.errorhandler(404)
 def not_found_error(error):
     """Handle 404 Not Found errors."""
     app.logger.warning(f'Page not found: {request.url}')
-    flash('Page not found', 'warning')
-    return redirect(url_for('index'))
+    return _error_response(error, 404, 'Page not found')
 
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 Internal Server errors."""
     app.logger.error(f'Server Error: {error}', exc_info=True)
-    flash('An unexpected error occurred. Please try again.', 'danger')
-    return redirect(url_for('index'))
+    return _error_response(error, 500,
+                           'An unexpected error occurred. Please try again.')
 
 @app.errorhandler(Exception)
 def handle_exception(error):
     """Handle all uncaught exceptions."""
     app.logger.error(f'Unhandled Exception: {error}', exc_info=True)
-    flash('An unexpected error occurred. Please check the logs.', 'danger')
-    return redirect(url_for('index'))
+    return _error_response(error, 500,
+                           'An unexpected error occurred. Please check the logs.')
 
 # Reintroduce persistent connections container for status checks
 # QUICK_ACTIONS_FILE provided by modules.config
@@ -3581,34 +3625,48 @@ def drift_settings_get():
 
 @app.route("/drift/settings", methods=["POST"])
 def drift_settings_post():
-    """Update drift check interval and/or disabled flag."""
-    from modules.drift_check import get_checker
+    """Update drift check interval and/or disabled flag.
+
+    Wrapped, and the outcome is **read back from the state file** rather than
+    echoed from the request. Echoing the input reports what was asked for; the
+    panel then refetches `/drift/status`, sees the opposite, and silently
+    reverts the control. That is what the operator saw when the toggle could
+    not be saved at all.
+    """
+    from modules.drift_check import _is_disabled, get_checker
     from modules.agent_timers import save as save_timers
     data     = request.get_json(silent=True) or {}
     checker  = get_checker()
     saved    = {}
 
-    if "interval_s" in data:
-        interval_s = int(data["interval_s"])
-        save_timers({"drift_check_interval": interval_s})
-        saved["interval_s"] = interval_s
-        # Re-arm the scheduler with the new interval
-        import time as _time
-        checker._next_ts = _time.time() + interval_s
-        checker._trigger.set()
+    try:
+        if "interval_s" in data:
+            interval_s = int(data["interval_s"])
+            save_timers({"drift_check_interval": interval_s})
+            saved["interval_s"] = interval_s
+            # Re-arm the scheduler with the new interval
+            import time as _time
+            checker._next_ts = _time.time() + interval_s
+            checker._trigger.set()
 
-    if "disabled" in data:
-        # Who switched it off is part of the record. See `set_disabled`.
-        # Not gated -- disabling drift is not a reveal and not a device
-        # change -- but the actor is recorded when one is verifiable.
-        from modules.identity import identify
-        try:
-            ident = identify(request)
-            actor = ident.actor if ident.is_identified else ""
-        except Exception:                      # noqa: BLE001
-            actor = ""
-        checker.set_disabled(bool(data["disabled"]), actor=actor)
-        saved["disabled"] = bool(data["disabled"])
+        if "disabled" in data:
+            # Who switched it off is part of the record. See `set_disabled`.
+            # Not gated -- disabling drift is not a reveal and not a device
+            # change -- but the actor is recorded when one is verifiable.
+            from modules.identity import identify
+            try:
+                ident = identify(request)
+                actor = ident.actor if ident.is_identified else ""
+            except Exception:                  # noqa: BLE001
+                actor = ""
+            checker.set_disabled(bool(data["disabled"]), actor=actor)
+            # What is stored, not what was asked for.
+            saved["disabled"] = _is_disabled()
+    except Exception as exc:                   # noqa: BLE001
+        app.logger.error("drift settings save failed: %s", exc, exc_info=True)
+        return jsonify({"ok": False,
+                        "error": f"Could not save drift settings: {exc}",
+                        "disabled": _is_disabled()}), 500
 
     return jsonify({"ok": True, **saved})
 

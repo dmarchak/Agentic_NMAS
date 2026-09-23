@@ -329,12 +329,12 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
         )
     elif checked == 0:
         summary = f"No device was checked. ({coverage}.)"
-    elif error_list or skip_list:
+    else:
+        # The coverage is stated on EVERY outcome, including the all-clean
+        # one. "All 9 device(s) clean" reads identically for 9 of 9 and for 9
+        # of 10, which is the sentence 3.3b exists to stop being sayable.
         summary = (f"All {len(clean_list)} checked device(s) clean — "
                    f"no config drift detected. ({coverage}.)")
-    else:
-        summary = (f"All {len(clean_list)} device(s) clean — "
-                   "no config drift detected.")
 
     if skip_list:
         summary += " Not checked: " + ", ".join(
@@ -421,8 +421,18 @@ class DriftChecker:
         self._next_ts = time.time()
         self._trigger.set()
 
-    def set_disabled(self, disabled: bool) -> None:
-        set_disabled(disabled)
+    def set_disabled(self, disabled: bool, actor: str = "") -> None:
+        """Forwards *actor* to the module-level recorder.
+
+        Stage 3.3c added `actor` to `set_disabled()` and left this method --
+        the one the route actually calls -- unchanged, so every attempt to
+        toggle the scheduler from the panel raised `TypeError` before
+        reaching the state file. The same shape as the `write_committed()`
+        crash in the 1.4 repair: a caller written against a signature that
+        does not exist, and tests that exercised the module function while
+        the route went through the method.
+        """
+        set_disabled(disabled, actor=actor)
         if not disabled:
             # Re-arm: schedule next run one interval from now
             self._next_ts = time.time() + _get_interval()

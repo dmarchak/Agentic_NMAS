@@ -5741,11 +5741,22 @@ async function saveDriftSettings() {
   if (sel)    payload.interval_s = parseInt(sel.value, 10);
   if (toggle) payload.disabled   = !toggle.checked;
   try {
-    await fetch('/drift/settings', {
+    const r = await fetch('/drift/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    // The RESPONSE is checked. `fetch` rejects only on a network failure, so
+    // a 500 -- or, before the error handlers were fixed, a 302 to the index
+    // page -- resolved happily and the only visible effect was the toggle
+    // snapping back after the refetch. A control that silently reverts is a
+    // failure the operator is left to diagnose from a log.
+    let body = null;
+    try { body = await r.json(); } catch (_) { body = null; }
+    if (!r.ok || !body || body.ok === false) {
+      const why = (body && (body.error || body.detail)) || `HTTP ${r.status}`;
+      showToast('Could not save drift settings: ' + why, 'danger');
+    }
     await loadDriftStatus();
   } catch (err) {
     showToast('Could not save drift settings: ' + err, 'danger');
@@ -5836,17 +5847,41 @@ async function loadDriftStatus() {
     }
 
     const detail = document.getElementById('driftResultDetail');
-    if (detail && lr && lr.summary) {
+    if (detail && lr) {
       detail.style.display = '';
       const pending = data.pending_approvals || 0;
-      let html = `<span class="text-secondary">${_esc(lr.summary)}</span>`;
+
+      // The ACCOUNTING is rendered from the fields, not read out of the
+      // summary sentence. A stored result from before 3.3b has no
+      // `inventory`, and a sentence is not a place to keep numbers: "All 9
+      // device(s) clean" reads identically for 9 of 9 and for 9 of 10, which
+      // is exactly what 3.3b exists to make unsayable.
+      let html = '';
+      if (inventory > 0) {
+        const bits = [`<strong>checked ${checked} of ${inventory}</strong>`];
+        if (lr.drifted)           bits.push(`${lr.drifted} drifted`);
+        if (lr.clean)             bits.push(`${lr.clean} clean`);
+        if ((lr.skipped || []).length) bits.push(`${lr.skipped.length} not checked`);
+        if ((lr.errors  || []).length) bits.push(`${lr.errors.length} unreachable`);
+        html += `<div class="text-secondary">${bits.join(' · ')}</div>`;
+      } else if (lr.summary) {
+        // Pre-3.3b result: no accounting was recorded, so say that rather
+        // than presenting the old sentence as if it carried one.
+        html += `<div class="text-secondary">${_esc(lr.summary)}</div>`
+             +  `<div class="text-muted small">Recorded before per-device`
+             +  ` accounting; run a check to get coverage.</div>`;
+      }
+
       if (pending > 0) {
-        html += ` <span class="badge bg-warning text-dark ms-1">${pending} pending approval${pending !== 1 ? 's' : ''}</span>`;
+        html += `<span class="badge bg-warning text-dark mt-1">${pending} pending approval${pending !== 1 ? 's' : ''}</span>`;
       }
       // Every device not checked, named. "checked 7 of 9" without the two
       // names is a number nobody can act on.
       (lr.skipped || []).forEach(s => {
         html += `<div class="text-warning small mt-1">Not checked: ${_esc(s.hostname)} — ${_esc(s.reason)}</div>`;
+      });
+      (lr.errors || []).forEach(e => {
+        html += `<div class="text-danger small mt-1">Unreachable: ${_esc(e.hostname)} — ${_esc(e.reason)}</div>`;
       });
       detail.innerHTML = html;
     } else if (detail) {
