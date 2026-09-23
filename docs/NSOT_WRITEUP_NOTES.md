@@ -7618,3 +7618,95 @@ adapter nobody had read is exactly where that happens.
 The general form, for acceptances yet to be written: **an acceptance that
 says "the real X" needs a test that would fail if X were replaced**, or it
 is a sentence rather than a check.
+
+---
+
+## The conclusion held; the reason did not
+
+`release()` was built first on an agreed argument: *a name that can be taken
+and never given back means one typo permanently consumes a hostname.*
+
+**That trap did not exist.** `commit_step` called `adopt_identity()` and
+discarded the return value, so no manifest entry was ever written --
+measured: `manifest.load(repo)["devices"]` was `{}` after a successful
+commit. `_name_in_manifest` never fired, nothing was consumed, and there was
+nothing to release.
+
+Both of us reasoned from a function's **name** and a docstring that was true
+about the call and false about the outcome: *"the identity is minted here
+and only here"*. It was minted into a local and thrown away. Neither of us
+read `adopt_identity` until the abandon tests failed against an empty
+manifest.
+
+**The build order was right and the reason was wrong, and those are
+different things.** The identity *should* be recorded, it now is, and the
+trap becomes real from that commit onward -- so `release()` was built for a
+hazard that its own prerequisite created. Worth recording precisely because
+"we got there anyway" is the kind of outcome that stops a premise ever being
+re-examined.
+
+## The closest call of the stage
+
+`abandon` was scoped to run the NetBox step "through the provenance
+Remove". The obvious implementation calls `remove_list_from_netbox`.
+
+It walks **everything** in the created-id record across `_REMOVAL_ORDER`,
+which includes `dcim/sites`, `dcim/regions` and `ipam/vrfs`. Abandoning one
+failed onboarding on `default` would have deleted every NMAS-created object
+in that list **and the shared objects r1-r5 depend on**.
+
+Caught by reading the function before building against it -- the same habit
+that caught `set_device_override`'s signature an hour earlier, and the same
+one that did not happen for `adopt_identity`. Three data points in one
+sitting: reading the API costs a minute, and not reading it has cost a
+defect every time.
+
+`remove_device_from_netbox()` is the answer: the device, its interfaces, its
+IPs, and nothing else, with shared objects reported as **retained** rather
+than skipped.
+
+## Auditing for discarded return values, and what it found immediately
+
+`adopt_identity` was a call whose return value was thrown away, so the
+mechanical question is: *what else is?* An `ast` walk over the four
+onboarding steps for `Expr(Call(...))` -- a call used as a statement --
+found eight, of which six are deliberate (`set_device_override` and
+`clear_device_override` return `{"ok": True}` unconditionally,
+`upsert_device` returns the entry it wrote, `write_committed` returns a path
+and **raises** on refusal, `assert_dialect` raises by design).
+
+**One was a live defect, in code written twenty minutes earlier.**
+`repo.git()` returns `(rc, stdout, stderr)` and **never raises** -- 127 when
+git is missing, 124 on timeout. `abandon_onboarding`'s intent step called it
+twice and discarded both, so a commit that never happened would have been
+reported as *"removed and committed the removal"* and abandon would then
+have asked `release()` for the name back. In the flow whose entire purpose
+is not to do that.
+
+### And the test for it had the same defect it was testing for
+
+The first stub was:
+
+```python
+if args and args[0] == "commit":
+```
+
+The call is `git(repo, "-c", …, "-c", …, "commit", "-m", …)`, so the first
+argument is `-c` and the check never fired. **A stub assuming the shape of
+the call it stands in for, inside the test written to catch a stub assuming
+the shape of a call.** `"commit" in args` is the fix.
+
+### Which then found a second defect, one layer down
+
+With the stub working, the name was *still* released after a failed commit.
+`abandon` does `os.remove(path)` and then commits, so a failed commit leaves
+**no file on disk and the intent still at HEAD** -- and `references()`
+checked only `os.path.exists`. Release found nothing and handed the name
+back while the device's intent was committed.
+
+`references()` now asks git (`cat-file -e HEAD:<path>`) as well as the
+working tree, and an unreadable check counts as *referenced*, because a
+check that could not run has not passed.
+
+Three defects from one audit, each found by the failure of the fix for the
+one before it.

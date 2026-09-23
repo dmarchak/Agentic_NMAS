@@ -83,8 +83,16 @@ class TestReleaseRefusesWhileAnythingNamesIt:
         every test above and give no name back."""
         from modules.nsot import manifest as _m
 
+        from modules.nsot import repo as _repo
+
         identity = _onboard(repo)
+        # COMMIT the deletion. Removing the file from the working tree is
+        # not clearing the reference: the intent is still at HEAD, which is
+        # the artefact that names the device. `references()` checks both.
         os.remove(os.path.join(repo, "host_vars", "bp1.yml"))
+        _repo.git(repo, "add", "-A")
+        _repo.git(repo, "-c", "user.email=n@l", "-c", "user.name=N",
+                  "commit", "-m", "remove intent")
         out = _m.release(repo, identity, list_name="probe")
         assert out["ok"] is True, out
         assert out["released"] == "bp1"
@@ -211,3 +219,96 @@ class TestAPartialAbandonNeverReportsSuccess:
         out = abandon_onboarding(repo, "never-existed", "probe")
         assert out["ok"] is False
         assert "no identity" in out["error"]
+
+
+class TestDiscardedReturnValues:
+    """`repo.git()` returns `(rc, stdout, stderr)` and **never raises** — 127
+    when git is missing, 124 on timeout.
+
+    The first version of the intent step called it twice and discarded both,
+    so a commit that never happened would have been reported as *"removed
+    and committed the removal"*, and abandon would then have asked release
+    to give the name back. Found by auditing the four onboarding steps for
+    calls whose return value is thrown away, after `adopt_identity` turned
+    out to be exactly that.
+    """
+
+    def test_a_failed_commit_fails_the_step(self, repo, monkeypatch):
+        from modules.nsot import onboard, repo as _repo
+
+        _onboard(repo)
+        real = _repo.git
+
+        def _fail(r, *args):
+            # `"commit" in args`, not `args[0] == "commit"`: the call is
+            # `git(repo, "-c", ..., "-c", ..., "commit", "-m", ...)`, so the
+            # first argument is `-c` and a positional check silently never
+            # fires. The first version of this stub did exactly that and the
+            # test reported the production code as broken-but-passing --
+            # a stub assuming the shape of the call it stands in for, in the
+            # test written to catch a stub assuming the shape of a call.
+            if "commit" in args:
+                return 1, "", "fatal: could not commit"
+            return real(r, *args)
+
+        monkeypatch.setattr(_repo, "git", _fail)
+        out = onboard.abandon_onboarding(
+            repo, "bp1", "probe",
+            remove_netbox=lambda l, h, dry_run=False: {"ok": True,
+                                                       "deleted": [],
+                                                       "skipped": []})
+        intent = next(s for s in out["steps"] if s["step"] == "intent")
+        assert intent["ok"] is False, "a failed commit reported success"
+        assert "could not commit" in intent["detail"]
+        assert out["ok"] is False
+
+    def test_the_name_is_not_released_after_a_failed_commit(self, repo,
+                                                            monkeypatch):
+        """The consequence, which is what makes it matter."""
+        from modules.nsot import manifest as _m, onboard, repo as _repo
+
+        identity = _onboard(repo)
+        real = _repo.git
+        monkeypatch.setattr(_repo, "git", lambda r, *a: (
+            (1, "", "fatal") if "commit" in a else real(r, *a)))
+        onboard.abandon_onboarding(
+            repo, "bp1", "probe",
+            remove_netbox=lambda l, h, dry_run=False: {"ok": True,
+                                                       "deleted": [],
+                                                       "skipped": []})
+        assert _m.find_by_name(repo, "bp1")[0] == identity
+
+
+class TestAReferenceAtHEADCountsToo:
+    """Deleting the file is not clearing the artefact.
+
+    `abandon` removes the intent and then commits the removal. When the
+    commit fails, the working tree has no file and HEAD still carries one —
+    and a `references()` that only looked at disk found nothing, so
+    `release()` handed the name back while the device's intent was still
+    committed. **The wrong-and-looks-right state, reached through the
+    failure path rather than the happy one.**
+    """
+
+    def test_an_uncommitted_deletion_is_still_a_reference(self, repo):
+        from modules.nsot import manifest as _m
+
+        identity = _onboard(repo)
+        os.remove(os.path.join(repo, "host_vars", "bp1.yml"))
+        refs = _m.references(repo, identity, "probe")
+        assert any(r["kind"] == "intent" for r in refs), refs
+        assert any("HEAD" in r["what"] for r in refs), refs
+        assert _m.release(repo, identity, list_name="probe")["ok"] is False
+
+    def test_a_committed_deletion_is_not(self, repo):
+        """The control: a check that answered 'referenced' unconditionally
+        would pass the test above and never release anything."""
+        from modules.nsot import manifest as _m, repo as _repo
+
+        identity = _onboard(repo)
+        os.remove(os.path.join(repo, "host_vars", "bp1.yml"))
+        _repo.git(repo, "add", "-A")
+        _repo.git(repo, "-c", "user.email=n@l", "-c", "user.name=N",
+                  "commit", "-m", "remove intent")
+        assert not any(r["kind"] == "intent"
+                       for r in _m.references(repo, identity, "probe"))

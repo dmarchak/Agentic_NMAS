@@ -318,12 +318,32 @@ def references(repo: str, identity: str, list_name: str = "") -> list:
     if not name:
         return found
 
+    # ON DISK **OR** AT HEAD. Checking only the working tree was wrong in
+    # exactly the way this function exists to prevent: abandon deletes the
+    # file and then commits, so a commit that failed left no file and a
+    # committed artefact — and `release()` would hand the name back while
+    # HEAD still carried the device's intent. Found by the test written for
+    # the discarded `git()` return value, which is the defect one layer up.
     for kind, rel in (("intent", os.path.join("host_vars", f"{name}.yml")),
                       ("golden", os.path.join("golden", f"{name}.cfg"))):
-        if os.path.exists(os.path.join(repo, rel)):
+        on_disk = os.path.exists(os.path.join(repo, rel))
+        at_head = False
+        if not on_disk:
+            try:
+                from modules.nsot import repo as _repo
+
+                rc, _out, _err = _repo.git(
+                    repo, "cat-file", "-e",
+                    "HEAD:" + rel.replace(os.sep, "/"))
+                at_head = rc == 0
+            except Exception:                  # noqa: BLE001
+                # A check that could not run has not passed.
+                at_head = True
+        if on_disk or at_head:
             found.append({
-                "kind": kind, "what": rel,
-                "how_to_clear": f"abandon removes it, or commit its deletion"})
+                "kind": kind,
+                "what": rel + ("" if on_disk else " (committed at HEAD)"),
+                "how_to_clear": "abandon removes it and commits the removal"})
 
     if list_name:
         try:

@@ -1058,11 +1058,21 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             from modules.nsot import repo as _repo
 
             os.remove(path)
-            _repo.git(repo, "add", "-A")
-            _repo.git(repo, "-c", "user.email=nmas@local", "-c",
-                      "user.name=NMAS", "commit", "-m",
-                      f"abandon: {hostname} — onboarding withdrawn",
-                      "--author", f"{actor or 'NMAS'} <nmas@local>")
+
+            # `git()` RETURNS (rc, stdout, stderr) and never raises -- 127
+            # when git is missing, 124 on timeout. Discarding it would have
+            # this step report success on a commit that never happened,
+            # which is precisely the failure this whole flow exists to
+            # prevent. Found by auditing the four steps for discarded
+            # return values after `adopt_identity` turned out to be one.
+            rc, _out, err = _repo.git(repo, "add", "-A")
+            if rc == 0:
+                rc, _out, err = _repo.git(
+                    repo, "-c", "user.email=nmas@local",
+                    "-c", "user.name=NMAS", "commit", "-m",
+                    f"abandon: {hostname} - onboarding withdrawn")
+            if rc != 0:
+                raise RuntimeError(err or f"git exited {rc}")
             _step("intent", True, f"removed {rel} and committed the removal")
         except Exception as exc:               # noqa: BLE001
             log.exception("abandon: intent step failed for %r", hostname)
