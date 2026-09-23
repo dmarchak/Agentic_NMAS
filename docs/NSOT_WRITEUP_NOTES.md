@@ -5570,3 +5570,71 @@ The negative control is not an extra step after the check works. It is the
 step that determines whether there is a check at all, and it belongs in the
 suite rather than in a runbook — a control that lives only in a document is
 run once, by someone who already believes the answer.
+
+---
+
+## The redeploy: what four days of measurement bought
+
+The rcn-lab1 redeploy ban was lifted on 2026-09-22 by a successful redeploy.
+It is worth recording what the alternative looked like, because the whole
+sequence began with a line in a launch script that nobody had any reason to
+read.
+
+**Had the redeploy happened on 2026-09-21**, before any of this: all five
+routers come up on `admin/admin`. Every one reports `Startup complete`. Every
+container reports healthy. Every router answers SSH. The startup files still
+say `secret 9`. NMAS cannot log in to any of them, and the first symptom is
+nine devices' worth of automation failing at once, with the state that
+explained it already gone.
+
+**What it took to know that**, in order:
+
+| stage | question | answer |
+|---|---|---|
+| A | what does a fresh node look like? | captures for both platforms |
+| B | does r1's current startup file apply? | **no** — `%CVAC-4-CLI_FAILURE`, node healthy on the wrong credential |
+| C | does the user-skip fix it? | **yes** — same file, one variable changed, outcome inverted |
+| D2 | has a vIOS ever booted a `secret 9` line? | **no** — every prior proof was a C8000v |
+| — | the redeploy | all nine correct, zero rejections |
+
+Each stage answered one question on a node that could be thrown away. None of
+them was expensive. The first one took a day to arrange and every one after
+was under an hour.
+
+### The things that were nearly wrong
+
+**Stage D2 existed because the question was asked.** The switches were
+rotated the same day as the routers and their startup files carry the same
+shape — and nothing had ever fed a pre-computed `$9$` hash back to the
+platform that emits it. Without D2 the redeploy would have been the first
+test of four switches at once, which is precisely what stage B had just
+taught.
+
+**The applicability check reported APPLIES with the marker hidden.** It
+searched for the helper's *name*; the renamed identifier still contained it.
+Nine APPLIES lines were about to enter the redeploy record as evidence that
+the hazard was handled. It was caught because the negative control was
+actually run, on the real host, against the state where it should fail.
+
+**Item 0 was withdrawn as false.** It claimed the switches would lose SSH
+because nothing in their startup files creates an RSA key. Every one of them
+contains `crypto key generate rsa modulus 2048`. The claim was reasoned from
+the probe configs — minimal bootstraps that legitimately lack the line —
+rather than read from the files the redeploy uses. Correct reasoning about
+the wrong object, reaching a conclusion **more alarming than the truth**,
+which is the direction that costs a session.
+
+### What the result actually says
+
+`758d1f56` — the post-redeploy Save All — changed **certificate bodies on
+r1–r5 and nothing else**. Zero non-certificate lines across nine devices.
+That is the strongest available statement that each node came back as itself:
+not "the redeploy succeeded", but "the network is byte-identical to what was
+captured before it, apart from self-signed certificates that are regenerated
+on every boot by design".
+
+The guard that keeps it that way is not the patch. It is
+`verify_startup_applies()`, refusing a `secret` line in a startup file on a
+platform whose launch path injects a password first — **at the moment the
+rotation would create it**, rather than at the next boot, which is when the
+original defect would have been discovered.

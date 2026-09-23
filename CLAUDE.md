@@ -778,27 +778,36 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 
 ## Things to Keep in Mind
 
-- **DO NOT REDEPLOY rcn-lab1 — including `--reconfigure` and including adding
-  r6. CONFIRMED ON HARDWARE (stage B, 2026-09-21), not predicted.**
-  `configs/r1.cfg`–`r5.cfg` hold `username admin privilege 15 secret 9 …` and
-  have never been booted (nodes started 2026-09-19, files rewritten
-  2026-09-21 by clab-sync after the rotation). vrnetlab's patched launch
-  script concatenates its own `username admin privilege 15 password admin`
-  **before** the startup config, and IOS-XE refuses a secret for a user that
-  already has a password. A throwaway C8000v booted that exact shape and
-  logged `%CVAC-4-CLI_FAILURE: ... 'username admin privilege 15 secret 9
-  $9$…' was rejected`; after boot the running config held the **password**
-  form, `admin` was accepted over SSH and the file's own credential was
-  refused — while `Startup complete` was still reached in 7m26s, so nothing
-  announced the divergence. **A redeploy today brings r1–r5 up on vrnetlab's
-  admin/admin and locks NMAS out of all five.** Switches are unaffected:
-  nothing is injected there. **Stage C proved a fix on the probe (2026-09-21)
-  and the ban STILL STANDS** — proven on a throwaway node is not adopted
-  here. Four items remain, all future work: adopt the patch into
-  `~/labs/lab/patches/`; the static applicability check live in the
-  persistence chain; r1–r5's credentials recoverable while unreachable;
-  generator fixes (vIOS `crypto key generate rsa`, per-platform domain-name
-  syntax). See `docs/bootstrap-probe/`.
+- **The rcn-lab1 redeploy ban was LIFTED on 2026-09-22**, by a successful
+  redeploy rather than by the fix being built. Kept here because the
+  reasoning is what stops the hazard being recreated.
+
+  **The hazard:** vrnetlab's patched launch script concatenates its own
+  `username admin privilege 15 password admin` **before** the startup config,
+  and IOS-XE refuses a secret for a user that already has a password. Stage B
+  measured it on a throwaway C8000v: `%CVAC-4-CLI_FAILURE`, the node came up
+  on `admin/admin`, reached `Startup complete`, reported healthy and answered
+  SSH — a startup file that read correctly and did not apply. Five routers
+  would have been silently unreachable.
+
+  **What lifted it:** the stage-C user-skip adopted into
+  `~/labs/lab/patches/c8000v-launch.py`; a break-glass credential record
+  verified on the laptop it lives on; stage D2 proving a vIOS boots a real
+  `secret 9` startup line (the switches were unproven too — nothing had ever
+  fed a pre-computed `$9$` hash back to the platform that emits it); and the
+  redeploy itself: all nine `Startup complete`, **no username line rejected**,
+  the skip firing exactly once per router, `secret 9` on all nine and
+  `password 0` on none, the credential NMAS holds accepted on all nine, and
+  `admin`/`admin` refused on all five routers. Save All produced certificate
+  bodies on r1–r5 and **zero other changed lines**.
+
+  **The guard that keeps it lifted** is `verify_startup_applies()`, the
+  persistence chain's `startup_applies` stage: a `secret` line written into a
+  startup file on a platform whose launch path injects a password first is
+  refused **at the moment it would be created**, not discovered at the next
+  boot. It tests the **call site** — the unpatched concatenation absent and
+  the helper actually called — because its first version searched for the
+  helper's *name* and passed while the property was false.
 
 - Jenkins pipelines default to Windows `bat` steps; switch to `sh` in Settings for
   a Linux Jenkins agent. Generated XML is byte-identical to pre-Phase-0 output

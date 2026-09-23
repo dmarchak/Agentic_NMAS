@@ -2,46 +2,51 @@
 
 Plan only. Nothing here is built.
 
-> ## ⚠ DO NOT REDEPLOY rcn-lab1
+> ## ✅ REDEPLOY BAN LIFTED — 2026-09-22
 >
-> **CONFIRMED ON HARDWARE, stage B, 2026-09-21.** Not a prediction any more.
+> **Lifted by a successful redeploy, not by the fix being built.** Here is
+> what proved it.
 >
-> `configs/r1.cfg`–`r5.cfg` contain `username admin privilege 15 secret 9 …`
-> and have **never been booted**. Those nodes last started 2026-09-19 05:23;
-> the files were rewritten 2026-09-21 18:41 by clab-sync after the credential
-> rotation.
+> The ban existed because `configs/r1.cfg`–`r5.cfg` carried
+> `username admin privilege 15 secret 9 …` and had never been booted. Stage B
+> measured, on a throwaway C8000v, that vrnetlab's injected
+> `username admin privilege 15 password admin` lands first and IOS-XE refuses
+> a secret for a user that already has a password: the node came up on
+> `admin/admin`, reached `Startup complete`, reported healthy, and answered
+> SSH — with a startup file that read correctly and did not apply.
 >
-> A throwaway C8000v booted a startup file in exactly that shape. Its boot log:
+> **The redeploy of 2026-09-22, 23:39:**
 >
-> ```
-> %CVAC-4-CLI_FAILURE: Configuration command failure:
->   'username admin privilege 15 secret 9 $9$…' was rejected
-> ```
+> | | result |
+> |---|---|
+> | all nine `Startup complete` | routers ~6m30, switches 4m17–5m09 |
+> | uptimes | consistent with this boot; no silent reload |
+> | username line rejected | **none** |
+> | the user-skip fired | exactly once on every router |
+> | `secret 9` on all nine | yes; **no device holds `password 0`** |
+> | the credential NMAS holds | **accepted on all nine** |
+> | old `admin`/`admin` | **refused on all five routers** (`NetmikoAuthenticationException`) |
+> | Oxidized | nine successes, all after the redeploy |
+> | Save All vs pre-redeploy goldens | `758d1f56` — certificate bodies on r1–r5 only; **zero non-certificate changed lines** |
+> | drift | clean, 9/9 |
 >
-> preceded by the `%AAAA` type-0 warning for vrnetlab's own injected line.
-> After boot the running config held `username admin privilege 15 password 0
-> admin`; over SSH **`admin` was accepted and the file's own credential was
-> refused**. Startup complete was reached in 7m26s, so nothing announced that
-> the device was not what its startup file said.
+> **What made it safe to try**, in order: the launch patch adopted into
+> `~/labs/lab/patches/` (stage C); a break-glass credential record verified on
+> the laptop it lives on; stage D2 proving a vIOS boots a real `secret 9`
+> startup line, so the switches were not tested for the first time by the
+> redeploy itself; and an applicability check whose **negative control was
+> watched to fail** — routers `WILL NOT APPLY` with the marker hidden,
+> switches unaffected.
 >
-> **A redeploy of rcn-lab1 today brings r1–r5 up on vrnetlab's admin/admin and
-> locks NMAS out of all five**, with startup files that look correct.
+> That last one nearly did not happen. The check's first version reported
+> APPLIES with the marker hidden, because it searched for a *name* rather than
+> a call. Nine APPLIES lines were about to enter this record as evidence.
 >
-> **This includes `--reconfigure`, and it includes adding r6.** The switches
-> are unaffected: nothing is injected on that platform.
->
-> **Stage C PROVED a fix on the probe (2026-09-21) and the ban STILL STANDS.**
-> A patched launch script that skips vrnetlab's username injection booted the
-> same startup file correctly: `Startup complete` 7m15s, no CLI failure, the
-> file's own credential accepted and `admin` refused. That is a fix proven on
-> a throwaway node, not a fix adopted here. Four things are needed before a
-> redeploy, all future work:
->
-> 1. adopt the patch into `~/labs/lab/patches/c8000v-launch.py`;
-> 2. the static applicability check live in the persistence chain;
-> 3. r1–r5's credentials recoverable while the routers are unreachable;
-> 4. generator fixes — vIOS `crypto key generate rsa`, per-platform
->    domain-name syntax.
+> **Kept, not deleted.** The reasoning is what stops the hazard being
+> recreated — by a rotation that writes a `secret` line into a startup file on
+> a platform whose launch path injects a password first. The persistence
+> chain's `startup_applies` stage now refuses that at the moment it would be
+> created.
 
 Adding a new device, or a new site, from the GUI: NetBox objects, committed
 intent, a rendered config, and either a download for a node that does not

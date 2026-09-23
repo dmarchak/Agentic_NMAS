@@ -1125,7 +1125,11 @@ that no longer occur.
 
 ---
 
-### STAGE 2 — lift the redeploy ban
+### STAGE 2 — lift the redeploy ban  ✅ **COMPLETE 2026-09-22**
+
+Lifted by a successful redeploy. Every checklist item passed; the
+result is recorded in the three former ban notices and in
+`docs/NSOT_WRITEUP_NOTES.md`.
 
 **The runbook is [docs/STAGE2_REDEPLOY.md](STAGE2_REDEPLOY.md)** — written
 before the redeploy, including the checklist in full. This section states
@@ -1173,6 +1177,48 @@ any item fails, the ban stays and the failure is measured before anything is
 changed. Only then are the three ban notices (CLAUDE.md, the probe README, the
 Phase 4 plan) updated — and to "lifted, and here is what proved it", not
 deleted.
+
+---
+
+### Queued from the Stage 2 session (2026-09-22)
+
+Found while running the redeploy; none blocked it.
+
+**Q1 — `nmas-check-credential` maps a connection timeout to REFUSED.**
+A transport failure must be **INCONCLUSIVE**. This is the same class as the
+`ssh`/`sshpass` false pass the script was written to replace, surviving
+inside the replacement.
+
+The cause is a real distinction, not a typo. `classify_failure()` puts both
+`_AUTH_REFUSED` **and** `_REACHABILITY` names in the `attempted=True` bucket,
+and that is **correct for the rotation**, which the flag was built for: a
+device that stops answering immediately after its credential was changed is
+the alarming case, and treating it as "we never asked" would suppress a
+lockout warning. For a credential *check*, the same flag means the opposite:
+unreachable is not refused.
+
+So the fix is not to change `classify_failure()` — that would weaken the
+rotation's lockout defence. The check needs the finer distinction, keyed on
+the error type rather than on `attempted` alone.
+*Acceptance:* a timeout, a refused connection and a KEX failure all report
+INCONCLUSIVE; an authentication failure reports REFUSED; the rotation's
+lockout behaviour is unchanged, with a test asserting `classify_failure()`
+still treats a post-rotation timeout as attempted.
+
+**Q2 — the Baselines badge and red-line labelling.** The panel's colouring
+does not match what the entries mean.
+*Acceptance:* every badge states the claim its tag makes, and a red line says
+which of the two staleness directions it is in — behind the network, or
+naming credentials the fleet has rotated away from.
+
+**Q3 — empty-command rejections at boot.** r3, r4 and r5 each logged two
+rejections of an empty command during the redeploy. A blank line in the
+startup config, harmless here, but it is config being sent that nobody
+intends — and on a console-replayed platform a stray line is not always
+harmless.
+*Acceptance:* the source of the blank line is found (harvest, template, or
+`clab-sync`) and either removed or recorded as expected with the reason. It
+is **not** to be silenced by filtering the log.
 
 ---
 
@@ -1271,6 +1317,20 @@ the check is visible rather than absent.
 **This makes 3.3 a prerequisite for Stage 4 by ordering rather than by
 memory.** r6 onboarded before it is a device outside drift detection from
 birth.
+
+**And it is not running.** Measured 2026-09-23: the drift checker is
+**Disabled** — the scheduled pass is off — and the clean 9/9 result came from
+clicking *Check Now* on the Approvals tab. So today it covers the nine legacy
+entries **and only when somebody presses a button**.
+
+That is one decision, not two: *what it enumerates* and *whether it runs* are
+both answers to "is drift detection a thing this system does". Deciding the
+first while leaving the second off would produce a checker that enumerates
+correctly and never fires.
+
+*Acceptance, extended:* the scheduled pass is enabled with a stated interval,
+or drift detection is deliberately recorded as manual-only with the reason —
+not left off by default with nothing saying so.
 
 ---
 
