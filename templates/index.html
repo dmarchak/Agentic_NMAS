@@ -5837,8 +5837,16 @@ async function loadDriftStatus() {
         const last  = data.last_at ? ` · last ran ${data.last_at}` : ' · never ran';
         lastRun.innerHTML = `<span class="text-warning">Scheduled checks off${since}${by}</span>${_esc(last)}`;
       } else if (data.last_at) {
-        const next = data.next_at ? ` · next ${data.next_at}` : '';
-        lastRun.textContent = `Last: ${data.last_at}${next}`;
+        // The next-run time is held in memory, not in drift_state.json. The
+        // title says so: `disabled` in that file is live and re-read every
+        // pass, while the schedule is not read from it at all, and an
+        // operator who edits the file and watches nothing happen has hit the
+        // same confusion as the toggle that silently reverted.
+        const next = data.next_at
+          ? ` · next <span title="Held in memory. Editing drift_state.json`
+            + ` does not move it — use Check now.">${_esc(data.next_at)}</span>`
+          : '';
+        lastRun.innerHTML = `Last: ${_esc(data.last_at)}${next}`;
       } else if (data.next_at) {
         lastRun.textContent = `Enabled, first check at ${data.next_at}`;
       } else {

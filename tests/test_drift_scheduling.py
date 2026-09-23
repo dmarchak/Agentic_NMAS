@@ -169,3 +169,96 @@ class TestStatusDistinguishesOffFromIdle:
         s = d.DriftChecker().status()
         assert s["disabled_by"] == "dustin@example.com"
         assert s["disabled_at"]
+
+
+class TestTheFileRecordsAndMemoryDecides:
+    """An operator set `next_ts` in the state file and waited. Nothing fired.
+
+    The file holds three things read at three different times, and nothing
+    said so:
+
+    * `disabled` is **live** -- re-read on every pass of the loop;
+    * `last_check_ts` is read **once**, at construction, to rebuild the
+      schedule across a restart;
+    * `next_ts` was **read nowhere at all**.
+
+    Editing the first works within a minute. Editing the third does nothing,
+    for ever. Same file, no indication, and the key was written by the
+    scheduler after every run -- which is what made it look authoritative.
+
+    The schedule lives in `DriftChecker._next_ts` and is set by construction,
+    by a completed run, by `trigger()`, by re-enabling, or by an interval
+    change. That is the whole list.
+    """
+
+    def test_the_stored_next_ts_is_not_read(self, lists):
+        """The headline: the operator's edit was a no-op."""
+        import time
+
+        d = lists["module"]
+        d._save_state({"last_check_ts": time.time() - 10_000,
+                       "next_ts": time.time()})
+        checker = d.DriftChecker()
+        # Built from last_check_ts + interval, not from the stored next_ts.
+        assert abs(checker._next_ts
+                   - (d._load_state()["last_check_ts"] + d._get_interval())) < 1
+
+    def test_the_scheduler_stops_writing_it(self, lists):
+        """A key nothing reads must not be written, or the next operator
+        reaches the same wrong conclusion from the same evidence.
+
+        Asserted on the KEY, not on the text `next_ts`, which appears three
+        times in this method as `self._next_ts`. The first version of this
+        test looked for `'"next_ts"'` with double quotes -- `ast.unparse`
+        emits single ones, so it could not fail. Sixth can't-fail control of
+        this project, and the second in a test written about a key that was
+        never read.
+        """
+        import ast
+
+        d = lists["module"]
+        tree = ast.parse(__import__("textwrap").dedent(
+            __import__("inspect").getsource(d.DriftChecker._loop)))
+        keys = [k.value for node in ast.walk(tree)
+                if isinstance(node, ast.Dict)
+                for k in node.keys
+                if isinstance(k, ast.Constant)]
+        assert "next_ts" not in keys, keys
+
+    def test_last_check_ts_IS_read_at_construction(self, lists):
+        """The contrast that makes the file confusing: one key survives a
+        restart, the next one down does not exist."""
+        d = lists["module"]
+        d._save_state({"last_check_ts": 1_700_000_000.0})
+        assert d.DriftChecker()._last_ts == 1_700_000_000.0
+
+    def test_disabled_is_live_not_only_at_construction(self, lists):
+        d = lists["module"]
+        d.set_disabled(False)
+        checker = d.DriftChecker()
+        d.set_disabled(True)                   # changed AFTER construction
+        assert checker.status()["state"] == "disabled"
+
+    def test_status_says_where_the_next_run_time_comes_from(self, lists):
+        d = lists["module"]
+        d.set_disabled(False)
+        assert d.DriftChecker().status()["next_from"] == "memory"
+
+    def test_re_enabling_pushes_the_next_run_a_full_interval_out(self, lists):
+        """What produced the 04:02:55 in the report: not the file, and not the
+        last run -- the moment the toggle was flipped."""
+        import time
+
+        d = lists["module"]
+        checker = d.DriftChecker()
+        d._save_state({"last_check_ts": time.time() - 10_000})
+        checker.set_disabled(False)
+        assert abs(checker._next_ts - (time.time() + d._get_interval())) < 2
+
+    def test_trigger_is_the_only_way_to_bring_a_run_forward(self, lists):
+        import time
+
+        d = lists["module"]
+        checker = d.DriftChecker()
+        checker.trigger()
+        assert checker._next_ts <= time.time() + 1

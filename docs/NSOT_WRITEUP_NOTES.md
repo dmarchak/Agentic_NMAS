@@ -6105,3 +6105,67 @@ While writing that guard I called `code_of("modules.drift_check",
 "DriftChecker.set_disabled")`. It takes one argument. Inferring a signature
 instead of reading it, in the test written about inferring a signature
 instead of reading it.
+
+---
+
+## One file, three keys, three different lifetimes
+
+An operator set `next_ts` to *now* in `data/lists/default/drift_state.json`
+and waited. Two minutes later nothing had run and the log showed only
+`/drift/status` polls.
+
+The test was invalid, and the reason is worth more than the test would have
+been. `drift_state.json` holds three keys that are read at three different
+times, and nothing said so:
+
+| key | when it is read |
+|---|---|
+| `disabled` | **every pass of the loop** — an edit takes effect within a minute |
+| `last_check_ts` | **once, at process start**, to rebuild the schedule across a restart |
+| `next_ts` | **never** |
+
+The schedule is `DriftChecker._next_ts`, in memory. `__init__` computes it as
+`last_check_ts + interval`; after that it moves only when a run completes
+(`last_ts + interval`), when `trigger()` fires (*Check now*), when the
+scheduler is re-enabled (`now + interval`), or when the interval is changed.
+`_loop` compares `time.time()` against that attribute and nothing else.
+
+So editing `disabled` works, and editing `next_ts` — two lines below it, in
+the same file, written by the scheduler after every run — does nothing, for
+ever, with nothing on screen to distinguish them.
+
+**Writing a key nothing reads is what made the wrong conclusion reasonable.**
+The operator had every reason to believe the file drove the schedule: one of
+its keys demonstrably does drive behaviour, and another is read back at
+startup. The scheduler no longer writes `next_ts`, `status()` reports
+`next_from: "memory"`, and the panel's next-run time carries a title saying
+it is held in memory and that *Check now* is the way to bring a run forward.
+
+This is the same shape as the toggle that silently reverted, one level down:
+an operator acting on the system, the system not acting, and nothing
+anywhere reporting the disagreement.
+
+### The 04:02:55 on the panel was real
+
+It came from `set_disabled(False)`, which re-arms with `now + interval` — so
+it dates from the moment the scheduler was switched back on, not from the
+manual run at 03:32:40 and not from the file. With a 30-minute interval that
+is 03:32:55 + 1800s. The panel was right; only the mechanism behind it was
+undocumented.
+
+### A note on observing it
+
+**A deploy restarts the process, and `__init__` recomputes `_next_ts` from
+`last_check_ts + interval`.** Deploying between arming the scheduler and the
+run one is waiting for therefore moves the run. Any change to this module has
+to be landed either before the arming or after the observation, which is an
+awkward property of a scheduler whose state is half in memory, and the
+clearest argument for the file being unambiguous about which half is which.
+
+### And a sixth control that could not fail
+
+The test asserting the scheduler no longer writes the key looked for
+`'"next_ts"'` in `ast.unparse` output. `ast.unparse` emits single quotes. It
+could not fail, in a test written about a key that was never read — so it
+now walks the `ast.Dict` nodes and checks the actual keys, because the bare
+string `next_ts` appears three times in that method as `self._next_ts`.

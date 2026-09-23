@@ -67,6 +67,23 @@ _SKIP_STARTSWITH = (
 def _state_file(list_name: str = "") -> str:
     """Per list, not per installation.
 
+    **What this file is, and is not.** It is a record plus two inputs, and
+    the two are read at different times:
+
+    * ``disabled`` — **live**. `_is_disabled()` re-reads it on every pass of
+      the loop, so editing it takes effect within a minute.
+    * ``last_check_ts`` — read **once, at process start**, to rebuild the
+      schedule across a restart.
+    * ``last_result`` — a record. Read at start for display, written after
+      every run.
+
+    **The schedule itself is in memory and the file cannot move it.**
+    `DriftChecker._next_ts` is set at construction from
+    ``last_check_ts + interval`` and thereafter only by the scheduler, by
+    `trigger()`, by re-enabling, or by an interval change. Editing the file
+    does not bring a run forward; only `trigger()` (the *Check now* button)
+    does.
+
     It was ``DATA_DIR/drift_state.json`` while golden configs, approvals and
     the repo are all per list -- so disabling drift for one network disabled
     it for every network, and the "last run" shown on any list's panel
@@ -479,6 +496,10 @@ class DriftChecker:
             "last_ts":     last_ts,
             "last_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last_ts))
                            if last_ts else None,
+            # Computed in memory, not read from the state file -- see
+            # `_state_file`. Reported so the panel can say so rather than
+            # presenting it as something the file decides.
+            "next_from":   "memory",
             "next_ts":     self._next_ts if not disabled else None,
             "next_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._next_ts))
                            if (self._next_ts and not disabled) else None,
@@ -534,10 +555,17 @@ class DriftChecker:
                 # `_save_state` merges. This used to hand `json.dump` a
                 # fresh three-key dict, dropping `disabled` and anything else
                 # the file held.
+                # `next_ts` is deliberately NOT written. It was, and it was
+                # read nowhere -- `__init__` rebuilds the schedule from
+                # `last_check_ts + interval` and every other path sets
+                # `self._next_ts` directly. A key that looks authoritative,
+                # is not, and sits in the same file as `disabled` (which IS
+                # live, re-read every iteration) cost an operator a
+                # twenty-minute experiment: editing one works, editing the
+                # other does nothing, with nothing on screen saying which.
                 _save_state({
                     "last_check_ts": self._last_ts,
                     "last_result":   result,
-                    "next_ts":       self._next_ts,
                 })
 
         log.info("drift_check: scheduler loop stopped")

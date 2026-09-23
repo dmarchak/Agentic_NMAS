@@ -980,6 +980,19 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   last run it saw instead of blanking the line, and `status()` reports
   `state` as **disabled / idle / running** — a scheduler alive and waiting
   used to look exactly like one switched off.
+- **The drift state file records; memory decides.** Three keys, read at three
+  different times: `disabled` is **live** (re-read every pass of the loop, so
+  an edit takes effect within a minute), `last_check_ts` is read **once at
+  process start** to rebuild the schedule across a restart, and `last_result`
+  is a record. **The schedule itself is `DriftChecker._next_ts`, in memory,
+  and the file cannot move it** — it is set at construction from
+  `last_check_ts + interval`, then only by a completed run, `trigger()`,
+  re-enabling (`now + interval`), or an interval change. The scheduler used
+  to *write* a `next_ts` key that nothing anywhere read; an operator set it,
+  waited, and nothing fired. It is no longer written, `status()` reports
+  `next_from: "memory"`, and the panel says so on the next-run time. Editing
+  one key in that file works and editing the one below it did nothing, with
+  no indication which — the same shape as the toggle that silently reverted.
 - **Drift state is per list** (`data/lists/{slug}/drift_state.json`), adopting
   the old installation-wide file forward by **copy, not move**. One switch
   governing several networks tells you nothing about the one you are looking
