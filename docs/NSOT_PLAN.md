@@ -1827,6 +1827,18 @@ longer exists.
 **8.2 The tool library against what the program has become.**
 **73 tools.** Each gets *correct*, *stale*, or *missing*.
 
+**None of them has ever run.** Measured 2026-09-23 across the agent's entire
+recorded history: 27 runs, `tool_call_count` **zero in every one**. Every
+attempt since 2026-08-28 failed at the first API call, and the one entry that
+was not a failure was a run stopped before it did anything.
+
+That changes what 8.2 is. It is not "check the tools still fit a system that
+moved" — it is **their first execution in production**, on a library written
+against an architecture that has since been rebuilt underneath it. Every
+"correct" verdict in the review is a prediction, not an observation, and
+should be written as one. The first real agent run is a measurement, and
+8.4's "observe one real run" is the only evidence any of this ever produces.
+
 The known-stale shape is already visible. `list_golden_configs` was one of
 the seventeen legacy-enumerator callers found in Stage 3.3; it is correct now
 only because the enumerator underneath it was fixed. The read-first

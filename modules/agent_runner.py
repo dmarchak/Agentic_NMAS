@@ -110,6 +110,42 @@ def get_activity_log() -> list[dict]:
         return list(reversed(_activity_log))
 
 
+#: What a recorded run actually amounts to. `success` used to mean "no
+#: exception reached the top of `run_background_task`", which is a fact about
+#: the interpreter rather than about the network.
+OUTCOMES = ("ok", "failed", "interrupted", "inconclusive")
+
+
+def classify_outcome(entry: dict, interrupted: str = "") -> tuple:
+    """``(outcome, reason)`` for a recorded run.
+
+    **A run that did nothing is not a success.** Measured across the agent's
+    whole history — 27 entries — `tool_call_count` is **zero in every one**,
+    and the single `success: true` had no tools, no summary and no errors. It
+    was a run stopped before it did anything, recorded as the only time the
+    agent ever worked, and a backward failure streak stopped dead on it.
+
+    Applied to historical entries too, which have no `outcome` field: they are
+    classified from what they *do* carry. An old entry cannot say it was
+    interrupted — nothing recorded that — so it lands in `inconclusive`, which
+    is the honest answer rather than a guess dressed as a record.
+    """
+    if entry.get("errors"):
+        return "failed", (entry["errors"] or [""])[0]
+    if interrupted:
+        return "interrupted", interrupted
+    if not entry.get("tool_call_count") and not (entry.get("summary") or "").strip():
+        return "inconclusive", ("the run ended with no tool calls and no "
+                                "output — nothing observable happened")
+    return "ok", ""
+
+
+def outcome_of(entry: dict) -> str:
+    """The recorded outcome, or one derived for an entry written before them."""
+    outcome = entry.get("outcome")
+    return outcome if outcome in OUTCOMES else classify_outcome(entry)[0]
+
+
 def failure_health() -> dict:
     """Is the agent working, or has it been failing? Computed from the log.
 
@@ -130,32 +166,56 @@ def failure_health() -> dict:
     with _log_lock:
         entries = list(_activity_log)
 
-    streak, last_error, last_at = 0, "", ""
+    # Back to the last run that actually WORKED -- not the last one without an
+    # exception. An interrupted or inconclusive run is not evidence the agent
+    # works, so it must not end the streak; it is also not a failure, so it is
+    # counted separately rather than inflating one.
+    window, failures, since_ok = [], 0, 0
     for entry in reversed(entries):
-        if entry.get("success"):
+        if outcome_of(entry) == "ok":
             break
-        streak += 1
-        if not last_error:
+        since_ok += 1
+        window.append(entry)
+        if outcome_of(entry) == "failed":
+            failures += 1
+
+    last_error, last_at = "", ""
+    for entry in window:
+        if outcome_of(entry) == "failed":
             last_error = (entry.get("errors") or [""])[0]
             last_at = entry.get("started_at", "")
+            break
 
     same = 0
     if last_error:
-        for entry in reversed(entries):
-            if entry.get("success"):
-                break
+        for entry in window:
+            if outcome_of(entry) != "failed":
+                continue
             if (entry.get("errors") or [""])[0] != last_error:
                 break
             same += 1
 
+    counts = {name: 0 for name in OUTCOMES}
+    for entry in entries:
+        counts[outcome_of(entry)] += 1
+
+    # **Nothing in the tool library has ever executed.** Reported, not left to
+    # be rediscovered: it is the difference between Stage 8 checking that the
+    # tools still fit and Stage 8 being their first run.
+    tool_calls = sum(int(e.get("tool_call_count") or 0) for e in entries)
+
     return {
-        "failing":              streak > 0,
-        "consecutive_failures": streak,
+        "failing":              failures > 0,
+        "consecutive_failures": failures,
+        "runs_since_ok":        since_ok,
+        "never_succeeded":      bool(entries) and counts["ok"] == 0,
+        "outcomes":             counts,
         "same_error":           same > 1,
         "same_error_count":     same,
         "last_error":           last_error[:500],
         "last_failure_at":      last_at,
         "runs_recorded":        len(entries),
+        "tool_calls_total":     tool_calls,
         "last_run_at":          entries[-1].get("started_at", "") if entries else "",
     }
 
@@ -345,6 +405,7 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
     tools_used:  list[str]  = []
     errors:      list[str]  = []
     cost_usd:    float      = 0.0
+    interrupted: str        = ""
 
     # Strip the [AUTONOMOUS TASK] / [SCHEDULED ...] prefix for display
     display_task = task
@@ -413,6 +474,13 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
                 except Exception:
                     pass
                 log.info("agent_runner: interrupting task %s — user became active", session_id)
+                # RECORD IT. This break used to leave `errors` empty, so
+                # `success = not bool(errors)` made an interrupted run --
+                # zero tools, no summary, nothing done -- the only "success"
+                # in the agent's entire history, and a backward failure
+                # streak stopped dead on it. The model-side `interrupted`
+                # event a few lines down always recorded; this one never did.
+                interrupted = "the user became active; the task was stopped"
                 break
 
             etype = event.get("type")
@@ -468,11 +536,15 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
         "trigger":        trigger_type,
         "tools_used":     list(dict.fromkeys(tools_used)),   # ordered dedup
         "tool_call_count": len(tools_used),
-        "success":        not bool(errors),
         "errors":         errors[:5],
         "cost_usd":       round(cost_usd, 6),
         "summary":        summary,
     }
+    entry["outcome"], entry["outcome_reason"] = classify_outcome(
+        entry, interrupted=interrupted)
+    # Kept for readers that predate `outcome`, and now DERIVED from it rather
+    # than from "did an exception reach the top".
+    entry["success"] = entry["outcome"] == "ok"
 
     _append_activity(entry)
     if entry["success"]:

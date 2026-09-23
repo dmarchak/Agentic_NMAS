@@ -65,12 +65,19 @@ class TestFailureHealth:
         assert h["failing"] is True
         assert h["consecutive_failures"] == 12
 
-    def test_the_streak_stops_at_the_last_success(self, log):
+    def test_the_streak_stops_at_the_last_run_that_WORKED(self, log):
         """A run that worked resets it — the count is "since it last worked",
-        not "ever"."""
+        not "ever".
+
+        This test used to pass `_entry(True)` as the success, which encoded
+        the old definition: `success` meant "no exception reached the top".
+        A no-op run now classifies as `inconclusive` and no longer ends the
+        streak, so the fixture carries a run that actually did something.
+        """
         from modules.agent_runner import failure_health
 
-        log.extend([_entry(False, WORKSPACE), _entry(True),
+        worked = dict(_entry(True), tool_call_count=1, summary="checked r1")
+        log.extend([_entry(False, WORKSPACE), worked,
                     _entry(False, WORKSPACE), _entry(False, WORKSPACE)])
         assert failure_health()["consecutive_failures"] == 2
 
@@ -316,3 +323,133 @@ class TestDisabledAndFailingAreBothTrue:
     def test_an_enabled_failing_agent_is_still_red(self, page):
         """The softening must not swallow a live incident."""
         assert "badgeEl.className = 'badge bg-danger';" in page
+
+
+class TestSuccessMustMeanSomethingHappened:
+    """Measured across the agent's whole recorded history: **27 entries,
+    `tool_call_count` zero in every one**, and one `success: true` with no
+    tools, no summary and no errors — five minutes after a failure.
+
+    `success` meant "no exception reached the top of `run_background_task`",
+    which is a fact about the interpreter rather than about the network. A
+    backward failure streak stopped dead on that entry, which is why the
+    badge showed nothing even after the route was fixed to report it.
+
+    **Diagnosed, not inferred:** the loop breaks on `_user_is_active()`
+    without appending anything, while the model-side `interrupted` event a few
+    lines below always appended `"Task was interrupted."`. One of the two exit
+    paths recorded and the other did not.
+    """
+
+    def test_a_run_with_no_tools_and_no_output_is_not_ok(self):
+        from modules.agent_runner import classify_outcome
+
+        outcome, reason = classify_outcome(_entry(True))
+        assert outcome == "inconclusive"
+        assert "nothing observable happened" in reason
+
+    def test_a_run_with_errors_is_failed(self):
+        from modules.agent_runner import classify_outcome
+
+        assert classify_outcome(_entry(False, WORKSPACE))[0] == "failed"
+
+    def test_an_interrupted_run_says_so(self):
+        from modules.agent_runner import classify_outcome
+
+        outcome, reason = classify_outcome(_entry(True),
+                                           interrupted="the user became active")
+        assert outcome == "interrupted"
+        assert "user became active" in reason
+
+    def test_a_run_that_did_something_is_ok(self):
+        from modules.agent_runner import classify_outcome
+
+        entry = dict(_entry(True), tool_call_count=2, summary="checked r1")
+        assert classify_outcome(entry)[0] == "ok"
+
+    def test_output_alone_counts(self):
+        """A run that reported without calling a tool still did something."""
+        from modules.agent_runner import classify_outcome
+
+        assert classify_outcome(dict(_entry(True), summary="all clean"))[0] == "ok"
+
+    def test_historical_entries_are_classified_from_what_they_carry(self):
+        """They have no `outcome` field. An old entry cannot say it was
+        interrupted — nothing recorded that — so it lands in `inconclusive`,
+        which is honest rather than a guess dressed as a record."""
+        from modules.agent_runner import outcome_of
+
+        assert outcome_of(_entry(True)) == "inconclusive"
+        assert outcome_of({"outcome": "interrupted"}) == "interrupted"
+
+    def test_the_user_active_break_records_a_reason(self):
+        from tests.astcheck import code_of
+
+        from modules import agent_runner
+
+        src = code_of(agent_runner.run_background_task)
+        assert "interrupted = " in src, (
+            "the user-active break must record why, like the model-side one")
+
+    def test_success_is_derived_from_the_outcome(self):
+        from tests.astcheck import code_of
+
+        from modules import agent_runner
+
+        src = code_of(agent_runner.run_background_task)
+        assert "entry['success'] = entry['outcome'] == 'ok'" in src.replace('"', "'")
+
+
+class TestTheStreakCountsBackToWhatWORKED:
+
+    def test_an_inconclusive_run_does_not_end_the_streak(self, log):
+        """The defect exactly: a no-op run stopped a 26-failure streak."""
+        from modules.agent_runner import failure_health
+
+        log.extend(_entry(False, WORKSPACE) for _ in range(26))
+        log.append(_entry(True))                    # the no-op "success"
+        h = failure_health()
+        assert h["consecutive_failures"] == 26
+        assert h["runs_since_ok"] == 27
+
+    def test_a_real_success_does_end_it(self, log):
+        from modules.agent_runner import failure_health
+
+        log.extend(_entry(False, WORKSPACE) for _ in range(3))
+        log.append(dict(_entry(True), tool_call_count=1, summary="did a thing"))
+        log.append(_entry(False, WORKSPACE))
+        assert failure_health()["consecutive_failures"] == 1
+
+    def test_an_inconclusive_run_is_not_counted_as_a_failure(self, log):
+        """It is not evidence the agent works, and it is not a failure
+        either. Two different facts, two different numbers."""
+        from modules.agent_runner import failure_health
+
+        log.append(_entry(True))
+        h = failure_health()
+        assert h["consecutive_failures"] == 0
+        assert h["runs_since_ok"] == 1
+        assert h["outcomes"]["inconclusive"] == 1
+
+    def test_never_succeeded_is_reported(self, log):
+        from modules.agent_runner import failure_health
+
+        log.extend(_entry(False, WORKSPACE) for _ in range(3))
+        assert failure_health()["never_succeeded"] is True
+
+    def test_zero_tool_calls_across_the_history_is_reported(self, log):
+        """Nothing in the tool library has ever executed. That is the fact
+        Stage 8 turns on, and it is reported rather than rediscovered."""
+        from modules.agent_runner import failure_health
+
+        log.extend(_entry(False, WORKSPACE) for _ in range(27))
+        assert failure_health()["tool_calls_total"] == 0
+
+    def test_the_panel_says_both(self):
+        import re
+
+        import app as nmas
+
+        flat = re.sub(r"\s+", " ", nmas.app.test_client().get("/").get_data(as_text=True))
+        assert "It has never completed a run." in flat
+        assert "No tool has ever executed" in flat

@@ -6602,3 +6602,77 @@ entries for routes that no longer short-circuit either.
 
 A scan cannot know that an SVG legitimately has nothing to return while an
 activity log does. A person can, once, and the list records that they did.
+
+---
+
+## The agent has never made a tool call
+
+Counted across the whole activity log: **27 runs, `tool_call_count` zero in
+every one.** Twenty-six failures, and one entry recorded as a success —
+2026-08-28 23:26:27, no tools, no summary, no errors, five minutes after the
+previous failure.
+
+So the health surface added earlier was reading correctly and **the data was
+wrong**. A backward streak stops at the last success, and that entry was one,
+so the badge showed nothing even after the route was fixed to report it.
+
+### What that "success" actually was
+
+Diagnosed rather than guessed. `run_background_task` has two ways to leave
+the event loop early:
+
+```python
+if _user_is_active():
+    stop_session(session_id)
+    log.info("... interrupting task %s — user became active", session_id)
+    break                       # <- appends nothing
+
+elif etype == "interrupted":
+    errors.append("Task was interrupted.")
+    break                       # <- appends
+```
+
+**One exit path recorded and the other did not.** A task interrupted because
+the operator opened the browser left `errors` empty, and
+`success = not bool(errors)` made it the only time the agent has ever
+"worked".
+
+The asymmetry is the whole defect, and it is invisible at either site: each
+`break` is locally reasonable, and the difference only means something at the
+line that computes `success` from `errors`, forty lines away.
+
+### "No exception reached the top" is not success
+
+`success` was a fact about the interpreter, not about the network. A run
+records an `outcome` now — `ok`, `failed`, `interrupted`, `inconclusive` —
+each with a reason, and `success` derives from it. A run with no tool calls
+and no output is **inconclusive**: nothing observable happened, which is a
+different claim from either "it worked" or "it broke".
+
+The streak counts back to the last run that actually **worked**. An
+interrupted or inconclusive run neither ends it — it is not evidence the
+agent works — nor inflates the failure count, because it is not a failure.
+Two facts, two numbers: `consecutive_failures` and `runs_since_ok`.
+
+Historical entries have no `outcome` field and are classified from what they
+carry. An old entry **cannot** say it was interrupted, because nothing
+recorded that, so it lands in `inconclusive`. The diagnosis above belongs in
+this document, not retroactively in the data: rewriting a record to match a
+later diagnosis is how a record stops being evidence.
+
+### What it means for Stage 8
+
+**Nothing in the tool library has ever executed in production.**
+
+Stage 8.2 was written as "check the 73 tools against what the program has
+become". It is not that. It is **their first run**, on a library written
+against an architecture that has since been rebuilt underneath it. Every
+"correct" verdict in that review is a prediction rather than an observation
+and should be written as one — and 8.4's "observe one real run" stops being a
+final confirmation and becomes the only evidence the review ever produces.
+
+It also reframes the four-week outage. The agent did not stop working; **as
+far as its own record goes, it has never worked.** The failures are the
+visible part of a component that has produced no observable effect in its
+entire history — which is the strongest possible argument for the Stage 8
+ordering: fix the library, gate the authority, and only then let it run.

@@ -1201,6 +1201,26 @@ design so the tool library describes a finished system.
   — set before the rotated API key (created in a workspace) could
   accidentally repair it and wake a month-old tool library against a rebuilt
   system. It stays off until Stage 8.
+- **"Success" must mean something happened.** Measured across the agent's
+  whole recorded history: **27 runs, `tool_call_count` zero in every one**,
+  and the single `success: true` had no tools, no summary and no errors.
+  `success` meant *"no exception reached the top of `run_background_task`"* —
+  a fact about the interpreter, not about the network — and a backward
+  failure streak stopped dead on that entry, which is why the badge showed
+  nothing even after the route was fixed. **Diagnosed, not inferred:** the
+  loop breaks on `_user_is_active()` **without appending anything**, while
+  the model-side `interrupted` event a few lines below always appended. One
+  exit path recorded and the other did not. Runs now carry an `outcome` —
+  `ok` / `failed` / `interrupted` / `inconclusive` — with a reason; `success`
+  derives from it; and the streak counts back to the last run that actually
+  **worked**, so an interrupted or inconclusive run neither ends it nor
+  inflates the failure count. Historical entries are classified from what
+  they carry, and land in `inconclusive` rather than being guessed as
+  interrupted.
+- **Nothing in the AI tool library has ever executed in production** — zero
+  tool calls across all 27 recorded runs, now reported as
+  `health.tool_calls_total` and stated on the panel. **Stage 8 is therefore
+  not "check the tools still fit"; it is their first run.**
 - **Agent failures surface, like `last_push_failure`.**
   `agent_runner.failure_health()` computes the streak from the activity log;
   `get_status()` carries it plus `enabled`; a failed run logs at **ERROR**

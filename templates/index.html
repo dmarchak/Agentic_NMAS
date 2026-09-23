@@ -5603,6 +5603,13 @@ async function loadAgentTab() {
               that goes missing.</div>` : ''}
             <div class="font-monospace small">${_esc(health.last_error || 'no error recorded')}</div>
             <div class="mt-1">${same}</div>
+            ${health.never_succeeded ? `<div class="mt-1">
+              <strong>It has never completed a run.</strong>
+              ${health.runs_recorded} recorded, none successful.</div>` : ''}
+            ${health.tool_calls_total === 0 && health.runs_recorded ? `<div class="mt-1">
+              <strong>No tool has ever executed</strong> — zero tool calls
+              across all ${health.runs_recorded} runs. Nothing in the agent's
+              tool library has run in production.</div>` : ''}
           </div>`;
       } else {
         failEl.innerHTML = '';
