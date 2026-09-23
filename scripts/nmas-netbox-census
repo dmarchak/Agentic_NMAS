@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""A census of NetBox: what is there, per type, by identity — not just how many.
+
+Stage 4C.0. Built so the Stage 4C probe's **teardown can be measured rather
+than eyeballed**. The provenance-based Remove has existed since Phase 0 and
+has never been exercised against objects it created itself; the probe is the
+first time, and "Remove cleaned up" has to be a number, not an impression.
+
+**IDENTITY, not counts.** Counts can match while the contents differ: Remove
+deletes the probe's prefix, something else creates one during the run, the
+total returns to baseline, and the probe's object is gone-but-replaced. *"The
+same objects"* is the claim. *"The same number"* is a proxy for it, and this
+project has spent a week on that difference.
+
+**Tagged counted separately from the total.** The real NetBox already holds
+`nmas-managed` objects from the Lab 1 import, and **the population Remove may
+touch is the tagged one** — so the tagged before/after is the number that
+actually tests the provenance gate. A total that matched while the tagged set
+drifted would be a pass hiding a failure.
+
+Read-only. It performs GETs and nothing else.
+
+    python scripts/nmas-netbox-census                     # print + snapshot
+    python scripts/nmas-netbox-census --out before.json
+    python scripts/nmas-netbox-census --compare before.json
+
+`--compare` exits **1** on any difference and names the type and the objects.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+#: Every object type the NetBox tab shows, plus the ones the sync creates
+#: underneath them. Ordered as a reader would want them.
+#:
+#: **What this does NOT count is part of the claim**, the same rule as
+#: `nmas-check-secret-storage`: an object type absent from this list is not
+#: reported as unchanged, it is not reported at all. See `--list-types`.
+ENDPOINTS = (
+    ("devices",        "dcim/devices/"),
+    ("sites",          "dcim/sites/"),
+    ("regions",        "dcim/regions/"),
+    ("interfaces",     "dcim/interfaces/"),
+    ("cables",         "dcim/cables/"),
+    ("device-types",   "dcim/device-types/"),
+    ("device-roles",   "dcim/device-roles/"),
+    ("manufacturers",  "dcim/manufacturers/"),
+    ("platforms",      "dcim/platforms/"),
+    ("prefixes",       "ipam/prefixes/"),
+    ("ip-addresses",   "ipam/ip-addresses/"),
+    ("vrfs",           "ipam/vrfs/"),
+    ("vlans",          "ipam/vlans/"),
+)
+
+#: Types this census deliberately does not walk, and why. Printed, so the
+#: edge of the claim is visible rather than implied.
+NOT_COUNTED = {
+    "extras/tags": "the tag definitions themselves; Remove never deletes one",
+    "extras/custom-fields": "schema, not data",
+    "extras/config-templates": "schema, not data",
+    "ipam/roles": "not created by the sync",
+    "dcim/roles": "not created by the sync",
+}
+
+
+def _identity(obj: dict) -> str:
+    """A stable, readable identity. The id is what makes it unambiguous.
+
+    `display` rather than `name`: an IP address, a prefix and a cable have no
+    `name`, and falling back to the id alone would make a diff unreadable at
+    exactly the moment somebody needs to read it.
+    """
+    label = (obj.get("display") or obj.get("name") or obj.get("prefix")
+             or obj.get("address") or "")
+    return f"{obj.get('id')}:{label}"
+
+
+def _is_tagged(obj: dict, slug: str) -> bool:
+    return any((t or {}).get("slug") == slug for t in (obj.get("tags") or []))
+
+
+def take(verbose: bool = False) -> dict:
+    """The census. Raises if NetBox cannot be reached — a census that could
+    not be taken must not be written to a file that looks like one."""
+    from modules.netbox_client import _nb_get, _nb_ready
+    from modules.netbox_guard import MANAGED_TAG_SLUG
+
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        raise SystemExit(f"NetBox is not reachable: {err}")
+
+    out = {"tag": MANAGED_TAG_SLUG, "types": {}, "not_counted": NOT_COUNTED}
+    for name, path in ENDPOINTS:
+        objects = _nb_get(session, base, path)
+        ids = sorted(_identity(o) for o in objects)
+        tagged = sorted(_identity(o) for o in objects
+                        if _is_tagged(o, MANAGED_TAG_SLUG))
+        out["types"][name] = {"total": len(ids), "objects": ids,
+                              "tagged": len(tagged), "tagged_objects": tagged}
+        if verbose:
+            print(f"  {name:15s} {len(ids):5d} total  {len(tagged):5d} tagged")
+    return out
+
+
+def _print(census: dict) -> None:
+    print(f"{'type':16s} {'total':>7s} {'tagged':>7s}")
+    print("-" * 33)
+    total = tagged = 0
+    for name, row in census["types"].items():
+        print(f"{name:16s} {row['total']:7d} {row['tagged']:7d}")
+        total += row["total"]
+        tagged += row["tagged"]
+    print("-" * 33)
+    print(f"{'ALL':16s} {total:7d} {tagged:7d}")
+    print(f"\ntagged with: {census['tag']}")
+    print("\nNOT counted by this census — absence here is not a claim of "
+          "'unchanged':")
+    for what, why in census.get("not_counted", {}).items():
+        print(f"  {what:28s} {why}")
+
+
+def compare(before: dict, after: dict) -> list:
+    """Differences, per type, by identity **and** by tagged membership."""
+    findings = []
+    types = sorted(set(before["types"]) | set(after["types"]))
+
+    for name in types:
+        b = before["types"].get(name)
+        a = after["types"].get(name)
+        if b is None or a is None:
+            findings.append(f"{name}: present in only one census — the two "
+                            "were taken by different versions of this script")
+            continue
+
+        for label, key in (("", "objects"), ("nmas-managed ", "tagged_objects")):
+            gone = sorted(set(b[key]) - set(a[key]))
+            new = sorted(set(a[key]) - set(b[key]))
+            if gone:
+                findings.append(f"{name}: {len(gone)} {label}object(s) REMOVED "
+                                "that were there before: " + ", ".join(gone[:6])
+                                + ("…" if len(gone) > 6 else ""))
+            if new:
+                findings.append(f"{name}: {len(new)} {label}object(s) LEFT "
+                                "BEHIND: " + ", ".join(new[:6])
+                                + ("…" if len(new) > 6 else ""))
+
+        # Stated separately, because it is the shape this exists to catch: a
+        # total that matches while the contents differ.
+        if b["total"] == a["total"] and set(b["objects"]) != set(a["objects"]):
+            findings.append(
+                f"{name}: the COUNT matches ({a['total']}) and the objects do "
+                "not — something was created while something else was removed")
+    return findings
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", help="write the snapshot here (JSON)")
+    ap.add_argument("--compare", metavar="SNAPSHOT",
+                    help="take a census now and diff it against SNAPSHOT")
+    ap.add_argument("--list-types", action="store_true",
+                    help="print what is and is not counted, and exit")
+    args = ap.parse_args()
+
+    if args.list_types:
+        print("counted:")
+        for name, path in ENDPOINTS:
+            print(f"  {name:16s} {path}")
+        print("\nNOT counted:")
+        for what, why in NOT_COUNTED.items():
+            print(f"  {what:28s} {why}")
+        return 0
+
+    census = take()
+
+    if args.compare:
+        with open(args.compare, encoding="utf-8") as fh:
+            before = json.load(fh)
+        findings = compare(before, census)
+        _print(census)
+        print()
+        if not findings:
+            print(f"PASS — every counted type holds exactly the objects it "
+                  f"held in {os.path.basename(args.compare)}.")
+            print("Identity, not counts: the same objects, not the same number.")
+            return 0
+        print(f"{len(findings)} difference(s):")
+        for f in findings:
+            print(f"  {f}")
+        return 1
+
+    _print(census)
+    if args.out:
+        from modules.config import open_secure
+
+        with open_secure(args.out, "w", encoding="utf-8") as fh:
+            json.dump(census, fh, indent=2)
+        print(f"\nsnapshot written to {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

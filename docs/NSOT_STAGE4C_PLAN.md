@@ -256,16 +256,33 @@ Counts every object type the NetBox tab shows, prints them as a table, and
 writes a JSON snapshot. A second invocation with `--compare <snapshot>`
 prints the delta per type and exits 1 on any difference.
 
+**Two things the obvious version would not have had:**
+
+**Identity, not counts.** Counts can match while the contents differ: Remove
+deletes the probe's prefix, something else creates one during the run, the
+total returns to baseline, and the probe's object is gone-but-replaced. *"The
+same objects"* is the claim; *"the same number"* is a proxy for it. The
+snapshot records `id:label` per object per type, and `--compare` says so in
+those words when a count matches and the contents do not.
+
+**Tagged counted separately from the total.** The real NetBox already holds
+`nmas-managed` objects from the Lab 1 import, and **the population Remove may
+touch is the tagged one** — so the tagged before/after is the number that
+actually tests the provenance gate. A total that matched while the tagged set
+drifted would be a pass hiding a failure, and is now its own finding.
+
 *Acceptance*
 - Run before the probe and after teardown; `--compare` exits 0.
-- The count is per **object type**, not a total: a device removed and a
-  prefix left behind must not cancel out.
+- Per **object type**, not a total: a device removed and a prefix left behind
+  must not cancel out.
 - It names what it does **not** count, so the claim has an edge — the same
-  rule as `nmas-check-secret-storage`, where a store the script does not know
-  about is not reported as clean, it is not reported at all.
+  rule as `nmas-check-secret-storage`. A test asserts the counted list has
+  not fallen behind the endpoints `netbox_client` actually touches.
+- A census that could not be taken **raises** rather than writing a file that
+  would later compare clean.
 - **Negative control:** create one tagged object and leave it → `--compare`
-  exits 1 and names the type. Run as part of the probe, not asserted in the
-  abstract.
+  exits 1 and names the type. Asserted in the suite *and* run as part of the
+  probe.
 
 ---
 
@@ -293,8 +310,8 @@ with the census condition.
 
 | Step | State |
 |---|---|
+| **4C.0** the NetBox census | **done** — `scripts/nmas-netbox-census`, `tests/test_netbox_census.py`, 15 tests, three negative controls each shown failing |
 | **4C.1** the plan object | **done** — `modules/nsot/onboard.py`, `tests/test_onboard_plan.py`, 27 tests, four negative controls each shown failing |
-| 4C.0 the NetBox census | not started |
 | 4C.2 bootstrap credential | not started |
 | 4C.3 ordering | not started |
 | 4C.4 routes + UI | not started |
