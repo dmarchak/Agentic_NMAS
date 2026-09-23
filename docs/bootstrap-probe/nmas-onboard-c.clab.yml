@@ -1,0 +1,39 @@
+name: nmas-onboard-c
+
+# ---------------------------------------------------------------------------
+# STAGE 4C PROBE — the onboarding wizard, end to end, on a node that does not
+# exist yet.
+#
+# ONE NODE, AND NO STARTUP CONFIG. That absence is the point: every other
+# probe lab in this directory boots a config somebody wrote, and this one
+# boots the config THE WIZARD GENERATES. A `startup-config` line here would
+# quietly make the probe test the file rather than the generator.
+#
+# Own lab name, own network, own subnet — the same isolation as stages A
+# through D2. Nothing is shared with rcn-lab1, and this file must never grow
+# a link to it.
+#
+# A C8000v deliberately, and it is what r6 will be: `cisco_iosxe` is in
+# neither GENERATES_SSH_KEY nor CONSOLE_REPLAYED, so its bootstrap config
+# contains no `crypto key generate rsa` line at all. Stage D measures a line
+# this path never emits, which is why the probe does not wait on it. A vIOS
+# probe needs stage D first, and the wizard refuses one until it has run.
+#
+# Run AFTER the earlier probe labs are destroyed so nothing contends for the
+# subnet. Runbook: docs/STAGE4C_PROBE.md
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-onboard-probe
+  ipv4-subnet: 172.30.40.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a      # identical to r1-r5
+
+  nodes:
+    bp-onboard-c:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.40.11
+      # NO startup-config. See the header.
