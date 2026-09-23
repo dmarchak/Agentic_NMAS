@@ -724,12 +724,35 @@ rejected one. Eight keys the Settings form had always written
 now in the schema; every default reproduces the value the code fell back to
 before.
 
-**Secrets are in three stores, not one.** `user_settings.json` holds the ones
-`secrets_store.SECRET_KEYS` covers, encrypted. `anthropic_api_key` goes to
-`.env` and the four `jenkins_*` fields to `data/jenkins_checks.json` — neither
-is in `SECRET_KEYS`, so neither is encrypted at rest or masked by the settings
-API. `scripts/nmas-check-secret-storage` reports where each secret lives and
-whether it is plaintext, by name and never by value.
+**Secrets are in three stores, not one** — see [docs/SECRETS.md](docs/SECRETS.md).
+`user_settings.json` holds the ones `secrets_store.SECRET_KEYS` covers;
+`data/jenkins_checks.json` holds the Jenkins credentials, now encrypted via
+`jenkins_runner.SECRET_FIELDS` (**a second store needs a second mechanism** —
+adding them to `SECRET_KEYS` would encrypt nothing while making it look
+covered); `.env` holds `ANTHROPIC_API_KEY` in **plaintext by design**, since
+encrypting it would have the app decrypt its own key at startup using a key
+in the same directory with the same mode. `scripts/nmas-check-secret-storage`
+reports all three by name and never by value.
+
+**Modes are set at CREATION, at `0600`/`0700`, by `config.open_secure()` and
+`config.secure_dir()`.** Nothing in the program set a mode before 2026-09-23:
+`os.makedirs()` and `open()` take the process umask, so on the deployment host
+`data/` was `0755` and every file in it `0644` — world-readable, including
+`key.key` and an `.env` holding the Anthropic API key, for three weeks.
+Fixing modes by hand fixes one install; the creation site fixes every install.
+`open_secure()` applies the mode **before** writing (`os.open(..., 0o600)`),
+because creating `0644` and chmod-ing after leaves a window with the secret on
+disk and world-readable.
+
+**`data/key.key` is the floor.** Everything "encrypted" is encrypted with it,
+so its mode and the encryption are one control, not two — a group-readable key
+means the ciphertext beside it was never protected. It has **two producers**
+(`device.load_key`, `secrets_store._get_fernet`), deliberately separate, so
+both create it owner-only and `device.load_key` also tightens an existing one.
+The checker tests it first and separately.
+
+**Tightening a mode does not undo exposure.** Anything that read a secret
+while it was readable still has it; rotation is what makes past exposure moot.
 
 Secrets (API tokens, passwords, access keys) are encrypted at rest with the
 existing Fernet key via `modules/secrets_store.py`. They are never logged, never
@@ -815,6 +838,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_drift_routes.py` | the routes exercised over HTTP; a crash is JSON+500, never 302; wrapper signatures |
 | `test_security_posture.py` | effective value vs origin; Access values withheld; the recorded posture still holds |
 | `test_settings_write_path.py` | positive seed declaration; unknown keys refused; ratify-never-change |
+| `test_secret_file_modes.py` | every secret file created 0600 by its creator; Jenkins credentials encrypted at rest |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 

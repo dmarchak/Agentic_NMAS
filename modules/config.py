@@ -28,9 +28,85 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 # Per-list data directories live under data/lists/{slug}/
 LISTS_DIR = os.path.join(DATA_DIR, "lists")
 
-# Ensure the data directories exist
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(LISTS_DIR, exist_ok=True)
+# ---------------------------------------------------------------------------
+# File modes — set at CREATION, not by hand afterwards
+# ---------------------------------------------------------------------------
+
+#: Owner-only. `data/` holds the Fernet key, every device credential, the
+#: settings file and the golden repositories.
+DIR_MODE = 0o700
+#: Owner-only. Anything under `data/` plus `.env`.
+FILE_MODE = 0o600
+
+_IS_WINDOWS = os.name == "nt"
+
+
+def secure_dir(path: str) -> str:
+    """Create *path* owner-only, and tighten it if it already exists.
+
+    **Nothing in this program set a mode before.** `os.makedirs()` and
+    `open()` take the process umask, which on the deployment host is 022 —
+    so `data/` was created 0755 and every file in it 0644, world-readable,
+    including `key.key`. Measured on the live install: the Anthropic API key
+    sat in a 0644 `.env` on a LAN-reachable host for three weeks.
+
+    Fixing modes by hand fixes one install. The creation site fixes every
+    install, which is why this is here rather than in a runbook.
+
+    On Windows `chmod` cannot express owner-only and is largely a no-op; the
+    call is made anyway and its failure ignored, because the deployment
+    target is Linux and a development box raising here would be the tail
+    wagging the dog.
+    """
+    os.makedirs(path, exist_ok=True)
+    _chmod(path, DIR_MODE)
+    return path
+
+
+def secure_file(path: str) -> str:
+    """Tighten an existing file to owner-only. Safe if it does not exist."""
+    _chmod(path, FILE_MODE)
+    return path
+
+
+def open_secure(path: str, mode: str = "w", **kwargs):
+    """`open()` for a secret-bearing file, created owner-only.
+
+    The mode is applied **before** anything is written: creating 0644 and
+    chmod-ing afterwards leaves a window in which the secret is on disk and
+    world-readable, which is the whole defect in miniature.
+    """
+    if "w" not in mode and "a" not in mode and "x" not in mode:
+        return open(path, mode, **kwargs)
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    if not _IS_WINDOWS:
+        flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if "a" in mode
+                                            else os.O_TRUNC)
+        fd = os.open(path, flags, FILE_MODE)
+        # An existing file keeps its old mode through os.open, so tighten it
+        # too -- the common case here is a file created before this existed.
+        _chmod(path, FILE_MODE)
+        return os.fdopen(fd, mode, **kwargs)
+    handle = open(path, mode, **kwargs)
+    _chmod(path, FILE_MODE)
+    return handle
+
+
+def _chmod(path: str, mode: int) -> None:
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        # Windows, or a file owned by someone else. Not fatal: the caller's
+        # job is to write the file, and a mode that cannot be set is reported
+        # by `scripts/nmas-check-secret-storage`, not by a crash here.
+        pass
+
+
+# Ensure the data directories exist, owner-only
+secure_dir(DATA_DIR)
+secure_dir(LISTS_DIR)
 
 # Runtime file paths
 DEFAULT_DEVICES_FILE = os.path.join(DATA_DIR, "Devices.csv")
@@ -88,9 +164,15 @@ def load_user_settings() -> dict:
 
 
 def save_user_settings(settings: dict) -> bool:
-    """Save user settings to JSON file."""
+    """Save user settings to JSON file, owner-only.
+
+    It holds every integration secret `secrets_store` covers. Encrypted at
+    rest, but the key sits beside it in the same directory -- so the file
+    mode is not redundant with the encryption, it is what stops the two being
+    readable together.
+    """
     try:
-        with open(USER_SETTINGS_FILE, "w") as f:
+        with open_secure(USER_SETTINGS_FILE, "w") as f:
             json.dump(settings, f, indent=2)
         return True
     except IOError:

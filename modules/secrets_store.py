@@ -35,6 +35,14 @@ _PREFIX = "enc:v1:"
 # Settings keys holding secrets. migrate_plaintext() upgrades these in place and
 # the settings API masks them on read. Add new secret-bearing keys here.
 SECRET_KEYS = (
+    # NOT jenkins_api_key / jenkins_token: `/settings` routes those to
+    # `data/jenkins_checks.json`, not here, so listing them would encrypt
+    # nothing while making it LOOK covered. `jenkins_runner.SECRET_FIELDS`
+    # is where they are handled -- a second store needs a second mechanism,
+    # and a name in this tuple is not one. See docs/SECRETS.md.
+    #
+    # NOT anthropic_api_key either: it lives in `.env`, plaintext by design,
+    # and its file mode is the whole control.
     "netbox_token",
     "prometheus_password",
     "prometheus_bearer_token",
@@ -62,8 +70,13 @@ def _get_fernet() -> Fernet:
     global _fernet
     if _fernet is None:
         if not os.path.exists(KEY_FILE):
-            os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
-            with open(KEY_FILE, "wb") as fh:
+            from modules.config import open_secure, secure_dir
+
+            secure_dir(os.path.dirname(KEY_FILE))
+            # Owner-only from the moment it exists. Everything else in `data/`
+            # is encrypted WITH this key, so a world-readable key.key makes
+            # the encryption beside it decorative.
+            with open_secure(KEY_FILE, "wb") as fh:
                 fh.write(Fernet.generate_key())
             log.info("secrets_store: generated new Fernet key at %s", KEY_FILE)
         with open(KEY_FILE, "rb") as fh:

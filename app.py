@@ -1462,7 +1462,13 @@ def save_settings():
                         replaced = True
             if not replaced:
                 lines.append(f"ANTHROPIC_API_KEY={api_key}\n")
-            with open(env_path, "w", encoding="utf-8") as fh:
+            # Owner-only at creation. `.env` holds the key in PLAINTEXT by
+            # design (see docs/SECRETS.md), so its mode is the only thing
+            # protecting it -- and it was created at the process umask, which
+            # on the deployment host meant 0644 and world-readable.
+            from modules.config import open_secure
+
+            with open_secure(env_path, "w", encoding="utf-8") as fh:
                 fh.writelines(lines)
             # Reset cached Anthropic client so it picks up the new key
             import modules.ai_assistant as _ai_mod

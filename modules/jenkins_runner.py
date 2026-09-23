@@ -36,12 +36,35 @@ _DEFAULT_CONFIG = {
 # Server connection config  (global — not per-list)
 # ---------------------------------------------------------------------------
 
+#: Fields in this file that are credentials. They are encrypted at rest with
+#: the same Fernet key as everything else.
+#:
+#: They were not, and the reason is worth stating: `/settings` routes them
+#: here rather than into `user_settings.json`, so they never reached
+#: `secrets_store.SECRET_KEYS` and `migrate_plaintext()` never saw them. A
+#: secret in a second store inherits none of the first store's guarantees.
+#: Measured on the live install they happened to be **unset**, which is luck
+#: rather than design — the next person to fill the field would have landed
+#: in a store that does not encrypt.
+SECRET_FIELDS = ("jenkins_api_key", "jenkins_token")
+
+
 def load_config() -> dict:
+    """Jenkins settings, with credentials decrypted in memory.
+
+    Legacy plaintext is returned unchanged by `decrypt_value`, so a file
+    written by an older build keeps working and is upgraded on the next save.
+    """
+    from modules.secrets_store import decrypt_value
+
     try:
         with open(_CONFIG_FILE, encoding="utf-8") as fh:
             cfg = json.load(fh)
         # Strip legacy jenkins_job key if present — it is now per-list
         cfg.pop("jenkins_job", None)
+        for field in SECRET_FIELDS:
+            if cfg.get(field):
+                cfg[field] = decrypt_value(cfg[field])
         return cfg
     except (FileNotFoundError, json.JSONDecodeError):
         save_config(_DEFAULT_CONFIG)
@@ -49,9 +72,17 @@ def load_config() -> dict:
 
 
 def save_config(config: dict) -> None:
-    os.makedirs(os.path.dirname(_CONFIG_FILE), exist_ok=True)
-    with open(_CONFIG_FILE, "w", encoding="utf-8") as fh:
-        json.dump(config, fh, indent=2)
+    """Write Jenkins settings, credentials encrypted, file owner-only."""
+    from modules.config import open_secure, secure_dir
+    from modules.secrets_store import encrypt_value
+
+    secure_dir(os.path.dirname(_CONFIG_FILE))
+    stored = dict(config)
+    for field in SECRET_FIELDS:
+        if stored.get(field):
+            stored[field] = encrypt_value(stored[field])
+    with open_secure(_CONFIG_FILE, "w", encoding="utf-8") as fh:
+        json.dump(stored, fh, indent=2)
 
 
 # ---------------------------------------------------------------------------
