@@ -5638,3 +5638,64 @@ The guard that keeps it that way is not the patch. It is
 platform whose launch path injects a password first — **at the moment the
 rotation would create it**, rather than at the next boot, which is when the
 original defect would have been discovered.
+
+---
+
+## The interface can deploy intent it cannot author
+
+Stage 3.1 asked whether committed intent can be edited from the GUI. The
+measurement: **`/templatize` appears zero times in the rendered page** — not
+as a fetch, not in a dynamically built URL, not at all. Twelve routes,
+unreachable:
+
+```
+POST /templatize/extract/<host>           POST /templatize/commit/<host>
+GET  /templatize/committed/<host>         POST /templatize/committed/<host>
+POST /templatize/committed/<host>/revert  GET  /templatize/rendered/<host>
+GET  /templatize/report                   GET  /templatize/rolled-back
+POST /templatize/rolled-back/<host>/retry
+```
+
+Measured the same way, for contrast: `/netbox/` appears 8 times, `/ai/` 28,
+and `/deploy/plan`, `/templates/preview`, `/golden/history`, `/remote/status`
+and `/monitoring/stack` once each. The method sees dynamically built URLs, so
+this is absence, not a detection failure.
+
+### Why this is different from the other unreachable code
+
+Four times before, a working backend shipped with no button, and each time
+the fix was a button. This is the same shape and a different size, because of
+what sits on either side of it.
+
+Phase 3c's central rule is that **a change is made by editing committed
+intent and committing it**, never by configuring the device and
+re-extracting. That rule is what makes the golden repo a source of truth
+rather than a backup. It describes an operation with no path through the
+interface.
+
+Meanwhile "Deploy plan" *reads* committed intent, and has had a button since
+Stage 1.5. A device with no committed intent is `bootstrap` and refused.
+
+> So the interface can push a change toward a target it has no way to set.
+
+The capability is built, tested and correct — `write_committed()` refuses a
+resolved secret structurally and by value, `save_host_vars()` commits it,
+`revert_committed()` applies the inverse of one commit's own diff. All of it
+is reachable by `curl` and by nothing else.
+
+### What it says about the other findings
+
+3.3's legacy readers are correctness bugs: something reads the wrong store
+and gives a stale or narrow answer. They are worth fixing and none of them
+stops a person doing their job.
+
+This one is a **missing capability at the centre of the design**, and it was
+invisible for the same reason the others were: every test asked whether the
+code works, and the code works. Nothing asked whether anybody can reach it.
+
+`test_blueprint_reachability.py` now asks that of every route module written
+to serve the interface, with `templatize` as its single allowlisted entry and
+a test that the entry leaves when the editor is built. It is the
+route-level twin of `test_no_unreachable_ui.py`, and it exists because the
+function-level version would never have caught this: the functions it would
+have checked were never written.

@@ -1252,7 +1252,54 @@ is **not** to be silenced by filtering the log.
 
 ### STAGE 3 — GUI correctness
 
-**3.1 Can committed intent be edited from the GUI? Measure first.**
+**3.1 Can committed intent be edited from the GUI?**
+*Status: **MEASURED, 2026-09-23. The answer is no.***
+
+`/templatize` appears **zero times** in the rendered page — not as a fetch,
+not in a built URL, not at all. All **twelve** routes in
+`routes/templatize.py` are unreachable from the interface:
+
+```
+POST /templatize/extract/<host>              extract to staging
+GET  /templatize/staged                      what is staged
+POST /templatize/commit/<host>               staged -> committed
+GET  /templatize/committed/<host>            read committed intent
+POST /templatize/committed/<host>            EDIT committed intent
+POST /templatize/committed/<host>/revert     revert one intent commit
+GET  /templatize/rendered/<host>             render from intent
+GET,POST /templatize/report                  round-trip coverage
+GET  /templatize/rolled-back                 blocked devices
+POST /templatize/rolled-back/<host>/retry    lift a rollback block
+```
+
+For contrast, measured the same way: `/netbox/` appears 8 times (all through
+the gated `safety/*` path), `/ai/` 28, `/deploy/plan`, `/templates/preview`,
+`/golden/history`, `/remote/status` and `/monitoring/stack` once each.
+
+**What that means.** Phase 3c's central rule is that *a change is made by
+editing committed intent and committing it, never by configuring the device
+and re-extracting*. There is no GUI path to edit committed intent, so that
+rule describes something reachable only by hand-editing YAML and committing,
+or by `curl`.
+
+The asymmetry is the sharp part: **the GUI can deploy intent onto devices but
+cannot author it.** "Deploy plan" works (Stage 1.5 gave it a button) and
+reads committed `host_vars`; a device with none is `bootstrap` and refused.
+So the interface can push a change toward a target it has no way to set.
+
+That is a larger gap than any of the legacy readers in 3.3, and it is a
+**missing capability at the centre of the design** rather than a correctness
+bug. Building it is the first build item of Stage 3.
+
+*Acceptance:* extract, review, commit, edit and revert are all reachable from
+the device row or the Templates view, each shipping with its entry point and
+passing `test_no_unreachable_ui.py`; the editor writes through
+`hostvars.write_committed()` so the secret guards apply; `KNOWN_UNREACHABLE`
+in `test_blueprint_reachability.py` is empty.
+
+---
+
+**3.1 (original wording, for the record.)**
 The deploy path's stated rule is that a change is made by *editing committed
 intent*, not by configuring the device. If there is no GUI path to edit
 `host_vars`, that rule describes something only reachable by hand-editing YAML
