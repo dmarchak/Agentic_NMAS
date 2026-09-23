@@ -156,6 +156,7 @@ class TestAPostLoginFailureIsNotARefusal:
     def test_a_refusal_at_LOGIN_is_still_a_refusal(self, world):
         """The distinction is the stage, not the `attempted` flag alone."""
         world["result"] = {"ok": False, "attempted": True,
+                           "error_type": "NetmikoAuthenticationException",
                            "error": "Authentication failed", "stage": "connect"}
         assert check("Default", "r1")["verdict"] == REFUSED
 
@@ -230,6 +231,7 @@ class TestTheExitCodes:
     def test_wrong_verdict_is_one(self, monkeypatch):
         assert self._run(monkeypatch,
                          {"ok": False, "attempted": True, "stage": "connect",
+                          "error_type": "NetmikoAuthenticationException",
                           "error": "no"},
                          ["r1", "--expect", "accepted"]) == 1
 
@@ -310,3 +312,121 @@ class TestItNeverTracebacks:
             dumped = ast.dump(node)
             if "INCONCLUSIVE" in dumped:
                 assert "unreached" in dumped, ast.unparse(node)
+
+
+class TestATransportFailureIsNeverARefusal:
+    """Q1, found on the live fleet the night the ban lifted.
+
+    `attempted` is the ROTATION's flag and means "the device may have locked
+    us out", so it deliberately covers reachability failures -- and
+    `_AUTH_REFUSED` includes `SSHException`, which paramiko also raises for
+    `no matching key exchange method found`. Reading it as "refused" reported
+    a timeout as a device verdict: the same false verdict as the
+    `ssh`/`sshpass` check this script replaced, surviving inside the
+    replacement.
+
+    Both flags are right for their own question. The fix belongs in the
+    check, not in `classify_failure()`.
+    """
+
+    @pytest.mark.parametrize("error_type,message", [
+        ("NetmikoTimeoutException", "Connection to device timed-out"),
+        ("NetMikoTimeoutException", "timed out"),
+        ("TimeoutError", "timed out"),
+        ("ConnectionRefusedError", "Connection refused"),
+        ("NoValidConnectionsError", "Unable to connect to port 22"),
+        ("OSError", "No route to host"),
+        ("gaierror", "Name or service not known"),
+        ("SSHException", "no matching key exchange method found"),
+    ])
+    def test_it_is_inconclusive(self, world, error_type, message):
+        world["result"] = {"ok": False, "attempted": True, "stage": "connect",
+                           "error_type": error_type, "error": message}
+        assert check("Default", "r1")["verdict"] == INCONCLUSIVE
+
+    def test_the_reason_says_nothing_was_established(self, world):
+        world["result"] = {"ok": False, "attempted": True, "stage": "connect",
+                           "error_type": "NetmikoTimeoutException",
+                           "error": "timed out"}
+        reason = check("Default", "r1")["reason"]
+        assert "not a positively identified authentication denial" in reason
+        assert "nothing about the credential was established" in reason
+
+    def test_an_unrecognised_exception_is_inconclusive(self, world):
+        """REFUSED is earned. An unknown name has not earned it."""
+        world["result"] = {"ok": False, "attempted": True, "stage": "connect",
+                           "error_type": "SomeNewParamikoError",
+                           "error": "who knows"}
+        assert check("Default", "r1")["verdict"] == INCONCLUSIVE
+
+    @pytest.mark.parametrize("error_type", [
+        "NetmikoAuthenticationException", "AuthenticationException",
+        "BadAuthenticationType", "PasswordRequiredException"])
+    def test_a_real_auth_denial_is_still_refused(self, world, error_type):
+        world["result"] = {"ok": False, "attempted": True, "stage": "connect",
+                           "error_type": error_type, "error": "denied"}
+        assert check("Default", "r1")["verdict"] == REFUSED
+
+    def test_the_kex_case_from_the_D2_probe(self, world):
+        """The exact failure that made `sshpass ... || echo PASS` print PASS."""
+        world["result"] = {"ok": False, "attempted": True, "stage": "connect",
+                           "error_type": "SSHException",
+                           "error": "no matching key exchange method found"}
+        out = check("Default", "r1")
+        assert out["verdict"] == INCONCLUSIVE
+        assert out["verdict"] != REFUSED
+
+
+class TestTheROTATIONsLockoutDefenceIsUnchanged:
+    """The acceptance condition on this fix.
+
+    Narrowing `attempted` in `classify_failure()` would have been the easy
+    fix and would have suppressed a lockout warning for a device that went
+    silent right after its credential changed -- the case the flag exists
+    for, and the case that caught r2.
+    """
+
+    def test_a_post_rotation_timeout_still_counts_as_attempted(self):
+        from modules.nsot import credential_rotation as cr
+
+        for name in ("NetmikoTimeoutException", "ConnectionRefusedError",
+                     "NoValidConnectionsError", "OSError"):
+            assert cr.classify_failure(name)["attempted"] is True, name
+
+    def test_an_ssh_exception_still_counts_as_attempted(self):
+        from modules.nsot import credential_rotation as cr
+
+        assert cr.classify_failure("SSHException")["attempted"] is True
+
+    def test_a_local_fault_is_still_not_attempted(self):
+        """The r2 defect: a local InvalidToken reported as a device verdict."""
+        from modules.nsot import credential_rotation as cr
+
+        assert cr.classify_failure("InvalidToken")["attempted"] is False
+
+    def test_an_unrecognised_name_still_falls_to_attempted(self):
+        """The rotation's asymmetry: a false lockout warning costs a console
+        trip, a false "local fault" leaves a device without one."""
+        from modules.nsot import credential_rotation as cr
+
+        out = cr.classify_failure("SomethingNobodyHasSeen")
+        assert out["attempted"] is True
+        assert out["recognised"] is False
+
+    def test_AUTH_DENIED_is_a_strict_subset_of_AUTH_REFUSED(self):
+        """The check narrows; it does not redefine."""
+        from modules.nsot import credential_rotation as cr
+
+        assert set(cr.AUTH_DENIED) < set(cr._AUTH_REFUSED)
+        assert "SSHException" in cr._AUTH_REFUSED
+        assert "SSHException" not in cr.AUTH_DENIED
+
+    def test_the_rotation_does_not_use_AUTH_DENIED(self):
+        """If it ever does, the lockout defence has been narrowed."""
+        from tests.astcheck import code_of
+
+        from modules.nsot import credential_rotation as cr
+
+        for fn in (cr.classify_failure, cr.verify_new_credential,
+                   cr.verify_with_retry):
+            assert "AUTH_DENIED" not in code_of(fn), fn.__name__

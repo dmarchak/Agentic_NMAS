@@ -688,6 +688,25 @@ _REACHABILITY = ("NetmikoTimeoutException", "NetMikoTimeoutException",
                  "socket.timeout", "TimeoutError", "ConnectionRefusedError",
                  "NoValidConnectionsError", "OSError", "gaierror")
 
+#: Exception names that mean **the device authenticated us and said no**.
+#:
+#: A strict subset of :data:`_AUTH_REFUSED`, and the difference is the point.
+#: ``SSHException`` is in that list because, for the ROTATION, anything after
+#: a credential change that stops the session is the alarming case and must
+#: count as attempted. But paramiko also raises ``SSHException`` for transport
+#: problems — ``no matching key exchange method found`` among them — so it
+#: cannot carry a verdict that the device *refused a credential*.
+#:
+#: Used by a credential CHECK, where the definitive outcome has to be earned:
+#: "the device said no" is a claim, and everything not positively identified
+#: as an authentication denial is "we did not establish anything".
+#:
+#: The rotation must NOT use this. Narrowing `attempted` there would suppress
+#: a lockout warning for a device that went silent right after its credential
+#: changed, which is the case the flag exists for.
+AUTH_DENIED = ("NetmikoAuthenticationException", "AuthenticationException",
+               "BadAuthenticationType", "PasswordRequiredException")
+
 #: Faults local to this process. `InvalidToken` is the r2 defect itself; the
 #: rest are the ways a bug in this module presents. Identified POSITIVELY —
 #: the quiet outcome must be earned, not fallen into.

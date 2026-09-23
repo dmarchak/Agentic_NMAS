@@ -1,4 +1,11 @@
-# Stage 2 session — the redeploy
+# Redeploy checklist — rcn-lab1
+
+**First run: 2026-09-22, the Stage 2 session that lifted the redeploy ban.
+Every item passed.** This is not a record of that run — it is **the
+verification for any future redeploy**, and it is meant to be re-run.
+
+A checklist that is run once is a record. One that is re-run is a test.
+
 
 **Written for: Dustin, at the machine.** Self-contained: everything you need
 is in this file. Nothing here is for an agent to run.

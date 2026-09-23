@@ -1131,6 +1131,27 @@ Lifted by a successful redeploy. Every checklist item passed; the
 result is recorded in the three former ban notices and in
 `docs/NSOT_WRITEUP_NOTES.md`.
 
+**A redeploy is now a normal operation, not a blocked one — and not a casual
+one.** It is expensive and it touches every device at once, so it is done
+deliberately, and **`docs/STAGE2_SESSION_CHECKLIST.md` is the verification
+for any future redeploy**, not a record of this one.
+
+Re-run it every time. Sections 1 (pre-items), 3 (the redeploy) and 4
+(post-items) apply unchanged; section 2's applicability control applies
+whenever the launch patch may have moved. The items that matter most are the
+ones that were nearly wrong here:
+
+* **4.7** — the credential check, which must use `nmas-check-credential` and
+  not a shell `ssh`, and where `INCONCLUSIVE` is not a pass;
+* **4.2** — per-device uptime, because a node can reload silently after
+  `Startup complete` and report healthy throughout;
+* **4.9** — Save All against a **pre-redeploy** baseline taken in 1.4, which
+  is what makes "every node came back as itself" a measurement rather than an
+  impression.
+
+A checklist that is run once is a record. One that is re-run is a test.
+
+
 **The runbook is [docs/STAGE2_REDEPLOY.md](STAGE2_REDEPLOY.md)** — written
 before the redeploy, including the checklist in full. This section states
 what each item is *for*; that file is what gets followed at the machine.
@@ -1185,6 +1206,13 @@ deleted.
 Found while running the redeploy; none blocked it.
 
 **Q1 — `nmas-check-credential` maps a connection timeout to REFUSED.**
+*Status: **DONE**.* REFUSED is now earned: it requires an `error_type` in
+`credential_rotation.AUTH_DENIED`, a strict subset of `_AUTH_REFUSED`
+that excludes `SSHException` — which paramiko raises for KEX failures.
+Everything else is INCONCLUSIVE. `classify_failure()` is untouched and a
+test asserts the rotation still treats a post-rotation timeout as
+attempted, plus one asserting the rotation never reaches for the narrower
+list.
 A transport failure must be **INCONCLUSIVE**. This is the same class as the
 `ssh`/`sshpass` false pass the script was written to replace, surviving
 inside the replacement.
