@@ -1,0 +1,216 @@
+{# Committed intent editor — Stage 3.1.
+
+   TEXT, not fields, and the reason is not taste. A structured editor
+   round-trips the document through the model, so anything the field set does
+   not cover — the `unmodeled:` block above all — vanishes from the file
+   without appearing in any diff. That is the precise failure `unmodeled` was
+   built to prevent. Text also means the bytes reviewed in the diff are the
+   bytes committed, with no translation layer in between.
+
+   Honest is not the same as usable, so two things make it usable:
+     * validation refuses with a LINE AND COLUMN, as the template editor does
+       for Jinja;
+     * the RENDER DIFF is shown before committing, so somebody who does not
+       remember the schema sees the consequence rather than the document. #}
+
+<div class="modal fade" id="intentEditorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="intentEditorTitle">Committed intent</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">
+          This is what the device is <em>supposed</em> to look like. A change is
+          made by editing it and committing — not by configuring the device and
+          re-extracting, which makes intent a function of current state and can
+          only ever produce an empty diff.
+        </p>
+        <div id="intentEditorMeta" class="small text-muted mb-2"></div>
+        <textarea id="intentEditorArea" class="form-control font-monospace"
+                  rows="22" spellcheck="false"></textarea>
+        <div id="intentEditorStatus" class="form-text"></div>
+        <div id="intentEditorDiff" class="mt-3"></div>
+      </div>
+      <div class="modal-footer flex-wrap gap-2">
+        <input id="intentEditorSummary" class="form-control form-control-sm"
+               style="max-width:26rem" placeholder="One-line summary (becomes the commit subject)">
+        <span class="me-auto"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-outline-primary" onclick="previewIntentEdit()">
+          Check &amp; show diff
+        </button>
+        <button type="button" class="btn btn-primary" id="intentCommitBtn"
+                onclick="commitIntentEdit()" disabled>
+          Commit
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let _intentModal = null, _intentCM = null, _intentHost = '';
+
+function _iEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+function _intentText() {
+  return _intentCM ? _intentCM.getValue()
+                   : document.getElementById('intentEditorArea').value;
+}
+
+function _intentSetText(text) {
+  document.getElementById('intentEditorArea').value = text;
+  if (_intentCM) _intentCM.setValue(text);
+}
+
+/* Commit is disabled until a preview has passed. A text editor is safe for
+   someone who does not remember the schema only if the consequence is on
+   screen before the commit — so the button is earned, not merely available. */
+function _intentArm(on) {
+  const btn = document.getElementById('intentCommitBtn');
+  if (btn) btn.disabled = !on;
+}
+
+async function showIntentEditor(hostname) {
+  const modalEl = document.getElementById('intentEditorModal');
+  if (!modalEl) { console.error('intent editor: no modal in the page'); return; }
+  if (!_intentModal) _intentModal = new bootstrap.Modal(modalEl);
+  _intentHost = hostname;
+  _intentArm(false);
+  document.getElementById('intentEditorTitle').textContent =
+    'Committed intent — ' + hostname;
+  document.getElementById('intentEditorDiff').innerHTML = '';
+  document.getElementById('intentEditorStatus').textContent = 'Loading…';
+  document.getElementById('intentEditorSummary').value = '';
+  _intentModal.show();
+
+  try {
+    const r = await fetch('/templatize/committed/' + encodeURIComponent(hostname));
+    const d = await r.json();
+    if (!d.ok) {
+      _intentSetText('');
+      document.getElementById('intentEditorStatus').innerHTML =
+        '<span class="text-danger">' + _iEsc(d.error) + '</span>';
+      return;
+    }
+    _intentSetText(d.yaml);
+    document.getElementById('intentEditorStatus').textContent =
+      'Edit, then Check & show diff. Commit unlocks once the check passes.';
+    if (window.CodeMirror && !_intentCM) {
+      /* No mode. Only the jinja2 mode is vendored, and naming an
+         unvendored one makes CodeMirror initialise with an unknown mode --
+         which renders as plain text anyway, while implying highlighting that
+         is not there. Line numbers are what matters here: they are how the
+         validator's line and column land somewhere useful. */
+      _intentCM = CodeMirror.fromTextArea(
+        document.getElementById('intentEditorArea'),
+        {lineNumbers: true, viewportMargin: Infinity});
+      _intentCM.setValue(d.yaml);
+      _intentCM.on('change', function () { _intentArm(false); });
+    } else if (_intentCM) {
+      _intentCM.on('change', function () { _intentArm(false); });
+    } else {
+      document.getElementById('intentEditorArea')
+        .addEventListener('input', function () { _intentArm(false); });
+    }
+  } catch (e) {
+    document.getElementById('intentEditorStatus').innerHTML =
+      '<span class="text-danger">' + _iEsc(e.message) + '</span>';
+  }
+}
+
+async function previewIntentEdit() {
+  const status = document.getElementById('intentEditorStatus');
+  const out = document.getElementById('intentEditorDiff');
+  status.textContent = 'Checking…';
+  out.innerHTML = '';
+  _intentArm(false);
+
+  try {
+    const r = await fetch('/templatize/committed/'
+                          + encodeURIComponent(_intentHost) + '/preview',
+                          {method: 'POST',
+                           headers: {'Content-Type': 'application/json'},
+                           body: JSON.stringify({yaml: _intentText()})});
+    const d = await r.json();
+
+    if (!d.ok) {
+      /* Line and column, the way the template editor refuses bad Jinja. */
+      const at = d.line ? ' (line ' + d.line
+                          + (d.column ? ', column ' + d.column : '') + ')' : '';
+      status.innerHTML = '<span class="text-danger">'
+        + _iEsc((d.stage || 'invalid') + ': ' + (d.error || 'refused')) + at
+        + '</span>';
+      if (d.line && _intentCM) {
+        _intentCM.setCursor({line: d.line - 1, ch: Math.max(0, (d.column || 1) - 1)});
+        _intentCM.focus();
+      }
+      return;
+    }
+
+    status.innerHTML = '<span class="text-success">Valid.</span>'
+      + (d.deployable ? '' :
+         ' <span class="text-warning">Not deployable: '
+         + _iEsc((d.blocking_reasons || []).join('; ')) + '</span>');
+
+    let html = '<h6 class="fw-semibold mb-1">What this edit changes</h6>';
+    html += d.vs_intent_changed
+      ? '<pre class="small bg-body-tertiary p-2 rounded" style="max-height:260px;overflow:auto">'
+        + _iEsc(d.vs_intent) + '</pre>'
+      : '<p class="small text-muted">No change to the rendered config. The '
+        + 'document differs from what is committed, but the render does not.</p>';
+
+    html += '<h6 class="fw-semibold mb-1 mt-3">What a deploy would push</h6>';
+    html += d.vs_device
+      ? '<pre class="small bg-body-tertiary p-2 rounded" style="max-height:260px;overflow:auto">'
+        + _iEsc(d.vs_device) + '</pre>'
+      : '<p class="small text-success">Nothing — the render already matches the device.</p>';
+
+    if (d.masked_not_compared) {
+      html += '<p class="small text-warning-emphasis">'
+        + d.masked_not_compared + ' secret-bearing line'
+        + (d.masked_not_compared === 1 ? '' : 's') + ' could not be compared.</p>';
+    }
+    out.innerHTML = html;
+    _intentArm(true);
+  } catch (e) {
+    status.innerHTML = '<span class="text-danger">' + _iEsc(e.message) + '</span>';
+  }
+}
+
+async function commitIntentEdit() {
+  const summary = document.getElementById('intentEditorSummary').value.trim();
+  const status = document.getElementById('intentEditorStatus');
+  if (!summary) {
+    status.innerHTML = '<span class="text-danger">A one-line summary is '
+      + 'required — it becomes the commit subject, and "host_vars: s4" on its '
+      + 'own says nothing in a log.</span>';
+    return;
+  }
+  status.textContent = 'Committing…';
+  try {
+    const r = await fetch('/templatize/committed/'
+                          + encodeURIComponent(_intentHost),
+                          {method: 'POST',
+                           headers: {'Content-Type': 'application/json'},
+                           body: JSON.stringify({yaml: _intentText(),
+                                                 summary: summary})});
+    const d = await r.json();
+    if (!d.ok) {
+      status.innerHTML = '<span class="text-danger">' + _iEsc(d.error) + '</span>';
+      return;
+    }
+    status.innerHTML = '<span class="text-success">Committed '
+      + _iEsc((d.commit || '').slice(0, 8)) + '.</span> '
+      + 'Deploy plan for this device will now show exactly this change.';
+    _intentArm(false);
+  } catch (e) {
+    status.innerHTML = '<span class="text-danger">' + _iEsc(e.message) + '</span>';
+  }
+}
+</script>

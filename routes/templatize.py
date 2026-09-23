@@ -272,6 +272,134 @@ def commit_extraction(hostname):
                     "error": result.get("error", "")})
 
 
+@bp.route("/committed/<path:hostname>/preview", methods=["POST"])
+def preview_committed_edit(hostname):
+    """Validate edited intent and show what it would DO. Writes nothing.
+
+    A text editor is honest — the bytes reviewed in the diff are the bytes
+    committed, with no translation layer, and nothing the field set does not
+    model can vanish on the way through. A **structured** editor round-trips
+    the document through the parser, so an ``unmodeled:`` block would
+    disappear without appearing in any diff: the exact failure that block was
+    built to prevent.
+
+    Honest is not the same as usable, and this is what makes it usable:
+
+    * a YAML or schema error is refused with a **line and column**, the way
+      the template editor refuses bad Jinja;
+    * the **render diff** is shown before committing, so somebody who does
+      not remember the schema can see the consequence rather than the
+      document.
+
+    Two diffs, and the first is the one that answers "what does my edit do":
+
+    ``vs_intent``   render of the edited text vs render of what is committed
+    ``vs_device``   render of the edited text vs the device's capture — what
+                    a deploy would push
+    """
+    import yaml
+
+    from modules.nsot import hostvars, roundtrip
+    from modules.nsot.render_artifact import build_artifact
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    repo = _repo_for(list_name)
+    text = data.get("yaml")
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({"ok": False, "error": "No host_vars document sent"}), 400
+
+    # 1. Parse. A mark gives line and column; without one the error is still
+    #    reported rather than swallowed, because "invalid somewhere" beats a
+    #    silent refusal.
+    try:
+        parsed = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        return jsonify({
+            "ok": False, "stage": "yaml",
+            "line": (mark.line + 1) if mark else None,
+            "column": (mark.column + 1) if mark else None,
+            "error": getattr(exc, "problem", None) or str(exc)}), 400
+
+    if not isinstance(parsed, dict):
+        return jsonify({"ok": False, "stage": "schema", "line": 1, "column": 1,
+                        "error": "host_vars must be a YAML mapping"}), 400
+
+    # 2. Schema, such as it is: the document names its own device. A mismatch
+    #    here is how one device's intent lands in another's file.
+    named = parsed.get("hostname")
+    if named and named != hostname:
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.strip().startswith("hostname:")), 1)
+        return jsonify({"ok": False, "stage": "schema", "line": line,
+                        "column": 1,
+                        "error": f"this document names {named!r}; a host_vars "
+                                 f"file names its own device, and editing "
+                                 f"{hostname}'s must say {hostname!r}"}), 400
+
+    # 3. The secret guards, BEFORE anything is rendered or written. Same two
+    #    checks `write_committed_text()` applies, run here so the editor
+    #    refuses rather than the commit.
+    try:
+        hostvars.assert_printable(text, hostname)
+        hostvars.assert_no_secret_values(text, hostname)
+    except Exception as exc:                  # noqa: BLE001
+        return jsonify({"ok": False, "stage": "secrets",
+                        "error": str(exc)}), 400
+
+    # The same capture the Template preview uses, from the same helpers --
+    # one composition, so the editor's diff and the preview's diff cannot
+    # disagree about what the device currently looks like.
+    from routes.templates import (_captured_golden, _captured_running,
+                                  _platform_for as _platform_of_host)
+    from modules.nsot import templates_repo
+
+    golden, _at = _captured_golden(hostname, list_name)
+    running, _at2 = _captured_running(list_name, hostname)
+    capture = golden or running
+    if not capture:
+        return jsonify({"ok": True, "valid": True, "rendered": "",
+                        "message": ("Valid. No captured config for this "
+                                    "device, so there is nothing to render "
+                                    "against yet.")})
+
+    platform = _platform_of_host(hostname)
+    template = templates_repo.template_for_device(repo, hostname, platform)
+    try:
+        edited = build_artifact(hostname, capture, platform, template=template,
+                                host_vars=hostvars.hydrate_secrets(
+                                    parsed, hostname, list_name))
+    except Exception as exc:                  # noqa: BLE001
+        return jsonify({"ok": False, "stage": "render",
+                        "error": f"{type(exc).__name__}: {exc}"}), 400
+
+    committed = hostvars.read_committed(repo, hostname)
+    vs_intent = ""
+    if committed:
+        current = build_artifact(hostname, capture, platform, template=template,
+                                 host_vars=hostvars.hydrate_secrets(
+                                     committed, hostname, list_name))
+        vs_intent = roundtrip.canonical_diff(
+            current.rendered_masked, edited.rendered_masked,
+            fromfile=f"committed ({hostname})", tofile=f"edited ({hostname})")
+
+    vs_device, masked = roundtrip.canonical_diff(
+        capture, edited.rendered_masked, fromfile=f"device ({hostname})",
+        tofile=f"edited ({hostname})", report_masked=True)
+
+    return jsonify({
+        "ok": True, "valid": True, "hostname": hostname,
+        "deployable": edited.deployable,
+        "blocking_reasons": list(edited.blocking_reasons),
+        "vs_intent": vs_intent,
+        "vs_intent_changed": bool(vs_intent),
+        "vs_device": vs_device,
+        "masked_not_compared": masked,
+        "rendered": edited.rendered_masked,
+    })
+
+
 @bp.route("/committed/<path:hostname>", methods=["POST"])
 def edit_committed(hostname):
     """Edit committed intent and commit the edit.

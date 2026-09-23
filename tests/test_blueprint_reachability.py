@@ -23,12 +23,7 @@ import pytest
 #: tolerated for now. **Entries must leave as they are built**, exactly like
 #: `KNOWN_DEAD` in `test_no_unreachable_ui.py` — an allowlist that only grows
 #: is a place findings go to be forgotten.
-KNOWN_UNREACHABLE = {
-    "templatize": (
-        "Stage 3.1: no GUI path to edit committed intent. Twelve routes, "
-        "zero references. Building the editor is the first build item of "
-        "Stage 3, and this entry leaves when it lands."),
-}
+KNOWN_UNREACHABLE = {}
 
 #: Route modules that exist to serve the GUI. A blueprint serving only the AI
 #: agent or an external caller is out of scope; naming them here keeps the
@@ -118,18 +113,26 @@ class TestEveryGuiBlueprintIsReachable:
             assert len(reason) > 40, name
 
 
-class TestTheTemplatizeFinding:
-    """Pinned so the measurement is not re-argued."""
+class TestTheTemplatizeGapIsClosed:
+    """It was twelve routes with zero references, measured 2026-09-23.
 
-    def test_templatize_is_not_referenced_at_all(self, rendered):
-        assert "/templatize" not in rendered
+    The asymmetry that made it serious: Deploy plan READS committed intent
+    and has had a button since Stage 1.5, so the interface could push a
+    change toward a target it had no way to set.
+    """
 
-    def test_it_has_routes_to_be_unreachable(self):
-        groups = _routes_by_blueprint()
-        assert len(groups.get("templatize", [])) >= 10
+    def test_templatize_is_now_referenced(self, rendered):
+        assert "/templatize" in rendered
+
+    def test_the_editor_reads_committed_intent(self, rendered):
+        assert "/templatize/committed/" in rendered
+
+    def test_the_editor_previews_before_committing(self, rendered):
+        """The requirement that makes a text editor usable rather than
+        merely honest."""
+        assert "/preview" in rendered
 
     def test_the_intent_editor_route_exists(self):
-        """The capability is built. Only the way in is missing."""
         import app as nmas
 
         posts = [str(r) for r in nmas.app.url_map.iter_rules()
@@ -137,6 +140,8 @@ class TestTheTemplatizeFinding:
                  and str(r).startswith("/templatize/committed/")]
         assert posts, "no POST route for editing committed intent"
 
-    def test_deploy_reads_intent_and_IS_reachable(self, rendered):
-        """The asymmetry: the GUI can push intent it cannot author."""
+    def test_both_halves_of_the_loop_are_reachable(self, rendered):
+        """Edit intent -> see the plan -> deploy. The loop the deploy path
+        assumed and nobody could exercise."""
+        assert "/templatize/committed/" in rendered
         assert "/deploy/plan" in rendered

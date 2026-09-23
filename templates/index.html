@@ -319,6 +319,9 @@
           <button class="btn btn-sm btn-outline-warning"
                   title="Build the deploy plan for this device. Shows the exact commands; sends nothing."
                   onclick="nsotAction('openDeployPlan', '{{ d['hostname'] }}', true)">Deploy plan</button>
+          <button class="btn btn-sm btn-outline-success"
+                  title="Edit what this device is SUPPOSED to look like, and commit it"
+                  onclick="nsotAction('showIntentEditor', '{{ d['hostname'] }}')">Edit intent</button>
           <button class="btn btn-sm btn-outline-secondary"
                   title="Every golden commit for this device"
                   onclick="nsotAction('showGoldenHistory', '{{ d['hostname'] }}')">Golden history</button>
@@ -371,6 +374,7 @@
 {% include 'partials/golden_repo.html' %}
 {% include 'partials/template_editor.html' %}
 {% include 'partials/deploy_wizard.html' %}
+{% include 'partials/intent_editor.html' %}
 {% include 'partials/device_nsot_actions.html' %}
 
 <!-- Add Device Form -->

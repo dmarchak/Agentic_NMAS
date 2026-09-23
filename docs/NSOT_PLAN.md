@@ -1291,6 +1291,12 @@ That is a larger gap than any of the legacy readers in 3.3, and it is a
 **missing capability at the centre of the design** rather than a correctness
 bug. Building it is the first build item of Stage 3.
 
+*Status: **BUILT**.* `templates/partials/intent_editor.html` + `POST
+/templatize/committed/<host>/preview`. Text via `write_committed_text()`,
+CodeMirror with line numbers, refusal with line and column, the render diff
+before the commit, and Commit disabled until a preview passes. Entry point on
+the device row; `KNOWN_UNREACHABLE` is empty.
+
 *Acceptance:* extract, review, commit, edit and revert are all reachable from
 the device row or the Templates view, each shipping with its entry point and
 passing `test_no_unreachable_ui.py`; the editor writes through
