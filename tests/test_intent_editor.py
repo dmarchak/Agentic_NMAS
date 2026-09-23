@@ -258,3 +258,145 @@ class TestItShipsWithItsEntryPoint:
         assert "_intentArm(true)" in source
         armed = source[source.index("_intentArm(true)"):]
         assert "previewIntentEdit" in source[:source.index("_intentArm(true)")]
+
+
+class TestApprovalIsConsultedNotAssumed:
+    """The blocker on the first real run of the loop.
+
+    The editor reported *"template 'cisco_ios/base.j2' is not approved for
+    this device"* on a device whose template had been approved the day
+    before. It read as an approval that had revoked itself overnight -- the
+    precise failure the scheme-2 correction was made to stop.
+
+    It was not. `build_artifact()` takes `template_approved` as a plain
+    argument defaulting to **False**, and
+    `render_artifact.py` turns a False into that sentence. This route built
+    artifacts directly and never called `approval.is_approved()`, so the
+    message was produced **without consulting the approval store at all**.
+
+    A caller that forgets the check does not get a missing feature. It gets a
+    confident, wrong statement about something it never looked at.
+    """
+
+    def test_the_route_does_not_build_artifacts_directly(self):
+        from tests.astcheck import calls_in
+
+        from routes import templatize
+
+        assert calls_in(templatize.preview_committed_edit,
+                        "build_artifact") == 0, (
+            "building directly defaults template_approved to False, which is "
+            "reported as 'not approved' without asking")
+
+    def test_it_uses_the_helper_that_resolves_approval(self):
+        from tests.astcheck import calls_in
+
+        from routes import templatize
+
+        assert calls_in(templatize.preview_committed_edit, "artifact_for") >= 1
+
+    def test_an_approved_template_is_not_reported_unapproved(self, world,
+                                                              monkeypatch):
+        """Behavioural, not only structural.
+
+        Asserts the SPECIFIC reason is absent rather than that `deployable`
+        is True: this fixture carries an unacknowledged `unmodeled` line, so
+        it is legitimately not deployable for an unrelated reason. Keying on
+        the summary flag would make the test depend on the fixture having no
+        other blockers, which is a different claim than the one under test.
+        """
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda repo, template, host_vars: True)
+        text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
+        body = _preview(world, text).get_json()
+        assert not any("not approved" in r for r in body["blocking_reasons"]), \
+            body["blocking_reasons"]
+
+    def test_an_unapproved_template_still_blocks(self, world, monkeypatch):
+        """The gate must still gate."""
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda repo, template, host_vars: False)
+        text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
+        body = _preview(world, text).get_json()
+        assert body["deployable"] is False
+        assert any("not approved" in r for r in body["blocking_reasons"])
+
+    def test_the_helper_is_shared_with_the_template_preview(self):
+        """Two routes asking the same question must ask it the same way; the
+        divergence is what produced this."""
+        from tests.astcheck import calls_in
+
+        from routes import templates
+
+        assert calls_in(templates.preview, "artifact_for") >= 1
+
+
+class TestTheUnchangedDocumentSaysSo:
+    """Opening the editor and pressing Check without typing reported "the
+    document differs from what is committed" -- a claim about the document,
+    made whenever the RENDER was unchanged."""
+
+    def test_an_untouched_document_reports_no_change(self, world):
+        text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
+        body = _preview(world, text).get_json()
+        assert body["document_changed"] is False
+        assert body["vs_intent_changed"] is False
+
+    def test_a_changed_document_says_so(self, world):
+        text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
+        body = _preview(world, text.replace("uplink", "uplink to core")).get_json()
+        assert body["document_changed"] is True
+
+    def test_a_comment_only_change_is_document_changed_but_not_render_changed(
+            self, world):
+        """The state the old message described, which does exist -- it was
+        just not the one being shown."""
+        text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
+        body = _preview(world, text + "\n# a trailing comment\n").get_json()
+        assert body["document_changed"] is True
+        assert body["vs_intent_changed"] is False
+
+    def test_the_comparison_is_byte_for_byte(self, world):
+        """Whitespace counts. The text-over-fields decision rests on the
+        bytes surviving the round trip, so the check has to be on bytes."""
+        text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
+        body = _preview(world, text + "\n").get_json()
+        assert body["document_changed"] is True
+
+    def test_the_ui_has_three_branches(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "templates", "partials",
+            "intent_editor.html")
+        with open(path, encoding="utf-8") as handle:
+            source = handle.read()
+        assert "d.document_changed" in source
+        assert "byte-identical to what is committed" in source
+
+
+class TestTheEditorReMeasuresWhenTheModalIsShown:
+    """CodeMirror measures character and gutter widths at initialisation.
+    Inside a modal that is still opening those come back zero, and the gutter
+    is laid out on top of the text."""
+
+    def _source(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "templates", "partials",
+            "intent_editor.html")
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_it_refreshes_on_shown(self):
+        source = self._source()
+        assert "shown.bs.modal" in source
+        assert "_intentRefresh" in source
+
+    def test_it_refreshes_after_the_document_loads(self):
+        """Either can be the later of the two, so both trigger it."""
+        source = self._source()
+        assert source.count("_intentRefresh()") >= 2
+
+    def test_refresh_is_guarded(self):
+        source = self._source()
+        body = source[source.index("function _intentRefresh"):]
+        body = body[:body.index("}")]
+        assert "if (_intentCM)" in body

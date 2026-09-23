@@ -111,6 +111,36 @@ def _platform_for(hostname: str) -> str:
 # Library
 # ---------------------------------------------------------------------------
 
+def artifact_for(hostname, capture, repo, platform, template, host_vars=None):
+    """An artifact with its approval resolved. The ONE place that pairing is
+    made.
+
+    `build_artifact()` takes `template_approved` as a plain argument and
+    defaults it to **False**, and a False there is reported as
+    *"template '<x>' is not approved for this device"* -- a message about the
+    approval store, produced without consulting it. A caller that forgets the
+    check does not get a missing feature; it gets a confident, wrong
+    statement about something it never looked at.
+
+    That is exactly what happened to the intent editor: it built artifacts
+    directly, reported the device as not deployable, and read as an approval
+    that had revoked itself overnight.
+
+    Two builds, and the order is forced: `is_approved()` is keyed on the
+    device's parsed host_vars, which only exist once the artifact is built.
+    """
+    from modules.nsot import approval
+    from modules.nsot.render_artifact import build_artifact
+
+    artifact = build_artifact(hostname, capture, platform, template=template,
+                              host_vars=host_vars)
+    if not approval.is_approved(repo, template, {hostname: artifact.host_vars}):
+        return artifact
+    return build_artifact(hostname, capture, platform, template=template,
+                          template_approved=True,
+                          host_vars=host_vars or artifact.host_vars)
+
+
 def _untracked_templates(repo: str) -> tuple:
     """``(untracked, modified)`` paths under ``templates/``.
 
@@ -331,13 +361,7 @@ def preview(hostname):
     platform = _platform_for(hostname)
     template = templates_repo.template_for_device(repo, hostname, platform)
 
-    artifact = build_artifact(hostname, source, platform, template=template)
-    approved = approval.is_approved(repo, template,
-                                    {hostname: artifact.host_vars})
-    if approved:
-        artifact = build_artifact(hostname, source, platform, template=template,
-                                  template_approved=True,
-                                  host_vars=artifact.host_vars)
+    artifact = artifact_for(hostname, source, repo, platform, template)
 
     def _diff(other, label):
         if not other:

@@ -366,20 +366,37 @@ def preview_committed_edit(hostname):
 
     platform = _platform_of_host(hostname)
     template = templates_repo.template_for_device(repo, hostname, platform)
+
+    # `artifact_for()`, not `build_artifact()` directly. The latter defaults
+    # `template_approved` to False and reports that as "template '<x>' is not
+    # approved for this device" -- a claim about the approval store made
+    # without consulting it. This route built artifacts directly and so
+    # reported every device as not deployable, which read as an approval that
+    # had revoked itself.
+    from routes.templates import artifact_for
+
     try:
-        edited = build_artifact(hostname, capture, platform, template=template,
-                                host_vars=hostvars.hydrate_secrets(
-                                    parsed, hostname, list_name))
+        edited = artifact_for(hostname, capture, repo, platform, template,
+                              host_vars=hostvars.hydrate_secrets(
+                                  parsed, hostname, list_name))
     except Exception as exc:                  # noqa: BLE001
         return jsonify({"ok": False, "stage": "render",
                         "error": f"{type(exc).__name__}: {exc}"}), 400
 
     committed = hostvars.read_committed(repo, hostname)
     vs_intent = ""
+    # Whether the DOCUMENT changed, compared byte for byte against the file.
+    # Without it the UI cannot tell "no edit" from "an edit the render does
+    # not show", and said the second when the first was true.
+    document_changed = False
+    committed_path = hostvars.committed_path(repo, hostname)
+    if os.path.exists(committed_path):
+        with open(committed_path, encoding="utf-8") as handle:
+            document_changed = handle.read() != text
     if committed:
-        current = build_artifact(hostname, capture, platform, template=template,
-                                 host_vars=hostvars.hydrate_secrets(
-                                     committed, hostname, list_name))
+        current = artifact_for(hostname, capture, repo, platform, template,
+                               host_vars=hostvars.hydrate_secrets(
+                                   committed, hostname, list_name))
         vs_intent = roundtrip.canonical_diff(
             current.rendered_masked, edited.rendered_masked,
             fromfile=f"committed ({hostname})", tofile=f"edited ({hostname})")
@@ -394,6 +411,7 @@ def preview_committed_edit(hostname):
         "blocking_reasons": list(edited.blocking_reasons),
         "vs_intent": vs_intent,
         "vs_intent_changed": bool(vs_intent),
+        "document_changed": document_changed,
         "vs_device": vs_device,
         "masked_not_compared": masked,
         "rendered": edited.rendered_masked,

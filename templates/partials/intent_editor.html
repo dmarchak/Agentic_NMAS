@@ -71,6 +71,13 @@ function _intentSetText(text) {
 /* Commit is disabled until a preview has passed. A text editor is safe for
    someone who does not remember the schema only if the consequence is on
    screen before the commit — so the button is earned, not merely available. */
+function _intentRefresh() {
+  /* Re-measure once the modal is actually on screen. Called on
+     `shown.bs.modal` and again after the document is loaded, because either
+     can be the later of the two. */
+  if (_intentCM) _intentCM.refresh();
+}
+
 function _intentArm(on) {
   const btn = document.getElementById('intentCommitBtn');
   if (btn) btn.disabled = !on;
@@ -88,6 +95,7 @@ async function showIntentEditor(hostname) {
   document.getElementById('intentEditorStatus').textContent = 'Loading…';
   document.getElementById('intentEditorSummary').value = '';
   _intentModal.show();
+  modalEl.addEventListener('shown.bs.modal', _intentRefresh, {once: true});
 
   try {
     const r = await fetch('/templatize/committed/' + encodeURIComponent(hostname));
@@ -101,6 +109,11 @@ async function showIntentEditor(hostname) {
     _intentSetText(d.yaml);
     document.getElementById('intentEditorStatus').textContent =
       'Edit, then Check & show diff. Commit unlocks once the check passes.';
+    /* CodeMirror measures character and gutter widths when it initialises.
+       Inside a Bootstrap modal that is still opening, those measurements come
+       back as zero, and the gutter is laid out on top of the text -- which is
+       exactly what it did. `refresh()` after the modal is fully shown makes
+       it measure again against a visible element. */
     if (window.CodeMirror && !_intentCM) {
       /* No mode. Only the jinja2 mode is vendored, and naming an
          unvendored one makes CodeMirror initialise with an unknown mode --
@@ -112,8 +125,10 @@ async function showIntentEditor(hostname) {
         {lineNumbers: true, viewportMargin: Infinity});
       _intentCM.setValue(d.yaml);
       _intentCM.on('change', function () { _intentArm(false); });
+      _intentRefresh();
     } else if (_intentCM) {
       _intentCM.on('change', function () { _intentArm(false); });
+      _intentRefresh();
     } else {
       document.getElementById('intentEditorArea')
         .addEventListener('input', function () { _intentArm(false); });
@@ -158,12 +173,25 @@ async function previewIntentEdit() {
          ' <span class="text-warning">Not deployable: '
          + _iEsc((d.blocking_reasons || []).join('; ')) + '</span>');
 
+    /* Three distinct states, and the first version collapsed two of them.
+       Its else-branch always said "the document differs from what is
+       committed, but the render does not" -- which is a claim about the
+       document, asserted whenever the RENDER was unchanged. Opening the
+       editor and pressing Check without typing produced it, stating a
+       difference that did not exist. `document_changed` is the server's
+       byte-for-byte comparison against the committed file. */
     let html = '<h6 class="fw-semibold mb-1">What this edit changes</h6>';
-    html += d.vs_intent_changed
-      ? '<pre class="small bg-body-tertiary p-2 rounded" style="max-height:260px;overflow:auto">'
-        + _iEsc(d.vs_intent) + '</pre>'
-      : '<p class="small text-muted">No change to the rendered config. The '
-        + 'document differs from what is committed, but the render does not.</p>';
+    if (d.vs_intent_changed) {
+      html += '<pre class="small bg-body-tertiary p-2 rounded" style="max-height:260px;overflow:auto">'
+            + _iEsc(d.vs_intent) + '</pre>';
+    } else if (d.document_changed) {
+      html += '<p class="small text-muted">No change to the rendered config — '
+            + 'the document differs from what is committed, but the render '
+            + 'does not.</p>';
+    } else {
+      html += '<p class="small text-muted">Nothing to commit — this document '
+            + 'is byte-identical to what is committed.</p>';
+    }
 
     html += '<h6 class="fw-semibold mb-1 mt-3">What a deploy would push</h6>';
     html += d.vs_device
