@@ -247,9 +247,9 @@ class OnboardPlan:
             "list":           self.list_name,
             "source_kind":    self.source_kind,
             "mgmt_ip":        self.mgmt_ip,
-            # Shown alongside the address, because "10.255.0.31" and
-            # "10.255.0.31 255.255.255.0 on GigabitEthernet2" are different
-            # claims and only the second is a config the device can boot.
+            # Shown alongside the address, because an address on its own
+            # and an address with a mask and an interface are different
+            # claims -- and only the second is a config a device can boot.
             "mgmt_mask":         self.mgmt_mask,
             "manager_interface": self.manager_interface,
             "manager_gateway":   self.manager_gateway,
@@ -459,6 +459,7 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
         return "", (), ""
     try:
         from modules.nsot.bootstrap_config import render_bootstrap
+        from modules.nsot.deploy import UnsendableCommand
 
         config = render_bootstrap(platform, hostname=hostname,
                                   username="admin", secret=secret or "unset",
@@ -468,7 +469,21 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
                                   manager_address=manager_address,
                                   manager_mask=manager_mask,
                                   manager_gateway=manager_gateway)
+    except UnsendableCommand as exc:
+        # The ONE failure that belongs in `unsendable`, keyed on the type
+        # rather than on "the render raised". `assert_sendable` names the
+        # command number, the codepoint and the column, and that message is
+        # carried through rather than re-implemented.
+        log.error("onboard: bootstrap config is unsendable for %r: %s",
+                  hostname, exc)
+        return "", (str(exc),), ""
     except Exception as exc:                   # noqa: BLE001
+        # Everything else. Split out because a missing netmask was being
+        # announced as "lines contain characters an IOS CLI cannot accept",
+        # which sent the reader looking for an em dash -- and the first
+        # version of that split was too coarse the other way, folding the
+        # genuine unsendable finding in here too. The exception type is the
+        # thing that actually distinguishes them.
         log.error("onboard: bootstrap render failed for %r: %s", hostname, exc)
         return "", (), str(exc)
 

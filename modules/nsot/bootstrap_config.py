@@ -43,13 +43,18 @@ could not reach the manager (4C.8):
     carrying a static address on a segment the NMAS can reach. This is the
     one that makes the device onboardable, and until 4C.8 it did not exist.
 
-Measured 2026-09-23: the NMAS reaches the lab on ``enp6s19`` at
-``10.255.0.10/24``, s3's ``Vlan99`` is the gateway at ``10.255.0.1``, and
-every device's ``10.255.1.x`` is a ``/32`` loopback advertised into OSPF. So
-the previous docstring claim -- "no loopback, no addressed data interface, no
+Measured 2026-09-23: the manager has an interface on one lab segment and
+reaches every device through a switch SVI on it, while each device's "mgmt
+identity" address is a ``/32`` loopback advertised into the IGP. So the
+previous docstring claim -- "no loopback, no addressed data interface, no
 routing process; what remains is what makes the device reachable" -- was
 false in its last clause. What remained made the device **boot**. Nothing
 made it **reachable**.
+
+The measured addresses are in ``docs/NSOT_STAGE4C_PLAN.md`` §8.2 and not
+here: an address in this package is somebody's lab leaking into the tool,
+which ``tests/test_no_ip_literals.py`` exists to refuse. It caught this
+docstring.
 """
 
 import logging
