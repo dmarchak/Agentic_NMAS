@@ -67,17 +67,38 @@ used **only** to reach the device for its first capture, and the final wizard
 step calls the existing rotation to replace it with a device-generated
 type-9 secret.
 
+**It must survive a mid-run failure.** Between the device booting with this
+value and the rotation replacing it, **it is the only way in** — if it
+existed only in memory, a wizard crash in that interval would leave a
+reachable device nobody can log into. Tolerable for a probe, not for r6.
+
+That is the *same* window `credential_rotation` already covers, between the
+device accepting a password and the credential store being written. So it
+uses **its** staging — same directory, same encryption, same 0700/0600, same
+recovery path. Two mechanisms for one window is how one of them stops being
+maintained.
+
 *Acceptance*
-- Two runs produce different credentials (seeded-RNG test, not a smoke test).
+- Two runs produce different credentials — 50 mints, all distinct, not a
+  smoke test. `secrets`, not `random`.
+- **Kill the run between boot and rotation and the credential is still
+  recoverable**, from the file alone with nothing in memory.
+- Encrypted at rest, owner-only, and absent reads as `None` rather than
+  as empty.
 - The bootstrap value is **never** written to `devices.csv` or the credential
-  store as a durable value — it lives in the staging path the rotation
-  already uses, and `assert_no_secret_values()` covers it.
-- The run records that rotation **happened**, and a run where rotation failed
-  reports `rotated: false` with the reason rather than reporting success.
-- **Negative control:** stub the rotation to fail → the wizard reports the
-  device onboarded **and not rotated**, and a test asserts it does not claim
-  success. This is the `mark_done()` rule: an item closed on a failed push is
-  the queue claiming work that did not happen.
+  store as a durable value — asserted by AST across every function in the
+  module, not by inspection.
+- No look-alike characters and nothing that breaks the files it lives in: it
+  reaches a config, a console and possibly the colon-delimited `router.db`.
+- A run where rotation failed reports `rotated: false` with the reason, and
+  **keeps the staged credential** — clearing it on failure would close the
+  crash window by throwing away the thing that makes it survivable.
+- `rotation_succeeded()` decides, not a truthiness check: two of the five
+  rotation states mean the device *is* rotated and the bookkeeping is not
+  finished, which is a success for the credential and a finding for the
+  operator.
+- **Negative controls:** memory-only staging → 8 fail; clear on failure → 2
+  fail; truthiness instead of `rotation_succeeded()` → 4 fail.
 
 ### 4C.3 — Ordering and partial failure
 
@@ -312,7 +333,7 @@ with the census condition.
 |---|---|
 | **4C.0** the NetBox census | **done** — `scripts/nmas-netbox-census`, `tests/test_netbox_census.py`, 15 tests, three negative controls each shown failing |
 | **4C.1** the plan object | **done** — `modules/nsot/onboard.py`, `tests/test_onboard_plan.py`, 27 tests, four negative controls each shown failing |
-| 4C.2 bootstrap credential | not started |
+| **4C.2** bootstrap credential | **done** — `tests/test_onboard_bootstrap_credential.py`, 23 tests, three negative controls each shown failing |
 | 4C.3 ordering | not started |
 | 4C.4 routes + UI | not started |
 | 4C.5 RW community | not started |

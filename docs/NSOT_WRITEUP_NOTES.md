@@ -6751,3 +6751,66 @@ correct code, for the third form this project has now seen of *prose about
 code is not code*: a test matching a docstring, a checker matching a
 docstring, and now a test matching its own explanatory comment. It asserts on
 the assignment statement instead.
+
+---
+
+## A set difference passes vacuously, and that is a tell
+
+Sixth instance of the can't-fail control, and the first with a **reliable
+tell** rather than a story.
+
+The census test:
+
+```python
+used = set(re.findall(r'"((?:dcim|ipam)/[a-z-]+/)"', src))
+missing = sorted(used - known)
+assert not missing
+```
+
+It passed immediately, which for a first run is the signal. `used - known` is
+empty when `used` is empty, so **a regex that matched nothing makes the
+assertion true** — and there is no difference at all between "every endpoint
+is counted" and "the scan found no endpoints".
+
+That is the general shape, and it is worth stating as a rule rather than as
+six anecdotes:
+
+> **An assertion over a set difference passes vacuously when either set is
+> empty. It needs a floor on its inputs.**
+
+`assert not (A - B)` proves something only once you know `A` is non-empty.
+The floor does not have to be exact — `assert len(used) >= 12` against a
+measured 15 is enough, because the failure it guards against is the regex
+matching *nothing*, not the regex matching fourteen.
+
+The same reasoning covers the whole family:
+
+* `assert all(...)` over an empty iterable is `True`;
+* `assert not [x for x in xs if bad(x)]` is `True` when `xs` is empty;
+* `assert expected.issubset(found)` is `True` when `expected` is empty — the
+  direction matters, and it is the one people get backwards;
+* a scan for offenders that finds none **and** a scan that could not run
+  produce the same empty list.
+
+`test_blueprint_reachability.py` and `test_disabled_is_a_state.py` already
+carry a `_the_scan_finds_something` test for exactly this reason. What was
+missing was the statement that the two are the same rule, so the third
+occurrence does not have to be rediscovered as a fresh surprise.
+
+### The other five, for the record
+
+1. `LAUNCH_SKIP_MARKER in text` — a substring, satisfied by
+   `..._startupX`, and a presence check inside the function written to
+   replace presence checks.
+2. `sshpass … || echo PASS` — passed on a KEX failure, so it would have
+   passed with the device powered off.
+3. `--dry-run` returning before the persist chain — the control could not
+   reach the code it was controlling.
+4. `'"next_ts"' not in ast.unparse(...)` — `ast.unparse` emits single quotes.
+5. `os.utime` on the repo copy while the code read the legacy copy's mtime.
+6. This one.
+
+Four of the six are the same underlying fault: **the check and the property
+were about different objects.** The set-difference form is the first that is
+about the right object and still cannot fail, which is why it is worth its
+own rule.

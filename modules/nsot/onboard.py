@@ -344,3 +344,129 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
         return "", (f"the bootstrap config could not be rendered: {exc}",)
 
     return config, ()
+
+
+# ---------------------------------------------------------------------------
+# The one-time bootstrap credential
+# ---------------------------------------------------------------------------
+
+#: Long enough that guessing is not the attack, short enough to type at a
+#: console if the wizard dies and somebody has to. `secrets` rather than
+#: `random`: this is the only credential the device has for part of its life.
+BOOTSTRAP_LENGTH = 24
+
+#: No shell metacharacters, no quotes, no colon. The value reaches a config
+#: file, a console and possibly `router.db` (colon-delimited), and a
+#: credential that breaks the file it lives in is not a credential.
+_BOOTSTRAP_ALPHABET = ("ABCDEFGHJKLMNPQRSTUVWXYZ"
+                       "abcdefghijkmnopqrstuvwxyz"
+                       "23456789")
+
+
+def mint_bootstrap_credential() -> str:
+    """A fresh random password for one onboarding run.
+
+    It exists to reach the device once, for its first capture, and is replaced
+    by a device-generated type-9 secret before the run finishes. It is never a
+    durable credential and is never written to ``devices.csv`` or the
+    credential store.
+
+    The alphabet excludes look-alikes (`0O1lI`) because the one time anybody
+    reads this value is when something has gone wrong and they are typing it
+    into a console.
+    """
+    import secrets
+
+    return "".join(secrets.choice(_BOOTSTRAP_ALPHABET)
+                   for _ in range(BOOTSTRAP_LENGTH))
+
+
+def stage_bootstrap_credential(repo: str, hostname: str, password: str) -> str:
+    """Park the bootstrap credential across the crash window, encrypted.
+
+    **Between the device booting with this value and the rotation replacing
+    it, it is the only way in.** If it existed only in memory, a wizard crash
+    in that interval would leave a reachable device nobody can log into —
+    tolerable for a probe, not for r6.
+
+    That is the *same* window `credential_rotation` already covers, between
+    the device accepting a password and the credential store being written.
+    So this uses **its** staging rather than a second mechanism: same
+    directory, same encryption, same 0700/0600, same recovery path. Two
+    mechanisms for one window is how one of them stops being maintained.
+    """
+    from modules.nsot.credential_rotation import stage_plaintext
+
+    return stage_plaintext(repo, hostname, password)
+
+
+def staged_bootstrap_credential(repo: str, hostname: str):
+    """Recover the bootstrap credential after a crash, or ``None``."""
+    from modules.nsot.credential_rotation import staged_plaintext
+
+    return staged_plaintext(repo, hostname)
+
+
+def clear_bootstrap_credential(repo: str, hostname: str) -> None:
+    """Drop it — **only** once rotation has succeeded.
+
+    Clearing it on failure would close the crash window by throwing away the
+    thing that makes it survivable.
+    """
+    from modules.nsot.credential_rotation import clear_staged
+
+    clear_staged(repo, hostname)
+
+
+def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
+                     confirmed_fingerprint: str, actor: str = "",
+                     actor_kind: str = "", rotate=None) -> dict:
+    """Replace the bootstrap credential with a device-generated secret.
+
+    Returns ``{"rotated", "state", "reason", "recoverable"}``.
+
+    **A run whose rotation failed does not report success.** It reports the
+    device onboarded and **not rotated**, names why, and says the bootstrap
+    credential is still staged and still the way in. That is the `mark_done()`
+    rule: an item closed on a failed push is the queue claiming work that did
+    not happen, and an operator told "onboarded" walks away from a device
+    still holding a throwaway password.
+
+    `confirmed_fingerprint` is passed through rather than invented here: the
+    rotation is a device change and its confirm is the wizard's, not this
+    function's. A default would be this layer confirming on the operator's
+    behalf.
+
+    **`rotation_succeeded()` decides, not a truthiness check.** The rotation
+    has five states and two of them mean "the device is rotated and the
+    bookkeeping is not finished" — which is a success for the credential and
+    a finding for the operator. Reading `result["ok"]` would collapse that,
+    and there is no such key.
+
+    The staged value is cleared **only** on success.
+    """
+    from modules.nsot.credential_rotation import (NOT_STARTED,
+                                                  rotation_succeeded)
+
+    if rotate is None:
+        from modules.nsot.credential_rotation import rotate
+
+    try:
+        result = rotate(list_name, hostname,
+                        confirmed_fingerprint=confirmed_fingerprint,
+                        actor=actor, actor_kind=actor_kind) or {}
+    except Exception as exc:                   # noqa: BLE001
+        log.error("onboard: rotation raised for %s: %s", hostname, exc)
+        result = {"state": NOT_STARTED, "error": f"rotation raised: {exc}"}
+
+    state = result.get("state", NOT_STARTED)
+    if not rotation_succeeded(result):
+        reason = result.get("error") or f"rotation ended in state {state!r}"
+        log.error("onboard: rotation did not succeed for %s: %s",
+                  hostname, reason)
+        return {"rotated": False, "state": state, "reason": reason,
+                "recoverable": staged_bootstrap_credential(repo, hostname)
+                is not None}
+
+    clear_bootstrap_credential(repo, hostname)
+    return {"rotated": True, "state": state, "reason": "", "recoverable": False}

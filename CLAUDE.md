@@ -864,6 +864,9 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_agent_failure_surfaces.py` | failure streak, same-error, ERROR log, red badge; the stale trigger stays fixed |
 | `test_disabled_is_a_state.py` | a disabled read still carries its history; every degraded GET classified |
 | `test_agent_panel_renders.py` | the shipped JS executed in duktape: what RENDERS while disabled, not what the endpoint carries |
+| `test_netbox_census.py` | identity per type, tagged separately, and the comparison can say no |
+| `test_onboard_plan.py` | `build_plan` the only constructor; every refusal at once; a check that did not run has not passed |
+| `test_onboard_bootstrap_credential.py` | the crash window survives; one staging mechanism; a failed rotation does not report success |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -1179,6 +1182,16 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `test_drift_routes.py` exercises the route over HTTP and compares the two
   signatures — a test asserting the *shape* of a call cannot see a signature
   that does not exist.
+- **An assertion over a set difference passes vacuously when either set is
+  empty — it needs a floor on its inputs.** `assert not (A - B)` proves
+  nothing until `A` is known non-empty, and a scan that found no offenders is
+  indistinguishable from a scan that could not run. The floor need not be
+  exact: `assert len(used) >= 12` against a measured 15 guards the failure
+  that matters, which is the regex matching *nothing*. Same family:
+  `assert all(...)` over an empty iterable, `assert expected.issubset(found)`
+  with an empty `expected`, and any "no offenders" list comprehension.
+  `test_blueprint_reachability.py` and `test_disabled_is_a_state.py` both
+  carry a `_the_scan_finds_something` test for this reason.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
