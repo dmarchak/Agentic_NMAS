@@ -53,12 +53,26 @@ def _no_test_writes_into_live_data():
     from modules.config import LISTS_DIR
 
     def _snapshot():
+        """Directories AND files.
+
+        The first version compared directory names and missed a golden
+        written into a list that already existed. The second compared files
+        and missed a list directory created with nothing in it —
+        `get_list_data_dir()` calls `os.makedirs()`, so merely *resolving* a
+        path for an unknown list leaves one behind.
+
+        Each version caught what the other missed, which is the argument for
+        the union rather than for choosing between them.
+        """
         found = set()
-        for root, _dirs, files in os.walk(LISTS_DIR):
-            # `.git` inside a config_repo churns on any read (gc, logs), and
-            # is not what a test polluting live data would leave behind.
+        for root, dirs, files in os.walk(LISTS_DIR):
+            # `.git` inside a config_repo churns on any read (gc, logs, index
+            # refreshes) and is not what a test polluting live data leaves.
             if os.sep + ".git" in root:
                 continue
+            for name in dirs:
+                if name != ".git":
+                    found.add(os.path.join(root, name) + os.sep)
             for name in files:
                 found.add(os.path.join(root, name))
         return found
@@ -66,7 +80,26 @@ def _no_test_writes_into_live_data():
     before = _snapshot()
     yield
     created = sorted(_snapshot() - before)
+
+    # Clean up what THIS test created, then report it.
+    #
+    # Without the cleanup only the first offender in a run is visible: every
+    # later one finds the directory already there and the guard says nothing.
+    # Removing it makes one pass name them all, and it removes only paths
+    # that did not exist when this test started.
+    import shutil
+
+    for path in sorted(created, key=len, reverse=True):
+        try:
+            if path.endswith(os.sep):
+                shutil.rmtree(path.rstrip(os.sep), ignore_errors=True)
+            elif os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
+
     assert not created, (
         f"this test created {created[:5]} in the real data directory "
         f"({LISTS_DIR}). Patch `modules.config.get_list_data_dir` BEFORE "
-        f"anything that resolves a path through it — `save_golden()` does.")
+        f"anything that resolves a path through it — `get_list_data_dir()` "
+        f"calls os.makedirs(), so merely resolving a path is enough.")

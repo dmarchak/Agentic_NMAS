@@ -523,6 +523,14 @@ def wired(monkeypatch, tmp_path):
     device = {"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
               "username": "admin", "password": "enc", "secret": "enc"}
 
+    # `plan()` calls `platform_of()`, which resolves the list's CSV through
+    # `get_list_data_dir()` -- and that calls `os.makedirs()`, so merely
+    # asking where list "Lab" lives creates `data/lists/lab/` in the working
+    # checkout. Added in Stage 1.7 and caught by conftest's data-directory
+    # guard once that directory stopped already existing.
+    monkeypatch.setattr("modules.config.get_list_data_dir",
+                        lambda name: str(tmp_path))
+
     router = _Router()
     state = {"router": router, "session": _Session(router=router),
              "commit_ok": True, "golden_line": ORIGINAL_LINE}

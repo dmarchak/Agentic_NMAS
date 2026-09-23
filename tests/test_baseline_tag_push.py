@@ -70,7 +70,14 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.nsot.remote.remote_url", lambda config: bare)
     monkeypatch.setattr("modules.nsot.remote.auto_push_decision",
                         lambda name, repo: {"push": True, "reason": "ok"})
-    return {"local": local, "bare": bare, "archive": archive}
+    # `record_push()` -> `save_remote()` writes `data/lists/<slug>/remote.json`
+    # for real. Unpatched, these tests created `data/lists/lab/remote.json` in
+    # the working checkout -- caught by conftest's data-directory guard the
+    # first time that directory did not already exist.
+    saved = {}
+    monkeypatch.setattr("modules.nsot.remote.save_remote",
+                        lambda name, config: saved.update(config))
+    return {"local": local, "bare": bare, "archive": archive, "saved": saved}
 
 
 class TestTheHookFiresOnTheNoCommitPath:

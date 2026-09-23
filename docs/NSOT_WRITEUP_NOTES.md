@@ -5742,3 +5742,34 @@ The interval between writing that lesson down and repeating it was about two
 hours, which is the useful part of the observation: knowing the rule is not
 the same as having a habit that enforces it. The habit is *reintroduce the
 bug and watch*, and it takes under a minute.
+
+### It took a third version, and then it found three more
+
+The name-based version missed a file written into an existing list. The
+file-based version missed a list directory created **empty** —
+`get_list_data_dir()` calls `os.makedirs()`, so merely *resolving* a path for
+an unknown list leaves one behind. Each caught what the other missed, which
+is the argument for the union rather than for picking between them.
+
+The union version then found three offenders nobody was looking for:
+
+* `test_baseline_tag_push.py` — `record_push()` calls `save_remote()`, which
+  the fixture never patched, so the push tests wrote a real `remote.json`
+  into `data/lists/lab/`;
+* `test_credential_rotation.py` — `plan()` calls `platform_of()`, **added in
+  Stage 1.7**, which resolves the list's CSV and therefore creates the
+  directory. A change that looked purely additive gave a pure function a
+  filesystem side effect;
+* `test_netbox_inventory.py` — the dispatch tests name a list that does not
+  exist.
+
+Only the first offender in a run was visible, because every later one found
+the directory already there. The guard now **removes what a test created**
+before reporting it, so one pass names them all.
+
+The last of those needed the patch to go where the name is **bound**:
+`modules/inventory` does `from modules.config import get_list_data_dir` at
+module level, so rebinding `modules.config.get_list_data_dir` leaves its copy
+untouched. Patching `LISTS_DIR` works either way, because
+`get_list_data_dir()` reads that global at call time — and it preserves the
+real per-list layout, which replacing the function did not.

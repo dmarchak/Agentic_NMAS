@@ -199,6 +199,23 @@ class TestCredentialResolution:
 class TestDispatchDoesNoNetworkIO:
     """Amendment 1: load_saved_devices sits on ~79 call sites."""
 
+    @pytest.fixture(autouse=True)
+    def _no_real_data_dir(self, tmp_path, monkeypatch):
+        """`invalidate()` and `load_netbox_devices()` resolve the list's cache
+        path through `get_list_data_dir()`, which calls `os.makedirs()` -- so
+        naming a list that does not exist creates `data/lists/lab/` in the
+        working checkout. Caught by conftest's data-directory guard.
+
+        `LISTS_DIR` rather than `get_list_data_dir`, for two reasons.
+        `get_list_data_dir()` reads the module global at CALL time, so
+        patching it works through this package's module-level
+        `from modules.config import get_list_data_dir` -- which patching the
+        function itself does not. And it keeps the real per-list layout:
+        replacing the function flattened `<tmp>/lab/` to `<tmp>/`, breaking a
+        sibling test that asserts where the cache file lands.
+        """
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+
     def test_dispatch_serves_cache_without_fetching(self, monkeypatch):
         fetches = []
         monkeypatch.setattr(netbox_source, "fetch_netbox_devices",
