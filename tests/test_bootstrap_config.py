@@ -147,14 +147,77 @@ class TestItMatchesTheMeasuredProbeConfigs:
     a generated file should not.
     """
 
+    #: The ONE line the generator has deliberately diverged from what stage A
+    #: actually booted, as ``(booted, generated)``.
+    #:
+    #: `bp-c8k.cfg` is a **record of a measurement** — the file a real C8000v
+    #: came up on. Editing it to match a later generator would rewrite that
+    #: record, and the probe fixtures exist precisely so the measurements stay
+    #: readable. So the divergence is declared instead.
+    #:
+    #: Declared, not ignored: the test below still compares every other line,
+    #: and it fails if this difference **disappears** as well as if a new one
+    #: appears. A disappearance means somebody "tidied" the fixture, which is
+    #: the thing this protects against.
+    DIVERGED = {(" transport input all", " transport input ssh")}
+
     def test_the_c8000v_shape_matches_bp_c8k(self):
+        """Equal except for the divergence declared above, exactly.
+
+        `transport input all` includes telnet. The generator emits `ssh` on
+        both platforms as of 2026-09-23 — see the comment at the emit site.
+        Stage A booted the older shape, and that file says so.
+        """
         with open(os.path.join(PROBE, "configs", "bp-c8k.cfg"),
                   encoding="utf-8") as fh:
             measured = _directives(fh.read())
         generated = _directives(
             render_bootstrap("cisco_iosxe", hostname="bp-c8k",
                              username="admin", secret="admin"))
-        assert generated == measured
+
+        assert len(generated) == len(measured), (
+            "a line was added or removed, which no declared divergence "
+            "covers")
+        differences = {(m, g) for m, g in zip(measured, generated) if m != g}
+        assert differences == self.DIVERGED, (
+            f"expected exactly {self.DIVERGED}, found {differences}")
+
+    def test_the_declared_divergence_is_still_present(self):
+        """If the fixture were edited to match, this stops failing silently
+        — and a measurement record would have been quietly rewritten."""
+        with open(os.path.join(PROBE, "configs", "bp-c8k.cfg"),
+                  encoding="utf-8") as fh:
+            measured = fh.read()
+        assert " transport input all" in measured, (
+            "bp-c8k.cfg no longer records what stage A booted")
+
+    def test_both_platforms_now_emit_ssh_only(self):
+        """The decision itself, not the fixture bookkeeping.
+
+        Telnet puts the credential on the wire in clear text, on the device's
+        first configuration — which is exactly when the credential is the
+        bootstrap one about to be rotated.
+        """
+        for platform in ("cisco_iosxe", "cisco_ios"):
+            text = render_bootstrap(platform, hostname="x", username="admin",
+                                    secret="x",
+                                    mgmt_interface="GigabitEthernet0/0")
+            lines = [ln.strip() for ln in text.splitlines()
+                     if "transport input" in ln]
+            assert lines == ["transport input ssh"], (platform, lines)
+
+    def test_nothing_in_nmas_reaches_a_device_over_telnet(self):
+        """The check that makes SSH-only safe, rather than assumed safe.
+
+        Both drivers in `platform_map` are SSH variants. The root
+        `telnetlib.py` shim exists because Netmiko IMPORTS the module on
+        Python 3.13+, not because anything here telnets.
+        """
+        from modules.settings_schema import DEFAULTS
+
+        drivers = {p["netmiko_device_type"]
+                   for p in DEFAULTS["platform_map"].values()}
+        assert not any(d.endswith("_telnet") for d in drivers), drivers
 
     def test_the_vios_shape_matches_bp_vios(self):
         with open(os.path.join(PROBE, "configs", "bp-vios.cfg"),

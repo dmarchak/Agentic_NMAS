@@ -6472,3 +6472,57 @@ It is `redact.py`'s 8-character value floor arrived at from the opposite
 direction: there a short value matches everywhere and corrupts the line; here
 a short value matches by accident and cries wolf. Same cause — a needle
 shorter than its haystack's noise — and the same remedy.
+
+---
+
+## Per-platform branches accumulate decisions and lose the record of them
+
+Twice in one evening, the two platform branches of
+`modules/nsot/bootstrap_config.py` differed with **nothing in the code saying
+why**:
+
+* **Key generation.** `cisco_ios` emits `crypto key generate rsa modulus
+  2048`; `cisco_iosxe` emits nothing. That one turned out to be deliberate
+  and load-bearing — vrnetlab generates the key itself on the C8000v, and
+  emitting it there would regenerate a key the device is mid-way through
+  using. The reason was recorded, in `ssh_key_lines()`. Good.
+* **`transport input`.** `cisco_ios` emitted `ssh`; `cisco_iosxe` emitted
+  `all`, which includes telnet. **Nothing said why**, and the answer was that
+  nobody had decided: each branch had faithfully reproduced its own reference
+  device (`s1.cfg` emits `transport input telnet ssh`, `r1.cfg` emits
+  `transport input all`), and the vIOS branch happened to have been tightened
+  further at some point while the C8000v branch had not.
+
+So one divergence was a decision with a reason attached, and the other was
+two independent inheritances that had never been compared to each other.
+**From the outside they are indistinguishable** — both are a difference
+between two branches of the same function.
+
+That is the pattern worth naming. A per-platform branch is where
+platform-specific truth *should* live, which makes it also the place where an
+un-decided difference is least likely to be questioned: the reader's first
+assumption is that the platforms differ because platforms differ.
+
+The remedy is not fewer branches. It is that **a difference between branches
+carries its reason at the emit site**, so the next reader can tell a decision
+from an inheritance without reconstructing the history. `ssh_key_lines()`
+already did this; the `transport input` line now does too, including the
+explicit note that the standing "reproduce what predates it" rule does *not*
+apply to a bootstrap config, because a device that does not exist yet has no
+behaviour to preserve.
+
+### And a measurement record is not a template
+
+Changing the generator broke `test_the_c8000v_shape_matches_bp_c8k`, which
+asserts the probe fixture and the generator agree. The obvious fix — edit the
+fixture — would have been wrong: `bp-c8k.cfg` is **what a real C8000v
+actually booted in stage A**, and the probe fixtures exist so those
+measurements stay readable.
+
+So the divergence is *declared* rather than erased: one `(booted, generated)`
+pair, named, with the test still comparing every other line. And it fails if
+the divergence **disappears** as well as if a new one appears — a
+disappearance means somebody tidied the fixture, which is the thing worth
+protecting against. Same shape as the seed declaration and the unreachable
+allowlist: a list that must not grow silently, and here also one that must
+not silently shrink.

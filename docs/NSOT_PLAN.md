@@ -1541,15 +1541,47 @@ Stage D measures an intersection r6 is not in. It is still required **before
 any vIOS is onboarded** — the switches are the platform it applies to — and
 is run when convenient rather than as a blocker.
 
-**Open before r6, and not to be settled by omission:** the C8000v bootstrap
-emits `transport input all` on its vty lines, which includes **telnet**. That
-faithfully reproduces r1-r3, and the standing rule is that a new default
-reproduces what predates it — so it is deliberate as written. But a bootstrap
-config is a device's *first* configuration rather than a reproduction of an
-old one, and the vIOS branch already emits the tighter `transport input ssh`
-(tighter than s1-s4's own `transport input telnet ssh`). The asymmetry is
-real, undocumented in the code, and should be a decision before r6 boots with
-it rather than a discovery afterwards.
+**`transport input` — DECIDED 2026-09-23: `ssh` on both platforms.**
+
+The C8000v branch emitted `transport input all`, which includes telnet,
+reproducing r1-r3. **The standing rule does not apply**, and the exception is
+worth stating because the rule is otherwise near-absolute: "a new default
+reproduces the behaviour that predates the setting" exists to stop a setting
+silently changing something that already works, and **a bootstrap config is
+written for a device that does not exist yet** — there is no behaviour to
+preserve. Reproducing `all` inherits an accident of how those five routers
+were first built, not a decision anyone made.
+
+Telnet would put the credential on the wire in clear text in r6's first
+minute, which is exactly when that credential is the bootstrap one being
+rotated. Verified safe before changing it: both drivers in `platform_map` are
+SSH (`cisco_xe`, `cisco_ios`, not the `_telnet` variants), vrnetlab reaches
+the device over the serial console rather than the vty lines, and the root
+`telnetlib.py` shim exists because Netmiko *imports* the module, not because
+anything here telnets. A test pins that.
+
+`docs/bootstrap-probe/configs/bp-c8k.cfg` still reads `transport input all`,
+deliberately: it is a **record of what stage A actually booted**, not a
+template, and editing it would rewrite a measurement. The divergence is
+**declared** in `test_bootstrap_config.py` and the test fails both if another
+appears and if this one disappears.
+
+### Deferred — tighten `transport input` on r1-r5
+
+They still carry `transport input all` in their own configurations. **Not
+part of Stage 4**: changing five live routers is not a side effect of fixing
+a generator.
+
+It is an ordinary change through the normal loop — edit committed intent,
+plan, confirm, deploy — and is worth doing **visibly**, one device at a time,
+because that is what the loop is for. Best scheduled after r6's branch-site
+change, which is the other planned exercise of authored-intent deploys.
+
+Note the shape before doing it: this is a **merge-only** path, so replacing
+`transport input all` with `transport input ssh` is a *replace* on an
+existing line rather than an addition, and the plan will report it as such.
+The switches (`transport input telnet ssh`) are the same question and the
+same answer.
 
 *Acceptance:* the wizard onboards a probe node end to end — NetBox objects,
 identity minted once, startup config generated and ASCII-guarded, bootstrap

@@ -164,7 +164,35 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "line vty 0 4",
             " logging synchronous",
             " login local",
-            " transport input all",
+            # SSH ONLY, ON BOTH PLATFORMS. Decided 2026-09-23.
+            #
+            # r1-r3 carry `transport input all`, and this branch reproduced
+            # it. The standing rule -- a new default reproduces the behaviour
+            # that predates it -- does NOT apply here, and the exception is
+            # worth stating because the rule is otherwise near-absolute: it
+            # exists to stop a setting silently changing something that
+            # already works, and **a bootstrap config is written for a device
+            # that does not exist yet.** There is no behaviour to preserve.
+            #
+            # Reproducing `all` inherits an accident of how those five
+            # routers were first built, not a decision anyone made. And `all`
+            # includes telnet, which puts the credential on the wire in clear
+            # text -- on the device's very first configuration, which is
+            # exactly when the credential is the bootstrap one being rotated.
+            #
+            # Nothing in NMAS needs telnet: both Netmiko drivers in
+            # `platform_map` are SSH (`cisco_xe`, `cisco_ios`, not the
+            # `_telnet` variants), and vrnetlab reaches the device over the
+            # serial console, not the vty lines. The root `telnetlib.py` shim
+            # exists because Netmiko IMPORTS the module, not because anything
+            # here telnets.
+            #
+            # r1-r5 still carry `transport input all` in their own configs.
+            # Tightening them is an intent edit through the normal loop and
+            # is recorded as its own item in NSOT_PLAN.md -- not done here,
+            # because changing five live routers is not a side effect of
+            # fixing a generator.
+            " transport input ssh",
             "!",
             "end",
         ]
