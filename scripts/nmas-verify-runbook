@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Does every URL a runbook names exist on this instance? Read-only.
+
+**A wrong path should cost a grep, not a sitting.** Two paths in the Stage 4C
+runbook were checked by grepping the source and reported missing. They were
+not missing: a blueprint route's decorator says `@bp.route("/remove/preview")`
+and the `/netbox/safety` prefix is added **at registration**, so the full path
+appears **nowhere in the source.** Grepping cannot find it; the URL map can.
+
+That is the general problem this solves — a runbook is written against paths
+a reader assembles mentally, and the only authority on whether a path exists
+is `app.url_map`.
+
+It also catches the other half: a runbook written against a newer checkout
+than the host is running. Every command below would 404 with no explanation
+beyond "not found".
+
+    python scripts/nmas-verify-runbook docs/STAGE4C_PROBE.md
+
+Exit 1 if any path is missing, so it can gate a sitting.
+"""
+
+import argparse
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+#: `curl … -X POST localhost:5000/path` and `curl -s localhost:5000/path`.
+_CURL = re.compile(r"curl[^\n|]*?(?:-X\s+(?P<method>[A-Z]+)\s+)?"
+                   r"(?:https?://)?localhost:5000(?P<path>/\S*)")
+
+#: A path segment that is a shell variable or a placeholder, not a literal.
+_DYNAMIC = re.compile(r"\$\{?\w+|<[^>]+>")
+
+
+def _normalise(path: str) -> str:
+    """Strip quoting and trailing punctuation a command line leaves behind."""
+    path = path.strip().strip("'\"\\`")
+    return path.rstrip("\\").split("?")[0]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("runbook")
+    args = ap.parse_args()
+
+    with open(os.path.join(ROOT, args.runbook), encoding="utf-8") as fh:
+        text = fh.read()
+
+    found = []
+    for match in _CURL.finditer(text):
+        path = _normalise(match.group("path"))
+        if not path or _DYNAMIC.search(path):
+            continue
+        found.append((match.group("method") or "GET", path))
+
+    # Not vacuous: a regex that matched nothing would make every assertion
+    # below trivially true. The set-difference rule, applied to a scan.
+    if len(found) < 3:
+        print(f"only {len(found)} command(s) found in {args.runbook} — the "
+              "scan is not reading the file it claims to read.")
+        return 2
+
+    import app as nmas
+
+    adapter = nmas.app.url_map.bind("localhost")
+    seen, missing = [], []
+    for method, path in found:
+        if (method, path) in seen:
+            continue
+        seen.append((method, path))
+        try:
+            adapter.match(path, method=method)
+            ok, why = True, ""
+        except Exception as exc:               # noqa: BLE001
+            ok, why = False, type(exc).__name__
+        print(f"  {'ok ' if ok else 'MISSING'}  {method:6s} {path}"
+              + (f"   ({why})" if not ok else ""))
+        if not ok:
+            missing.append((method, path, why))
+
+    print()
+    if missing:
+        print(f"{len(missing)} path(s) this runbook uses do not exist here:")
+        for method, path, why in missing:
+            print(f"    {method} {path}  — {why}")
+        print("\nIf this is the deployed host, the runbook may have been "
+              "written against a newer checkout. If this is the checkout, the "
+              "path is wrong — a blueprint prefix is added at registration "
+              "and appears nowhere in the source, so grep cannot confirm one.")
+        return 1
+
+    print(f"All {len(seen)} path(s) exist on this instance.")
+    print("\nWhat this does NOT check: the payload each route expects, or "
+          "whether it will succeed. Only that the URL and method resolve.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

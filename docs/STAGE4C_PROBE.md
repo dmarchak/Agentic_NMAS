@@ -61,6 +61,29 @@ cleaning up — it changes nothing — so it does not break the rule.
 
 ---
 
+## Step −1 — verify every endpoint this runbook uses
+
+**Local. Reads nothing, writes nothing, costs a few seconds.**
+
+```bash
+python scripts/nmas-verify-runbook docs/STAGE4C_PROBE.md
+```
+
+**Proves:** every URL this runbook names is a real route on this instance,
+with the method it is called with — **and that the deployed code is new
+enough to have them.**
+
+**Why this step exists.** Two paths in the first draft were checked by
+grepping the source and reported missing. They were not missing: a blueprint
+route's decorator says `@bp.route("/remove/preview")` and the `/netbox/safety`
+prefix is added **at registration**, so the full path appears **nowhere in
+the source.** Grepping cannot find it and the URL map can.
+
+**If it fails:** a wrong path costs a grep rather than a sitting. Fix the
+runbook and re-run this before anything is created.
+
+---
+
 ## Step 0 — enable NetBox writes, deliberately
 
 **Local.** An explicit operator action, and the wizard will not do it for
@@ -70,8 +93,14 @@ decision anybody made.
 Settings → Integrations → **Allow writes to NetBox** → on. Then:
 
 ```bash
-curl -s localhost:5000/settings/integrations | python -m json.tool | grep -i allow_writes
+curl -s localhost:5000/settings/integrations \
+  | python -c "import json,sys; print('netbox_allow_writes =',
+      json.load(sys.stdin)['integrations']['netbox']['netbox_allow_writes'])"
 ```
+
+The flag lives at `integrations.netbox.netbox_allow_writes` — **read from the
+route, not inferred.** A `grep` would also match
+`netbox_remove_on_list_delete` and tell you nothing about which is which.
 
 **Proves:** the gate is open because you opened it.
 **If it fails:** the wizard will name it as a blocking reason at step 6 — that
@@ -323,15 +352,31 @@ intersection of *tagged `nmas-managed`* and *in NMAS's own record*; anything a
 human curated is reported as skipped, and that claim is now being tested for
 the first time.
 
-Then apply, and compare:
+**Apply requires the one-shot token the preview issued** — read from
+`routes/netbox_safety.py`, where `_authorize()` checks the master switch,
+consumes the token, and **recomputes the plan**, refusing if it has changed
+since the preview. An apply without a token is refused with *"Missing
+confirmation. Run the preview again."*
+
+So preview and apply are one command, and the token never leaves the shell:
 
 ```bash
-curl -s -X POST localhost:5000/netbox/safety/remove/apply \
+TOKEN=$(curl -s -X POST localhost:5000/netbox/safety/remove/preview \
   -H 'Content-Type: application/json' -d '{"list_name":"nmas-probe"}' \
+  | python -c "import json,sys; print(json.load(sys.stdin)['token'])")
+
+curl -s -X POST localhost:5000/netbox/safety/remove/apply \
+  -H 'Content-Type: application/json' \
+  -d "{\"list_name\":\"nmas-probe\",\"token\":\"$TOKEN\"}" \
   | python -m json.tool
 
 python scripts/nmas-netbox-census --compare /home/dustin/nmas-probe-before.json
 ```
+
+**The token expires in five minutes and is burned even on a failed
+validation**, so it cannot be replayed. If apply reports `stale`, run the
+preview again — and **read it again**, because a changed plan is the thing
+the recompute exists to catch.
 
 **Proves — and this is the acceptance for the whole teardown:** `--compare`
 exits **0**, meaning every counted type holds **exactly the objects** it held

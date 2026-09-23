@@ -1189,6 +1189,14 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `test_drift_routes.py` exercises the route over HTTP and compares the two
   signatures — a test asserting the *shape* of a call cannot see a signature
   that does not exist.
+- **A blueprint route's full path appears nowhere in its source** — the
+  `url_prefix` is applied at registration, so grepping for
+  `/netbox/safety/remove/preview` cannot succeed however correct the route
+  is. `app.url_map` is the only authority;
+  `scripts/nmas-verify-runbook <file>` resolves every `curl localhost:5000/…`
+  in a runbook against it, method included. Same family as a dict `.get()`
+  returning its default: **a lookup that misses is a fact about the query,
+  not about the system.**
 - **A pattern that can appear in English needs an anchor.** Match a code
   construct at the start of a line, or parse it — never as a bare substring
   of a file that also contains prose about that construct. Four instances so

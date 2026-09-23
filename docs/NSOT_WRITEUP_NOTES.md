@@ -7057,3 +7057,57 @@ plausible, and proving nothing, which is the slug/dialect gate again inside
 the commit that was fixing it. Six tests now cover it, including the one that
 matters: with writes off and a NetBox plan, the reason reaches
 `summary["blocking_reasons"]`, which is what the review screen renders.
+
+---
+
+## A blueprint's full path appears nowhere in its source
+
+Two paths in the Stage 4C runbook — `/settings/integrations` and
+`/netbox/safety/remove/preview|apply` — were checked by grepping the source
+and reported missing. **Both exist.** The decorator says:
+
+```python
+bp = Blueprint("netbox_safety", __name__, url_prefix="/netbox/safety")
+...
+@bp.route("/remove/preview", methods=["POST"])
+```
+
+The full path is assembled **at registration**, so the string
+`/netbox/safety/remove/preview` occurs in no file. A grep for it cannot
+succeed, however correct the route is, and `grep` returning nothing is not
+evidence of absence — it is evidence the string is not in a file.
+
+`app.url_map` is the only authority, which is what `scripts/nmas-verify-runbook`
+consults. It walks a runbook for `curl … localhost:5000/…` commands and
+resolves each against the real map, method included.
+
+This is the same family as the slug/dialect gate and the census's
+set-difference: **a lookup that misses tells you nothing about the thing you
+were looking for.** A dict `.get()` returns the default, a grep returns
+nothing, and both read as a fact about the system when they are facts about
+the query.
+
+### What it cost, and what it would have cost
+
+It cost one exchange. It would have cost a sitting: the operator would have
+booted a C8000v, created a temporary list, reached step 12 — the acceptance
+for the whole probe — and found the teardown pointing at a URL they had
+already been told did not exist.
+
+So **step −1 exists to make a wrong path cost a grep rather than a sitting**,
+and it runs before anything is created. It is the cheapest step in the
+runbook and the only one that protects the other fourteen.
+
+### And it found a real one
+
+Verifying the paths meant reading the routes, which turned up a defect the
+grep question had hidden: **`/netbox/safety/remove/apply` requires a one-shot
+token issued by the preview.** `_authorize()` checks the master switch,
+consumes the token, and **recomputes the plan**, refusing if it changed. The
+runbook's apply sent only `list_name` and would have been refused with
+*"Missing confirmation. Run the preview again."*
+
+That is the third inferred-signature finding in this stage — after
+`template_for_platform` / `get_device_by_name` and `rotate()` — and the first
+found by someone else asking. The pattern across all three: **the shape I
+assumed was the simpler one**, and the real one had a guard in it.
