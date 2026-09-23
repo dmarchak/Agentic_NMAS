@@ -867,6 +867,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_census.py` | identity per type, tagged separately, and the comparison can say no |
 | `test_onboard_plan.py` | `build_plan` the only constructor; every refusal at once; a check that did not run has not passed |
 | `test_onboard_bootstrap_credential.py` | the crash window survives; one staging mechanism; a failed rotation does not report success |
+| `test_onboard_ordering.py` | no commit CREATED on failure — count, sha, reflog, orphan, hook; the commit last among the fallible |
+| `test_onboard_wizard_renders.py` | the shipped renderer executed: every blocking reason on screen with Create disabled |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -1182,6 +1184,24 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `test_drift_routes.py` exercises the route over HTTP and compares the two
   signatures — a test asserting the *shape* of a call cannot see a signature
   that does not exist.
+- **A pattern that can appear in English needs an anchor.** Match a code
+  construct at the start of a line, or parse it — never as a bare substring
+  of a file that also contains prose about that construct. Four instances so
+  far: a test matching a docstring, a checker matching a docstring, a test
+  matching its own explanatory comment, and a test whose `{% if devices %}`
+  search found the comment explaining why the button sits above that block.
+  **The better the comment, the more likely it quotes the code it explains**,
+  so the places most likely to carry an explanatory quotation are the places
+  most likely to have a test asserting something subtle.
+- **Two platform namespaces, and only `platform.py` translates between
+  them.** `platform_map` and NetBox are keyed on **slugs** (`cisco-ios-xe`);
+  `bootstrap_config`, the parsers and the template directories are keyed on
+  the **config dialect** (`cisco_iosxe`). A dictionary lookup that misses
+  returns the default, so looking a slug up in a dialect table is a **gate
+  that silently opens** — measured: `/onboard/platforms` reported every
+  platform unblocked, including the one stage D blocks. Call
+  `platform_for_device()`; a second copy of the mapping is how the two come
+  to disagree.
 - **An assertion over a set difference passes vacuously when either set is
   empty — it needs a floor on its inputs.** `assert not (A - B)` proves
   nothing until `A` is known non-empty, and a scan that found no offenders is

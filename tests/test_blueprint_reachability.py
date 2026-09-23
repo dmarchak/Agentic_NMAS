@@ -35,7 +35,7 @@ KNOWN_UNREACHABLE = {}
 #: calling it is its design, not a gap. `KNOWN_UNREACHABLE` is for gaps to
 #: close; putting a diagnostic there would imply somebody should close it.
 GUI_BLUEPRINTS = ("templatize", "templates", "deploy", "golden", "remote",
-                  "inventory", "monitoring_stack", "topology_view")
+                  "inventory", "monitoring_stack", "topology_view", "onboard")
 
 
 @pytest.fixture(scope="module")

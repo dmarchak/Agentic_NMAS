@@ -1,0 +1,177 @@
+{#
+  Onboarding wizard — Phase 4 / Stage 4C.4.
+
+  A MODAL REACHED FROM THE DEVICES TOOLBAR, not a thirteenth tab. Onboarding
+  is fleet-level; Stage 7 reorganises the interface around exactly that
+  distinction, and a new tab is the thing that redesign exists to undo.
+
+  REVIEW IS THE ONLY STEP THAT CREATES ANYTHING, so Back is always safe from
+  every step — and the review step says so in those words, the same promise
+  the deploy plan makes.
+
+  The review renderer is a PURE FUNCTION. `test_onboard_wizard_renders.py`
+  executes it in duktape against a plan with blocking reasons and asserts
+  every reason is on screen with the create action disabled. Three guards in
+  the agent panel each hid the same data while every test passed, because the
+  tests sat below the last one; a renderer that takes a plan and returns HTML
+  is the shape that cannot happen to.
+#}
+<div class="modal fade" id="onboardWizardModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Onboard a device</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obHostname">Name</label>
+            <input class="form-control form-control-sm" id="obHostname" placeholder="r6">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obPlatform">Platform</label>
+            <select class="form-select form-select-sm" id="obPlatform"></select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obMgmtIp">Management IP</label>
+            <input class="form-control form-control-sm" id="obMgmtIp">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obMgmtIntf">Management interface</label>
+            <input class="form-control form-control-sm" id="obMgmtIntf"
+                   placeholder="GigabitEthernet0/0">
+          </div>
+        </div>
+        <div id="onboardReview" class="small"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <span id="onboardFooterNote" class="text-muted small me-auto"></span>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Back</button>
+        <button type="button" class="btn btn-primary btn-sm" id="onboardCreateBtn"
+                onclick="onboardCreate()" disabled>Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* PURE. Takes a plan summary, returns HTML. No DOM, no network — so the
+   test can execute this exact function against a plan with blocking reasons
+   and assert what an operator would see. */
+function onboardReviewHtml(plan, bootstrapConfig) {
+  if (!plan) return '';
+  const esc = s => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const reasons = plan.blocking_reasons || [];
+
+  /* EVERY reason, not the first. `blocking_reasons` collects them all (4C.1)
+     precisely so the operator fixes them in one pass; showing one would put
+     that property back in the plan object where nobody can see it. */
+  const blockers = reasons.length ? `
+    <div class="alert alert-danger py-2 px-3 mb-2">
+      <div class="fw-semibold mb-1">
+        ${reasons.length} reason${reasons.length === 1 ? '' : 's'} this device
+        cannot be onboarded — all of them, so they can be fixed in one pass:
+      </div>
+      <ul class="mb-0">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+    </div>` : '';
+
+  const rows = [
+    ['Name', plan.hostname], ['Platform', plan.platform],
+    ['List', `${plan.list} (${plan.source_kind})`],
+    ['Management IP', plan.mgmt_ip],
+    ['Template', plan.template || '(none bound)'],
+    ['Credential source', plan.cred_source || '(not resolved)'],
+    ['NetBox objects', plan.netbox_objects],
+    ['Writes devices.csv', plan.writes_csv ? 'yes' : 'no — identity is read-only on a NetBox list'],
+  ];
+
+  return `
+    ${blockers}
+    <div class="alert alert-secondary py-2 px-3 mb-2">
+      <strong>Nothing has been created yet.</strong> This is what will be.
+      Every step before Create is a read — you can go Back from here without
+      undoing anything.
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-2"><tbody>
+        ${rows.map(([k, v]) => `<tr><td class="text-muted" style="width:12em">${esc(k)}</td>
+          <td>${esc(v)}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="mb-1 fw-semibold">Startup config this device will boot with</div>
+    <pre class="border rounded p-2 small mb-0" style="max-height:18em;overflow:auto">${esc(bootstrapConfig || '')}</pre>
+    <div class="form-text">The credential shown here is a placeholder. The real
+      one-time bootstrap credential is generated when you press Create and is
+      never sent to the browser.</div>`;
+}
+
+/* Also pure, and deliberately separate from the HTML: the button's state is
+   a decision about the plan, not a detail of how the plan is drawn. */
+function onboardCanCreate(plan) {
+  return !!(plan && plan.onboardable === true);
+}
+
+async function onboardRefresh() {
+  const host = document.getElementById('onboardReview');
+  const btn  = document.getElementById('onboardCreateBtn');
+  const note = document.getElementById('onboardFooterNote');
+  if (!host) return;
+  try {
+    const r = await fetch('/onboard/plan', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        hostname: (document.getElementById('obHostname') || {}).value || '',
+        platform: (document.getElementById('obPlatform') || {}).value || '',
+        mgmt_ip:  (document.getElementById('obMgmtIp') || {}).value || '',
+        mgmt_interface: (document.getElementById('obMgmtIntf') || {}).value || '',
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) { host.innerHTML = `<div class="alert alert-danger py-2 px-3">${d.error}</div>`; return; }
+    host.innerHTML = onboardReviewHtml(d.plan, d.bootstrap_config);
+    if (btn) btn.disabled = !onboardCanCreate(d.plan);
+    if (note) {
+      note.textContent = onboardCanCreate(d.plan)
+        ? 'Create is the only step that writes anything.'
+        : `Create is disabled: ${(d.plan.blocking_reasons || []).length} blocking reason(s) above.`;
+    }
+  } catch (e) {
+    host.innerHTML = `<div class="alert alert-danger py-2 px-3">Could not build a plan: ${e}</div>`;
+  }
+}
+
+async function onboardCreate() {
+  try {
+    const r = await fetch('/onboard/create', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    showToast(d.ok ? 'Device onboarded.' : (d.error || 'Create failed'),
+              d.ok ? 'success' : 'danger');
+  } catch (e) { showToast('Create failed: ' + e, 'danger'); }
+}
+
+async function openOnboardWizard() {
+  const sel = document.getElementById('obPlatform');
+  if (sel && !sel.options.length) {
+    try {
+      const d = await (await fetch('/onboard/platforms')).json();
+      /* A blocked platform is LISTED AND DISABLED, not omitted: an absent
+         option teaches the operator the tool does not support their device,
+         which is a different and wrong lesson. */
+      sel.innerHTML = (d.platforms || []).map(p =>
+        `<option value="${p.platform}" ${p.blocked ? 'disabled' : ''}
+                 title="${p.reason || ''}">${p.platform}${p.blocked ? ' — blocked' : ''}</option>`
+      ).join('');
+    } catch (_) { /* the plan call will report it */ }
+  }
+  ['obHostname', 'obPlatform', 'obMgmtIp', 'obMgmtIntf'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el._obBound) { el._obBound = true; el.addEventListener('input', onboardRefresh);
+                              el.addEventListener('change', onboardRefresh); }
+  });
+  new bootstrap.Modal(document.getElementById('onboardWizardModal')).show();
+  onboardRefresh();
+}
+</script>

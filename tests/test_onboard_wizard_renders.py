@@ -1,0 +1,267 @@
+"""Stage 4C.4 — every blocking reason ON SCREEN, with Create disabled.
+
+**A refusal the operator cannot see is not a refusal.** 4C.1 made
+`blocking_reasons` carry every reason at once; that property is worth nothing
+if the wizard shows one of them, or none.
+
+So this file **executes the shipped renderer** — `onboardReviewHtml` and
+`onboardCanCreate`, lifted out of the rendered page, not a copy — in duktape,
+against a plan with several blockers. Asserting the plan object is right is
+what the agent panel's tests did for three rounds while the screen said
+nothing.
+
+Both functions are pure by design: a plan in, HTML or a boolean out. That is
+the shape a renderer has to have to be testable at all, and the reason the
+button's state is computed separately from the HTML — whether Create is
+allowed is a decision about the plan, not a detail of how the plan is drawn.
+"""
+
+import json
+import re
+
+import pytest
+
+dukpy = pytest.importorskip("dukpy")
+
+
+BLOCKED = {
+    "hostname": "9bad", "platform": "cisco_ios", "list": "probe",
+    "source_kind": "local", "mgmt_ip": "", "cred_source": "",
+    "template": "", "netbox_objects": 0, "writes_csv": True,
+    "onboardable": False,
+    "blocking_reasons": [
+        "'9bad' is not a usable device name — it must start with a letter",
+        "platform 'cisco_ios' cannot be onboarded: stage D has not been run",
+        "no management address — the device would be created and unreachable",
+        "no template is bound for platform 'cisco_ios'",
+    ],
+}
+
+CLEAN = dict(BLOCKED, hostname="r6", platform="cisco_iosxe",
+             mgmt_ip="203.0.113.6", template="cisco-ios-xe/base.j2",
+             cred_source="default profile", netbox_objects=4,
+             onboardable=True, blocking_reasons=[])
+
+
+@pytest.fixture(scope="module")
+def page():
+    import app as nmas
+
+    return nmas.app.test_client().get("/").get_data(as_text=True)
+
+
+@pytest.fixture(scope="module")
+def js(page):
+    """The two pure functions, lifted from the rendered page verbatim."""
+    out = []
+    for name in ("onboardReviewHtml", "onboardCanCreate"):
+        start = page.index(f"function {name}(")
+        depth, i, seen = 0, page.index("{", start), False
+        while i < len(page):
+            if page[i] == "{":
+                depth += 1
+                seen = True
+            elif page[i] == "}":
+                depth -= 1
+                if seen and depth == 0:
+                    break
+            i += 1
+        out.append(page[start:i + 1])
+    return "\n".join(out)
+
+
+def _html(js, plan, config=""):
+    return dukpy.evaljs(
+        js + f"\nonboardReviewHtml({json.dumps(plan)}, {json.dumps(config)});")
+
+
+def _can_create(js, plan):
+    return dukpy.evaljs(js + f"\nonboardCanCreate({json.dumps(plan)});")
+
+
+class TestEveryReasonIsOnScreen:
+    """The acceptance that matters."""
+
+    def test_all_four_reasons_render(self, js):
+        html = _html(js, BLOCKED)
+        for reason in BLOCKED["blocking_reasons"]:
+            head = reason.split("—")[0].strip()[:40]
+            assert head in html, f"missing from the screen: {reason}"
+
+    def test_the_count_is_stated(self, js):
+        flat = re.sub(r"\s+", " ", _html(js, BLOCKED))
+        assert "4 reasons this device cannot be onboarded" in flat
+
+    def test_it_says_why_they_are_all_shown(self, js):
+        """So the operator knows to fix them in one pass rather than
+        expecting a queue of one-at-a-time refusals."""
+        flat = re.sub(r"\s+", " ", _html(js, BLOCKED))
+        assert "all of them, so they can be fixed in one pass" in flat
+
+    def test_one_reason_reads_singular(self, js):
+        plan = dict(BLOCKED, blocking_reasons=["no management address"])
+        flat = re.sub(r"\s+", " ", _html(js, plan))
+        assert "1 reason this device" in flat
+
+    def test_a_clean_plan_shows_no_blocker_block(self, js):
+        """The panel must not become permanent furniture."""
+        assert "cannot be onboarded" not in _html(js, CLEAN)
+
+
+class TestCreateIsDisabledWhenBlocked:
+
+    def test_a_blocked_plan_cannot_create(self, js):
+        assert _can_create(js, BLOCKED) is False
+
+    def test_a_clean_plan_can(self, js):
+        assert _can_create(js, CLEAN) is True
+
+    def test_a_missing_plan_cannot(self, js):
+        assert _can_create(js, None) is False
+
+    def test_onboardable_must_be_exactly_true(self, js):
+        """Not truthy. A plan carrying a string, or a stale field, must not
+        open the one step that writes."""
+        assert _can_create(js, dict(CLEAN, onboardable="yes")) is False
+
+    def test_the_button_is_bound_to_it(self, page):
+        assert "btn.disabled = !onboardCanCreate(d.plan)" in page
+
+    def test_the_footer_says_why_it_is_disabled(self, page):
+        flat = re.sub(r"\s+", " ", page)
+        assert "Create is disabled:" in flat
+        assert "blocking reason(s) above" in flat
+
+
+class TestNothingHasBeenCreatedYet:
+    """Review is the only step that creates anything, so Back is always safe
+    — and the review step says so, the same promise the deploy plan makes."""
+
+    def test_the_promise_is_on_the_review_step(self, js):
+        flat = re.sub(r"\s+", " ", _html(js, CLEAN))
+        assert "Nothing has been created yet." in flat
+        assert "This is what will be." in flat
+
+    def test_it_says_back_is_safe(self, js):
+        flat = re.sub(r"\s+", " ", _html(js, CLEAN))
+        assert "you can go Back from here without undoing anything" in flat
+
+    def test_it_is_shown_even_when_blocked(self, js):
+        """A blocked plan has created nothing either, and an operator looking
+        at four refusals is exactly who needs telling."""
+        flat = re.sub(r"\s+", " ", _html(js, BLOCKED))
+        assert "Nothing has been created yet." in flat
+
+
+class TestTheReviewShowsWhatWillBeCreated:
+
+    def test_the_bootstrap_config_is_shown(self, js):
+        html = _html(js, CLEAN, "hostname r6\n!\nend\n")
+        assert "hostname r6" in html
+
+    def test_the_placeholder_secret_is_explained(self, js):
+        """The real credential is minted at create time and never sent to the
+        browser — so the config on screen is not the config that boots."""
+        flat = re.sub(r"\s+", " ", _html(js, CLEAN))
+        assert "placeholder" in flat
+        assert "never sent to the browser" in flat
+
+    def test_the_csv_row_is_explained_on_a_netbox_list(self, js):
+        """Two quite different flows, and the difference is visible rather
+        than smoothed over."""
+        plan = dict(CLEAN, source_kind="netbox", writes_csv=False)
+        flat = re.sub(r"\s+", " ", _html(js, plan))
+        assert "identity is read-only on a NetBox list" in flat
+
+    def test_the_credential_source_is_shown(self, js):
+        """`_cred_source` exists so the origin is visible."""
+        assert "default profile" in _html(js, CLEAN)
+
+    def test_a_reason_is_escaped(self, js):
+        plan = dict(BLOCKED, blocking_reasons=["<script>alert(1)</script>"])
+        html = _html(js, plan)
+        assert "<script>alert(1)</script>" not in html
+        assert "&lt;script&gt;" in html
+
+
+class TestItIsAToolbarActionNotATab:
+    """Stage 7 reorganises around device-centric and fleet-level views.
+    Onboarding is fleet-level; a thirteenth tab is what that redesign exists
+    to undo."""
+
+    def test_no_new_tab_pane_was_added(self, page):
+        panes = re.findall(r'data-bs-target="#(\w+Pane)"', page)
+        assert "onboardPane" not in panes
+        assert len(set(panes)) == 12, sorted(set(panes))
+
+    def test_the_toolbar_button_exists(self, page):
+        assert 'onclick="openOnboardWizard()"' in page
+
+    def test_it_is_available_with_an_empty_device_list(self, page):
+        """An empty list is exactly when somebody needs to add a device, and
+        the button would be absent when it is most useful.
+
+        Asserted against the SOURCE, where the block structure is still
+        visible, and matched on the tag at the START OF A LINE. A plain
+        substring search found the tag quoted inside the comment that
+        explains this very decision — fourth time prose about code has
+        matched a grep for code in this project, and the tell each time is a
+        pattern that can appear in English.
+        """
+        import io
+        import os
+        import re
+
+        src = io.open(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "templates", "index.html"),
+            encoding="utf-8").read()
+
+        button = re.search(r'^\s*<button[^>]*openOnboardWizard\(\)', src, re.M)
+        guard = re.search(r"^\s*\{% if devices %\}", src, re.M)
+        assert button and guard
+        assert button.start() < guard.start(), (
+            "the onboard button is inside the `if devices` block — it would "
+            "be absent from an empty list")
+
+
+class TestTheRoutes:
+
+    @pytest.fixture
+    def client(self):
+        import app as nmas
+
+        return nmas.app.test_client()
+
+    def test_plan_creates_nothing_and_says_what_would_be(self, client,
+                                                         monkeypatch):
+        monkeypatch.setattr("modules.integrations.get_integration",
+                            lambda name: None)
+        body = client.post("/onboard/plan",
+                           json={"hostname": "r6", "platform": "cisco_iosxe",
+                                 "mgmt_ip": "203.0.113.6"}).get_json()
+        assert body["ok"] is True
+        assert "blocking_reasons" in body["plan"]
+
+    def test_a_blocked_platform_is_listed_not_omitted(self, client):
+        """An absent option teaches the operator the tool does not support
+        their device, which is a different and wrong lesson."""
+        body = client.get("/onboard/platforms").get_json()
+        blocked = [p for p in body["platforms"] if p["blocked"]]
+        assert blocked, "cisco_ios should be listed and disabled"
+        assert all(p["reason"] for p in blocked)
+
+    def test_create_requires_a_person(self, client):
+        assert client.post("/onboard/create", json={}).status_code == 403
+
+    def test_create_is_honest_about_not_being_wired(self, client,
+                                                    monkeypatch):
+        """It refuses with 501 rather than pretending. A button that appears
+        to work and does nothing is worse than one that says so."""
+        from modules import identity as ident_mod
+
+        monkeypatch.setattr(ident_mod, "require",
+                            lambda request, action="", operation="": (
+                                type("I", (), {"actor": "a@b"})(), None))
+        r = client.post("/onboard/create", json={})
+        assert r.status_code == 501
+        assert r.get_json()["not_implemented"] is True

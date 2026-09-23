@@ -151,13 +151,44 @@ The seven steps from §4 of the onboarding doc. **Ships with its entry point**
 — a button on the Devices toolbar — and is covered by the per-route
 reachability check, not only the blueprint one.
 
+**A modal from the Devices toolbar, not a thirteenth tab.** Onboarding is
+fleet-level, Stage 7 reorganises around exactly that distinction, and a new
+tab is what that redesign exists to undo. The button sits **outside** the
+`if devices` guard: an empty list is exactly when somebody needs to add a
+device.
+
+**Review is the only step that creates anything**, so Back is always safe
+from any step — and the review step says so in those words, the same promise
+the deploy plan makes: *"Nothing has been created yet. This is what will
+be."*
+
 *Acceptance*
-- Every route the wizard defines appears in the rendered page.
-- The review step shows the NetBox plan, the `host_vars` YAML and the
-  **masked** render, and states that the deploy re-renders with real secrets.
-- The credential step displays `_cred_source`.
-- **Negative control:** remove the toolbar button → the reachability test
-  fails, naming the route.
+- **Every blocking reason on screen at once, with Create disabled** — the
+  4C.1 property made visible. Asserted by **executing** the shipped
+  `onboardReviewHtml` in duktape against a plan with four blockers, not by
+  reading the plan object. A refusal the operator cannot see is not a
+  refusal, and three rounds of the agent panel passed their tests while the
+  screen said nothing.
+- `onboardCanCreate` is separate from the HTML: whether Create is allowed is
+  a decision about the plan, not a detail of how the plan is drawn. It
+  requires `onboardable === true`, not truthy.
+- The footer says **why** Create is disabled, with the count.
+- A blocked platform is **listed and disabled**, not omitted — an absent
+  option teaches the operator the tool does not support their device, which
+  is a different and wrong lesson.
+- `/onboard/create` requires a **person** and, until 4C.5/4C.6 land, returns
+  **501 saying so**. A button that appears to work and does nothing is worse
+  than one that admits it.
+- **Negative controls**, all shown failing: show only the first reason → 1;
+  truthy `onboardable` → 1; omit blocked platforms → 1; remove the toolbar
+  button → 2.
+
+*Found while building it:* **`platform_map` is keyed on NetBox platform
+slugs (`cisco-ios-xe`) and `bootstrap_config` on the config dialect
+(`cisco_iosxe`).** Looking a slug up in the dialect table silently found
+nothing, so every platform reported unblocked — **including the one stage D
+blocks**. `platform_for_device()` owns that translation and is now called
+rather than copied.
 
 ### 4C.5 — RW community removal, during onboarding
 
@@ -366,6 +397,6 @@ with the census condition.
 | **4C.1** the plan object | **done** — `modules/nsot/onboard.py`, `tests/test_onboard_plan.py`, 27 tests, four negative controls each shown failing |
 | **4C.2** bootstrap credential | **done** — `tests/test_onboard_bootstrap_credential.py`, 23 tests, three negative controls each shown failing |
 | **4C.3** ordering | **done** — `tests/test_onboard_ordering.py`, 23 tests, three negative controls plus a positive control on the signals themselves |
-| 4C.4 routes + UI | not started |
+| **4C.4** routes + UI | **done** — `routes/onboard.py`, `templates/partials/onboard_wizard.html`, `tests/test_onboard_wizard_renders.py`, 26 tests, four negative controls each shown failing |
 | 4C.5 RW community | not started |
 | 4C.6 drift enrolment | not started |

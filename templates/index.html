@@ -121,6 +121,21 @@
 <!-- Page header with search -->
 <div class="mb-4 d-flex justify-content-between align-items-center">
   <h2 class="text-primary mb-0">Saved Devices</h2>
+  {# Onboarding is FLEET-LEVEL, so it is a toolbar action rather than a
+     thirteenth tab -- Stage 7 reorganises around device-centric and
+     fleet-level views, and a new tab is what that redesign exists to undo.
+     Deliberately OUTSIDE the devices guard below: an empty list is exactly
+     when somebody needs to add a device, and the button would otherwise be
+     absent when it is most useful. #}
+  <div class="d-flex gap-2 align-items-center mb-2">
+    <button class="btn btn-outline-primary btn-sm" onclick="openOnboardWizard()"
+            id="onboardWizardBtn">
+      Onboard a device
+    </button>
+    <span class="text-muted small">Plans and reviews first — nothing is
+      created until you press Create.</span>
+  </div>
+
   {% if devices %}
   <div class="d-flex gap-2 align-items-center">
     <button class="btn btn-success btn-sm" onclick="saveAllConfigs()" id="saveAllBtn">
@@ -376,6 +391,7 @@
 {% include 'partials/deploy_wizard.html' %}
 {% include 'partials/intent_editor.html' %}
 {% include 'partials/device_nsot_actions.html' %}
+{% include 'partials/onboard_wizard.html' %}
 
 <!-- Add Device Form -->
 <hr>

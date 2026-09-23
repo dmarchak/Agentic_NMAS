@@ -6814,3 +6814,80 @@ Four of the six are the same underlying fault: **the check and the property
 were about different objects.** The set-difference form is the first that is
 about the right object and still cannot fail, which is why it is worth its
 own rule.
+
+---
+
+## Two platform namespaces, and a gate that silently opened
+
+Building the wizard's platform list, `/onboard/platforms` iterated
+`platform_map`'s keys and looked each one up in
+`BLOCKED_PENDING_MEASUREMENT`. Every platform came back **unblocked** —
+including `cisco_ios`, the one stage D exists to block.
+
+`platform_map` is keyed on **NetBox platform slugs**: `cisco-ios`,
+`cisco-ios-xe`. `bootstrap_config`, the parsers and the template directories
+are keyed on the **config dialect**: `cisco_ios`, `cisco_iosxe`. Hyphens and
+underscores, and `ios-xe` against `iosxe`.
+
+`modules/nsot/platform.py` already owns the translation — `_FROM_NETBOX_SLUG`,
+reached through `platform_for_device()`, with a docstring explaining that
+`device_type` is a Netmiko driver and not a dialect and that conflating them
+is how "change device_type to cisco_xe" came to alter transport. The mapping
+was there; the new code simply did not use it.
+
+**A dictionary lookup that misses returns the default**, and the default here
+was "not blocked". So the failure mode was a **gate that silently opened** —
+no error, no log line, a platform list that looked complete, and a refusal
+that had been carefully written, tested and documented quietly not applying.
+
+The fix is not a second mapping. It is calling the function that owns the
+first one: a second copy is how the two come to disagree about what
+`cisco-ios` means, and the disagreement would show up as exactly this again.
+
+**It was caught by a test asserting the blocked platform is LISTED**, which
+existed for an unrelated reason — an absent option teaches the operator the
+tool does not support their device. The test for the refusal itself
+(`test_a_vios_target_is_refused` in 4C.1) passed throughout, because it calls
+`build_plan` with the dialect directly. The unit was right and the wiring was
+wrong, which is the seam this project keeps finding.
+
+---
+
+## Prose about code is not code: the fourth form, and a reliable tell
+
+Three forms were already recorded: a **test** matching a docstring, a
+**checker** matching a docstring, and a **test matching its own explanatory
+comment**. The fourth arrived in the same session as the third:
+
+```python
+assert src.index('onclick="openOnboardWizard()"') < src.index("{% if devices %}")
+```
+
+The button *is* before the guard. The test failed anyway, because the comment
+explaining that decision **quotes the tag**:
+
+```
+{# … Deliberately OUTSIDE the `{% if devices %}` block below … #}
+```
+
+So the search found the comment, six lines above the button, and concluded
+the button came after it.
+
+By now the tell is reliable enough to state as a rule alongside the
+set-difference one:
+
+> **A pattern that can appear in English needs an anchor.** Match a code
+> construct at the start of a line, or parse it — never as a bare substring
+> of a file that also contains prose about that construct.
+
+The anchored version (`re.search(r"^\s*\{% if devices %\}", src, re.M)`)
+cannot match inside a comment, because the comment's copy is not at the start
+of a line. Every one of the four instances would have been prevented by
+either that rule or by parsing instead of grepping, which is what
+`check_removed_definitions.py` and `tests/astcheck.py` now do.
+
+The reason it keeps happening is worth naming: **the better the comment, the
+more likely it quotes the code it explains** — and a good comment is
+precisely what a careful author writes next to a subtle decision. So the
+places most likely to carry an explanatory quotation are the places most
+likely to have a test asserting something subtle.
