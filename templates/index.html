@@ -5526,13 +5526,23 @@ async function loadAgentTab() {
       if (ct) {
         badgeEl.className = 'badge bg-warning text-dark';
         badgeEl.textContent = 'Running…';
+      } else if (status.enabled === false) {
+        /* DISABLED AND FAILING ARE DIFFERENT FACTS AND IT CAN BE BOTH.
+           "Disabled" is the current state -- it will not run. "26 failures"
+           is what happened before it was switched off. Showing only the
+           second implies it is still trying; showing only the first loses
+           the reason it was switched off, which is the exact information
+           this whole change exists to keep. So the badge states the state
+           and CARRIES the history. */
+        badgeEl.className = health.failing ? 'badge bg-secondary border border-danger'
+                                           : 'badge bg-secondary';
+        badgeEl.textContent = health.failing
+          ? `Disabled · ${health.consecutive_failures} failed`
+          : 'Disabled';
       } else if (health.failing) {
         badgeEl.className = 'badge bg-danger';
         badgeEl.textContent = health.consecutive_failures > 1
           ? `Failing (${health.consecutive_failures})` : 'Last run failed';
-      } else if (status.enabled === false) {
-        badgeEl.className = 'badge bg-secondary';
-        badgeEl.textContent = 'Disabled';
       } else if (status.paused) {
         badgeEl.className = 'badge bg-secondary';
         badgeEl.textContent = 'Paused (until restart)';
@@ -5551,9 +5561,15 @@ async function loadAgentTab() {
     if (tabBadge) {
       if (health.failing) {
         tabBadge.style.display = '';
-        tabBadge.className = 'badge bg-danger ms-1';
+        /* Amber when disabled: the failures are history, not an ongoing
+           incident, and a red badge on something that cannot run any more is
+           an alarm nobody can act on. */
+        tabBadge.className = status.enabled === false
+          ? 'badge bg-warning text-dark ms-1' : 'badge bg-danger ms-1';
         tabBadge.textContent = String(health.consecutive_failures);
-        tabBadge.title = 'Background agent runs are failing';
+        tabBadge.title = status.enabled === false
+          ? 'Background agent is disabled; its last runs had failed'
+          : 'Background agent runs are failing';
       } else {
         tabBadge.style.display = 'none';
       }
@@ -5575,11 +5591,16 @@ async function loadAgentTab() {
           ? ` <strong>The same error every time</strong> — this is a configuration
               problem, not a transient one.` : '';
         failEl.innerHTML = `
-          <div class="alert alert-danger py-2 px-3 small mb-2">
+          <div class="alert ${status.enabled === false ? 'alert-warning' : 'alert-danger'} py-2 px-3 small mb-2">
             <div class="fw-semibold mb-1">
               Background agent: ${n} consecutive failed run${n === 1 ? '' : 's'}
               ${health.last_failure_at ? `— last ${_esc(health.last_failure_at)}` : ''}
             </div>
+            ${status.enabled === false ? `<div class="mb-1">
+              It is <strong>disabled</strong>, so these will not retry. The
+              failures are what happened before it was switched off — kept on
+              screen because the reason a thing was switched off is the part
+              that goes missing.</div>` : ''}
             <div class="font-monospace small">${_esc(health.last_error || 'no error recorded')}</div>
             <div class="mt-1">${same}</div>
           </div>`;

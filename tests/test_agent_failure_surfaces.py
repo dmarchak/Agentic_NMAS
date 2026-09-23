@@ -269,3 +269,50 @@ class TestTheStaleTriggerIsGone:
         em._events.clear()
         em._check_missing_golden_configs()
         assert [e["type"] for e in em._events] == ["missing_golden_configs"]
+
+
+class TestDisabledAndFailingAreBothTrue:
+    """It is now both, and they are different facts.
+
+    "Disabled" is the current state — it will not run. "26 consecutive
+    failures" is what happened before it was switched off. Showing only the
+    second implies it is still trying; showing only the first loses the
+    reason it was switched off, which is precisely the information this whole
+    change exists to keep.
+
+    The first version of this UI put `failing` ahead of `enabled`, so the
+    badge would have read "Failing (26)" about a component that cannot run.
+    """
+
+    @pytest.fixture(scope="class")
+    def page(self):
+        import app as nmas
+
+        return nmas.app.test_client().get("/").get_data(as_text=True)
+
+    def test_disabled_outranks_failing_in_the_badge(self, page):
+        i = page.index("status.enabled === false")
+        j = page.index("} else if (health.failing) {")
+        assert i < j, "a disabled agent must not be described as failing"
+
+    def test_the_badge_carries_both(self, page):
+        assert "Disabled · ${health.consecutive_failures} failed" in page
+
+    def test_a_disabled_agent_still_shows_the_streak_in_the_tab_badge(self, page):
+        assert "Background agent is disabled; its last runs had failed" in page
+
+    def test_the_banner_says_they_will_not_retry(self, page):
+        import re
+
+        flat = re.sub(r"\s+", " ", page)
+        assert "these will not retry" in flat
+
+    def test_a_disabled_agent_is_amber_not_red(self, page):
+        """A red alarm on something that cannot run is an alarm nobody can
+        act on."""
+        assert "'badge bg-warning text-dark ms-1' : 'badge bg-danger ms-1'" in page
+        assert "'alert-warning' : 'alert-danger'" in page
+
+    def test_an_enabled_failing_agent_is_still_red(self, page):
+        """The softening must not swallow a live incident."""
+        assert "badgeEl.className = 'badge bg-danger';" in page
