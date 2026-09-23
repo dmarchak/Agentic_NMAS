@@ -54,8 +54,14 @@ def lab(tmp_path, monkeypatch):
 def _plan(**over):
     from modules.nsot.onboard import build_plan
 
+    # `mgmt_mask` and `manager_interface` are required as of 4C.8: an
+    # address with no mask and no interface cannot be emitted into a config,
+    # so a plan carrying one is not onboardable. Supplied here so the tests
+    # below exercise the reason they are each about.
     args = dict(hostname="r6", platform="cisco_iosxe", list_name="probe",
-                mgmt_ip="203.0.113.6", secret="bootstrap-only")
+                mgmt_ip="203.0.113.6", mgmt_mask="255.255.255.0",
+                manager_interface="GigabitEthernet2",
+                secret="bootstrap-only")
     args.update(over)
     return build_plan(**args)
 

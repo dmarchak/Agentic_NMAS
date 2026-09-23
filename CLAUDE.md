@@ -874,6 +874,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_drift_enrolment.py` | a device is covered the moment it is in the inventory; named before its first capture |
 | `test_scale.py` | 900 devices: the page cost pinned as a NUMBER, so bounding the list must update it |
 | `test_probe_topologies.py` | every `cisco_c8000v` probe node binds a launch patch, from its own copy |
+| `test_bootstrap_manager_address.py` | the bootstrap config reaches the manager AND stays a bootstrap: address emitted, no IGP/loopback/route |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
@@ -1304,6 +1305,48 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `nmas-bootstrap-probe.clab.yml` reproduce the hazard, and writing the
   adopted script over it would silently retire the probe that measured the
   thing.
+- **"Management interface" names two different networks, and conflating
+  them made the generator emit a config nothing could reach** (4C.8).
+  `mgmt_interface` is the **containerlab-facing** one — the `clab-mgmt` VRF,
+  the docker bridge, and nothing off the containerlab host has a path to it.
+  `manager_interface` / `manager_address` is the **manager-facing** one: a
+  data interface in the global table, on a segment the NMAS can reach.
+  Measured 2026-09-23 — the NMAS reaches the lab on `enp6s19` at
+  `10.255.0.10/24`, s3's `Vlan99` is the gateway at `10.255.0.1`, and every
+  device's `10.255.1.x` is a **`/32` loopback advertised into OSPF**, so
+  `dummy0` holding `10.255.1.10/32` on the NMAS is an identity and not a
+  segment. `render_bootstrap()`'s docstring had claimed "what remains is what
+  makes the device reachable"; what remained made it **boot**.
+- **In an in-band-managed network there is no config that is both minimal and
+  sufficient.** The bootstrap/deploy split assumes management reachability
+  that does not depend on the configuration being deployed; where management
+  is in-band, "reachable" and "configured" are the same event. Reproducing
+  how r1–r5 are reached would need a `Loopback0`, a core-segment address and
+  `router ospf 1` in a config whose whole point is to have no routing. The
+  way out is a segment the manager is **L2-adjacent to** (`Vlan99`), which
+  needs one interface stanza and **no route at all** — the NMAS shares the
+  `/24` and always initiates. Both of those are **conditionals, written at
+  the emit site** in `manager_interface_lines()`, because they hold only
+  while the manager shares the segment.
+- **The interface for a management address is chosen, never defaulted.** On a
+  C8000v vrnetlab owns Gi1; an address landing there fights it. The generator
+  raises `ManagementAddressRequired` rather than guessing, and `build_plan()`
+  makes it a blocking reason — a default is how a guess becomes a silent one.
+  The two coexist: r1–r5 run Gi1 in `vrf forwarding clab-mgmt` and their data
+  interfaces in the global table at once.
+- **A route that rebuilds a plan at confirm must read the request the same
+  way it did at preview.** `/onboard/create` sent `body: '{}'` from the
+  client, so the deliberate rebuild produced a plan with no hostname and no
+  address and could only answer 409 — **create had never succeeded.** One
+  `_plan_args()` on the server and one `onboardFormPayload()` on the client
+  now serve both calls. Neither the renderer test (executes the render, not
+  the fetch) nor the ordering test (calls `run_onboarding` directly) could
+  see it: **it lived in the seam between them**, the same shape as the three
+  guards in the agent panel.
+- **A refusal must name the right cause.** A bootstrap render failure was
+  being reported through `unsendable`, so a missing netmask was announced as
+  "lines contain characters an IOS CLI cannot accept" and sent the reader
+  looking for an em dash. `render_error` is its own field and its own reason.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

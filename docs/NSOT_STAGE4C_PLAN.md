@@ -440,7 +440,7 @@ with the census condition.
 | **4C.5** RW community | **done** — `tests/test_onboard_snmp.py` + `tests/test_platform_keying.py`, 44 tests, three negative controls each shown failing |
 | **4C.7** assembly — the real steps | **done** — `real_steps()`, `/onboard/create` wired, preconditions at plan time; `test_onboard_ordering.py` runs the SHIPPED adapters |
 | **4C.6** drift enrolment | **done** — `tests/test_onboard_drift_enrolment.py`, 19 tests, three negative controls each shown failing |
-| **4C.8** the management address | **planned** — see §8; blocks the probe |
+| **4C.8** the management address | **generator + plan + route + UI done** — `tests/test_bootstrap_manager_address.py`, 13 tests, four controls shown failing. §8.6 (`finish_bootstrap` wiring) NOT done — see §8.9 |
 
 ---
 
@@ -622,3 +622,55 @@ Stated plainly, since r6 gets whatever the probe proves:
   carrying a static `10.255.0.x` address and open an SSH session to it from
   the NMAS. Stage-B shaped question, stage-B shaped answer — and it is the
   acceptance this step exists for, because it is the one no unit can ask.
+
+
+## 8.9 What is done, and what is deliberately not
+
+**Done**
+
+- `render_bootstrap()` takes `manager_interface` / `manager_address` /
+  `manager_mask` / `manager_gateway` and emits one interface stanza. No
+  routing protocol, no loopback, and no `ip route` unless a gateway is given.
+- `manager_interface_lines()` carries **both conditionals at the emit site**:
+  why this segment, and why no gateway. Both hold because the manager shares
+  the subnet, and the function says so.
+- `build_plan()` refuses a plan with an address and no mask, and one with an
+  address and no interface -- **never defaulting the interface**, because on
+  a C8000v the first one is vrnetlab's.
+- `routes/onboard.py` grew `_plan_args()`: one reader of the request, used by
+  both `/onboard/plan` and `/onboard/create`, so the confirm rebuilds *the
+  same* plan rather than a differently-derived one.
+- The wizard collects mask, management interface and gateway, labels the
+  containerlab interface as the separate thing it is, and sends one payload
+  from `onboardFormPayload()`.
+
+**Two defects found while wiring it**
+
+1. **`/onboard/create` sent `body: '{}'`.** The route rebuilds the plan from
+   the request by design; the client sent nothing, so the rebuild produced a
+   plan with no hostname and no address and could only ever answer 409.
+   Create had never been able to succeed. Not caught by
+   `test_onboard_wizard_renders.py`, which executes the renderer and not the
+   fetch, nor by `test_onboard_ordering.py`, which calls `run_onboarding`
+   directly -- **the seam between them is exactly where it lived.**
+2. **A render failure was reported as `unsendable`.** "3 lines contain
+   characters an IOS CLI cannot accept" is a precise claim, and a missing
+   netmask was being announced under it -- sending the operator to look for
+   an em dash. `render_error` is now its own field and its own reason.
+
+**Not done: §8.6, wiring `finish_bootstrap()`**
+
+Left out deliberately, and the reason is sequencing rather than difficulty:
+phase 2 reaches a device, and until the hardware measurement in §8.8 says a
+generated config makes a node reachable, **every part of phase 2 would be
+written against an assumption.** That is the failure this whole step exists
+to correct. It is also unexercisable -- the probe's steps 8 and 10 cannot run
+before its step 3.
+
+So: run the measurement, then wire phase 2 against a node that is actually
+answering.
+
+**Also outstanding: the probe topology needs a link into the `Vlan99` L2
+domain.** `mgmt-ipv4` cannot provide it -- that addresses the docker network.
+How the containerlab host exposes that segment (bridge node, macvlan,
+physical uplink) is **not established**, and is the next thing to measure.

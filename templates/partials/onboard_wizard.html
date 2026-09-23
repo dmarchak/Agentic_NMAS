@@ -35,12 +35,36 @@
           </div>
           <div class="col-md-3">
             <label class="form-label small fw-semibold" for="obMgmtIp">Management IP</label>
-            <input class="form-control form-control-sm" id="obMgmtIp">
+            <input class="form-control form-control-sm" id="obMgmtIp"
+                   placeholder="10.255.0.31">
+          </div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obMgmtMask">Mask</label>
+            <input class="form-control form-control-sm" id="obMgmtMask"
+                   placeholder="255.255.255.0">
           </div>
           <div class="col-md-3">
-            <label class="form-label small fw-semibold" for="obMgmtIntf">Management interface</label>
+            <label class="form-label small fw-semibold" for="obMgrIntf">Management interface</label>
+            <input class="form-control form-control-sm" id="obMgrIntf"
+                   placeholder="GigabitEthernet2">
+            <div class="form-text small">Where the address goes. On a C8000v
+              <strong>not Gi1</strong> &mdash; vrnetlab owns it.</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obMgrGw">Gateway</label>
+            <input class="form-control form-control-sm" id="obMgrGw"
+                   placeholder="(optional)">
+            <div class="form-text small">Leave blank when NMAS is on this
+              subnet &mdash; it needs no route to answer.</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obMgmtIntf">Containerlab interface</label>
             <input class="form-control form-control-sm" id="obMgmtIntf"
                    placeholder="GigabitEthernet0/0">
+            <div class="form-text small">A different network. Blank on a
+              C8000v.</div>
           </div>
         </div>
         <div id="onboardReview" class="small"></div>
@@ -80,7 +104,10 @@ function onboardReviewHtml(plan, bootstrapConfig) {
   const rows = [
     ['Name', plan.hostname], ['Platform', plan.platform],
     ['List', `${plan.list} (${plan.source_kind})`],
-    ['Management IP', plan.mgmt_ip],
+    ['Management IP', plan.mgmt_mask
+        ? `${plan.mgmt_ip} ${plan.mgmt_mask} on ${plan.manager_interface || '(no interface)'}`
+        : plan.mgmt_ip],
+    ['Gateway', plan.manager_gateway || 'none \u2014 NMAS is on this subnet'],
     ['Template', plan.template || '(none bound)'],
     ['Credential source', plan.cred_source || '(not resolved)'],
     ['NetBox objects', plan.netbox_objects],
@@ -113,6 +140,29 @@ function onboardCanCreate(plan) {
   return !!(plan && plan.onboardable === true);
 }
 
+// The form, read ONCE. Both /onboard/plan and /onboard/create send this.
+//
+// `create` used to send `'{}'`, so the confirm rebuilt a plan with no
+// hostname and no address and could only ever answer 409. It rebuilds
+// deliberately -- the state can change between the review and the confirm --
+// but a rebuild from a DIFFERENT payload is not a recomputation of the same
+// plan, it is a different plan that happens to be empty.
+//
+// Mirrors `_plan_args()` on the server, for the reason that one exists:
+// two readers of one form are two forms.
+function onboardFormPayload() {
+  const v = (id) => (document.getElementById(id) || {}).value || '';
+  return {
+    hostname:          v('obHostname'),
+    platform:          v('obPlatform'),
+    mgmt_ip:           v('obMgmtIp'),
+    mgmt_mask:         v('obMgmtMask'),
+    manager_interface: v('obMgrIntf'),
+    manager_gateway:   v('obMgrGw'),
+    mgmt_interface:    v('obMgmtIntf'),
+  };
+}
+
 async function onboardRefresh() {
   const host = document.getElementById('onboardReview');
   const btn  = document.getElementById('onboardCreateBtn');
@@ -121,12 +171,7 @@ async function onboardRefresh() {
   try {
     const r = await fetch('/onboard/plan', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        hostname: (document.getElementById('obHostname') || {}).value || '',
-        platform: (document.getElementById('obPlatform') || {}).value || '',
-        mgmt_ip:  (document.getElementById('obMgmtIp') || {}).value || '',
-        mgmt_interface: (document.getElementById('obMgmtIntf') || {}).value || '',
-      }),
+      body: JSON.stringify(onboardFormPayload()),
     });
     const d = await r.json();
     if (!d.ok) { host.innerHTML = `<div class="alert alert-danger py-2 px-3">${d.error}</div>`; return; }
@@ -145,7 +190,8 @@ async function onboardRefresh() {
 async function onboardCreate() {
   try {
     const r = await fetch('/onboard/create', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(onboardFormPayload())});
     const d = await r.json();
     showToast(d.ok ? 'Device onboarded.' : (d.error || 'Create failed'),
               d.ok ? 'success' : 'danger');

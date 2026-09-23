@@ -72,7 +72,24 @@ class OnboardPlan:
     #: is read-only and the device arrives on the next refresh, so the wizard
     #: must not pretend it wrote one.
     source_kind: str = "local"
+
+    #: The address the MANAGER reaches this device on, and where it goes.
+    #:
+    #: **Not the containerlab management interface** -- see the two-namespace
+    #: note in `bootstrap_config`. `mgmt_ip` was collected and displayed long
+    #: before anything emitted it into a config: the refusal below ("no
+    #: management address -- the device would be created and unreachable")
+    #: has been correct since 4C.1, while the generator produced a config
+    #: that could not use the value. **The refusal existed; the fulfilment
+    #: did not.**
     mgmt_ip: str = ""
+    mgmt_mask: str = ""
+    #: Chosen, never defaulted -- on a C8000v, Gi1 belongs to vrnetlab.
+    manager_interface: str = ""
+    #: Omitted unless the manager is on another subnet. See
+    #: `manager_interface_lines()` for why that is a conditional and not a
+    #: property of bootstrap configs.
+    manager_gateway: str = ""
 
     #: The startup config the new node boots from. Rendered here so the
     #: review step shows what will be created, not a description of it.
@@ -97,6 +114,13 @@ class OnboardPlan:
 
     #: Lines of `bootstrap_config` an IOS CLI cannot accept.
     unsendable: tuple = field(default_factory=tuple)
+
+    #: The render refused outright. **Kept apart from `unsendable`**, which
+    #: it used to be folded into: "3 lines contain characters an IOS CLI
+    #: cannot accept" is a precise, checkable claim, and reporting a missing
+    #: netmask under it told the operator to go looking for an em dash.
+    #: Found by reading the refusals this step's own change produced.
+    render_error: str = ""
 
     #: Set when the stores could not be consulted. **Not** the same as "no
     #: collision": a check that could not run has not passed.
@@ -153,6 +177,19 @@ class OnboardPlan:
         if not self.mgmt_ip:
             reasons.append("no management address — the device would be "
                            "created and unreachable")
+        elif not self.mgmt_mask:
+            reasons.append(f"no network mask for {self.mgmt_ip} — a /24 "
+                           "assumption is how a tool works in exactly one lab")
+
+        # Never defaulted, and refused separately from the address so the
+        # operator is told which half is missing. On a C8000v the first
+        # interface is vrnetlab's, and a management address landing there is
+        # the failure 4C.8 exists to prevent.
+        if self.mgmt_ip and not self.manager_interface:
+            reasons.append(
+                "no interface chosen for the management address — it cannot "
+                "be defaulted, because on this platform vrnetlab may own the "
+                "first interface and a guess is a silent one")
 
         if self.template and not self.template_approved:
             reasons.append(f"template '{self.template}' is not approved for "
@@ -160,6 +197,10 @@ class OnboardPlan:
         elif not self.template:
             reasons.append(f"no template is bound for platform "
                            f"'{self.platform}'")
+
+        if self.render_error:
+            reasons.append("the bootstrap config could not be rendered: "
+                           + self.render_error)
 
         if self.unsendable:
             reasons.append(
@@ -206,6 +247,12 @@ class OnboardPlan:
             "list":           self.list_name,
             "source_kind":    self.source_kind,
             "mgmt_ip":        self.mgmt_ip,
+            # Shown alongside the address, because "10.255.0.31" and
+            # "10.255.0.31 255.255.255.0 on GigabitEthernet2" are different
+            # claims and only the second is a config the device can boot.
+            "mgmt_mask":         self.mgmt_mask,
+            "manager_interface": self.manager_interface,
+            "manager_gateway":   self.manager_gateway,
             "cred_source":    self.cred_source,
             "template":       self.template,
             "netbox_objects": len(self.netbox_plan),
@@ -266,7 +313,9 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                mgmt_ip: str = "", source_kind: str = "local",
                secret: str = "", domain: str = "rcn.lab",
                mgmt_interface: str = "", host_vars: dict = None,
-               netbox_plan=(), cred_source: str = "") -> OnboardPlan:
+               netbox_plan=(), cred_source: str = "",
+               mgmt_mask: str = "", manager_interface: str = "",
+               manager_gateway: str = "") -> OnboardPlan:
     """The only constructor. Always validates; never writes anything.
 
     *secret* is the one-time bootstrap credential (4C.2). It reaches the
@@ -303,18 +352,23 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         unchecked.append("NetBox")
 
     template, approved = _template_for(repo, hostname, platform)
-    config, unsendable = _render(platform, hostname, secret, domain,
-                                 mgmt_interface)
+    config, unsendable, render_error = _render(
+        platform, hostname, secret, domain,
+        mgmt_interface, manager_interface=manager_interface,
+        manager_address=mgmt_ip, manager_mask=mgmt_mask,
+        manager_gateway=manager_gateway)
 
     return OnboardPlan(
         unmet_preconditions=tuple(unmet_preconditions(netbox_plan)),
         hostname=hostname, platform=platform, list_name=list_name,
-        source_kind=source_kind, mgmt_ip=mgmt_ip,
+        source_kind=source_kind, mgmt_ip=mgmt_ip, mgmt_mask=mgmt_mask,
+        manager_interface=manager_interface, manager_gateway=manager_gateway,
         bootstrap_config=config, cred_source=cred_source,
         netbox_plan=tuple(netbox_plan), host_vars=dict(host_vars or {}),
         template=template, template_approved=approved,
         name_taken_in_manifest=in_manifest, name_taken_in_netbox=in_netbox,
         unsendable=tuple(unsendable), unchecked=tuple(unchecked),
+        render_error=render_error,
     )
 
 
@@ -382,7 +436,9 @@ def _template_for(repo: str, hostname: str, platform: str):
 
 
 def _render(platform: str, hostname: str, secret: str, domain: str,
-            mgmt_interface: str):
+            mgmt_interface: str, *, manager_interface: str = "",
+            manager_address: str = "", manager_mask: str = "",
+            manager_gateway: str = ""):
     """``(config, unsendable)``. A render that cannot be sent is a refusal.
 
     **The ASCII guard is the generator's own**, not a second copy here.
@@ -400,19 +456,23 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
     review step rather than as a stack trace.
     """
     if not platform or platform in BLOCKED_PENDING_MEASUREMENT:
-        return "", ()
+        return "", (), ""
     try:
         from modules.nsot.bootstrap_config import render_bootstrap
 
         config = render_bootstrap(platform, hostname=hostname,
                                   username="admin", secret=secret or "unset",
                                   domain=domain,
-                                  mgmt_interface=mgmt_interface)
+                                  mgmt_interface=mgmt_interface,
+                                  manager_interface=manager_interface,
+                                  manager_address=manager_address,
+                                  manager_mask=manager_mask,
+                                  manager_gateway=manager_gateway)
     except Exception as exc:                   # noqa: BLE001
         log.error("onboard: bootstrap render failed for %r: %s", hostname, exc)
-        return "", (f"the bootstrap config could not be rendered: {exc}",)
+        return "", (), str(exc)
 
-    return config, ()
+    return config, (), ""
 
 
 # ---------------------------------------------------------------------------
