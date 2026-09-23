@@ -1467,10 +1467,26 @@ commit, so the old word-grep made the gate permanently unsatisfiable.
 remnant named above and belongs to retiring the Git-tab flow. Carried
 forward.
 
-*Remaining, and deliberately last:* **re-enable the scheduler on the NMAS**,
-so the first scheduled run enumerates the inventory rather than the legacy
-store. Re-enabling before 3.3a/3.3b would reproduce August — a scheduled job
-producing alarms nobody trusts, whose fix is to switch it off again.
+### STAGE 3.3 COMPLETE — 2026-09-23
+
+The scheduler was re-enabled last, after 3.3a and 3.3b, and **the first
+scheduled run landed on its own**: `scheduled 9 of 9` at 2026-09-23 04:03:14,
+fired from the in-memory schedule re-armed when the toggle was enabled
+(`now + interval`), not from the state file and not from a button.
+
+**That is the first scheduled drift check since 2026-08-30** — the run three
+minutes before the feature was switched off, which flagged all nine devices
+against stale ad-hoc goldens. Same feature, same fleet, now measured against
+committed goldens: **9/9 clean.**
+
+The ordering was the point. Re-enabling first would have reproduced August: a
+scheduled job producing alarms nobody trusts, whose fix is to switch it off
+again. Re-enabling after the enumerator and the population were fixed made
+the first run a measurement rather than an alarm.
+
+Stage 3.3 closed on all five parts: inventory-based enumeration, coverage
+reported per run, disabled distinguishable from idle, the legacy store given
+a retirement condition, and the scheduler actually running.
 
 *Acceptance, extended:* the scheduled pass is enabled with a stated interval,
 or drift detection is deliberately recorded as manual-only with the reason —

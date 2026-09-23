@@ -6169,3 +6169,39 @@ The test asserting the scheduler no longer writes the key looked for
 could not fail, in a test written about a key that was never read — so it
 now walks the `ast.Dict` nodes and checks the actual keys, because the bare
 string `next_ts` appears three times in that method as `self._next_ts`.
+
+---
+
+## The run that closed the loop
+
+`scheduled 9 of 9`, 2026-09-23 04:03:14. It fired from the in-memory schedule
+re-armed when the toggle was enabled — `now + interval` — not from the state
+file, not from a button.
+
+**It is the first scheduled drift check since 2026-08-30 02:38:48**, the run
+that reported drift on all nine devices, 69–164 diff lines each, and queued an
+approval request for every one. Three minutes later the feature was switched
+off, and it stayed off for twenty-four days while five stages of NSoT work
+went past it.
+
+The comparison is the whole argument for the ordering:
+
+| | 2026-08-30 | 2026-09-23 |
+|---|---|---|
+| Population | the legacy directory | the inventory |
+| Baselines | ad hoc, saved by hand, stale | committed, current, one write path |
+| Result | 9 drifted, 9 approvals queued | 9 clean |
+| Coverage stated | no | `checked 9 of 9` |
+| Outcome | switched off within three minutes | left running |
+
+The same feature produced an unusable result and a useful one, and nothing
+about the checker's diffing changed between them. What changed was what it
+enumerated and what it was comparing against.
+
+**Re-enabling was deliberately the last act**, after the enumerator (3.3a) and
+the population (3.3b) were fixed, because re-enabling first would have
+reproduced August exactly: a scheduled job producing alarms nobody trusts,
+whose fix is to switch it off again. That is how the feature was lost the
+first time. A silenced check does not come back by being remembered — it comes
+back by someone making the thing it reports worth reading, and then enabling
+it.
