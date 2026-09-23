@@ -862,6 +862,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_settings_write_path.py` | positive seed declaration; unknown keys refused; ratify-never-change |
 | `test_secret_file_modes.py` | every secret file created 0600 by its creator; Jenkins credentials encrypted at rest |
 | `test_agent_failure_surfaces.py` | failure streak, same-error, ERROR log, red badge; the stale trigger stays fixed |
+| `test_disabled_is_a_state.py` | a disabled read still carries its history; every degraded GET classified |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -1132,6 +1133,24 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `accept_mimetypes` cannot tell `*/*` from an explicit preference, so any
   quality comparison picks a winner by tie-break. Error detail goes through
   `redact_text()` — unlike the log, this leaves the host.
+- **"Disabled" is a STATE to report, not a reason to withhold.**
+  `GET /ai/agent_log` returned `{"entries": [], "status": {}}` with a 503 the
+  moment AI was switched off — so disabling the agent **suppressed the 26
+  failures and the workspace-id error that were the reason for disabling
+  it**. The health surface built so a dead component could not look quiet
+  went silent exactly when its history mattered most. The mechanism is worth
+  naming: **the guard was correct for an older payload.** When the route
+  returned only a log, "AI is disabled" plausibly meant "nothing to say";
+  adding `health` changed what it carries and nobody revisited the guard. A
+  guard ages against its own payload.
+  **A read reports; an action refuses** — `/ai/agent_run`, `/ai/agent_pause`,
+  `/ai/agent_resume` and the timer POST still 503, because a disabled agent
+  must not be made to act. Surveyed: 18 routes short-circuit on a
+  disabled/unconfigured state, 15 are actions and correct, and of the three
+  GETs only this one was withholding. `test_disabled_is_a_state.py` scans for
+  every GET that *names* a degraded state in a return and requires each to be
+  classified **reports** or **fetches** — a list that must not grow silently
+  and must not keep ghosts.
 - **A route reports what was STORED, not what was asked for.**
   `/drift/settings` echoed its own input, so a save that did nothing returned
   success and the panel reverted the control on the next poll.

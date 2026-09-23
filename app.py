@@ -4468,13 +4468,31 @@ def ai_events_clear():
 
 @app.route("/ai/agent_log")
 def ai_agent_log():
-    """Return the background agent's activity log (newest first)."""
-    if not _ai_enabled():
-        return jsonify({"error": "AI is disabled", "status": {}, "entries": []}), 503
+    """Return the background agent's activity log (newest first).
+
+    **"AI is disabled" is a STATE, not an error, and it must not suppress the
+    history that explains why.**
+
+    This route used to return `{"entries": [], "status": {}}` with a 503 the
+    moment AI was off — so switching the agent off hid the 26 recorded
+    failures and the workspace-id error that were the reason for switching it
+    off. The health surface built specifically so a dead component could not
+    look quiet went silent exactly when its history mattered most, and an
+    operator finding it disabled next month would have learned nothing.
+
+    A **read** reports. Only an **action** refuses: `/ai/agent_run`,
+    `/ai/agent_pause`, `/ai/agent_resume` and the timer POST still return 503,
+    because a disabled agent must not be made to act.
+    """
     from modules.agent_runner import get_activity_log, get_status
+
     limit = min(int(request.args.get("limit", 50)), 200)
+    # `get_status()` reports both switches; this route does not compute a
+    # second copy. One producer.
+    status = get_status()
     return jsonify({
-        "status": get_status(),
+        "ok": True,
+        "status": status,
         "entries": get_activity_log()[:limit],
     })
 
@@ -4515,10 +4533,11 @@ def ai_agent_resume():
 @app.route("/ai/agent_timers", methods=["GET"])
 def ai_agent_timers_get():
     """Return current timer configuration for the UI."""
-    if not _ai_enabled():
-        return jsonify({"ok": False, "error": "AI is disabled", "timers": []}), 503
+    # A read: report the state, do not withhold the configuration because of
+    # it. See `ai_agent_log` for the reasoning.
     from modules.agent_timers import get_ui_config
-    return jsonify({"ok": True, "timers": get_ui_config()})
+    return jsonify({"ok": True, "ai_enabled": _ai_enabled(),
+                    "timers": get_ui_config()})
 
 
 @app.route("/ai/agent_timers", methods=["POST"])

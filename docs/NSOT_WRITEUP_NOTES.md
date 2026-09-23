@@ -6526,3 +6526,79 @@ disappearance means somebody tidied the fixture, which is the thing worth
 protecting against. Same shape as the seed declaration and the unreachable
 allowlist: a list that must not grow silently, and here also one that must
 not silently shrink.
+
+---
+
+## A guard ages against its own payload
+
+`GET /ai/agent_log?limit=2` returned:
+
+```json
+{"entries": [], "error": "AI is disabled", "status": {}}
+```
+
+So switching the agent off **suppressed the twenty-six recorded failures and
+the workspace-id error that were the reason for switching it off**. The
+health surface built specifically so a dead component could not look quiet
+went silent exactly when its history mattered most. An operator finding it
+disabled next month would have learned nothing — not even that it had ever
+failed.
+
+The route was not carelessly written, and that is the interesting part.
+
+**When it was written it returned only a log.** For a log, "AI is disabled"
+plausibly does mean "nothing to say", and a 503 with that message is a
+reasonable thing to write. Then `status` gained `health`, and the route
+started carrying something the guard had never been asked about. Nobody
+revisited it, because nothing about adding a field to a payload suggests
+re-reading the guard above it.
+
+So the rule is not "don't short-circuit". It is that **a guard is written
+against a payload, and it stops being correct when the payload grows.** That
+is not visible at the guard — it is visible at the moment the payload
+changes, which is the moment nobody is looking at the guard.
+
+### A read reports; an action refuses
+
+The correction is a distinction, not a removal. Surveyed across `app.py` and
+every blueprint: **18 routes short-circuit on a disabled or unconfigured
+state. Fifteen are actions** — `/ai/agent_run`, `/ai/agent_pause`, the NetBox
+imports, the Jenkins job creation — and refusing is exactly right there. A
+disabled agent must not be made to act, and loosening that would be the
+opposite mistake.
+
+Of the three GETs, only `/ai/agent_log` was withholding. `/drift/settings`
+already reports its state as data. `/monitoring/stack/<name>` already returns
+`ok: true` with an unconfigured tool named, under a comment saying *"Not an
+error. An unconfigured tool is a decision, and showing it in red teaches the
+operator to ignore red."* `/topology_view/svg` refuses, correctly: there is
+no SVG without a configured service, no accumulated history being hidden, and
+the refusal names the setting to change.
+
+The monitoring cards got it right because they were **designed** around the
+question. `/ai/agent_log` got it wrong because its guard predated the
+question being asked.
+
+### Is it testable the way unreachability is? No — and the reason matters
+
+Reachability tests cannot catch this, and neither can coverage:
+
+* The route **is** reachable, and a per-route reachability check passes.
+* The branch **is** taken — that is the defect. Coverage marks it green.
+* The failure is a *behavioural* property of a reachable, covered route:
+  under a particular state, it returns less than it knows.
+
+What catches it is exercising the route **in the degraded state** and
+asserting the payload still carries what the operator needs. That is
+per-route work, because every subsystem has a different disable lever.
+
+What generalises is the **classification**. `test_disabled_is_a_state.py`
+walks the AST for every GET that names a disabled/unconfigured state in a
+return, and requires each to be declared **`reports`** or **`fetches`**. A
+new one fails the test until somebody decides which it is. The list must not
+grow silently, and — caught by its own ghost check on the first run, when it
+still listed the two routes this work had just fixed — it must not keep
+entries for routes that no longer short-circuit either.
+
+A scan cannot know that an SVG legitimately has nothing to return while an
+activity log does. A person can, once, and the list records that they did.

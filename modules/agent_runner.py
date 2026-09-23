@@ -179,6 +179,15 @@ def get_status() -> dict:
     except Exception:                          # noqa: BLE001
         status["enabled"] = True
     status["health"] = failure_health()
+    # Two independent switches, and "not running" has a different answer and a
+    # different fix for each. Reported separately rather than collapsed into
+    # one "off", because an operator who turns the wrong one back on has
+    # learned nothing from the panel.
+    try:
+        from modules.config import get_user_setting
+        status["ai_enabled"] = bool(get_user_setting("ai_enabled", True))
+    except Exception:                          # noqa: BLE001
+        status["ai_enabled"] = True
     return status
 
 
