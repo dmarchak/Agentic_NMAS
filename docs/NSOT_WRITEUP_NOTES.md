@@ -6359,3 +6359,116 @@ This is the same family as the ASCII guard. An em dash consumed by IOS and a
 trailing newline consumed by Kea are both **one byte of invisible difference
 between what was written and what was meant**, surfacing as a failure that
 names something else entirely.
+
+---
+
+## Four weeks of failing, rendered as green
+
+The largest silent failure in the project, found on 2026-09-23.
+
+The background agent's last recorded run was **2026-08-28 23:26**. Trigger
+`missing_golden_configs`, `tool_call_count` **0**, and the error:
+
+```
+anthropic-workspace-id is required when authenticating with an
+identity-linked API key; send the id of the workspace this request acts in
+```
+
+So for four weeks it woke on schedule, decided there was work to do, and
+failed at the **first API call** — before any tool ran, every time, with the
+same rejection.
+
+Three layers each did their part to hide it:
+
+* **The record was a file nothing read.** `data/agent_activity.json` is
+  written by `_append_activity()` and served by `/ai/agent_log`, but the only
+  reader is the Agent tab, which nobody had reason to open.
+* **The log line scanned like a success.**
+  `log.info("agent_runner: done [%s] tools=%d success=%s cost=$%.4f", …)` —
+  INFO level, the word *done* first, and the failure carried as `success=False`
+  inside the format string. Twenty-six of those in a journal do not look like
+  an outage.
+* **The badge said "Active", in green.** The status logic had four states —
+  running, paused, idle-user-active, active — and **no state for broken**.
+  Whatever had happened on the last run, a scheduler that was neither paused
+  nor mid-task rendered green.
+
+None of the three is wrong on its own. Together they made a dead component
+indistinguishable from a quiet one.
+
+### The general rule this is an instance of
+
+The project already had it written down, for a different subsystem: an empty
+post-commit hook registry on a list that has a remote is an **error** and
+records `last_push_failure`, because *"a commit that could have been published
+and was not" must never be silent*.
+
+The agent is the same shape and was missed because it is a component rather
+than an operation. The fix is the same: `failure_health()` computes the streak
+from the activity log, `get_status()` carries it, a failed run logs at
+**ERROR** naming the error and the streak, the badge turns red with the count,
+the **tab** badge shows it so it is visible without opening the tab, and a
+banner names the error.
+
+**`same_error` is the load-bearing field.** One failure is an incident; twelve
+identical ones is a configuration problem that will not fix itself, and the
+two deserve different words. A count alone would have read as flakiness.
+
+### Two things it also revealed
+
+**The trigger was stale.** `missing_golden_configs` came from the event
+monitor's legacy enumeration — the Stage 3.3 finding — so the devices it named
+as missing a golden config **had** one, in `config_repo/`. The agent's first
+act on recovery would have been to create goldens for nine devices that
+already had them. Fixed by 3.3a rather than by this work, and now pinned by a
+test, because it is the trigger that fires first when the agent comes back.
+
+**The fix might have been accidental.** Rotating the Anthropic API key an hour
+earlier created it *in a workspace*, which may satisfy the very requirement
+that had been failing. So a month-dormant component, holding a month-old tool
+library, was one trigger away from waking against a system rebuilt underneath
+it. `background_agent_enabled` was set to false before that could happen — the
+persistent switch, checked at call time on every path, not the in-memory pause
+that does not survive a restart.
+
+That is the part worth keeping: **the repair arrived before the diagnosis**,
+and only because someone went looking did the order come out right.
+
+### A footnote on who wrote the switch
+
+`background_agent_enabled` read `True` **explicitly** in the settings file —
+the only key found written without anyone deciding. Measured across the whole
+history: no template has ever sent it, no `set_user_setting` call has ever
+named it, and `migrate()` cannot have seeded it. The server side was added in
+`6a88a71` (2026-04-25) with a GET that reports it and a POST that accepts it,
+**and no control anywhere**. So the code cannot have written it on its own; it
+arrived in a request that carried it. A setting born reachable by `curl` and
+invisible in the browser is a setting whose provenance nobody can reconstruct.
+
+---
+
+## A security test that failed one run in seventy
+
+Found while re-running the suite after the agent work.
+`test_the_ciphertext_is_not_the_plaintext` asserts that the break-glass
+plaintext does not appear in the ciphertext, over four needles — including
+`b"r1"`, a **two-byte** hostname.
+
+Measured over 2000 sealings of the real fixture: the ciphertext is 953 bytes,
+and `b"r1"` appeared in **1.40%** of them, against **1.45%** predicted by
+chance (953 / 65536). The other three needles, all four bytes or more,
+appeared in none.
+
+So the test failed roughly one run in seventy, at random, in the file about
+recovering from a lockout — and the failure meant nothing.
+
+**A security test that fails at random teaches you to ignore security test
+failures**, which is worse than not having the test. The needles are now
+required to be at least four bytes (one chance in five million per run), the
+short ones are excluded deliberately, and a second test pins that exclusion so
+the hostname is not helpfully added back by someone who notices it is missing.
+
+It is `redact.py`'s 8-character value floor arrived at from the opposite
+direction: there a short value matches everywhere and corrupts the line; here
+a short value matches by accident and cries wolf. Same cause — a needle
+shorter than its haystack's noise — and the same remedy.

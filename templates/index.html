@@ -5514,20 +5514,77 @@ async function loadAgentTab() {
     const entries = data.entries || [];
 
     // Update status badge and live task panel
-    const ct = status.current_task;
+    const ct     = status.current_task;
+    const health = status.health || {};
+
+    /* FAILING OUTRANKS EVERYTHING BUT A RUNNING TASK.
+       Measured 2026-09-23: every attempt since 2026-08-28 failed at the
+       first API call with the same rejection, and this badge read "Active"
+       in green for four weeks. A component that fails every attempt is not
+       active, and "idle" and "broken" must not render the same. */
     if (badgeEl) {
       if (ct) {
         badgeEl.className = 'badge bg-warning text-dark';
         badgeEl.textContent = 'Running…';
+      } else if (health.failing) {
+        badgeEl.className = 'badge bg-danger';
+        badgeEl.textContent = health.consecutive_failures > 1
+          ? `Failing (${health.consecutive_failures})` : 'Last run failed';
+      } else if (status.enabled === false) {
+        badgeEl.className = 'badge bg-secondary';
+        badgeEl.textContent = 'Disabled';
       } else if (status.paused) {
         badgeEl.className = 'badge bg-secondary';
-        badgeEl.textContent = 'Paused';
+        badgeEl.textContent = 'Paused (until restart)';
       } else if (status.user_active) {
         badgeEl.className = 'badge bg-info text-dark';
         badgeEl.textContent = 'Idle (user active)';
       } else {
         badgeEl.className = 'badge bg-success';
         badgeEl.textContent = 'Active';
+      }
+    }
+
+    /* The tab badge, so a failure is visible without opening the tab -- the
+       whole point is that nobody had reason to look. */
+    const tabBadge = document.getElementById('agentBadge');
+    if (tabBadge) {
+      if (health.failing) {
+        tabBadge.style.display = '';
+        tabBadge.className = 'badge bg-danger ms-1';
+        tabBadge.textContent = String(health.consecutive_failures);
+        tabBadge.title = 'Background agent runs are failing';
+      } else {
+        tabBadge.style.display = 'none';
+      }
+    }
+
+    /* The banner: what failed, how many times, and whether it is the SAME
+       failure each time. One failure is an incident; a dozen identical ones
+       is a configuration problem that will not fix itself. */
+    let failEl = document.getElementById('agentFailureBanner');
+    if (!failEl && logEl && logEl.parentNode) {
+      failEl = document.createElement('div');
+      failEl.id = 'agentFailureBanner';
+      logEl.parentNode.insertBefore(failEl, logEl);
+    }
+    if (failEl) {
+      if (health.failing) {
+        const n    = health.consecutive_failures;
+        const same = health.same_error
+          ? ` <strong>The same error every time</strong> — this is a configuration
+              problem, not a transient one.` : '';
+        failEl.innerHTML = `
+          <div class="alert alert-danger py-2 px-3 small mb-2">
+            <div class="fw-semibold mb-1">
+              Background agent: ${n} consecutive failed run${n === 1 ? '' : 's'}
+              ${health.last_failure_at ? `— last ${_esc(health.last_failure_at)}` : ''}
+            </div>
+            <div class="font-monospace small">${_esc(health.last_error || 'no error recorded')}</div>
+            <div class="mt-1">${same}</div>
+          </div>`;
+      } else {
+        failEl.innerHTML = '';
       }
     }
     _agentPaused = !!status.paused;

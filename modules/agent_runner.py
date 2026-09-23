@@ -110,16 +110,76 @@ def get_activity_log() -> list[dict]:
         return list(reversed(_activity_log))
 
 
+def failure_health() -> dict:
+    """Is the agent working, or has it been failing? Computed from the log.
+
+    **A component that fails every attempt is not idle, and must not render
+    like it.** Measured 2026-09-23: the last recorded run was 2026-08-28,
+    `tool_call_count` 0, and every attempt since had failed at the first API
+    call with the same rejection. The badge said **Active**, in green, for
+    four weeks, and the only record was `data/agent_activity.json` — a file
+    nothing surfaced.
+
+    That is the same rule as `last_push_failure`: "a thing that could have
+    worked and did not" must never be silent.
+
+    ``same_error`` is the load-bearing field. One failure is an incident; a
+    dozen identical ones is a **configuration** problem that will not fix
+    itself, and the two deserve different words.
+    """
+    with _log_lock:
+        entries = list(_activity_log)
+
+    streak, last_error, last_at = 0, "", ""
+    for entry in reversed(entries):
+        if entry.get("success"):
+            break
+        streak += 1
+        if not last_error:
+            last_error = (entry.get("errors") or [""])[0]
+            last_at = entry.get("started_at", "")
+
+    same = 0
+    if last_error:
+        for entry in reversed(entries):
+            if entry.get("success"):
+                break
+            if (entry.get("errors") or [""])[0] != last_error:
+                break
+            same += 1
+
+    return {
+        "failing":              streak > 0,
+        "consecutive_failures": streak,
+        "same_error":           same > 1,
+        "same_error_count":     same,
+        "last_error":           last_error[:500],
+        "last_failure_at":      last_at,
+        "runs_recorded":        len(entries),
+        "last_run_at":          entries[-1].get("started_at", "") if entries else "",
+    }
+
+
 def get_status() -> dict:
     """Return the agent's current operational status including live task detail."""
     with _task_lock:
         task = dict(_running_task) if _running_task else None
-    return {
+    status = {
         "running":        bool(_processor_thread and _processor_thread.is_alive()),
         "paused":         _paused.is_set(),
         "user_active":    _user_is_active(),
         "current_task":   task,
     }
+    # `enabled` is the PERSISTENT switch, and it is reported because "not
+    # running" has two causes that look identical from outside: switched off,
+    # or a thread that died. Paused is a third and is already here.
+    try:
+        from modules.config import get_user_setting
+        status["enabled"] = bool(get_user_setting("background_agent_enabled", True))
+    except Exception:                          # noqa: BLE001
+        status["enabled"] = True
+    status["health"] = failure_health()
+    return status
 
 
 def notify_user_active() -> None:
@@ -406,10 +466,25 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
     }
 
     _append_activity(entry)
-    log.info(
-        "agent_runner: done [%s] tools=%d success=%s cost=$%.4f",
-        session_id, len(tools_used), entry["success"], cost_usd,
-    )
+    if entry["success"]:
+        log.info(
+            "agent_runner: done [%s] tools=%d cost=$%.4f",
+            session_id, len(tools_used), cost_usd,
+        )
+    else:
+        # ERROR, not INFO with `success=False` inside the format string. A
+        # month of failures produced INFO lines that scanned like successes,
+        # and the streak is what distinguishes one bad call from a component
+        # that has been dead since August.
+        health = failure_health()
+        log.error(
+            "agent_runner: task FAILED [%s] trigger=%s tools=%d — %s "
+            "(%d consecutive failure(s)%s)",
+            session_id, trigger_type, len(tools_used),
+            (errors[0] if errors else "no error recorded"),
+            health["consecutive_failures"],
+            "; same error each time" if health["same_error"] else "",
+        )
     return entry
 
 

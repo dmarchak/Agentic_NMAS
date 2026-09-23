@@ -125,6 +125,24 @@ class TestItDoesNotShareAFailureWithWhatItRecovers:
         for value in ("same", "en1", "admin", "r1", "rcn"):
             assert value not in readable
 
+    #: Needles short enough to appear in random bytes by chance prove nothing.
+    #: Measured 2026-09-23 over 2000 sealings of this fixture: the ciphertext
+    #: is 953 bytes, and `b"r1"` -- two bytes -- appeared in **1.40%** of
+    #: them, against 1.45% predicted by chance (953/65536). So this test
+    #: failed roughly one run in seventy, at random, in a file about
+    #: recovering from a lockout.
+    #:
+    #: **A security test that fails at random teaches you to ignore security
+    #: test failures**, which is worse than not having it. Same reasoning as
+    #: `redact.py`'s 8-character value floor, arrived at from the other
+    #: direction: there a short value matches everywhere and corrupts; here a
+    #: short value matches by accident and cries wolf.
+    #:
+    #: Four bytes puts the chance at 1 in 5 million per run, which is the
+    #: difference between a check and a coin. The values that matter -- the
+    #: password and the enable secret -- are what the test is actually about.
+    MIN_NEEDLE_BYTES = 4
+
     def test_the_ciphertext_is_not_the_plaintext(self, payload):
         """Checked on the DECODED bytes, where a substring match means
         something -- not on their base64, where it does not."""
@@ -132,8 +150,18 @@ class TestItDoesNotShareAFailureWithWhatItRecovers:
 
         envelope = json.loads(bg.seal(payload, PASS))
         raw = b64.urlsafe_b64decode(envelope["ciphertext"] + "==")
-        for value in (b"same", b"en1", b"admin", b"r1"):
+        for value in (b"same", b"admin", b"cisco_iosxe"):
+            assert len(value) >= self.MIN_NEEDLE_BYTES, value
             assert value not in raw
+
+    def test_the_short_values_are_excluded_deliberately(self, payload):
+        """Pinned so the hostname is not helpfully added back.
+
+        `b"r1"` and `b"en1"` are in the fixture and are NOT asserted above.
+        That is a decision about measurement, not an oversight, and without
+        this test it reads like one.
+        """
+        assert all(len(v) < self.MIN_NEEDLE_BYTES for v in (b"r1", b"en1"))
 
     def test_the_stored_parameters_exclude_the_local_memory_ceiling(self, payload):
         """`maxmem` is a limit on this machine, not part of the derivation.

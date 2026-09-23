@@ -861,6 +861,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_security_posture.py` | effective value vs origin; Access values withheld; the recorded posture still holds |
 | `test_settings_write_path.py` | positive seed declaration; unknown keys refused; ratify-never-change |
 | `test_secret_file_modes.py` | every secret file created 0600 by its creator; Jenkins credentials encrypted at rest |
+| `test_agent_failure_surfaces.py` | failure streak, same-error, ERROR log, red badge; the stale trigger stays fixed |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -1171,7 +1172,31 @@ design so the tool library describes a finished system.
   (Stage 8.3).
 - **`detect_config_drift` is a third drift implementation**, carrying the
   pre-3.3b shape — no inventory accounting, no named skips (Stage 8.2).
-- **The background agent has been disabled throughout the NSoT work**, so
-  `agent_runner.py` is the least-exercised code in the program. It is
-  re-enabled **last**, after the tool library and the authority gate, with
-  one real run observed — the same bar drift had to clear (Stage 8.4).
+- **The background agent was not dormant — it was FAILING, for four weeks.**
+  Last recorded run 2026-08-28 23:26, `tool_call_count` 0, failing at the
+  first API call with `anthropic-workspace-id is required…`. The record lived
+  only in `data/agent_activity.json`; the log line was INFO with
+  `success=False` inside the format string; and the badge said **Active, in
+  green**, because the status logic had four states and none of them was
+  *broken*. `background_agent_enabled` is now **false** in the settings file
+  — set before the rotated API key (created in a workspace) could
+  accidentally repair it and wake a month-old tool library against a rebuilt
+  system. It stays off until Stage 8.
+- **Agent failures surface, like `last_push_failure`.**
+  `agent_runner.failure_health()` computes the streak from the activity log;
+  `get_status()` carries it plus `enabled`; a failed run logs at **ERROR**
+  naming the error and the streak; the badge turns red with the count; the
+  **tab** badge shows it so it is visible without opening the tab.
+  **`same_error` is the load-bearing field** — one failure is an incident, a
+  dozen identical ones is a configuration problem that will not fix itself.
+- The `missing_golden_configs` trigger that fired the last failed run was
+  **stale**: it came from the legacy enumeration, so the devices it named as
+  missing a golden **had** one in `config_repo/`. Fixed by 3.3a; pinned by a
+  test, because it is the trigger that fires first when the agent returns.
+- **A test needle shorter than its haystack's noise is a coin, not a check.**
+  `test_the_ciphertext_is_not_the_plaintext` asserted `b"r1"` — two bytes —
+  absent from 953 bytes of ciphertext, and failed **1.40%** of runs against
+  1.45% predicted by chance (measured, 2000 trials). Needles are now ≥4 bytes
+  and the short ones are excluded deliberately, with a test pinning the
+  exclusion. Same cause as `redact.py`'s 8-character floor from the other
+  direction: there a short value corrupts, here it cries wolf.
