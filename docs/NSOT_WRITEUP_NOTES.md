@@ -5853,3 +5853,169 @@ Both were mine, both were in the reporting rather than the mechanism:
 The third is the smallest and the most instructive: a message that asserts
 something the code never measured, again. One function, two independent
 instances of it, found on the same screen.
+
+---
+
+## Enumeration and content came from different stores
+
+Stage 3.3's finding, and the one that makes the rest of it one decision rather
+than four.
+
+`ai_assistant._list_golden_configs()` was, in full:
+
+```python
+gdir = _get_golden_configs_dir()          # data/lists/<slug>/golden_configs/
+for fname in sorted(os.listdir(gdir)):    # ...and nothing else
+```
+
+`_load_golden_config_file()`, next to it, resolved through the manifest:
+identity, then management IP, then the legacy header scan. So the question
+"which devices have a golden config?" was answered by the deprecated store,
+and the question "what is device X's golden config?" was answered by the
+repository. **Seventeen executable call sites across nine modules asked the
+first question** — the drift checker, the event monitor, `check_runner`
+(twice), `pipeline_builder`, `/templatize/report`, `/list/golden_configs`,
+`scripts/nsot_first_runs.py` and six paths in the AI tool layer.
+
+The nine reference devices were enumerable only because their pre-migration
+files still sit in `golden_configs/`. **That coverage was inherited, not
+designed** — and it was recorded as such after Stage 1, before anyone knew
+what depended on it.
+
+### What it would have done to r6
+
+A device onboarded after the migration has a golden in `config_repo/golden/`
+and no legacy file. Every one of those seventeen readers would have said it
+has no golden config:
+
+* the drift checker would not have checked it — not as an error, not as a
+  skip, it simply would not have appeared;
+* the event monitor would have raised "1 device has no golden config" about a
+  device whose golden was sitting in the repository;
+* Jenkins verification would have had no baseline for it;
+* the AI agent would have been told it needs one and offered to create it.
+
+None of that announces itself. "All 9 device(s) clean" over a ten-device
+inventory is textually identical to the same sentence over a nine-device one,
+which is why this survived Phase 3 in full view.
+
+### The fix is one function
+
+`repo.list_goldens()` enumerates the manifest, and `_list_golden_configs()`
+became a thin adapter over it with an unchanged return shape. Fifteen call
+sites were corrected without being edited; the two that were already right
+(`routes/deploy` and `routes/templatize._captured_config`, both corrected
+during Stage 1 for this exact reason) were left alone. `saved_at` now comes
+from the commit rather than the file's mtime — the Stage 1.4 correction,
+applied everywhere instead of at the one call site where it was noticed.
+
+### And a retirement condition, because "deprecated" does not expire
+
+Two things still read the legacy directory: the last link of
+`_find_golden_config_file`'s chain, for a device whose management IP changed
+outside NMAS, and the legacy-only entries in `list_goldens()`. Both can go
+when nothing lives there that the manifest does not know.
+
+`legacy_only_goldens()` measures exactly that, `GET /golden/legacy_store`
+reports it, and the Golden tab says either "still holds N device(s)" with the
+names or "can be retired". A deprecation with no exit criterion is a thing
+nobody ever gets to delete, because the evidence for deleting it has to be
+re-gathered by whoever next wonders.
+
+---
+
+## What a silenced check looks like six months later
+
+The drift scheduler showed **Disabled** on the deployed instance. The cause
+was a setting, not a defect, and switching it off had been right:
+`drift_state.json` was written 2026-08-30 02:41, three minutes after a
+scheduled run that reported drift on all nine devices, 69–164 diff lines
+each, queuing an approval request for every one. That was during Lab 1,
+before the NSoT work, when goldens were saved ad hoc and the comparison ran
+against stale files. It was noise, and silencing it was the right call.
+
+**The reason stopped holding weeks ago.** Goldens are committed and current;
+the manual Check Now run on 2026-09-22 was 9/9 clean. Nothing anywhere
+prompted a re-evaluation, and nothing would have.
+
+That is the shape worth recording. The decision to silence a check is usually
+correct at the time. What goes wrong is everything around it:
+
+* **the state file was the only record the checker had ever been on** — a
+  single JSON file in `data/`, not in git, with no note;
+* **it recorded nothing about the switch itself** — not who, not when, not
+  why. The date was recoverable only from the file's mtime, and the reason
+  only by reading the stored last run and inferring it;
+* **the panel blanked the "Last run" line while disabled**, so the thing that
+  had been silenced was invisible in the one place somebody would look;
+* **"disabled" and "enabled but nothing due yet" rendered identically** apart
+  from a badge, both showing a null next-run time.
+
+So the fix is not to refuse to silence checks. It is to make the silence say
+when it started, who started it, and what the last thing it saw was —
+`disabled_at`, `disabled_by`, the last run kept and shown, and a `state` field
+that distinguishes **disabled** from **idle** from **running**.
+
+Two real defects sat underneath, neither of which had fired:
+
+* the state file was `DATA_DIR/drift_state.json`, installation-wide, while
+  golden configs, approvals and the repository are all per list — so
+  disabling drift for one network disabled it for every network, and the
+  "last run" on any list's panel belonged to whichever list ran most
+  recently;
+* the scheduler's `finally` block handed `json.dump` a fresh three-key dict,
+  dropping every key it did not itself write, `disabled` among them. It was
+  unreachable while disabled so it never fired — but a switch that a
+  completed run can silently flip is one bug away from switching itself back
+  on, with no record in either direction.
+
+**Re-enabling comes last, after the enumeration fix**, at the user's
+instruction: re-enabling first would reproduce August — a scheduled job
+producing alarms nobody trusts, whose fix is to switch it off again.
+
+---
+
+## The checker that could not be satisfied
+
+Deleting `_scan_device` — 140 lines of SSH scanner with no callers — tripped
+`scripts/check_removed_definitions.py`, which reported it as **GONE, still
+referenced** and exited 1.
+
+The references were:
+
+1. `assert not hasattr(netbox_client, "_scan_device")` — the test pinning the
+   removal;
+2. the test module's docstring, explaining why it went;
+3. a comment saying the same thing.
+
+All three are the commit doing its job. A word-grep cannot tell them from a
+call, so the gate would have reported GONE on every subsequent commit
+forever. **A gate that cannot be satisfied is one that gets run with
+`--no-verify`**, which is how a check stops existing — the same reasoning
+already written into this script for the `_ios_error` and moved-helper cases.
+
+So `_code_mentions()` parses instead of grepping: a use is an `ast.Name`, an
+attribute access, an import alias, or a string constant (names reach
+`getattr` and `monkeypatch.setattr` as strings) — but **not** a docstring,
+**not** a comment, and **not** a string inside `hasattr`/`getattr`, which is
+an existence probe. An unparseable file still counts as a reference, because
+the conservative answer belongs on the side that reports.
+
+This is **prose about code is not code**, arriving from the other direction.
+The four earlier instances were tests that matched a docstring and passed
+while the property was false. This one was a checker that matched a docstring
+and failed while the property was true. Same cause, opposite symptom.
+
+Two bugs were found in the fix itself, both by tests rather than by reading:
+
+* `"_scan_device" in "_scan_device_from_golden"` is `True`, so the substring
+  test reported every short name as referenced by the longer name that
+  replaced it — which is exactly the pair it was first run against;
+* `from mod import _gone` is an `ast.alias`, not an `ast.Name`, so the first
+  version did not count an import as a reference. A file importing a deleted
+  function is the least ambiguous referencer there is.
+
+`tests/test_check_removed_definitions.py` exists because loosening a check
+must not cost it its job: six tests assert a real caller is still found, five
+that prose is not, three that matching is whole-word, two that an unreadable
+file reports.

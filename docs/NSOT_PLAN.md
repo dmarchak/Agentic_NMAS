@@ -1409,6 +1409,69 @@ both answers to "is drift detection a thing this system does". Deciding the
 first while leaving the second off would produce a checker that enumerates
 correctly and never fires.
 
+---
+
+### 3.3 — DONE (code) 2026-09-23. Re-enabling is the one item left.
+
+**The premise was wrong and the finding is larger than the plan said.** Not
+three readers: `_list_golden_configs()` has **17 executable call sites across
+9 modules**, and it was `os.listdir(golden_configs/)` and nothing else while
+`_load_golden_config_file()` resolved through the manifest. **Enumeration and
+content came from different stores.** Two call sites were already correct
+(`routes/deploy`, `routes/templatize._captured_config`), both fixed during
+Stage 1 for this same reason.
+
+Delivered:
+
+* **3.3a — one enumerator.** `repo.list_goldens()` reads the manifest;
+  `_list_golden_configs()` is a thin adapter with an unchanged return shape,
+  so fifteen call sites were fixed without being edited. `saved_at` is the
+  commit time, not the mtime. Legacy-only devices are still returned, flagged
+  `legacy`. `golden_commit_times()` is one `git log` for the whole store, not
+  one per device.
+* **3.3b — drift's population is the inventory.** Every device lands in
+  exactly one bucket; totals are checked against the inventory size and any
+  remainder is reported as a defect rather than as a smaller number; the
+  panel says "checked 7 of 9" and names the other two. The badge cannot read
+  `Clean` when nothing was checked. `event_monitor` was fixed in the same
+  pass — it read `devices.csv` by hand and fell back to `DATA_DIR/Devices.csv`,
+  i.e. **another list's devices**, for any NetBox-sourced list;
+  `_check_empty_variables` had the identical bug and is fixed too.
+* **3.3c — scheduling.** Cause established by measurement: a **setting**,
+  switched off 2026-08-30 02:41, three minutes after a run that flagged all
+  nine devices against ad-hoc stale goldens. Correct then; the reason stopped
+  holding weeks ago with nothing to prompt a re-evaluation. The three defects
+  around it are fixed: state is per list (adopting the old file forward by
+  copy, not move), `_save_state()` merges instead of replacing, and
+  `set_disabled()` records `disabled_at`/`disabled_by` while the panel shows
+  the note and the last run instead of blanking the line. `status()` reports
+  `state` as disabled / idle / running.
+* **3.3d — the live-scan question, answered in writing: no.**
+  `netbox_client._scan_device` is **deleted** (140 lines). A live scan would
+  make NetBox import depend on device reachability and would import observed
+  state into the source of truth, which is the wrong direction; refreshing a
+  golden and re-importing is one store and one direction. The test moved from
+  "nothing calls it" to "it does not exist".
+* **3.3e — a retirement condition.** `legacy_only_goldens()` +
+  `GET /golden/legacy_store` + a Golden-tab card that says either "still holds
+  N device(s)", naming them, or "can be retired". The header-scan warning now
+  logs once per device per process.
+
+Also: `approval_queue._exec_update_golden` reported a `golden_configs/` path
+nothing had written since the migration; it now reports the path actually
+written. And `scripts/check_removed_definitions.py` was taught to tell a use
+from a mention — deleting a function and pinning its removal are the same
+commit, so the old word-grep made the gate permanently unsatisfiable.
+
+**`config_git.write_and_stage` is NOT done.** It is the other callerless
+remnant named above and belongs to retiring the Git-tab flow. Carried
+forward.
+
+*Remaining, and deliberately last:* **re-enable the scheduler on the NMAS**,
+so the first scheduled run enumerates the inventory rather than the legacy
+store. Re-enabling before 3.3a/3.3b would reproduce August — a scheduled job
+producing alarms nobody trusts, whose fix is to switch it off again.
+
 *Acceptance, extended:* the scheduled pass is enabled with a stated interval,
 or drift detection is deliberately recorded as manual-only with the reason —
 not left off by default with nothing saying so.

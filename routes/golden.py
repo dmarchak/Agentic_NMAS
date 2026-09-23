@@ -414,3 +414,45 @@ def sync_renames():
                                                  actor=data.get("actor", "user")))
     except Exception as exc:                  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@bp.route("/legacy_store", methods=["GET"])
+def legacy_store():
+    """What still depends on the deprecated ``golden_configs/`` directory.
+
+    **The retirement condition, made measurable.** "Deprecated" with no exit
+    criterion never ends: the directory has been read-only since the
+    migration, and until Stage 3.3 it was also the thing every reader
+    enumerated. It is now consulted for exactly two purposes -- the last link
+    of `_find_golden_config_file`'s resolution chain, for a device whose
+    management IP changed outside NMAS, and the legacy-only entries in
+    `repo.list_goldens()`.
+
+    When ``only_legacy`` is empty for every list, both can go and so can the
+    directory. That number is reported here rather than left to be
+    rediscovered by whoever next wonders whether it is safe to delete.
+    """
+    from modules.config import get_list_data_dir
+    from modules.nsot.repo import legacy_only_goldens, list_goldens
+
+    list_name = _active_list()
+    try:
+        goldens = list_goldens(list_name)
+        known = {e["hostname"] for e in goldens if not e["legacy"]}
+        only_legacy = legacy_only_goldens(get_list_data_dir(list_name), known)
+        legacy_dir = os.path.join(get_list_data_dir(list_name), "golden_configs")
+        files = ([f for f in sorted(os.listdir(legacy_dir)) if f.endswith(".cfg")]
+                 if os.path.isdir(legacy_dir) else [])
+        return jsonify({
+            "ok": True,
+            "list": list_name,
+            "in_repo": len(known),
+            "legacy_files": len(files),
+            "only_legacy": [{"hostname": e["hostname"],
+                             "device_ip": e["device_ip"],
+                             "file": e["file"]} for e in only_legacy],
+            "retirable": not only_legacy,
+        })
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("golden: legacy store report failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500

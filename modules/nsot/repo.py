@@ -1083,6 +1083,147 @@ class RefSource:
         return self.read(f"golden/{_safe_name(hostname)}.cfg")
 
 
+def golden_commit_times(repo: str) -> dict:
+    """``{relative path: ISO commit time}`` for everything under ``golden/``.
+
+    **One subprocess for the whole store, not one per device.** The naive shape
+    is `git log -1` per file, which on the reference fleet is nine processes
+    every time a panel refreshes -- and enumeration is called from the drift
+    checker, the event monitor, the AI tool layer and three routes.
+
+    `--name-only` prints each commit's files after its own line, newest first,
+    so the FIRST time a path appears is its most recent commit. Paths already
+    seen are skipped rather than overwritten.
+    """
+    rc, out, _ = git(repo, "log", "--name-only", "--format=%x1e%cI", "--",
+                     "golden")
+    times = {}
+    if rc != 0 or not out:
+        return times
+    for record in out.split("\x1e"):
+        lines = [ln for ln in record.splitlines() if ln.strip()]
+        if not lines:
+            continue
+        stamp, paths = lines[0], lines[1:]
+        for rel in paths:
+            times.setdefault(rel, stamp)
+    return times
+
+
+def list_goldens(list_name: str) -> list:
+    """Every device that HAS a golden config, enumerated from the manifest.
+
+    **This is the one enumerator.** Before it, enumeration and content came
+    from different stores: `ai_assistant._list_golden_configs()` was
+    `os.listdir(golden_configs/)` and nothing else, while
+    `_load_golden_config_file()` resolved through the manifest. Every reader
+    that asked "which devices have a golden?" -- the drift checker, the event
+    monitor, `/templatize/report`, `check_runner`, `pipeline_builder`, the AI
+    tool layer -- was answered by the deprecated store.
+
+    The nine reference devices were therefore enumerable only because their
+    pre-migration files still sat in `golden_configs/`. That coverage was
+    inherited, not designed: a device onboarded AFTER the migration has a
+    golden in the repo and no legacy file, so it was invisible to all of them
+    -- checked by nothing, and reported by the event monitor as having no
+    golden at all.
+
+    Entries present only in the legacy store are still returned, flagged
+    ``legacy``, so retiring the enumerator does not silently drop a device on
+    the day it changes. :func:`legacy_only_goldens` is what reports them.
+
+    ``saved_at`` comes from the COMMIT, not the file's mtime -- the same
+    correction as the template preview, applied everywhere rather than at one
+    call site.
+    """
+    from modules.config import get_list_data_dir
+    from modules.nsot import manifest as _m
+
+    list_dir = get_list_data_dir(list_name)
+    repo = os.path.join(list_dir, "config_repo")
+
+    times = golden_commit_times(repo)
+    results, seen_names = [], set()
+
+    for identity, entry in sorted(_m.load(repo)["devices"].items(),
+                                  key=lambda kv: (kv[1].get("name") or "").lower()):
+        rel = entry.get("golden") or ""
+        path = os.path.join(repo, rel)
+        if not rel or not os.path.exists(path):
+            continue
+        name = entry.get("name") or ""
+        seen_names.add(name.lower())
+        results.append({
+            "identity":   identity,
+            "hostname":   name,
+            "device_ip":  entry.get("mgmt_ip", "") or name,
+            "path":       path,
+            "file":       os.path.basename(rel),
+            "saved_at":   times.get(rel.replace(os.sep, "/"), ""),
+            "size_bytes": os.path.getsize(path),
+            "legacy":     False,
+        })
+
+    for entry in legacy_only_goldens(list_dir, seen_names):
+        results.append(entry)
+
+    return results
+
+
+def legacy_only_goldens(list_dir: str, known_names: set = None) -> list:
+    """Devices present in ``golden_configs/`` and NOT in the manifest.
+
+    The deprecated store's **retirement condition**: when this returns
+    nothing for every list, `_find_golden_config_file`'s header scan and the
+    directory itself can go. "Deprecated" with no exit criterion never ends,
+    so the number is reported on the Golden tab rather than left to be
+    rediscovered.
+    """
+    import re as _re
+    import time as _time
+
+    known = {n.lower() for n in (known_names or set())}
+    gdir = os.path.join(list_dir, "golden_configs")
+    if not os.path.isdir(gdir):
+        return []
+
+    out = []
+    for fname in sorted(os.listdir(gdir)):
+        if not fname.endswith(".cfg"):
+            continue
+        path = os.path.join(gdir, fname)
+        hostname = fname[:-4]
+        device_ip = hostname
+        try:
+            with open(path, encoding="utf-8") as fh:
+                first = fh.readline()
+            # The legacy header carries an em dash. Do not "fix" it: it is what
+            # the scan matches on.
+            m = _re.search(r"—\s*(.+?)\s*\((\d[\d.]+)\)", first)
+            if m:
+                hostname = m.group(1).strip()
+                device_ip = m.group(2).strip()
+        except OSError:
+            pass
+        if hostname.lower() in known:
+            continue
+        stat = os.stat(path)
+        out.append({
+            "identity":   "",
+            "hostname":   hostname,
+            "device_ip":  device_ip,
+            "path":       path,
+            "file":       fname,
+            # An mtime, and labelled as one: there is no commit behind a
+            # legacy file, so this is the only timestamp that exists.
+            "saved_at":   _time.strftime("%Y-%m-%d %H:%M",
+                                         _time.localtime(stat.st_mtime)),
+            "size_bytes": stat.st_size,
+            "legacy":     True,
+        })
+    return out
+
+
 def golden_at(repo: str, hostname: str, ref: str):
     """The golden config for *hostname* as of *ref*."""
     rel = f"golden/{_safe_name(hostname)}.cfg"

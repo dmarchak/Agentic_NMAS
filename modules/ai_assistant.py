@@ -409,6 +409,11 @@ def _nsot_migrated() -> bool:
         return False
 
 
+#: Devices already reported as resolving through the deprecated header scan.
+#: Process-lifetime, deliberately: this is log volume control, not state.
+_LEGACY_SCAN_WARNED: set = set()
+
+
 def _find_golden_config_file(device_ip: str) -> Optional[str]:
     """Locate a device's golden config. Signature unchanged.
 
@@ -447,7 +452,12 @@ def _find_golden_config_file(device_ip: str) -> Optional[str]:
         logger.debug("golden: manifest lookup failed for %s: %s", device_ip, exc)
 
     legacy = _legacy_header_scan(device_ip)
-    if legacy:
+    if legacy and device_ip not in _LEGACY_SCAN_WARNED:
+        # Once per device per process. This is on the read path for the drift
+        # checker and the AI tools, so warning on every call buried the fact
+        # in its own repetition -- and the point of the warning is that it
+        # names the devices standing between here and deleting the directory.
+        _LEGACY_SCAN_WARNED.add(device_ip)
         logger.warning("golden: %s resolved via the legacy header scan — "
                     "golden_configs/ is deprecated and will be removed", device_ip)
     return legacy
@@ -547,36 +557,48 @@ def _load_golden_config_file(device_ip: str) -> Optional[str]:
 
 
 def _list_golden_configs() -> list:
-    """Return metadata for every saved golden config in the current list."""
-    import re as _re5
-    _migrate_golden_configs()
-    gdir = _get_golden_configs_dir()
-    results = []
-    for fname in sorted(os.listdir(gdir)):
-        if not fname.endswith(".cfg"):
-            continue
-        fpath = os.path.join(gdir, fname)
-        stat  = os.stat(fpath)
-        # Parse hostname and IP from the header line
-        hostname  = fname[:-4]   # filename without .cfg is the hostname
-        device_ip = hostname     # fallback if header can't be parsed
-        try:
-            with open(fpath, encoding="utf-8") as fh:
-                first = fh.readline()
-            m = _re5.search(r"—\s*(.+?)\s*\((\d[\d.]+)\)", first)
-            if m:
-                hostname  = m.group(1).strip()
-                device_ip = m.group(2).strip()
-        except Exception:
-            pass
-        results.append({
-            "device_ip": device_ip,
-            "hostname":  hostname,
-            "file":      fname,
-            "saved_at":  time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime)),
-            "size_bytes": stat.st_size,
-        })
-    return results
+    """Metadata for every device in the current list that HAS a golden config.
+
+    **An adapter over the one enumerator**, :func:`modules.nsot.repo.list_goldens`.
+    The returned shape is unchanged (``device_ip``, ``hostname``, ``file``,
+    ``saved_at``, ``size_bytes``) because seventeen call sites across nine
+    modules depend on it -- the drift checker, the event monitor,
+    ``check_runner``, ``pipeline_builder``, ``/templatize/report``,
+    ``/list/golden_configs`` and six paths in the AI tool layer.
+
+    It used to be ``os.listdir(golden_configs/)`` and nothing else, while
+    :func:`_load_golden_config_file` resolved through the manifest. Enumeration
+    and content came from different stores, so a device onboarded after the
+    migration -- golden in the repo, no legacy file -- was invisible to every
+    one of those readers while its config was right there. Fixing the
+    enumerator fixes all of them without touching any of them.
+
+    ``saved_at`` is now the commit time rather than the file's mtime. The
+    mtime was provably wrong (measured on s1: "2026-09-15 22:35", exactly the
+    legacy file's mtime, for a golden committed the same day), and the
+    ``! Saved:`` header was removed precisely so a save would not produce a
+    diff on every write -- which makes the commit the only honest record.
+    """
+    from modules.config import get_current_list_name
+    from modules.nsot.repo import list_goldens
+
+    try:
+        entries = list_goldens(get_current_list_name())
+    except Exception as exc:                   # noqa: BLE001
+        # Loud, not silent: this function answering "no goldens" is
+        # indistinguishable from a fleet that has none, and several callers
+        # treat that as nothing to do.
+        logger.error("golden: enumeration failed — %s", exc)
+        return []
+
+    return [{
+        "device_ip":  e["device_ip"],
+        "hostname":   e["hostname"],
+        "file":       e["file"],
+        "saved_at":   e["saved_at"],
+        "size_bytes": e["size_bytes"],
+        "legacy":     e["legacy"],
+    } for e in entries]
 
 
 def _get_running_config_for_golden(device_ip: str, hostname: str = "") -> Optional[str]:

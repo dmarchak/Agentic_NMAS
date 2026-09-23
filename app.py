@@ -3553,9 +3553,15 @@ def drift_check_sync():
         return jsonify({"ok": False, "message": "Drift check already in progress"}), 409
     try:
         result = run_drift_check(triggered_by="manual")
-        # Update checker state so /drift/status reflects the fresh result
+        # Persist, don't only cache. `status()` reads the per-list state file,
+        # so a manual run that updated only the in-memory attributes vanished
+        # from the panel on the next list switch -- and the last run recorded
+        # for this list stayed whatever the scheduler last wrote.
+        import time as _time
+        from modules.drift_check import _save_state
         checker._last_result = result
-        checker._last_ts     = __import__("time").time()
+        checker._last_ts     = _time.time()
+        _save_state({"last_check_ts": checker._last_ts, "last_result": result})
         return jsonify(result)
     except Exception as exc:
         app.logger.error("drift check sync error: %s", exc, exc_info=True)
@@ -3592,7 +3598,16 @@ def drift_settings_post():
         checker._trigger.set()
 
     if "disabled" in data:
-        checker.set_disabled(bool(data["disabled"]))
+        # Who switched it off is part of the record. See `set_disabled`.
+        # Not gated -- disabling drift is not a reveal and not a device
+        # change -- but the actor is recorded when one is verifiable.
+        from modules.identity import identify
+        try:
+            ident = identify(request)
+            actor = ident.actor if ident.is_identified else ""
+        except Exception:                      # noqa: BLE001
+            actor = ""
+        checker.set_disabled(bool(data["disabled"]), actor=actor)
         saved["disabled"] = bool(data["disabled"])
 
     return jsonify({"ok": True, **saved})

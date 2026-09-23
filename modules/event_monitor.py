@@ -170,28 +170,29 @@ def _check_jenkins_results() -> None:
 
 
 def _check_missing_golden_configs() -> None:
-    """Push an event if any registered devices lack a golden config."""
+    """Push an event if any device in the inventory lacks a golden config.
+
+    Two corrections, both Stage 3.3:
+
+    * The population comes from `load_saved_devices()`, the single dispatch
+      point, rather than from opening `devices.csv` by hand. A NetBox-sourced
+      list has no CSV, so the hand-rolled reader fell through to
+      `DATA_DIR/Devices.csv` -- **a different list's devices** -- and reported
+      them missing against this list's goldens.
+    * `_load_golden_configs()` now enumerates the repo. It listed the
+      deprecated `golden_configs/` directory, so every device onboarded after
+      the migration was reported as having no golden while its golden sat in
+      `config_repo/`. A warning banner that is wrong about devices you know
+      are fine is how an operator learns to dismiss the banner.
+    """
     try:
-        from modules.config import get_current_list_data_dir, get_current_list_name
-        import csv
+        from modules.device import get_current_device_list, load_saved_devices
 
-        list_dir = get_current_list_data_dir()
-        # Find the devices CSV for this list
-        devices_csv = os.path.join(list_dir, "devices.csv")
-        if not os.path.exists(devices_csv):
-            # Try the default location
-            from modules.config import DATA_DIR
-            devices_csv = os.path.join(DATA_DIR, "Devices.csv")
-        if not os.path.exists(devices_csv):
+        _name, list_file = get_current_device_list()
+        device_ips = [d.get("ip", "").strip() for d in load_saved_devices(list_file)
+                      if d.get("ip")]
+        if not device_ips:
             return
-
-        device_ips = []
-        with open(devices_csv, encoding="utf-8") as fh:
-            reader = csv.DictReader(fh)
-            for row in reader:
-                ip = row.get("ip") or row.get("IP") or row.get("host") or ""
-                if ip:
-                    device_ips.append(ip.strip())
 
         golden_ips = {e["device_ip"] for e in _load_golden_configs()}
         missing = [ip for ip in device_ips if ip not in golden_ips]
@@ -227,23 +228,14 @@ def _check_empty_variables() -> None:
         if variables:
             return   # variables exist — nothing to do
 
-        # Check there are actually devices in this list
-        from modules.config import get_current_list_data_dir, DATA_DIR
-        import csv
-        list_dir    = get_current_list_data_dir()
-        devices_csv = os.path.join(list_dir, "devices.csv")
-        if not os.path.exists(devices_csv):
-            devices_csv = os.path.join(DATA_DIR, "Devices.csv")
-        if not os.path.exists(devices_csv):
-            return
+        # Through the single dispatch point, for the same reason as
+        # `_check_missing_golden_configs`: a NetBox-sourced list has no
+        # devices.csv, and the DATA_DIR fallback counted a DIFFERENT list's
+        # devices against this list's (empty) variable store.
+        from modules.device import get_current_device_list, load_saved_devices
 
-        device_count = 0
-        with open(devices_csv, encoding="utf-8") as fh:
-            reader = csv.DictReader(fh)
-            for row in reader:
-                if row.get("ip") or row.get("IP") or row.get("host"):
-                    device_count += 1
-
+        _name, list_file = get_current_device_list()
+        device_count = sum(1 for d in load_saved_devices(list_file) if d.get("ip"))
         if device_count == 0:
             return
 

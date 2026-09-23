@@ -34,6 +34,7 @@ every other outcome exits 0 and simply reports.
 """
 
 import argparse
+import io
 import os
 import re
 import subprocess
@@ -144,7 +145,86 @@ def _referenced_elsewhere(name: str, path: str, rev: str = "") -> list:
     out = _git(*args, name, "--", "*.py", "*.html")
     files = [l.split(":", 1)[-1] if rev else l for l in out.splitlines()]
     return sorted(f for f in files
-                  if f and f != path and name not in _defined_now(f, rev))
+                  if f and f != path and name not in _defined_now(f, rev)
+                  and _code_mentions(name, f, rev))
+
+
+#: ``hasattr(mod, "name")`` / ``getattr(...)``: an EXISTENCE PROBE, not a use.
+_PROBES = ("hasattr", "getattr")
+
+
+def _code_mentions(name: str, path: str, rev: str = "") -> bool:
+    """Does *path* actually USE *name*, as opposed to talking about it?
+
+    A word-grep cannot tell the difference, and two things make that a
+    permanent false positive rather than an occasional one:
+
+    * deleting a function and pinning its removal with
+      ``assert not hasattr(mod, "name")`` are the same commit, so the test
+      naming the absent thing is the test doing its job;
+    * a docstring or comment explaining why something was removed names it too
+      -- which is **prose about code**, the pattern this project has now hit
+      five times, arriving here from the other direction.
+
+    A gate that cannot be satisfied gets run with ``--no-verify``, so the
+    checker has to be able to tell a use from a mention.
+
+    Parsed, not matched. A real use is an `ast.Name` or an attribute access. A
+    string constant counts too -- names reach `getattr` and monkeypatch
+    targets as strings -- **except** inside an existence probe, and except a
+    docstring. Anything that does not parse falls back to "yes, it is a
+    reference", because the conservative answer belongs on the side that
+    reports.
+    """
+    import ast
+
+    try:
+        text = _git("show", f"{rev}:{path}") if rev else \
+            io.open(os.path.join(ROOT, path), encoding="utf-8",
+                    errors="replace").read()
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return True
+
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef)):
+            doc = node.body[0] if node.body else None
+            if (isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant)
+                    and isinstance(doc.value.value, str)):
+                docstrings.add(id(doc.value))
+
+    probed = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in _PROBES):
+            for arg in node.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    probed.add(id(arg))
+
+    # Whole word. `"_scan_device" in "_scan_device_from_golden"` is True, so a
+    # substring test makes every removal of a short name look referenced by
+    # the longer name that replaced it -- which is precisely the pair this
+    # was first run against.
+    word = re.compile(r"\b" + re.escape(name) + r"\b")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == name:
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == name:
+            return True
+        # `from mod import _gone` is not an `ast.Name`, and a file importing a
+        # deleted function is the least ambiguous referencer there is. Found
+        # by the test rather than by reading, which is the point of writing
+        # the test.
+        if isinstance(node, ast.alias) and node.name.split(".")[-1] == name:
+            return True
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and word.search(node.value)
+                and id(node) not in docstrings and id(node) not in probed):
+            return True
+    return False
 
 
 def main() -> int:

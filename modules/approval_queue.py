@@ -265,7 +265,7 @@ def _exec_update_golden(entry: dict) -> dict:
     """Save the current running-config as the new golden config for a device."""
     from modules.ai_assistant import (
         _save_golden_config_file, _get_running_config_for_golden,
-        _safe_device_name, _get_golden_configs_dir,
+        _nsot_repo_dir,
     )
     device_ip = entry.get("device_ip", "")
     hostname  = entry.get("device_hostname", device_ip)
@@ -280,8 +280,18 @@ def _exec_update_golden(entry: dict) -> dict:
 
         # Use the shared helper so hostname-based naming is applied consistently
         _save_golden_config_file(device_ip, hostname, config_text)
-        fname = f"{_safe_device_name(hostname)}.cfg"
-        fpath = os.path.join(_get_golden_configs_dir(), fname)
+
+        # The path reported is the one actually written. This used to build a
+        # `golden_configs/<host>.cfg` path and report it as `saved`, while
+        # `_save_golden_config_file` had gone through `repo.save_golden()`
+        # since the migration -- so the result named a file that did not
+        # exist and had not been written since.
+        from modules.nsot import manifest as _m
+        repo = _nsot_repo_dir()
+        _ident, entry = _m.find_by_ip(repo, device_ip)
+        if entry is None:
+            _ident, entry = _m.find_by_name(repo, hostname)
+        fpath = _m.golden_path_for(repo, entry) if entry else ""
 
         log.info("approval_queue: golden config updated for %s (%s)", hostname, device_ip)
         return {"saved": fpath, "device": device_ip, "hostname": hostname}

@@ -1219,146 +1219,17 @@ def _parse_device_facts(show_version: str, show_inventory: str) -> dict:
     return facts
 
 
-def _scan_device(dev: dict) -> dict:
-    """SSH into a device and return facts + interface IPs (or an error).
-
-    Result keys: ip, hostname, facts, interfaces  — or  ip, hostname, error.
-    """
-    from modules.connection import get_persistent_connection
-
-    ip = dev.get("ip", "")
-    hostname = dev.get("hostname", "") or ip
-
-    try:
-        priv_pool: dict = {}
-        priv_lock = threading.Lock()
-        conn = get_persistent_connection(dev, priv_pool, priv_lock)
-
-        from modules.commands import run_device_command
-
-        def _cmd(cmd: str, timeout: int = 30) -> str:
-            try:
-                return run_device_command(conn, cmd, read_timeout=timeout) or ""
-            except Exception as exc:
-                log.debug("netbox: '%s' failed on %s: %s", cmd, ip, exc)
-                return ""
-
-        show_version   = _cmd("show version",             30)
-        show_inventory = _cmd("show inventory",            30)
-        show_ip_intf   = _cmd("show ip interface",         60)
-        show_interfaces= _cmd("show interfaces",           60)
-        show_vlan      = _cmd("show vlan brief",           20)
-        show_vrf       = _cmd("show vrf",                  20)
-        show_cdp       = _cmd("show cdp neighbors detail", 45)
-        show_ip_brief  = _cmd("show ip interface brief",   20)
-        show_run       = _cmd("show running-config",       90)
-
-        try:
-            conn.disconnect()
-        except Exception:
-            pass
-
-        facts          = _parse_device_facts(show_version, show_inventory)
-        interfaces     = _parse_ip_interfaces(show_ip_intf)
-        iface_detail   = _parse_interfaces_detail(show_interfaces)
-        vlans          = _parse_vlans(show_vlan)
-        vrfs           = _parse_vrfs(show_vrf)
-        cdp_neighbors  = _parse_cdp_neighbors(show_cdp)
-        ip_brief       = _parse_ip_brief(show_ip_brief)
-
-        # Merge show-interfaces detail into IP-interface records (same name key)
-        detail_map = {d["name"]: d for d in iface_detail}
-        for intf in interfaces:
-            det = detail_map.get(intf["name"], {})
-            intf["mac"]          = det.get("mac")
-            intf["mtu"]          = det.get("mtu")
-            intf["speed_mbps"]   = det.get("speed_mbps")
-            intf["bandwidth_kbps"] = det.get("bandwidth_kbps")
-            intf["admin_up"]     = det.get("admin_up", True)
-            intf["oper_up"]      = det.get("oper_up", True)
-            if not intf.get("description"):
-                intf["description"] = det.get("description", "")
-
-        # Also carry non-IP interfaces (e.g. trunk/access ports) for DCIM completeness
-        ip_iface_names = {i["name"] for i in interfaces}
-        for det in iface_detail:
-            if det["name"] not in ip_iface_names:
-                interfaces.append({
-                    "name":          det["name"],
-                    "cidr":          None,
-                    "prefix":        None,
-                    "description":   det.get("description", ""),
-                    "mac":           det.get("mac"),
-                    "mtu":           det.get("mtu"),
-                    "speed_mbps":    det.get("speed_mbps"),
-                    "bandwidth_kbps": det.get("bandwidth_kbps"),
-                    "admin_up":      det.get("admin_up", True),
-                    "oper_up":       det.get("oper_up", True),
-                })
-
-        # Supplement from running-config: fill in IPs and descriptions that
-        # 'show ip interface' missed (e.g. due to timeout / partial output).
-        rc_ifaces  = _parse_interfaces_from_running_config(show_run)
-        rc_ip_map  = {i["name"]: i for i in rc_ifaces}
-        all_names  = {i["name"] for i in interfaces}
-
-        for intf in interfaces:
-            rc = rc_ip_map.get(intf["name"])
-            if not rc:
-                continue
-            # Fill missing IP
-            if not intf.get("cidr") and rc.get("cidr"):
-                intf["cidr"]   = rc["cidr"]
-                intf["prefix"] = rc["prefix"]
-            # Fill missing description (running-config is authoritative)
-            if not intf.get("description") and rc.get("description"):
-                intf["description"] = rc["description"]
-
-        # Add interfaces that show ip interface missed entirely but running-config has
-        for rc in rc_ifaces:
-            if rc["name"] in all_names:
-                continue
-            det = detail_map.get(rc["name"], {})
-            interfaces.append({
-                "name":           rc["name"],
-                "cidr":           rc["cidr"],
-                "prefix":         rc["prefix"],
-                "description":    rc["description"] or det.get("description", ""),
-                "mac":            det.get("mac"),
-                "mtu":            det.get("mtu"),
-                "speed_mbps":     det.get("speed_mbps"),
-                "bandwidth_kbps": det.get("bandwidth_kbps"),
-                "admin_up":       rc["admin_up"],
-                "oper_up":        det.get("oper_up", rc["admin_up"]),
-            })
-            all_names.add(rc["name"])
-            log.debug("netbox: %s %s — IP from running-config (%s)",
-                      hostname, rc["name"], rc["cidr"])
-
-        # Extract hostname from show version / running config if not set
-        if not hostname or hostname == ip:
-            m = re.search(r"^hostname\s+(\S+)", show_run, re.MULTILINE)
-            if m:
-                hostname = m.group(1)
-            elif show_version:
-                m = re.search(r"^([A-Za-z0-9][\w\-.]+)[#>]", show_version, re.MULTILINE)
-                if m:
-                    hostname = m.group(1)
-
-        return {
-            "ip":            ip,
-            "hostname":      hostname,
-            "facts":         facts,
-            "interfaces":    interfaces,
-            "vlans":         vlans,
-            "vrfs":          vrfs,
-            "cdp_neighbors": cdp_neighbors,
-            "running_config": show_run,
-        }
-
-    except Exception as exc:
-        log.warning("netbox: scan failed for %s (%s): %s", hostname, ip, exc)
-        return {"ip": ip, "hostname": hostname, "error": str(exc)}
+# `_scan_device()` lived here: 140 lines that opened an SSH session, ran
+# `show version` / `show inventory` / `show ip interface brief` and returned
+# facts for the NetBox sync. **Nothing called it.** The sync is driven by
+# `_scan_device_from_golden()` instead, deliberately -- a golden config works
+# for a device that is offline, and importing observed state into the source
+# of truth is the wrong direction. Refreshing a golden and re-importing is one
+# store and one direction.
+#
+# Removed in Stage 3.3. Its absence is pinned by
+# `tests/test_tab_descriptions_are_true.py`; restoring it means answering why
+# NetBox import should depend on device reachability.
 
 
 def _fetch_neighbors_live(dev: dict) -> list[dict]:
@@ -2464,8 +2335,8 @@ def _scan_device_from_golden(dev: dict) -> dict:
     """Build a NetBox scan result from the device's saved golden config.
 
     No SSH session is opened — all data comes from the golden config file.
-    Returns the same structure as _scan_device so the rest of the sync
-    pipeline is unchanged.
+    This is the only scanner; the SSH one was removed in Stage 3.3 because
+    nothing called it.
     """
     from modules.ai_assistant import _load_golden_config_file
 

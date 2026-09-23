@@ -64,21 +64,72 @@ _SKIP_STARTSWITH = (
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _state_file() -> str:
+def _state_file(list_name: str = "") -> str:
+    """Per list, not per installation.
+
+    It was ``DATA_DIR/drift_state.json`` while golden configs, approvals and
+    the repo are all per list -- so disabling drift for one network disabled
+    it for every network, and the "last run" shown on any list's panel
+    belonged to whichever list ran most recently. One switch governing several
+    networks is a switch whose position tells you nothing about the network
+    you are looking at.
+    """
+    from modules.config import get_current_list_name, get_list_data_dir
+
+    return os.path.join(get_list_data_dir(list_name or get_current_list_name()),
+                        _STATE_FILE_NAME)
+
+
+def _legacy_state_file() -> str:
     from modules.config import DATA_DIR
     return os.path.join(DATA_DIR, _STATE_FILE_NAME)
 
 
-def _load_state() -> dict:
+def _load_state(list_name: str = "") -> dict:
+    """This list's state, migrating the installation-wide file forward once.
+
+    The old file is **copied, not moved**: it is the only record that drift
+    was ever switched on, and for one installation it is the only record of
+    *when* and, by its stored last run, *why*.
+    """
+    path = _state_file(list_name)
     try:
-        with open(_state_file(), encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    try:
+        with open(_legacy_state_file(), encoding="utf-8") as fh:
+            legacy = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
 
+    log.info("drift_check: adopting installation-wide state for list '%s'",
+             list_name or "(current)")
+    legacy["migrated_from"] = _legacy_state_file()
+    # `_write_state`, not `_save_state`: the latter merges by loading, and
+    # loading is what got us here.
+    _write_state(legacy, list_name)
+    return legacy
 
-def _save_state(data: dict) -> None:
-    path = _state_file()
+
+def _save_state(data: dict, list_name: str = "") -> None:
+    """Merge into what is stored; never replace it wholesale.
+
+    The scheduler's ``finally`` block wrote a fresh three-key dict, which
+    dropped every key it did not itself set -- ``disabled`` among them. It was
+    unreachable while disabled, so it never fired, but a switch that a
+    completed run can silently flip is one bug away from switching itself back
+    on, and the operator would have no record either way.
+    """
+    merged = _load_state(list_name)
+    merged.update(data)
+    _write_state(merged, list_name)
+
+
+def _write_state(data: dict, list_name: str = "") -> None:
+    path = _state_file(list_name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
         with open(path, "w", encoding="utf-8") as fh:
@@ -109,10 +160,23 @@ def _is_disabled() -> bool:
     return bool(_load_state().get("disabled", False))
 
 
-def set_disabled(disabled: bool) -> None:
-    state = _load_state()
-    state["disabled"] = bool(disabled)
-    _save_state(state)
+def set_disabled(disabled: bool, actor: str = "") -> None:
+    """Switch the scheduler off or on, and record that it happened.
+
+    The state file was the **only** record that drift had ever been enabled,
+    and it recorded nothing about the switch itself. Six months on, the
+    reasoning behind a disabled checker was recoverable only by reading the
+    last stored run and inferring it -- and the reason (baselines were ad hoc
+    and stale) had been fixed for weeks with nothing to prompt a
+    re-evaluation. A silenced check with no note is a check nobody will ever
+    knowingly turn back on.
+    """
+    _save_state({
+        "disabled":    bool(disabled),
+        "disabled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                       if disabled else None,
+        "disabled_by": actor or None if disabled else None,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -120,13 +184,23 @@ def set_disabled(disabled: bool) -> None:
 # ---------------------------------------------------------------------------
 
 def run_drift_check(triggered_by: str = "scheduled") -> dict:
-    """
-    Check all devices with golden configs for config drift.
+    """Check every device in the inventory for config drift.
 
-    Returns a summary dict:
-      {ok, checked, drifted, clean, errors, timestamp, triggered_by}
+    **The population is the inventory, not the golden store.** It used to
+    iterate `_list_golden_configs()`, which listed the deprecated
+    `golden_configs/` directory -- so a device onboarded after the migration,
+    whose golden lives in `config_repo/`, was checked by nothing and appeared
+    in no count. Not as an error, not as a skip: it was simply absent, and a
+    report of "all 9 device(s) clean" over a 10-device inventory reads exactly
+    like a report over a 9-device one.
+
+    Every device now lands in exactly one bucket and the totals are asserted
+    against the inventory size, so "checked 7 of 9" is sayable and the other
+    two are named. A count that cannot be short is a count that cannot warn.
+
+    Returns ``{ok, inventory, checked, drifted, clean, skipped, errors, ...}``.
     """
-    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
+    from modules.ai_assistant import _load_golden_config_file
     from modules.approval_queue import add_approval
     from modules.device import get_current_device_list, load_saved_devices
     from modules.connection import get_persistent_connection
@@ -135,33 +209,30 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
 
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
+    def _result(**kw):
+        base = {"ok": True, "inventory": 0, "checked": 0, "drifted": 0,
+                "clean": 0, "skipped": [], "errors": [],
+                "drifted_devices": [], "summary": "",
+                "timestamp": timestamp, "triggered_by": triggered_by}
+        base.update(kw)
+        return base
+
     try:
         if is_jenkins_building():
             log.info("drift_check: deferred — Jenkins build in progress")
-            return {
-                "ok": True, "checked": 0, "drifted": 0, "clean": 0,
-                "errors": [], "timestamp": timestamp,
-                "triggered_by": triggered_by,
-                "skipped": "Jenkins build in progress",
-            }
+            return _result(skipped_reason="Jenkins build in progress",
+                           summary="Deferred — Jenkins build in progress")
     except Exception:
         pass
 
-    golden = _list_golden_configs()
-    if not golden:
-        log.info("drift_check: no golden configs saved yet — skipping")
-        return {
-            "ok": True, "checked": 0, "drifted": 0, "clean": 0,
-            "errors": [], "timestamp": timestamp,
-            "triggered_by": triggered_by,
-            "skipped": "No golden configs saved",
-        }
-
-    log.info("drift_check: checking %d device(s) [%s]", len(golden), triggered_by)
-
     _, list_file = get_current_device_list()
-    all_devices  = load_saved_devices(list_file)
-    dev_by_ip    = {d["ip"]: d for d in all_devices}
+    devices = load_saved_devices(list_file)
+    if not devices:
+        log.info("drift_check: inventory is empty — nothing to check")
+        return _result(summary="Inventory is empty — nothing to check")
+
+    log.info("drift_check: %d device(s) in inventory [%s]", len(devices),
+             triggered_by)
 
     _pool      = {}
     _pool_lock = threading.Lock()
@@ -169,19 +240,11 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
     drifted_list: list[tuple[str, int]] = []
     clean_list:   list[str]             = []
     error_list:   list[tuple[str, str]] = []
+    skip_list:    list[tuple[str, str]] = []
 
-    def _check_one(entry: dict) -> None:
-        device_ip = entry["device_ip"]
-        hostname  = entry.get("hostname") or device_ip
-        dev       = dev_by_ip.get(device_ip)
-        if not dev:
-            log.warning("drift_check: %s not in inventory", device_ip)
-            error_list.append((hostname, "not in inventory"))
-            return
-
-        golden_text = _load_golden_config_file(device_ip)
-        if golden_text is None:
-            return
+    def _check_one(dev: dict) -> None:
+        device_ip = dev.get("ip", "")
+        hostname  = dev.get("hostname") or device_ip or "(unnamed)"
 
         # Stale devices are inert — skip rather than open a session to a device
         # that is no longer part of this list.
@@ -189,10 +252,20 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
             from modules.inventory import is_stale
             if is_stale(device_ip):
                 log.info("drift_check: skipping stale device %s (%s)", hostname, device_ip)
-                error_list.append((hostname, "no longer in NetBox for this list — skipped"))
+                skip_list.append((hostname, "no longer in NetBox for this list"))
                 return
         except ImportError:
             pass
+
+        golden_text = _load_golden_config_file(device_ip)
+        if golden_text is None:
+            # Previously a bare `return` — the device left no trace at all.
+            # "Has no baseline" is the single most actionable thing a drift
+            # check can report, and it was the one thing it stayed silent about.
+            log.info("drift_check: %s (%s) has no golden config — skipped",
+                     hostname, device_ip)
+            skip_list.append((hostname, "no golden config saved"))
+            return
 
         try:
             conn    = get_persistent_connection(dev, _pool, _pool_lock)
@@ -229,44 +302,58 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
             context         = f"Detected by {triggered_by} drift check",
         )
 
-    max_w = min(len(golden), 6)
+    max_w = min(len(devices), 6)
     with __import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor(
         max_workers=max_w, thread_name_prefix="drift"
     ) as ex:
-        list(ex.map(_check_one, golden))
+        list(ex.map(_check_one, devices))
 
-    checked = len(clean_list) + len(drifted_list) + len(error_list)
+    checked     = len(clean_list) + len(drifted_list)
+    accounted   = checked + len(error_list) + len(skip_list)
+    unaccounted = len(devices) - accounted
+    if unaccounted:
+        # Not a silent discrepancy. A device that fell through every branch is
+        # the exact failure this restructuring removed, so it is reported as a
+        # device rather than as a smaller total.
+        log.error("drift_check: %d device(s) produced no outcome", unaccounted)
+        error_list.append(("(unaccounted)",
+                           f"{unaccounted} device(s) produced no outcome — "
+                           "this is a defect in the drift checker"))
 
+    coverage = f"checked {checked} of {len(devices)}"
     if drifted_list:
         summary = (
             f"Drift detected on {len(drifted_list)} device(s): "
             + ", ".join(f"{h} ({n} lines)" for h, n in drifted_list)
-            + ". Approval request(s) queued."
+            + f". Approval request(s) queued. ({coverage}.)"
         )
-    elif error_list and not clean_list:
-        summary = (
-            f"Could not reach {len(error_list)} device(s): "
-            + ", ".join(h for h, _ in error_list)
-        )
+    elif checked == 0:
+        summary = f"No device was checked. ({coverage}.)"
+    elif error_list or skip_list:
+        summary = (f"All {len(clean_list)} checked device(s) clean — "
+                   f"no config drift detected. ({coverage}.)")
     else:
-        summary = (
-            f"All {len(clean_list)} device(s) clean — no config drift detected."
-            + (f" ({len(error_list)} unreachable.)" if error_list else "")
-        )
+        summary = (f"All {len(clean_list)} device(s) clean — "
+                   "no config drift detected.")
+
+    if skip_list:
+        summary += " Not checked: " + ", ".join(
+            f"{h} ({r})" for h, r in skip_list) + "."
+    if error_list:
+        summary += " Unreachable: " + ", ".join(h for h, _ in error_list) + "."
 
     log.info("drift_check: complete — %s", summary)
 
-    return {
-        "ok":          True,
-        "checked":     checked,
-        "drifted":     len(drifted_list),
-        "clean":       len(clean_list),
-        "errors":      [{"hostname": h, "reason": r} for h, r in error_list],
-        "drifted_devices": [{"hostname": h, "diff_lines": n} for h, n in drifted_list],
-        "summary":     summary,
-        "timestamp":   timestamp,
-        "triggered_by": triggered_by,
-    }
+    return _result(
+        inventory       = len(devices),
+        checked         = checked,
+        drifted         = len(drifted_list),
+        clean           = len(clean_list),
+        skipped         = [{"hostname": h, "reason": r} for h, r in skip_list],
+        errors          = [{"hostname": h, "reason": r} for h, r in error_list],
+        drifted_devices = [{"hostname": h, "diff_lines": n} for h, n in drifted_list],
+        summary         = summary,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -342,15 +429,46 @@ class DriftChecker:
             self._trigger.set()
 
     def status(self) -> dict:
+        """What the scheduler will do next, and for which list.
+
+        ``state`` is the field the panel reads: **disabled**, **idle** (on,
+        nothing due yet) or **running**. They were distinguishable before only
+        by noticing that ``next_at`` was null, and a scheduler that is alive
+        and waiting looked exactly like one that is switched off.
+        """
+        from modules.config import get_current_list_name
+
         interval = _get_interval()
-        disabled = _is_disabled()
+        list_name = get_current_list_name()
+        state = _load_state(list_name)
+        disabled = bool(state.get("disabled", False))
+
+        if disabled:
+            phase = "disabled"
+        elif self._running:
+            phase = "running"
+        else:
+            phase = "idle"
+
+        # From the file, not from memory: one scheduler object serves every
+        # list, so its in-memory last result belongs to whichever list ran
+        # most recently, not necessarily the one being looked at.
+        last_result = state.get("last_result") or (
+            self._last_result if not state else None)
+        last_ts = state.get("last_check_ts") or (
+            self._last_ts if not state else 0)
+
         return {
+            "list":        list_name,
+            "state":       phase,
             "running":     self._running,
             "disabled":    disabled,
-            "last_run":    self._last_result,
-            "last_ts":     self._last_ts,
-            "last_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._last_ts))
-                           if self._last_ts else None,
+            "disabled_at": state.get("disabled_at"),
+            "disabled_by": state.get("disabled_by"),
+            "last_run":    last_result,
+            "last_ts":     last_ts,
+            "last_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last_ts))
+                           if last_ts else None,
             "next_ts":     self._next_ts if not disabled else None,
             "next_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._next_ts))
                            if (self._next_ts and not disabled) else None,
@@ -403,6 +521,9 @@ class DriftChecker:
                 self._last_ts     = time.time()
                 interval          = _get_interval()
                 self._next_ts     = self._last_ts + interval
+                # `_save_state` merges. This used to hand `json.dump` a
+                # fresh three-key dict, dropping `disabled` and anything else
+                # the file held.
                 _save_state({
                     "last_check_ts": self._last_ts,
                     "last_result":   result,

@@ -90,12 +90,21 @@ class TestTheNetBoxTabDescribesWhatImportDoes:
         assert calls_in(netbox_client._sync_list_to_netbox_impl,
                         "_scan_device_from_golden") >= 1
 
-    def test_the_ssh_scanner_is_not_on_the_import_path(self):
-        """`_scan_device` opens sessions; nothing calls it."""
+    def test_the_ssh_scanner_is_gone(self):
+        """Stage 3.3 deleted it. The test moved from "nothing calls it" to
+        "it does not exist" -- 140 lines that only a reader could find.
+
+        Restoring it means answering why a NetBox import should depend on
+        device reachability, and why observed state should flow INTO the
+        source of truth.
+        """
         from modules import netbox_client
 
-        assert calls_in(netbox_client._sync_list_to_netbox_impl,
-                        "_scan_device") == 0
+        # `not hasattr` subsumes "nothing calls it" -- a name that does not
+        # exist cannot be called. The old `calls_in(..., "_scan_device") == 0`
+        # is dropped rather than kept alongside it: two assertions where one
+        # is implied by the other reads as two independent checks.
+        assert not hasattr(netbox_client, "_scan_device")
 
     def test_the_golden_scanner_opens_no_session(self):
         from modules import netbox_client

@@ -1,0 +1,131 @@
+"""The removed-definition checker can tell a USE from a MENTION.
+
+Three edits in this project destroyed adjacent code, which is why the checker
+exists. Stage 3.3 deleted `_scan_device` deliberately -- and hit the shape
+that makes the checker unusable:
+
+* the commit that removes a function is the same commit that pins its removal
+  with ``assert not hasattr(mod, "_scan_device")``;
+* the docstring explaining why it went names it too.
+
+A word-grep counts both as references, so the gate reports GONE forever and
+exits 1 on every subsequent commit. **A gate that cannot be satisfied is one
+that gets run with --no-verify**, which is how a check stops existing.
+
+It also found a second bug in the same pass: `"_scan_device" in
+"_scan_device_from_golden"` is True, so a substring test reports every short
+name as referenced by the longer name that replaced it.
+
+These tests exist because the loosening must not hide a real caller.
+"""
+
+import importlib.util
+import os
+
+import pytest
+
+SPEC = importlib.util.spec_from_file_location(
+    "check_removed_definitions",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 "scripts", "check_removed_definitions.py"))
+CHECK = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(CHECK)
+
+
+@pytest.fixture
+def source(tmp_path, monkeypatch):
+    """Write a file inside the checker's ROOT and hand back its relative path."""
+    made = []
+
+    def _write(text):
+        path = tmp_path / f"m{len(made)}.py"
+        path.write_text(text, encoding="utf-8")
+        made.append(path)
+        return str(path)
+
+    monkeypatch.setattr(CHECK, "ROOT", "")
+    return _write
+
+
+class TestARealCallerIsStillFound:
+    """The loosening must not cost the checker its job."""
+
+    def test_a_plain_call(self, source):
+        p = source("def f():\n    return _gone(1)\n")
+        assert CHECK._code_mentions("_gone", p) is True
+
+    def test_an_attribute_access(self, source):
+        p = source("import m\n\n\ndef f():\n    return m._gone()\n")
+        assert CHECK._code_mentions("_gone", p) is True
+
+    def test_a_bare_name_with_no_call(self, source):
+        p = source("handler = _gone\n")
+        assert CHECK._code_mentions("_gone", p) is True
+
+    def test_a_monkeypatch_target_string(self, source):
+        """Names reach `setattr` as strings; that is a use."""
+        p = source('monkeypatch.setattr("mod._gone", lambda: 1)\n')
+        assert CHECK._code_mentions("_gone", p) is True
+
+    def test_an_import(self, source):
+        p = source("from mod import _gone\n")
+        assert CHECK._code_mentions("_gone", p) is True
+
+    def test_one_real_use_outweighs_any_number_of_mentions(self, source):
+        p = source(
+            '"""_gone is gone, see the notes."""\n'
+            '# _gone was removed in 3.3\n'
+            'assert not hasattr(mod, "_gone")\n'
+            'result = _gone()\n')
+        assert CHECK._code_mentions("_gone", p) is True
+
+
+class TestProseIsNotAReference:
+
+    def test_a_module_docstring(self, source):
+        p = source('"""_gone, the SSH scanner, had no callers."""\n\nx = 1\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_function_docstring(self, source):
+        p = source('def f():\n    """Replaces _gone."""\n    return 1\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_comment(self, source):
+        p = source("# _gone was deleted in Stage 3.3\nx = 1\n")
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_an_absence_assertion(self, source):
+        p = source('assert not hasattr(mod, "_gone")\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_getattr_probe(self, source):
+        p = source('if getattr(mod, "_gone", None):\n    pass\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+
+class TestWholeWordsOnly:
+    """`"_scan_device" in "_scan_device_from_golden"` is True."""
+
+    def test_a_longer_name_is_not_this_name(self, source):
+        p = source('calls_in(mod._impl, "_gone_from_golden")\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_longer_attribute_is_not_this_name(self, source):
+        p = source("mod._gone_from_golden()\n")
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_the_exact_name_still_matches(self, source):
+        p = source('calls_in(mod._impl, "_gone")\n')
+        assert CHECK._code_mentions("_gone", p) is True
+
+
+class TestUnparseableFilesAreTreatedAsReferences:
+    """The conservative answer belongs on the side that reports."""
+
+    def test_a_syntax_error_counts_as_a_reference(self, source):
+        p = source("def f(:\n")
+        assert CHECK._code_mentions("_gone", p) is True
+
+    def test_a_missing_file_counts_as_a_reference(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(CHECK, "ROOT", "")
+        assert CHECK._code_mentions("_gone", str(tmp_path / "nope.py")) is True

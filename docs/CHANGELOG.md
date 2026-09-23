@@ -9,6 +9,88 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — enumeration and content came from different stores (Stage 3.3)
+
+`_list_golden_configs()` listed the deprecated `golden_configs/` directory and
+nothing else, while `_load_golden_config_file()` resolved through the
+manifest. **Seventeen executable call sites across nine modules** asked the
+first function which devices have a golden config, so a device onboarded after
+the migration — golden in `config_repo/`, no legacy file — was invisible to
+all of them while its config sat right there. The nine reference devices were
+covered only because their pre-migration files predate the migration:
+inherited coverage, not designed.
+
+- `repo.list_goldens()` enumerates the **manifest**, and
+  `_list_golden_configs()` is a thin adapter over it with an unchanged return
+  shape, so fifteen call sites were corrected without being edited.
+- `saved_at` is the **commit** time, not the file's mtime — the Stage 1.4
+  correction applied everywhere rather than at the one call site where it was
+  spotted.
+- `golden_commit_times()` is one `git log` for the whole store; the obvious
+  shape is one subprocess per device, on a path panels refresh.
+- Legacy-only devices are still enumerated and flagged, so nothing is dropped
+  on the day the enumerator changed.
+- **A retirement condition, measurable:** `legacy_only_goldens()`,
+  `GET /golden/legacy_store`, and a Golden-tab card that says either "still
+  holds N device(s)", naming them, or "can be retired". Deprecation with no
+  exit criterion never ends.
+
+### Fixed — the drift check's population is the inventory (Stage 3.3)
+
+It iterated the golden store, so an unchecked device produced **no output at
+all** — not an error, not a skip. "All 9 device(s) clean" over a ten-device
+inventory reads identically to the same sentence over nine. A device with no
+golden at all was a bare `return`.
+
+- Every device lands in exactly one bucket: checked, no golden, stale,
+  unreachable. Totals are checked against the inventory size and any remainder
+  is reported as a defect rather than as a smaller number.
+- The panel says **"checked 7 of 9"** and names the two, and the badge cannot
+  read `Clean` when nothing was checked.
+- `event_monitor` read `devices.csv` by hand and fell back to
+  `DATA_DIR/Devices.csv` — **another list's devices** — for any NetBox-sourced
+  list. Both it and `_check_empty_variables` now go through
+  `load_saved_devices()`.
+
+### Fixed — a silenced check that recorded nothing about being silenced (Stage 3.3)
+
+Drift scheduling was switched off on 2026-08-30, three minutes after a run
+that flagged all nine devices against ad-hoc stale goldens. Right at the time.
+The reason stopped holding weeks ago and nothing anywhere would have prompted
+a re-evaluation.
+
+- `set_disabled()` records `disabled_at` and `disabled_by`; the panel shows
+  the note **and the last run it saw** instead of blanking the line.
+- `status()` reports `state` as disabled / idle / running — a scheduler alive
+  and waiting used to look exactly like one switched off.
+- State is **per list** (`data/lists/{slug}/drift_state.json`), adopting the
+  installation-wide file forward by copy rather than move.
+- `_save_state()` merges instead of replacing: the scheduler's `finally` wrote
+  a fresh three-key dict that would have dropped `disabled`.
+
+### Removed — `netbox_client._scan_device` (Stage 3.3)
+
+140 lines of SSH scanner with no callers. The live-scan question is answered
+in writing: **no.** A live scan would make NetBox import depend on device
+reachability and would import observed state into the source of truth.
+Refreshing a golden and re-importing is one store and one direction.
+
+### Fixed — the removed-definition checker could not be satisfied (Stage 3.3)
+
+Deleting a function and pinning its removal with
+`assert not hasattr(mod, "x")` are the same commit, and a docstring explaining
+why it went names it too. The word-grep counted all of it, so the gate would
+have reported GONE on every later commit — and a gate that cannot be satisfied
+gets run with `--no-verify`.
+
+- `_code_mentions()` parses: a use is a name, an attribute, an import alias or
+  a string constant, but not a docstring, a comment, or a string inside
+  `hasattr`/`getattr`.
+- Whole-word, because `"_scan_device" in "_scan_device_from_golden"`.
+- An unparseable file still counts as a reference.
+- `approval_queue._exec_update_golden` reported a `golden_configs/` path
+  nothing had written since the migration; it reports the real one now.
+
 ### Fixed — masked lines showed as permanent differences (Stage 1.3b)
 
 The preview renders with secrets masked while the capture holds the real

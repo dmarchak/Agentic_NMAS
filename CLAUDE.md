@@ -132,6 +132,22 @@ dashboard), `device.html` (1,239 — per-device page), and
   no entry for a device. It is never an input to migration again, and nothing
   writes there. `apply()` refuses when `.nsot/migrated.json` exists (`409`), and
   independently of that guard cannot produce an empty commit.
+- **One enumerator: `repo.list_goldens()`, keyed on the manifest** (Phase 3.3).
+  `_list_golden_configs()` was `os.listdir(golden_configs/)` and nothing else,
+  while `_load_golden_config_file()` resolved through the manifest —
+  **enumeration and content came from different stores**, and 17 executable
+  call sites across 9 modules asked the enumerator which devices have a
+  golden. The nine reference devices were enumerable only because their
+  pre-migration files still sat in the legacy directory: **that coverage was
+  inherited, not designed.** A device onboarded after the migration was
+  checked by nothing and reported by the event monitor as having no golden,
+  while its config sat in `config_repo/`. `_list_golden_configs()` is now a
+  thin adapter over `list_goldens()`, so every caller was fixed without being
+  touched, and `saved_at` is the **commit** time rather than the file's mtime.
+  Legacy-only devices are still returned, flagged `legacy`, and
+  `legacy_only_goldens()` is the store's **retirement condition** — when it is
+  empty for every list, the directory and the header scan go. `GET
+  /golden/legacy_store` reports it on the Golden tab.
 - **Platform lives in the manifest, sourced from the inventory.** The `platform`
   CSV column (local lists) or the NetBox platform slug (NetBox lists), resolved
   through `platform_for_device()` and refreshed by `manifest.sync_platforms()`
@@ -751,6 +767,10 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_integrations_base.py` | optional-integration behaviour, secret masking |
 | `test_portability.py` | Jenkins step shell, TFTP root, env overrides |
 | `test_no_ip_literals.py` | fails if an IPv4 literal appears in the new packages |
+| `test_golden_enumeration.py` | one enumerator; repo-only devices; commit time not mtime; legacy retirement condition |
+| `test_drift_population.py` | the inventory is the population; every device in exactly one bucket |
+| `test_drift_scheduling.py` | per-list state, merge-not-replace, what a silenced check records |
+| `test_check_removed_definitions.py` | the checker tells a use from a mention |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -939,6 +959,43 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   on the host. The firewall must cover **both address families**: port 5000 is
   closed over IPv6 only because no `[::]` listener exists, not because anything
   blocks it.
+- **The drift check's population is the inventory, not the golden store**
+  (Phase 3.3). It iterated the enumerator above, so a device with no legacy
+  file was never checked and appeared in no count — not an error, not a skip,
+  simply absent, and "all 9 device(s) clean" over a ten-device inventory is
+  textually identical to the same sentence over nine. A device with no golden
+  at all was a bare `return`. Every device now lands in exactly one bucket
+  (`checked` / `no golden` / `stale` / `unreachable`), the totals are checked
+  against the inventory size with any remainder reported as a defect, and the
+  panel says **"checked 7 of 9"** with the other two named. The badge cannot
+  read `Clean` when nothing was checked.
+- **A silenced check must say what it silenced.** Drift scheduling was
+  switched off on 2026-08-30, three minutes after a run that flagged all nine
+  devices against ad-hoc, stale goldens — correct then. Six months on, the
+  reason had been fixed for weeks and nothing anywhere prompted a
+  re-evaluation: the state file was the only record the checker had ever been
+  on, and it recorded neither who switched it off nor when. `set_disabled()`
+  now records `disabled_at` / `disabled_by`, the panel shows the note and the
+  last run it saw instead of blanking the line, and `status()` reports
+  `state` as **disabled / idle / running** — a scheduler alive and waiting
+  used to look exactly like one switched off.
+- **Drift state is per list** (`data/lists/{slug}/drift_state.json`), adopting
+  the old installation-wide file forward by **copy, not move**. One switch
+  governing several networks tells you nothing about the one you are looking
+  at. `_save_state()` merges rather than replacing: the scheduler's `finally`
+  wrote a fresh three-key dict that would have dropped `disabled`.
+- **`netbox_client._scan_device` is deleted** (Phase 3.3): 140 lines of SSH
+  scanner with no callers. The NetBox import runs from golden configs by
+  design — it works for an offline device, and importing observed state into
+  the source of truth is the wrong direction. Refreshing a golden and
+  re-importing is one store and one direction.
+- `scripts/check_removed_definitions.py` **tells a use from a mention.** It
+  parses rather than greps: a docstring or comment naming a deleted function,
+  and `assert not hasattr(mod, "x")`, are not references — deleting something
+  and pinning its removal are the same commit, and a gate that cannot be
+  satisfied gets run with `--no-verify`. Whole-word, because
+  `"_scan_device" in "_scan_device_from_golden"`. An unparseable file still
+  counts as a reference.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

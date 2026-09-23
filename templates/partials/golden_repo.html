@@ -501,10 +501,11 @@ async function loadGoldenRepoPanel() {
   const host = document.getElementById('goldenRepoPanel');
   if (!host || !_gList()) return;
   try {
-    const [bRes, mRes, rRes] = await Promise.all([
+    const [bRes, mRes, rRes, lRes] = await Promise.all([
       fetch('/golden/baselines').then(r => r.json()),
       fetch('/golden/migrate/plan').then(r => r.json()),
       fetch('/golden/renames').then(r => r.json()),
+      fetch('/golden/legacy_store').then(r => r.json()),
     ]);
 
     const baselines = (bRes.baselines || []).slice(0, 10);
@@ -522,6 +523,7 @@ async function loadGoldenRepoPanel() {
             Sync device names to repo
           </button>
         </div>` : ''}
+      ${_gLegacyStoreCard(lRes)}
       <div class="card border-light-subtle">
         <div class="card-body py-2 px-3">
           <h6 class="text-primary fw-semibold mb-2">Baselines
@@ -548,6 +550,54 @@ async function loadGoldenRepoPanel() {
         </div>
       </div>`;
   } catch (e) { console.error('loadGoldenRepoPanel', e); }
+}
+
+/* The deprecated store's RETIREMENT CONDITION, on screen.
+ *
+ * `golden_configs/` has been read-only since the migration, and until Stage
+ * 3.3 it was also what every reader enumerated -- so the nine devices were
+ * covered by accident rather than by design. Two things still consult it: the
+ * last link of `_find_golden_config_file`'s chain, and the legacy-only
+ * entries in `repo.list_goldens()`.
+ *
+ * When nothing lives there that the manifest does not know, both can go. The
+ * card says so in those words, because "deprecated" with no exit criterion is
+ * a thing nobody ever gets to delete.
+ */
+function _gLegacyStoreCard(l) {
+  if (!l || !l.ok) return '';
+  if (!l.legacy_files) return '';              // already gone: say nothing
+  const only = l.only_legacy || [];
+  if (l.retirable) {
+    return `
+      <div class="card border-success-subtle mb-3">
+        <div class="card-body py-2 px-3">
+          <h6 class="text-success-emphasis fw-semibold mb-1">Legacy golden store can be retired</h6>
+          <p class="text-muted small mb-0">
+            <code>golden_configs/</code> holds ${l.legacy_files} file(s), and the
+            manifest knows every device in it. Nothing here is the only copy of
+            anything, so the directory and the header-scan fallback can be removed.
+          </p>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="card border-warning-subtle mb-3">
+      <div class="card-body py-2 px-3">
+        <h6 class="text-warning-emphasis fw-semibold mb-1">
+          Legacy golden store still holds ${only.length} device(s)
+        </h6>
+        <p class="text-muted small mb-1">
+          These are in <code>golden_configs/</code> and not in the repository
+          manifest, so they resolve through the deprecated header scan. The
+          directory can be retired once this list is empty.
+        </p>
+        <ul class="small mb-0">
+          ${only.map(d => `<li><code>${_gEsc(d.hostname)}</code>
+             <span class="text-muted">(${_gEsc(d.device_ip)} · ${_gEsc(d.file)})</span></li>`).join('')}
+        </ul>
+      </div>
+    </div>`;
 }
 
 function _migrationCard(m) {

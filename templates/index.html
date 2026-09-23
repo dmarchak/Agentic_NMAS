@@ -5773,6 +5773,16 @@ async function loadDriftStatus() {
       toggle.checked = !data.disabled;
     }
 
+    // A partial check must not be able to look like a full one. The badge
+    // used to read "Clean" whenever nothing drifted, including when nothing
+    // was CHECKED -- which is what a nine-device fleet enumerated from an
+    // empty store reports.
+    const lr        = data.last_run || null;
+    const inventory = lr ? (lr.inventory || 0) : 0;
+    const checked   = lr ? (lr.checked || 0) : 0;
+    const partial   = inventory > 0 && checked < inventory;
+    const coverage  = inventory > 0 ? ` ${checked}/${inventory}` : '';
+
     if (badge) {
       if (data.disabled) {
         badge.className = 'badge bg-secondary small';
@@ -5780,46 +5790,64 @@ async function loadDriftStatus() {
       } else if (data.running) {
         badge.className = 'badge bg-primary small';
         badge.textContent = 'Running…';
-      } else if (!data.last_run) {
+      } else if (!lr) {
         badge.className = 'badge bg-secondary small';
         badge.textContent = 'Not run yet';
       } else {
-        const lr = data.last_run;
         const drifted = lr.drifted || 0;
         const errors  = (lr.errors || []).length;
         if (drifted > 0) {
           badge.className = 'badge bg-warning text-dark small';
-          badge.textContent = `${drifted} drifted`;
+          badge.textContent = `${drifted} drifted${coverage}`;
+        } else if (checked === 0) {
+          badge.className = 'badge bg-danger small';
+          badge.textContent = `Nothing checked${coverage}`;
         } else if (errors > 0 && (lr.clean || 0) === 0) {
           badge.className = 'badge bg-danger small';
           badge.textContent = 'Errors';
+        } else if (partial) {
+          badge.className = 'badge bg-warning text-dark small';
+          badge.textContent = `Clean${coverage}`;
         } else {
           badge.className = 'badge bg-success small';
-          badge.textContent = 'Clean';
+          badge.textContent = `Clean${coverage}`;
         }
       }
     }
 
     if (lastRun) {
-      if (data.last_at) {
-        const next = (!data.disabled && data.next_at) ? ` · next ${data.next_at}` : '';
+      // A disabled checker shows WHEN it was switched off and what the last
+      // run said. Blanking the line is how a silenced check becomes
+      // invisible: the reason it was switched off gets fixed, and nothing
+      // anywhere prompts a re-evaluation.
+      if (data.disabled) {
+        const since = data.disabled_at ? ` since ${_esc(data.disabled_at)}` : '';
+        const by    = data.disabled_by ? ` by ${_esc(data.disabled_by)}` : '';
+        const last  = data.last_at ? ` · last ran ${data.last_at}` : ' · never ran';
+        lastRun.innerHTML = `<span class="text-warning">Scheduled checks off${since}${by}</span>${_esc(last)}`;
+      } else if (data.last_at) {
+        const next = data.next_at ? ` · next ${data.next_at}` : '';
         lastRun.textContent = `Last: ${data.last_at}${next}`;
-      } else if (!data.disabled && data.next_at) {
-        lastRun.textContent = `First check at ${data.next_at}`;
+      } else if (data.next_at) {
+        lastRun.textContent = `Enabled, first check at ${data.next_at}`;
       } else {
-        lastRun.textContent = '';
+        lastRun.textContent = 'Enabled, idle';
       }
     }
 
     const detail = document.getElementById('driftResultDetail');
-    if (detail && data.last_run && data.last_run.summary) {
+    if (detail && lr && lr.summary) {
       detail.style.display = '';
-      const lr      = data.last_run;
       const pending = data.pending_approvals || 0;
       let html = `<span class="text-secondary">${_esc(lr.summary)}</span>`;
       if (pending > 0) {
         html += ` <span class="badge bg-warning text-dark ms-1">${pending} pending approval${pending !== 1 ? 's' : ''}</span>`;
       }
+      // Every device not checked, named. "checked 7 of 9" without the two
+      // names is a number nobody can act on.
+      (lr.skipped || []).forEach(s => {
+        html += `<div class="text-warning small mt-1">Not checked: ${_esc(s.hostname)} — ${_esc(s.reason)}</div>`;
+      });
       detail.innerHTML = html;
     } else if (detail) {
       detail.style.display = 'none';
