@@ -5699,3 +5699,46 @@ a test that the entry leaves when the editor is built. It is the
 route-level twin of `test_no_unreachable_ui.py`, and it exists because the
 function-level version would never have caught this: the functions it would
 have checked were never written.
+
+---
+
+## A guard that missed the bug it was written for
+
+While building the intent editor, a test fixture called
+`save_golden("lab", ...)` **before** monkeypatching `get_list_data_dir`. That
+function resolves its own path, so the call wrote
+`data/lists/lab/config_repo/golden/s4.cfg` into the working checkout and
+committed it — three commits, in a real repository, from a test run.
+
+The list name was arbitrary. Had it been `default` it would have written into
+the live list, whose goldens are the record of a real network. `data/` is
+gitignored, so nothing would have reached a commit in the project repo and
+**nothing would have said a word**.
+
+The rule this needed is one the project already has, pointed at the other
+thing a test can reach: *no test touches a live network* → *no test writes
+into live data*. `tests/conftest.py` now fails any test that creates a file
+under `data/lists/`.
+
+### And then the guard did the same thing
+
+Its first version compared the set of **list directory names** before and
+after each test. Re-running the fixture bug against it: **19 passed.**
+
+`lab` already existed, so writing a new golden into it changed no name. The
+guard was checking a property adjacent to the one that mattered, and it
+would have reported clean on the exact defect it was written for — including
+on `data/lists/default`, which exists on every machine.
+
+It compares the set of **files** now, and that version was verified by
+reintroducing the bug and watching it fail.
+
+> This is the four can't-fail controls again, in a fifth place, written
+> immediately after recording the pattern. A guard is a claim about a
+> property; running it where the property holds tests the claim. **Shown
+> failing, or it means nothing.**
+
+The interval between writing that lesson down and repeating it was about two
+hours, which is the useful part of the observation: knowing the rule is not
+the same as having a habit that enforces it. The habit is *reintroduce the
+bug and watch*, and it takes under a minute.
