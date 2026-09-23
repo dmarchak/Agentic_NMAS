@@ -227,7 +227,49 @@ check exits 0.
 
 ---
 
-## 5. What I would want decided before building
+## 5. Decisions taken
+
+**1. The probe runs on a `local` list.** Immediate drift enrolment is the
+property worth proving; a NetBox-sourced list makes 4C.6 depend on the
+refresh loop rather than on the wizard. The NetBox-sourced flow is a separate
+exercise afterwards with its own acceptance.
+
+**2. The probe writes to the real NetBox — approved, with a condition.**
+
+The teardown *is* the test. The provenance-based Remove has existed since
+Phase 0 and **has never been exercised against objects it created itself**.
+Better to find out it leaves something behind with a probe device than with
+r6. A dry-run-only proof would test the preview and not the write, and the
+write through the gate is the interesting part.
+
+**The condition: NetBox object counts are recorded before the run and
+asserted equal after teardown** — devices, sites, interfaces, prefixes, IP
+addresses, VRFs, VLANs and cables. *"Remove cleaned up"* measured, not
+eyeballed. Any difference is a finding, and a number is better than an
+absence.
+
+That needs a tool, so it becomes its own build step:
+
+### 4C.0 — `scripts/nmas-netbox-census`
+
+Counts every object type the NetBox tab shows, prints them as a table, and
+writes a JSON snapshot. A second invocation with `--compare <snapshot>`
+prints the delta per type and exits 1 on any difference.
+
+*Acceptance*
+- Run before the probe and after teardown; `--compare` exits 0.
+- The count is per **object type**, not a total: a device removed and a
+  prefix left behind must not cancel out.
+- It names what it does **not** count, so the claim has an edge — the same
+  rule as `nmas-check-secret-storage`, where a store the script does not know
+  about is not reported as clean, it is not reported at all.
+- **Negative control:** create one tagged object and leave it → `--compare`
+  exits 1 and names the type. Run as part of the probe, not asserted in the
+  abstract.
+
+---
+
+## 6. Previously open, now closed
 
 Three of the four open questions in the onboarding doc §7 are answered by §8.
 **Question 3 is not**, and step C makes it concrete:
@@ -242,14 +284,19 @@ device appears only after a refresh, and *"checked N+1 of N+1"* is not
 assertable until that refresh completes — which changes acceptance 4C.6 from
 "immediately" to "after the next refresh, and the refresh is part of the run".
 
-**I would run step C on a `local` list**, because it tests the wizard rather
-than the NetBox refresh loop, and because the immediate-enrolment property is
-the one worth proving. The NetBox-sourced flow is a second run, afterwards,
-with its own acceptance.
+Both are decided in §5 above: **`local`**, and **write to the real NetBox**
+with the census condition.
 
-Second, smaller: **the probe's NetBox objects go into the real NetBox**, since
-there is only one. They are tagged `nmas-managed` and recorded, so Remove
-cleans them — but it is a write to shared infrastructure, and per the standing
-rule I would not do it without saying so first. The alternative is running
-step C with NetBox writes off and the NetBox step asserted by dry-run preview
-only, which tests less but touches nothing.
+---
+
+## 7. Progress
+
+| Step | State |
+|---|---|
+| **4C.1** the plan object | **done** — `modules/nsot/onboard.py`, `tests/test_onboard_plan.py`, 27 tests, four negative controls each shown failing |
+| 4C.0 the NetBox census | not started |
+| 4C.2 bootstrap credential | not started |
+| 4C.3 ordering | not started |
+| 4C.4 routes + UI | not started |
+| 4C.5 RW community | not started |
+| 4C.6 drift enrolment | not started |
