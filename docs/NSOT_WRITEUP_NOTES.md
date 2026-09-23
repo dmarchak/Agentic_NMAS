@@ -5773,3 +5773,83 @@ module level, so rebinding `modules.config.get_list_data_dir` leaves its copy
 untouched. Patching `LISTS_DIR` works either way, because
 `get_list_data_dir()` reads that global at call time — and it preserves the
 real per-list layout, which replacing the function did not.
+
+---
+
+## A verdict about a store, produced without consulting it
+
+The first real run of the edit-commit-deploy loop was blocked at the first
+step. Opening **Edit intent** on `s4` reported:
+
+> Valid. Not deployable: template `cisco_ios/base.j2` is not approved for
+> this device
+
+The template had been approved. Nothing had edited it, no device had been
+onboarded or removed, and the scheme had not changed. It read as an approval
+that had revoked itself overnight — which is the precise failure the scheme-2
+correction exists to stop, so it looked like that correction had come undone.
+
+It had not. The sentence was never about the approval store.
+
+`build_artifact()` takes `template_approved` as an ordinary keyword argument
+and **defaults it to `False`**. `render_artifact.py` turns a `False` there
+into that exact sentence. The new intent-editor route called
+`build_artifact()` directly and never called `approval.is_approved()` at
+all — so the message was generated, in full confidence and with the template's
+name in it, by a code path that had not looked at the approval store.
+
+This is the same shape as the presence-vs-applicability findings, one level
+up. A check that is never run does not produce "unknown" or an error; it
+produces the *default*, and the default is rendered in the same words a real
+negative would use. The operator cannot tell them apart, and the more
+carefully the negative is worded — naming the template, naming the device —
+the more it reads like a measurement.
+
+The fix is `routes/templates.artifact_for()`: the one place an artifact is
+paired with its approval, used by both the template preview and the intent
+editor. Tests assert that both routes call it and that building directly
+does not happen.
+
+### And the fix carried the same class of error in its comment
+
+Reviewing it found a second defect. `artifact_for()` built the artifact, read
+its parsed `host_vars`, passed `{hostname: host_vars}` to `is_approved()`,
+and then built a **second** time — with a docstring stating that the order was
+*forced*, "because `is_approved()` is keyed on the device's parsed
+host_vars".
+
+It is not keyed on them. `binding_fingerprint()` accepts `host_vars_by_device`
+and deliberately ignores it, and **that ignoring is the scheme-2 correction**:
+under scheme 1 a successful deploy changed the device's capture, moved the
+hash, and revoked the approval that had authorised it. So the second build
+served nothing, and a comment written while fixing an approval bug asserted in
+prose exactly the dependency the approval code had been changed to drop.
+
+Prose about code is not code — recorded here for the fifth time — but this
+instance is worse than the earlier four. Those were tests matching a
+docstring instead of a call. This one was a *rationale*: a future reader
+restoring the coupling would have been doing what the comment told them the
+system required. The three replacement tests are behavioural where they can
+be (two different documents must ask the approval store the same question)
+rather than structural only.
+
+### The other two defects in the same report
+
+Both were mine, both were in the reporting rather than the mechanism:
+
+* **The line-number gutter rendered on top of the text.** CodeMirror measures
+  character and gutter widths at initialisation; inside a Bootstrap modal
+  that is still animating open, those measurements come back zero. It now
+  refreshes on `shown.bs.modal` and again after the document loads, since
+  either can be the later of the two.
+* **"The document differs from what is committed, but the render does not"**,
+  on a document nobody had typed into. The load *is* byte-for-byte — that was
+  checked rather than assumed, because if it had not been, that would have
+  been the finding. The route compared renders only, and my else-branch
+  described the result as a document difference. It now returns
+  `document_changed`, an actual byte comparison against the committed file,
+  and the UI has three branches instead of two.
+
+The third is the smallest and the most instructive: a message that asserts
+something the code never measured, again. One function, two independent
+instances of it, found on the same screen.
