@@ -1204,6 +1204,17 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   page is **647 KB fixed plus 2,239 bytes per device**, linear and unbounded
   — 2.7 MB at 900 devices, a projected **23 MB at 10,000**. The 100×→4×
   ratio is reassuring and wrong; the marginal figure is the one to quote.
+  **The 647 KB fixed cost is a separate finding** (§0b), true at nine devices
+  today: 97% of the current page, re-sent on every load before a single
+  device row, and fixed by moving inline script into cacheable files rather
+  than by bounding anything.
+- **The fixture corrected the premise it was built to test.** The constraint
+  was first written as "nothing may load the whole inventory"; measured, the
+  read is 0.73 ms and a per-device `git log` is 7.2 s, so it is **"nothing
+  may do per-device work per request"** — a different design, and one that
+  does not send Stage 7 through 75 call sites that mostly do not matter. A
+  call site reading the whole inventory is not evidence of a problem; what
+  follows the read is.
 - **Bounding the read fixes almost nothing; bounding the per-device
   operation is the whole job.** Measured at 900 devices: `load_saved_devices()`
   costs **0.73 ms** and a lookup after it 0.01 ms, while *one operation per

@@ -65,6 +65,34 @@ bound, then renders every one of them server-side. **There are 52
 pagination parameter anywhere in `routes/`.** The whole-inventory read is not
 one mistake in one place; it is the assumption the program is built on.
 
+### Correction, after building the fixture: the premise was wrong
+
+**Both of us had it wrong, and the fixture is what said so.** The constraint
+was first written as *"nothing may require loading the whole inventory"*, on
+the strength of 52 (really 75) unbounded `load_saved_devices()` call sites —
+a number that looks like a lot of work and turns out to be nearly none.
+
+Measured at 900 devices: **the whole read is 0.73 ms.** One per-device `git
+log` is **7.2 s**. The gap is four orders of magnitude, and it moves the
+constraint:
+
+> **from** "don't read everything"
+> **to** "don't do per-device work per request".
+
+That is a different design. The first says *bound the reads*, which would
+have sent Stage 7 through 75 call sites that mostly do not matter. The second
+says *find the places that touch git, a file or a device per row, and make
+those jobs* — far fewer sites, and the ones that decide whether the interface
+works at 900.
+
+It also means a call site reading the whole inventory is **not** evidence of
+a problem, which is the opposite of what the first version implied. The
+evidence is what follows the read.
+
+Recorded because it is the clearest case yet for the fixture existing: the
+correction arrived **while** the constraint was being written, not after it
+had been implemented.
+
 ### The five structural consequences
 
 **1. Selection replaces enumeration.** Search and filters — site, role,
@@ -92,11 +120,14 @@ per-device outcomes, a circuit breaker, and `Failed-Devices:` in the commit.
 Drift already reports `checked N of M`. The pattern exists; the UI has never
 had to use it.
 
-**5. Nothing may require loading the whole inventory to render a page —
-including the counts on the landing view.** A landing view that reads every
-device to display six numbers has moved the problem rather than solved it.
-Those counts have to come from something maintained incrementally or queried
-with a bound.
+**5. Nothing may do per-device work to render a page — including the counts
+on the landing view.** *"Not a full read wearing a summary"* stands, but the
+reason is the per-device operation, not the read: the six landing numbers are
+six **per-device questions** — is this drifted, is its template approved,
+when was its credential rotated — and answering them by iterating is **900
+`git log` calls, 7.2 seconds**. The read itself is 0.73 ms. Those counts come
+from bounded queries against git, the manifest and NetBox, or from cached
+counts **with their staleness visible**.
 
 ### What this costs, stated
 
@@ -196,6 +227,42 @@ someone bounds the device list the test **fails and has to be updated with a
 new number**. A bound that improves things should have to be recorded, not
 slip in unnoticed — and until then the test states the status quo rather
 than an aspiration.
+
+---
+
+## 0b. A separate finding: 647 KB shipped before the first device
+
+**Nothing to do with scale, and true today at nine devices.**
+
+The rendered page decomposes into:
+
+| | |
+|---|---|
+| **fixed cost** | **647,383 bytes** — identical at 9 devices and at 900 |
+| **per device** | **2,239 bytes** — linear, unbounded |
+
+At the current nine devices that is a **667 KB page of which 97% is fixed** —
+markup, inline CSS and 123 inline JavaScript functions, re-sent on every
+load, before a single device row.
+
+The two numbers belong together, and that is the point of recording them as
+one finding: **the reassuring ratio cannot be quoted without the linear
+term.** "100× the devices is only 4× the page" is true and is an artefact of
+the fixed cost dominating at small sizes. The honest statement is *647 KB
+fixed plus 2.2 KB per device*, which gives **2.7 MB at 900** and **11.8 MB at
+5,000**.
+
+Both halves have their own fix and neither fixes the other:
+
+* the fixed cost is the `index.html` problem the conventions already name —
+  *"`app.py` and `index.html` must not grow beyond registration and
+  `{% include %}`"* — and it is addressed by moving script into files the
+  browser can cache, not by bounding anything;
+* the per-device cost is §0a's, and is addressed by not rendering every
+  device.
+
+Measured with `scripts/nmas-scale-report`; pinned in `tests/test_scale.py` so
+either number changing has to be recorded rather than noticed later.
 
 ---
 

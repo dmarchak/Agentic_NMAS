@@ -1791,10 +1791,18 @@ pagination parameter anywhere in `routes/`**. So: selection replaces
 enumeration, fleet health is the landing view and the device list is where
 you arrive after clicking a number, per-device actions leave the row,
 everything is bounded and every fleet-wide operation is a job with progress
-and a targetable subset — and **nothing may load the whole inventory to
-render a page, including the landing counts**. An interface that assumes you
-can see every device is a different interface from one that assumes you
-cannot.
+and a targetable subset — and **nothing may do per-device work to render a
+page, including the landing counts**. An interface that assumes you can see
+every device is a different interface from one that assumes you cannot.
+
+**The fixture corrected the premise before it was built against.** Measured
+at 900 devices, the whole read is **0.73 ms** and one per-device `git log` is
+**7.2 s** — so the constraint is *not* "don't read everything" but **"don't
+do per-device work per request"**, which is a different design: far fewer
+sites, and the ones that decide whether the interface works. Separately
+(§0b), the page is **647 KB fixed plus 2,239 B per device** — the fixed cost
+is an `index.html` problem that exists at nine devices and is not a scale
+item at all.
 
 Shape: two destinations (**Fleet**, **Monitoring**) plus a per-device page at
 `/device/<hostname>`, and a service-status bar on every page.
