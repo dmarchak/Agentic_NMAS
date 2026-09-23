@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Render the interface at 9, 90 and 900 devices, and report what happens.
+
+**A number today is what makes "does not grow linearly" checkable later
+rather than aspirational.** Nine devices will pass every test written at nine
+devices, so this exists to answer the scale question *while* a design choice
+is being made.
+
+Reports, per size: rendered page bytes, render time, and the growth factor
+against the previous size. **A factor near the device-count factor is linear
+growth** — which is the finding, not a failure of the script.
+
+It also instruments `load_saved_devices()` and reports **how many times one
+page render reads the whole inventory**, because 52 unbounded call sites are
+not 52 equal problems and the point of a fixture is to say which hurt.
+
+Writes nothing into `data/lists/` — the fleet is built under a temporary
+directory and the live list is never touched.
+
+    python scripts/nmas-scale-report
+    python scripts/nmas-scale-report --sizes 9,90,900,9000
+"""
+
+import argparse
+import os
+import sys
+import tempfile
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+
+
+def measure(size: int, repeats: int = 3) -> dict:
+    """Render `/` against a fleet of *size* and report what it cost."""
+    from unittest import mock
+
+    from fixtures.fleet_scale import build_fleet
+
+    import app as nmas
+    from modules import device as device_mod
+
+    fleet = build_fleet(size)
+    calls = {"n": 0, "devices": 0}
+
+    def _loader(filename=None):
+        calls["n"] += 1
+        calls["devices"] += len(fleet)
+        return list(fleet)
+
+    client = nmas.app.test_client()
+    with mock.patch.object(device_mod, "load_saved_devices", _loader), \
+         mock.patch("app.load_saved_devices", _loader):
+        client.get("/")                        # warm templates
+        calls["n"] = calls["devices"] = 0
+        best = None
+        for _ in range(repeats):
+            start = time.perf_counter()
+            body = client.get("/").get_data()
+            elapsed = time.perf_counter() - start
+            best = elapsed if best is None else min(best, elapsed)
+
+    return {"size": size, "bytes": len(body), "seconds": best,
+            "loads_per_render": calls["n"] / repeats,
+            "device_reads_per_render": calls["devices"] / repeats}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--sizes", default="9,90,900")
+    args = ap.parse_args()
+    sizes = [int(s) for s in args.sizes.split(",") if s.strip()]
+
+    rows = []
+    for size in sizes:
+        rows.append(measure(size))
+
+    print(f"{'devices':>8s} {'page bytes':>12s} {'x prev':>7s} "
+          f"{'render s':>9s} {'x prev':>7s} {'full reads':>11s}")
+    print("-" * 60)
+    prev = None
+    for row in rows:
+        gb = f"{row['bytes'] / prev['bytes']:.1f}x" if prev else "—"
+        gt = f"{row['seconds'] / prev['seconds']:.1f}x" if prev else "—"
+        print(f"{row['size']:8d} {row['bytes']:12,d} {gb:>7s} "
+              f"{row['seconds']:9.3f} {gt:>7s} "
+              f"{row['loads_per_render']:11.1f}")
+        prev = row
+
+    first, last = rows[0], rows[-1]
+    device_factor = last["size"] / first["size"]
+    byte_factor = last["bytes"] / first["bytes"]
+
+    # THE RATIO UNDERSTATES IT, and saying so matters more than the ratio.
+    # The page has a large fixed cost -- inline JavaScript and markup that is
+    # the same at nine devices and at nine hundred -- so a 100x inventory
+    # looks like a 4x page. The number that describes the behaviour is the
+    # MARGINAL cost per device, and that is flatly linear.
+    marginal = ((last["bytes"] - first["bytes"])
+                / (last["size"] - first["size"]))
+    fixed = first["bytes"] - marginal * first["size"]
+
+    print()
+    print(f"devices grew {device_factor:.0f}x; the page grew {byte_factor:.1f}x "
+          "— and that ratio understates it.")
+    print(f"  fixed page cost   {fixed:12,.0f} bytes  (the same at 9 as at 900)")
+    print(f"  per device        {marginal:12,.0f} bytes  — linear, no bound")
+    for projected in (5_000, 10_000):
+        total = fixed + marginal * projected
+        print(f"  projected at {projected:6,d}: {total / 1e6:6.1f} MB in one page")
+    print()
+    print(f"→ one render reads the whole inventory "
+          f"{last['loads_per_render']:.0f} time(s): "
+          f"{last['device_reads_per_render']:,.0f} device rows read to draw "
+          f"one page.")
+    print("→ the fixed cost is its own finding: every page load ships it.")
+    print("\nRecorded in docs/NSOT_STAGE7_GUI.md §0a. A number today is what "
+          "makes 'does not grow linearly' checkable later.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

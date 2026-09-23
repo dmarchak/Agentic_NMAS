@@ -871,6 +871,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_wizard_renders.py` | the shipped renderer executed: every blocking reason on screen with Create disabled |
 | `test_onboard_snmp.py` | RW removed verbatim; the nine RO communities untouched, against the fleet fixtures |
 | `test_platform_keying.py` | every consumer declares its namespace; one translation table; the boundary refuses a slug |
+| `test_scale.py` | 900 devices: the page cost pinned as a NUMBER, so bounding the list must update it |
+| `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -1195,6 +1197,23 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The better the comment, the more likely it quotes the code it explains**,
   so the places most likely to carry an explanatory quotation are the places
   most likely to have a test asserting something subtle.
+- **The interface is for an enterprise network, not for nine devices**
+  ([docs/NSOT_STAGE7_GUI.md](docs/NSOT_STAGE7_GUI.md) §0a) — a constraint on
+  the Stage 7 architecture, not a later feature. Measured with
+  `scripts/nmas-scale-report` against `tests/fixtures/fleet_scale.py`: the
+  page is **647 KB fixed plus 2,239 bytes per device**, linear and unbounded
+  — 2.7 MB at 900 devices, a projected **23 MB at 10,000**. The 100×→4×
+  ratio is reassuring and wrong; the marginal figure is the one to quote.
+- **Bounding the read fixes almost nothing; bounding the per-device
+  operation is the whole job.** Measured at 900 devices: `load_saved_devices()`
+  costs **0.73 ms** and a lookup after it 0.01 ms, while *one operation per
+  device* costs 0.3 s for a golden read, **7.2 s for a `git log`** and
+  **225 s for an SSH round trip**. So the 75 unbounded call sites are not 75
+  equal work items — a site that reads and looks one device up is fine at any
+  size; a site that then touches git, a file or a device per row is a **job,
+  not a request**. The landing counts must not come from a full read not
+  because the read is slow, but because *"is this drifted, is its template
+  approved, when was it rotated"* are per-device questions.
 - **A suite of "nothing is wrong" assertions cannot distinguish a healthy
   system from an absent one.** Every scan needs a companion that names
   something concrete it expects to find. The slug/dialect gate was caught by

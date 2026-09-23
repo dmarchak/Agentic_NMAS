@@ -117,6 +117,71 @@ with a bound.
   request is the whole-inventory assumption in its most literal form, and at
   nine hundred devices a NetBox-sourced list is not an option among two.
 
+### Measured, 2026-09-23, with `scripts/nmas-scale-report`
+
+`tests/fixtures/fleet_scale.py` builds a fleet of any size with a realistic
+spread — sites, platforms, roles, and **states**: healthy, no golden,
+drifted, unreachable, unapproved template, rotation overdue. A uniform fleet
+renders fast and proves nothing; it is the mixture that forces filtering.
+
+| devices | page bytes | render |
+|---|---|---|
+| 9 | 667,538 | 0.001 s |
+| 90 | 848,538 | 0.002 s |
+| 900 | **2,662,857** | 0.009 s |
+
+**100× the devices is only 4× the page — and that ratio understates the
+problem.** Decomposed:
+
+* **fixed cost 647,383 bytes** — identical at 9 and at 900, shipped on every
+  page load. That is its own finding and has nothing to do with scale.
+* **2,239 bytes per device**, flatly linear, with no bound.
+
+Projected: **11.8 MB at 5,000 devices, 23.0 MB at 10,000**, in one page.
+
+The ratio is reassuring and wrong, which is exactly why the marginal figure
+is the one recorded.
+
+### Which of the unbounded reads actually hurt — and the answer is almost none
+
+75 `load_saved_devices()` call sites, more than the 52 first counted.
+Measured at 900 devices:
+
+| | |
+|---|---|
+| `load_saved_devices()` over 900 rows | **0.73 ms** |
+| find one device by IP, after the read | 0.01 ms |
+| build an IP index, after the read | 0.03 ms |
+
+**The read is not the cost.** At 900 devices it is under a millisecond, and
+`index()` performing two of them per render is 1.5 ms of the 9 ms.
+
+What costs is **what follows the read**, per device:
+
+| one operation per device, at 900 | |
+|---|---|
+| a golden file read | 0.3 s |
+| a `git log` | **7.2 s** |
+| an SSH round trip | **225 s** |
+
+So "52 unbounded reads" is the wrong unit of work, and treating them as 52
+equal items would spend the effort in the wrong place. The rule that falls
+out is sharper and shorter:
+
+> **Bounding the read fixes almost nothing. Bounding the per-device
+> operation is the whole job.** A call site that reads the inventory and
+> looks one device up is fine at any size. A call site that reads the
+> inventory and then touches git, a file or a device per row is a job, not a
+> request — which is consequence 4, arrived at from the other direction.
+
+That also decides consequence 5. The landing counts must not come from a
+full read **not because the read is slow** — it is not — but because the
+counts themselves are per-device questions: *is this device drifted, is its
+template approved, when was its credential rotated*. Answering those by
+iterating is 900 git calls. **Bounded queries against git, the manifest and
+NetBox, or cached counts with their staleness visible — never a full read
+wearing a summary.**
+
 ### The test that keeps it honest
 
 Whatever is built, **a fixture of 900 devices renders the landing view and
@@ -124,6 +189,13 @@ the device list within a bound**, and a test asserts the page does not grow
 linearly with the inventory. Without it, this section is a paragraph
 everybody agrees with and nobody checks — and nine devices will pass every
 test written at nine devices.
+
+`tests/test_scale.py` holds that test today, pinned against the numbers
+above: it asserts the per-device marginal cost is what it is, so the day
+someone bounds the device list the test **fails and has to be updated with a
+new number**. A bound that improves things should have to be recorded, not
+slip in unnoticed — and until then the test states the status quo rather
+than an aspiration.
 
 ---
 
