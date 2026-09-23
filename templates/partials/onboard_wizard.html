@@ -135,7 +135,7 @@ function onboardReviewHtml(plan, bootstrapConfig) {
     ['Template', plan.template || '(none bound)'],
     ['Credential source', plan.cred_source || '(not resolved)'],
     ['NetBox objects', plan.netbox_objects],
-    ['Writes devices.csv', plan.writes_csv ? 'yes' : 'no — identity is read-only on a NetBox list'],
+    ['Adds to inventory', plan.inventory_note || 'after it answers'],
   ];
 
   return `

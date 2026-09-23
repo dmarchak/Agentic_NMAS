@@ -256,10 +256,19 @@ class TestItIsNeverADurableCredential:
 
         from modules.nsot import onboard
 
+        # `promote_device` is the ONE writer, named rather than allowed by
+        # the scan quietly finding nothing. It writes the row once the
+        # device has answered, with the credential phase 2 rotated to, and
+        # REFUSES a password equal to the staged bootstrap value — which is
+        # the property these two tests are really about.
         for name in dir(onboard):
             fn = getattr(onboard, name, None)
+            if name == "promote_device":
+                continue
             if callable(fn) and getattr(fn, "__module__", "") == onboard.__name__:
                 assert calls_in(fn, "write_devices_csv") == 0, name
+        assert calls_in(onboard.promote_device, "write_devices_csv") == 1, \
+            "the one writer stopped writing; the exemption now hides nothing"
 
     def test_the_credential_store_override_is_written_and_then_replaced(self):
         """Corrected in 4C.7, and the correction matters.
@@ -302,10 +311,19 @@ class TestItIsNeverADurableCredential:
 
         from modules.nsot import onboard
 
+        # `promote_device` is the ONE writer, named rather than allowed by
+        # the scan quietly finding nothing. It writes the row once the
+        # device has answered, with the credential phase 2 rotated to, and
+        # REFUSES a password equal to the staged bootstrap value — which is
+        # the property these two tests are really about.
         for name in dir(onboard):
             fn = getattr(onboard, name, None)
+            if name == "promote_device":
+                continue
             if callable(fn) and getattr(fn, "__module__", "") == onboard.__name__:
                 assert calls_in(fn, "write_devices_csv") == 0, name
+        assert calls_in(onboard.promote_device, "write_devices_csv") == 1, \
+            "the one writer stopped writing; the exemption now hides nothing"
 
 
 class TestTheOverrideIsWhereTheResolverLooks:

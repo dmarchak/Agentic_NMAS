@@ -7710,3 +7710,80 @@ check that could not run has not passed.
 
 Three defects from one audit, each found by the failure of the fix for the
 one before it.
+
+---
+
+## The defect class survived being the explicit target of the test
+
+The strongest instance of "the seam is above the defect" this project has
+produced, and it is recursive.
+
+`bind_credentials_step` passed the wrong arguments because a stub in
+`test_onboard_ordering.py` had been written from the same misreading. The
+lesson drawn was: **a stub's signature can drift from the function it stands
+in for.** A test was then written to catch exactly that, for `repo.git()`.
+
+Its stub was:
+
+```python
+if args and args[0] == "commit":
+```
+
+The call is `git(repo, "-c", …, "-c", …, "commit", "-m", …)`. The first
+argument is `-c`. The check never fired, and the test reported the
+production code as passing while the defect it was written for was live.
+
+**A stub assuming the shape of the call it stood in for, inside the test
+written to catch a stub assuming the shape of a call** -- with the lesson
+fresh, the author alert to it, and the defect named in the docstring above
+the stub.
+
+So this is not another anecdote. It says the class survives being the
+explicit target: knowing about it is not a defence, because the misreading
+happens in the same act as the guarding. What works is not vigilance but
+**asserting the property instead of the call** -- `"commit" in args` is
+still a shape assumption; what actually holds is that the step fails when
+the commit fails, which the test now asserts through the step's own result.
+
+## A wrong-and-looks-right state reached through the FAILURE path
+
+Most examples in this project are of a **success that was not one**: a
+`success: true` with no tool calls, "all 9 clean" over ten devices, a badge
+reading Active over 26 failures.
+
+This one is different and is worth keeping as its own example, because
+nothing on the happy path can reveal it.
+
+`abandon_onboarding` removes the intent file and then commits the removal:
+
+```python
+os.remove(path)
+git(repo, "add", "-A")
+git(repo, "commit", ...)      # fails
+```
+
+A failed commit leaves **no file on disk and the intent still at HEAD**.
+`references()` checked `os.path.exists` and found nothing, so `release()`
+concluded nothing named the device and handed the name back -- **a cleanup
+that half-ran and then reclaimed the name**, reporting a reference count of
+zero that was true of the working tree and false of the repository.
+
+Every test of the successful path passes against this. The state exists only
+after a failure, which is exactly when an operator is least able to check.
+
+`references()` now asks git as well as disk, and **an unreadable check
+counts as REFERENCED** -- the same rule as *inconclusive is not a refusal*
+and *a check that did not run has not passed*, applied to a filesystem.
+
+## Three API reads in one sitting, and they agree
+
+| API | read first? | outcome |
+|---|---|---|
+| `set_device_override` | **yes** | caught: wrong key, wrong arg types, `/onboard/create` dead at step 1 |
+| `remove_list_from_netbox` | **yes** | caught: would have deleted the sites, regions and VRFs r1-r5 depend on |
+| `adopt_identity` | **no** | shipped: identity minted into a local and discarded, no manifest entry |
+
+One minute each. A defect each time it was skipped, over three consecutive
+opportunities in a single session. Worth keeping as a set rather than three
+separate notes, because individually each reads as bad luck and together
+they read as a measurement.

@@ -273,13 +273,32 @@ class OnboardPlan:
 
     @property
     def writes_devices_csv(self) -> bool:
-        """Does this run add a row to ``devices.csv``?
+        """**False. Onboarding never writes the inventory row.**
 
-        Only for a local list. On a NetBox-sourced list identity is read-only
-        and the device arrives on the next refresh — and the wizard says so
-        rather than writing a row the refresh would then fight with.
+        It used to return ``source_kind == "local"`` and the review screen
+        showed *"Writes devices.csv: yes"* — while **no step wrote one**. A
+        successful run produced a device committed to git, created in
+        NetBox, and absent from every inventory.
+
+        The row is written by `promote_device()`, when the tool has reached
+        the device. That is not a smaller claim, it is the model: a device
+        in the inventory is one the program will poll, back up, drift-check
+        and offer in bulk ops, and one that has never answered would read as
+        unreachable in nine places and mean nothing in any of them.
+
+        Kept as a property rather than deleted because the review screen has
+        to say something here, and *"after it answers"* is the sentence that
+        is true.
         """
-        return self.source_kind == "local"
+        return False
+
+    @property
+    def inventory_note(self) -> str:
+        """What the review step says where the CSV claim used to be."""
+        if self.source_kind != "local":
+            return ("identity is read-only on a NetBox list — the device "
+                    "arrives on the next refresh")
+        return "after it answers — promotion adds the row, not onboarding"
 
     @property
     def summary(self) -> dict:
@@ -300,6 +319,7 @@ class OnboardPlan:
             "template":       self.template,
             "netbox_objects": len(self.netbox_plan),
             "writes_csv":     self.writes_devices_csv,
+            "inventory_note": self.inventory_note,
             "onboardable":    self.onboardable,
             "blocking_reasons": self.blocking_reasons,
             # Separate key, never merged into the list above: a renderer that
@@ -924,8 +944,18 @@ def commit_step(plan, *, actor: str) -> str:
     # minted into a local and discarded. Fourth docstring this stage to teach
     # something the code did not do.
     identity = adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))
+    # PENDING. The device is in the manifest, in NetBox and in git, and
+    # deliberately **not** in the inventory: a device in the inventory is one
+    # the tool will poll, back up, drift-check, pool a connection for and
+    # offer in bulk ops, and one that has never answered would read as
+    # unreachable in nine places and mean nothing in any of them. That is
+    # why stale devices were made inert rather than removed, and this is the
+    # same animal arriving from the other direction.
+    #
+    # `promote_device()` is the exit, and it existed before this flag did.
     manifest.upsert_device(repo, identity, plan.hostname,
-                           mgmt_ip=plan.mgmt_ip, platform=plan.platform)
+                           mgmt_ip=plan.mgmt_ip, platform=plan.platform,
+                           pending=True)
     hostvars.write_committed(repo, dict(plan.host_vars or {},
                                         hostname=plan.hostname))
     result = save_host_vars(plan.list_name, [plan.hostname], actor=actor,
@@ -1146,4 +1176,114 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     if not result["ok"]:
         result["error"] = ("abandon did not finish; %d step(s) remain"
                            % len(result["remaining"]))
+    return result
+
+
+def promote_device(repo: str, hostname: str, list_name: str, *,
+                   actor: str = "", device_type: str = "",
+                   username: str = "", password: str = "",
+                   secret: str = "") -> dict:
+    """Phase 2's last step: the device answered, so it joins the inventory.
+
+    **The exit from pending, and it was built with the flag rather than
+    after it.** A state an operator cannot clear is the trap that was just
+    removed from the identity map wearing a different name.
+
+    This is what makes *"adds to inventory: after it answers"* true of the
+    code and not only of the screen. `writes_devices_csv` was reported as
+    `yes` on the review step while **no step wrote a row**, so a successful
+    onboarding produced a device that was committed to git, created in
+    NetBox, and absent from every inventory — invisible to the connection
+    pool, backups, the terminal, bulk ops, drift and the AI tools, because
+    `load_saved_devices()` is the single dispatch point for all of them.
+
+    **It does not decide that the device answered.** The caller establishes
+    that by reaching it; this records the consequence. A function that both
+    tested reachability and promoted on its own finding would be its own
+    witness.
+
+    Identity is read-only on a NetBox-sourced list, so there the row is not
+    written and the device arrives on the next refresh — reported, not
+    silently skipped.
+    """
+    from modules.nsot import manifest as _m
+
+    result = {"ok": False, "device": hostname, "list": list_name,
+              "csv_row": False, "verified": False, "error": ""}
+
+    identity, entry = _m.find_by_name(repo, hostname)
+    if not identity:
+        result["error"] = (f"'{hostname}' has no identity in this list's "
+                           f"manifest — it was never onboarded")
+        return result
+    if not entry.get("onboarded_at"):
+        result["error"] = (f"'{hostname}' is not a pending device — nothing "
+                           f"to promote")
+        return result
+
+    # THE BOOTSTRAP CREDENTIAL MUST NOT BE THE ONE THAT LANDS HERE.
+    #
+    # It exists to reach the device once and is replaced by a device-
+    # generated secret before onboarding finishes; `mint_bootstrap_credential`
+    # states it is "never written to devices.csv or the credential store".
+    # Promotion is the first call that writes a durable row, so it is where
+    # that sentence stops being a convention. Refused rather than warned:
+    # a throwaway password stored as the device's durable credential is a
+    # wrong thing that would look exactly like a working one.
+    staged = staged_bootstrap_credential(repo, hostname)
+    if password and staged and password == staged:
+        result["error"] = (
+            "refusing to store the one-time bootstrap credential as this "
+            "device's durable password — rotate it first, then promote")
+        return result
+
+    try:
+        from modules.config import get_list_data_dir
+        from modules.device import (DEVICE_CSV_FIELDS, load_saved_devices,
+                                    write_devices_csv)
+        from modules.inventory.source_config import is_netbox_sourced
+
+        if is_netbox_sourced(list_name):
+            result["csv_row"] = False
+            result["note"] = ("identity is read-only on a NetBox-sourced "
+                              "list; the device arrives on the next refresh")
+        else:
+            import os
+
+            csv_path = os.path.join(get_list_data_dir(list_name), "devices.csv")
+            rows = load_saved_devices(csv_path) if os.path.exists(csv_path) else []
+            if any((r.get("hostname") or "").lower() == hostname.lower()
+                   for r in rows):
+                result["csv_row"] = False
+                result["note"] = "already in the inventory"
+            else:
+                from modules.device import fernet
+
+                row = {f: "" for f in DEVICE_CSV_FIELDS}
+                row.update({
+                    "hostname": hostname,
+                    "ip": entry.get("mgmt_ip", ""),
+                    "device_type": device_type or "cisco_xe",
+                    "username": username or "admin",
+                    "password": (fernet.encrypt(password.encode()).decode()
+                                 if password else ""),
+                    "secret": (fernet.encrypt(secret.encode()).decode()
+                               if secret else ""),
+                    "device_uid": identity,
+                    "platform": entry.get("platform", ""),
+                })
+                write_devices_csv(rows + [row], csv_path)
+                result["csv_row"] = True
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("promote: inventory write failed for %r", hostname)
+        result["error"] = f"could not add to the inventory: {exc}"
+        return result
+
+    marked = _m.mark_verified(repo, identity, actor=actor)
+    if not marked.get("ok"):
+        result["error"] = marked.get("error", "could not mark verified")
+        return result
+    result["verified"] = True
+    result["verified_at"] = marked.get("verified_at", "")
+    result["ok"] = True
     return result

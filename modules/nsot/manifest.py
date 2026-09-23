@@ -31,6 +31,7 @@ device names to repo". Reads resolve through the manifest while a rename is
 pending, so the golden config stays reachable under either name.
 """
 
+import calendar
 import json
 import logging
 import os
@@ -95,9 +96,40 @@ def save(repo: str, data: dict) -> None:
     os.replace(tmp, path)
 
 
+#: A device onboarded but not yet reached. Past this it is **flagged**, not
+#: merely listed.
+#:
+#: 24 hours, because the gap between phase 1 and phase 2 is one human action
+#: -- write the generated config into the topology and boot the node -- and a
+#: C8000v boots in about six and a half minutes. Within a session that is
+#: minutes; across a maintenance window, hours. **A device still pending
+#: after a working day means the plan changed or it was forgotten**, and
+#: neither is visible from a count. An hour is normal and must not draw
+#: attention, or the flag stops meaning anything.
+PENDING_OVERDUE_SECONDS = 24 * 3600
+
+#: Past this it is almost certainly abandoned, and the banner offers the
+#: abandon action inline rather than making the operator go and find it.
+PENDING_STALE_SECONDS = 7 * 24 * 3600
+
+
 def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
-                  netbox_id=None, platform: str = "", golden: str = "") -> dict:
-    """Record or update a device. Returns its manifest entry."""
+                  netbox_id=None, platform: str = "", golden: str = "",
+                  pending: bool = False) -> dict:
+    """Record or update a device. Returns its manifest entry.
+
+    *pending* marks a device **onboarded but never reached**: it stamps
+    ``onboarded_at`` once and sets ``verified_at`` to ``None``. See
+    :func:`mark_verified` for the exit, which is the only thing that makes
+    this a state rather than a trap.
+
+    **Both timestamps are written once and never touched again**, which is
+    what keeps the rule above them intact: there is deliberately no
+    ``last_seen`` here, because a timestamp touched on every call would
+    produce a one-line diff on every inventory refresh and make the
+    migration non-idempotent. These two are set by onboarding and by
+    promotion, each exactly once, and no refresh path writes either.
+    """
     if not identity:
         raise ValueError("a manifest entry needs a stable identity")
     with _lock_for(repo):
@@ -115,6 +147,10 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
         # every refresh and make the migration non-idempotent. Freshness is
         # runtime state and lives in the (gitignored) inventory cache.
         entry.setdefault("pending_rename", None)
+        if pending and not entry.get("onboarded_at"):
+            entry["onboarded_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                  time.gmtime())
+            entry.setdefault("verified_at", None)
         data["devices"][identity] = entry
         save(repo, data)
         return entry
@@ -426,3 +462,67 @@ def release(repo: str, identity: str, list_name: str = "",
              identity, removed.get("name", ""), actor or "unknown")
     return {"ok": True, "released": removed.get("name", ""),
             "identity": identity, "references": []}
+
+
+def mark_verified(repo: str, identity: str, actor: str = "") -> dict:
+    """The exit from pending: the tool has reached this device.
+
+    **A state with no exit is a name with no release.** Pending was added
+    only once this existed, because a flag an operator cannot clear is the
+    trap that was just removed from the identity map wearing a new name.
+
+    Written once. A device that has been reached stays reached; if it later
+    stops answering that is drift or an outage, which the drift checker and
+    the ping worker already report. Re-stamping it here would turn a
+    provenance record into a liveness one and put a diff in the manifest on
+    every poll.
+    """
+    with _lock_for(repo):
+        data = load(repo)
+        entry = data["devices"].get(identity)
+        if entry is None:
+            return {"ok": False, "error": f"no device with identity '{identity}'"}
+        if entry.get("verified_at"):
+            return {"ok": True, "already": True,
+                    "verified_at": entry["verified_at"]}
+        entry["verified_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save(repo, data)
+    log.info("manifest: %s verified by %s", identity, actor or "unknown")
+    return {"ok": True, "already": False, "verified_at": entry["verified_at"]}
+
+
+def _age_seconds(stamp: str) -> int:
+    if not stamp:
+        return 0
+    try:
+        parsed = time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, TypeError):
+        return 0
+    return max(0, int(time.time() - calendar.timegm(parsed)))
+
+
+def pending_devices(repo: str) -> list:
+    """Devices onboarded and never reached, **with their age and state**.
+
+    The wrong-and-looks-right state for a pending flag is *pending for ever
+    and nobody notices*, so a count is not enough and neither is a list: the
+    caller gets `age_seconds` and a `state` of ``in_flight`` /
+    ``overdue`` / ``stale``, and the banner is required to distinguish them.
+    A row that has sat for a week must not look like one added a minute ago.
+    """
+    out = []
+    for identity, entry in (load(repo)["devices"] or {}).items():
+        if not entry.get("onboarded_at") or entry.get("verified_at"):
+            continue
+        age = _age_seconds(entry["onboarded_at"])
+        if age >= PENDING_STALE_SECONDS:
+            state = "stale"
+        elif age >= PENDING_OVERDUE_SECONDS:
+            state = "overdue"
+        else:
+            state = "in_flight"
+        out.append({"identity": identity, "name": entry.get("name", ""),
+                    "mgmt_ip": entry.get("mgmt_ip", ""),
+                    "onboarded_at": entry["onboarded_at"],
+                    "age_seconds": age, "state": state})
+    return sorted(out, key=lambda r: -r["age_seconds"])

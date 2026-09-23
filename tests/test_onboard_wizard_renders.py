@@ -169,9 +169,19 @@ class TestTheReviewShowsWhatWillBeCreated:
     def test_the_csv_row_is_explained_on_a_netbox_list(self, js):
         """Two quite different flows, and the difference is visible rather
         than smoothed over."""
-        plan = dict(CLEAN, source_kind="netbox", writes_csv=False)
+        plan = dict(CLEAN, source_kind="netbox", writes_csv=False,
+                    inventory_note=("identity is read-only on a NetBox list "
+                                    "— the device arrives on the next refresh"))
         flat = re.sub(r"\s+", " ", _html(js, plan))
         assert "identity is read-only on a NetBox list" in flat
+
+    def test_a_local_list_says_the_row_comes_after_it_answers(self, js):
+        """The row this screen used to promise outright."""
+        plan = dict(CLEAN, inventory_note="after it answers — promotion "
+                                          "adds the row, not onboarding")
+        flat = re.sub(r"\s+", " ", _html(js, plan))
+        assert "after it answers" in flat
+        assert "Adds to inventory" in flat
 
     def test_the_credential_source_is_shown(self, js):
         """`_cred_source` exists so the origin is visible."""

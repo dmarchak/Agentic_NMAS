@@ -288,13 +288,29 @@ class TestTheSourceKindIsCarried:
     """Two quite different flows, and the difference is visible to the
     operator rather than smoothed over."""
 
-    def test_a_local_list_writes_the_csv(self, lab):
-        assert _plan().writes_devices_csv is True
+    def test_onboarding_writes_no_csv_row_on_either_kind(self, lab):
+        """This asserted `True` for a local list while **no step wrote a
+        row**. The property it named was never true; what made it look true
+        was that nothing checked the other end.
 
-    def test_a_netbox_list_does_not(self, lab):
+        The row is written by `promote_device()`, when the device has
+        answered. A device in the inventory is one the tool will poll, back
+        up, drift-check and offer in bulk ops, and one that has never
+        answered reads as unreachable in nine places and means nothing in
+        any of them.
+        """
+        assert _plan().writes_devices_csv is False
+        assert _plan(source_kind="netbox").writes_devices_csv is False
+
+    def test_the_review_says_when_the_row_appears(self, lab):
+        """Not nothing, and not "no" — the sentence that is true."""
+        assert "after it answers" in _plan().inventory_note
+
+    def test_a_netbox_list_says_why_it_differs(self, lab):
         """Identity there is read-only; the device arrives on the next
         refresh, and the wizard must not pretend it wrote a row."""
-        assert _plan(source_kind="netbox").writes_devices_csv is False
+        note = _plan(source_kind="netbox").inventory_note
+        assert "read-only" in note and "refresh" in note
 
 
 class TestThePlanCarriesNoSecret:
