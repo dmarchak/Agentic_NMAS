@@ -6891,3 +6891,104 @@ more likely it quotes the code it explains** — and a good comment is
 precisely what a careful author writes next to a subtle decision. So the
 places most likely to carry an explanatory quotation are the places most
 likely to have a test asserting something subtle.
+
+---
+
+## A positive assertion found what every negative-space test missed
+
+The slug/dialect gate — `/onboard/platforms` reporting every platform
+unblocked, including the one stage D blocks — was caught by a test asserting
+**"the blocked platform IS LISTED"**, written for an entirely unrelated
+reason: an absent option teaches the operator the tool does not support their
+device, which is a different and wrong lesson.
+
+Everything written to catch the *problem* passed:
+
+* `test_a_vios_target_is_refused` (4C.1) — passed, because it calls
+  `build_plan` with the dialect directly. The unit was right.
+* the blueprint reachability check — passed.
+* the removed-definition check — passed.
+* every "no offenders" scan in the suite — passed.
+
+**A gate that silently opens produces no offenders.** That is the whole
+problem with it: there is nothing to find. A dict lookup that misses returns
+the default, the default was "allowed", and the absence of a refusal looks
+exactly like the absence of a reason to refuse.
+
+The test that caught it was the only one asserting a **specific, expected,
+positive fact**: *there should be at least one blocked platform in this list,
+and it should carry a reason.* An empty list would have satisfied every
+negative-space assertion in the file and failed that one immediately.
+
+### The same family as the set-difference rule
+
+Both are instances of one thing:
+
+> **A suite of "nothing is wrong" assertions cannot distinguish a healthy
+> system from an absent one. It needs at least one assertion about something
+> concrete it expects to be true.**
+
+`assert not (A - B)` passes when `A` is empty. `assert not offenders` passes
+when the scan found nothing *and* when the scan could not run. `assert no
+platform is wrongly unblocked` passes when there are no platforms.
+
+The floor-on-inputs rule is the mechanical form of it — check `A` is
+non-empty first. The broader form is the design instruction: **every scan
+needs a companion that names something it expects to find.** In this codebase
+that has become a pattern with a name, `_the_scan_finds_something`, in
+`test_blueprint_reachability.py`, `test_disabled_is_a_state.py`,
+`test_netbox_census.py` and now `test_platform_keying.py` — but those are
+floors on the scan, not assertions about a specific expected fact, and this
+case needed the stronger form.
+
+It is also an argument for writing tests that assert what the feature *is
+for*, not only what must not happen. The one that caught this was about the
+operator's experience — "a blocked platform must still appear, so they learn
+it is blocked rather than unsupported" — and it happened to be the only thing
+in the suite that required a blocked platform to exist at all.
+
+---
+
+## Why there is no PlatformRef
+
+`ListRef` (Stage 1.7) exists because a device list's **name** and its **slug**
+are both stored, both compared, and either can arrive from a caller — so the
+pair became a type with `matches()`, and the comparison stopped being a
+convention.
+
+A platform looks like the same shape and is not. There are three namespaces:
+
+| namespace | example | where it lives |
+|---|---|---|
+| **dialect** | `cisco_iosxe` | **stored** — the manifest, the parsers, template dirs, `bootstrap_config` |
+| NetBox slug | `cisco-ios-xe` | an **input** — `platform_map` keys, NetBox |
+| Netmiko driver | `cisco_xe` | an **input** — `device_type`, and it overlaps the dialect on `cisco_ios` |
+
+**Only one form is ever stored or compared.** `inventory_index()` calls
+`platform_for_device()` and the manifest records the dialect; nothing compares
+a slug against a dialect, because nothing keeps a slug. That is a
+*translation* problem, not an identity one, and a `PlatformRef` would be
+carrying a second value that has no consumer.
+
+So the intervention matches the failure instead. The failure was **an input
+format reaching a table keyed on the canonical one, where the miss returned a
+permissive default** — answered by `platform.assert_dialect()`, which refuses
+at the boundary and names `platform_for_device()` in the message.
+
+Two supporting findings while measuring this:
+
+* **`manifest.py`'s docstring example showed `"platform": "cisco-ios-xe"`** —
+  a slug, where the code stores a dialect. The example taught the wrong
+  namespace to anyone who read it, which is one way a new caller acquires the
+  belief that led here. Corrected.
+* **`build_plan()` resolved the repo path before validating its inputs**, and
+  `get_list_data_dir()` calls `os.makedirs()` — so a refused plan created a
+  list directory for a device that was never onboarded. Caught by the
+  `conftest` data-directory guard the moment the refusal test ran, which is
+  the guard finding a real ordering defect rather than test residue.
+
+`test_platform_keying.py` records which keying each of the eighteen files
+carrying a platform literal means, because three namespaces that overlap on
+`cisco_ios` cannot be told apart from the value. A file that grows a literal
+and is not declared fails; a declaration for a file that no longer has one
+fails too.

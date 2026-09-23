@@ -17,7 +17,7 @@ across renames.
   "devices": {
     "nb:42": {
       "name": "R1", "mgmt_ip": "…", "netbox_id": 42,
-      "platform": "cisco-ios-xe", "golden": "golden/R1.cfg",
+      "platform": "cisco_iosxe", "golden": "golden/R1.cfg",
       "pending_rename": null
     }
   }

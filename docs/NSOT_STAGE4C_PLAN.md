@@ -398,5 +398,5 @@ with the census condition.
 | **4C.2** bootstrap credential | **done** — `tests/test_onboard_bootstrap_credential.py`, 23 tests, three negative controls each shown failing |
 | **4C.3** ordering | **done** — `tests/test_onboard_ordering.py`, 23 tests, three negative controls plus a positive control on the signals themselves |
 | **4C.4** routes + UI | **done** — `routes/onboard.py`, `templates/partials/onboard_wizard.html`, `tests/test_onboard_wizard_renders.py`, 26 tests, four negative controls each shown failing |
-| 4C.5 RW community | not started |
+| **4C.5** RW community | **done** — `tests/test_onboard_snmp.py` + `tests/test_platform_keying.py`, 44 tests, three negative controls each shown failing |
 | 4C.6 drift enrolment | not started |

@@ -49,6 +49,51 @@ _FROM_NETBOX_SLUG = {
 }
 
 
+#: The config dialects this program speaks. **The canonical namespace.**
+#:
+#: Only this form is ever stored or compared: the manifest records it, the
+#: parsers key on it, and so do the template directories and
+#: `bootstrap_config`. A NetBox platform **slug** (`cisco-ios-xe`) and a
+#: Netmiko **driver** (`cisco_xe`) are inputs, translated here and never
+#: stored.
+#:
+#: That is why there is no `PlatformRef`. `ListRef` exists because a list's
+#: name and its slug are BOTH stored and compared to each other; a platform
+#: has one stored form and two input formats, which is a translation problem
+#: rather than an identity one.
+DIALECTS = frozenset({"cisco_ios", "cisco_iosxe"})
+
+
+def is_dialect(value: str) -> bool:
+    """Is *value* a config dialect, as opposed to a slug or a driver?"""
+    return (value or "").strip() in DIALECTS
+
+
+def assert_dialect(value: str, where: str = "") -> str:
+    """Return *value*, or raise if it is not a dialect.
+
+    **A dictionary lookup that misses returns the default**, and in a gate
+    the default is "allowed". Measured: `/onboard/platforms` looked NetBox
+    slugs up in a dialect-keyed table, found nothing, and reported every
+    platform unblocked — including the one stage D blocks. No error, no log
+    line, a refusal that had been written, tested and documented quietly not
+    applying.
+
+    So a boundary that requires a dialect says so, and says what to call
+    instead. Cheaper than a `PlatformRef` and it addresses the actual failure:
+    not two identities being confused, but an input format reaching a table
+    keyed on the canonical one.
+    """
+    value = (value or "").strip()
+    if not is_dialect(value):
+        raise ValueError(
+            f"{where or 'this'} expects a config dialect "
+            f"({', '.join(sorted(DIALECTS))}), got {value!r}. A NetBox "
+            "platform slug or a Netmiko driver must go through "
+            "platform_for_device() first.")
+    return value
+
+
 def platform_for_device(device: dict) -> str:
     """Config dialect for *device*, in order of decreasing authority.
 

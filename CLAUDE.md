@@ -869,6 +869,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_bootstrap_credential.py` | the crash window survives; one staging mechanism; a failed rotation does not report success |
 | `test_onboard_ordering.py` | no commit CREATED on failure — count, sha, reflog, orphan, hook; the commit last among the fallible |
 | `test_onboard_wizard_renders.py` | the shipped renderer executed: every blocking reason on screen with Create disabled |
+| `test_onboard_snmp.py` | RW removed verbatim; the nine RO communities untouched, against the fleet fixtures |
+| `test_platform_keying.py` | every consumer declares its namespace; one translation table; the boundary refuses a slug |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -1193,7 +1195,17 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The better the comment, the more likely it quotes the code it explains**,
   so the places most likely to carry an explanatory quotation are the places
   most likely to have a test asserting something subtle.
-- **Two platform namespaces, and only `platform.py` translates between
+- **A suite of "nothing is wrong" assertions cannot distinguish a healthy
+  system from an absent one.** Every scan needs a companion that names
+  something concrete it expects to find. The slug/dialect gate was caught by
+  a test asserting *"the blocked platform IS LISTED"*, written for an
+  unrelated reason — while the refusal's own test, the reachability check,
+  the removed-definition check and every "no offenders" scan all passed. **A
+  gate that silently opens produces no offenders**, which is exactly what
+  makes it invisible to negative-space testing. The set-difference floor is
+  the mechanical form of this rule; `_the_scan_finds_something` is the
+  pattern's name in this suite.
+- **Three platform namespaces, and only `platform.py` translates between
   them.** `platform_map` and NetBox are keyed on **slugs** (`cisco-ios-xe`);
   `bootstrap_config`, the parsers and the template directories are keyed on
   the **config dialect** (`cisco_iosxe`). A dictionary lookup that misses
@@ -1201,7 +1213,22 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   that silently opens** — measured: `/onboard/platforms` reported every
   platform unblocked, including the one stage D blocks. Call
   `platform_for_device()`; a second copy of the mapping is how the two come
-  to disagree.
+  to disagree, and a test asserts there is exactly one. `assert_dialect()`
+  refuses a slug or a driver at a boundary that needs the canonical form.
+  **There is no `PlatformRef`**: `ListRef` exists because a list's name and
+  slug are *both stored and compared*, whereas a platform has one stored form
+  (the dialect) and two input formats — a translation problem, not an
+  identity one. `test_platform_keying.py` records which keying each of the
+  eighteen files carrying a platform literal means, because three namespaces
+  overlapping on `cisco_ios` cannot be told apart from the value.
+- **The RW community a vrnetlab node arrives with is removed during
+  onboarding**, and the pattern **requires the access mode**: over-broadening
+  would propose removing the fleet's nine `public RO` communities and take
+  Prometheus, the SNMP collector and the trap receiver with them. The removal
+  is the device's own line **verbatim** — a rebuilt line drops the ACL, and
+  `no snmp-server community public RW` against a device whose line reads
+  `… RW 99` is a command that does not match. The plan reports what is
+  **kept** as well as what is removed.
 - **An assertion over a set difference passes vacuously when either set is
   empty — it needs a floor on its inputs.** `assert not (A - B)` proves
   nothing until `A` is known non-empty, and a scan that found no offenders is

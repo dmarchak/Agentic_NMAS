@@ -119,6 +119,10 @@ class OnboardPlan:
                 "start with a letter and contain only letters, digits, dot, "
                 "dash or underscore")
 
+        # The lookup is on a DIALECT. A slug reaching here would miss and
+        # return None, which in a gate reads as "allowed" -- measured once,
+        # in `/onboard/platforms`. `build_plan` asserts the namespace at the
+        # boundary so it cannot happen silently again.
         blocked = BLOCKED_PENDING_MEASUREMENT.get(self.platform)
         if blocked:
             reasons.append(f"platform '{self.platform}' cannot be onboarded: "
@@ -256,8 +260,22 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     and `OnboardPlan` does not carry it, so a plan can be logged or returned
     over HTTP without a redaction step having to remember.
     """
-    from modules.config import get_list_data_dir
     import os
+
+    from modules.config import get_list_data_dir
+
+    # VALIDATE BEFORE TOUCHING THE FILESYSTEM. A dialect, not a slug and not
+    # a Netmiko driver -- refused loudly rather than missing a table lookup
+    # and defaulting to "allowed".
+    #
+    # First, and deliberately: `get_list_data_dir()` calls `os.makedirs()`,
+    # so merely resolving the repo path creates a list directory. A refused
+    # plan that had already created one would leave a directory for a device
+    # that was never onboarded, named after a list that may not exist.
+    if platform:
+        from modules.nsot.platform import assert_dialect
+
+        assert_dialect(platform, where="build_plan(platform=…)")
 
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
 
@@ -573,3 +591,59 @@ def run_onboarding(plan, *, bind_credentials, create_netbox, commit, render,
 
     result["ok"] = True
     return result
+
+
+# ---------------------------------------------------------------------------
+# 4C.5 — the read-write community a vrnetlab node arrives with
+# ---------------------------------------------------------------------------
+
+#: `snmp-server community <name> RW [<acl>]`, and nothing else.
+#:
+#: **Deliberately narrow.** The nine reference devices each carry
+#: `snmp-server community public RO`, acknowledged and kept, and the history
+#: scan treated them as read-only communities that are part of the network.
+#: Anything **RW** arriving with a new node is a different matter and is
+#: removed as part of onboarding.
+#:
+#: Over-broadening this is the version that costs monitoring: a pattern
+#: matching any `snmp-server community` would propose removing all nine and
+#: take Prometheus, the SNMP collector and the trap receiver with them. The
+#: access mode is what distinguishes them, so the access mode is what the
+#: pattern requires — **`RW` is mandatory in the match, not optional**.
+_RW_COMMUNITY = re.compile(
+    r"^\s*snmp-server\s+community\s+(?P<name>\S+)\s+RW\b", re.IGNORECASE)
+
+
+def rw_communities(config_text: str) -> list:
+    """Every read-write community line in *config_text*, verbatim.
+
+    Verbatim, because the removal is `no <the line exactly as it appears>`.
+    A reconstructed line can differ from the device's own in the ACL, the
+    view or the spacing, and `no snmp-server community public RW` against a
+    device whose line reads `… RW 99` is a command that does not match.
+    """
+    return [line.rstrip() for line in (config_text or "").splitlines()
+            if _RW_COMMUNITY.match(line)]
+
+
+def ro_communities(config_text: str) -> list:
+    """Read-only communities — reported so the confirm can say what is KEPT.
+
+    Shown next to what is removed, because an operator reading "1 community
+    removed" on a device with two of them needs to know which."""
+    return [line.rstrip() for line in (config_text or "").splitlines()
+            if re.match(r"^\s*snmp-server\s+community\s+\S+\s+RO\b",
+                        line, re.IGNORECASE)]
+
+
+def rw_removal_plan(config_text: str) -> dict:
+    """``{"remove": [...], "keep": [...]}`` for the confirm dialog.
+
+    Both halves, always. "What will be removed" without "what will be kept"
+    is the half that makes an operator hesitate over a correct change, and
+    the half that would have hidden an over-broad match.
+    """
+    remove = rw_communities(config_text)
+    return {"remove": [f"no {line.strip()}" for line in remove],
+            "removing": remove,
+            "keep": ro_communities(config_text)}
