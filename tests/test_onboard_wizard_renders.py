@@ -277,3 +277,105 @@ class TestTheRoutes:
 
         assert calls_in(onboard.create, "run_onboarding") == 1
         assert calls_in(onboard.create, "real_steps") == 1
+
+
+# ---------------------------------------------------------------------------
+# Every field the payload sends must also trigger a re-validation
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def form_js(page):
+    """`ONBOARD_FIELDS` and `onboardFormPayload`, lifted from the page."""
+    start = page.index("const ONBOARD_FIELDS = {")
+    end = page.index("}", page.index("mgmt_interface:", start)) + 2
+    fields = page[start:end]
+
+    fstart = page.index("function onboardFormPayload(")
+    depth, i, seen = 0, page.index("{", fstart), False
+    while i < len(page):
+        if page[i] == "{":
+            depth += 1
+            seen = True
+        elif page[i] == "}":
+            depth -= 1
+            if seen and depth == 0:
+                break
+        i += 1
+    return fields + "\n" + page[fstart:i + 1]
+
+
+class TestTheFormIsReadAndWatchedFromOneList:
+    """4C.8 added three fields to the form and to the payload, and left the
+    listener array as the original four ids.
+
+    The values were **sent** correctly, so nothing about the payload was
+    wrong — but nothing asked for them to be re-sent. An operator filling in
+    the netmask watched *"no network mask"* sit there unchanged and would
+    reasonably conclude the wizard was broken. Measured on the live page,
+    mid-probe, by the operator.
+
+    Asserted here by executing the shipped source, because a defect in which
+    two lists disagree cannot be seen by reading either one.
+    """
+
+    ALL_IDS = ("obHostname", "obPlatform", "obMgmtIp", "obMgmtMask",
+               "obMgrIntf", "obMgrGw", "obMgmtIntf")
+
+    def _stub_dom(self, values):
+        return ("var __bound = [];\n"
+                "var __els = %s;\n"
+                "var document = { getElementById: function (id) {\n"
+                "  if (!(id in __els)) { return null; }\n"
+                "  return { value: __els[id],\n"
+                "           addEventListener: function (ev, fn) {\n"
+                "             __bound.push(id + ':' + ev); } };\n"
+                "} };\n" % json.dumps(values))
+
+    def test_the_payload_reads_every_field_on_the_form(self, form_js):
+        values = {i: "v-" + i for i in self.ALL_IDS}
+        out = dukpy.evaljs(self._stub_dom(values) + form_js
+                           + "\nJSON.stringify(onboardFormPayload());")
+        payload = json.loads(out)
+        assert set(payload) == {"hostname", "platform", "mgmt_ip", "mgmt_mask",
+                                "manager_interface", "manager_gateway",
+                                "mgmt_interface"}
+        # Every value arrives, not just every key. A builder reading the
+        # wrong id would return the right shape full of empty strings.
+        assert "" not in payload.values(), payload
+
+    def test_every_field_the_payload_reads_is_also_bound(self, form_js):
+        """**The defect, as an assertion.**
+
+        The binding loop and the payload builder now walk the same object, so
+        this is true by construction — which is the point. It is asserted
+        anyway because "by construction" was also true of `_plan_args()` and
+        `onboardFormPayload()`, and the third list still drifted.
+        """
+        values = {i: "x" for i in self.ALL_IDS}
+        binder = ("Object.keys(ONBOARD_FIELDS).forEach(function (key) {\n"
+                  "  var el = document.getElementById(ONBOARD_FIELDS[key]);\n"
+                  "  if (el) { el.addEventListener('input', function () {});\n"
+                  "            el.addEventListener('change', function () {}); }\n"
+                  "});\n")
+        out = dukpy.evaljs(self._stub_dom(values) + form_js + "\n" + binder
+                           + "JSON.stringify([__bound, "
+                             "Object.keys(ONBOARD_FIELDS).length]);")
+        bound, count = json.loads(out)
+        bound_ids = {b.split(":")[0] for b in bound}
+
+        assert count == len(self.ALL_IDS), (
+            f"ONBOARD_FIELDS has {count} entries and the form has "
+            f"{len(self.ALL_IDS)} — a field was added to one and not the other")
+        assert bound_ids == set(self.ALL_IDS), (
+            "fields read but never watched: "
+            f"{sorted(set(self.ALL_IDS) - bound_ids)}. Filling one of these "
+            "in would not clear its blocking reason.")
+
+    def test_a_field_missing_from_the_dom_is_survived(self, form_js):
+        """The wizard must not throw when a field is absent — the review
+        would then render nothing at all, which is worse than a stale
+        reason."""
+        values = {i: "x" for i in self.ALL_IDS if i != "obMgrGw"}
+        out = dukpy.evaljs(self._stub_dom(values) + form_js
+                           + "\nJSON.stringify(onboardFormPayload());")
+        assert json.loads(out)["manager_gateway"] == ""

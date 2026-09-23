@@ -150,17 +150,34 @@ function onboardCanCreate(plan) {
 //
 // Mirrors `_plan_args()` on the server, for the reason that one exists:
 // two readers of one form are two forms.
+/* ONE list of fields. It is read by the payload builder AND by the loop that
+   binds re-validation listeners, because keeping those two in step by hand
+   failed immediately: 4C.8 added mask, management interface and gateway to
+   the form and to the payload, and left the listener array as the original
+   four ids. The fields were SENT correctly and nothing asked for them to be
+   re-sent, so an operator filling in a mask watched the "no network mask"
+   reason sit there unchanged -- a wizard that looks broken while working.
+
+   Third instance of one shape in this feature: _plan_args() on the server,
+   onboardFormPayload() here, and this binding list. The first two were
+   merged and the third was left, which is what made it the one that broke. */
+const ONBOARD_FIELDS = {
+  hostname:          'obHostname',
+  platform:          'obPlatform',
+  mgmt_ip:           'obMgmtIp',
+  mgmt_mask:         'obMgmtMask',
+  manager_interface: 'obMgrIntf',
+  manager_gateway:   'obMgrGw',
+  mgmt_interface:    'obMgmtIntf',
+};
+
 function onboardFormPayload() {
-  const v = (id) => (document.getElementById(id) || {}).value || '';
-  return {
-    hostname:          v('obHostname'),
-    platform:          v('obPlatform'),
-    mgmt_ip:           v('obMgmtIp'),
-    mgmt_mask:         v('obMgmtMask'),
-    manager_interface: v('obMgrIntf'),
-    manager_gateway:   v('obMgrGw'),
-    mgmt_interface:    v('obMgmtIntf'),
-  };
+  const out = {};
+  Object.keys(ONBOARD_FIELDS).forEach(function (key) {
+    const el = document.getElementById(ONBOARD_FIELDS[key]);
+    out[key] = (el && el.value) || '';
+  });
+  return out;
 }
 
 async function onboardRefresh() {
@@ -212,8 +229,9 @@ async function openOnboardWizard() {
       ).join('');
     } catch (_) { /* the plan call will report it */ }
   }
-  ['obHostname', 'obPlatform', 'obMgmtIp', 'obMgmtIntf'].forEach(id => {
-    const el = document.getElementById(id);
+  /* Every field the payload reads, so fixing a reason clears it. */
+  Object.keys(ONBOARD_FIELDS).forEach(function (key) {
+    const el = document.getElementById(ONBOARD_FIELDS[key]);
     if (el && !el._obBound) { el._obBound = true; el.addEventListener('input', onboardRefresh);
                               el.addEventListener('change', onboardRefresh); }
   });
