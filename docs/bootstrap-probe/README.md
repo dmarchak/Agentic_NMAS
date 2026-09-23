@@ -778,7 +778,16 @@ launch script changes — which is the only time the answer can move.
 
 ## Stage D — does key generation survive a console replay?
 
-**Not yet run.** This is the last Stage 4 prerequisite.
+**Not yet run. It does NOT block r6.**
+
+Measured 2026-09-23: r6 is a **C8000v**, and `cisco_iosxe` is in neither
+`GENERATES_SSH_KEY` nor `CONSOLE_REPLAYED` — its bootstrap config contains
+**no `crypto key generate rsa` line at all**. Stage D measures an
+intersection r6 is not in, so it is structurally inapplicable rather than
+merely unlikely to matter.
+
+It **is** required before any **vIOS** is onboarded, which is the platform
+the four switches run. Run it when convenient; run it before that.
 
 ### The unmeasured intersection
 

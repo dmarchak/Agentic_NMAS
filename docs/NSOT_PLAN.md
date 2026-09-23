@@ -1505,8 +1505,51 @@ Additional item: **remove vrnetlab's RW public community.** The history scan
 acknowledged nine read-only communities; anything RW arriving with a new node
 is a different matter and is removed as part of onboarding, not after.
 
-**The user decides r6's topology first.** The wizard is proven against the
-throwaway probe before it touches rcn-lab1, and r6 is added last.
+**r6's topology — DECIDED 2026-09-23. Management-only first; the eBGP branch
+site is a separate, later change.**
+
+Stage 4 is therefore three steps, in order:
+
+1. **The wizard, proven on a throwaway probe node.**
+2. **r6 onboarded management-only** — no data link, so **no existing node is
+   touched**.
+3. **The branch site (eBGP to r5) as its own change**, afterwards.
+
+Two reasons, and the second is the stronger one.
+
+**The cost.** r5 has no free interface: Gi1 management, Gi2 eBGP to r3, Gi3
+eBGP to r4, Gi4 the simulated-Internet host. Every router in the lab is at
+four data interfaces. So peering r6 with r5 needs a fifth NIC on r5, which
+means a topology edit and an **r5 redeploy** — and r5 is the eBGP hub for
+both r3 and r4, so their peerings drop during the window. Bundling that with
+the wizard's first real run makes a bad outcome ambiguous exactly when it
+needs to be clear: the wizard or the topology change, and no way to tell
+while two routers' BGP is down.
+
+**The demonstration is better split.** Adding the branch site afterwards
+exercises **edit committed intent → plan → deploy on the first device whose
+intent was AUTHORED rather than extracted from an existing configuration.**
+Every other device's `host_vars` was back-filled from a capture; r6's would
+be written by a person for a device that has never had that configuration.
+That is a new property of the system, and it is worth demonstrating on its
+own rather than folded into onboarding.
+
+**Stage D is not a prerequisite for r6.** Measured: r6 is a C8000v, and
+`cisco_iosxe` is in neither `GENERATES_SSH_KEY` nor `CONSOLE_REPLAYED`, so
+its bootstrap config contains **no `crypto key generate rsa` line at all**.
+Stage D measures an intersection r6 is not in. It is still required **before
+any vIOS is onboarded** — the switches are the platform it applies to — and
+is run when convenient rather than as a blocker.
+
+**Open before r6, and not to be settled by omission:** the C8000v bootstrap
+emits `transport input all` on its vty lines, which includes **telnet**. That
+faithfully reproduces r1-r3, and the standing rule is that a new default
+reproduces what predates it — so it is deliberate as written. But a bootstrap
+config is a device's *first* configuration rather than a reproduction of an
+old one, and the vIOS branch already emits the tighter `transport input ssh`
+(tighter than s1-s4's own `transport input telnet ssh`). The asymmetry is
+real, undocumented in the code, and should be a decision before r6 boots with
+it rather than a discovery afterwards.
 
 *Acceptance:* the wizard onboards a probe node end to end — NetBox objects,
 identity minted once, startup config generated and ASCII-guarded, bootstrap
