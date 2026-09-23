@@ -470,3 +470,106 @@ def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
 
     clear_bootstrap_credential(repo, hostname)
     return {"rotated": True, "state": state, "reason": "", "recoverable": False}
+
+
+# ---------------------------------------------------------------------------
+# Running it: the order, and what a failure at each step leaves behind
+# ---------------------------------------------------------------------------
+
+#: The order, and why it is this one. Chosen by **what is recoverable**, per
+#: `docs/NSOT_PHASE4_ONBOARDING.md` §3, with one clarification 4C.3 adds:
+#:
+#: **The commit is genuinely last among the things that can fail.** Anything
+#: fallible after it is a partial state the repository already records, and a
+#: repository is not a place where partial states can be quietly tidied: a
+#: commit followed by a reset leaves a clean tree, an object still present in
+#: `.git`, a reflog entry, and — if the post-commit hook fired in between —
+#: a commit on a remote, where nothing local can retract it.
+#:
+#: That conflicts with §4's step order, which renders *after* committing so
+#: nothing downloadable was built from unrecorded intent. Both hold, because
+#: there are two renders: `build_plan()` validates the render **before**
+#: anything is created, and the downloadable artefact is produced **after**
+#: the commit, from committed intent. A render that cannot succeed therefore
+#: blocks at the plan, not halfway through a run.
+STEPS = ("credentials", "netbox", "commit", "render")
+
+
+def run_onboarding(plan, *, bind_credentials, create_netbox, commit, render,
+                   repo: str = "") -> dict:
+    """Execute an onboarding run. Every step is injected, and that is the point.
+
+    The order is :data:`STEPS`, and each callable is passed in rather than
+    reached for, so the ordering and the failure behaviour can be tested
+    without NetBox, git or a device. A test that has to mock a module's
+    internals to check an ordering ends up asserting the mocks.
+
+    Returns ``{"ok", "completed", "failed_at", "reason", "netbox_created",
+    "commit", "cleanup_offered"}``.
+
+    **Nothing is retried and nothing is rolled back.** A failure stops the run
+    and reports what exists, because the stores are not atomic with each other
+    and pretending otherwise is how a half-created device becomes invisible.
+    What the run *does* offer is the existing provenance-based Remove when
+    NetBox objects were created and the run then failed — rather than leaving
+    the operator to find it.
+    """
+    result = {"ok": False, "completed": [], "failed_at": "", "reason": "",
+              "netbox_created": [], "commit": "", "cleanup_offered": False}
+
+    if not plan.onboardable:
+        result["failed_at"] = "plan"
+        result["reason"] = "; ".join(plan.blocking_reasons)
+        return result
+
+    def _fail(step, exc):
+        result["failed_at"] = step
+        result["reason"] = str(exc)
+        # Only NetBox leaves something behind that this run can clean up.
+        # Credentials are local and reversible; the commit has not happened.
+        result["cleanup_offered"] = bool(result["netbox_created"])
+        log.error("onboard: run failed at %s for %s: %s",
+                  step, plan.hostname, exc)
+        return result
+
+    try:
+        bind_credentials(plan)
+    except Exception as exc:                   # noqa: BLE001
+        return _fail("credentials", exc)
+    result["completed"].append("credentials")
+
+    try:
+        created = create_netbox(plan) or []
+        result["netbox_created"] = list(created)
+    except Exception as exc:                   # noqa: BLE001
+        return _fail("netbox", exc)
+    result["completed"].append("netbox")
+
+    # ── the commit, last among the fallible ─────────────────────────────────
+    # One call, one commit: identity, host_vars and the site's group_vars
+    # together. A failure here has created no commit at all — not a commit
+    # that was later undone.
+    try:
+        sha = commit(plan)
+    except Exception as exc:                   # noqa: BLE001
+        return _fail("commit", exc)
+    result["commit"] = sha or ""
+    result["completed"].append("commit")
+
+    # Pure computation over what is now committed. It cannot fail in a way
+    # that leaves a partial state, because the state is already recorded --
+    # and `build_plan()` has already proved the render succeeds.
+    try:
+        render(plan)
+    except Exception as exc:                   # noqa: BLE001
+        # Reported, not hidden: the device IS onboarded and the artefact is
+        # not available. Two facts, and the operator needs both.
+        result["ok"] = True
+        result["failed_at"] = "render"
+        result["reason"] = (f"the device is onboarded and committed; the "
+                            f"downloadable config could not be rendered: {exc}")
+        return result
+    result["completed"].append("render")
+
+    result["ok"] = True
+    return result

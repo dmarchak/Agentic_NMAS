@@ -106,13 +106,44 @@ Implemented exactly as §3 of the onboarding doc, because that order was chosen
 by what is recoverable: credential binding → NetBox (gated) → **one commit**
 (identity minted + `host_vars` + site `group_vars`) → render → download/deploy.
 
-*Acceptance*
-- A failure at the NetBox step leaves **nothing** committed, and says so.
-- A failure after NetBox offers the existing provenance-based Remove directly,
-  rather than leaving the operator to find it.
-- **One commit per run**, trailers naming site and device — asserted by
-  counting commits, not by reading a message.
-- **Negative control:** split the commit in two → the count assertion fails.
+**"Nothing committed" means no commit was CREATED**, not that the branch
+ended where it started. A commit followed by a reset leaves a clean tree and
+is not the same thing: the object is still in `.git`, the reflog records it,
+and **if the post-commit hook fired in between the commit is already on a
+remote, where nothing local can retract it.**
+
+That constrains the ordering: **the commit is genuinely last among the things
+that can fail.** Anything fallible after it is a partial state the repository
+already records.
+
+It appears to conflict with §4 of the onboarding doc, which renders *after*
+committing so nothing downloadable is built from unrecorded intent. Both
+hold, because there are **two renders**: `build_plan()` validates the render
+**before** anything is created, so a render that cannot succeed blocks at the
+plan; the downloadable artefact is produced **after** the commit, from
+committed intent.
+
+*Acceptance*, and it is five assertions rather than one:
+- the **commit count** is unchanged;
+- **HEAD's sha** is unchanged;
+- the **reflog** has no new entry — a reset leaves one;
+- **no unreachable commit object** exists (`rev-list --all --reflog`);
+- the **post-commit hook never ran** — the sharpest, because it is the hook
+  that makes the commit somebody else's problem.
+- A failure after NetBox offers the existing provenance-based Remove
+  directly; a failure *before* it offers nothing, because nothing was
+  created.
+- A **render** failure reports the device as onboarded **and** the artefact
+  as missing — two facts — and offers no cleanup, since removing the NetBox
+  objects of a committed device would leave the repository describing a
+  device NetBox does not have.
+
+- **Negative controls**, all shown failing: commit before NetBox → 3 fail;
+  run the steps on an unonboardable plan → 1; offer cleanup regardless of
+  what was created → 2. Plus `TestTheControlItself`, which **makes a real
+  commit and fires the real hook**, then asserts every one of the five
+  signals moves — without it the five would be measuring a clean tree rather
+  than an absent commit.
 
 ### 4C.4 — `routes/onboard.py` + `templates/partials/onboard_wizard.html`
 
@@ -334,7 +365,7 @@ with the census condition.
 | **4C.0** the NetBox census | **done** — `scripts/nmas-netbox-census`, `tests/test_netbox_census.py`, 15 tests, three negative controls each shown failing |
 | **4C.1** the plan object | **done** — `modules/nsot/onboard.py`, `tests/test_onboard_plan.py`, 27 tests, four negative controls each shown failing |
 | **4C.2** bootstrap credential | **done** — `tests/test_onboard_bootstrap_credential.py`, 23 tests, three negative controls each shown failing |
-| 4C.3 ordering | not started |
+| **4C.3** ordering | **done** — `tests/test_onboard_ordering.py`, 23 tests, three negative controls plus a positive control on the signals themselves |
 | 4C.4 routes + UI | not started |
 | 4C.5 RW community | not started |
 | 4C.6 drift enrolment | not started |
