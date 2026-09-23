@@ -849,9 +849,19 @@ def bind_credentials_step(plan, *, repo: str) -> str:
 
     secret = mint_bootstrap_credential()
     stage_bootstrap_credential(repo, plan.hostname, secret)
-    credentials.set_device_override(plan.list_name, plan.hostname,
-                                    {"username": "admin", "password": secret,
-                                     "secret": secret})
+
+    # KEYED ON THE MANAGEMENT IP, positionally, because that is what
+    # `set_device_override(device_key, username, password, secret)` takes and
+    # what `resolve()` looks the override up by --
+    # `data["device_overrides"].get(mgmt_ip)`.
+    #
+    # This call was written as `(plan.list_name, plan.hostname, {…})`: a list
+    # name where the key belongs, a hostname where the username belongs, and
+    # a dict where a string belongs. `encrypt_value(dict)` raises
+    # AttributeError, so `/onboard/create` failed at its first step every
+    # time it was called. Fourth inferred-signature finding of this stage,
+    # and the first in shipped code rather than in a draft.
+    credentials.set_device_override(plan.mgmt_ip, "admin", secret, secret)
     return secret
 
 

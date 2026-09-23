@@ -387,10 +387,22 @@ class TestTheREALStepsSatisfyTheContract:
                             str(tmp_path / "key.key"))
         monkeypatch.setattr("modules.secrets_store._fernet", None)
 
-        overrides = {}
-        monkeypatch.setattr("modules.credentials.set_device_override",
-                            lambda lst, host, values: overrides.update(
-                                {(lst, host): values}))
+        # THE REAL `set_device_override`, against a temp store.
+        #
+        # It used to be stubbed with
+        #     lambda lst, host, values: ...
+        # which is the signature the CALLER had wrongly assumed. The real one
+        # is `(device_key, username, password, secret="")`. Test and code
+        # agreed with each other and both disagreed with `credentials.py`, so
+        # a step that raised AttributeError in production passed here every
+        # time — the same shape as the BGP address-families fixtures, where
+        # parse and render flattened symmetrically.
+        #
+        # A file, not a stub: a stub's signature can drift from the function
+        # it stands in for, and this one did. "The REAL adapters" has to
+        # include the adapter most likely to be misread.
+        monkeypatch.setattr("modules.credentials._FILE",
+                            str(tmp_path / "credentials.json"))
         synced = []
         monkeypatch.setattr(
             "modules.netbox_client.sync_list_to_netbox",
@@ -408,7 +420,7 @@ class TestTheREALStepsSatisfyTheContract:
             onboardable = True
             blocking_reasons = []
 
-        return {"plan": _Plan(), "repo": repo, "overrides": overrides,
+        return {"plan": _Plan(), "repo": repo, "mgmt_ip": "203.0.113.60",
                 "synced": synced, "onboard": onboard, "world": world}
 
     def _run(self, wired, **over):
@@ -423,11 +435,27 @@ class TestTheREALStepsSatisfyTheContract:
         assert out["completed"] == ["credentials", "netbox", "commit", "render"]
 
     def test_the_real_credential_step_stages_and_records(self, wired):
+        """Asserted through `resolve()`, which is what phase 2 will call.
+
+        The previous version read a dict the stub had built, so it checked
+        that the step called something with certain arguments. What matters
+        is that the credential the device boots with is the one the resolver
+        hands back for that device — a property no argument comparison can
+        express, and the one that was false.
+        """
+        import modules.credentials as creds
+
         self._run(wired)
         staged = wired["onboard"].staged_bootstrap_credential(
             wired["repo"], "bp-onboard-c")
         assert staged and len(staged) >= 20
-        assert wired["overrides"][("probe", "bp-onboard-c")]["password"] == staged
+
+        got = creds.resolve(wired["mgmt_ip"])
+        assert got["ok"] is True, got
+        assert got["source"] == "device-override"
+        assert got["username"] == "admin"
+        assert got["password"] == staged, "the device would boot with a "\
+            "credential the resolver cannot produce"
 
     def test_the_real_commit_step_makes_exactly_one_commit(self, wired):
         before = _state(wired["repo"])["count"]

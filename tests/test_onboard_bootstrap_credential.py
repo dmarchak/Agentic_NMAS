@@ -306,3 +306,81 @@ class TestItIsNeverADurableCredential:
             fn = getattr(onboard, name, None)
             if callable(fn) and getattr(fn, "__module__", "") == onboard.__name__:
                 assert calls_in(fn, "write_devices_csv") == 0, name
+
+
+class TestTheOverrideIsWhereTheResolverLooks:
+    """`bind_credentials_step` wrote the override under the wrong key, with
+    the wrong values, and `/onboard/create` failed at its first step every
+    time it ran.
+
+        set_device_override(device_key, username, password, secret="")
+        set_device_override(plan.list_name, plan.hostname, {...})
+
+    A list name where the key belongs, a hostname where the username
+    belongs, a dict where a string belongs. `encrypt_value(dict)` raises
+    AttributeError.
+
+    **So this asserts the property, not the call shape.** A test that
+    compared arguments would have been written from the same misreading as
+    the call. What matters is that the credential the device will boot with
+    is the one the resolver hands back for that device — which is what phase
+    2 depends on, and the only reason the override is written at all.
+    """
+
+    def test_the_minted_secret_comes_back_from_resolve(self, tmp_path,
+                                                       monkeypatch):
+        import modules.credentials as creds
+        from modules.nsot import onboard
+
+        store = tmp_path / "creds.json"
+        monkeypatch.setattr(creds, "_FILE", str(store))
+
+        repo = tmp_path / "config_repo"
+        repo.mkdir()
+        plan = onboard.build_plan("bp1", "cisco_iosxe", "probe",
+                                  mgmt_ip="203.0.113.31",
+                                  mgmt_mask="255.255.255.0",
+                                  manager_interface="GigabitEthernet2")
+        secret = onboard.bind_credentials_step(plan, repo=str(repo))
+
+        got = creds.resolve("203.0.113.31")
+        assert got["ok"] is True, got
+        assert got["source"] == "device-override"
+        assert got["username"] == "admin"
+        assert got["password"] == secret
+        assert got["secret"] == secret
+
+    def test_it_is_not_keyed_on_the_list_name(self, tmp_path, monkeypatch):
+        """The exact wrong key, named — so the defect cannot come back under
+        a different spelling of the same mistake."""
+        import modules.credentials as creds
+        from modules.nsot import onboard
+
+        monkeypatch.setattr(creds, "_FILE", str(tmp_path / "creds.json"))
+        repo = tmp_path / "config_repo"
+        repo.mkdir()
+        plan = onboard.build_plan("bp1", "cisco_iosxe", "probe",
+                                  mgmt_ip="203.0.113.31",
+                                  mgmt_mask="255.255.255.0",
+                                  manager_interface="GigabitEthernet2")
+        onboard.bind_credentials_step(plan, repo=str(repo))
+
+        assert not creds.has_device_override("probe")
+        assert creds.has_device_override("203.0.113.31")
+
+    def test_the_step_does_not_raise(self, tmp_path, monkeypatch):
+        """It raised AttributeError, so the run failed at step one. The
+        control for the two tests above: they would both pass against a step
+        that stored nothing if the assertions were only about absence."""
+        import modules.credentials as creds
+        from modules.nsot import onboard
+
+        monkeypatch.setattr(creds, "_FILE", str(tmp_path / "creds.json"))
+        repo = tmp_path / "config_repo"
+        repo.mkdir()
+        plan = onboard.build_plan("bp1", "cisco_iosxe", "probe",
+                                  mgmt_ip="203.0.113.31",
+                                  mgmt_mask="255.255.255.0",
+                                  manager_interface="GigabitEthernet2")
+        secret = onboard.bind_credentials_step(plan, repo=str(repo))
+        assert secret and len(secret) >= 16
