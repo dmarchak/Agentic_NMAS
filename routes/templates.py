@@ -116,7 +116,7 @@ def artifact_for(hostname, capture, repo, platform, template, host_vars=None):
     made.
 
     `build_artifact()` takes `template_approved` as a plain argument and
-    defaults it to **False**, and a False there is reported as
+    defaults it to **False**, and `render_artifact.py` turns a False into
     *"template '<x>' is not approved for this device"* -- a message about the
     approval store, produced without consulting it. A caller that forgets the
     check does not get a missing feature; it gets a confident, wrong
@@ -126,19 +126,21 @@ def artifact_for(hostname, capture, repo, platform, template, host_vars=None):
     directly, reported the device as not deployable, and read as an approval
     that had revoked itself overnight.
 
-    Two builds, and the order is forced: `is_approved()` is keyed on the
-    device's parsed host_vars, which only exist once the artifact is built.
+    **Approval is not asked about this device's host_vars, and must not be.**
+    `binding_fingerprint()` accepts `host_vars_by_device` and deliberately
+    ignores it -- that ignoring IS the scheme-2 correction. The bound set is
+    read from the repo, so the verdict is a statement about the template
+    against every device it covers, and an edit to one device's intent cannot
+    move it. Nothing is passed here, because this caller does not have the
+    bound set and inventing a one-device stand-in would be a wrong value kept
+    alive by the fact that nothing currently reads it.
     """
     from modules.nsot import approval
     from modules.nsot.render_artifact import build_artifact
 
-    artifact = build_artifact(hostname, capture, platform, template=template,
-                              host_vars=host_vars)
-    if not approval.is_approved(repo, template, {hostname: artifact.host_vars}):
-        return artifact
+    approved = approval.is_approved(repo, template)
     return build_artifact(hostname, capture, platform, template=template,
-                          template_approved=True,
-                          host_vars=host_vars or artifact.host_vars)
+                          template_approved=approved, host_vars=host_vars)
 
 
 def _untracked_templates(repo: str) -> tuple:

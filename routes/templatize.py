@@ -300,7 +300,6 @@ def preview_committed_edit(hostname):
     import yaml
 
     from modules.nsot import hostvars, roundtrip
-    from modules.nsot.render_artifact import build_artifact
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)

@@ -306,7 +306,7 @@ class TestApprovalIsConsultedNotAssumed:
         other blockers, which is a different claim than the one under test.
         """
         monkeypatch.setattr("modules.nsot.approval.is_approved",
-                            lambda repo, template, host_vars: True)
+                            lambda repo, template, host_vars=None: True)
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         body = _preview(world, text).get_json()
         assert not any("not approved" in r for r in body["blocking_reasons"]), \
@@ -315,7 +315,7 @@ class TestApprovalIsConsultedNotAssumed:
     def test_an_unapproved_template_still_blocks(self, world, monkeypatch):
         """The gate must still gate."""
         monkeypatch.setattr("modules.nsot.approval.is_approved",
-                            lambda repo, template, host_vars: False)
+                            lambda repo, template, host_vars=None: False)
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         body = _preview(world, text).get_json()
         assert body["deployable"] is False
@@ -330,6 +330,74 @@ class TestApprovalIsConsultedNotAssumed:
 
         assert calls_in(templates.preview, "artifact_for") >= 1
 
+
+
+class TestApprovalIsNotKeyedOnThisDevicesIntent:
+    """The correction to the correction.
+
+    The first fix resolved approval by building the artifact, reading its
+    parsed `host_vars`, and passing `{hostname: host_vars}` to
+    `is_approved()` -- then building a second time. The docstring said the
+    order was *forced*, "because `is_approved()` is keyed on the device's
+    parsed host_vars".
+
+    It is not, and saying so reinstates in prose the coupling scheme 2 exists
+    to remove. `binding_fingerprint()` accepts `host_vars_by_device` and
+    ignores it deliberately: under scheme 1 a successful deploy changed the
+    device's capture, moved the hash, and revoked the approval **that had
+    authorised it**. A comment asserting a dependency the code does not have
+    is how that gets reintroduced by someone who believed the comment.
+
+    So the verdict must not vary with this device's intent, and the helper
+    must not pretend otherwise by passing a one-device stand-in for the bound
+    set it does not have.
+    """
+
+    def test_the_verdict_does_not_vary_with_this_devices_intent(self, world,
+                                                                monkeypatch):
+        """Behavioural. Two very different documents, one verdict."""
+        from routes.templates import artifact_for
+
+        seen = []
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda *a, **kw: seen.append((a, kw)) or True)
+
+        base = world["hostvars"].read_committed(world["repo"], "s4")
+        other = dict(base, hostname="s4",
+                     unmodeled=[{"line": "totally different", "children": [],
+                                 "lineno": 1}])
+        for host_vars in (base, other):
+            artifact_for("s4", CONFIG, world["repo"], "cisco_ios",
+                         "cisco_ios/base.j2", host_vars=host_vars)
+
+        assert len(seen) == 2
+        assert seen[0] == seen[1], (
+            "the approval question changed because this device's intent did; "
+            "that is scheme 1")
+
+    def test_no_stand_in_for_the_bound_set_is_passed(self, world, monkeypatch):
+        """A wrong value survives precisely because nothing reads it."""
+        from routes.templates import artifact_for
+
+        seen = []
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda *a, **kw: seen.append((a, kw)) or True)
+        artifact_for("s4", CONFIG, world["repo"], "cisco_ios",
+                     "cisco_ios/base.j2")
+
+        args, kwargs = seen[0]
+        passed = list(args[2:]) + list(kwargs.values())
+        assert all(v is None for v in passed), (
+            "the bound set is read from the repo; this caller does not have "
+            "it and must not invent one: %r" % (passed,))
+
+    def test_the_artifact_is_built_once(self):
+        """The second build existed only to serve the false coupling."""
+        from tests.astcheck import calls_in
+
+        from routes import templates
+
+        assert calls_in(templates.artifact_for, "build_artifact") == 1
 
 class TestTheUnchangedDocumentSaysSo:
     """Opening the editor and pressing Check without typing reported "the
