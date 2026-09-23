@@ -772,6 +772,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_drift_scheduling.py` | per-list state, merge-not-replace, what a silenced check records |
 | `test_check_removed_definitions.py` | the checker tells a use from a mention |
 | `test_drift_routes.py` | the routes exercised over HTTP; a crash is JSON+500, never 302; wrapper signatures |
+| `test_security_posture.py` | effective value vs origin; Access values withheld; the recorded posture still holds |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
 
@@ -955,6 +956,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 - `GET /identity/status` is the end-to-end diagnostic: not gated by identity
   (a diagnostic that hides behind identity is useless when identity breaks),
   echoes no configuration, and returns the email only to the requester.
+- **`GET /identity/posture` shows every gate's EFFECTIVE value and its
+  ORIGIN** (Phase 3.2c). The keys are built by f-string with a default of
+  `True`, so *unset* and *set to the default* are indistinguishable by
+  reading the file — and `migrate()` returns early once the stored
+  `settings_schema_version` has caught up, so **a key added to `DEFAULTS`
+  after an install reached v1 is never written to that install's file**
+  (measured; `added_keys` is empty and `get_setting()` returns the default
+  anyway). Until this panel the gates deciding whether a human must authorise
+  a reveal, an approval, a confirm or a publish were visible only by reading
+  JSON over SSH — the shape that lost the drift checker for 24 days. Values
+  come from `identity.posture()`, which reads through the same `_setting()`
+  the gates call, so the panel cannot drift from the gate.
+- **The panel is read-only and says why, in words.** A greyed field says "you
+  can't" and never says why: changing a gate from a browser would let a
+  compromised session lower its own gate, using the very permission it was
+  editing. **Gate states are shown to anyone** — "a person is required to
+  reveal a secret" is a posture statement, and hiding it protects nothing
+  while making it uncheckable. **The Access team domain and AUD are not**:
+  they are what an assertion is validated against, so they go to a verified
+  person only, the AUD abbreviated to its ends, peers counted rather than
+  listed, and the refusal is stated rather than the fields silently omitted.
 - Bind `NMAS_HOST` to a specific address rather than `0.0.0.0`, as a second
   layer independent of the firewall — note this stops `localhost:5000` working
   on the host. The firewall must cover **both address families**: port 5000 is

@@ -402,3 +402,103 @@ def require(request, action: str = "reveal", operation: str = ""):
         "outcome": ident.outcome,
         "requires_identity": True,
     }
+
+
+# ---------------------------------------------------------------------------
+# Posture — what the gates are set to, and where each value came from
+# ---------------------------------------------------------------------------
+
+#: Keys whose value is configuration a caller should not be handed. The gate
+#: states are NOT here: "a person is required to reveal a secret" is a posture
+#: statement, and hiding it protects nothing while making it uncheckable.
+#: The team domain and the AUD are what an assertion is validated *against*,
+#: and `routes/identity.py` has refused to echo them since it was written.
+_POSTURE_SENSITIVE = ("cf_access_team_domain", "cf_access_aud",
+                      "cf_access_trusted_peers")
+
+
+def _setting_origin(key: str) -> str:
+    """``"file"`` or ``"default"`` — where the effective value came from.
+
+    **This is the whole reason the panel exists.** `_setting()` falls back to
+    `DEFAULTS` when a key is absent, so a gate that is ON because nobody ever
+    set it and a gate that is ON because somebody chose ON are
+    indistinguishable by reading the value. They are different facts: the
+    second was decided, the first was inherited.
+
+    It matters more than it looks. `migrate()` returns early once the stored
+    `settings_schema_version` has caught up, and `SCHEMA_VERSION` is still 1 —
+    so **a key added to `DEFAULTS` after an install reached v1 is never
+    written to that install's file.** Measured directly: seed a store at v1,
+    add a key to `DEFAULTS`, run `migrate()`; `added_keys` is empty, the key
+    is absent from the file, and `get_setting()` returns its default anyway.
+    Working, correct, and recorded nowhere — which is precisely the state the
+    identity gates are most likely to be in.
+    """
+    from modules.config import load_user_settings
+
+    try:
+        return "file" if key in (load_user_settings() or {}) else "default"
+    except Exception:                          # noqa: BLE001
+        log.error("identity: could not read stored settings for '%s'", key)
+        return "unknown"
+
+
+def posture(reveal_config: bool = False) -> dict:
+    """The security posture: every gate, its effective value, and its origin.
+
+    **Effective values are read through `_setting()`** — the same function
+    `may()` and `service_may()` call — so the panel cannot drift from the
+    gate. The same rule that made `/identity/status` report `may` rather than
+    which gates are enabled: a diagnostic computed a second way is a
+    diagnostic that can be wrong on its own.
+
+    *reveal_config* adds the Access values. The caller decides, and
+    `routes/identity.py` grants it only to a verified person: those values are
+    what an assertion is validated against, and an ungated endpoint handing
+    them out would be a config dump to exactly the caller the gates exist to
+    stop. The team domain is a hostname and is shown whole; the AUD is
+    abbreviated, because verifying a tag by eye needs its ends and not its
+    middle.
+    """
+    gates = []
+    for action in GATED_ACTIONS:
+        for prefix, what in (("require_identity_for",
+                              "anyone at all must be verified"),
+                             ("require_person_for",
+                              "a service is refused; a person is required")):
+            key = f"{prefix}_{action}"
+            gates.append({
+                "key":      key,
+                "action":   action,
+                "means":    what,
+                "value":    bool(_setting(key, True)),
+                "origin":   _setting_origin(key),
+                "default":  True,
+            })
+
+    allowed = _setting("service_allowed_operations", []) or []
+    access_set = {k: bool((_setting(k, "") or "")) for k in _POSTURE_SENSITIVE}
+
+    out = {
+        "gates": gates,
+        "service_allowed_operations": list(allowed),
+        "service_allowlist_origin": _setting_origin("service_allowed_operations"),
+        "access_configured": is_configured(),
+        "access_values_set": access_set,
+        "config_revealed": bool(reveal_config),
+    }
+
+    if reveal_config:
+        team = (_setting("cf_access_team_domain", "") or "").strip()
+        aud  = (_setting("cf_access_aud", "") or "").strip()
+        out["access"] = {
+            "team_domain": team,
+            "certs_url":   certs_url(team),
+            # Ends only. Enough to check against what you expect, not a value
+            # to copy out of a browser tab someone left open.
+            "aud_preview": (f"{aud[:8]}…{aud[-8:]}" if len(aud) > 20 else
+                            ("set" if aud else "")),
+            "trusted_peer_count": len(trusted_peers()),
+        }
+    return out

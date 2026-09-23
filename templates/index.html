@@ -6334,6 +6334,10 @@ function askAiAboutSelection() {
 
         <hr>
 
+        {% include 'partials/security_posture.html' %}
+
+        <hr>
+
         <!-- AI Workflow -->
         <h6 class="text-primary fw-semibold mb-2">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M6 12.796V3.204L11.481 8zm.659.753 5.48-4.796a1 1 0 0 0 0-1.506L6.66 2.451C6.011 1.885 5 2.345 5 3.204v9.592a1 1 0 0 0 1.659.753"/></svg>
@@ -6436,6 +6440,9 @@ function askAiAboutSelection() {
 const _settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
 
 window.openSettingsModal = function() {
+  // The posture panel is read-only and independent of the form below, so it
+  // loads on its own and a failure in either cannot blank the other.
+  if (typeof loadSecurityPosture === 'function') loadSecurityPosture();
   // Load current values from server
   fetch('/settings')
     .then(r => r.json())

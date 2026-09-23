@@ -1,0 +1,158 @@
+{#
+  Security posture — Stage 3.2c.
+
+  The gates that decide whether a HUMAN has to authorise a reveal, an
+  approval, a confirm or a publish were visible only by opening
+  data/user_settings.json over SSH. That is the shape that lost the drift
+  checker for twenty-four days: a gate switched off weeks ago looks exactly
+  like a gate that was never on, and nothing prompts anyone to look.
+
+  Read-only, and the reason is WRITTEN rather than expressed by greying a
+  field. A disabled input says "you can't"; it never says why, and the why is
+  the part worth knowing — a browser session that could lower its own gate is
+  a browser session worth stealing.
+
+  EFFECTIVE value and ORIGIN, both. identity.py builds these keys by f-string
+  with a default of True, so "unset" and "set to the default" are
+  indistinguishable in the file. This panel exists to make that distinction
+  visible, and the values come from identity.posture(), which reads through
+  the same _setting() the gates call — a diagnostic computed a second way is
+  a diagnostic that can be wrong on its own.
+#}
+<div class="card border-light-subtle mb-3" id="securityPostureCard">
+  <div class="card-body py-2 px-3">
+    <h6 class="text-primary fw-semibold mb-1">
+      Security posture
+      <span id="posturSummaryBadge" class="badge bg-secondary ms-1">loading…</span>
+    </h6>
+    <p class="text-muted small mb-2">
+      Who is allowed to reveal a secret, approve a queued action, confirm a
+      change onto a device, or publish history to a remote.
+    </p>
+    <div id="securityPostureBody" class="small text-muted">Loading…</div>
+  </div>
+</div>
+
+<script>
+/* One fetch, no polling: a posture does not change while you look at it. */
+async function loadSecurityPosture() {
+  const host  = document.getElementById('securityPostureBody');
+  const badge = document.getElementById('posturSummaryBadge');
+  if (!host) return;
+  try {
+    const r = await fetch('/identity/posture');
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error((d && d.error) || `HTTP ${r.status}`);
+
+    const esc = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const gates = d.gates || [];
+    const off   = gates.filter(g => !g.value);
+    if (badge) {
+      /* A gate that is OFF is the headline. Counting them is the whole point:
+         "8 of 8 on" and "6 of 8 on" must not render the same way. */
+      badge.className = off.length ? 'badge bg-danger ms-1'
+                                   : 'badge bg-success ms-1';
+      badge.textContent = off.length
+        ? `${off.length} gate${off.length === 1 ? '' : 's'} OFF`
+        : `${gates.length} of ${gates.length} on`;
+    }
+
+    const row = g => `
+      <tr>
+        <td class="font-monospace small">${esc(g.key)}</td>
+        <td>${g.value
+              ? '<span class="badge bg-success-subtle text-success-emphasis">ON</span>'
+              : '<span class="badge bg-danger">OFF</span>'}</td>
+        <td class="small">${g.origin === 'file'
+              ? '<span class="text-body">set explicitly</span>'
+              : g.origin === 'default'
+                ? '<span class="text-muted">defaulted (not in the file)</span>'
+                : '<span class="text-warning">origin unknown</span>'}</td>
+        <td class="text-muted small">${esc(g.means)}</td>
+      </tr>`;
+
+    const allowed = d.service_allowed_operations || [];
+    const accessRows = Object.entries(d.access_values_set || {}).map(([k, set]) => `
+      <tr>
+        <td class="font-monospace small">${esc(k)}</td>
+        <td>${set ? '<span class="badge bg-success-subtle text-success-emphasis">set</span>'
+                  : '<span class="badge bg-secondary">unset</span>'}</td>
+        <td colspan="2" class="text-muted small">
+          ${d.access && k === 'cf_access_team_domain' && d.access.team_domain
+              ? esc(d.access.team_domain)
+              : d.access && k === 'cf_access_aud' && d.access.aud_preview
+                ? esc(d.access.aud_preview)
+                : d.access && k === 'cf_access_trusted_peers'
+                  ? `${d.access.trusted_peer_count} peer(s)`
+                  : '<span class="text-muted">not shown</span>'}
+        </td>
+      </tr>`).join('');
+
+    host.innerHTML = `
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-2">
+          <thead><tr class="text-muted small">
+            <th>Setting</th><th>State</th><th>Origin</th><th>Means</th>
+          </tr></thead>
+          <tbody>${gates.map(row).join('')}</tbody>
+        </table>
+      </div>
+
+      <div class="mb-2">
+        <span class="text-body">Service allowlist:</span>
+        ${allowed.length
+          ? allowed.map(o => `<code class="ms-1">${esc(o)}</code>`).join('')
+          : '<span class="badge bg-success-subtle text-success-emphasis ms-1">empty</span>'}
+        <span class="text-muted">— ${d.service_allowlist_origin === 'file'
+          ? 'set explicitly' : 'defaulted (not in the file)'}.
+          Operations named here may be performed by a verified service without
+          a person. An empty list grants nothing.</span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-2">
+          <thead><tr class="text-muted small">
+            <th>Cloudflare Access</th><th></th><th colspan="2">Value</th>
+          </tr></thead>
+          <tbody>${accessRows}</tbody>
+        </table>
+      </div>
+
+      ${d.config_withheld_reason
+        ? `<div class="text-muted small mb-2">${esc(d.config_withheld_reason)}</div>`
+        : ''}
+
+      ${!d.access_configured
+        ? `<div class="alert alert-warning py-2 px-3 small mb-2">
+             Cloudflare Access is <strong>not configured</strong>, so no request
+             can carry a verified identity and every gate above refuses
+             everything it covers. That is fail-closed and intended — but it
+             means reveal, approve, confirm and publish are unavailable, not
+             that they are unprotected.
+           </div>`
+        : ''}
+
+      {# The reason, written. Not a greyed input. #}
+      <div class="border-top pt-2 text-muted small">
+        <strong class="text-body">Why this panel is read-only.</strong>
+        These are set in <code>data/user_settings.json</code> on the host.
+        Changing them from a browser would let a compromised session lower its
+        own gate — the session would use the very permission it was editing.
+        The Cloudflare Access values especially: a wrong team domain or AUD
+        either locks everyone out or admits everyone, and neither failure
+        announces itself.
+      </div>`;
+  } catch (e) {
+    /* Say what failed. A posture panel that renders empty on an error is a
+       posture panel that reads as "nothing is gated". */
+    host.innerHTML = `<div class="alert alert-danger py-2 px-3 mb-0">
+      Could not read the security posture: ${String(e && e.message || e)}.
+      <strong>This is not a statement that the gates are off</strong> — it is
+      a statement that they could not be read.</div>`;
+    if (badge) { badge.className = 'badge bg-warning text-dark ms-1';
+                 badge.textContent = 'unknown'; }
+  }
+}
+</script>

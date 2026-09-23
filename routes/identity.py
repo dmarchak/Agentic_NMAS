@@ -98,3 +98,40 @@ def status():
             for action in ident_mod.GATED_ACTIONS
         },
     })
+
+
+@bp.route("/posture", methods=["GET"])
+def security_posture():
+    """What the identity gates are set to, and where each value came from.
+
+    **Why this is a page and not a file.** `require_person_for_reveal`,
+    `require_person_for_approve` and `service_allowed_operations` decide
+    whether a human has to authorise a reveal, an approval or a publish. Until
+    now they were visible only by opening `data/user_settings.json` over SSH
+    — which is the shape that lost the drift checker for twenty-four days. A
+    gate switched off weeks ago would look exactly like a gate that was never
+    on, and nobody would have cause to look.
+
+    **The gate states are shown to anyone.** "A person is required to reveal a
+    secret" is a posture statement; hiding it protects nothing and makes it
+    uncheckable. **The Access values are not** — the team domain and the AUD
+    are what an assertion is validated against, and this blueprint has refused
+    to echo them since it was written, because handing them to an
+    unauthenticated caller gives away the values the check depends on. They
+    are added only for a verified person, and the refusal says so rather than
+    omitting them silently.
+    """
+    from modules import identity as ident_mod
+
+    ident = ident_mod.identify(request)
+    is_person = ident.is_identified and ident.kind == "person"
+
+    body = ident_mod.posture(reveal_config=is_person)
+    body["ok"] = True
+    body["actor_kind"] = ident.kind or ""
+    if not is_person:
+        body["config_withheld_reason"] = (
+            "The Cloudflare Access team domain and AUD are shown to a verified "
+            "person only. They are what an assertion is checked against, so an "
+            "unauthenticated caller must not be handed them.")
+    return jsonify(body)
