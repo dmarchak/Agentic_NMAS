@@ -906,11 +906,26 @@ def commit_step(plan, *, actor: str) -> str:
     import os
 
     from modules.config import get_list_data_dir
-    from modules.nsot import hostvars
+    from modules.nsot import hostvars, manifest
     from modules.nsot.repo import GoldenItem, adopt_identity, save_host_vars
 
     repo = os.path.join(get_list_data_dir(plan.list_name), "config_repo")
-    adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))
+
+    # MINTED AND THEN RECORDED. `adopt_identity()` returns a string and
+    # persists nothing -- its whole job is to be the one place a new identity
+    # is created, separate from `resolve_identity()`. Writing it to the
+    # manifest is `upsert_device()` and was missing, so the return value was
+    # assigned to nothing and the device was committed to git with no entry
+    # in the identity map at all.
+    #
+    # Measured: after a successful `commit_step`, `manifest.load(repo)
+    # ["devices"]` was `{}` and `find_by_name()` returned `(None, None)`.
+    # This docstring said "the identity is minted here and only here"; it was
+    # minted into a local and discarded. Fourth docstring this stage to teach
+    # something the code did not do.
+    identity = adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))
+    manifest.upsert_device(repo, identity, plan.hostname,
+                           mgmt_ip=plan.mgmt_ip, platform=plan.platform)
     hostvars.write_committed(repo, dict(plan.host_vars or {},
                                         hostname=plan.hostname))
     result = save_host_vars(plan.list_name, [plan.hostname], actor=actor,
@@ -961,3 +976,164 @@ def real_steps(repo: str, actor: str) -> dict:
         "commit":           lambda plan: commit_step(plan, actor=actor),
         "render":           render_step,
     }
+
+
+# ---------------------------------------------------------------------------
+# Abandon: the inverse of the wizard
+# ---------------------------------------------------------------------------
+
+#: Reverse of `STEPS`, minus `render` (which persists nothing).
+#:
+#: `identity` is last for the same reason `commit` is last in `STEPS`: it is
+#: the step whose success is a claim about all the others. Releasing the name
+#: first would leave the name free while a NetBox object and a commit still
+#: named the device -- which is exactly the state this flow exists to end.
+ABANDON_STEPS = ("intent", "netbox", "credentials", "identity")
+
+
+def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
+                       actor: str = "", dry_run: bool = False,
+                       remove_netbox=None) -> dict:
+    """Undo an onboarding, in the reverse of the order that created it.
+
+    **Why this exists rather than `manifest.release()` alone.** Release
+    correctly refuses while artefacts reference the device -- and the
+    artefacts of a failed onboarding are a commit, a NetBox object and a
+    credential override, cleared through three separate mechanisms, one of
+    them the provenance-based Remove. A refusal naming three manual steps is
+    a dead end with better signposting. The purpose is to make a failed
+    onboarding **annoying rather than unrecoverable**, and only running the
+    sequence achieves that.
+
+    **The NetBox step exercises the unproven mechanism deliberately.**
+    Provenance-based removal has never deleted an object it created. Abandon
+    runs it per device, on a device this tool made, which rehearses the
+    teardown on something disposable before it is needed on a real one.
+
+    **Partial failure reports what remains.** Each step is recorded as
+    `removed` or `refused` with a reason, `ok` is true only when every step
+    succeeded **and** the identity was released, and `remaining` names what
+    is left with how to finish it. An abandon that half-ran and reported
+    success is the defect this whole flow is a response to.
+
+    THE WRONG-AND-LOOKS-RIGHT STATE, and what makes it visible: reporting a
+    name reclaimed while a NetBox object or a commit still references it.
+    That cannot happen here by construction, because the reclaim is
+    `manifest.release()` and release **re-derives the references itself**
+    rather than trusting the steps that ran before it. If any step silently
+    did nothing, release refuses and `ok` is false with the artefact named.
+    The check and the work are deliberately not the same code.
+    """
+    import os
+
+    from modules.nsot import manifest as _m
+
+    result = {"ok": False, "device": hostname, "list": list_name,
+              "dry_run": dry_run, "steps": [], "remaining": [],
+              "released": "", "error": ""}
+
+    identity, entry = _m.find_by_name(repo, hostname)
+    if not identity:
+        result["error"] = (f"'{hostname}' has no identity in this list's "
+                           f"manifest — nothing to abandon")
+        return result
+
+    def _step(name, ok, detail, how=""):
+        result["steps"].append({"step": name, "ok": bool(ok),
+                                "detail": detail})
+        if not ok:
+            result["remaining"].append({"step": name, "detail": detail,
+                                        "how_to_finish": how})
+
+    # 1. INTENT. Staged first because it is the only step that needs the
+    #    repo lock, and the only one whose failure is purely local.
+    rel = os.path.join("host_vars", f"{entry.get('name', hostname)}.yml")
+    path = os.path.join(repo, rel)
+    if not os.path.exists(path):
+        _step("intent", True, f"{rel} was not present")
+    elif dry_run:
+        _step("intent", True, f"would remove {rel}")
+    else:
+        try:
+            from modules.nsot import repo as _repo
+
+            os.remove(path)
+            _repo.git(repo, "add", "-A")
+            _repo.git(repo, "-c", "user.email=nmas@local", "-c",
+                      "user.name=NMAS", "commit", "-m",
+                      f"abandon: {hostname} — onboarding withdrawn",
+                      "--author", f"{actor or 'NMAS'} <nmas@local>")
+            _step("intent", True, f"removed {rel} and committed the removal")
+        except Exception as exc:               # noqa: BLE001
+            log.exception("abandon: intent step failed for %r", hostname)
+            _step("intent", False, f"could not remove {rel}: {exc}",
+                  "remove the file and commit the deletion by hand")
+
+    # 2. NETBOX, through the provenance gate, scoped to this device.
+    remover = remove_netbox
+    if remover is None:
+        from modules.netbox_client import remove_device_from_netbox as remover
+    try:
+        nb = remover(list_name, hostname, dry_run=dry_run) or {}
+        if nb.get("ok"):
+            _step("netbox", True,
+                  f"{len(nb.get('deleted') or [])} object(s) removed, "
+                  f"{len(nb.get('skipped') or [])} left alone")
+            result["netbox"] = nb
+        else:
+            _step("netbox", False, nb.get("error", "removal refused"),
+                  "resolve the reason above, then run abandon again")
+            result["netbox"] = nb
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("abandon: netbox step failed for %r", hostname)
+        _step("netbox", False, str(exc), "run abandon again once NetBox is "
+                                         "reachable")
+
+    # 3. CREDENTIALS. Local and reversible, so it runs after the two that
+    #    are not -- a failure here never blocks the expensive steps.
+    try:
+        from modules import credentials
+
+        mgmt_ip = (entry or {}).get("mgmt_ip", "")
+        cleared = []
+        if mgmt_ip and credentials.has_device_override(mgmt_ip):
+            if not dry_run:
+                credentials.clear_device_override(mgmt_ip)
+            cleared.append(f"override {mgmt_ip}")
+        if staged_bootstrap_credential(repo, hostname):
+            if not dry_run:
+                clear_bootstrap_credential(repo, hostname)
+            cleared.append("staged bootstrap credential")
+        _step("credentials", True,
+              ", ".join(cleared) if cleared else "nothing to clear")
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("abandon: credential step failed for %r", hostname)
+        _step("credentials", False, str(exc),
+              "clear the device override in Settings -> Credentials")
+
+    # 4. IDENTITY, last, and it re-derives the references itself.
+    if dry_run:
+        outstanding = _m.references(repo, identity, list_name)
+        _step("identity", not outstanding,
+              "would release" if not outstanding
+              else f"would refuse: {len(outstanding)} reference(s) remain")
+        result["ok"] = not outstanding and all(s["ok"] for s in result["steps"])
+        return result
+
+    released = _m.release(repo, identity, list_name=list_name, actor=actor)
+    if released.get("ok"):
+        _step("identity", True, f"released '{released.get('released')}'")
+        result["released"] = released.get("released", "")
+    else:
+        _step("identity", False, released.get("error", "release refused"),
+              "clear the artefacts named above, then run abandon again")
+        result["remaining"].extend(
+            {"step": "identity", "detail": f"{r['kind']}: {r['what']}",
+             "how_to_finish": r["how_to_clear"]}
+            for r in released.get("references") or [])
+
+    result["ok"] = all(s["ok"] for s in result["steps"])
+    if not result["ok"]:
+        result["error"] = ("abandon did not finish; %d step(s) remain"
+                           % len(result["remaining"]))
+    return result

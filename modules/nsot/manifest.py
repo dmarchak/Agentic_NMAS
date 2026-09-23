@@ -298,3 +298,111 @@ def golden_path_for(repo: str, entry: dict) -> str:
     still the one recorded in ``golden``.
     """
     return os.path.join(repo, entry.get("golden", ""))
+
+
+def references(repo: str, identity: str, list_name: str = "") -> list:
+    """Everything that still names this device, with how to clear each.
+
+    **Checked, not assumed.** Each entry is
+    ``{"kind", "what", "how_to_clear"}`` and the list is what
+    :func:`release` refuses on.
+
+    The order matches the abandon sequence, so an operator reading a refusal
+    is reading the steps in the order they must be taken.
+    """
+    import os
+
+    entry = load(repo)["devices"].get(identity) or {}
+    name = entry.get("name", "")
+    found = []
+    if not name:
+        return found
+
+    for kind, rel in (("intent", os.path.join("host_vars", f"{name}.yml")),
+                      ("golden", os.path.join("golden", f"{name}.cfg"))):
+        if os.path.exists(os.path.join(repo, rel)):
+            found.append({
+                "kind": kind, "what": rel,
+                "how_to_clear": f"abandon removes it, or commit its deletion"})
+
+    if list_name:
+        try:
+            from modules import netbox_guard
+
+            created = netbox_guard.get_created(list_name) or {}
+            hits = [e for e in created.get("dcim/devices", [])
+                    if (e.get("name") or "").lower() == name.lower()]
+            if hits:
+                found.append({
+                    "kind": "netbox",
+                    "what": f"dcim/devices id {hits[0].get('id')}",
+                    "how_to_clear": "abandon runs the provenance-based "
+                                    "removal for this device"})
+        except Exception as exc:               # noqa: BLE001
+            # A check that could not run has not passed -- the same rule the
+            # plan applies to its collision checks.
+            found.append({"kind": "netbox", "what": "could not be checked",
+                          "how_to_clear": f"resolve first: {exc}"})
+
+    mgmt_ip = entry.get("mgmt_ip", "")
+    if mgmt_ip:
+        try:
+            from modules import credentials
+
+            if credentials.has_device_override(mgmt_ip):
+                found.append({
+                    "kind": "credential", "what": f"device override {mgmt_ip}",
+                    "how_to_clear": "abandon clears it"})
+        except Exception as exc:               # noqa: BLE001
+            found.append({"kind": "credential", "what": "could not be checked",
+                          "how_to_clear": f"resolve first: {exc}"})
+
+    return found
+
+
+def release(repo: str, identity: str, list_name: str = "",
+            actor: str = "") -> dict:
+    """Give a device name back. **Refuses while anything still names it.**
+
+    A name that can be taken and never given back means one typo permanently
+    consumes a hostname: `_name_in_manifest` then blocks the wizard from
+    re-onboarding it, and nothing anywhere removes the entry. That turned a
+    failed onboarding from annoying into unrecoverable.
+
+    **It refuses rather than warning.** "You must clear these first" is
+    actionable; "released, and by the way three things still reference it"
+    is a note nobody reads, and it would leave the hostname free while a
+    commit and a NetBox object still named the old device -- a wrong thing
+    wearing a working result.
+
+    So the refusal is the CHECK THAT ABANDON WORKED, not an obstacle to
+    routine use: `abandon_onboarding()` removes the artefacts and then calls
+    this, and a refusal here means the sequence did not finish.
+
+    Returns ``{"ok", "released", "references", "error"}``.
+    """
+    entry = load(repo)["devices"].get(identity)
+    if entry is None:
+        return {"ok": False, "error": f"no device with identity '{identity}'",
+                "references": []}
+
+    blocking = references(repo, identity, list_name)
+    if blocking:
+        return {"ok": False, "released": "", "references": blocking,
+                "error": ("%s still referenced by %d artefact(s): %s"
+                          % (entry.get("name", identity), len(blocking),
+                             ", ".join(f"{r['kind']} ({r['what']})"
+                                       for r in blocking)))}
+
+    with _lock_for(repo):
+        data = load(repo)
+        removed = data["devices"].pop(identity, None)
+        if removed is None:
+            return {"ok": False, "error": "released by another caller",
+                    "references": []}
+        save(repo, data)
+
+    log.info("manifest: released identity %s (%s) by %s",
+             identity, removed.get("name", ""), actor or "unknown")
+    return {"ok": True, "released": removed.get("name", ""),
+            "identity": identity, "references": []}

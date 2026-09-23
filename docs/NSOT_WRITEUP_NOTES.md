@@ -7570,3 +7570,51 @@ combination that survives review: the code is right, so nothing fails, and
 the sentence is confident, so nobody re-derives it. The pattern to watch for
 is a docstring that explains *why* an ordering exists and then names the
 ordering as a source.
+
+---
+
+## "Runs against the REAL adapters" was met in name
+
+4C.7's acceptance, set explicitly: *"test_onboard_ordering.py must run
+against the REAL adapters."* It was satisfied for three of the four. The
+fourth was stubbed:
+
+```python
+monkeypatch.setattr("modules.credentials.set_device_override",
+                    lambda lst, host, values: overrides.update({(lst, host): values}))
+```
+
+The real signature is `(device_key, username, password, secret="")`.
+
+**The stub carried the same misreading as the caller**, because the same
+person wrote both in the same sitting from the same wrong idea of the
+function. So `bind_credentials_step` passed a list name as the key, a
+hostname as the username and a dict as the password; `encrypt_value(dict)`
+raises `AttributeError`; `/onboard/create` failed at its first step every
+time it ran -- and this test passed, every time.
+
+Structurally identical to the BGP address-families fixtures: **parse and
+render flattened symmetrically, so both sides agreed with each other while
+both disagreed with the device.** Here the test and the caller agreed with
+each other while both disagreed with `credentials.py`.
+
+### Two lessons, and the second is the transferable one
+
+**The assertion was about the shape of a call.** It read a dict the stub had
+built -- so it verified that the step called *something* with *certain
+arguments*. The property that matters is that the credential the device
+boots with is the one `resolve()` hands back for that device, which is what
+phase 2 depends on and the only reason the override is written at all. That
+property cannot be expressed by comparing arguments, and it was false.
+
+**"Uses the real thing" has to be checkable rather than claimed.** The
+acceptance was written, agreed, and recorded as met. Nothing measured it,
+and a `monkeypatch.setattr` three hundred lines below the docstring is not
+visible from the sentence that promises otherwise. The stub is now gone --
+the real function runs against a temp credential store -- because a stub's
+signature can drift from what it stands in for, and the stub for the one
+adapter nobody had read is exactly where that happens.
+
+The general form, for acceptances yet to be written: **an acceptance that
+says "the real X" needs a test that would fail if X were replaced**, or it
+is a sentence rather than a check.

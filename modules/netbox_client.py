@@ -2676,6 +2676,120 @@ _REMOVAL_ORDER = (
 )
 
 
+#: Objects that belong to ONE device and go when it goes, innermost first.
+#: Deliberately short. Everything absent from it -- sites, regions, VRFs,
+#: prefixes, VLANs, device types, platforms, manufacturers -- is **shared**,
+#: and deleting a shared object to abandon one device would take the other
+#: devices in the list with it.
+_PER_DEVICE_ORDER = ("ipam/ip-addresses", "dcim/interfaces", "dcim/devices")
+
+
+def remove_device_from_netbox(list_name: str, hostname: str,
+                              dry_run: bool = False) -> dict:
+    """Remove ONE device's NetBox objects, provenance-gated.
+
+    `remove_list_from_netbox` walks everything in the created-id record for a
+    list, across `_REMOVAL_ORDER`, which includes the site, the region and
+    the VRF. Calling it to abandon a single failed onboarding on a populated
+    list would delete **every** NMAS-created object in that list and the
+    shared objects the surviving devices depend on.
+
+    So this exists, and it is narrower on purpose: the device, its
+    interfaces, its IP addresses, and nothing else. Shared objects are
+    reported as **retained**, not skipped -- "skipped" reads as something
+    that did not work.
+
+    The provenance rule is unchanged and applied per object: NMAS's own
+    created-id record must claim it **and** it must still carry the
+    `nmas-managed` tag. Anything failing either test is left alone and named.
+
+    Returns ``{"ok", "deleted", "skipped", "retained", "error"}``.
+    """
+    from modules import netbox_guard as _guard
+
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        return {"ok": False, "error": "NetBox URL and API token are not configured"}
+    if not dry_run and not _guard.writes_allowed():
+        return {"ok": False, "blocked": True,
+                "error": "NetBox writes are disabled. Enable them in "
+                         "Settings -> Integrations, or run the preview."}
+
+    session = _session_from_config(cfg)
+    base = cfg["url"]
+
+    # EXACT name. `test_device_lookup.py` pins this for the import path and
+    # the reason is sharper here: a fuzzy hit would delete a device that
+    # merely resembles the one being abandoned.
+    device = _nb_first(session, base, "dcim/devices/", name=hostname)
+    if device is None:
+        return {"ok": True, "deleted": [], "skipped": [], "retained": [],
+                "message": f"no device named '{hostname}' in NetBox — nothing "
+                           f"to remove"}
+
+    dev_id = device.get("id")
+    if not _guard.was_created_by_nmas(list_name, "dcim/devices", dev_id):
+        return {"ok": False, "error": (
+            f"'{hostname}' (id {dev_id}) is not in NMAS's created-object "
+            f"record for list '{list_name}', so NMAS will not delete it. "
+            f"Remove it in NetBox if that is what you want.")}
+    if not _guard.has_managed_tag(device):
+        return {"ok": False, "error": (
+            f"'{hostname}' (id {dev_id}) no longer carries the nmas-managed "
+            f"tag — treated as operator-owned and left alone.")}
+
+    deleted, skipped = [], []
+
+    def _consider(endpoint, obj):
+        obj_id = obj.get("id")
+        label = obj.get("display") or obj.get("name") or obj.get("address") or ""
+        if not _guard.was_created_by_nmas(list_name, endpoint, obj_id):
+            skipped.append({"endpoint": endpoint, "id": obj_id, "name": label,
+                            "reason": "not in NMAS's created-object record"})
+            return
+        if not _guard.has_managed_tag(obj):
+            skipped.append({"endpoint": endpoint, "id": obj_id, "name": label,
+                            "reason": "no nmas-managed tag — operator-owned"})
+            return
+        if _nb_delete(session, base, f"{endpoint}/", obj_id):
+            deleted.append({"endpoint": endpoint, "id": obj_id, "name": label})
+            _guard.forget_created(list_name, endpoint, obj_id)
+        else:
+            skipped.append({"endpoint": endpoint, "id": obj_id, "name": label,
+                            "reason": "delete failed"})
+
+    def _run():
+        for endpoint in _PER_DEVICE_ORDER:
+            if endpoint == "dcim/devices":
+                _consider(endpoint, device)
+                continue
+            for obj in _nb_get(session, base, f"{endpoint}/", device_id=dev_id):
+                _consider(endpoint, obj)
+
+    try:
+        if dry_run:
+            with _guard.dry_run(), _guard.for_list(list_name):
+                _run()
+        else:
+            with _guard.for_list(list_name):
+                _run()
+    except Exception as exc:                    # noqa: BLE001
+        log.exception("netbox: remove_device_from_netbox failed for %r", hostname)
+        return {"ok": False, "error": str(exc), "deleted": deleted,
+                "skipped": skipped}
+
+    # Named, so the operator can see what abandoning one device deliberately
+    # did NOT touch. An empty report here would read as "nothing else exists".
+    retained = sorted({e for e in _guard.get_created(list_name)
+                       if e not in _PER_DEVICE_ORDER})
+
+    log.info("netbox: removed device '%s' from list '%s'%s — %d deleted, "
+             "%d skipped", hostname, list_name,
+             " (dry run)" if dry_run else "", len(deleted), len(skipped))
+    return {"ok": True, "device": hostname, "dry_run": dry_run,
+            "deleted": deleted, "skipped": skipped, "retained": retained}
+
+
 def remove_list_from_netbox(list_name: str, dry_run: bool = False,
                             forget_only: bool = False) -> dict:
     """Remove a device list's objects from NetBox — NMAS-created objects only.

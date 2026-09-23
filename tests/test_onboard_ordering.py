@@ -515,3 +515,38 @@ class TestTheREALStepsSatisfyTheContract:
         for name in ("bind_credentials_step", "create_netbox_step",
                      "commit_step", "render_step"):
             assert hasattr(onboard, name)
+
+    # ---- minting is not recording -------------------------------------
+    #
+    # `adopt_identity()` returns a string and persists nothing -- that is
+    # its whole job, being the one place a new identity is created,
+    # separate from `resolve_identity()`. Writing it to the manifest is
+    # `upsert_device()`, and `commit_step` was not calling it: the return
+    # value was assigned to nothing.
+    #
+    # Measured before the fix: after a successful `commit_step` the commit
+    # existed, `host_vars/` was committed, and `manifest.load(repo)
+    # ["devices"]` was `{}`. The device was in git and in NetBox and
+    # unknown to the identity map. The docstring said "the identity is
+    # minted here and only here" -- true about the call, false about the
+    # outcome.
+
+    def test_the_manifest_has_an_entry_afterwards(self, wired):
+        from modules.nsot import manifest as _m
+
+        self._run(wired)
+        identity, entry = _m.find_by_name(wired["repo"], "bp-onboard-c")
+        assert identity, "no identity recorded — minted and discarded"
+        assert entry["name"] == "bp-onboard-c"
+        assert entry["mgmt_ip"] == wired["mgmt_ip"]
+        assert entry["platform"] == "cisco_iosxe"
+
+    def test_the_entry_is_what_blocks_a_second_onboarding(self, wired):
+        """The property the entry exists for. Without it `_name_in_manifest`
+        never fires and the wizard would happily onboard the same name
+        twice, into two identities, with one golden path between them."""
+        from modules.nsot.onboard import _name_in_manifest
+
+        assert _name_in_manifest(wired["repo"], "bp-onboard-c") == (False, True)
+        self._run(wired)
+        assert _name_in_manifest(wired["repo"], "bp-onboard-c") == (True, True)
