@@ -219,10 +219,18 @@ been invisible to the checker with nothing saying so.
 - Between inventory insert and first capture it reports **`no golden config
   saved`** — named, not absent. "Not yet captured" and "invisible" are
   different states and only one is acceptable.
-- **Negative control:** point the drift population back at
-  `_list_golden_configs()` → the new device vanishes from the counts and the
-  coverage assertion fails. This is the 3.3b control re-run against a device
-  that did not exist when 3.3b was written.
+- **Negative controls**, all shown failing: population back to
+  `_list_golden_configs()` → **17** fail; drop the skipped bucket, making it
+  silent again → **5**; panel omits the skipped devices → **2**.
+
+*Built for it:* `driftDetailHtml()`, the **third** renderer extracted as a
+pure function so it can be executed rather than grepped — after the agent
+panel and the onboarding wizard. A test against the payload cannot see a
+screen that does not draw it.
+
+*Also pinned:* a newly onboarded device can be **drifted**, not only clean.
+Enrolment means covered, not assumed healthy, and the first capture is
+exactly when a stale golden is most likely.
 
 ---
 
@@ -399,4 +407,4 @@ with the census condition.
 | **4C.3** ordering | **done** — `tests/test_onboard_ordering.py`, 23 tests, three negative controls plus a positive control on the signals themselves |
 | **4C.4** routes + UI | **done** — `routes/onboard.py`, `templates/partials/onboard_wizard.html`, `tests/test_onboard_wizard_renders.py`, 26 tests, four negative controls each shown failing |
 | **4C.5** RW community | **done** — `tests/test_onboard_snmp.py` + `tests/test_platform_keying.py`, 44 tests, three negative controls each shown failing |
-| 4C.6 drift enrolment | not started |
+| **4C.6** drift enrolment | **done** — `tests/test_onboard_drift_enrolment.py`, 19 tests, three negative controls each shown failing |

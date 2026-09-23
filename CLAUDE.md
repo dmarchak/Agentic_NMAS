@@ -871,6 +871,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_wizard_renders.py` | the shipped renderer executed: every blocking reason on screen with Create disabled |
 | `test_onboard_snmp.py` | RW removed verbatim; the nine RO communities untouched, against the fleet fixtures |
 | `test_platform_keying.py` | every consumer declares its namespace; one translation table; the boundary refuses a slug |
+| `test_onboard_drift_enrolment.py` | a device is covered the moment it is in the inventory; named before its first capture |
 | `test_scale.py` | 900 devices: the page cost pinned as a NUMBER, so bounding the list must update it |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
