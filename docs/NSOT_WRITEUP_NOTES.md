@@ -7237,3 +7237,116 @@ Separately, the real file was reverted to its as-shipped form in a temp
 directory and run through the same function: `['nmas-onboard-c.clab.yml:bp-onboard-c']`.
 **The check was shown failing against the artifact that actually failed**,
 not only against a fixture written to fail.
+
+---
+
+## The harness that could not tell "passed" from "never ran"
+
+For most of 4C.8 there was no pytest on the machine doing the work: no
+pytest, no pip, no ensurepip, no network. So the test bodies were executed
+through a hand-rolled driver instead -- and **every "N passed" reported in
+this stage before tonight was harness-only.**
+
+The substantive claims held when pytest finally ran. That is luck rather
+than method, and the mechanism is worth stating exactly:
+
+> The harness ran only `Test*` classes and fixtureless `test_*` functions,
+> **silently skipped everything else**, and printed a pass count that could
+> not distinguish *passed* from *never executed*.
+
+That is the vacuous-pass failure, inside the tool built to hunt vacuous
+passes. Every scan in this project now carries a `_the_scan_finds_something`
+floor for exactly this reason, and the harness had no floor at all.
+
+**The tell was visible and went unread.** `test_probe_topologies.py`
+reported **0 passed** under the class-based driver and **4** under the
+function-based one -- the same file, the same moment, two different answers.
+That was noted and moved past as a quirk of the driver. It was the driver
+announcing it could not see half its input.
+
+### What the real run found
+
+2,638 passed, 6 failed, first genuine run of this suite anywhere:
+
+| failure | what it was |
+|---|---|
+| `test_no_ip_literals` x2 | real -- this lab's addresses in 4C.8 docstrings |
+| `test_onboard_plan` x2 | real -- and in the file flagged as unverifiable |
+| `test_portability` | **residue**, not a regression: a `C:/TFTP-Root` dated to the original deployment, created by the pre-Phase-0 import-time `makedirs` |
+| `test_inline_javascript` | **the checker was wrong**, see below |
+
+The portability one is the sharpest: the assertion is *"no such directory
+exists"*, and a month-old artefact satisfies its negation as truly as a
+fresh one. The test is right to fail and the fix is deleting the directory,
+not softening the test. It also means **this suite had never been run on a
+machine carrying traces of the old behaviour** -- coverage inherited, not
+designed, the same shape as the drift checker's nine devices.
+
+---
+
+## Two checks of one property, and the older one was wrong
+
+`test_inline_javascript.py` held two parsers of the same thing:
+
+* `TestNodeParsesEveryInlineScript` -- `node --check` over **raw templates**;
+* `TestEveryInlineScriptParses` -- dukpy over the **rendered page**.
+
+The dukpy one was added later, and its docstring says precisely why it
+renders first:
+
+> A template is not JavaScript. `window.applyAiEnabled({{ ai_enabled |
+> tojson }})` is valid Jinja and, read as JS, is an object literal with an
+> invalid property name -- so parsing the raw file reports a defect in
+> correct code.
+
+The reason was written down, and the older check was left in place holding
+the opposite behaviour. It stayed green only because **node was installed on
+neither machine**, so it skipped. Installing node to run this suite turned
+it on for the first time, and it failed on the two blocks its sibling's
+docstring had named in advance:
+
+    base.html:885    window.applyAiEnabled({{ ai_enabled | tojson }});
+    index.html:6628  the same line
+
+Both correct. Both working in the browser. **A checker that reports a defect
+in correct code is one that gets removed or routed around** -- which is the
+literal argument used when the dukpy version was written, arriving as an
+actual event.
+
+### The failure report omitted the failure
+
+The node check printed `stderr.strip().splitlines()[-1]`. On node 18 the
+last line of a syntax error is the version banner, so a genuine parse
+failure reported:
+
+    Node.js v18.19.1
+
+and named nothing -- no file, no line, no token. A report that omits the
+failure is worse than no report: it costs a diagnosis *and* looks like one.
+The replacement takes the first line containing `Error`.
+
+### The fix: one input, several parsers
+
+Merged rather than corrected in place. Two checks of one property will
+diverge again; what differed here was not the parser but **what it was
+pointed at**, so that is what became singular:
+
+* `parsers()` returns every parser available -- dukpy always, node when
+  `shutil.which("node")` finds it. node is not required, and when present it
+  is used rather than skipped, because it is the stronger parser.
+* Both wrap the block identically (`_WRAPPER`), so they are at least asked
+  the same question about top-level `return` and `await`.
+* Both parse the **rendered** page.
+
+Three controls guard the merge:
+
+1. **`parsers()` is non-empty and names dukpy** -- an empty list would make
+   every check vacuously true and look exactly like a clean run.
+2. **Every parser rejects `await` without `async`, individually.** `_parses`
+   returns on the first failure, so an aggregate control proves the first
+   parser works and says nothing about the second: node being installed has
+   to mean node is checking something.
+3. **The raw Jinja form must fail to parse and the rendered form must
+   pass.** This is the reason the check renders, pinned as an assertion
+   rather than left in prose -- prose about code is not code, and the prose
+   was already there and was already ignored.

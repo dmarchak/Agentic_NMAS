@@ -875,6 +875,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_scale.py` | 900 devices: the page cost pinned as a NUMBER, so bounding the list must update it |
 | `test_probe_topologies.py` | every `cisco_c8000v` probe node binds a launch patch, from its own copy |
 | `test_bootstrap_manager_address.py` | the bootstrap config reaches the manager AND stays a bootstrap: address emitted, no IGP/loopback/route |
+| `test_inline_javascript.py` | every parser available, one input: the RENDERED page; raw-Jinja control pinned |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
@@ -1347,6 +1348,34 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   being reported through `unsendable`, so a missing netmask was announced as
   "lines contain characters an IOS CLI cannot accept" and sent the reader
   looking for an em dash. `render_error` is its own field and its own reason.
+- **Two checks of one property will diverge, and the older one reported a
+  defect in correct code.** `test_inline_javascript.py` held a `node --check`
+  over **raw templates** beside a dukpy check over the **rendered page**. The
+  dukpy one was written later and its docstring names the exact reason —
+  `window.applyAiEnabled({{ ai_enabled | tojson }})` is valid Jinja and, read
+  as JS, an object literal where a property name belongs. The older check
+  stayed green only because **node was installed on neither machine**;
+  installing it to run the suite turned the check on for the first time and
+  it failed on the two blocks its sibling's docstring had named in advance
+  (`base.html:885`, `index.html:6628`), both correct and both working in a
+  browser. Merged to one input and several parsers — dukpy always, node when
+  present — because what differed was not the parser but **what it was
+  pointed at**. The raw-Jinja form failing and the rendered form passing is
+  now an assertion, not a docstring.
+- **A failure report that omits the failure costs a diagnosis and looks like
+  one.** That check printed `stderr.splitlines()[-1]`, which on node 18 is
+  the version banner: a real syntax error reported `Node.js v18.19.1` and
+  named no file, line or token. Take the first line containing `Error`.
+- **A pass count that cannot distinguish "passed" from "never ran" is not a
+  pass count.** With no pytest available, 4C.8's test bodies were executed
+  through a hand-rolled driver that ran only `Test*` classes and fixtureless
+  `test_*` functions and **silently skipped the rest** — the vacuous-pass
+  failure inside the tool built to hunt vacuous passes, and with no
+  `_the_scan_finds_something` floor of its own. The tell was visible and
+  unread: one file reported **0 passed** under one driver and **4** under
+  another, the same file at the same moment. Every "N passed" claimed during
+  that stage was harness-only; the first real run was 2,638 passed / 6
+  failed.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

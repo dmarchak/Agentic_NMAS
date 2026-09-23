@@ -200,56 +200,80 @@ class TestNoStringLiteralSpansALineBreak:
         assert unterminated_string_lines(ok) == []
 
 
-@pytest.mark.skipif(shutil.which("node") is None,
-                    reason="node is not installed; the scanner above still runs")
-class TestNodeParsesEveryInlineScript:
-    """The real answer, when the tool is available."""
-
-    def test_every_inline_script_parses(self):
-        failures = []
-        for path in _templates():
-            for start, body in _scripts(path):
-                with tempfile.NamedTemporaryFile(
-                        "w", suffix=".js", delete=False, encoding="utf-8") as fh:
-                    fh.write(body)
-                    tmp = fh.name
-                try:
-                    proc = subprocess.run(["node", "--check", tmp],
-                                          capture_output=True, text=True,
-                                          timeout=30)
-                    if proc.returncode != 0:
-                        first = (proc.stderr or "").strip().splitlines()
-                        failures.append(
-                            f"{os.path.relpath(path, TEMPLATES)} "
-                            f"(script at line {start}): "
-                            f"{first[-1] if first else 'syntax error'}")
-                finally:
-                    os.unlink(tmp)
-        assert not failures, failures
-
-
 # ---------------------------------------------------------------------------
 # A real parse, everywhere
 # ---------------------------------------------------------------------------
 
-def _parses(body: str):
-    """``(ok, message)`` from an actual JavaScript parser.
+#: Both parsers wrap the block identically, so a block's top-level ``return``
+#: or ``await`` is legal where it is legal and illegal where it is not. Two
+#: parsers disagreeing about what is legal is the divergence this file was
+#: merged to remove; they must at least be asked the same question.
+_WRAPPER = "function __syntax_check_wrapper__() {\n%s\n}"
 
-    Wrapped in a function so a block's top-level ``return`` or ``await`` is
-    legal where it is legal, and illegal where it is not — which is the
-    distinction that matters here.
-    """
+
+def _parses_dukpy(body: str):
     import dukpy
 
     try:
-        dukpy.evaljs("function __syntax_check_wrapper__() {\n" + body + "\n}")
+        dukpy.evaljs(_WRAPPER % body)
         return True, ""
     except Exception as exc:                  # noqa: BLE001
         return False, str(exc).splitlines()[0]
 
 
+def _parses_node(body: str):
+    """``node --check``, and **the message is the SyntaxError line**.
+
+    The version this replaced reported ``stderr.splitlines()[-1]``, which on
+    node 18 is the version banner — so a genuine parse failure printed
+    *"Node.js v18.19.1"* and named nothing. A failure report that omits the
+    failure is worse than no report: it costs a diagnosis and looks like one.
+    """
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
+                                     encoding="utf-8") as fh:
+        fh.write(_WRAPPER % body)
+        tmp = fh.name
+    try:
+        proc = subprocess.run(["node", "--check", tmp], capture_output=True,
+                              text=True, timeout=30)
+        if proc.returncode == 0:
+            return True, ""
+        lines = [ln.strip() for ln in (proc.stderr or "").splitlines()
+                 if ln.strip()]
+        named = next((ln for ln in lines if "Error" in ln), "")
+        return False, named or (lines[0] if lines else "syntax error")
+    finally:
+        os.unlink(tmp)
+
+
+def parsers():
+    """Every parser available here, named.
+
+    dukpy is pinned in ``requirements.txt`` and always runs. node is used
+    when present and **is not required** -- but when it is present it is the
+    stronger parser, so it is used rather than skipped.
+
+    **They parse the same input**: the rendered page. There used to be two
+    checks of this one property that disagreed about what to parse, and the
+    older one reported a defect in correct code.
+    """
+    found = [("dukpy", _parses_dukpy)]
+    if shutil.which("node"):
+        found.append(("node", _parses_node))
+    return found
+
+
+def _parses(body: str):
+    """``(ok, message)`` from every available parser. First failure wins."""
+    for name, parse in parsers():
+        ok, message = parse(body)
+        if not ok:
+            return False, f"[{name}] {message}"
+    return True, ""
+
+
 class TestEveryInlineScriptParses:
-    """Not skipped anywhere. dukpy is pinned, node is not installed."""
+    """Not skipped anywhere. dukpy is pinned; node is used when present."""
 
     def test_dukpy_is_available(self):
         """A parser that is not there checks nothing, and this file has
@@ -257,6 +281,53 @@ class TestEveryInlineScriptParses:
         import dukpy
 
         assert dukpy.evaljs("1 + 1") == 2
+
+    def test_every_available_parser_is_named_and_at_least_one_exists(self):
+        """A parser list that came back empty would make every check below
+        vacuously true, and would look exactly like a clean run."""
+        names = [name for name, _ in parsers()]
+        assert "dukpy" in names, names
+        assert len(names) >= 1
+
+    def test_every_available_parser_rejects_the_defect_that_shipped(self):
+        """Per parser, not just in aggregate.
+
+        `_parses` returns on the FIRST failure, so a control that only calls
+        it proves the first parser works and says nothing about the second.
+        node being installed must mean node is checking something.
+        """
+        for name, parse in parsers():
+            ok, message = parse("function f() { await g(); }")
+            assert not ok, f"{name} accepts the bug it was added to catch"
+            assert "Error" in message, (name, message)
+
+    def test_the_raw_template_would_report_a_defect_in_correct_code(self):
+        """**Why this parses the rendered page, pinned as an assertion.**
+
+        A `node --check` over raw templates lived beside this class and
+        failed on two blocks that are correct and work in the browser:
+
+            base.html:885    window.applyAiEnabled({{ ai_enabled|tojson }});
+            index.html:6628  the same line
+
+        A template is not JavaScript. Read as JS that is an object literal
+        where a property name must be, so the parse fails — and a checker
+        that reports a defect in correct code is a checker that gets removed
+        or, worse, routed around. That one was removed; this records the
+        reason so the raw-template version is not reinvented.
+
+        The second half is the part that makes it a control rather than an
+        anecdote: the *rendered* form must parse.
+        """
+        raw = "window.applyAiEnabled({{ ai_enabled | tojson }});"
+        ok, message = _parses(raw)
+        assert not ok, "the raw Jinja form parsed — this control is dead"
+        assert "Error" in message, message
+
+        for rendered in ("window.applyAiEnabled(true);",
+                         "window.applyAiEnabled(false);"):
+            ok, message = _parses(rendered)
+            assert ok, f"{rendered!r} rejected: {message}"
 
     def test_the_parser_rejects_the_defect_that_shipped(self):
         """`await` without `async` — the construct that killed a whole block
