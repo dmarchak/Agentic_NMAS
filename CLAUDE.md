@@ -1039,7 +1039,29 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 
 ## Known defects deferred to later phases
 
-Verified during Phase 0, deliberately not fixed yet. Recorded in full in
-[docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md).
+Verified, deliberately not fixed yet. Recorded in full in
+[docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md); the AI-side items
+are **Stage 8** in [docs/NSOT_PLAN.md](docs/NSOT_PLAN.md), which is last by
+design so the tool library describes a finished system.
 
-- AI prompt examples reference another project's PE/P/MPLS topology (Phase 3)
+- AI prompt examples reference another project's PE/P/MPLS topology (Stage 8.5)
+- **The AI tool layer has no pre-execution authority gate.** `execute_tool()`
+  dispatches on the tool name; `request_approval` is a tool the model
+  *chooses* to call, not an interception. The agent cannot mint identities
+  because `resolve_identity(allow_new=False)` enforces that at the identity
+  layer — not because anything checks what the agent may do. Stage 8.3 makes
+  the allowlist real in code (no credential rotation, no template approval,
+  no remote push, no baseline re-apply, no deploy apply).
+- **`restore_golden_config` is a fourth config-push path**: whole golden
+  replayed in config mode with no confirm hash, no merge-only check, no ASCII
+  guard, no dangerous-line authorisation, no snapshot, no rollback, no
+  breaker, and `device_ips: ["all"]` targets the fleet. The same shape was
+  removed from the approval queue's `revert_to_golden`, which hands off to
+  the confirmed restore path; the AI's copy was not part of that correction
+  (Stage 8.3).
+- **`detect_config_drift` is a third drift implementation**, carrying the
+  pre-3.3b shape — no inventory accounting, no named skips (Stage 8.2).
+- **The background agent has been disabled throughout the NSoT work**, so
+  `agent_runner.py` is the least-exercised code in the program. It is
+  re-enabled **last**, after the tool library and the authority gate, with
+  one real run observed — the same bar drift had to clear (Stage 8.4).

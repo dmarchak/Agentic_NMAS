@@ -1583,3 +1583,109 @@ every inventoried action has exactly one home and a test asserting its entry
 point exists; every consequence line is pinned to what the code does; the
 Grafana embed either renders or names the blocker it hit; no behaviour
 changes -- Stage 7 moves controls and adds entry points.
+
+---
+
+### STAGE 8 — the AI assistant and the background agent
+
+**Deliberately last, after Stage 7.** The tool library has to describe the
+finished system rather than a moving one; reviewing it against an
+architecture still being reorganised means doing it twice and believing the
+first answer.
+
+Recorded now so it is not rediscovered. **Plan when we get there** -- but the
+measurements below were taken 2026-09-23 while recording it, because two of
+them change how urgent this is.
+
+**8.1 Models.** `ai_assistant.py` carries three: `claude-sonnet-5`,
+`claude-opus-5`, `claude-haiku-4-5`. Confirm each is current, and check
+whether any prompt assumes an older model's behaviour -- output-length
+habits, tool-use style, or instructions written around a limitation that no
+longer exists.
+
+**8.2 The tool library against what the program has become.**
+**73 tools.** Each gets *correct*, *stale*, or *missing*.
+
+The known-stale shape is already visible. `list_golden_configs` was one of
+the seventeen legacy-enumerator callers found in Stage 3.3; it is correct now
+only because the enumerator underneath it was fixed. The read-first
+instructions -- check golden configs and variables before opening a session
+-- predate committed intent entirely. **An agent told to read goldens and
+variables, in a system where `host_vars` is the source of truth, is
+reasoning from the wrong artifact**: a golden is what the device *was* at the
+last capture, and intent is what it is *supposed to be*. Those differ exactly
+when it matters.
+
+Missing tools worth considering: **read committed intent**, **read a deploy
+plan** (the program, the attribution split, the blocking reasons), **read
+drift coverage** (`checked N of M` and who was skipped), and **read the
+integrations' data** (Prometheus, Loki, Kea) so the agent can answer from
+measurement rather than from a config file.
+
+**8.3 Authority, stated positively -- and there is currently no place to
+state it.**
+
+Measured: `execute_tool()` dispatches on the tool name directly. **There is
+no pre-execution gate.** `request_approval` is a tool the model *chooses* to
+call, not an interception, so the agent's authority is bounded by prompt
+instruction and by nothing in code. "The AI assistant must never be able to
+mint identities" holds because `resolve_identity(allow_new=False)` enforces
+it *at the identity layer* -- not because anything checks what the agent is
+allowed to do.
+
+So 8.3 is a code change, not a documentation change: **a written allowlist
+with an enforcement point**, so a new tool does not inherit permission by
+being added. The position, to be encoded: **no credential rotation, no
+template approval, no remote push, no baseline re-apply, no deploy apply.**
+Read and propose; destructive actions go through the approval queue as today.
+A tool not on the allowlist is refused, and adding one is a deliberate edit
+to the list rather than a side effect of writing a handler.
+
+**Two findings that may not wait for Stage 8** -- both measured while writing
+this, both pre-dating the NSoT work:
+
+* **`restore_golden_config` is a fourth config-push path.** It opens a
+  session, enters config mode and replays the whole golden line by line, with
+  **no confirm hash, no `assert_merge_only`, no `assert_sendable`, no
+  dangerous-line authorisation, no pre-change snapshot, no rollback and no
+  circuit breaker** -- and it accepts `device_ips: ["all"]`, so one call
+  targets the fleet. This is the exact shape removed from the approval
+  queue's `revert_to_golden`, which now hands off to the confirmed restore
+  path. The AI's copy was not part of that correction. Either it hands off
+  the same way, or it goes.
+* **`detect_config_drift` is a third drift implementation**, after
+  `drift_check.run_drift_check` and the `agent_runner._run_drift_check`
+  deleted in Stage 3.3. It carries the pre-3.3b shape: no inventory
+  accounting, no named skips.
+
+`restore_pre_change_snapshot`, `execute_commands_on_device` and
+`execute_command_on_multiple_devices` need the same read before 8.3 is
+designed, for the same reason.
+
+**8.4 Re-enabling the background agent.** It has been **disabled throughout
+the NSoT work**, which makes its paths the least exercised code in the
+program -- `agent_runner.py` is 1,363 lines that nothing has run while five
+stages changed the things it calls. Stage 3.3 already found one consequence:
+a 172-line duplicate drift checker inside it, superseded and never removed.
+
+Treat re-enabling exactly like re-enabling drift, and in that order: **fix
+what it does first, enable deliberately second, observe one real run third.**
+Re-enabling before 8.2 and 8.3 would put the least-tested component in the
+program back on the network with the stale tool library and no authority
+gate. Enabling it is the last act of the stage, not the first.
+
+**8.5 The prompt examples.** They reference another project's PE/P/MPLS
+topology -- Section 3 finding #11, deferred from Phase 0 and still open.
+`PE-1`, `P1`, `P4`, MPLS TE and LDP appear throughout
+`ai_assistant.py`'s instructions, variable examples, Jenkins stage templates
+and knowledge-base guidance. Make them generic, or match this lab (r1-r5,
+s1-s4, OSPF/BGP/RIP/DMVPN). An example is an instruction: examples naming a
+topology that does not exist teach the agent to look for devices that are
+not there.
+
+*Acceptance:* every one of the 73 tools is classified with a reason; the
+allowlist exists **in code** with a test that an unlisted tool is refused;
+no tool reaches a device outside the confirmed deploy path; the prompt
+examples name only devices in this lab; and the background agent is enabled
+**last**, with one real run observed and reported -- the same bar drift
+had to clear.
