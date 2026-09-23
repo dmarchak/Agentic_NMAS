@@ -754,6 +754,28 @@ The checker tests it first and separately.
 **Tightening a mode does not undo exposure.** Anything that read a secret
 while it was readable still has it; rotation is what makes past exposure moot.
 
+**`0600` is right for a file the APP owns, and wrong for a handoff.** A file
+one service writes and another reads has to name the reader — measured the
+hard way: `chmod 600` on Kea's password file, root-owned, stopped the Control
+Agent (running as `_kea`) from reading its own password. `0640` owned by the
+service user is the target there. `scripts/nmas-oxidized-cred` already has the
+right shape and is the one place NMAS writes for another service: it
+preserves the original's mode and owner rather than asserting its own.
+
+**A trailing newline is part of the password.** Kea includes it; `$(...)`
+strips it; the result is a 401 that reads as a wrong password and is a
+one-byte difference. Anything writing a credential to a file another service
+reads writes it with no trailing newline and says so at the write site.
+`nmas-oxidized-cred` refuses a newline outright rather than stripping one —
+silently stripping would store something other than what was supplied.
+
+**Every schema key is surfaced or documented file-only with a reason**
+([docs/SETTINGS.md](docs/SETTINGS.md)), and a test fails on a key that is
+neither. **`pause_agent()` persists nothing** — it sets an in-memory Event, so
+a pause is lost on restart while `background_agent_enabled` (the persistent
+switch, which had no control until 3.2d) survives. Two controls that look like
+one switch, and only the invisible one survives a restart.
+
 Secrets (API tokens, passwords, access keys) are encrypted at rest with the
 existing Fernet key via `modules/secrets_store.py`. They are never logged, never
 committed, and masked in the UI as write-only fields with a set/unset badge. The

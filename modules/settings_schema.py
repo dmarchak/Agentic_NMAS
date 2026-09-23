@@ -52,6 +52,13 @@ SCHEMA_VERSION = 1
 #: change to a default. Recording a decision is
 #: :func:`ratify`, which has an actor.
 #:
+#: **A key removed from DEFAULTS is not removed from any file.**
+#: `additionalProperties` is True and `migrate()` never deletes, so a value
+#: written by an older build stays readable and stays put — constraint 1. What
+#: removal means is that nothing reads it any more, which is a statement about
+#: the code and not about the install. `oxidized_reload_command` went that way
+#: in 3.2e: declared twice, read nowhere, for as long as it existed.
+#:
 #: v1 is the original migration and seeded everything that existed at the
 #: time; it is recorded as ``"*"`` rather than rewritten, because changing
 #: what a released migration did is a lie about history. Every version after
@@ -255,7 +262,6 @@ DEFAULTS: dict = {
     # The key is kept because settings keys are never deleted, and it is no
     # longer consulted — a container restart from the app would mean the web
     # process exercising docker-group access, which is root-equivalent.
-    "oxidized_reload_command": "",
     "clab_sync_script":     "",          # the flock wrapper
     # A credential consumer this tool cannot update: it holds a literal.
     # Configured so the confirm screen can say whether THIS device is the one
@@ -464,7 +470,6 @@ SCHEMA: dict = {
 
         "oxidized_rest_url": _STR,
         "oxidized_router_db": _STR,
-        "oxidized_reload_command": _STR,
         "clab_sync_script": _STR,
         "yang_push_script": _STR,
         "clab_host": _STR,

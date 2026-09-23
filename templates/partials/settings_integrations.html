@@ -326,7 +326,28 @@ async function saveIntegration(name) {
     const d = await r.json();
     el.className = 'small me-2 ' + (d.ok ? 'text-success' : 'text-danger');
     el.textContent = d.ok ? 'Saved' : (d.error || 'Save failed');
-    if (d.ok) { loadIntegrationSettings(); }
+    if (d.ok) {
+      /* CHECK WHAT CAME BACK. The save is followed by a re-render from the
+         server, so a field that did not persist is redrawn with the stored
+         value and simply appears to clear — the same silent-drop shape as a
+         control missing from the save payload, one layer further on. A
+         non-secret field that empties itself must say so.
+
+         Secrets are skipped: they are never echoed, by design. */
+      const sent = _collectIntegration(name);
+      const back = d.integration || {};
+      const secret = new Set(INTEGRATION_SPEC[name].fields
+        .filter(f => f.type === 'secret').map(f => f.key));
+      const lost = Object.keys(sent).filter(k =>
+        !secret.has(k) && JSON.stringify(back[k]) !== JSON.stringify(sent[k]));
+      if (lost.length) {
+        el.className = 'small me-2 text-warning';
+        el.textContent = `Saved, but ${lost.join(', ')} did not persist`;
+        showToast(`${name}: ${lost.join(', ')} did not persist as sent — `
+                  + 'the field will redraw with the stored value.', 'warning');
+      }
+      loadIntegrationSettings();
+    }
   } catch (e) { el.className = 'small me-2 text-danger'; el.textContent = e.message; }
 }
 

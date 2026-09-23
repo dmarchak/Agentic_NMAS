@@ -6277,3 +6277,85 @@ setting — would silently rewrite every "defaulted" as "set explicitly" across
 every install, and the distinction this panel exists to show would be gone in
 a single release, with nothing to say it had happened. Recorded here because
 the bump will look like an unrelated chore when it comes.
+
+---
+
+## 0600 is right for files the app owns, and wrong for files another service reads
+
+Tightening permissions after the plaintext-key finding broke a service.
+
+`/etc/kea/kea-api-password` was written with `tee`, which made it root-owned,
+and then `chmod 600`. Kea's Control Agent runs as `_kea`, so it could not read
+its own password file and failed to start with *Permission denied*. The
+correct target there is **0640 owned by the service user** — not 0600.
+
+The two rules are not in tension once the question is asked properly:
+
+* **A file the app owns and only the app reads** — `data/key.key`,
+  `user_settings.json`, `jenkins_checks.json`, `.env` — is `0600`. Nobody else
+  has any business reading it, and group access is pure exposure.
+* **A file one service writes and another reads** is a handoff, and its mode
+  has to name the reader. `0600` there does not protect the secret, it
+  withholds it from the process that needs it.
+
+The failure is instructive because it is the exact counterpart of the evening's
+other lesson. Loose permissions are invisible until someone looks; tight
+permissions on the wrong file fail loudly and immediately. **The loud failure
+is the safer one**, which is an argument for tightening first and relaxing to
+the measured requirement, rather than the reverse.
+
+### Measured: the program does not currently do this anywhere
+
+Worth checking rather than warning about in the abstract.
+`scripts/nmas-oxidized-cred` is the one place NMAS writes a file another
+service reads — Oxidized's `router.db`, `0600 oxidized:oxidized`. It does not
+impose a mode. It stats the original, writes a temp file, then
+`os.chmod(tmp, stat.S_IMODE(st.st_mode))` and `os.chown(tmp, st.st_uid,
+st.st_gid)` before `os.replace()`. **It preserves the reader's ownership and
+mode rather than asserting its own**, which is the correct shape and was
+arrived at for a different reason (an atomic replace that cannot leave a
+half-written credential file).
+
+`config.open_secure()`, added the same evening, is `0600` and is used only for
+files the app owns. The distinction holds, and now it is written down rather
+than being a property nobody had articulated.
+
+---
+
+## A trailing newline is part of the password
+
+The Kea rotation returned 401 against a password that was correct.
+
+The password file had a trailing newline. **Kea includes it in the password;
+`curl`'s `$(...)` strips it.** So the service and the test were comparing two
+strings that differed by one byte, and the symptom — an authentication
+failure — is indistinguishable from having simply got the password wrong. The
+natural next move is to re-enter the password, which does not help, because
+the difference is not in what was typed.
+
+The rule, for anything in this program that ever writes a credential to a file
+another service reads: **write it with no trailing newline, and say so at the
+write site.** A comment is warranted because the absence of a newline looks
+like an oversight to the next reader, and "helpfully" adding one breaks
+authentication in a way that points at the wrong cause.
+
+### Measured: covered, for the one path that exists
+
+`nmas-oxidized-cred` refuses a username or password containing a newline
+outright:
+
+```python
+if any(":" in v or "\n" in v for v in (username, password)):
+    _fail("username and password must not contain ':' or a newline — "
+          "router.db is colon-delimited and one would split the row")
+```
+
+The stated reason is the colon-delimited row format, not authentication — but
+the check is the right one either way, and it is a refusal rather than a
+silent strip. Silently stripping would be worse: the stored credential would
+then differ from the one the operator supplied, with nothing saying so.
+
+This is the same family as the ASCII guard. An em dash consumed by IOS and a
+trailing newline consumed by Kea are both **one byte of invisible difference
+between what was written and what was meant**, surfacing as a failure that
+names something else entirely.

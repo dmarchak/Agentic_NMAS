@@ -274,3 +274,153 @@ class TestTheRatifyRouteRequiresAPerson:
         assert "/identity/posture/ratify" in flat
         assert page.count("ratifySetting") >= 2
         assert "record this decision" in flat
+
+
+class TestEverySchemaKeyHasADecision:
+    """Stage 3.2d: surfaced, or file-only **with a stated reason**.
+
+    A setting that is neither in the UI nor recorded as deliberately
+    file-only is a setting nobody knows the status of, which is the state all
+    of them were in.
+
+    `docs/SETTINGS.md` is the record, and this test is what stops it going
+    stale: a key added to `DEFAULTS` and mentioned nowhere fails here.
+    """
+
+    @staticmethod
+    def _corpus():
+        import io
+        import os
+
+        parts = []
+        for base in ("templates", "docs"):
+            for root, _d, files in os.walk(base):
+                for f in files:
+                    if f.endswith((".html", ".md")):
+                        parts.append(io.open(os.path.join(root, f),
+                                             encoding="utf-8",
+                                             errors="replace").read())
+        return "\n".join(parts)
+
+    def test_every_key_is_surfaced_or_documented(self):
+        import re
+
+        from modules.settings_schema import DEFAULTS
+
+        corpus = self._corpus()
+        # The identity gates are built by f-string on BOTH sides -- Python and
+        # the panel's JavaScript -- so a literal search cannot see them. They
+        # are covered by test_security_posture.py instead, which asserts the
+        # panel renders one row per gated action.
+        exempt = {"settings_schema_version"}
+        missing = [k for k in DEFAULTS
+                   if k not in exempt
+                   and not k.startswith(("require_identity_for",
+                                         "require_person_for"))
+                   and not re.search(r"\b" + re.escape(k) + r"\b", corpus)]
+        assert not missing, (
+            "no UI control and no entry in docs/SETTINGS.md: " + str(missing))
+
+    def test_the_settings_doc_exists_and_names_the_write_path(self):
+        import io
+
+        text = io.open("docs/SETTINGS.md", encoding="utf-8").read()
+        assert "write_settings()" in text
+        assert "never seeds a default" in text
+
+
+class TestBackgroundAgentHasAControl:
+    """It is the PERSISTENT switch and had none: `/settings` accepted it and
+    nothing ever sent it, so it was settable by `curl` alone.
+
+    The Agent tab's Pause button is a different thing — `pause_agent()` sets
+    an in-memory Event and persists nothing, so a pause is lost on restart
+    and the agent comes back running. Two controls that look like one switch,
+    and only the invisible one survives a restart.
+    """
+
+    @pytest.fixture(scope="class")
+    def page(self):
+        import app as nmas
+
+        return nmas.app.test_client().get("/").get_data(as_text=True)
+
+    def test_the_form_has_the_switch(self, page):
+        assert "settingsBackgroundAgentEnabled" in page
+
+    def test_the_save_payload_includes_it(self, page):
+        """A control absent from the payload saves silently and never
+        persists — the shape this whole stage is about."""
+        i = page.index("window.saveSettings = function()")
+        assert "background_agent_enabled" in page[i:i + 4000]
+
+    def test_the_form_is_populated_from_the_server(self, page):
+        i = page.index("window.openSettingsModal = function()")
+        assert "background_agent_enabled" in page[i:i + 4000]
+
+    def test_pause_persists_nothing(self):
+        """Pinned, because the UI makes it look like a switch."""
+        import inspect
+
+        from modules import agent_runner
+
+        src = inspect.getsource(agent_runner.pause_agent)
+        assert "save" not in src and "set_user_setting" not in src
+
+    def test_the_difference_is_written_down(self):
+        import io
+
+        text = io.open("docs/SETTINGS.md", encoding="utf-8").read()
+        assert "Pause is not disable" in text
+
+
+class TestASaveThatDidNotPersistSaysSo:
+    """The Kea Username field cleared itself on re-render.
+
+    The save is followed by a re-render from the server, so a field that did
+    not persist is redrawn with the stored value and simply appears to empty.
+    That is the silent-drop shape one layer on from a control missing from
+    the payload — and a non-secret field that empties itself must say so.
+    """
+
+    @pytest.fixture(scope="class")
+    def page(self):
+        import app as nmas
+
+        return nmas.app.test_client().get("/").get_data(as_text=True)
+
+    def test_the_save_compares_what_came_back(self, page):
+        assert "did not persist" in page
+
+    def test_secrets_are_excluded_from_the_comparison(self, page):
+        """They are never echoed, by design, so they would always 'differ'."""
+        i = page.index("did not persist")
+        window = page[max(0, i - 1200):i]
+        assert "f.type === 'secret'" in window
+
+    def test_a_non_secret_field_round_trips_through_the_route(self, tmp_path,
+                                                              monkeypatch):
+        """Behavioural: the thing the comparison would catch, not caught.
+
+        Patches the settings FILE rather than the accessors. The first version
+        of this test used the mocking fixture above, which redirects
+        `settings_schema.load_user_settings` but not
+        `modules.config.set_user_setting` -- so the write went to the real
+        file and the read to the mock, and it reported `kea_username` as lost.
+        That looked exactly like the reported bug and was entirely my own
+        test. Reader and writer have to agree on the file, or the harness
+        manufactures the defect it is looking for.
+        """
+        import app as nmas
+        from modules import config
+
+        path = tmp_path / "user_settings.json"
+        path.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(path))
+
+        client = nmas.app.test_client()
+        r = client.post("/settings/integrations/kea",
+                        json={"kea_username": "keauser",
+                              "kea_url": "http://example:8000"})
+        assert r.get_json()["ok"] is True
+        assert r.get_json()["integration"]["kea_username"] == "keauser"
