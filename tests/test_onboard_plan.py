@@ -191,22 +191,28 @@ class TestACheckThatDidNotRunHasNotPassed:
 
 class TestEveryReasonAtOnce:
 
-    def test_three_problems_are_all_reported(self, lab, monkeypatch):
-        monkeypatch.setattr("modules.nsot.approval.is_approved",
-                            lambda repo, template, host_vars=None: False)
-        reasons = _plan(hostname="9bad", mgmt_ip="").blocking_reasons
+    def test_three_problems_are_all_reported(self, lab):
+        """Three GENUINE blockers.
+
+        This used an unapproved template as its third, which 4C.8 demoted to
+        an advisory — the artefact is `render_bootstrap()`'s output and no
+        step of the run reads the template. The property under test is "every
+        reason at once", not "these three reasons", so it keeps its meaning
+        with a real third blocker and would have lost it with a note dressed
+        as one.
+        """
+        reasons = _plan(hostname="9bad", mgmt_ip="",
+                        platform="cisco_ios").blocking_reasons
         assert any("usable device name" in r for r in reasons)
         assert any("management address" in r for r in reasons)
-        assert any("not approved" in r for r in reasons)
+        assert any("cannot be onboarded" in r for r in reasons)   # stage D
         assert len(reasons) >= 3
 
-    def test_an_unapproved_template_refuses_with_the_reason(self, lab,
-                                                            monkeypatch):
-        monkeypatch.setattr("modules.nsot.approval.is_approved",
-                            lambda repo, template, host_vars=None: False)
-        plan = _plan()
-        assert plan.onboardable is False
-        assert any("not approved" in r for r in plan.blocking_reasons)
+    # `test_an_unapproved_template_refuses_with_the_reason` was REMOVED in
+    # 4C.8 and its removal is pinned by
+    # `TestTemplateStateIsAnAdvisoryNotARefusal` below: the refusal it
+    # asserted could not be satisfied by any first device, because
+    # `approval.approve()` correctly refuses an empty device set.
 
     def test_no_management_address_refuses(self, lab):
         """A device created and unreachable is worse than one not created."""
@@ -373,3 +379,89 @@ class TestPreconditionsAreFoundAtPlanTime:
         summary = _plan(netbox_plan=("dcim/devices/",)).summary
         assert any("NetBox writes are disabled" in r
                    for r in summary["blocking_reasons"])
+
+
+class TestTemplateStateIsAnAdvisoryNotARefusal:
+    """4C.8. The gate was keyed on a property the artefact does not depend on.
+
+    `run_onboarding`'s four steps are credentials, netbox, commit, render, and
+    `render_step` returns `plan.bootstrap_config` -- `render_bootstrap()`'s
+    output. **No step reads `plan.template`.** The Phase 3c rule generalised:
+    gate on what the artefact actually depends on.
+
+    And the gate could not be satisfied by any first device. `approve()`
+    refuses an empty device set, correctly, so a fresh list cannot approve a
+    template, cannot therefore onboard, and cannot therefore acquire the
+    device the approval needs. **The wizard could not onboard the first
+    device of a network.** Only a genuinely fresh list exposes it: a probe
+    run against a list that already had nine devices and an approved
+    template would have sailed past.
+    """
+
+    def test_an_unapproved_template_does_not_block(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda repo, template, host_vars=None: False)
+        plan = _plan()
+        assert plan.onboardable is True, plan.blocking_reasons
+        assert not any("approved" in r for r in plan.blocking_reasons)
+
+    def test_it_is_said_instead(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda repo, template, host_vars=None: False)
+        notes = _plan().advisories
+        assert notes, "an unapproved template must still be reported"
+        text = " ".join(notes)
+        # A next step, not a warning about nothing: it names the template,
+        # the list, what cannot be done, and what to do about it.
+        assert "cannot deploy" in text
+        assert "capture" in text
+        assert _plan().template in text
+
+    def test_an_approved_template_says_nothing(self, lab):
+        """Otherwise the panel carries a note on every run and is skipped."""
+        assert _plan().advisories == []
+
+    def test_a_real_blocker_still_blocks_alongside_an_advisory(
+            self, lab, monkeypatch):
+        """**The control that matters.**
+
+        An advisory list that can swallow a refusal is the failure mode of
+        this change. So: an unapproved template AND a genuine blocker, and
+        the genuine one must still be a blocker and still refuse.
+        """
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda repo, template, host_vars=None: False)
+        plan = _plan(mgmt_ip="")
+
+        assert plan.advisories, "the advisory vanished"
+        assert plan.onboardable is False, "a real blocker was swallowed"
+        assert any("management address" in r for r in plan.blocking_reasons)
+        # And the two never merge.
+        assert not set(plan.advisories) & set(plan.blocking_reasons)
+
+    def test_the_two_lists_are_separate_in_the_summary(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.nsot.approval.is_approved",
+                            lambda repo, template, host_vars=None: False)
+        summary = _plan().summary
+        assert summary["advisories"], summary
+        assert summary["blocking_reasons"] == []
+        assert summary["onboardable"] is True
+
+    def test_no_step_of_the_run_reads_the_template(self):
+        """The reason this is an advisory, asserted rather than asserted-in-
+        prose. Parsed, not grepped: the docstrings above name `template`
+        repeatedly to explain why it is not used."""
+        import ast
+        import inspect
+
+        from modules.nsot import onboard as mod
+
+        for name in ("bind_credentials_step", "create_netbox_step",
+                     "commit_step", "render_step"):
+            fn = getattr(mod, name)
+            tree = ast.parse(inspect.getsource(fn).lstrip())
+            attrs = {n.attr for n in ast.walk(tree)
+                     if isinstance(n, ast.Attribute)}
+            assert "template" not in attrs, (
+                f"{name} reads plan.template — the gate may belong after all")
+            assert "template_approved" not in attrs, name

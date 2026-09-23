@@ -495,3 +495,51 @@ class TestTheTargetListIsCarriedNeverDerived:
         row = body["lists"][0]
         for key in ("name", "slug", "device_count", "is_current"):
             assert key in row, (key, row)
+
+
+ADVISED = dict(CLEAN, advisories=[
+    "You cannot deploy to this device until 'cisco_iosxe/base.j2' is "
+    "approved for list 'nmas-probe', which needs a captured device to "
+    "validate against."])
+
+
+class TestAnAdvisoryIsShownAndDoesNotBlock:
+    """An advisory list that can swallow a refusal is this change's failure
+    mode, so both halves are executed in the shipped renderer."""
+
+    def test_the_advisory_reaches_the_screen(self, js):
+        # Whitespace-normalised: the heading wraps in the template source, so
+        # a raw substring match tests the line breaks rather than the words.
+        html = " ".join(_html(js, ADVISED).split())
+        assert "cannot deploy to this device" in html
+        assert "this does not block onboarding" in html
+
+    def test_create_stays_enabled(self, js):
+        assert _can_create(js, ADVISED) is True
+
+    def test_an_advisory_is_not_drawn_as_a_refusal(self, js):
+        """Different colour and a different heading, or the operator learns
+        to read a yellow box as a red one — and then stops reading both."""
+        html = _html(js, ADVISED)
+        assert "alert-warning" in html
+        assert "cannot be onboarded" not in html
+
+    def test_a_refusal_alongside_an_advisory_is_still_a_refusal(self, js):
+        """**The control.** Both lists populated: the refusal must appear,
+        Create must be disabled, and the advisory must not displace it."""
+        both = dict(ADVISED, onboardable=False,
+                    blocking_reasons=["no management address — the device "
+                                      "would be created and unreachable"])
+        html = _html(js, both)
+        assert "alert-danger" in html
+        assert "no management address" in html
+        assert "cannot deploy to this device" in html
+        assert _can_create(js, both) is False
+        # The refusal is drawn ABOVE the note, so a long advisory cannot push
+        # it off the top of the panel.
+        assert html.index("alert-danger") < html.index("alert-warning")
+
+    def test_no_advisories_draws_no_box(self, js):
+        """A panel that always carries a note is a panel nobody reads."""
+        html = _html(js, CLEAN)
+        assert "alert-warning" not in html

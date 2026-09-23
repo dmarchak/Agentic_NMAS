@@ -1401,6 +1401,33 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   one list. **A tool that looks broken while working is worse than one that
   fails** — it teaches the operator to stop reading the panel that is the last
   thing between them and a commit.
+- **Template approval is an ADVISORY on the onboarding path, not a gate**
+  (4C.8). Measured: `approval.approve()` refuses an empty device set —
+  correctly, that being the assertion-over-an-empty-set failure — so a fresh
+  list cannot approve a template, cannot therefore onboard, and cannot
+  therefore acquire the device the approval needs. **The wizard could not
+  onboard the first device of a network.** Only a genuinely fresh list
+  exposes it; a probe against a populated list sails past. The gate was also
+  keyed on the wrong property: `run_onboarding`'s steps are credentials →
+  netbox → commit → render, `render_step` returns `render_bootstrap()`'s
+  output, and **no step reads `plan.template`**. Phase 3c's rule generalised:
+  **gate on what the artefact actually depends on.** What it protected is
+  checked where it belongs — the deploy path validates approval per plan, per
+  device, with the lines named. `OnboardPlan.advisories` is computed beside
+  `blocking_reasons`, never merged, its own key in `summary`, and reads as a
+  next step ("…which needs a captured device to validate against"): a warning
+  about nothing trains the reader to skip warnings. The failure mode is an
+  advisory list that swallows a refusal, so the controls assert a genuine
+  blocker still blocks *and* is drawn above the note.
+- **A docstring that explains why an ORDERING exists, then names the ordering
+  as a SOURCE.** `render_step` said "the downloadable artefact, from
+  **committed** intent"; it returns `plan.bootstrap_config`, rendered from
+  hostname, secret, domain and address. Running after the commit is
+  deliberate — nobody should download an artefact for a device the NSoT has
+  no record of — but that is not where the bytes come from. Third this stage,
+  after `manifest.py`'s slug example and `render_bootstrap`'s "what remains
+  is what makes the device reachable". All three were confident prose beside
+  correct code, which is what lets them survive review.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -191,13 +191,6 @@ class OnboardPlan:
                 "be defaulted, because on this platform vrnetlab may own the "
                 "first interface and a guess is a silent one")
 
-        if self.template and not self.template_approved:
-            reasons.append(f"template '{self.template}' is not approved for "
-                           f"platform '{self.platform}'")
-        elif not self.template:
-            reasons.append(f"no template is bound for platform "
-                           f"'{self.platform}'")
-
         if self.render_error:
             reasons.append("the bootstrap config could not be rendered: "
                            + self.render_error)
@@ -222,6 +215,56 @@ class OnboardPlan:
                            "run has not passed")
 
         return reasons
+
+    @property
+    def advisories(self) -> list:
+        """True, useful, and **not** reasons to refuse.
+
+        Template state used to be two blocking reasons here, and it was
+        keyed on the wrong property. The artefact this path emits is
+        `render_bootstrap()`'s output; `templates/` has no part in producing
+        it, and no step in `run_onboarding` reads `self.template` at all.
+        That is the Phase 3c rule generalised -- gate on what the artefact
+        actually depends on.
+
+        **Measured: the gate could not be satisfied by any first device.**
+        `approval.approve()` refuses an empty device set ("nothing to
+        validate it against", correctly -- that is the assertion-over-an-
+        empty-set failure). So a fresh list cannot approve a template,
+        cannot therefore onboard, and cannot therefore acquire the device
+        the approval needs. **The onboarding wizard could not onboard the
+        first device of a network.**
+
+        What the old gate protected is already checked where it belongs: the
+        deploy path validates approval on every plan, per device, with the
+        offending lines named. Checking it here was early, duplicated, and
+        blocking on something the operator can fix afterwards.
+
+        So it is said rather than enforced -- and said as a **next step**,
+        naming what to do and why it cannot be done yet. A warning about
+        nothing trains the reader to skip warnings.
+        """
+        notes = []
+        if not self.platform:
+            return notes
+
+        if not self.template:
+            notes.append(
+                f"No template is bound for platform '{self.platform}' in "
+                f"list '{self.list_name}'. Onboarding is unaffected — the "
+                f"startup config below comes from the bootstrap generator, "
+                f"not from a template — but you will not be able to deploy "
+                f"to this device until one is bound and approved.")
+        elif not self.template_approved:
+            notes.append(
+                f"You cannot deploy to this device until "
+                f"'{self.template}' is approved for list "
+                f"'{self.list_name}', which needs a captured device to "
+                f"validate against. Onboard this device, capture its "
+                f"config, then approve the template on the Templates tab. "
+                f"Approval does not carry between lists: it is keyed on the "
+                f"template hash plus the bound device set in this repo.")
+        return notes
 
     @property
     def onboardable(self) -> bool:
@@ -259,6 +302,10 @@ class OnboardPlan:
             "writes_csv":     self.writes_devices_csv,
             "onboardable":    self.onboardable,
             "blocking_reasons": self.blocking_reasons,
+            # Separate key, never merged into the list above: a renderer that
+            # concatenated them would make an advisory look like a refusal,
+            # and one day make a refusal look like an advisory.
+            "advisories":     self.advisories,
         }
 
 
@@ -865,10 +912,25 @@ def commit_step(plan, *, actor: str) -> str:
 
 
 def render_step(plan) -> str:
-    """The downloadable artefact, from **committed** intent.
+    """The downloadable artefact. **Last, deliberately — see below.**
 
-    After the commit, deliberately: rendering first would let an operator
-    download a config built from intent the NSoT does not have. `build_plan`
+    It returns `render_bootstrap()`'s output, built from the hostname, the
+    one-time secret, the domain and the management address. It is **not**
+    derived from the committed host_vars, and no template renders it.
+
+    An earlier version of this docstring said "from **committed** intent",
+    which described the ORDERING as though it were the DERIVATION. The
+    ordering is real and worth keeping: running last means an operator can
+    never download an artefact for a device the NSoT has no record of. The
+    derivation claim was simply false.
+
+    Third docstring in this stage to teach something the code does not do,
+    after `manifest.py`'s slug example and `render_bootstrap`'s "what
+    remains is what makes the device reachable". All three were load-bearing
+    prose next to correct code, which is the combination that survives
+    review.
+
+    `build_plan`
     has already proved the render succeeds, so a failure here is a surprise
     rather than a foreseeable refusal — and it leaves a device that is
     onboarded and an artefact that is missing, which `run_onboarding` reports

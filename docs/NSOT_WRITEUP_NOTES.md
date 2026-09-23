@@ -7448,3 +7448,125 @@ re-added fallback is caught, and the real module is not.
 and expected a plan. The contract changed deliberately, so they now send
 one; the test about a blocked rebuild still omits hostname and platform,
 which is what it was always about.
+
+---
+
+## The wizard could not onboard the first device of a network
+
+`/onboard/plan` against a fresh list refused with:
+
+    template 'cisco_iosxe/base.j2' is not approved for platform 'cisco_iosxe'
+
+Correct behaviour under scheme 2 -- approval is per repo, keyed on template
+hash plus the bound device set, and `Default`'s approval does not carry. The
+question is whether it should have been a gate at all.
+
+### Measured: the gate could not be satisfied by any first device
+
+```
+approve(fresh_repo, "cisco_iosxe/base.j2", devices=[])
+  -> ok: False
+  -> "no devices are bound to this template, so there is nothing to
+      validate it against"
+```
+
+That refusal is **right** -- approving a template against zero devices is the
+assertion-over-an-empty-set failure, and it is the one gate in this story
+behaving correctly. But it closes the loop:
+
+| | |
+|---|---|
+| cannot onboard | the template is not approved |
+| cannot approve | no devices are bound |
+| cannot bind a device | onboarding is how a device arrives |
+
+So a genuinely new network could never onboard its first device through the
+wizard. It would have to add one by the legacy CSV path, capture it, extract
+host_vars, approve the template, and only then use the tool built for this.
+
+**Only a genuinely fresh list exposes it.** The probe run against `Default`
+-- nine devices, an approved template -- would have sailed straight past.
+That is an argument for the fresh list being the *right* choice rather than
+the artificial part of the probe, and it is the second time in this stage
+that the deliberately-empty case found something the populated one could not.
+
+### The gate was keyed on the wrong property
+
+`run_onboarding`'s four steps are credentials, netbox, commit, render.
+`render_step` returns `plan.bootstrap_config`, which is
+`render_bootstrap()`'s output -- built from the hostname, the one-time
+secret, the domain and the management address. **No step reads
+`plan.template`.** `cisco_iosxe/base.j2` has no part in producing the
+artefact the operator downloads.
+
+This is Phase 3c's rule generalised. There it was *gate on template
+fidelity, never on intent drift*, because fidelity is what a render from
+intent depends on. The general form: **gate on what the artefact actually
+depends on.** Here that is `bootstrap_config.py`, and the path already gates
+on it -- platform supported, output sendable as ASCII, address with mask and
+interface, name free in both stores.
+
+What the template gate protected is real and is checked where it belongs:
+the deploy path validates approval on every plan, per device, with the
+offending lines named. Checking it at onboarding was early, duplicated, and
+blocking on something fixable in between.
+
+### An advisory has to read as a next step
+
+`OnboardPlan.advisories` is a computed property beside `blocking_reasons`,
+never merged into it, and carried as its own key in `summary`. The text
+names what cannot be done, why not yet, and what to do:
+
+> You cannot deploy to this device until `cisco_iosxe/base.j2` is approved
+> for list `nmas-probe`, which needs a captured device to validate against.
+> Onboard this device, capture its config, then approve the template on the
+> Templates tab.
+
+A warning about nothing trains the reader to skip warnings, which costs the
+next real one.
+
+### The failure mode of this change, and the control for it
+
+**An advisory list that can swallow a refusal.** So the controls assert both
+halves, in the shipped renderer:
+
+* an advisory alone -> Create enabled, drawn `alert-warning`;
+* an advisory **and** a genuine blocker -> Create disabled, `alert-danger`
+  present, and the refusal drawn **above** the note so a long advisory
+  cannot push it off the top of the panel;
+* no advisories -> no box at all;
+* `test_no_step_of_the_run_reads_the_template` -- parsed, not grepped,
+  because the docstrings around it name `template` repeatedly to explain why
+  it is *not* used.
+
+Two existing tests pinned the old behaviour and were changed deliberately.
+`test_three_problems_are_all_reported` used the unapproved template as its
+third problem; the property under test is *every reason at once*, not *these
+three reasons*, so it keeps its meaning with a real third blocker and would
+have lost it with a note dressed as one.
+`test_an_unapproved_template_refuses_with_the_reason` was removed, and its
+removal is pinned by the class that replaces it.
+
+---
+
+## Third docstring this stage that taught something the code does not do
+
+`render_step` was documented as *"The downloadable artefact, from
+**committed** intent."* It returns `plan.bootstrap_config`, rendered from
+the hostname, secret, domain and address. The commit runs first and that
+ordering is deliberate -- an operator must never download an artefact for a
+device the NSoT has no record of -- but **the ordering was described as
+though it were the derivation**, and the derivation claim was false.
+
+Three in this stage:
+
+1. `manifest.py`'s slug example;
+2. `render_bootstrap`'s *"what remains is what makes the device reachable"*,
+   false in its last clause -- what remained made the device **boot**;
+3. this one.
+
+All three were load-bearing prose sitting next to correct code, which is the
+combination that survives review: the code is right, so nothing fails, and
+the sentence is confident, so nobody re-derives it. The pattern to watch for
+is a docstring that explains *why* an ordering exists and then names the
+ordering as a source.

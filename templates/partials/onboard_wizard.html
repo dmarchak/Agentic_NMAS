@@ -107,6 +107,19 @@ function onboardReviewHtml(plan, bootstrapConfig) {
       <ul class="mb-0">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
     </div>` : '';
 
+  /* ADVISORIES ARE NOT REFUSALS, and are drawn so they cannot be mistaken
+     for one: different colour, different heading, and BELOW the blockers so
+     a real refusal is never pushed off the top of the panel by a note.
+     Rendered from their own key -- concatenating the two lists would make
+     an advisory look like a refusal, and one day the reverse. */
+  const notes = plan.advisories || [];
+  const advisories = notes.length ? `
+    <div class="alert alert-warning py-2 px-3 mb-2">
+      <div class="fw-semibold mb-1">Worth knowing — this does not block
+        onboarding:</div>
+      <ul class="mb-0">${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
+    </div>` : '';
+
   const rows = [
     ['Name', plan.hostname], ['Platform', plan.platform],
     ['List', `${plan.list} (${plan.source_kind})`],
@@ -122,6 +135,7 @@ function onboardReviewHtml(plan, bootstrapConfig) {
 
   return `
     ${blockers}
+    ${advisories}
     <div class="alert alert-secondary py-2 px-3 mb-2">
       <strong>Nothing has been created yet.</strong> This is what will be.
       Every step before Create is a read — you can go Back from here without
