@@ -40,6 +40,93 @@ all.
 
 ---
 
+## 0a. Scale: the interface is for an enterprise network, not for nine devices
+
+**Recorded 2026-09-23, before any screen is drawn.** This is a constraint on
+the information architecture, not a feature to add afterwards: **an interface
+that assumes you can see every device is a different interface from one that
+assumes you cannot.** Retrofitting the second onto the first is a rewrite.
+
+### What nine hides, measured
+
+The device table's Jinja loop emits **6 buttons and 1 input per row**, plus
+the four NSoT actions. That is fine at nine and is not a design at all at
+nine hundred:
+
+| devices | interactive elements in one page |
+|---|---|
+| 9 | 63 |
+| 90 | 630 |
+| **900** | **6,300** |
+
+And `index()` does `devices = load_saved_devices(current_list_file)` with no
+bound, then renders every one of them server-side. **There are 52
+`load_saved_devices()` calls across `app.py` and `routes/`, and not one
+pagination parameter anywhere in `routes/`.** The whole-inventory read is not
+one mistake in one place; it is the assumption the program is built on.
+
+### The five structural consequences
+
+**1. Selection replaces enumeration.** Search and filters — site, role,
+platform, status, drift state, template, credential age — with multi-select
+actions are the **primary** interface. The full list is a fallback view, not
+the default. "Show me everything and let me find it" is a design for a number
+you can hold in your head.
+
+**2. Fleet health is the landing view.** How many drifted, unreachable,
+uncaptured, on an unapproved template, overdue for rotation. **The device
+list is where you arrive after clicking one of those numbers**, carrying that
+filter. This inverts the current shape, where the list is the front door and
+health is a badge on a tab.
+
+**3. Per-device actions live on a device page, not on the row.** The row
+carries **identity and state** — name, address, platform, reachability, drift,
+template status — and nothing else. §2.1's device page already exists in this
+plan for other reasons; scale makes it mandatory rather than preferable.
+
+**4. Everything is bounded, paginated, and every fleet-wide operation is a
+job.** Save All is one commit and a couple of minutes at nine. At nine
+hundred it needs progress, partial results, and the ability to **target a
+subset** — which the batch machinery already models: the deploy path reports
+per-device outcomes, a circuit breaker, and `Failed-Devices:` in the commit.
+Drift already reports `checked N of M`. The pattern exists; the UI has never
+had to use it.
+
+**5. Nothing may require loading the whole inventory to render a page —
+including the counts on the landing view.** A landing view that reads every
+device to display six numbers has moved the problem rather than solved it.
+Those counts have to come from something maintained incrementally or queried
+with a bound.
+
+### What this costs, stated
+
+* **It contradicts §1.3's frequency argument in one place.** "Something done
+  thirty times an hour must be one click from where the device is" assumed
+  the device is on screen. At scale the device is found, not seen, so the
+  frequent path is *search → device page*, and search has to be fast enough
+  to be the click.
+* **`index()` returning the whole list is load-bearing for the current
+  page**, and the existing device table, bulk selection, drag-ordering and
+  the topology view all read from it. Bounding it is not a small edit.
+* **Point 5 has no cheap implementation.** Either the counts are maintained
+  as state (a cache that can go stale — and a stale count on a health
+  landing view is precisely the silent-failure shape this project keeps
+  finding), or they are bounded queries against stores that can answer them
+  (git, the manifest, NetBox), which is more work and more honest.
+* **It may reopen the `local` CSV inventory.** A CSV read in full per
+  request is the whole-inventory assumption in its most literal form, and at
+  nine hundred devices a NetBox-sourced list is not an option among two.
+
+### The test that keeps it honest
+
+Whatever is built, **a fixture of 900 devices renders the landing view and
+the device list within a bound**, and a test asserts the page does not grow
+linearly with the inventory. Without it, this section is a paragraph
+everybody agrees with and nobody checks — and nine devices will pass every
+test written at nine devices.
+
+---
+
 ## 1. Method: inventory the actions before drawing a screen
 
 The current tabs are not evidence of anything except the order features were

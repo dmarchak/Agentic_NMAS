@@ -1782,6 +1782,20 @@ GUI and can only leave it from a terminal -- and `approval.revoke()`, whose
 tombstone exists so a withdrawal is a recorded finding. Four are credential
 management, which is configurable only over HTTP.
 
+**Scale is a constraint on the architecture, not a later feature** (§0a,
+recorded 2026-09-23): the interface is for an enterprise network, not for
+nine devices. Measured — the device row emits 7 interactive elements, so 900
+devices is 6,300 on one page; `index()` loads the whole inventory with no
+bound; there are **52 unbounded `load_saved_devices()` calls** and **no
+pagination parameter anywhere in `routes/`**. So: selection replaces
+enumeration, fleet health is the landing view and the device list is where
+you arrive after clicking a number, per-device actions leave the row,
+everything is bounded and every fleet-wide operation is a job with progress
+and a targetable subset — and **nothing may load the whole inventory to
+render a page, including the landing counts**. An interface that assumes you
+can see every device is a different interface from one that assumes you
+cannot.
+
 Shape: two destinations (**Fleet**, **Monitoring**) plus a per-device page at
 `/device/<hostname>`, and a service-status bar on every page.
 **Monitoring becomes a destination rather than a status board**: Grafana
