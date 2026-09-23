@@ -1,28 +1,57 @@
 name: nmas-onboard-c
 
 # ---------------------------------------------------------------------------
-# STAGE 4C PROBE — the onboarding wizard, end to end, on a node that does not
-# exist yet.
+# STAGE 4C PROBE - the onboarding wizard, end to end, on a node that does not
+# exist yet. Runbook: docs/STAGE4C_PROBE.md
 #
-# ONE NODE, AND NO STARTUP CONFIG. That absence is the point: every other
-# probe lab in this directory boots a config somebody wrote, and this one
-# boots the config THE WIZARD GENERATES. A `startup-config` line here would
-# quietly make the probe test the file rather than the generator.
+# THE NODE BOOTS THE CONFIG THE WIZARD GENERATED. That is the whole probe, and
+# it fixes the ordering: the wizard runs FIRST, its artefact is written to
+# configs/bp-onboard-c.cfg, and only then is this file deployed. Deploying
+# before the wizard has run leaves `startup-config` pointing at a file that
+# does not exist, and containerlab will say so.
 #
-# Own lab name, own network, own subnet — the same isolation as stages A
-# through D2. Nothing is shared with rcn-lab1, and this file must never grow
-# a link to it.
+# The first draft of this file had no startup-config at all, on the reasoning
+# that "the point is the wizard generates it". That was right about the
+# artefact and wrong about the sequence: a node with no config boots into
+# vrnetlab's own credentials on a network nothing can reach, and the wizard
+# never gets to prove anything.
 #
-# A C8000v deliberately, and it is what r6 will be: `cisco_iosxe` is in
-# neither GENERATES_SSH_KEY nor CONSOLE_REPLAYED, so its bootstrap config
-# contains no `crypto key generate rsa` line at all. Stage D measures a line
-# this path never emits, which is why the probe does not wait on it. A vIOS
-# probe needs stage D first, and the wizard refuses one until it has run.
+# ISOLATION - WEAKER THAN THE OTHER PROBES IN THIS DIRECTORY, DELIBERATELY
+#
+#   The containerlab management side is still fully isolated: own lab name,
+#   own docker network, own subnet. rcn-lab1 uses the default `clab` network
+#   on 172.20.20.0/24 and a second lab cannot declare that subnet, so this
+#   one keeps its own. Nothing here touches it.
+#
+#   The MANAGER-FACING side is shared, and has to be. 4C.8 measured why: the
+#   NMAS reaches the lab on enp6s19, through Proxmox vmbr10, onto br-mgmt -
+#   a LINUX BRIDGE ON THE CLAB HOST, not a lab object - and every 10.255.1.x
+#   is a /32 loopback advertised into OSPF. A device is reachable by being on
+#   that wire. There is no version of this probe that is reachable and not on
+#   it.
+#
+#   Stated concretely, because "shared" is too vague to check: br-mgmt today
+#   holds exactly two ports, the host uplink to vmbr10 and `s3-mgmt`. This
+#   node becomes THE THIRD DEVICE ON THAT WIRE, alongside the NMAS and s3.
+#
+#   So the isolation claim is no longer "own network". It is:
+#     - a unique address (10.255.0.31, verified free three ways on
+#       2026-09-23: NetBox held only 10.255.0.1 in that /24, no ping reply,
+#       and the neighbour table showed it INCOMPLETE with s3 the only
+#       REACHABLE entry);
+#     - a unique host veth name (`probe-mgmt`, and `s3-mgmt` was the only one
+#       on the bridge);
+#     - its own lab name and its own topology file, so destroying it names
+#       only its own objects.
+#   That is weaker than a separate network and it is written down as weaker.
+#
+#   br-mgmt is a PREREQUISITE, not something this file creates - the same as
+#   in rcn-lab1. Verify before deploying:  ip -br link show master br-mgmt
 #
 # THE BIND IS LOAD-BEARING TWICE, and the second reason is the bigger one.
 # Measured 2026-09-23: this file shipped without it, the node launched
 # "with 1 SMP/VCPU" on the stock script, and at 112% CPU it was grinding
-# rather than stalled -- the first bootstrap probe's failure exactly, which
+# rather than stalled - the first bootstrap probe's failure exactly, which
 # never completed in ~40 minutes.
 #
 #   1. `smp="2"`. Without it a C8000v never finishes booting on this host.
@@ -30,26 +59,32 @@ name: nmas-onboard-c
 #      `username admin privilege 15 password admin` ahead of the startup
 #      config, IOS-XE refuses a secret for a user that already has a
 #      password, and the node boots on admin/admin while the generated
-#      config says otherwise -- reporting healthy the whole way
+#      config says otherwise - reporting healthy the whole way
 #      (%CVAC-4-CLI_FAILURE, stage B). Onboarding a C8000v without the skip
 #      would reproduce the exact hazard stage 2 exists to prevent, INSIDE
 #      the wizard's first run, and the probe would "pass".
 #
-# It binds the probe's OWN COPY, staged by runbook step 3 from
+# It binds the probe's OWN COPY, staged by runbook step 3a from
 # `~/labs/lab/patches/c8000v-launch.py`. Not the path itself: a throwaway
 # lab whose destruction can reach into production is not throwaway.
 #
 # `-adopted` rather than `c8000v-launch.py`, because THAT name is already
-# the stage-A/B copy, which deliberately predates the user-skip -- it is
-# what makes `nmas-bootstrap-probe.clab.yml` reproduce the hazard. Writing
-# the adopted script over it would silently retire the probe that measured
-# the thing.
+# the stage-A/B copy, which deliberately predates the user-skip - it is what
+# makes `nmas-bootstrap-probe.clab.yml` reproduce the hazard. Writing the
+# adopted script over it would silently retire the probe that measured the
+# thing.
 #
-# Run AFTER the earlier probe labs are destroyed so nothing contends for the
-# subnet. Runbook: docs/STAGE4C_PROBE.md
+# A C8000v deliberately, and it is what r6 will be: `cisco_iosxe` is in
+# neither GENERATES_SSH_KEY nor CONSOLE_REPLAYED, so its bootstrap config
+# contains no `crypto key generate rsa` line at all. Stage D measures a line
+# this path never emits, which is why the probe does not wait on it. A vIOS
+# probe needs stage D first, and the wizard refuses one until it has run.
 # ---------------------------------------------------------------------------
 
 mgmt:
+  # The CONTAINERLAB-facing network only. Unrelated to the management address
+  # the wizard puts on Gi2 - see the two-namespace note in
+  # modules/nsot/bootstrap_config.py. vrnetlab owns Gi1 and reaches it here.
   network: clab-onboard-probe
   ipv4-subnet: 172.30.40.0/24
 
@@ -62,6 +97,27 @@ topology:
     bp-onboard-c:
       kind: cisco_c8000v
       mgmt-ipv4: 172.30.40.11
-      # NO startup-config. See the header.
+      # Written by the operator from the wizard's artefact, BEFORE deploy.
+      startup-config: configs/bp-onboard-c.cfg
       binds:
         - patches/c8000v-launch-adopted.py:/launch.py   # smp=2 AND user-skip
+
+    # A PREREQUISITE ON THE HOST, declared so this lab can attach to it.
+    # containerlab did not create it and rcn-lab1 does not own it either;
+    # both labs declare it the same way. What `--cleanup` does to a bridge
+    # node it did not create is measured on a scratch bridge before this
+    # file is ever deployed - see runbook step 11.
+    br-mgmt:
+      kind: bridge
+
+  links:
+    # bp-onboard-c:Gi2 is CLI GigabitEthernet2 -- topology GiN == CLI GiN on
+    # this kind, with Gi1 reserved for vrnetlab. That is the interface
+    # 4C.8's generator emits the 10.255.0.31 address on, and the two must
+    # agree or the node boots addressed on a wire it is not cabled to.
+    #
+    # `probe-mgmt` on the bridge side: unique (s3-mgmt was the only veth on
+    # br-mgmt), under the 15-character limit, and named for what it is
+    # rather than for a device -- so an orphaned probe-mgmt on br-mgmt is
+    # self-evidently not production.
+    - endpoints: ["bp-onboard-c:Gi2", "br-mgmt:probe-mgmt"]

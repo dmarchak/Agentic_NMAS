@@ -178,11 +178,15 @@ and the teardown is the point.
 
 ---
 
-## Step 3 — boot an empty node
+## Step 3 — prepare the clab host (no node is booted here)
 
 **SHARED — the containerlab host.**
 
-### 3a. Stage the launch patch first
+**The ordering inverted at 4C.8.** The node boots the config **the wizard
+generates**, so the wizard runs first and the node is deployed at step 7b.
+Step 3 is now everything that can be readied before either.
+
+### 3a. Stage the launch patch
 
 **Do not skip this.** The first attempt at step 3 did: the topology carried
 no `binds:` line, the node launched *"with 1 SMP/VCPU"* on the stock script,
@@ -199,11 +203,6 @@ grep -c '_skip_users_defined_in_startup' patches/c8000v-launch-adopted.py  # wan
 diff patches/c8000v-launch.py patches/c8000v-launch-adopted.py
 ```
 
-**Proves:** the probe has its **own copy** of what `rcn-lab1` actually runs.
-The `diff` should show the user-skip helper and the wrapped concatenation
-and nothing else — `patches/c8000v-launch.py` is the stage-A/B copy, which
-predates the skip on purpose.
-
 **Why a copy and not the path:** a throwaway lab whose teardown can reach
 into production is not throwaway.
 
@@ -214,40 +213,64 @@ boots on `admin`/`admin` while the wizard's generated config says otherwise
 — reporting healthy throughout. The probe would **pass** while producing the
 exact hazard stage 2 exists to prevent.
 
-**If the greps come back 0:** stop. Either the adoption was not what stage C
-wrote, or `~/labs/lab/patches/` has moved, and both are worth knowing before
-a node boots.
+**If the greps come back 0:** stop.
 
-### 3b. Deploy
+### 3b. Confirm `br-mgmt` exists and see what is on it
 
-```bash
-sudo containerlab deploy -t nmas-onboard-c.clab.yml
-docker logs -f clab-nmas-onboard-c-bp-onboard-c 2>&1 | ts
-```
-
-**First check the line the failure showed up on:**
+`br-mgmt` is a **prerequisite**, a Linux bridge on the clab host. Neither
+this lab nor `rcn-lab1` creates it; both attach to it.
 
 ```bash
-docker logs clab-nmas-onboard-c-bp-onboard-c 2>&1 | grep -i 'SMP/VCPU'
+ip -br link show master br-mgmt
 ```
 
-Want **2 SMP/VCPU**. One means the bind did not take and 3a did not happen —
-stop there rather than waiting out another 40 minutes.
+**Expect exactly two ports:** the host uplink to Proxmox `vmbr10`, and
+`s3-mgmt`. The probe node becomes the **third device on that wire**,
+alongside the NMAS and s3.
 
-Watch for `Startup complete`. Expect **~6m30s**, the r1–r5 figure. Record how
-long it took.
+**If `probe-mgmt` is already there**, a previous run did not clean up. Stop
+and say so rather than deploying over it.
 
-**Proves:** a C8000v exists with **no startup config** — the wizard generates
-the one it will boot with. Its own lab name, own network, own subnet, nothing
-shared with `rcn-lab1`.
-**If it fails:** stop, with the log. A node that fails to boot is a
-containerlab problem, not an NMAS one, and diagnosing it here keeps the two
-separate.
+### 3c. Measure what `--cleanup` does to a bridge node it did not create
 
-> **Per the D2 finding**, check uptime before trusting `Startup complete` — a
-> vIOS took a CPU exception and silently reloaded while the container stayed
-> healthy:
-> `ssh admin@<mgmt-ip> 'show version | include uptime'`
+**Before anything attaches to `br-mgmt`.** This is the one place the blast
+radius is real, and "containerlab didn't create it, so it won't remove it"
+is reasoning rather than measurement.
+
+Measured on a **scratch bridge**, so `br-mgmt` is never exposed:
+
+```bash
+containerlab destroy --help | grep -B2 -A4 cleanup
+
+sudo ip link add name br-probe-test type bridge
+sudo ip link set br-probe-test up
+
+mkdir -p ~/labs/cleanup-test && cd ~/labs/cleanup-test
+cat > cleanup-test.clab.yml <<'YAML'
+name: cleanup-test
+topology:
+  nodes:
+    ct-host:
+      kind: linux
+      image: alpine:latest
+    br-probe-test:
+      kind: bridge
+  links:
+    - endpoints: ["ct-host:eth1", "br-probe-test:ct-eth1"]
+YAML
+sudo containerlab deploy -t cleanup-test.clab.yml
+ip -br link show master br-probe-test
+
+sudo containerlab destroy -t cleanup-test.clab.yml --cleanup
+ip -d link show br-probe-test \
+  && echo "SURVIVED - --cleanup is safe at step 11" \
+  || echo "REMOVED  - drop --cleanup from step 11"
+
+sudo ip link del br-probe-test 2>/dev/null
+```
+
+**Record the answer here when you have it, and make step 11 match it.** A
+step that says "probably safe" is a step nobody can check.
 
 ---
 
@@ -274,8 +297,26 @@ Devices tab → **Onboard a device**. Enter:
 |---|---|
 | Name | `bp-onboard-c` |
 | Platform | the C8000v entry (`cisco-ios-xe`) |
-| Management IP | the node's clab management address |
-| Management interface | leave blank — vrnetlab owns it on a C8000v |
+| Management IP | **`10.255.0.31`** |
+| Mask | `255.255.255.0` |
+| Management interface | **`GigabitEthernet2`** |
+| Gateway | **leave blank** |
+| Containerlab interface | leave blank — vrnetlab owns Gi1 on a C8000v |
+
+**`10.255.0.31`, not `10.255.1.x`.** Verified free three ways on
+2026-09-23: NetBox held exactly one address in that `/24` (s3's `Vlan99`),
+no ping reply, and the neighbour table showed it `INCOMPLETE` with s3 the
+only `REACHABLE` entry. `10.255.1.x` is a **loopback range reachable only
+through OSPF** — free there and unusable.
+
+**Gateway blank on purpose.** The NMAS is on this subnet and always
+initiates, so the device needs no route to answer it. A default gateway
+written when nothing needs one is a routing statement in a config whose
+whole point is to have none.
+
+**`GigabitEthernet2`, never Gi1.** vrnetlab owns Gi1. The wizard refuses to
+default this field, and `test_probe_topologies.py` refuses a topology that
+cables Gi1 — the same rule from both ends.
 
 **Proves:** the platform list offers the C8000v and shows the vIOS entry
 **disabled with its reason** — stage D has not run, and an absent option
@@ -333,6 +374,87 @@ Paste the response.
 partial run is a second run against a half-created device.
 
 ---
+
+## Step 7b — ⭐ boot the node on the generated config
+
+**SHARED — the containerlab host. This is 4C.8's acceptance.**
+
+The wizard has produced a config. Nothing has booted it yet.
+
+```bash
+cd ~/labs/bootstrap-probe
+# Save the wizard's artefact EXACTLY as downloaded. Do not edit it --
+# the whole question is whether what the generator emits works.
+cp ~/Downloads/bp-onboard-c.cfg configs/bp-onboard-c.cfg
+
+grep -n 'ip address\|interface Gi\|router\|Loopback\|ip route' configs/bp-onboard-c.cfg
+```
+
+**Expect:** `interface GigabitEthernet2` with `ip address 10.255.0.31
+255.255.255.0`, and **no** `router ospf`, **no** `Loopback0`, **no**
+`ip route`. That is the shape `test_bootstrap_manager_address.py` pins;
+seeing it on the real artefact is the point of looking.
+
+```bash
+sudo containerlab deploy -t nmas-onboard-c.clab.yml
+
+# The bind took, before waiting out a boot:
+docker logs clab-nmas-onboard-c-bp-onboard-c 2>&1 | grep -i 'SMP/VCPU'   # want 2
+
+# The veth landed on the bridge:
+ip -br link show master br-mgmt        # want probe-mgmt, plus the two from 3b
+
+docker logs -f clab-nmas-onboard-c-bp-onboard-c 2>&1 | ts
+```
+
+Watch for `Startup complete` — expect **~6m30s**, the r1–r5 figure.
+
+**Then check the username line was not rejected**, which is the stage-B
+failure and is silent:
+
+```bash
+docker logs clab-nmas-onboard-c-bp-onboard-c 2>&1 | grep -i 'CVAC\|rejected'
+```
+
+Anything there means the user-skip did not fire and the node is on
+`admin`/`admin` regardless of what the config says.
+
+### The measurement
+
+**From the NMAS**, not from the clab host — the clab host can reach the node
+by paths the NMAS does not have:
+
+```bash
+ping -c3 10.255.0.31
+ip neigh show 10.255.0.31          # want REACHABLE, with a MAC
+ssh admin@10.255.0.31 'show version | include uptime'
+```
+
+**Proves what the whole of 4C.8 was about:** a config this program generated
+makes a device the manager can reach. Every unit test passed before this was
+true, which is why the acceptance is a socket and not an assertion.
+
+**If ping works and SSH does not:** that is the interesting failure, not the
+boring one — capture `show ip interface brief`, the `line vty` block and
+`show ip ssh` from the console before changing anything.
+
+**If ping does not work:** stop with `ip -br link show master br-mgmt` from
+the clab host and `ip neigh show` from the NMAS. Do not start editing the
+config on the device; the artefact is the thing under test.
+
+---
+
+> **⚠ Steps 8-10 are BLOCKED on §8.6 of the Stage 4C plan.** Phase 2 —
+> reach, capture, remove the RW community, rotate — is built and **not
+> wired**: `finish_bootstrap()` has no production caller. So the staged
+> credential will still be present, and there is no golden capture to grep.
+>
+> That is deliberate sequencing, not an oversight: phase 2 reaches a device,
+> and it is being written after step 7b proves a generated config makes one
+> reachable, rather than against the assumption that it does.
+>
+> **The probe stops at 7b for now.** Run the teardown (11-14) when you are
+> done, or leave the node up if phase 2 is next.
 
 ## Step 8 — inspect every artefact
 

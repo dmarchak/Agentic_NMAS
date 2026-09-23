@@ -194,3 +194,74 @@ def test_the_bind_source_is_the_probes_own_copy():
         "launch patch bound from outside the probe directory: "
         + ", ".join(offenders)
         + ". Stage the probe's own copy instead (runbook step 3a).")
+
+
+# --------------------------------------------------------------------------
+# Gi1 belongs to vrnetlab, on the topology side too
+# --------------------------------------------------------------------------
+
+def c8000v_links_on_the_reserved_interface(paths):
+    """Every c8000v link endpoint that lands on Gi1.
+
+    `bootstrap_config.manager_interface_lines()` refuses to put a management
+    address on a platform's vrnetlab-owned interface, and `build_plan()`
+    makes it a blocking reason. **The topology can make the same mistake from
+    the other end**: cabling a node's Gi1 to the management bridge produces a
+    file that is internally consistent, deploys, and fights vrnetlab for the
+    interface.
+
+    A generator refusal cannot see a YAML file, so the property is asserted
+    where it is representable. Same reasoning as the launch-patch check
+    above: a rule that has to be remembered will be forgotten once.
+    """
+    offenders = []
+    for path in paths:
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        topology = doc.get("topology") or {}
+        kinds = {name: (cfg or {}).get("kind")
+                 for name, cfg in (topology.get("nodes") or {}).items()}
+        for link in (topology.get("links") or []):
+            for endpoint in (link or {}).get("endpoints") or []:
+                node, _, iface = str(endpoint).partition(":")
+                if kinds.get(node) not in PATCH_REQUIRED_KINDS:
+                    continue
+                # Gi1 exactly -- Gi10 and Gi11 are ordinary data interfaces.
+                if iface.lower() in ("gi1", "gigabitethernet1"):
+                    offenders.append(f"{os.path.basename(path)}:{endpoint}")
+    return offenders
+
+
+def test_no_c8000v_is_cabled_on_its_reserved_interface():
+    offenders = c8000v_links_on_the_reserved_interface(_topologies())
+    assert not offenders, (
+        "c8000v link(s) on Gi1, which vrnetlab owns: " + ", ".join(offenders)
+        + ". Data interfaces start at Gi2; a management address cabled to "
+          "Gi1 fights the launch script for the interface.")
+
+
+def test_the_reserved_interface_check_can_fail(tmp_path):
+    """Shown failing, and shown NOT firing on the interface next to it."""
+    bad = tmp_path / "gi1.clab.yml"
+    bad.write_text(
+        "topology:\n"
+        "  nodes:\n"
+        "    c8k:\n"
+        "      kind: cisco_c8000v\n"
+        "    br-mgmt:\n"
+        "      kind: bridge\n"
+        "  links:\n"
+        "    - endpoints: [\"c8k:Gi1\", \"br-mgmt:x-mgmt\"]\n",
+        encoding="utf-8")
+    assert c8000v_links_on_the_reserved_interface([str(bad)]) == [
+        "gi1.clab.yml:c8k:Gi1"]
+
+    # Gi2 is fine, and so is Gi10 -- a substring match would have caught it.
+    for good in ("Gi2", "Gi10", "GigabitEthernet2"):
+        ok = tmp_path / f"ok-{good}.clab.yml"
+        ok.write_text(
+            "topology:\n  nodes:\n    c8k:\n      kind: cisco_c8000v\n"
+            "    br-mgmt:\n      kind: bridge\n  links:\n"
+            f"    - endpoints: [\"c8k:{good}\", \"br-mgmt:x-mgmt\"]\n",
+            encoding="utf-8")
+        assert c8000v_links_on_the_reserved_interface([str(ok)]) == [], good
