@@ -435,7 +435,7 @@ class TestARepairThatExaminesNothingRefuses:
         render failure announced through `unsendable`."""
         import inspect
 
-        src = inspect.getsource(repair.plan)
+        src = inspect.getsource(repair.walk)
         assert src.index("resolve_list") < src.index("get_netbox_config")
         assert src.index("ExaminedNothing") < src.index("_session_from_config")
 
@@ -572,21 +572,22 @@ class TestAnExcludedVRFIsNotModelled:
             "the exclusion now skips the interface too"
 
 
-class TestTheResidueIsRemovedNotLeft:
-    """**Two objects exist that nothing will ever update again.**
+class TestTheResidueIsKeyedOnTheInterface:
+    """**The clean-up found nothing, and the reason was in NetBox's own
+    refusal.**
 
-    r1 holds the v4 (created by the repair), r5 the v6 (from the Lab 1
-    import). Once the VRF is excluded the import cannot reach them: no
-    future run touches, corrects or removes them.
+    It matched `ip["vrf"]["name"]` against the excluded set. r1's
+    `10.0.0.15/24` was sitting there as id 84 and never matched, because the
+    repair created it **with no VRF at all** — which is precisely what
+    NetBox said when it rejected the other four: *"Duplicate IP address
+    found in the **global table**"*. There was no name to match, so the
+    counters honestly reported zero and the output said *"examined every
+    address in clab-mgmt"* about an object that was never in clab-mgmt.
 
-    Removed rather than left, for three reasons that compound:
-
-    * each is **wrong in a specific way** — it claims one device has an
-      address all five have, and a half-true record reads as complete;
-    * **nothing will ever update them**, which is precisely the state the
-      drift checker and the census exist to prevent;
-    * they **hold the globally-unique slot**, so nothing else can ever
-      legitimately use that value.
+    Two defects in one: a match on a field that is null, and a **second copy
+    of the exclusion rule**. The rule is defined on the config
+    (`vrf forwarding clab-mgmt`), so the import and the clean-up now both
+    read it from there through the same `walk()`.
     """
 
     @pytest.fixture(scope="class")
@@ -601,78 +602,257 @@ class TestTheResidueIsRemovedNotLeft:
         spec.loader.exec_module(mod)
         return mod
 
-    def _nb(self, monkeypatch, addresses, devices=(), recorded=()):
+    def _world(self, repair, monkeypatch, *, addresses, vrf_name="clab-mgmt",
+               devices=(), recorded=()):
+        """One device, one interface (id 60) whose GOLDEN says `vrf_name`."""
         from modules import netbox_guard as guard
+
+        monkeypatch.setattr(repair, "walk", lambda ln: {
+            "list": "Default", "csv": "/x", "examined": 1, "skipped": [],
+            "session": None, "base": "http://nb",
+            "rows": [{"device": "r1",
+                      "facts": {"interfaces": [
+                          {"name": "GigabitEthernet1", "vrf_name": vrf_name,
+                           "cidr": "10.0.0.15/24"}]},
+                      "ifaces": {"GigabitEthernet1": {"id": 60}}}]})
 
         def _get(session, base, path, **params):
             if "devices" in path:
                 return list(devices)
-            return list(addresses)
+            if params.get("interface_id") == 60:
+                return list(addresses)
+            return []
 
         monkeypatch.setattr("modules.netbox_client._nb_get", _get)
         monkeypatch.setattr(guard, "get_created",
                             lambda ln, ep="": {"ipam/ip-addresses":
                                                [{"id": i} for i in recorded]})
 
-    def test_an_NMAS_created_address_in_the_excluded_vrf_is_eligible(
-            self, repair, monkeypatch):
-        self._nb(monkeypatch,
-                 [{"id": 84, "address": "10.0.0.15/24",
-                   "vrf": {"name": "clab-mgmt"}, "description": "r1 Gi1",
-                   "tags": [{"slug": "nmas-managed"}]}],
-                 recorded=[84])
+    #: r1's address as it really exists: created by the repair, tagged,
+    #: recorded, and in the GLOBAL TABLE rather than in clab-mgmt.
+    ID84 = {"id": 84, "address": "10.0.0.15/24", "vrf": None,
+            "description": "r1 GigabitEthernet1",
+            "tags": [{"slug": "nmas-managed"}]}
 
-        r = repair.excluded_residue(None, "http://nb", "Default")
+    def test_an_address_with_NO_VRF_is_still_found(self, repair, monkeypatch):
+        """**The defect, as a test.** The old version keyed on the NetBox
+        VRF field; this object has none."""
+        self._world(repair, monkeypatch, addresses=[self.ID84], recorded=[84])
+
+        r = repair.excluded_residue("Default")
         assert [x["id"] for x in r["eligible"]] == [84]
+        assert r["eligible"][0]["netbox_vrf"] == "global", \
+            "the report must say where it actually is"
+        assert r["eligible"][0]["config_vrf"] == "clab-mgmt"
+
+    def test_it_reports_what_it_examined(self, repair, monkeypatch):
+        """*"examined every address in clab-mgmt"* was a claim the previous
+        version could not support."""
+        self._world(repair, monkeypatch, addresses=[self.ID84], recorded=[84])
+
+        r = repair.excluded_residue("Default")
+        assert r["devices"] == 1
+        assert r["interfaces"] == 1
+        assert r["targets"] == 1
+        assert r["addresses"] == 1
 
     def test_an_address_NMAS_did_not_create_is_left_alone(
             self, repair, monkeypatch):
-        """Provenance still governs. This clean-up is not an exemption from
-        it."""
-        self._nb(monkeypatch,
-                 [{"id": 7, "address": "10.0.0.99/24",
-                   "vrf": {"name": "clab-mgmt"}, "tags": []}],
-                 recorded=[])
+        """Provenance still governs; this is not an exemption from it."""
+        self._world(repair, monkeypatch,
+                    addresses=[dict(self.ID84, id=23, tags=[])], recorded=[])
 
-        r = repair.excluded_residue(None, "http://nb", "Default")
+        r = repair.excluded_residue("Default")
         assert r["eligible"] == []
         assert "not NMAS's" in r["skipped"][0]["why"]
 
+    def test_tagged_but_unrecorded_is_also_left_alone(self, repair,
+                                                      monkeypatch):
+        """Id 23 exactly: created by the Lab 1 import before the record
+        existed, so tagged and not in it."""
+        self._world(repair, monkeypatch, addresses=[dict(self.ID84, id=23)],
+                    recorded=[84])
+
+        r = repair.excluded_residue("Default")
+        assert r["eligible"] == []
+        assert "created record" in r["skipped"][0]["why"]
+
     def test_a_devices_primary_ip_BLOCKS_rather_than_warns(
             self, repair, monkeypatch):
-        """Deleting it sets the device's primary to null — a consequence of
-        a delete that the cascade map does not cover, because it is a
-        modification rather than a deletion."""
-        self._nb(monkeypatch,
-                 [{"id": 84, "address": "10.0.0.15/24",
-                   "vrf": {"name": "clab-mgmt"},
-                   "tags": [{"slug": "nmas-managed"}]}],
-                 devices=[{"name": "r1", "primary_ip4": {"id": 84}}],
-                 recorded=[84])
+        """Deleting it nulls the device's primary — a MODIFICATION rather
+        than a deletion, which the cascade map does not cover."""
+        self._world(repair, monkeypatch, addresses=[self.ID84], recorded=[84],
+                    devices=[{"name": "r1", "primary_ip4": {"id": 84}}])
 
-        r = repair.excluded_residue(None, "http://nb", "Default")
+        r = repair.excluded_residue("Default")
         assert r["eligible"] == []
         assert "r1.primary_ip4" in r["blocked"][0]["why"]
 
-    def test_an_address_OUTSIDE_the_excluded_vrf_is_never_considered(
+    def test_an_interface_OUTSIDE_an_excluded_vrf_is_never_considered(
             self, repair, monkeypatch):
-        """**The floor.** A clean-up that considered everything would be a
-        fleet-wide address deleter wearing a narrow name."""
-        self._nb(monkeypatch,
-                 [{"id": 50, "address": "10.255.1.11/32",
-                   "vrf": None, "tags": [{"slug": "nmas-managed"}]}],
-                 recorded=[50])
+        """**The floor.** A clean-up that considered every interface would
+        be a fleet-wide address deleter wearing a narrow name."""
+        self._world(repair, monkeypatch, addresses=[self.ID84], recorded=[84],
+                    vrf_name="")
 
-        r = repair.excluded_residue(None, "http://nb", "Default")
+        r = repair.excluded_residue("Default")
+        assert r["targets"] == 0
         assert r["eligible"] == []
-        assert r["skipped"] == []
+        assert r["addresses"] == 0
 
-    def test_with_no_excluded_vrf_configured_it_does_nothing(
-            self, repair, monkeypatch):
+    def test_no_excluded_vrf_configured_REFUSES(self, repair, monkeypatch):
+        """Not "nothing to do": it cannot be cleaning up an exclusion that
+        does not exist."""
         from modules import settings_schema
 
         monkeypatch.setattr(settings_schema, "get_setting",
                             lambda k, d=None: [])
-        r = repair.excluded_residue(None, "http://nb", "Default")
-        assert r["excluded"] == []
-        assert r["eligible"] == []
+        with pytest.raises(repair.NoExclusion):
+            repair.excluded_residue("Default")
+
+    def test_the_rule_is_read_from_the_golden_not_from_NetBox(self, repair):
+        """One source. A second copy is how the import and the clean-up come
+        to disagree about which interfaces are excluded."""
+        import inspect
+
+        src = inspect.getsource(repair.excluded_residue)
+        assert 'intf.get("vrf_name")' in src
+        assert 'ip.get("vrf")' not in src.split("netbox_vrf")[0], \
+            "the clean-up is matching on NetBox's VRF field again"
+        assert "walk(list_name)" in src
+
+
+class TestTheCreatePathAppliesTheSameExclusion:
+    """The repair created id 84 in the first place. With the exclusion in
+    force it must not, and must **say** it did not."""
+
+    @pytest.fixture(scope="class")
+    def repair(self):
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+
+        path = os.path.join(ROOT, "scripts", "nmas-netbox-repair-addresses")
+        spec = importlib.util.spec_from_file_location(
+            "repair4", path, loader=SourceFileLoader("repair4", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_an_excluded_interface_is_reported_not_created(
+            self, repair, monkeypatch):
+        monkeypatch.setattr(repair, "walk", lambda ln: {
+            "list": "Default", "csv": "/x", "examined": 1, "skipped": [],
+            "session": None, "base": "http://nb",
+            "rows": [{"device": "r1",
+                      "facts": {"interfaces": [
+                          {"name": "GigabitEthernet1", "vrf_name": "clab-mgmt",
+                           "cidr": "10.0.0.15/24"}]},
+                      "ifaces": {"GigabitEthernet1": {"id": 60}}}]})
+        monkeypatch.setattr("modules.netbox_client._nb_get",
+                            lambda *a, **k: [])
+
+        p = repair.plan("Default")
+        assert p["creates"] == [], "the repair would recreate the artefact"
+        assert [r["address"] for r in p["excluded"]] == ["10.0.0.15/24"]
+
+    def test_an_ordinary_interface_is_still_created(self, repair, monkeypatch):
+        """The floor: an exclusion that excluded everything would pass the
+        test above."""
+        monkeypatch.setattr(repair, "walk", lambda ln: {
+            "list": "Default", "csv": "/x", "examined": 1, "skipped": [],
+            "session": None, "base": "http://nb",
+            "rows": [{"device": "r1",
+                      "facts": {"interfaces": [
+                          {"name": "Loopback0", "vrf_name": "",
+                           "cidr": "10.255.1.11/32"}]},
+                      "ifaces": {"Loopback0": {"id": 61}}}]})
+        monkeypatch.setattr("modules.netbox_client._nb_get",
+                            lambda *a, **k: [])
+
+        p = repair.plan("Default")
+        assert [r["address"] for r in p["creates"]] == ["10.255.1.11/32"]
+        assert p["excluded"] == []
+
+
+class TestRelationalFiltersAreIdKeyed:
+    """**A filter that matches nothing is indistinguishable from a resource
+    that is absent**, so a NetBox read filtered by a *related object's name*
+    fails silently and honestly reports zero.
+
+    Twice in one night, both outside this module: an ad-hoc
+    `ipam/ip-addresses/?vrf=clab-mgmt` (NetBox wants `vrf_id` or the RD, not
+    the name) returned `count: None` and said nothing about the VRF's
+    contents; and the clean-up matched a **nested** `vrf.name` on objects
+    that had no VRF at all.
+
+    **The sweep's answer is a negative, and it is a real one.** All 37
+    filtered reads in `netbox_client` key relations on ids — `device_id`,
+    `site_id`, `interface_id`, `tunnel_id`, `termination_id` — and every
+    `name=`/`slug=` filters an object by its **own** identity field, which
+    is what those filters are for. The rule is pinned so it stays true, with
+    a floor so "no offenders" cannot come from a scan that read nothing.
+    """
+
+    #: Kwargs that name a RELATED object. NetBox offers an `_id` form for
+    #: each, and the id form cannot silently match nothing the way a name
+    #: can — a wrong id is a wrong id, a wrong name is an empty result.
+    RELATIONAL = {"vrf", "device", "interface", "tunnel", "rack", "cluster",
+                  "tenant", "site", "region", "platform", "role",
+                  "device_type", "manufacturer"}
+
+    @staticmethod
+    def _reads():
+        import ast
+
+        tree = ast.parse(open(os.path.join(ROOT, "modules", "netbox_client.py"),
+                              encoding="utf-8").read())
+        out = []
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in ("_nb_get", "_nb_first")):
+                path = (node.args[2].value
+                        if len(node.args) >= 3
+                        and isinstance(node.args[2], ast.Constant) else "")
+                out.append((path, {k.arg for k in node.keywords if k.arg},
+                            node.lineno))
+        return out
+
+    def test_the_scan_finds_something(self):
+        """**The floor.** Every assertion below is "no offenders"."""
+        reads = self._reads()
+        assert len(reads) >= 30, f"only {len(reads)} NetBox reads parsed"
+        filtered = [r for r in reads if r[1]]
+        assert len(filtered) >= 20, \
+            f"only {len(filtered)} of them carry a filter"
+
+    def test_no_read_filters_a_relation_by_name(self):
+        offenders = [
+            f"{path or '(dynamic)'} ?{','.join(sorted(kws))} (line {line})"
+            for path, kws, line in self._reads()
+            if kws & self.RELATIONAL]
+        assert not offenders, (
+            "these filter a RELATED object by name, which matches nothing "
+            "when the name is wrong and reports it as an empty result: "
+            + "; ".join(offenders))
+
+    def test_and_the_relational_filters_that_exist_ARE_id_keyed(self):
+        """**The positive anchor.** "No offenders" is also what a scan that
+        could not run produces, so name what is expected to be found."""
+        used = set()
+        for _path, kws, _line in self._reads():
+            used |= {k for k in kws if k.endswith("_id")}
+
+        assert {"device_id", "interface_id", "site_id"} <= used, \
+            f"expected the id-keyed relational filters, found {sorted(used)}"
+
+    def test_name_and_slug_filters_are_an_objects_OWN_identity(self):
+        """They are not the defect: `dcim/sites/?slug=` filters sites by
+        their slug, which is what that filter is for. Listed explicitly so
+        a future reader does not "fix" them."""
+        own = [(p, sorted(k)) for p, k, _ in self._reads()
+               if k & {"name", "slug"}]
+        assert len(own) >= 8, f"only {len(own)} own-identity filters found"
+        for path, kws in own:
+            if "slug" in kws:
+                assert path.startswith(("dcim/", "ipam/", "extras/")), path

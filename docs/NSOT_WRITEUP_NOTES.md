@@ -8946,3 +8946,71 @@ reproduces the `NameError` verbatim **and** fails the sweep by name.
 `scripts/nmas-verify-runbook` already does the equivalent for routes,
 resolving documented URLs against `app.url_map` rather than trusting that a
 blueprint path looks right. Scripts had no such check; they do now.
+
+## The clean-up looked in the wrong place, and NetBox had already said so
+
+`--remove-excluded` reported **0 eligible, 0 not-NMAS's**, against a NetBox
+holding id 84 (`10.0.0.15/24`, created by the repair, tagged and recorded)
+and id 23 (`2001:db8::2/64`, from the Lab 1 import).
+
+**Measured rather than inferred, and the mechanism was not the one
+predicted.** The query it issues is `GET /api/ipam/ip-addresses/` with **no
+filter at all**; the match happens client-side on the nested `vrf.name`. So
+it is not a name-vs-id filter — but it has the identical signature, because
+the field it matched on is **null**.
+
+**The evidence was in NetBox's own refusal, an hour earlier:**
+
+> Duplicate IP address found in the **global table**: 10.0.0.15/24
+
+The repair's `_ensure_ip_address()` call passes **no `vrf_id`**, so id 84
+was created in the global table. There was no VRF name to match, the loop
+skipped it, and the counters honestly reported zero — while the output said
+*"examined every address in clab-mgmt"* about an object that was never in
+clab-mgmt. The vacuous-pass shape, in the mode fixed an hour before for a
+different reason.
+
+### Two defects, and the second is the one worth keeping
+
+1. The repair created the object with no VRF.
+2. **Matching on NetBox's VRF field was a second copy of the exclusion
+   rule.** The rule is defined on the config — `vrf forwarding clab-mgmt` in
+   the golden — so the import reads it there and the clean-up read it
+   somewhere else. Two copies of one rule is how they come to disagree, and
+   here they did: one excluded the interface, the other could not see it.
+
+Both now go through one `walk()`: the import, the create path and the
+clean-up read `intf["vrf_name"]` from the same goldens. The report names
+the **config VRF and the NetBox VRF separately** (`config vrf clab-mgmt,
+netbox vrf global`), because the gap between them is the finding.
+
+The create path applies the exclusion too, and **says so** — a repair that
+recreated what the import excludes would put the damage back one command
+later, in the global table again.
+
+### The floor: what it examined has to be a claim it can support
+
+*"Examined every address in clab-mgmt"* was not. The mode now reports
+devices, interfaces seen in NetBox, **how many of those are excluded**, and
+how many addresses sit on them — and distinguishes *"no interface in any
+golden is in an excluded VRF"* (supportable, and a different fact) from
+finding nothing on the interfaces it did identify. An empty
+`netbox_excluded_vrfs` **refuses** (`NoExclusion`) rather than reporting
+nothing to do: it cannot be cleaning up an exclusion that does not exist.
+
+### The sweep for name-keyed filters: a real negative
+
+Asked for across `netbox_client`, because *a filter that matches nothing is
+indistinguishable from a resource that is absent*. Parsed all `_nb_get` /
+`_nb_first` calls: **37 filtered reads, and none filters a relation by
+name.** Relations are keyed on ids throughout — `device_id`, `site_id`,
+`interface_id`, `tunnel_id`, `termination_id` — and every `name=` / `slug=`
+filters an object by its **own** identity field, which is what those
+filters are for and is not the defect.
+
+So both of tonight's instances were **outside** this module: an ad-hoc
+`?vrf=<name>` query, and the clean-up's client-side match. The rule is
+pinned anyway, with a floor on the number of reads parsed, a **positive
+anchor** naming the id-keyed filters it expects to find, and a control that
+introducing `vrf="clab-mgmt"` on a read fails it — because "no offenders"
+is also what a scan that could not run produces.

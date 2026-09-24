@@ -59,6 +59,10 @@ class ExaminedNothing(Exception):
     *"the fleet is already correct"*."""
 
 
+class NoExclusion(Exception):
+    """No VRF is excluded, so this mode has nothing it could clean up."""
+
+
 def resolve_list(list_name: str) -> tuple:
     """``(csv_path, registered_name)``, or refuse.
 
@@ -88,8 +92,15 @@ def resolve_list(list_name: str) -> tuple:
     raise UnknownList(f"no device list named {list_name!r}. Known: {known}")
 
 
-def plan(list_name: str) -> dict:
-    """What each device's golden config says, against what NetBox holds."""
+def walk(list_name: str):
+    """``(registered, rows)`` — each device with its golden and its NetBox
+    interfaces, resolved once.
+
+    Shared by the create plan and the residue scan **so the two cannot
+    disagree about which interfaces are excluded.** A second copy of that
+    rule is how the import and the clean-up come to hold different opinions,
+    which is the defect this whole stage keeps finding one level down.
+    """
     from modules.device import load_saved_devices
 
     # Resolve and count BEFORE opening a session: a refusal here is about
@@ -115,7 +126,7 @@ def plan(list_name: str) -> dict:
     session = _session_from_config(cfg)
     base = cfg["url"]
 
-    creates, elsewhere, skipped = [], [], []
+    rows, skipped = [], []
     for dev in devices:
         host = dev.get("hostname") or dev.get("name") or ""
         nb_dev = None
@@ -138,28 +149,60 @@ def plan(list_name: str) -> dict:
         ifaces = {i.get("name"): i for i in
                   _nb_get(session, base, "dcim/interfaces/",
                           device_id=nb_dev["id"])}
-        for intf in facts["interfaces"]:
+        rows.append({"device": host, "facts": facts, "ifaces": ifaces})
+
+    return {"list": registered, "csv": csv_path, "rows": rows,
+            "skipped": skipped, "examined": len(devices),
+            "session": session, "base": base}
+
+
+def plan(list_name: str) -> dict:
+    """What each device's golden config says, against what NetBox holds."""
+    from modules.netbox_client import _nb_get, excluded_vrfs
+
+    w = walk(list_name)
+    session, base = w["session"], w["base"]
+    excluded = excluded_vrfs()
+
+    creates, elsewhere, excluded_rows = [], [], []
+    for row in w["rows"]:
+        host, ifaces = row["device"], row["ifaces"]
+        for intf in row["facts"]["interfaces"]:
             nb_if = ifaces.get(intf.get("name"))
             if not nb_if:
                 continue
-            have = {a.get("address") for a in
-                    _nb_get(session, base, "ipam/ip-addresses/",
-                            interface_id=nb_if["id"])}
             wanted = [c for c in ([intf.get("cidr")]
                                   + list(intf.get("secondary_ips") or [])
                                   + list(intf.get("ipv6_addresses") or []))
                       if c]
+            # The SAME rule the import applies, from the same source. A
+            # repair that recreated what the import excludes would put the
+            # damage back one command later -- and would create it in the
+            # GLOBAL TABLE, which is how id 84 came to be invisible to the
+            # clean-up that went looking for it in a VRF.
+            vrf_name = (intf.get("vrf_name") or "")
+            if vrf_name and vrf_name.lower() in excluded:
+                excluded_rows.extend(
+                    {"device": host, "interface": intf["name"],
+                     "interface_id": nb_if["id"], "address": c,
+                     "vrf_name": vrf_name} for c in wanted)
+                continue
+            have = {a.get("address") for a in
+                    _nb_get(session, base, "ipam/ip-addresses/",
+                            interface_id=nb_if["id"])}
             for cidr in wanted:
                 if any(_same(cidr, h) for h in have):
                     continue
                 holder = _holder_of(session, base, cidr)
-                row = {"device": host, "interface": intf["name"],
-                       "interface_id": nb_if["id"], "address": cidr,
-                       "held_by": holder}
-                (elsewhere if holder else creates).append(row)
+                r = {"device": host, "interface": intf["name"],
+                     "interface_id": nb_if["id"], "address": cidr,
+                     "held_by": holder}
+                (elsewhere if holder else creates).append(r)
 
-    return {"creates": creates, "elsewhere": elsewhere, "skipped": skipped,
-            "examined": len(devices), "list": registered, "csv": csv_path}
+    return {"creates": creates, "elsewhere": elsewhere,
+            "skipped": w["skipped"], "excluded": excluded_rows,
+            "excluded_vrfs": sorted(excluded),
+            "examined": w["examined"], "list": w["list"], "csv": w["csv"]}
 
 
 def _same(a, b) -> bool:
@@ -184,42 +227,53 @@ def _holder_of(session, base, cidr):
     return ""
 
 
-def excluded_residue(session, base: str, list_name: str) -> dict:
-    """Addresses that survive in a VRF the import no longer models.
+def excluded_residue(list_name: str) -> dict:
+    """Addresses NMAS created on an interface the import no longer models.
 
-    **They are removed, not left**, and the argument is that leaving them is
-    the worse of two bad options:
+    **Keyed on the INTERFACE, from the golden config — not on NetBox's VRF
+    field.** The first version matched `ip["vrf"]["name"]` against the
+    excluded set and found nothing, while r1's `10.0.0.15/24` sat in NetBox
+    as id 84. The reason is in NetBox's own refusal of the other four:
+    *"Duplicate IP address found in the **global table**"*. The repair
+    created it **with no VRF at all**, so there was no name to match and the
+    counters honestly reported zero — *"examined every address in
+    clab-mgmt, found none"* about an object that was never in clab-mgmt.
 
-    * they are **wrong in a specific way**. NetBox's global uniqueness meant
-      only one of five identical addresses could exist, so the surviving
-      object claims *one* device has an address that *all five* have. A
-      half-true record reads as complete, which is the failure this whole
-      stage has been about.
-    * **nothing will ever update them again.** The exclusion makes them
-      unreachable by the import: no future run touches, corrects or removes
-      them. They become exactly what the drift checker and the census exist
-      to prevent -- a store describing something that does not exist, with
-      nothing reporting it.
-    * they **hold the globally-unique slot**. While `10.0.0.15/24` exists as
-      an artefact, nothing else can ever legitimately use that value.
+    Matching on the NetBox field was also a **second copy of the exclusion
+    rule**, which is how the import and the clean-up come to disagree. The
+    rule is defined on the config (`vrf forwarding clab-mgmt`), so both read
+    it from there, through the same `walk()`.
 
-    Provenance still governs: only objects that are tagged `nmas-managed`
-    **and** in NMAS's own created record are eligible, and anything else is
-    reported as skipped. A device's `primary_ip4`/`primary_ip6` is a
-    **blocker**, not a warning -- deleting one sets the device's primary to
-    null, which is a consequence of a delete that the cascade map does not
-    cover because it is a modification rather than a deletion.
+    Provenance still governs, and the refusals are separate findings:
+    `blocked` (a device's primary IP — deleting it nulls the primary, a
+    **modification** rather than a deletion, which the cascade map does not
+    cover), and `skipped` (not tagged, or not in NMAS's created record).
     """
     from modules import netbox_guard as guard
-    from modules.netbox_client import (_nb_get, _session_from_config,
-                                       excluded_vrfs, get_netbox_config)
+    from modules.netbox_client import _nb_get, excluded_vrfs
 
     excluded = excluded_vrfs()
     if not excluded:
-        return {"eligible": [], "skipped": [], "blocked": [],
-                "excluded": sorted(excluded)}
+        raise NoExclusion(
+            "`netbox_excluded_vrfs` is empty, so no VRF is excluded and "
+            "there is nothing this mode could be cleaning up")
 
-    created = guard.get_created(list_name) or {}
+    w = walk(list_name)
+    session, base = w["session"], w["base"]
+
+    # Interfaces the import now excludes, from the SAME source it uses.
+    targets, examined_ifaces = {}, 0
+    for row in w["rows"]:
+        for intf in row["facts"]["interfaces"]:
+            nb_if = row["ifaces"].get(intf.get("name"))
+            if not nb_if:
+                continue
+            examined_ifaces += 1
+            vrf_name = (intf.get("vrf_name") or "")
+            if vrf_name and vrf_name.lower() in excluded:
+                targets[nb_if["id"]] = (row["device"], intf["name"], vrf_name)
+
+    created = guard.get_created(w["list"]) or {}
     recorded = {e.get("id") for e in created.get("ipam/ip-addresses", [])}
 
     primaries = {}
@@ -230,23 +284,30 @@ def excluded_residue(session, base: str, list_name: str) -> dict:
                 primaries[obj["id"]] = f"{dev.get('name')}.{field}"
 
     eligible, skipped, blocked = [], [], []
-    for ip in _nb_get(session, base, "ipam/ip-addresses/"):
-        vrf = ((ip.get("vrf") or {}).get("name") or "").lower()
-        if vrf not in excluded:
-            continue
-        row = {"id": ip["id"], "address": ip.get("address"),
-               "vrf": (ip.get("vrf") or {}).get("name"),
-               "description": ip.get("description", "")}
-        if ip["id"] in primaries:
-            blocked.append(dict(row, why=f"it is {primaries[ip['id']]}"))
-        elif not guard.has_managed_tag(ip):
-            skipped.append(dict(row, why="no nmas-managed tag — not NMAS's"))
-        elif ip["id"] not in recorded:
-            skipped.append(dict(row, why="not in NMAS's created record"))
-        else:
-            eligible.append(row)
+    examined_addrs = 0
+    for iface_id, (host, iface_name, vrf_name) in sorted(targets.items()):
+        for ip in _nb_get(session, base, "ipam/ip-addresses/",
+                          interface_id=iface_id):
+            examined_addrs += 1
+            row = {"id": ip["id"], "address": ip.get("address"),
+                   "device": host, "interface": iface_name,
+                   "config_vrf": vrf_name,
+                   "netbox_vrf": (ip.get("vrf") or {}).get("name") or "global",
+                   "description": ip.get("description", "")}
+            if ip["id"] in primaries:
+                blocked.append(dict(row, why=f"it is {primaries[ip['id']]}"))
+            elif not guard.has_managed_tag(ip):
+                skipped.append(dict(row, why="no nmas-managed tag — not NMAS's"))
+            elif ip["id"] not in recorded:
+                skipped.append(dict(row, why="not in NMAS's created record"))
+            else:
+                eligible.append(row)
+
     return {"eligible": eligible, "skipped": skipped, "blocked": blocked,
-            "excluded": sorted(excluded)}
+            "excluded": sorted(excluded), "list": w["list"],
+            "devices": w["examined"], "interfaces": examined_ifaces,
+            "targets": len(targets), "addresses": examined_addrs,
+            "device_skips": w["skipped"]}
 
 
 def main() -> int:
@@ -288,6 +349,15 @@ def main() -> int:
           f"from {p['csv']}")
     for row in p["skipped"]:
         print(f"skipped {row['device']}: {row['why']}")
+
+    if p["excluded"]:
+        # Named, not silent. The repair creating these is what put id 84 in
+        # the global table in the first place.
+        print(f"\n{len(p['excluded'])} address(es) NOT created — their VRF "
+              f"is excluded ({', '.join(p['excluded_vrfs'])}):")
+        for r in p["excluded"][:20]:
+            print(f"  {r['device']} {r['interface']} {r['address']} "
+                  f"(vrf {r['vrf_name']})")
 
     if p["elsewhere"]:
         print(f"\n{len(p['elsewhere'])} address(es) exist on ANOTHER "
@@ -346,30 +416,34 @@ def _remove_excluded(args) -> int:
                                        get_netbox_config)
 
     try:
-        _csv, registered = resolve_list(args.list_name)
-    except UnknownList as exc:
+        r = excluded_residue(args.list_name)
+    except (UnknownList, ExaminedNothing, NoExclusion) as exc:
         print(f"REFUSED — {exc}")
+        print("Nothing was examined, which is not the same as nothing being "
+              "wrong.")
         return 2
-
-    cfg = get_netbox_config()
-    if not cfg.get("url"):
-        print("NetBox is not configured.")
-        return 2
-    session = _session_from_config(cfg)
-
-    try:
-        r = excluded_residue(session, cfg["url"], registered)
     except Exception as exc:                    # noqa: BLE001
         print(f"NetBox could not be read: {exc}")
         print("UNPROVEN — nothing was examined.")
         return 2
 
-    if not r["excluded"]:
-        print("REFUSED — `netbox_excluded_vrfs` is empty, so there is no "
-              "excluded VRF to clean up. Set it first.")
-        return 2
+    # WHAT IT ACTUALLY LOOKED AT. "examined every address in clab-mgmt" was
+    # a claim the previous version could not support: it matched a NetBox
+    # field that was null and reported a count of zero, which reads as "I
+    # looked and there is nothing there".
+    print(f"list {r['list']!r}: {r['devices']} device(s), "
+          f"{r['interfaces']} interface(s) in NetBox, "
+          f"{r['targets']} of them excluded ({', '.join(r['excluded'])}), "
+          f"{r['addresses']} address(es) on those interfaces")
+    for row in r["device_skips"]:
+        print(f"  skipped {row['device']}: {row['why']}")
 
-    print(f"excluded VRFs: {', '.join(r['excluded'])}")
+    if not r["targets"]:
+        # Supportable, and different from finding nothing ON them.
+        print("\nNo interface in any device's golden config is in an "
+              "excluded VRF, so there is nothing this mode applies to.")
+        return 0
+
     for row in r["blocked"]:
         print(f"  BLOCKED {row['address']} (id {row['id']}) — {row['why']}")
         print("          deleting it would null that device's primary IP.")
@@ -377,22 +451,25 @@ def _remove_excluded(args) -> int:
         print(f"  left alone {row['address']} (id {row['id']}) — {row['why']}")
 
     if not r["eligible"]:
-        print("\nNothing eligible to remove.")
-        print(f"(examined every address in {', '.join(r['excluded'])}; "
-              f"{len(r['skipped'])} not NMAS's, {len(r['blocked'])} blocked.)")
+        print(f"\nNothing eligible to remove, out of {r['addresses']} "
+              f"address(es) on {r['targets']} excluded interface(s).")
         return 0
 
     print(f"\n{len(r['eligible'])} address(es) to delete:")
     for row in r["eligible"]:
         print(f"  {row['address']:24s} id={row['id']:<6} "
-              f"{row['description']}")
+              f"{row['device']} {row['interface']} "
+              f"(config vrf {row['config_vrf']}, netbox vrf "
+              f"{row['netbox_vrf']})")
 
     if not args.apply:
         print("\nDry run. Nothing was deleted. Re-run with --apply.")
         return 0
 
+    cfg = get_netbox_config()
+    session = _session_from_config(cfg)
     gone, failed = 0, []
-    with guard.for_list(registered):
+    with guard.for_list(r["list"]):
         for row in r["eligible"]:
             if _nb_delete(session, cfg["url"], "ipam/ip-addresses/", row["id"]):
                 gone += 1
@@ -402,6 +479,7 @@ def _remove_excluded(args) -> int:
     for f in failed:
         print(f"  {f}")
     return 1 if failed else 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

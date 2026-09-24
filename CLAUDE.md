@@ -2003,6 +2003,24 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   subject, so it cannot notice that the caller does not*, and the purest:
   not a wrong signature, not an unreachable branch, a call to something
   that is not there. `nmas-verify-runbook` is the same idea for routes.
+- **A NetBox filter that matches nothing is indistinguishable from a
+  resource that is absent.** `--remove-excluded` reported 0 eligible and 0
+  skipped against a NetBox holding both objects. Measured: the query is
+  **unfiltered**, and the match happens client-side on the nested
+  `vrf.name` — which is **null**, because the repair created the address
+  with no `vrf_id`. NetBox had already said so in the refusal an hour
+  earlier: *"Duplicate IP address found in the **global table**"*. The
+  deeper defect is that matching on NetBox's VRF field was a **second copy
+  of the exclusion rule**: it is defined on the config
+  (`vrf forwarding clab-mgmt`), so the import read it there and the clean-up
+  read it elsewhere, and they disagreed. Both now go through one `walk()`,
+  and the report names the **config VRF and the NetBox VRF separately**
+  because the gap between them is the finding. Swept `netbox_client` for the
+  same shape: **37 filtered reads, none filters a relation by name** —
+  relations are `*_id` throughout and every `name=`/`slug=` is an object's
+  own identity field, which is correct. Pinned with a floor and a positive
+  anchor, since "no offenders" is also what a scan that could not run
+  produces.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
