@@ -103,3 +103,81 @@ code (`manifest.py`'s slug example, `render_bootstrap`'s "what remains is what
 makes the device reachable", `render_step`'s "from committed intent"). The
 cost here is measurable: the entire first pass of the investigation was aimed
 at the device.
+
+
+---
+
+## 7. The golden had not changed either — so the seam was measured
+
+The operator then ruled out the remaining candidate: `golden/r6.cfg` was last
+touched at 05:45:37 by the rotation commit, nothing since, and its
+`sha256[:16]` is **`c29fa63582da8f57` — exactly the `capture_hash` the plan
+reported.** So both calls read the same bytes and the apply still skipped.
+
+That leaves the comparison itself, and the hypothesis worth testing was that
+the two sides were never going to be equal — a guard that refuses **every**
+deploy, whose only possible outcome is `skipped_drifted`, unnoticed because
+the one thing that would notice is a deploy that completes.
+
+**Measured, and it is not that.** Driving `/deploy/plan` into `/deploy/apply`
+through the Flask test client, with `_artifact_for` returning the same capture
+on both calls:
+
+```
+PLAN   capture_hash : <sha256(CAPTURE)[:16]>
+APPLY  deployed     : ["r6"]
+```
+
+The handshake works. `plan_batch` keys on `artifact.device`, `_artifact_for`
+passes the hostname to `build_artifact`, and `fresh_captures` and
+`confirmations` are both keyed by hostname — all consistent, and now asserted
+rather than inspected (`tests/test_deploy_plan_apply_seam.py`, seven tests,
+two negative controls).
+
+### What that leaves, and the one command that settles it
+
+Something differed between the two **live** calls that the stub removes. The
+skip entry carries `fresh_capture` verbatim, so:
+
+```bash
+python3 - <<'EOF'
+import hashlib, json
+fresh = json.load(open("apply-response.json"))["...skipped entry..."]["fresh_capture"]
+print(hashlib.sha256(fresh.encode()).hexdigest()[:16])
+EOF
+```
+
+* **equals `c29fa63582da8f57`** → the capture was identical and the
+  *confirmation value that arrived* was not it. The wizard reads
+  `d.capture_hash` into `data-hash` and sends `b.dataset.hash`; a hand-built
+  request is the other possibility.
+* **differs** → `_captured_config()` returned different bytes at apply time.
+  Diff `fresh_capture` against the file and the difference is the answer.
+
+One command, and it partitions the space — the discriminator rule, applied to
+a diagnosis that has now produced two wrong hypotheses (mine: the golden
+changed; the operator's: the guard never matches). **Both were sound from what
+we had and both were reasoning where a measurement was one command away.**
+
+## 8. A separate gap the seam test found
+
+`/deploy/apply` recomputes the command fingerprint and compares it **only when
+`command_hashes` is supplied**:
+
+```python
+expected = command_hashes.get(hostname)
+if expected is not None:
+    ...
+```
+
+The deploy wizard sends `JSON.stringify({confirmations})` — **and nothing
+else.** So from the only client that reaches this route, the recompute-and-
+compare **never runs**, and *"the list is recomputed at apply and compared
+against the confirmed fingerprint"* — the deploy path's central claim — is not
+exercised. The restore path (`partials__golden_repo.3.js`) does send
+`command_hashes`, which is the positive anchor: the payload is buildable and
+one client builds it.
+
+Pinned rather than fixed, because changing what the wizard sends changes
+deploy behaviour and the guard is mid-diagnosis. The test asserts the gap and
+says what it should become.
