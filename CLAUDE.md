@@ -1557,6 +1557,40 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   reveal/approve/confirm/publish_remote were **never satisfiable by an HTTP
   header**. The exposure was **replay of a genuine assertion from any LAN
   host** while the peer list was blank, not forgery.
+- **NetBox creation is phase 2, not phase 1.** A NetBox device record is a
+  **claim that the device exists**, written into the source of truth about
+  something nobody has seen — the claim `pending` was built not to make. The
+  name-reservation argument does not hold: the manifest already reserves the
+  name and `build_plan()` already checks NetBox for a collision, and two
+  reservations in two stores is how they come to disagree. **Phase 1 now
+  creates nothing external**, so a failed onboarding is a commit plus a
+  staged credential, both removable without touching NetBox — which matters
+  because the failure path is the one that has never worked. `STEPS` is
+  three: credentials → commit → render, and 4C.3's rationale survives
+  unchanged, now cheaper to hold.
+- **`sync_list_to_netbox` is an IMPORTER, and onboarding had nothing to
+  import.** Every object is built from the device's golden config by
+  `_scan_device_from_golden`, and a device being onboarded has none by
+  definition — so it landed in the sync's `failed` list and was skipped,
+  while the region, site and list-level VRF, built **unconditionally before
+  that loop**, were created. Measured on the live NetBox: **3 objects tagged
+  `nmas-managed` and no device**, and the run reported *"Device onboarded."*
+  `create_netbox_record()` runs after promotion, when a capture exists, and
+  **defers rather than guessing** when one does not — calling the importer
+  with nothing to import is what created scaffolding for a device that never
+  followed.
+- **`ok` meant "the sync ran", not "the devices landed".**
+  `_sync_list_to_netbox_impl` returns `{"ok": True, …, "failed": [...]}` with
+  every device in `failed`, and the caller checked only `ok`. Third instance
+  of `success` meaning *no exception reached the top*, after the background
+  agent's 27 runs and `bind_credentials_step`.
+- **Two fields declared and never written, one of them on a review screen.**
+  `netbox_objects` counted `netbox_plan`, a tuple the route never filled, so
+  the review always read **0** — while three objects were being created.
+  `netbox_id` was never mentioned in the onboarding path at all:
+  `create_netbox_step` collected the created ids and `commit_step` never
+  received them. Both are the `next_ts` shape; the review now states what
+  phase 2 will do, and `netbox_id` is written from the created record.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -27,7 +27,8 @@ dukpy = pytest.importorskip("dukpy")
 BLOCKED = {
     "hostname": "9bad", "platform": "cisco_ios", "list": "probe",
     "source_kind": "local", "mgmt_ip": "", "cred_source": "",
-    "template": "", "netbox_objects": 0, "writes_csv": True,
+    "template": "", "writes_csv": True,
+    "netbox_note": "nothing — created in phase 2",
     "onboardable": False,
     "blocking_reasons": [
         "'9bad' is not a usable device name — it must start with a letter",
@@ -39,7 +40,7 @@ BLOCKED = {
 
 CLEAN = dict(BLOCKED, hostname="r6", platform="cisco_iosxe",
              mgmt_ip="203.0.113.6", template="cisco-ios-xe/base.j2",
-             cred_source="default profile", netbox_objects=4,
+             cred_source="default profile",
              onboardable=True, blocking_reasons=[])
 
 

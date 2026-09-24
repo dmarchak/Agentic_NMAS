@@ -99,7 +99,12 @@ class OnboardPlan:
     #: Displayed, because `_cred_source` exists so the origin is visible.
     cred_source: str = ""
 
-    #: What would be created in NetBox, for the preview. Not executed here.
+    #: What would be created in NetBox. **Phase 1 creates nothing there**,
+    #: so this is only ever the empty tuple on this path; it is kept because
+    #: `unmet_preconditions()` still reads it to decide whether the write
+    #: gate is relevant, and a caller that does plan NetBox objects can pass
+    #: one. The review screen no longer shows a count derived from it — it
+    #: showed 0 while three objects were created.
     netbox_plan: tuple = field(default_factory=tuple)
 
     #: The device's initial committed intent.
@@ -317,7 +322,13 @@ class OnboardPlan:
             "manager_gateway":   self.manager_gateway,
             "cred_source":    self.cred_source,
             "template":       self.template,
-            "netbox_objects": len(self.netbox_plan),
+            # NOT a count of what phase 1 creates: phase 1 creates nothing
+            # in NetBox. `netbox_plan` was a tuple the route never filled, so
+            # this always read 0 — displayed on a review screen, next to
+            # three objects that had in fact been created. The `next_ts`
+            # shape, on the panel whose job is to say what will happen.
+            "netbox_note": ("nothing — the NetBox record is created in "
+                            "phase 2, from the device's first capture"),
             "writes_csv":     self.writes_devices_csv,
             "inventory_note": self.inventory_note,
             "onboardable":    self.onboardable,
@@ -703,10 +714,40 @@ def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
 #: anything is created, and the downloadable artefact is produced **after**
 #: the commit, from committed intent. A render that cannot succeed therefore
 #: blocks at the plan, not halfway through a run.
-STEPS = ("credentials", "netbox", "commit", "render")
+#: Phase 1. **Three steps, and NetBox is not one of them.**
+#:
+#: A NetBox device record is a claim that the device EXISTS, written into the
+#: source of truth about something nobody has seen. That is the claim
+#: `pending` was built not to make, so making it here contradicted the model
+#: the two-phase split established.
+#:
+#: The name-reservation argument for keeping it does not hold: the manifest
+#: already reserves the name and `build_plan()` already checks NetBox for a
+#: collision. An object whose only content is "do not use this name"
+#: duplicates the manifest, and two reservations in two stores is how they
+#: come to disagree.
+#:
+#: **The ordering rationale, re-derived for three.** 4C.3 ordered these by
+#: what a failure leaves behind, commit last because it is the only step that
+#: publishes. With NetBox gone the whole of phase 1 is LOCAL, and the order
+#: now reads:
+#:
+#:   credentials -- a store write and a staging file, both removable, and
+#:                  staged before the override so a crash between them is
+#:                  survivable;
+#:   commit      -- the only step that creates something durable, and still
+#:                  last among the fallible;
+#:   render      -- pure, cannot fail in a way that leaves state, and runs
+#:                  after the commit so no artefact exists for a device the
+#:                  NSoT has no record of.
+#:
+#: The 4C.3 property survives unchanged and is now cheaper to hold: a failure
+#: at any step leaves **nothing external at all**, so abandoning a failed
+#: onboarding is a commit plus a staged credential and never touches NetBox.
+STEPS = ("credentials", "commit", "render")
 
 
-def run_onboarding(plan, *, bind_credentials, create_netbox, commit, render,
+def run_onboarding(plan, *, bind_credentials, commit, render,
                    repo: str = "") -> dict:
     """Execute an onboarding run. Every step is injected, and that is the point.
 
@@ -715,8 +756,8 @@ def run_onboarding(plan, *, bind_credentials, create_netbox, commit, render,
     without NetBox, git or a device. A test that has to mock a module's
     internals to check an ordering ends up asserting the mocks.
 
-    Returns ``{"ok", "completed", "failed_at", "reason", "netbox_created",
-    "commit", "cleanup_offered"}``.
+    Returns ``{"ok", "completed", "failed_at", "reason", "commit",
+    "cleanup_offered"}``.
 
     **Nothing is retried and nothing is rolled back.** A failure stops the run
     and reports what exists, because the stores are not atomic with each other
@@ -726,7 +767,7 @@ def run_onboarding(plan, *, bind_credentials, create_netbox, commit, render,
     the operator to find it.
     """
     result = {"ok": False, "completed": [], "failed_at": "", "reason": "",
-              "netbox_created": [], "commit": "", "cleanup_offered": False}
+              "commit": "", "cleanup_offered": False}
 
     if not plan.onboardable:
         result["failed_at"] = "plan"
@@ -736,9 +777,13 @@ def run_onboarding(plan, *, bind_credentials, create_netbox, commit, render,
     def _fail(step, exc):
         result["failed_at"] = step
         result["reason"] = str(exc)
-        # Only NetBox leaves something behind that this run can clean up.
-        # Credentials are local and reversible; the commit has not happened.
-        result["cleanup_offered"] = bool(result["netbox_created"])
+        # NOTHING EXTERNAL IS LEFT BY A PHASE-1 FAILURE. NetBox creation
+        # moved to phase 2, so the only artefacts are a credential override,
+        # a staged credential and — if it got that far — a commit. All three
+        # are removable by `abandon_onboarding()` without touching NetBox,
+        # which is the point of moving it: the failure path is the one that
+        # has never worked, and it is now almost trivial.
+        result["cleanup_offered"] = False
         log.error("onboard: run failed at %s for %s: %s",
                   step, plan.hostname, exc)
         return result
@@ -748,13 +793,6 @@ def run_onboarding(plan, *, bind_credentials, create_netbox, commit, render,
     except Exception as exc:                   # noqa: BLE001
         return _fail("credentials", exc)
     result["completed"].append("credentials")
-
-    try:
-        created = create_netbox(plan) or []
-        result["netbox_created"] = list(created)
-    except Exception as exc:                   # noqa: BLE001
-        return _fail("netbox", exc)
-    result["completed"].append("netbox")
 
     # ── the commit, last among the fallible ─────────────────────────────────
     # One call, one commit: identity, host_vars and the site's group_vars
@@ -885,35 +923,110 @@ def bind_credentials_step(plan, *, repo: str) -> str:
     return secret
 
 
-def create_netbox_step(plan) -> list:
-    """Create this device's NetBox objects, through the Phase 0 gate.
+def create_netbox_record(repo: str, hostname: str, list_name: str, *,
+                         sync=None) -> dict:
+    """Create this device's NetBox objects. **Phase 2, after a capture.**
 
-    `sync_list_to_netbox` refuses when `netbox_allow_writes` is off and
-    returns `{"blocked": True}` rather than raising. **That refusal is turned
-    into an exception here**, because `run_onboarding` reads a raise as "this
-    step failed" and a returned dict as success — a blocked write that looked
-    like a success would carry the run into the commit.
+    It was step 2 of phase 1 and could not work there. `sync_list_to_netbox`
+    is an IMPORTER: it builds every object from the device's golden config
+    (`_scan_device_from_golden`), and a device being onboarded has no golden
+    by definition. So the device landed in the sync's `failed` list, the
+    `for result in scanned:` loop skipped it, and **no device, interface or
+    IP was ever created** — while the region, site and list-level VRF, built
+    unconditionally before that loop, were.
 
-    The plan has already reported the switch as a blocking reason, so this is
-    the second line of defence rather than the first: the state can change
-    between the review and the confirm, which is the same reason the deploy
-    path recomputes its program at apply.
+    Measured on the live NetBox: 3 objects tagged `nmas-managed` — a region,
+    a site and a VRF, all named after the list — and no device. The run
+    reported *"Device onboarded."*
+
+    **It runs after promotion**, because that is the first moment a capture
+    can exist. Without one it does not guess: it reports `deferred` with the
+    reason, rather than creating the list scaffolding for a device that is
+    not going to be created in this call.
+
+    Returns ``{"ok", "deferred", "created", "failed", "reason"}``.
     """
-    from modules.netbox_client import sync_list_to_netbox
+    import os
 
-    device = {"hostname": plan.hostname, "ip": plan.mgmt_ip,
-              "platform": plan.platform, "role": "router"}
-    result = sync_list_to_netbox(plan.list_name, [device]) or {}
-    if result.get("blocked") or not result.get("ok", True):
-        raise RuntimeError(result.get("error")
-                           or "NetBox refused the write and did not say why")
+    out = {"ok": False, "deferred": False, "created": [], "failed": [],
+           "reason": ""}
+
+    # NO CAPTURE, NO IMPORT. The importer reads the golden config; calling it
+    # without one creates the scaffolding and nothing else, which is exactly
+    # the state this function exists to stop producing.
+    try:
+        from modules.ai_assistant import _load_golden_config_file
+        from modules.nsot import manifest as _m
+
+        _identity, entry = _m.find_by_name(repo, hostname)
+        mgmt_ip = (entry or {}).get("mgmt_ip", "")
+        if not mgmt_ip or not _load_golden_config_file(mgmt_ip):
+            out["deferred"] = True
+            out["reason"] = (
+                f"'{hostname}' has no captured config yet, and the NetBox "
+                f"import builds every object from one. Deferred until the "
+                f"first capture — nothing was created.")
+            return out
+    except Exception as exc:                   # noqa: BLE001
+        out["reason"] = f"could not check for a capture: {exc}"
+        return out
+
+    if sync is None:
+        from modules.netbox_client import sync_list_to_netbox as sync
+
+    device = {"hostname": hostname, "ip": mgmt_ip,
+              "platform": (entry or {}).get("platform", ""), "role": "router"}
+    result = sync(list_name, [device]) or {}
+
+    if result.get("blocked"):
+        out["reason"] = result.get("error") or "NetBox writes are disabled"
+        return out
+
+    # `ok` MEANS "THE SYNC RAN", NOT "THE DEVICES LANDED".
+    #
+    # `_sync_list_to_netbox_impl` returns `{"ok": True, ..., "failed": [...]}`
+    # with every device in `failed`, and the previous caller checked only
+    # `ok`. So a sync in which nothing was created reported success, and the
+    # onboarding run said "Device onboarded" for a device NetBox has no
+    # record of. Third instance of `success` meaning *no exception reached
+    # the top*, after the background agent's 27 runs and
+    # `bind_credentials_step`.
+    failed = list(result.get("failed") or [])
+    out["failed"] = failed
+    if failed:
+        out["reason"] = ("NetBox reported "
+                         + "; ".join(f"{f.get('hostname', '?')}: "
+                                     f"{f.get('error', 'no reason given')}"
+                                     for f in failed[:3]))
+        return out
+    if not result.get("ok", False):
+        out["reason"] = result.get("error") or "the sync did not report success"
+        return out
 
     from modules.netbox_guard import get_created
 
-    created = get_created(plan.list_name) or {}
-    return [f"{endpoint}:{obj_id}"
-            for endpoint, objects in created.items()
-            for obj_id in (objects or {})]
+    created = get_created(list_name) or {}
+    out["created"] = [f"{endpoint}:{obj_id}"
+                      for endpoint, objects in created.items()
+                      for obj_id in (objects or {})]
+    out["device_id"] = _device_id_from(created, hostname)
+    out["ok"] = True
+    return out
+
+
+def _device_id_from(created: dict, hostname: str):
+    """The NetBox id of the device just created, or ``None``.
+
+    Pulled out because it is what `netbox_id` was declared for and never
+    given: `create_netbox_step` collected every created id, returned them as
+    strings, and `commit_step` never received them — so the manifest field
+    existed and nothing could write it. The `next_ts` shape, in the identity
+    map.
+    """
+    for entry in (created.get("dcim/devices") or []):
+        if (entry.get("name") or "").lower() == hostname.lower():
+            return entry.get("id")
+    return None
 
 
 def commit_step(plan, *, actor: str) -> str:
@@ -1002,7 +1115,6 @@ def real_steps(repo: str, actor: str) -> dict:
     """
     return {
         "bind_credentials": lambda plan: bind_credentials_step(plan, repo=repo),
-        "create_netbox":    create_netbox_step,
         "commit":           lambda plan: commit_step(plan, actor=actor),
         "render":           render_step,
     }
@@ -1477,4 +1589,25 @@ def verify_and_promote(repo: str, hostname: str, list_name: str, *,
     out["ok"] = out["promoted"]
     if not out["ok"]:
         out["error"] = promoted.get("error", "promotion failed")
+        return out
+
+    # NETBOX, LAST, AND NEVER FATAL TO THE PROMOTION.
+    #
+    # The device has answered and is in the inventory; those are facts about
+    # the network and they are already recorded. A NetBox write that fails
+    # afterwards is a synchronisation problem with an external system, and
+    # failing the whole run for it would put the device back in a pending
+    # state it has demonstrably left.
+    #
+    # Deferred rather than skipped when there is no capture yet, and the
+    # distinction is reported: `deferred` says the import has not run and
+    # why, where a bare skip would read as "nothing to do".
+    out["netbox"] = create_netbox_record(repo, hostname, list_name)
+    if out["netbox"].get("device_id") is not None:
+        from modules.nsot import manifest as _m
+
+        identity, _entry = _m.find_by_name(repo, hostname)
+        if identity:
+            _m.upsert_device(repo, identity, hostname,
+                             netbox_id=out["netbox"]["device_id"])
     return out

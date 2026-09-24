@@ -297,3 +297,141 @@ class TestTheBannerIsActionable:
                         "pending": [_row(name="<script>alert(1)</script>")]})
         assert "<script>alert(1)</script>" not in html
         assert "&lt;script&gt;" in html
+
+
+# ---------------------------------------------------------------------------
+# NetBox creation belongs to phase 2
+# ---------------------------------------------------------------------------
+
+class TestNetBoxIsCreatedInPhaseTwo:
+    """It was step 2 of phase 1 and could not work there.
+
+    `sync_list_to_netbox` is an IMPORTER — every object is built from the
+    device's golden config by `_scan_device_from_golden` — and a device being
+    onboarded has no golden by definition. So the device landed in the sync's
+    `failed` list and was skipped, while the region, site and list-level VRF,
+    built unconditionally before that loop, were created.
+
+    Measured on the live NetBox: **3 objects tagged `nmas-managed` — a
+    region, a site and a VRF, all named after the list — and no device.** The
+    run reported *"Device onboarded."*
+    """
+
+    def test_no_capture_means_deferred_not_created(self, repo, monkeypatch):
+        """It does not call the importer at all without a capture. Calling
+        it is what created the scaffolding for a device that never followed.
+        """
+        from modules.nsot.onboard import create_netbox_record
+
+        called = []
+        out = create_netbox_record(repo, "bp1", "probe",
+                                   sync=lambda *a, **k: called.append(a))
+        assert out["deferred"] is True
+        assert out["ok"] is False
+        assert called == [], "the importer ran with nothing to import"
+        assert "no captured config" in out["reason"]
+
+    def test_a_sync_reporting_ok_with_failures_is_NOT_success(self, repo,
+                                                              monkeypatch):
+        """**`ok` means "the sync ran", not "the devices landed".**
+
+        `_sync_list_to_netbox_impl` returns `{"ok": True, ..., "failed":
+        [...]}` with every device in `failed`, and the previous caller
+        checked only `ok`. Third instance of success meaning *no exception
+        reached the top*.
+        """
+        from modules.nsot.onboard import create_netbox_record
+
+        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+                            lambda ip: "hostname bp1\n!\nend\n")
+        out = create_netbox_record(
+            repo, "bp1", "probe",
+            sync=lambda *a, **k: {"ok": True, "failed": [
+                {"hostname": "bp1", "error": "No golden config saved"}]})
+        assert out["ok"] is False
+        assert "No golden config saved" in out["reason"]
+
+    def test_a_clean_sync_is_success(self, repo, monkeypatch):
+        """The control. A check that read `failed` and refused regardless
+        would pass the test above and never create anything."""
+        from modules.nsot.onboard import create_netbox_record
+
+        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+                            lambda ip: "hostname bp1\n!\nend\n")
+        monkeypatch.setattr("modules.netbox_guard.get_created",
+                            lambda lst, endpoint="": {
+                                "dcim/devices": [{"id": 42, "name": "bp1"}]})
+        out = create_netbox_record(repo, "bp1", "probe",
+                                   sync=lambda *a, **k: {"ok": True, "failed": []})
+        assert out["ok"] is True
+        assert out["device_id"] == 42
+
+    def test_the_device_id_reaches_the_manifest(self, repo, monkeypatch):
+        """`netbox_id` was declared and never written: `create_netbox_step`
+        collected every created id and `commit_step` never received them, so
+        nothing could populate it. The `next_ts` shape, in the identity map.
+        """
+        from modules.nsot import manifest as _m
+        from modules.nsot.onboard import verify_and_promote
+
+        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+                            lambda ip: "hostname bp1\n!\nend\n")
+        monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
+                            lambda *a, **k: {"ok": True, "failed": []})
+        monkeypatch.setattr("modules.netbox_guard.get_created",
+                            lambda lst, endpoint="": {
+                                "dcim/devices": [{"id": 42, "name": "bp1"}]})
+        verify_and_promote(repo, "bp1", "probe", actor="t",
+                           online=lambda ip: True, reach=lambda *a, **k: "bp1#",
+                           username="admin", password="rotated")
+        _identity, entry = _m.find_by_name(repo, "bp1")
+        assert entry["netbox_id"] == 42
+
+    def test_a_netbox_failure_does_not_undo_the_promotion(self, repo,
+                                                          monkeypatch):
+        """The device answered and is in the inventory; those are facts about
+        the network and are already recorded. A later NetBox problem is a
+        synchronisation issue with an external system."""
+        from modules.nsot import manifest as _m
+        from modules.nsot.onboard import verify_and_promote
+
+        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+                            lambda ip: "hostname bp1\n!\nend\n")
+        monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
+                            lambda *a, **k: {"ok": False, "blocked": True,
+                                             "error": "writes are disabled"})
+        out = verify_and_promote(repo, "bp1", "probe", actor="t",
+                                 online=lambda ip: True,
+                                 reach=lambda *a, **k: "bp1#",
+                                 username="admin", password="rotated")
+        assert out["ok"] is True, "the promotion was undone by a NetBox error"
+        assert out["netbox"]["ok"] is False
+        assert "disabled" in out["netbox"]["reason"]
+        assert _m.pending_devices(repo) == []
+
+
+class TestPhaseOneReachesNoExternalSystem:
+
+    def test_the_steps_are_three_and_local(self):
+        from modules.nsot.onboard import STEPS
+
+        assert STEPS == ("credentials", "commit", "render")
+
+    def test_no_phase_one_step_imports_the_netbox_client(self):
+        """Parsed, not grepped — the docstrings above name the module
+        repeatedly to explain why it is not used."""
+        import ast
+        import inspect
+        import textwrap
+
+        from modules.nsot import onboard
+
+        for name in ("bind_credentials_step", "commit_step", "render_step"):
+            src = textwrap.dedent(inspect.getsource(getattr(onboard, name)))
+            names = set()
+            for node in ast.walk(ast.parse(src)):
+                if isinstance(node, ast.ImportFrom):
+                    names.add(node.module or "")
+                elif isinstance(node, ast.Import):
+                    names.update(a.name for a in node.names)
+            assert not any("netbox" in n for n in names), (name, names)

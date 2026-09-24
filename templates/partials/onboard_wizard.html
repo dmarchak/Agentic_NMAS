@@ -134,7 +134,7 @@ function onboardReviewHtml(plan, bootstrapConfig) {
     ['Gateway', plan.manager_gateway || 'none \u2014 NMAS is on this subnet'],
     ['Template', plan.template || '(none bound)'],
     ['Credential source', plan.cred_source || '(not resolved)'],
-    ['NetBox objects', plan.netbox_objects],
+    ['NetBox', plan.netbox_note || 'created in phase 2, from the first capture'],
     ['Adds to inventory', plan.inventory_note || 'after it answers'],
   ];
 

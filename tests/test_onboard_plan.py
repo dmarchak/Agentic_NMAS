@@ -472,8 +472,7 @@ class TestTemplateStateIsAnAdvisoryNotARefusal:
 
         from modules.nsot import onboard as mod
 
-        for name in ("bind_credentials_step", "create_netbox_step",
-                     "commit_step", "render_step"):
+        for name in ("bind_credentials_step", "commit_step", "render_step"):
             fn = getattr(mod, name)
             tree = ast.parse(inspect.getsource(fn).lstrip())
             attrs = {n.attr for n in ast.walk(tree)

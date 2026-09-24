@@ -76,7 +76,6 @@ def _run(world, **over):
     from modules.nsot.onboard import run_onboarding
 
     steps = {"bind_credentials": lambda p: None,
-             "create_netbox": lambda p: ["dcim/devices/:9"],
              "commit": lambda p: "deadbeef",
              "render": lambda p: "config"}
     steps.update(over)
@@ -87,15 +86,22 @@ class TestAFailureBeforeTheCommitCreatesNoCommit:
     """Your precision: not "the branch ended where it started"."""
 
     def _fail_at_netbox(self, world):
-        def _boom(plan):
-            raise RuntimeError("NetBox rejected the device")
+        """Named for what it tests, not for the step that used to fail.
 
-        return _run(world, create_netbox=_boom)
+        NetBox creation moved to phase 2 (a device record is a claim the
+        device exists, and phase 1 has not seen it), so the step before the
+        commit is now `credentials`. The PROPERTY is unchanged and is the
+        point: a failure anywhere before the commit creates no commit.
+        """
+        def _boom(plan):
+            raise RuntimeError("the credential store rejected the write")
+
+        return _run(world, bind_credentials=_boom)
 
     def test_the_run_reports_where_it_failed(self, world):
         out = self._fail_at_netbox(world)
         assert out["ok"] is False
-        assert out["failed_at"] == "netbox"
+        assert out["failed_at"] == "credentials"
         assert "rejected" in out["reason"]
 
     def test_the_commit_count_is_unchanged(self, world):
@@ -138,7 +144,7 @@ class TestAFailureBeforeTheCommitCreatesNoCommit:
         def _boom(plan):
             raise RuntimeError("x")
 
-        return _run(world, create_netbox=_boom,
+        return _run(world, bind_credentials=_boom,
                     commit=lambda p: called.append(p) or "sha")
 
 
@@ -194,10 +200,17 @@ class TestCommitThenResetIsCaught:
 
 class TestTheCommitIsLastAmongTheFallible:
 
-    def test_the_declared_order_puts_the_commit_third_of_four(self):
+    def test_the_declared_order_puts_the_commit_second_of_three(self):
+        """Three steps since NetBox creation moved to phase 2.
+
+        The rationale is unchanged and now cheaper to hold: phase 1 is
+        entirely local, so the commit is still the only step that creates
+        something durable and is still last among the fallible.
+        """
         from modules.nsot.onboard import STEPS
 
-        assert STEPS == ("credentials", "netbox", "commit", "render")
+        assert STEPS == ("credentials", "commit", "render")
+        assert "netbox" not in STEPS
 
     def test_only_the_render_follows_it(self):
         from modules.nsot.onboard import STEPS
@@ -223,23 +236,27 @@ class TestTheCommitIsLastAmongTheFallible:
         assert out["cleanup_offered"] is False
 
 
-class TestCleanupIsOfferedWhenSomethingWasCreated:
+class TestNoPhaseOneFailureLeavesAnythingExternal:
+    """**The whole of phase 1 is local now**, which is what moving NetBox to
+    phase 2 bought.
 
-    def test_a_netbox_failure_offers_nothing(self, world):
-        """Nothing was created: the step that failed is the step that creates."""
-        out = _run(world, create_netbox=lambda p: (_ for _ in ()).throw(
-            RuntimeError("x")))
-        assert out["cleanup_offered"] is False
+    `cleanup_offered` existed for one state: NetBox objects created and no
+    commit describing them, where Remove was the right next action. That
+    state cannot occur any more — phase 1 creates a credential override, a
+    staged credential and a commit, all of which `abandon_onboarding()`
+    removes without touching NetBox.
+    """
 
-    def test_a_commit_failure_offers_removal(self, world):
-        """NetBox objects exist and the repo has no record of the device —
-        the one state where Remove is the right next action, offered rather
-        than left for the operator to find."""
+    def test_a_commit_failure_offers_nothing_external(self, world):
         out = _run(world, commit=lambda p: (_ for _ in ()).throw(
             RuntimeError("git is unhappy")))
         assert out["failed_at"] == "commit"
-        assert out["cleanup_offered"] is True
-        assert out["netbox_created"] == ["dcim/devices/:9"]
+        assert out["cleanup_offered"] is False
+
+    def test_no_step_reports_netbox_objects(self, world):
+        """The key is gone, not merely empty. An empty list would read as
+        'NetBox was involved and created nothing'."""
+        assert "netbox_created" not in _run(world)
 
     def test_a_credentials_failure_offers_nothing(self, world):
         """Local and reversible, which is why it goes first."""
@@ -261,7 +278,6 @@ class TestAnUnonboardablePlanNeverStarts:
         called = []
         out = run_onboarding(_Blocked(), repo=world["repo"],
                              bind_credentials=lambda p: called.append("c"),
-                             create_netbox=lambda p: called.append("n"),
                              commit=lambda p: called.append("g"),
                              render=lambda p: called.append("r"))
         assert out["ok"] is False
@@ -310,7 +326,7 @@ class TestTheControlItself:
         assert after["all_objects"] > before["all_objects"]
         assert world["hook_fired"] != []
 
-    def test_committing_before_netbox_is_caught(self, world):
+    def test_committing_before_a_later_step_is_caught(self, world):
         """The wrong ordering, executed. `run_onboarding` is written so this
         cannot happen — the control proves the tests would say so if it did.
         """
@@ -323,12 +339,11 @@ class TestTheControlItself:
         commit(_Plan())
         out = run_onboarding(
             _Plan(), repo=world["repo"],
-            bind_credentials=lambda p: None,
-            create_netbox=lambda p: (_ for _ in ()).throw(RuntimeError("boom")),
+            bind_credentials=lambda p: (_ for _ in ()).throw(RuntimeError("boom")),
             commit=lambda p: "already-done",
             render=lambda p: None)
 
-        assert out["failed_at"] == "netbox"
+        assert out["failed_at"] == "credentials"
         # And every signal says a commit exists, which is the point.
         after = _state(world["repo"])
         assert after["head"] != before["head"]
@@ -343,12 +358,11 @@ class TestTheControlItself:
 
         out = run_onboarding(
             _Plan(), repo=world["repo"],
-            bind_credentials=lambda p: None,
-            create_netbox=lambda p: (_ for _ in ()).throw(RuntimeError("boom")),
+            bind_credentials=lambda p: (_ for _ in ()).throw(RuntimeError("boom")),
             commit=self._commit_for_real(world),
             render=lambda p: None)
 
-        assert out["failed_at"] == "netbox"
+        assert out["failed_at"] == "credentials"
         assert _state(world["repo"]) == before
         assert world["hook_fired"] == []
 
@@ -432,7 +446,7 @@ class TestTheREALStepsSatisfyTheContract:
     def test_a_clean_run_completes_every_step(self, wired):
         out = self._run(wired)
         assert out["ok"] is True, out
-        assert out["completed"] == ["credentials", "netbox", "commit", "render"]
+        assert out["completed"] == ["credentials", "commit", "render"]
 
     def test_the_real_credential_step_stages_and_records(self, wired):
         """Asserted through `resolve()`, which is what phase 2 will call.
@@ -462,46 +476,33 @@ class TestTheREALStepsSatisfyTheContract:
         self._run(wired)
         assert int(_state(wired["repo"])["count"]) == int(before) + 1
 
-    def test_a_REAL_netbox_failure_creates_no_commit(self, wired, monkeypatch):
-        """The contract, against the shipped adapter rather than a stand-in.
+    def test_no_real_step_touches_netbox(self, wired, monkeypatch):
+        """**The two NetBox tests that were here are gone with the step.**
 
-        `sync_list_to_netbox` returns `{"blocked": True}` when writes are off
-        — it does not raise — so the adapter turns that into a failure. A
-        blocked write read as a success would have carried the run into the
-        commit.
+        They asserted that a blocked or failing NetBox write left no commit —
+        a real property, of a step that no longer runs in phase 1. A NetBox
+        device record is a claim the device exists, and phase 1 has not seen
+        it; `create_netbox_record()` runs in phase 2, after promotion, when a
+        capture exists for the importer to read.
+
+        What replaces them is stronger: phase 1 must not reach NetBox at all,
+        so there is no blocked-write case to get wrong.
         """
+        calls = []
         monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
-                            lambda lst, devices, **kw: {
-                                "ok": False, "blocked": True,
-                                "error": "NetBox writes are disabled."})
-        before = _state(wired["repo"])
-
+                            lambda *a, **k: calls.append(a) or {"ok": True})
         out = self._run(wired)
+        assert out["ok"] is True, out
+        assert calls == [], "phase 1 called the NetBox importer"
 
-        assert out["ok"] is False
-        assert out["failed_at"] == "netbox"
-        assert "disabled" in out["reason"]
-        assert _state(wired["repo"]) == before, (
-            "a blocked NetBox write reached the commit")
-        assert wired["world"]["hook_fired"] == []
+    def test_the_result_carries_no_netbox_key(self, wired):
+        """Absent, not empty. An empty list reads as "NetBox ran and created
+        nothing", which is exactly the state that made a failed import look
+        like a successful onboarding."""
+        out = self._run(wired)
+        assert "netbox_created" not in out
+        assert out["cleanup_offered"] is False
 
-    def test_a_blocked_write_is_not_read_as_success(self, wired, monkeypatch):
-        """The specific trap: the function RETURNS rather than raising."""
-        monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
-                            lambda lst, devices, **kw: {"blocked": True,
-                                                        "error": "off"})
-        assert self._run(wired)["failed_at"] == "netbox"
-
-    def test_the_credential_survives_a_failure_after_it_was_staged(
-            self, wired, monkeypatch):
-        """Between the device booting with it and rotation replacing it, it
-        is the only way in — and a run that failed at NetBox has bound it."""
-        monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
-                            lambda lst, devices, **kw: {"blocked": True,
-                                                        "error": "off"})
-        self._run(wired)
-        assert wired["onboard"].staged_bootstrap_credential(
-            wired["repo"], "bp-onboard-c")
 
     def test_real_steps_is_assembled_in_one_place(self):
         """Two copies of the mapping would be two orderings, and the ordering
@@ -512,9 +513,13 @@ class TestTheREALStepsSatisfyTheContract:
         from routes import onboard as route
 
         assert calls_in(route.create, "real_steps") == 1
-        for name in ("bind_credentials_step", "create_netbox_step",
-                     "commit_step", "render_step"):
+        for name in ("bind_credentials_step", "commit_step", "render_step"):
             assert hasattr(onboard, name)
+        # And the one that moved: it exists, and phase 1 does not use it.
+        assert hasattr(onboard, "create_netbox_record")
+        assert not hasattr(onboard, "create_netbox_step"), (
+            "the phase-1 NetBox step is gone; a lingering copy would be a "
+            "second way to create the objects")
 
     # ---- minting is not recording -------------------------------------
     #
