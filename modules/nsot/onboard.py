@@ -1463,7 +1463,7 @@ DID_NOT_ANSWER = "did_not_answer"
 
 
 def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
-            hostname: str) -> list:
+            hostname: str, cred_source: str = "") -> list:
     """Likely causes, most-worth-checking first, each with what settles it.
 
     Ordered by *what the operator cannot otherwise find out*. The management
@@ -1475,7 +1475,25 @@ def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
     console = ("On the node's console (`docker logs`/`telnet` to it, or "
                "`containerlab exec`), run:")
     if state == REFUSED_CREDENTIAL:
-        return [{
+        causes = []
+        if cred_source in ("none", "unresolved", "caller"):
+            # FIRST, because it is the one the tool can answer about itself.
+            # Measured 2026-09-24: Netmiko with the staged password reached
+            # the device on the first try while phase 2 reported
+            # "Authentication to device failed" -- the credential was right
+            # and never reached the connection. The diagnosis was correct
+            # about the evidence ("something answered, so only the
+            # credential is wrong") and wrong about the cause.
+            causes.append({
+                "cause": "the tool did not use the credential it holds",
+                "why": (f"the credential offered came from '{cred_source}' "
+                        f"rather than the device override onboarding staged. "
+                        f"Check that a credential resolves for {mgmt_ip}"),
+                "command": "python scripts/nmas-check-credential "
+                           f"--ip {mgmt_ip}",
+                "where": "On the NMAS host:",
+            })
+        return causes + [{
             "cause": "the credential was rotated or never applied",
             "why": ("something answered SSH at this address, so the "
                     "interface and the address are right — only the "
@@ -1561,6 +1579,40 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
                 "error": f"'{hostname}' is not in this list's manifest"}
 
     mgmt_ip = mgmt_ip or (entry or {}).get("mgmt_ip", "")
+
+    # RESOLVE THE CREDENTIAL THE TOOL ALREADY HOLDS.
+    #
+    # The route took `password` from the request body and the banner sends
+    # none -- correctly, since a browser must not carry a credential. So an
+    # empty password reached Netmiko and the device refused it, and phase 2
+    # reported "Authentication to device failed" while the right credential
+    # sat in the store the whole time.
+    #
+    # `resolve()` is the reader, and the important part is WHICH store: the
+    # device override is keyed on the management IP and written by
+    # `bind_credentials_step`, so it is found **without touching the
+    # inventory**. A pending device has no `devices.csv` row by design, so
+    # anything resolving through `load_saved_devices()` cannot find it --
+    # that would be the approval deadlock again, phase 2 needing the row
+    # only phase 2 writes.
+    cred_source = "caller"
+    if not password:
+        try:
+            from modules import credentials
+
+            found = credentials.resolve(mgmt_ip)
+            if found.get("ok"):
+                username = found.get("username") or username
+                password = found.get("password") or ""
+                secret = secret or found.get("secret") or ""
+                cred_source = found.get("source", "resolver")
+            else:
+                cred_source = "none"
+        except Exception as exc:               # noqa: BLE001
+            log.error("verify: could not resolve a credential for %r: %s",
+                      hostname, exc)
+            cred_source = "unresolved"
+
     if online is None:
         from modules.connection import is_device_online as online
     if reach is None:
@@ -1591,9 +1643,16 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
         "answered": state == ANSWERED,
         "prompt": prompt,
         "mgmt_ip": mgmt_ip,
+        # WHICH credential was tried, never the value. "device-override"
+        # means the one onboarding staged; "none" means the tool had none
+        # and connected with an empty password, which is the failure this
+        # field exists to make visible rather than diagnosable only by
+        # reading code.
+        "credential_source": cred_source,
         "interface": interface,
         "causes": [] if state == ANSWERED
-                  else _causes(state, mgmt_ip, interface, repo, hostname),
+                  else _causes(state, mgmt_ip, interface, repo, hostname,
+                               cred_source),
         "recovery": {"available": False} if state == ANSWERED
                     else _recovery(repo, hostname),
         "error": error,

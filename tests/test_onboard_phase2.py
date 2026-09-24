@@ -729,3 +729,158 @@ class TestTheArtefactSurvivesTheRun:
         assert "require" in names, "not gated"
         assert "record" in names, "a reveal that is not audited"
         assert '"reveal"' in src or "'reveal'" in src
+
+
+class TestVerifyUsesTheCredentialTheToolHolds:
+    """Phase 2 reported *"Authentication to device failed"* while the right
+    credential sat in the store.
+
+    Measured 2026-09-24: Netmiko with `device_type=cisco_xe`, the device's
+    address and the **staged** password returned
+    `bp-onboard-c uptime is 7 minutes` on the first try. The device, the
+    credential store, `resolve()` and the transport were all correct.
+
+    The route took `password` from the request body, and the banner sends
+    only `{list_name}` — correctly, because a browser must not carry a
+    credential. So an empty password reached Netmiko and the device refused
+    it.
+
+    **The store that has it is not the inventory**, which matters: the device
+    override is keyed on the management IP, so `resolve()` finds it without
+    a `devices.csv` row. A pending device has none by design, and anything
+    resolving through `load_saved_devices()` would be the approval deadlock
+    again — phase 2 needing the row only phase 2 writes.
+    """
+
+    def _staged(self, repo, monkeypatch, tmp_path, password="Boot5trapV4lue"):
+        import modules.credentials as creds
+
+        monkeypatch.setattr(creds, "_FILE", str(tmp_path / "creds.json"))
+        creds.set_device_override("203.0.113.31", "admin", password, password)
+        return password
+
+    def test_the_staged_credential_reaches_the_connection(self, repo, tmp_path,
+                                                          monkeypatch):
+        from modules.nsot.onboard import verify_device
+
+        password = self._staged(repo, monkeypatch, tmp_path)
+        seen = {}
+
+        def _reach(ip, user, pw, secret, driver):
+            seen.update(ip=ip, user=user, pw=pw)
+            return "bp1#"
+
+        out = verify_device(repo, "bp1", "probe",
+                            online=lambda ip: True, reach=_reach)
+        assert out["answered"] is True
+        assert seen["pw"] == password, (
+            "an empty password reached the device while the store held one")
+        assert seen["user"] == "admin"
+        assert out["credential_source"] == "device-override"
+
+    def test_an_explicit_credential_still_wins(self, repo, tmp_path,
+                                               monkeypatch):
+        """The control. Resolving unconditionally would override a caller
+        who deliberately supplied one — the rotation path does exactly that.
+        """
+        from modules.nsot.onboard import verify_device
+
+        self._staged(repo, monkeypatch, tmp_path)
+        seen = {}
+        verify_device(repo, "bp1", "probe", password="TypedByHand",
+                      online=lambda ip: True,
+                      reach=lambda ip, u, pw, s, d: seen.update(pw=pw) or "bp1#")
+        assert seen["pw"] == "TypedByHand"
+
+    def test_no_credential_anywhere_is_reported_not_guessed(self, repo,
+                                                            tmp_path,
+                                                            monkeypatch):
+        import modules.credentials as creds
+
+        monkeypatch.setattr(creds, "_FILE", str(tmp_path / "empty.json"))
+        from modules.nsot.onboard import verify_device
+
+        out = verify_device(repo, "bp1", "probe", online=lambda ip: True,
+                            reach=lambda *a: (_ for _ in ()).throw(
+                                RuntimeError("Authentication failed")))
+        assert out["credential_source"] in ("none", "unresolved")
+
+    def test_the_source_is_reported_never_the_value(self, repo, tmp_path,
+                                                    monkeypatch):
+        import json
+
+        from modules.nsot.onboard import verify_device
+
+        password = self._staged(repo, monkeypatch, tmp_path)
+        out = verify_device(repo, "bp1", "probe", online=lambda ip: True,
+                            reach=lambda *a: "bp1#")
+        assert password not in json.dumps(out)
+
+    def test_it_does_not_resolve_through_the_inventory(self):
+        """A pending device has no devices.csv row BY DESIGN. Parsed, not
+        grepped — the docstrings name `load_saved_devices` to explain why it
+        is not used."""
+        import ast
+        import inspect
+        import textwrap
+
+        from modules.nsot import onboard
+
+        tree = ast.parse(textwrap.dedent(
+            inspect.getsource(onboard.verify_device)))
+        names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.ImportFrom):
+                names.update(a.name for a in node.names)
+        assert "load_saved_devices" not in names, (
+            "phase 2 would need the inventory row only phase 2 writes")
+        assert "resolve" in names or "credentials" in names
+
+
+class TestTheFourthCause:
+    """*"The tool did not use the credential it holds"* — added after a
+    diagnosis that was **right about the evidence and wrong about the
+    cause**.
+
+    `answered_but_refused_the_credential` correctly ruled out the interface
+    and the address: something answered SSH, so both were right. The
+    inference was sound. But the credential was also right and simply never
+    reached the connection, which no cause in the list covered — so the
+    operator was sent to check a device that had nothing wrong with it.
+    """
+
+    def test_it_is_offered_first_when_the_tool_had_no_credential(self, repo,
+                                                                 tmp_path,
+                                                                 monkeypatch):
+        import modules.credentials as creds
+
+        monkeypatch.setattr(creds, "_FILE", str(tmp_path / "empty.json"))
+        from modules.nsot.onboard import verify_device
+
+        out = verify_device(
+            repo, "bp1", "probe", interface="GigabitEthernet2",
+            online=lambda ip: True,
+            reach=lambda *a: (_ for _ in ()).throw(RuntimeError("auth failed")))
+        assert out["causes"], out
+        first = out["causes"][0]
+        assert "did not use the credential it holds" in first["cause"]
+        assert "nmas-check-credential" in first["command"]
+
+    def test_it_is_NOT_offered_when_the_tool_did_use_one(self, repo, tmp_path,
+                                                         monkeypatch):
+        """The control: a cause that always appears tells the reader
+        nothing, and this one is specifically about the tool's own failure.
+        """
+        import modules.credentials as creds
+
+        monkeypatch.setattr(creds, "_FILE", str(tmp_path / "creds.json"))
+        creds.set_device_override("203.0.113.31", "admin", "V4lue", "V4lue")
+        from modules.nsot.onboard import verify_device
+
+        out = verify_device(
+            repo, "bp1", "probe", online=lambda ip: True,
+            reach=lambda *a: (_ for _ in ()).throw(RuntimeError("auth failed")))
+        assert not any("did not use the credential" in c["cause"]
+                       for c in out["causes"]), out["causes"]

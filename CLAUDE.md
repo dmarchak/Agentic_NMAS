@@ -1692,6 +1692,30 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   recorded in `data/reveal_audit.jsonl`, like `?reveal=1` on a golden, and a
   refusal returns no config at all because a masked bootstrap config is the
   one thing this artefact must never be.
+- **Phase 2 connected with an empty password while the credential sat in the
+  store.** The route took `password` from the request body and the banner
+  sends only `{list_name}` — correctly, a browser must not carry a
+  credential — so `""` reached Netmiko and the device refused it. Measured:
+  Netmiko with the **staged** password returned
+  `bp-onboard-c uptime is 7 minutes` on the first try, so the device, the
+  store, `resolve()` and the transport were all correct. `verify_device()`
+  now resolves when the caller supplies none, and reports
+  `credential_source` — the source, never the value. **Which store matters**:
+  the device override is keyed on the management IP, so `resolve()` finds it
+  **without a `devices.csv` row**. A pending device has none by design, and
+  resolving through `load_saved_devices()` would be the approval deadlock
+  again — phase 2 needing the row only phase 2 writes. A test parses
+  `verify_device` to assert it never reaches the inventory.
+- **A diagnosis can be right about the evidence and wrong about the cause.**
+  `answered_but_refused_the_credential` correctly ruled out the interface and
+  the address — something answered SSH, so both were right, and the inference
+  was sound. But the credential was *also* right and simply never reached the
+  connection, which no cause covered, so the operator was sent to check a
+  device with nothing wrong with it. Fourth cause added and offered **first**
+  when the tool resolved nothing: *"the tool did not use the credential it
+  holds"*, with `nmas-check-credential` as the command — the one cause the
+  tool can answer about itself, and a control asserts it is **not** offered
+  when a credential was in fact used.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
