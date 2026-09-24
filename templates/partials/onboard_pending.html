@@ -50,13 +50,19 @@ function pendingBannerHtml(data) {
       ? `<span class="badge bg-danger ms-1">stale</span>`
       : r.state === 'overdue'
       ? `<span class="badge bg-warning text-dark ms-1">overdue</span>` : '';
-    /* The exit, inline. A state an operator cannot leave from the screen
-       that shows it is a state they will learn to ignore. Abandon is
-       offered only once it is stale, because offering a destructive action
-       beside a device that is five minutes old invites it to be used. */
-    const abandon = r.state === 'stale'
-      ? ` <button class="btn btn-sm btn-outline-danger py-0 px-1"
-            onclick="onboardAbandon('${esc(r.name)}')">Abandon</button>` : '';
+    /* The exit, inline, on EVERY row.
+       It was offered only at `stale`, on the reasoning that a destructive
+       action beside a five-minute-old device invites use. That was wrong in
+       the direction that matters: **the operator who has just onboarded the
+       wrong thing is the one who needs abandon**, and the window in which
+       they are certain it was a mistake is minutes, not a week. Gating it at
+       seven days left `curl` or waiting as the only recovery for a fresh
+       mistake -- which makes the flow's own recovery path unreachable
+       exactly when it is most useful.
+       The confirm in `onboardAbandon()` is what stops a misclick; an age
+       gate never was. */
+    const abandon = ` <button class="btn btn-sm btn-outline-danger py-0 px-1"
+            onclick="onboardAbandon('${esc(r.name)}')">Abandon</button>`;
     return `<li><code>${esc(r.name)}</code> at <code>${esc(r.mgmt_ip)}</code>
       — pending ${esc(age)}${flag}
       <button class="btn btn-sm btn-outline-primary py-0 px-1"

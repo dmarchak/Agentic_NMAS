@@ -175,3 +175,65 @@ class TestProvenance:
         result = netbox_client.remove_list_from_netbox("Lab", forget_only=True)
         assert result["ok"] and result["forget_only"]
         assert netbox_guard.get_created("Lab") == {}
+
+
+class TestRemoveNeverDeletesItsOwnTag:
+    """The `nmas-managed` tag is in the created-object record — NMAS creates
+    it — and must never be removed.
+
+    **Removal requires tagged AND recorded.** A Remove that deleted its own
+    tag would strip the marking from every object carrying it, and every
+    future Remove would find nothing to delete: the whole fleet of
+    NMAS-created objects becomes permanently unremovable and
+    indistinguishable from operator-owned ones.
+
+    It was enforced only by two tuples not mentioning `extras/tags`, and
+    stated only in `scripts/nmas-netbox-census`'s prose. A rule living in one
+    file's docstring and another file's omission is a rule nothing would
+    notice being broken — measured on the live deployment, where
+    `get_created('nmas-probe')` holds `extras/tags: [{id: 6, name:
+    "nmas-managed"}]` alongside the three objects a teardown must remove.
+    """
+
+    def test_neither_remover_walks_extras_tags(self):
+        from modules.netbox_client import _PER_DEVICE_ORDER, _REMOVAL_ORDER
+
+        assert "extras/tags" not in _REMOVAL_ORDER
+        assert "extras/tags" not in _PER_DEVICE_ORDER
+
+    def test_no_endpoint_under_extras_is_walked_at_all(self):
+        """Broader than the one name: `extras/` holds tags, custom fields and
+        config templates, none of which is data a device list owns."""
+        from modules.netbox_client import _PER_DEVICE_ORDER, _REMOVAL_ORDER
+
+        for order in (_REMOVAL_ORDER, _PER_DEVICE_ORDER):
+            assert not [e for e in order if e.startswith("extras/")], order
+
+    def test_the_orders_are_not_empty(self):
+        """The floor. Two empty tuples would satisfy every assertion above
+        and remove nothing at all."""
+        from modules.netbox_client import _PER_DEVICE_ORDER, _REMOVAL_ORDER
+
+        assert len(_REMOVAL_ORDER) >= 8, _REMOVAL_ORDER
+        assert "dcim/devices" in _REMOVAL_ORDER
+        assert "dcim/devices" in _PER_DEVICE_ORDER
+
+    def test_the_census_and_the_code_agree(self):
+        """The prose that carried this rule, checked against the tuples it
+        describes — so the two cannot drift apart silently."""
+        import importlib.util
+        import os
+
+        path = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "scripts", "nmas-netbox-census")
+        spec = importlib.util.spec_from_loader("census",
+                                               importlib.machinery.SourceFileLoader(
+                                                   "census", path))
+        census = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(census)
+
+        from modules.netbox_client import _REMOVAL_ORDER
+
+        assert "extras/tags" in census.NOT_COUNTED
+        assert "Remove never deletes one" in census.NOT_COUNTED["extras/tags"]
+        assert "extras/tags" not in _REMOVAL_ORDER

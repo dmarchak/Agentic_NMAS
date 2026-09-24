@@ -2663,6 +2663,22 @@ def _nb_get_by_id(session, base: str, endpoint: str, obj_id: int) -> Optional[di
 
 #: Removal order, chosen so referential integrity holds: terminations before
 #: tunnels, contained objects before containers, site and region last.
+#: What a list removal walks, innermost first. **An allowlist, and that is
+#: the enforcement.**
+#:
+#: `extras/tags` IS in the created-object record — NMAS creates the
+#: `nmas-managed` tag itself — and is deliberately absent here. **A Remove
+#: that deleted its own tag would strip the marking from every object
+#: carrying it, and every future Remove would then find nothing to delete**:
+#: removal requires tagged AND recorded, so losing the tag makes the whole
+#: fleet of NMAS-created objects permanently unremovable and
+#: indistinguishable from operator-owned ones.
+#:
+#: That rule was stated only in `scripts/nmas-netbox-census`'s prose ("the
+#: tag definitions themselves; Remove never deletes one") and enforced only
+#: by this tuple not mentioning it. `test_netbox_write_gate.py` now pins it,
+#: because a rule that lives in one file's docstring and another file's
+#: omission is a rule nothing would notice being broken.
 _REMOVAL_ORDER = (
     "vpn/tunnels",
     "ipam/ip-addresses",

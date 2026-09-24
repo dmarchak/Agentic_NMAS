@@ -257,20 +257,39 @@ class TestTheBannerIsActionable:
         assert "alert-warning" in html
         assert "overdue" in html
 
-    def test_stale_offers_abandon_inline(self, banner_js):
-        """A state an operator cannot leave from the screen that shows it is
-        one they will learn to ignore."""
-        html = _banner(banner_js,
-                       {"ok": True, "pending": [_row(state="stale",
-                                                     age=999999)]})
-        assert "Abandon" in html
-        assert "onboardAbandon" in html
+    def test_every_row_offers_abandon(self, banner_js):
+        """**Changed deliberately from the opposite assertion.**
 
-    def test_abandon_is_NOT_offered_on_a_fresh_device(self, banner_js):
-        """Offering a destructive action beside a five-minute-old device
-        invites it to be used."""
-        html = _banner(banner_js, {"ok": True, "pending": [_row()]})
-        assert "Abandon" not in html
+        It was offered only at `stale`, on the reasoning that a destructive
+        action beside a five-minute-old device invites use. That is wrong in
+        the direction that matters: the operator who has just onboarded the
+        wrong thing is the one who needs abandon, and the window in which
+        they are certain it was a mistake is minutes, not a week.
+
+        Gating it at seven days left `curl` or waiting as the only recovery
+        for a fresh mistake — the flow's own recovery path unreachable
+        exactly when it is most useful. The confirm in `onboardAbandon()` is
+        what stops a misclick; an age gate never was.
+        """
+        for state, age in (("in_flight", 60), ("overdue", 90000),
+                           ("stale", 999999)):
+            html = _banner(banner_js,
+                           {"ok": True, "pending": [_row(state=state,
+                                                         age=age)]})
+            assert "onboardAbandon" in html, state
+
+    def test_abandon_still_asks_before_it_acts(self):
+        """The thing that actually stops a misclick, asserted in the shipped
+        source rather than assumed."""
+        import re as _re
+
+        import app as nmas
+
+        page = nmas.app.test_client().get("/").get_data(as_text=True)
+        body = page[page.index("async function onboardAbandon("):]
+        body = body[:body.index("\n}")]
+        assert "confirm(" in body
+        assert "NetBox" in body, "the confirm must say what it removes"
 
     def test_every_row_offers_verify(self, banner_js):
         for state in ("in_flight", "overdue", "stale"):

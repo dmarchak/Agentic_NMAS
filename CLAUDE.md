@@ -1591,6 +1591,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `create_netbox_step` collected the created ids and `commit_step` never
   received them. Both are the `next_ts` shape; the review now states what
   phase 2 will do, and `netbox_id` is written from the created record.
+- **Remove must never delete its own tag, and the rule was enforced only by
+  omission.** `extras/tags` IS in the created-object record — NMAS creates
+  the `nmas-managed` tag — and removal requires **tagged AND recorded**, so a
+  Remove that deleted the tag would strip the marking from every object
+  carrying it and make the whole fleet of NMAS-created objects permanently
+  unremovable *and* indistinguishable from operator-owned ones. It was true
+  because `_REMOVAL_ORDER` and `_PER_DEVICE_ORDER` are **allowlists** that do
+  not mention it, and stated only in `nmas-netbox-census`'s prose. **A rule
+  living in one file's docstring and another file's omission is a rule
+  nothing would notice being broken** — now named at the site and pinned by
+  `test_netbox_write_gate.py`, including a floor so two empty tuples cannot
+  satisfy it and a check that the census's prose and the tuples still agree.
+- **Abandon is offered on every pending device, not only at `stale`.** It was
+  gated at seven days on the reasoning that a destructive action beside a
+  five-minute-old row invites use. That is wrong in the direction that
+  matters: **the operator who has just onboarded the wrong thing is the one
+  who needs abandon**, and the window in which they are certain it was a
+  mistake is minutes. Gating it left `curl` or waiting a week as the only
+  recovery for a fresh mistake — the flow's own recovery path unreachable
+  exactly when it is most useful. The confirm dialog is what stops a
+  misclick; an age gate never was.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
