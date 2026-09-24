@@ -8054,3 +8054,49 @@ The general rule: a blocker is a claim about the present, and claims about
 the present expire. An established *absence* needs re-checking on the same
 schedule as an established presence, and **the arrival of a downstream
 artefact is the cheapest possible re-check**.
+
+---
+
+## "The machinery existed and one caller was not using it"
+
+Not a finding but a **class**, and the 4C probe produced four of them in one
+session:
+
+* `run_onboarding()` — complete, tested, and reached by nothing;
+  `/onboard/create` returned 501.
+* `loadOnboardPending()` — a renderer whose only callers were buttons inside
+  the banner it draws.
+* The banner's Verify and Abandon — reading the wizard's select for a list
+  the row already carried.
+* `finish_bootstrap()` — phase 2's rotation, built and unwired.
+
+And a fifth, raised at the end and deferred to Stage 7 §6a: `clab-sync`
+already writes into `~/labs/lab/configs/` on the containerlab host on a
+timer, so the NMAS holds credentials, a path and a mechanism for putting
+files on that host — and onboarding asks the operator to download a config
+and `scp` it by hand.
+
+**They cluster at the edges of a feature, not in its middle.** Each was
+built correctly and left unconnected, and in every case the tests covered
+the thing rather than its wiring: `test_onboard_ordering` calls
+`run_onboarding` directly, `test_onboard_phase2` executes
+`pendingBannerHtml` directly, `test_onboard_wizard_renders` executes the
+renderer and not the fetch. **A test that constructs its subject cannot
+notice that nothing else does.**
+
+The existing guard for this is the unreachable-function test, and it is
+worth stating as a rule rather than a habit: **a feature is not done when
+its parts pass; it is done when something a person can reach calls them.**
+
+### The credential-in-Downloads problem, recorded with it
+
+The bootstrap artefact carries a one-time password **in the clear** — a node
+cannot boot a masked one. The browser download therefore leaves it in
+`~/Downloads` unencrypted on a workstation, which is the one place this
+program's rules about secrets do not reach.
+
+So delivery is not only ergonomic. **Any path that avoids the browser is a
+security improvement**, and that is the stronger half of the argument for
+building it. The weaker half — that `scp`ing files by hand is tedious — is
+the one that would otherwise have justified wiring `clab-sync` straight in,
+which would have produced a tool that only onboards emulated devices.

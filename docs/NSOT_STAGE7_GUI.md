@@ -697,6 +697,84 @@ removed on suspicion; anything whose status is uncertain gets measured first.
 
 ---
 
+## 6a. Where a bootstrap config goes
+
+**A Stage 7 item because it is a question about how onboarding fits the rest
+of the tool**, not a missing feature inside onboarding. Raised 2026-09-24
+during the Stage 4C probe; not built.
+
+### The problem, both halves
+
+Onboarding's product is a config the operator boots the node with. Today the
+only way to get it is `GET /onboard/bootstrap/<hostname>`, which downloads it
+through the browser — after which the operator `scp`s it to the containerlab
+host by hand.
+
+**It is tedious, and it is also a credential leaving the tool.** The artefact
+carries the one-time bootstrap password *in the clear*, because a node cannot
+boot a masked one. So a browser download lands it in `~/Downloads`
+unencrypted, on a workstation, for as long as nobody empties that directory —
+and the tool's own rule is that secrets are redacted on the way out
+everywhere else. **Any delivery path that avoids the browser is a security
+improvement, not only an ergonomic one**, and that is the stronger half of
+the argument.
+
+### The machinery already exists, and onboarding is not using it
+
+`clab-sync` writes into `~/labs/lab/configs/` on the containerlab host on a
+timer. The NMAS therefore already holds credentials for that host, a path on
+it, and a working mechanism for putting files there. Onboarding uses none of
+it.
+
+Same shape as several findings in the 4C probe — `run_onboarding()` with no
+caller, `loadOnboardPending()` with no caller, the banner's buttons dropping
+a list they had in hand: **the machinery existed and one caller was not using
+it.** Worth naming as a class, because it is not a coincidence that they
+cluster at the edges of a feature rather than in its middle.
+
+### Why it is not simply "wire clab-sync into onboarding"
+
+**The general case is not the lab case.** A containerlab node takes its
+config from a file on a host the tool can reach. A real router takes it from
+a console session, a USB stick, ZTP, or TFTP. There is no single delivery
+mechanism, and a tool that assumed the containerlab one would be a tool that
+only onboards emulated devices.
+
+So the shape is:
+
+* **the download stays, and is the honest universal path.** It works for
+  every device type, needs no configuration, and makes no claim about how
+  the file reaches the hardware;
+* **delivery is a capability**, offered only where a destination is
+  configured — and named for what it is, so an operator can see whether the
+  file was placed or merely produced.
+
+Settings already carries a **TFTP root**, which is one such destination and
+the most general of them. A containerlab host is another. Both are
+per-installation facts, which is why they belong in settings rather than in
+the onboarding path.
+
+### What it must not do
+
+* **Never deliver silently.** "The config was written to X" and "the config
+  was downloaded" are different facts and the operator needs to know which
+  happened — a delivery that fails and falls back to a download without
+  saying so is the wrong-thing-looking-right state for this feature.
+* **Never keep a copy.** The config is re-derivable from committed intent
+  plus the staged credential precisely so that it is not stored; a delivery
+  path that leaves one on the NMAS would undo that.
+* **The reveal gate still applies.** Delivering the file is handing over the
+  credential, so it is gated and audited exactly as the download is.
+
+### Open question for when it is built
+
+Does delivery change the **pending** lifecycle? A device whose config has
+been placed on a host is further along than one whose config has only been
+downloaded, but neither has answered — and `pending` is deliberately about
+reachability, not about progress. The current answer is that it does not:
+the only exit from pending is the device answering. Worth re-deriving rather
+than assuming when the work starts.
+
 ## 7. Sequencing
 
 Each step is independently shippable and leaves the interface working. Nothing
