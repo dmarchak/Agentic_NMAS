@@ -1841,6 +1841,45 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   always, and phase 2 puts the failing check into the step row **and into
   the reason**, which is what the skipped steps quote — otherwise all four
   of them repeat a state that names nothing.
+- **A teardown that cannot be measured has not passed.** The Stage 4C probe's
+  clean run proved onboarding end to end — rotated credential in the CSV, a
+  device-generated `secret 9`, no `snmp-server` line in the first golden,
+  `nmas-check-credential … --expect` ACCEPTED — and left its **teardown
+  unprovable**, because step 2's census baseline was never taken: creating
+  the list through the GUI does not prompt for one, and the `--out` command
+  was lost when the method moved to the UI path. **It is not recoverable
+  after the fact**, which is the whole shape of it — a baseline taken now
+  contains the probe's own objects, so the teardown would measure clean
+  while leaving them behind, which is worse than having none. There is
+  exactly one truthful moment and it is before the first step that can
+  write, so the baseline is now **step 0a**, ahead of enabling NetBox
+  writes, and step 12 checks for the file **before** the Remove rather than
+  at the `--compare` when the objects are already gone.
+  **`--compare` has three exit codes**: 0 pass, 1 differs, **2 UNPROVEN**. A
+  missing baseline used to raise `FileNotFoundError` and exit 1 — the code
+  for *"the teardown left objects behind"* — so the two most different
+  outcomes the probe can have shared one. An empty baseline
+  (`{"types": {}}`) is refused for the same reason in its own words: every
+  comparison against it passes. Both floors are in the tests, because a
+  `read_baseline()` that refused everything would satisfy every refusal test
+  and leave the probe with no acceptance at all.
+- **An action that changes state must leave the page showing the new state**
+  ([docs/NSOT_STAGE7_GUI.md](docs/NSOT_STAGE7_GUI.md) §6b). Verify ran the
+  whole of phase 2 and the device list still read `0 devices` until a manual
+  refresh. **The tool knows and the screen does not**, and what that leaves
+  the operator with is not a stale number but *not knowing whether the
+  action worked* — so they press it again or go to the shell. Third instance
+  in one session, each previously fixed as its own bug (the Remote card's
+  last-push, the drift badge, now the device list), which is why it is a
+  **rule for the redesign and not a fourth per-button fix**: every mutating
+  action names what it **invalidates**, and the panels displaying that data
+  re-fetch. The action names the *data*, not the panel — the panel that
+  issued the call is usually not the one that is now wrong. Its own
+  wrong-and-looks-right state is an invalidation declared and subscribed to
+  by nothing (the `next_ts` shape), so the check is a set difference in both
+  directions with a floor on each; and a **failed** re-fetch marks the panel
+  stale with the time of the value it shows, because confidently wrong is
+  worse than behind.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -24,13 +24,26 @@ Read-only. It performs GETs and nothing else.
     python scripts/nmas-netbox-census --out before.json
     python scripts/nmas-netbox-census --compare before.json
 
-`--compare` exits **1** on any difference and names the type and the objects.
+**Three exit codes, because two cannot say "unproven".** `--compare` exits
+**0** when every counted type holds exactly the objects it held, **1** when
+something differs, and **2** when there is no usable baseline to compare
+against. A missing baseline used to raise `FileNotFoundError` and exit 1 --
+*the same code as a teardown that left objects behind* -- so the probe's
+central claim going unmeasured was indistinguishable from it failing. Same
+distinction as `inconclusive` is to `failed` everywhere else here: a
+teardown that cannot be measured has not passed.
 """
 
 import argparse
+import datetime
 import json
 import os
 import sys
+
+#: `--compare`'s answers. The third exists because the first two cannot
+#: express "nothing was measured", and a reader who sees a non-zero exit
+#: will otherwise assume the teardown failed.
+EXIT_PASS, EXIT_DIFFERS, EXIT_UNPROVEN = 0, 1, 2
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -124,6 +137,32 @@ def _print(census: dict) -> None:
         print(f"  {what:28s} {why}")
 
 
+def read_baseline(path: str):
+    """``(census, None)`` or ``(None, reason)`` -- never a traceback.
+
+    Every way this can fail is a **named** reason, because the caller turns
+    it into an exit code that means *unproven* rather than *failed*, and a
+    reason of "it did not work" would leave the reader deciding which.
+    """
+    if not os.path.exists(path):
+        return None, (f"no baseline at {path} — step 2 was skipped, so this "
+                      "teardown cannot be measured")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as err:
+        return None, f"the baseline at {path} is not readable JSON: {err}"
+    except OSError as err:
+        return None, f"the baseline at {path} could not be read: {err}"
+    if not isinstance(data, dict) or not isinstance(data.get("types"), dict):
+        return None, (f"{path} is not a census — it has no 'types', so it is "
+                      "some other JSON file with the right name")
+    if not data["types"]:
+        return None, (f"the baseline at {path} counted nothing, so every "
+                      "comparison against it passes vacuously")
+    return data, None
+
+
 def compare(before: dict, after: dict) -> list:
     """Differences, per type, by identity **and** by tagged membership."""
     findings = []
@@ -177,28 +216,50 @@ def main() -> int:
             print(f"  {what:28s} {why}")
         return 0
 
+    if args.compare:
+        # BEFORE the census, not after. The old order spent a full pass over
+        # live NetBox and then raised on the open() -- and the traceback
+        # exited 1, which is "the teardown left something behind".
+        before, refusal = read_baseline(args.compare)
+        if refusal:
+            print(f"UNPROVEN - {refusal}")
+            print()
+            print("This is NOT a pass, and it is not a failure either: "
+                  "nothing was measured.")
+            print("The teardown is what this probe exists to prove, and the "
+                  "baseline is the only thing it can be proved against. "
+                  "A baseline taken now would contain the probe's own "
+                  "objects, so it cannot be recovered after the fact -- "
+                  "record the run as unmeasured rather than taking one.")
+            return EXIT_UNPROVEN
+
     census = take()
 
     if args.compare:
-        with open(args.compare, encoding="utf-8") as fh:
-            before = json.load(fh)
         findings = compare(before, census)
         _print(census)
         print()
+        print(f"baseline taken: {before.get('taken_at') or 'unrecorded'}")
         if not findings:
             print(f"PASS — every counted type holds exactly the objects it "
                   f"held in {os.path.basename(args.compare)}.")
             print("Identity, not counts: the same objects, not the same number.")
-            return 0
+            return EXIT_PASS
         print(f"{len(findings)} difference(s):")
         for f in findings:
             print(f"  {f}")
-        return 1
+        return EXIT_DIFFERS
 
     _print(census)
     if args.out:
         from modules.config import open_secure
 
+        # WHEN it was taken travels with it. A baseline taken after the
+        # probe began writing contains the probe's own objects and would
+        # report a teardown clean while leaving them behind -- worse than
+        # having none, and unreadable from the file without this.
+        census["taken_at"] = datetime.datetime.now(
+            datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with open_secure(args.out, "w", encoding="utf-8") as fh:
             json.dump(census, fh, indent=2)
         print(f"\nsnapshot written to {args.out}")

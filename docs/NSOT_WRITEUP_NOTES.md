@@ -8322,3 +8322,99 @@ a heredoc killed the heredoc, so one edit silently never landed and was
 found by grep rather than by a failure. And three numbers quoted in commit
 messages were stale by the time they were read — a pass count is a
 measurement with a timestamp, not a property of the branch.
+
+## Step C proven end to end, and the one thing it could not prove
+
+**2026-09-24.** Phase 2 ran clean on `bp-onboard-c`, and every artefact it
+was supposed to leave behind is where it should be:
+
+* manifest: `netbox_id 10`, `verified_at 03:42:21`;
+* `devices.csv`: encrypted password **and** secret, carrying the **rotated**
+  value rather than the empty string that failed twice;
+* `golden/bp-onboard-c.cfg`: 6,907 bytes, committed, tagged
+  `golden/bp-onboard-c/20260924T034213Z`;
+* line 153 reads `username admin privilege 15 secret 9 $9$…` —
+  **device-generated**, the bootstrap password gone;
+* **no `snmp-server` lines at all** — the RW community was removed *before*
+  the capture, so the repository's first record of the device is a state
+  worth restoring rather than one we deliberately do not want;
+* staging empty — the rotation completed and cleared it;
+* `nmas-check-credential bp-onboard-c --expect` → **ACCEPTED, exit 0**:
+  resolved through the inventory, connected with what the CSV carries. That
+  is the whole chain in one call, and it was **INCONCLUSIVE two hours
+  before**.
+
+### The teardown could not be measured, and that is the finding
+
+**Step 2's census baseline was never taken.** Creating the list through the
+GUI does not prompt for one, and the `--out` command was lost when the
+probe's method moved to the UI path. So the run that proved onboarding end
+to end left its **teardown unprovable** — and the teardown is what the probe
+exists to prove, the provenance-based Remove having never once run against
+objects it created itself.
+
+It is not recoverable after the fact, and that is the whole shape of it: a
+baseline taken *now* would contain the probe's own objects, so the teardown
+would measure clean while leaving them behind. **Worse than having none.**
+There is exactly one moment at which a baseline is truthful, and it is
+before the first step that can write.
+
+Three fixes, at three different distances from the mistake:
+
+1. **The baseline is step 0a**, ahead of enabling NetBox writes. It used to
+   be step 2, after the list was created — skippable there, and skipped.
+2. **Step 12 checks for the file before the Remove**, not after. Discovering
+   it at the `--compare` is discovering it once the objects are gone.
+3. **`--compare` has three exit codes.** A missing baseline used to raise
+   `FileNotFoundError` and exit **1** — which is what *"the teardown left
+   objects behind"* exits with. The two most different outcomes the probe
+   can have shared a code. It now exits **2** and prints `UNPROVEN`, saying
+   in words that this is not a pass and not a failure, that nothing was
+   measured, and that a baseline must not be taken now.
+
+Same distinction as `inconclusive` to `failed`, *"checked 7 of 9"* to a
+number that reads as complete, and `did_not_answer` to a device verdict. It
+keeps arriving because two-valued reporting is the default shape of every
+check anybody writes.
+
+The empty-baseline case is the same failure in the file rather than in the
+assertion: `{"types": {}}` makes every comparison against it pass. It is
+refused for that reason, in those words, and the tests carry both floors —
+a real baseline still passes, and a real difference is still a difference —
+because a `read_baseline()` that refused everything would satisfy every
+refusal test and leave the probe with no acceptance at all.
+
+### Pre-existing, noticed here
+
+`nmas-verify-runbook docs/STAGE4C_PROBE.md` reports *"only 2 commands found
+— the scan is not reading the file it claims to read"*. Its floor is firing
+correctly: the GUI-method rewrite deliberately removed nearly every
+`curl localhost:5000/…`, so there is almost nothing left for it to resolve.
+The floor was calibrated against a runbook that no longer exists. Not
+touched here; recorded so it is not read as a regression.
+
+## Stage 7 §6b: the tool knows and the screen does not
+
+Verify promoted the device and the device list still read
+`nmas-probe (0 devices)` until a manual refresh. Everything had worked and
+nothing on screen said so — which leaves the operator not with a stale
+number but with **not knowing whether the action worked**, so they press the
+button again or go to the shell.
+
+Third instance in one session, each previously fixed as its own bug: the
+Remote card's last-push predating the commit just made, the drift panel's
+badge from the previous run, and now the device list after promotion.
+**Recorded as a rule for the redesign rather than a fourth per-button fix**
+— every mutating action names what it *invalidates*, and the panels
+displaying that data re-fetch. The action names the data, not the panel,
+because the panel that issued the call is usually not the one that is now
+wrong: Verify lives in the pending banner, and what went stale was the
+device list, the golden panel, the drift count and the NetBox object count.
+
+The rule's own wrong-and-looks-right state is an invalidation **declared and
+subscribed to by nothing** — the `next_ts` key the scheduler wrote and
+nothing read, and `loadOnboardPending` having no caller. So the check is a
+set difference in both directions with a floor on each. The second is a
+re-fetch that fails and leaves the old value rendered: confidently wrong is
+worse than behind, so a failed refresh marks the panel stale with the time
+of the value it is showing.

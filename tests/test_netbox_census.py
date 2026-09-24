@@ -18,6 +18,7 @@ actually tests the provenance gate. A total that matched while the tagged set
 drifted would be a pass hiding a failure.
 """
 
+import json
 import importlib.util
 import os
 
@@ -175,3 +176,146 @@ class TestItRefusesToWriteACensusItCouldNotTake:
         with pytest.raises(SystemExit) as excinfo:
             census.take()
         assert "not reachable" in str(excinfo.value)
+
+
+class TestATeardownThatCannotBeMeasuredHasNotPassed:
+    """**Three exit codes, because two cannot say "unproven".**
+
+    Found by running the probe: step 2's baseline was never taken, because
+    creating the list through the GUI does not prompt for one and the
+    `--out` command was lost when the method moved to the UI. So this run's
+    teardown -- the thing the probe exists to prove -- could not be
+    evaluated at all.
+
+    The script's answer to that was `FileNotFoundError`, exiting **1**, and
+    1 is what *"the teardown left objects behind"* exits with. The two most
+    different outcomes the probe can have shared a code. Same distinction as
+    `inconclusive` to `failed`, `"checked 7 of 9"` to a number that reads as
+    complete, and `did_not_answer` to a device verdict.
+
+    **It is not recoverable after the fact**, which is why it must refuse
+    rather than offer: a baseline taken once the probe has begun writing
+    contains the probe's own objects, so the teardown would measure clean
+    while leaving them behind -- worse than having none.
+    """
+
+    def _main(self, census, monkeypatch, argv, taken=None):
+        monkeypatch.setattr(census, "take",
+                            lambda *a, **k: taken if taken is not None
+                            else pytest.fail("a census was taken before the "
+                                             "baseline was validated"))
+        monkeypatch.setattr(census.sys, "argv", ["nmas-netbox-census"] + argv)
+        return census.main()
+
+    def test_a_missing_baseline_is_UNPROVEN_not_a_difference(
+            self, census, monkeypatch, tmp_path, capsys):
+        code = self._main(census, monkeypatch,
+                          ["--compare", str(tmp_path / "never-taken.json")])
+
+        assert code == census.EXIT_UNPROVEN
+        assert code != census.EXIT_DIFFERS, "unproven read as a failed teardown"
+        assert code != census.EXIT_PASS
+        out = capsys.readouterr().out
+        assert "UNPROVEN" in out
+        assert "cannot be measured" in out
+        assert "NOT a pass" in out
+
+    def test_it_does_not_take_a_census_first(
+            self, census, monkeypatch, tmp_path):
+        """The validation runs BEFORE the live read. The old order spent a
+        full pass over NetBox and then raised on the `open()`."""
+        self._main(census, monkeypatch,
+                   ["--compare", str(tmp_path / "never-taken.json")])
+        # The stubbed `take` fails the test if it is called at all.
+
+    def test_JSON_that_is_not_a_census_is_UNPROVEN_too(
+            self, census, monkeypatch, tmp_path, capsys):
+        p = tmp_path / "wrong.json"
+        p.write_text('{"devices": []}', encoding="utf-8")
+
+        assert self._main(census, monkeypatch, ["--compare", str(p)]) \
+            == census.EXIT_UNPROVEN
+        assert "not a census" in capsys.readouterr().out
+
+    def test_an_EMPTY_baseline_is_UNPROVEN_rather_than_a_pass(
+            self, census, monkeypatch, tmp_path, capsys):
+        """The vacuous-pass failure, in the file rather than the assertion:
+        every comparison against a baseline that counted nothing passes."""
+        p = tmp_path / "empty.json"
+        p.write_text('{"types": {}}', encoding="utf-8")
+
+        assert self._main(census, monkeypatch, ["--compare", str(p)]) \
+            == census.EXIT_UNPROVEN
+        assert "vacuously" in capsys.readouterr().out
+
+    def test_unreadable_JSON_names_itself_rather_than_raising(
+            self, census, tmp_path):
+        p = tmp_path / "half.json"
+        p.write_text('{"types": {"sites"', encoding="utf-8")
+        data, reason = census.read_baseline(str(p))
+
+        assert data is None
+        assert "not readable JSON" in reason
+
+    def test_a_REAL_baseline_still_compares_and_can_pass(
+            self, census, monkeypatch, tmp_path, capsys):
+        """**The floor.** Every assertion above is about refusing; a
+        function that refused everything would satisfy all of them and the
+        probe would have no acceptance at all."""
+        snap = _snapshot(sites=(["a"], ["a"]))
+        p = tmp_path / "before.json"
+        p.write_text(json.dumps(snap), encoding="utf-8")
+
+        code = self._main(census, monkeypatch, ["--compare", str(p)],
+                          taken=snap)
+        assert code == census.EXIT_PASS
+        assert "PASS" in capsys.readouterr().out
+
+    def test_and_a_real_difference_is_still_a_DIFFERENCE(
+            self, census, monkeypatch, tmp_path, capsys):
+        """The other floor: unproven must not have swallowed the failure."""
+        before = _snapshot(sites=(["a"], ["a"]))
+        after = _snapshot(sites=(["a", "probe"], ["a", "probe"]))
+        p = tmp_path / "before.json"
+        p.write_text(json.dumps(before), encoding="utf-8")
+
+        code = self._main(census, monkeypatch, ["--compare", str(p)],
+                          taken=after)
+        assert code == census.EXIT_DIFFERS
+        assert "difference(s)" in capsys.readouterr().out
+
+    def test_a_snapshot_records_WHEN_it_was_taken(self, census, monkeypatch,
+                                                  tmp_path, capsys):
+        """A baseline taken after the probe began writing contains the
+        probe's own objects. The file is the only place that ordering can
+        be checked from, so the time travels with it."""
+        out = tmp_path / "before.json"
+        self._main(census, monkeypatch, ["--out", str(out)],
+                   taken=_snapshot(sites=(["a"], [])))
+
+        written = json.loads(out.read_text(encoding="utf-8"))
+        assert written["taken_at"].endswith("Z")
+        assert written["taken_at"][:2] == "20"
+
+    def test_the_comparison_reports_that_time(self, census, monkeypatch,
+                                              tmp_path, capsys):
+        snap = _snapshot(sites=(["a"], ["a"]))
+        snap["taken_at"] = "2026-09-24T01:00:00Z"
+        p = tmp_path / "before.json"
+        p.write_text(json.dumps(snap), encoding="utf-8")
+
+        self._main(census, monkeypatch, ["--compare", str(p)], taken=snap)
+        assert "baseline taken: 2026-09-24T01:00:00Z" in capsys.readouterr().out
+
+    def test_an_OLD_baseline_without_the_field_still_compares(
+            self, census, monkeypatch, tmp_path, capsys):
+        """The field was added after the first probe run took its baseline.
+        Refusing one that predates it would retire the only baseline that
+        exists."""
+        snap = _snapshot(sites=(["a"], ["a"]))
+        p = tmp_path / "before.json"
+        p.write_text(json.dumps(snap), encoding="utf-8")
+
+        assert self._main(census, monkeypatch, ["--compare", str(p)],
+                          taken=snap) == census.EXIT_PASS
+        assert "baseline taken: unrecorded" in capsys.readouterr().out

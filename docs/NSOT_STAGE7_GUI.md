@@ -876,6 +876,79 @@ reachability, not about progress. The current answer is that it does not:
 the only exit from pending is the device answering. Worth re-deriving rather
 than assuming when the work starts.
 
+## 6b. An action that changes state leaves the page showing the new state
+
+**Measured on the Stage 4C probe, 2026-09-24.** Verify ran phase 2 — rotate,
+remove RW, save golden, create the NetBox record, **promote** — and the
+device list still read `nmas-probe (0 devices)` until the page was refreshed
+by hand. Everything had worked. Nothing on screen said so.
+
+That is not a missing `location.reload()`. It is the third instance tonight
+of the same shape, and each was fixed as its own bug:
+
+* the **Remote card** showing a last-push that predated the commit just made;
+* the **drift panel** showing a badge from the previous run;
+* the **device list** after promotion.
+
+**The tool knows and the screen does not**, and what the operator is left
+with is not a stale number — it is *not knowing whether the action worked*.
+They press the button again, or go to the shell to check, and both of those
+are the panel having failed at the one job it has.
+
+### The rule
+
+**Every mutating action names what it invalidates, and the panels that
+display that thing re-fetch.** Not "the panel that issued the action" — the
+action names the *data*, and anything showing that data responds, because
+the panel that issued the call is usually not the one that is now wrong.
+Verify lives in the pending banner; what went stale was the device list, the
+golden panel, the drift coverage count and the NetBox object count.
+
+It is a **rule for the redesign, not a per-button fix.** Fixing each
+occurrence is what has been happening, and it is why the fourth occurrence
+is already written into whatever ships next. A feature must not be able to
+add a mutating action without declaring what it touches.
+
+### The design test on the rule itself
+
+Name the state in which this would be **wrong and look right**:
+
+1. **An action declares an invalidation nothing subscribes to.** The
+   declaration is present, the code reads as correct, and the panel is as
+   stale as before — the `next_ts` key the scheduler wrote and nothing read,
+   and `loadOnboardPending` having no caller outside the banner it draws. So
+   the check is a **set difference in both directions, with a floor on
+   each**: every declared key has at least one subscriber, every panel
+   subscribes to at least one key, and both sets are asserted non-empty. A
+   scan over two empty sets passes and proves nothing.
+2. **A re-fetch fails and the panel keeps rendering the old value.** Now the
+   screen is confidently wrong rather than merely behind — worse than the
+   defect being fixed. A failed refresh marks the panel **stale**, with the
+   time of the value it is showing. *"This is from 03:41"* is a fact;
+   a number with nothing beside it is a claim about now.
+3. **The action returns before the server has committed**, so the re-fetch
+   reads the old state and the invalidation looks broken. The action's
+   response is what triggers the re-fetch, not a timer — and a response
+   means the write is done, which is a property the mutating routes already
+   have.
+
+### What it is not
+
+It is **not** a global poll. Polling everything makes the 647 KB fixed page
+cost a per-second cost and re-learns §0a's finding from the other end, and
+it would still leave the gap: a poll interval is a window in which the
+screen is wrong, which is exactly the state being removed.
+
+It is also **not** a page reload. A reload loses the operator's place, and
+on a 900-device list it re-sends 2.7 MB to correct one row.
+
+### Where it lands in the sequencing
+
+**Step 7.0**, with the per-route reachability test, for the same reason that
+one goes first: it is the checklist every later step is written against. A
+step that adds a mutating action after 7.0 declares its invalidations as
+part of adding it; a step that adds one before would have to be revisited.
+
 ## 7. Sequencing
 
 Each step is independently shippable and leaves the interface working. Nothing
@@ -883,7 +956,7 @@ here starts before Stage 6 closes.
 
 | Step | Work | Why first |
 |---|---|---|
-| **7.0** | Per-route reachability test, allowlist seeded from §1.2, allowed only to shrink | It is the checklist for every later step, and it is worth having whether or not the redesign happens |
+| **7.0** | Per-route reachability test, allowlist seeded from §1.2, allowed only to shrink; **the invalidation map of §6b** | Both are the checklist every later step is written against, and both are worth having whether or not the redesign happens |
 | **7.1** | Entry points for the three features that have none: rollback retry, template revocation, credential profiles | They are defects today, independent of layout |
 | **7.2** | The service-status bar, on the existing layout | Small, visible, and proves the shared-header pattern before anything moves |
 | **7.3** | `Device` page at `/device/<hostname>`, folding in `device.html` and the four NSoT actions | The largest win; everything per-device stops being scattered |

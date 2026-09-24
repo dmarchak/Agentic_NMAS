@@ -226,6 +226,45 @@ were exactly that.
 
 ---
 
+## Step 0a — ⛔ the census baseline, BEFORE anything can write
+
+**Reads the real NetBox. Writes nothing. It is first because it can only be
+taken first.**
+
+```bash
+python scripts/nmas-netbox-census --out /home/dmarchak/nmas-probe-before.json
+```
+
+**Write that path down. Step 12 compares against it and nothing else can.**
+
+> **This step is not skippable, and it is not recoverable.** A baseline taken
+> after the probe has begun writing contains **the probe's own objects**, so
+> the teardown would measure clean while leaving them behind — worse than
+> having no baseline at all. There is no moment after this one at which a
+> truthful baseline can be taken.
+
+**Measured on the clean run (2026-09-24):** this step was skipped. Creating
+the list through the GUI does not prompt for a baseline, and the `--out`
+command was lost when the method moved to the UI path. Step C's *onboarding*
+was proven end to end and its **teardown could not be evaluated at all** —
+the probe's central claim, unmeasured, on the run that otherwise passed.
+
+**Do not proceed until the file exists:**
+
+```bash
+test -s /home/dmarchak/nmas-probe-before.json && echo "baseline present" \
+  || echo "STOP — no baseline; step 12 cannot be evaluated"
+```
+
+**Proves:** what NetBox held before the probe, **by identity per type**, with
+`nmas-managed` counted separately — because the population Remove may touch
+is the tagged one, and a total that matches while the tagged set drifts is a
+pass hiding a failure.
+**If it fails:** stop. Without a baseline the teardown cannot be measured,
+and the teardown is the point.
+
+---
+
 ## Step 0 — enable NetBox writes, deliberately
 
 **Local.** An explicit operator action, and the wizard will not do it for
@@ -278,22 +317,21 @@ absent, and nothing a person touches had been exercised.)*
 
 ---
 
-## Step 2 — the census baseline
+## Step 2 — the baseline is already taken
 
-**Reads the real NetBox. Writes nothing.**
+Nothing to do here. It moved to **step 0a**, ahead of the first step that can
+write, because that is the only point at which it is truthful — see the note
+there.
+
+Confirm the file is still where you wrote it down:
 
 ```bash
-python scripts/nmas-netbox-census --out /home/dmarchak/nmas-probe-before.json
+test -s /home/dmarchak/nmas-probe-before.json && echo "baseline present" \
+  || echo "STOP — no baseline; step 12 cannot be evaluated"
 ```
 
-**Write that path down. Step 12 compares against it and nothing else can.**
-
-**Proves:** what NetBox held before the probe, **by identity per type**, with
-`nmas-managed` counted separately — because the population Remove may touch
-is the tagged one, and a total that matches while the tagged set drifts is a
-pass hiding a failure.
-**If it fails:** stop. Without a baseline the teardown cannot be measured,
-and the teardown is the point.
+*(This was step 2 on the first run, after the list was created. It stayed
+skippable there, and on the second run it was skipped.)*
 
 ---
 
@@ -696,6 +734,19 @@ docker ps -a | grep onboard-c || echo "gone"
 
 **SHARED — deletes from the real NetBox. In the UI.**
 
+> **Check the baseline first — before you press Remove.** Once the objects
+> are gone there is nothing left to measure them against, and a teardown
+> nobody can evaluate is this probe's central claim going unproven.
+>
+> ```bash
+> test -s /home/dmarchak/nmas-probe-before.json && echo "measurable" \
+>   || echo "STOP — no baseline; Remove will be UNMEASURABLE"
+> ```
+>
+> If it is absent, **record the run as unmeasured** and say so in the notes.
+> Do not take one now: it would contain the probe's own objects and report
+> the teardown clean.
+
 **NetBox tab** → find `nmas-probe` in the list → **Remove**.
 
 That opens the safety modal, which runs a read-only dry run and shows every
@@ -729,6 +780,10 @@ python scripts/nmas-netbox-census --compare /home/dmarchak/nmas-probe-before.jso
 **This is the acceptance for the whole teardown:** `--compare` exits **0**,
 meaning every counted type holds **exactly the objects** it held before, by
 identity, with the `nmas-managed` set unchanged too.
+
+**If it exits 2:** there was no usable baseline, and the run is **UNPROVEN**
+— not passed and not failed. It says so in those words. Record it as
+unmeasured; a baseline taken now would contain the probe's own objects.
 
 **If it exits 1:** do not clean up by hand. Paste the output — it names the
 type and the objects, and distinguishes three findings: something **left
