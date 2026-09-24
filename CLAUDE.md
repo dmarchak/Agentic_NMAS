@@ -2687,6 +2687,43 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   files, with a floor and a positive anchor (`app.py` must appear). Seventh
   instance of a scan matching the thing written to explain it — the same
   distinction `check_removed_definitions.py` had to learn.
+- **An assertion satisfied by a state it was not written for — three in one
+  session, and the third was the subtlest.** Step 8 of the branch-site plan
+  asserts *"`Vlan99` shows no OSPF neighbour"*, the exact property C′ was
+  chosen to protect. Had OSPF been deployed on r6 by mistake (C's shape, not
+  C′'s) **that assertion would still have passed**, because s3's `Vlan99` is
+  passive and no adjacency forms either way. The visible symptom would have
+  been the *other* check failing — r1 never learning `10.255.1.16` — which
+  reads as a routing problem rather than as the wrong option deployed. **A
+  guard on a property can be satisfied by the absence of the mechanism that
+  would violate it**, and then the failure surfaces somewhere that names the
+  wrong cause. Siblings this session: the freshness gate refusing correctly
+  for the wrong reason, and s3-first satisfying *"r1 learns the route"* with
+  a route to nowhere.
+- **Hand-authored host_vars meet `StrictUndefined`, and the extraction path
+  could never have revealed it.** `roundtrip.render()` uses
+  `StrictUndefined`, and the interface macro reads ~30 keys; a parser always
+  emits all of them, so every render the project has ever done was fed a
+  complete dict. The **first hand-authored intent** — the branch site, which
+  is the whole point of the stage — fails with
+  `'dict object' has no attribute 'no_switchport'` on a key the author had no
+  reason to write. Measured. Note what `StrictUndefined` is and is not buying
+  here: it does **not** catch a typo'd key (`descripton` is simply never
+  read, strict or not), so on the authoring path it only catches *missing*
+  keys, which is the one thing a human author will always do. The extraction
+  path and the authoring path have different requirements and only one has
+  ever run. **Scoped, not built**: fill absent *known* interface keys with
+  their falsy defaults before rendering — same output the parser would have
+  produced for an absent construct, so nothing else moves.
+- **A calibration note, the operator's: the survey's answer was the opposite
+  of the guess.** `load_saved_devices()` was expected to have many
+  no-argument callers, the ~79-call-site docstring making blast radius the
+  point. Measured: **87 sites, zero no-argument, zero name-shaped** — so the
+  in-repo callers were never the exposure and *a fix aimed at the callers
+  would have been aimed at nothing*. Worth keeping beside the rule it
+  illustrates: **survey before fixing, and let the survey move the fix**, not
+  only confirm it. The same instinct that produced *"a pattern right four
+  times is the one to distrust on the fifth"*.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

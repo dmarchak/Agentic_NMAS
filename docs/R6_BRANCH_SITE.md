@@ -434,7 +434,59 @@ is denied the tag with the other nine named. That is correct behaviour.
 |---|---|---|
 | 1 | **Seed r6's intent** — `POST /templatize/extract/r6`, review, `POST /templatize/commit/r6` (`host_vars: r6 seed from capture`). | r6 has **no committed intent**: it is `bootstrap` and not deployable by design |
 | 2 | **Control: the preview is empty.** `POST /templatize/committed/r6/preview`. | if the seed is not faithful, every later diff is measuring the seed rather than the change |
-| 3 | **Author r6's branch intent** and commit (`host_vars: r6 branch site`): `Loopback0 10.255.1.16/32` (description, passive not needed — no OSPF), and `static_routes: [{family: ipv4, spec: "10.255.0.0 255.255.0.0 10.255.0.1"}]`. | a `/16` rather than a default route: r6 is not a default gateway for anything and `0.0.0.0/0` would claim it is |
+| 3 | **Author r6's branch intent** and commit (`host_vars: r6 branch site`). **Exactly two things and no OSPF** — see the YAML below. | a `/16` rather than a default route: r6 is not a default gateway for anything and `0.0.0.0/0` would claim it is |
+
+**r6's intent is two additions. There is no `router ospf` on r6 at all** —
+every bit of the reachability comes from s3's static plus its existing
+`redistribute static subnets`.
+
+**A hand-written interface dict will not render.** `roundtrip.render()` uses
+`StrictUndefined` and the interface macro reads about thirty keys; a parser
+always emits all of them, so a minimal `{name, description, ipv4}` fails with
+`'dict object' has no attribute 'no_switchport'`. Measured. Paste this
+complete block rather than writing one:
+
+```yaml
+interfaces:
+- name: Loopback0
+  description: branch site identity
+  ipv4: 10.255.1.16 255.255.255.255
+  channel_group: ''
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv6: []
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  negotiation: ''
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+# ... the existing GigabitEthernet1 and GigabitEthernet2 entries stay as they are
+
+static_routes:
+- family: ipv4
+  spec: 10.255.0.0 255.255.0.0 10.255.0.1
+```
+
+Verified locally against the unmodified template: **122 lines, 0 unmodeled,
+0 unsendable, and `router ospf` absent from the render.**
 | 4 | **Preview.** `from_this_edit` must be **exactly** the loopback stanza and the one static; `pre_existing` empty. | the first time this split has had non-trivial content |
 | 5 | **Deploy r6** — `POST /deploy/plan`, read the exact program, confirm, `POST /deploy/apply`. | expect **no dangerous lines** and **no credential lines at all**; `assert_credentials_unchanged()` runs before the preview is shown |
 
