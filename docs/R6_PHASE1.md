@@ -272,6 +272,57 @@ NetBox → promote.
 
 ---
 
+## Step 6a — ⚠ the platform's approval is already revoked, and has been since step 5
+
+**Confirmed from the code before the night, not assumed.** Checked because
+the alternative — approval surviving a new binding — would be the gate not
+noticing its own population changed, in the place that would be most
+dangerous.
+
+It works as designed, and three things about *when* are not obvious:
+
+**1. It happens at Create, not at Verify.** `devices_for_template()`
+computes the bound set from the **manifest, every time** — never a stored
+list — and applies **no `pending` filter**. Onboarding's `commit_step`
+writes r6 into the manifest in phase 1. So from the moment Create succeeds,
+`cisco_iosxe/base.j2` is bound to **six** devices and its stored fingerprint
+covers five.
+
+**2. A Deploy plan for r1 therefore refuses on approval from step 5**, not
+from step 6 — through the whole ~6m30s boot and until Verify completes.
+**This is what to check, and the expected answer is that it refuses.** If a
+deploy to r1 still passes its approval gate while r6 sits in the manifest,
+**that is the finding**: the gate would be reading a population it no longer
+has.
+
+**3. It cannot be cleared by re-approving.** `POST /templates/approve`
+collects bound devices with no captured config and returns **400 naming
+them** — *"A template cannot be approved against a device it has never been
+validated on."* That refusal is the load-bearing one: had it instead skipped
+them, `approve()` would have validated five devices and stored a fingerprint
+covering six, which is the same defect one layer down.
+
+**So phase 1 takes the cisco_iosxe cohort's deploy path offline**, and there
+are exactly two exits: **complete step 6** (r6 gets a golden, approve
+against six), or **abandon r6** (`manifest.release()` removes the entry and
+the old fingerprint matches again). If step 6 fails and r6 is left pending,
+the block persists — which is correct, and is worth knowing before it is
+discovered at 01:00.
+
+**Check on the Template library after step 6:** `cisco_iosxe/base.j2` reads
+**not approved**, `approval_status()` names r6 as the change, and approving
+it validates against **six** devices. A count of five is the finding.
+
+*(Whether a device that has never answered SSH ought to bind at all is a
+real question — it has no committed intent and cannot be deployed to, so
+binding it blocks its cohort and achieves nothing else. Not changed here:
+binding on the manifest entry is exactly what makes the gate notice its
+population changed, and that property is worth more than the window is
+worth avoiding. Pinned by a test either way, so a later decision is a
+decision rather than a discovery.)*
+
+---
+
 ## Step 6b — re-export the break-glass record, for ten
 
 ```bash

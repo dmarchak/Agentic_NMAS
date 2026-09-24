@@ -2044,6 +2044,24 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   artefact genuinely is the population, but state no coverage. A fourth
   instance is recorded unfixed: `routes/templatize.py`'s fleet report drops
   a device with an unreadable golden through a bare `continue`.
+- **Onboarding revokes its platform's template approval at CREATE, not at
+  promotion, and takes the cohort's deploy path offline until the new device
+  has a capture.** `devices_for_template()` computes the bound set from the
+  **manifest, every time** — never a stored list, which would drift — and
+  applies **no `pending` filter**, while `commit_step` writes the device
+  into the manifest in phase 1. So a device that has never answered SSH is
+  bound the moment Create succeeds, the fingerprint changes, and
+  `is_approved()` goes false for every other device on that platform. It
+  **cannot be cleared by re-approving**: `POST /templates/approve` collects
+  bound devices with no captured config and returns **400 naming them**, and
+  that refusal is load-bearing — skipping them would validate five devices
+  and store a fingerprint covering six, the gate passing because its two
+  halves counted different populations. Two exits only: complete phase 2, or
+  abandon the device (`manifest.release()` reverts the bound set). Whether a
+  never-reached device should bind at all is a real question left open
+  deliberately — binding on the manifest entry is exactly what makes the
+  gate notice its population changed, and a test pins the current behaviour
+  so a later change is a decision rather than a discovery.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

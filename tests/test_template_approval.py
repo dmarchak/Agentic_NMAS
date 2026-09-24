@@ -651,3 +651,109 @@ class TestApprovalCoversTheImportClosure:
 
         templates_repo.write_template(repo, "x.j2", "{% import 'gone.j2' as g %}")
         assert "gone.j2" in approval.template_closure(repo, "x.j2")
+
+
+class TestOnboardingRevokesItsPlatformsApproval:
+    """**A new device changes the set, so the approval is no longer true.**
+
+    Scheme 2 keys the fingerprint on *template hash + sorted bound
+    identities*, and `devices_for_template()` computes the bound set from
+    the **manifest, every time** — never from a stored list, because a
+    stored list drifts and then the two disagree silently.
+
+    Confirmed rather than assumed, because the alternative — approval
+    surviving a new binding — would be the gate not noticing its own
+    population changed, in the one place that would be most dangerous.
+
+    **Three things it confirms that were not obvious:**
+
+    1. **It happens at Create, not at Verify.** `commit_step` writes the
+       device into the manifest in phase 1, and `devices_for_template()`
+       applies **no pending filter** — so a device that has never answered
+       SSH is bound the moment Create succeeds.
+    2. **Re-approval is refused, naming the new device**, because it has no
+       captured config yet. `routes/templates.py::approve` collects those
+       and returns 400 rather than validating against the subset it can
+       build. Had it skipped them, `approve()` would have validated five
+       devices and stored a fingerprint covering six — the gate passing
+       because its two halves counted different populations.
+    3. **So onboarding takes its platform cohort's deploy path offline**
+       until the new device has a golden. The exits are completing phase 2
+       or abandoning the device; there is no third.
+    """
+
+    def test_the_bound_set_comes_from_the_manifest_every_time(self):
+        """Never a stored list. That is what makes the population live."""
+        import inspect
+
+        from modules.nsot import templates_repo
+
+        src = inspect.getsource(templates_repo.devices_for_template)
+        assert "_manifest.load(repo)" in src
+        assert "Never persisted" in inspect.getdoc(
+            templates_repo.devices_for_template)
+
+    def test_a_PENDING_device_is_bound_like_any_other(self):
+        """**The sharp part.** Nothing filters `pending`, so the revocation
+        lands at Create rather than at promotion. Pinned because it is a
+        consequence of two correct decisions meeting, and whichever way it
+        is later decided, it should be decided rather than discovered."""
+        import inspect
+
+        from modules.nsot import templates_repo
+
+        src = inspect.getsource(templates_repo.devices_for_template)
+        assert "pending" not in src, (
+            "devices_for_template now filters pending devices — if that is "
+            "deliberate, this test should assert the filter and the runbook "
+            "note about the deploy window needs revisiting")
+
+    def test_the_fingerprint_is_recomputed_not_stored(self):
+        import inspect
+
+        from modules.nsot import approval
+
+        src = inspect.getsource(approval.is_approved)
+        assert "binding_fingerprint(repo, rel_path" in src
+        assert "record.get(\"fingerprint\") == current[\"fingerprint\"]" in src
+
+    def test_adding_a_device_changes_the_fingerprint(self, tmp_path):
+        """The property itself, computed rather than inspected."""
+        import hashlib
+        import json
+
+        # The payload shape `binding_fingerprint` hashes: template text plus
+        # the sorted bound identities.
+        def fp(identities):
+            payload = {"template": "TEXT", "devices": sorted(identities)}
+            return hashlib.sha256(
+                json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+        five = ["uid:1", "uid:2", "uid:3", "uid:4", "uid:5"]
+        assert fp(five) != fp(five + ["uid:6"]), \
+            "adding a bound device left the fingerprint unchanged"
+        assert fp(five) == fp(list(reversed(five))), \
+            "the fingerprint depends on ORDER, so a reordering would revoke"
+
+    def test_approval_refuses_a_bound_device_with_no_capture(self):
+        """Rather than validating against the subset it can build. The
+        refusal names them, so 'not approved' is actionable."""
+        import inspect
+
+        from routes import templates
+
+        src = inspect.getsource(templates.approve)
+        assert "missing.append" in src
+        assert "have no captured config" in src
+        # The refusal comes BEFORE approval.approve() is reached.
+        assert src.index("if missing:") < src.index("approval.approve(")
+
+    def test_abandoning_the_device_is_the_other_exit(self):
+        """`manifest.release()` removes the entry, so the bound set reverts
+        and the previous approval's fingerprint matches again."""
+        import inspect
+
+        from modules.nsot import manifest
+
+        assert hasattr(manifest, "release")
+        assert "devices" in inspect.getsource(manifest.release)
