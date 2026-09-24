@@ -732,7 +732,10 @@ adding them to `SECRET_KEYS` would encrypt nothing while making it look
 covered); `.env` holds `ANTHROPIC_API_KEY` in **plaintext by design**, since
 encrypting it would have the app decrypt its own key at startup using a key
 in the same directory with the same mode. `scripts/nmas-check-secret-storage`
-reports all three by name and never by value.
+reports all three by name and never by value. `scripts/nmas-settings-diff` lists
+what in the file **differs from its default** — the only surviving signal for "what somebody chose" once a re-seed has written every key, since
+`origin_of()` then answers `file` for all of them. Names only; a secret reads
+`set`, and re-entering one means going back to the system that issued it.
 
 **Modes are set at CREATION, at `0600`/`0700`, by `config.open_secure()` and
 `config.secure_dir()`.** Nothing in the program set a mode before 2026-09-23:

@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""What in `user_settings.json` differs from its default — by NAME, never value.
+
+Step 1 of a settings rebuild, and the reason it exists: after the settings
+file was erased and re-seeded with 107 defaults, the keys somebody chose are
+indistinguishable from the keys nobody chose, and **the only record of which
+is the file you are about to delete.** So it has to be enumerated and written
+down outside the file before anything is deleted.
+
+`origin_of()` cannot answer this any more: every key is now `file`. What
+survives is the weaker but real signal — a value that DIFFERS from the
+declared default was almost certainly set deliberately, because nothing seeds
+a non-default.
+
+**Values are never printed.** A secret is reported as `set` and everything
+else as `differs`, with its type and length where that helps you recognise it
+without exposing it. This file is read on a terminal that may be shared or
+logged, and the whole point of the rebuild is that these values matter.
+
+    python scripts/nmas-settings-diff
+    python scripts/nmas-settings-diff --show-nonsecret   # actual values for
+                                                        # non-secret keys
+
+`--show-nonsecret` prints the values you must re-enter for anything the
+secret stores do not cover — URLs, ports, usernames, thresholds. Secrets stay
+masked under every flag, because re-entering a secret means going back to the
+system that issued it, not copying it out of a terminal.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def _secret_keys() -> set:
+    """Every key whose value must never be printed, from the real lists."""
+    keys = set()
+    try:
+        from modules.secrets_store import SECRET_KEYS
+
+        keys |= set(SECRET_KEYS)
+    except Exception:                          # noqa: BLE001
+        pass
+    try:
+        from modules.jenkins_runner import SECRET_FIELDS
+
+        keys |= set(SECRET_FIELDS)
+    except Exception:                          # noqa: BLE001
+        pass
+    # Belt and braces: anything that reads like a credential, because a new
+    # secret key added to DEFAULTS and not to SECRET_KEYS would otherwise be
+    # printed in full the first time somebody runs this.
+    return keys
+
+
+_SECRETISH = ("token", "password", "secret", "key", "credential", "aud")
+
+
+def _is_secret(key: str, declared: set) -> bool:
+    if key in declared:
+        return True
+    lowered = key.lower()
+    return any(word in lowered for word in _SECRETISH)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--show-nonsecret", action="store_true",
+                    help="print values for keys that are not secrets")
+    args = ap.parse_args()
+
+    from modules.config import USER_SETTINGS_FILE, load_user_settings
+    from modules.settings_schema import DEFAULTS
+
+    try:
+        stored = load_user_settings()
+    except Exception as exc:                   # noqa: BLE001
+        print(f"the settings file could not be read: {exc}")
+        print("Repair or remove it first — this tool reads, it does not fix.")
+        return 2
+
+    declared = _secret_keys()
+    differs, unknown, secrets_set = [], [], []
+
+    for key in sorted(stored):
+        value = stored[key]
+        if key not in DEFAULTS:
+            unknown.append(key)
+            continue
+        if value == DEFAULTS[key]:
+            continue
+        if _is_secret(key, declared):
+            secrets_set.append(key)
+        else:
+            differs.append((key, value))
+
+    print(f"file: {USER_SETTINGS_FILE}")
+    print(f"keys stored: {len(stored)}   declared in DEFAULTS: {len(DEFAULTS)}\n")
+
+    print(f"=== DIFFERS FROM DEFAULT — re-enter these ({len(differs)}) ===")
+    for key, value in differs:
+        if args.show_nonsecret:
+            print(f"  {key:44} {json.dumps(value)}")
+        else:
+            shown = type(value).__name__
+            if isinstance(value, str):
+                shown = f"str, {len(value)} chars"
+            elif isinstance(value, (list, dict)):
+                shown = f"{type(value).__name__}, {len(value)} item(s)"
+            print(f"  {key:44} differs ({shown})")
+    if not differs:
+        print("  (none — every non-secret key is at its default)")
+
+    print(f"\n=== SECRETS THAT ARE SET — re-enter from the issuing system "
+          f"({len(secrets_set)}) ===")
+    for key in secrets_set:
+        print(f"  {key:44} set")
+    if not secrets_set:
+        print("  (none)")
+    print("\n  Values are never printed. Re-entering a secret means going back")
+    print("  to NetBox / Grafana / Kea / Oxidized / the git host, not copying")
+    print("  it out of a terminal.")
+
+    if unknown:
+        print(f"\n=== NOT IN THE SCHEMA ({len(unknown)}) ===")
+        print("  Stored, read by nothing, and lost on a rebuild — which is")
+        print("  correct, but worth seeing before it happens.")
+        for key in unknown:
+            print(f"  {key}")
+
+    rest = len(stored) - len(differs) - len(secrets_set) - len(unknown)
+    print(f"\nEverything else ({rest} keys) is at its default and need not "
+          f"be re-entered.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
