@@ -79,6 +79,36 @@ function pendingBannerHtml(data) {
     <ul class="mb-0 small">${body}</ul></div>`;
 }
 
+/* THE ENTRY POINT.
+   `loadOnboardPending` had exactly two callers, both buttons INSIDE the
+   banner it draws -- so the banner could only appear after you had used a
+   control that only exists once it has appeared. The div sat in the DOM,
+   empty, for ever, while the manifest held a pending device and the
+   Template library listed it.
+
+   That is the state `pending` was built to prevent, and the banner's own
+   design test ("pending for ever and nobody notices") was defeated before it
+   ever ran. Not client-side suppression like the agent panel, and not two
+   readers disagreeing: a renderer with no caller.
+
+   `test_onboard_phase2.py` could not see it -- it executes
+   `pendingBannerHtml` directly, which tests the render and not the wiring.
+   The same seam as `/onboard/create` sending `body: '{}'`. */
+document.addEventListener('DOMContentLoaded', () => {
+  /* The page's own notion of the active list — `#deviceListSelect` is what
+     every other per-list control reads. Empty is fine: the endpoint falls
+     back to the active list for a READ. */
+  const run = () => loadOnboardPending(
+    (document.getElementById('deviceListSelect') || {}).value || '');
+  run();
+  /* And again when the list changes, because pending is per list and a
+     banner showing another list's devices is worse than none. */
+  const sel = document.getElementById('deviceListSelect');
+  if (sel) { sel.addEventListener('change', () => setTimeout(run, 250)); }
+  const devicesTab = document.getElementById('devices-tab');
+  if (devicesTab) { devicesTab.addEventListener('shown.bs.tab', run); }
+});
+
 async function loadOnboardPending(listName) {
   const host = document.getElementById('onboardPendingBanner');
   if (!host) { return; }

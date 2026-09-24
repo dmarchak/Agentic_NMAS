@@ -476,24 +476,37 @@ class TestTheTargetListIsCarriedNeverDerived:
 
         import routes.onboard as mod
 
-        tree = ast.parse(inspect.getsource(mod))
+        # SCOPED TO THE WRITE PATH, deliberately.
+        #
+        # A READ may derive the active list: `/onboard/pending` listing what
+        # is pending "here" means the list the page is showing, and a
+        # listing leaves nothing behind. The rule is about writes —
+        # onboarding into the wrong list leaves a commit and a NetBox
+        # object. A module-wide scan said otherwise and would have forced
+        # the read to carry a list the page does not always know.
+        WRITE_PATH = ("_plan_args", "_target_list", "plan", "create")
+
         referenced, defined = set(), set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name):
-                referenced.add(node.id)
-            elif isinstance(node, ast.Attribute):
-                referenced.add(node.attr)
-            elif isinstance(node, ast.ImportFrom):
-                referenced.update(a.name for a in node.names)
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for node in ast.walk(ast.parse(inspect.getsource(mod))):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 defined.add(node.name)
+                if node.name not in WRITE_PATH:
+                    continue
+                for inner in ast.walk(node):
+                    if isinstance(inner, ast.Name):
+                        referenced.add(inner.id)
+                    elif isinstance(inner, ast.Attribute):
+                        referenced.add(inner.attr)
+                    elif isinstance(inner, ast.ImportFrom):
+                        referenced.update(a.name for a in inner.names)
 
         assert "get_current_list_name" not in referenced, (
-            "the wizard can derive a list again; it must be carried")
+            "a write path can derive a list again; it must be carried")
 
-        # Floor: a parse that found nothing would pass the line above just as
-        # happily as one that found everything.
-        assert "_target_list" in defined, sorted(defined)
+        # Floor: a scan that matched none of those functions would pass the
+        # line above just as happily as one that matched all of them.
+        for name in WRITE_PATH:
+            assert name in defined, (name, sorted(defined))
         assert len(referenced) > 20, len(referenced)
 
     def test_the_lists_endpoint_answers(self):

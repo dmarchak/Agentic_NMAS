@@ -169,10 +169,18 @@ def pending():
     So a failure answers `ok: false` with the reason, and the client is
     required to draw that differently from an empty list.
     """
-    try:
-        list_name = _target_list(request.args)
-    except NoTargetList as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    # A READ MAY DERIVE THE ACTIVE LIST; a write may not.
+    #
+    # `_target_list()` refuses an absent list because onboarding into the
+    # wrong one leaves a commit and a NetBox object behind. Listing pending
+    # devices leaves nothing, and the page asking "what is pending here"
+    # means the list it is showing — so the fallback is correct rather than
+    # a relaxation. The list is echoed in the response so a caller can see
+    # which one it got.
+    from modules.config import get_current_list_name
+
+    list_name = (request.args.get("list_name") or "").strip() \
+        or get_current_list_name()
     try:
         from modules.nsot.manifest import (PENDING_OVERDUE_SECONDS,
                                            PENDING_STALE_SECONDS,

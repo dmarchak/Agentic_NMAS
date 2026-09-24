@@ -454,3 +454,65 @@ class TestPhaseOneReachesNoExternalSystem:
                 elif isinstance(node, ast.Import):
                     names.update(a.name for a in node.names)
             assert not any("netbox" in n for n in names), (name, names)
+
+
+class TestTheBannerHasAnEntryPoint:
+    """`loadOnboardPending` had exactly two callers, and both were buttons
+    **inside the banner it draws** — so the banner could only appear after
+    you had used a control that only exists once it has appeared.
+
+    The div sat in the DOM, empty, while the manifest held a pending device
+    and the Template library listed it as bound. That is the state `pending`
+    was built to prevent, and the banner's own design test — *"pending for
+    ever and nobody notices"* — was defeated before it ever ran.
+
+    Not client-side suppression like the agent panel, and not two readers
+    disagreeing: **a renderer with no caller.** `test_onboard_phase2.py`
+    could not see it, because it executes `pendingBannerHtml` directly —
+    testing the render and not the wiring, the same seam as `/onboard/create`
+    sending `body: '{}'`.
+    """
+
+    def _page(self):
+        import app as nmas
+
+        return nmas.app.test_client().get("/").get_data(as_text=True)
+
+    def test_something_outside_the_banner_calls_it(self):
+        """The property: at least one caller that is not one of the banner's
+        own buttons, or the banner is unreachable."""
+        import re as _re
+
+        page = self._page()
+        callers = [m.start() for m in
+                   _re.finditer(r"loadOnboardPending\s*\(", page)]
+        assert len(callers) >= 3, (
+            f"only {len(callers)} reference(s) — the definition plus its own "
+            f"buttons means nothing draws it on load")
+        assert "DOMContentLoaded" in page
+
+    def test_it_runs_on_page_load(self):
+        page = self._page()
+        block = page[page.index("id=\"onboardPendingBanner\""):]
+        block = block[:block.index("async function loadOnboardPending")]
+        assert "DOMContentLoaded" in block
+        assert "loadOnboardPending" in block
+
+    def test_it_reruns_when_the_device_list_changes(self):
+        """Pending is per list. A banner showing another list's devices is
+        worse than none."""
+        page = self._page()
+        block = page[page.index("id=\"onboardPendingBanner\""):]
+        block = block[:block.index("async function loadOnboardPending")]
+        assert "deviceListSelect" in block
+        assert "devices-tab" in block
+
+    def test_the_endpoint_answers_without_a_list_name(self):
+        """The page does not always know the list at load time, and a READ
+        may derive the active one — a listing leaves nothing behind. The
+        write path still refuses."""
+        import app as nmas
+
+        body = nmas.app.test_client().get("/onboard/pending").get_json()
+        assert body.get("ok") is True, body
+        assert "list" in body, "the response must say which list it answered for"

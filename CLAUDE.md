@@ -1612,6 +1612,28 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   recovery for a fresh mistake — the flow's own recovery path unreachable
   exactly when it is most useful. The confirm dialog is what stops a
   misclick; an age gate never was.
+- **A renderer whose only callers are its own children is unreachable.**
+  `loadOnboardPending` was called from exactly two places — the Verify and
+  Abandon buttons **inside the banner it draws** — so the banner could only
+  appear after using a control that only exists once it has appeared. The div
+  sat in the DOM, empty, while the manifest held a pending device and the
+  Template library listed it as bound. **The state `pending` was built to
+  prevent**, with the banner's own design test (*"pending for ever and nobody
+  notices"*) defeated before it ever ran. Not client-side suppression like
+  the agent panel, and not two readers disagreeing — no caller at all.
+  `test_onboard_phase2.py` executed `pendingBannerHtml` directly, which tests
+  the render and **not the wiring**: the same seam as `/onboard/create`
+  sending `body: '{}'`, and the fourth defect to live between two tests that
+  each did their own job. Pinned now by a test asserting a caller outside the
+  banner exists, shown failing with the entry point removed.
+- **A READ may derive the active list; a WRITE may not.** `/onboard/pending`
+  falls back to `get_current_list_name()` because a listing leaves nothing
+  behind and "what is pending here" means the list the page is showing. The
+  carried-never-derived rule exists because onboarding into the wrong list
+  leaves a commit and a NetBox object — so the test that pins it is **scoped
+  to the write path** (`_plan_args`, `_target_list`, `plan`, `create`) with a
+  floor asserting those functions were found. A module-wide scan would have
+  forced a read to carry a list the page does not always know.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
