@@ -156,3 +156,124 @@ fleet learns as extern 2 metric 20 from `10.255.1.23`, and a startup file that
 survives a reboot. **Its acceptance stays a live regression check** — whatever
 phase 2 does elsewhere, `r1` must still learn `10.255.1.16` in that exact
 form.
+
+
+---
+
+## 5. Blocker: Kea serves no subnet for `br-mgmt` — and the answer is (a)
+
+Measured on the deployment: Kea has `10.10.10.0/24` and `10.10.20.0/24`, each
+with a pool, and **no subnet for `10.255.0.0/24`** — the segment the probe
+node sits on. A node there gets no answer at all: no subnet, no pool, no
+reservation. **Zero reservations exist anywhere**, so `reservation_for()`
+returning `not_reserved` with `source: config` is the read path working
+against an empty set — correct, and the probe will be its first real exercise.
+
+### Recommendation: (a), reservations-only on `10.255.0.0/24`
+
+(b) puts the probe on a segment with a pool **and a relay**, which is phase
+3's shape. Phase 2's stated variable is *"same position, no relay, isolate
+does-the-device-fetch from does-the-relay-work"* — and taking (b) means a
+failure could be the device or the relay, which is the one distinction the
+phase exists to make. The one-variable discipline is the whole reason the
+phases are separate.
+
+### Is a pool-less subnet legal in Kea? **Yes.**
+
+`pools` is optional inside a `subnet4` entry. A subnet carrying only
+`reservations` is a supported and documented configuration — it is how you get
+*"nothing is addressed here unless it is explicitly reserved"*, which is the
+right posture for a segment carrying the NMAS, s3's SVI and r6, all static. A
+client with no reservation gets **silence**, not a wrong address.
+
+One flag worth setting with it, and one worth checking:
+
+* `"reservations-out-of-pool": true` on the subnet — an optimisation hint that
+  reservations lie outside the pools. With no pool it is trivially true.
+  Harmless either way; correct to state.
+* **`authoritative`**, globally or on the subnet. If it is `true`, Kea sends
+  DHCPNAK to a client asking for an address it does not know — so a device on
+  `br-mgmt` that currently DHCPs and is *ignored* would start being actively
+  refused. Today nothing there should be asking (r6's `Gi1` DHCPs on the
+  **clab-mgmt** docker bridge, a different segment), but that is worth
+  confirming rather than assuming, because the change turns silence into a
+  refusal and the two look nothing alike from the client.
+
+### The second missing piece is real: `interfaces-config`
+
+**Kea answers only on interfaces it is told to listen on**, and it picks the
+subnet for a directly-connected client from **the address of the receiving
+interface**. So both of these have to hold and neither is implied by adding a
+subnet:
+
+```bash
+# What Kea is listening on today
+sudo kea-shell --service dhcp4 config-get 2>/dev/null \
+  | python3 -c 'import json,sys; c=json.load(sys.stdin); \
+      print(json.dumps(c[0]["arguments"]["Dhcp4"]["interfaces-config"], indent=1))'
+
+# And that the host has an address INSIDE the new subnet on that interface
+ip -br addr show enp6s19
+```
+
+If `interfaces` is `["*"]`, nothing to change. If it is an explicit list, the
+`br-mgmt`-facing interface must be added — and it must carry an address in
+`10.255.0.0/24` (the NMAS has `10.255.0.10/24` there), or Kea will not select
+the new subnet for those clients.
+
+### The edit
+
+```json
+{
+  "subnet": "10.255.0.0/24",
+  "id": 255,
+  "interface": "enp6s19",
+  "reservations-out-of-pool": true,
+  "reservations": [
+    { "hw-address": "<the probe node's MAC>",
+      "ip-address": "10.255.0.40",
+      "hostname": "bp-dhcp-a" }
+  ]
+}
+```
+
+No `pools` key. `"interface"` pins subnet selection to the segment rather than
+relying on address matching alone, which matters on a multi-homed host.
+`id` must be unique across subnets.
+
+Then `sudo kea-shell --service dhcp4 config-test` before `config-reload`, so a
+bad edit is refused rather than applied — the same shape as every dry-run in
+this project.
+
+### The MAC has to be DECLARED, not discovered
+
+A reservation is keyed on the MAC the node presents, and a vrnetlab node's
+data-interface MAC is assigned at boot unless the topology pins it. Discovering
+it means: boot → read the MAC → write the reservation → reboot, and the node's
+**first** boot is then a boot with no address, which is the state phase 2 is
+supposed to be testing the absence of.
+
+containerlab supports `mac:` per endpoint, so pin it in
+`bp-dhcp-a.clab.yml` and write the reservation **before** the first boot:
+
+```yaml
+  links:
+    - endpoints: ["bp-dhcp-a:eth2", "br-mgmt:bpdhcpa-mgmt"]
+      mac: "aa:bb:cc:00:02:40"
+```
+
+Same rule as the management interface: **chosen, never defaulted.** A value
+the tool needs in advance must not be something only the device can tell you
+after it has already booted without it.
+
+### What this adds to the probe's checklist
+
+- [ ] `interfaces-config` includes the `br-mgmt`-facing interface, and that
+      interface has an address in `10.255.0.0/24`
+- [ ] `authoritative` is known, and the consequence of a NAK on that segment
+      is understood before the subnet is added
+- [ ] `config-test` passes before `config-reload`
+- [ ] the MAC is pinned in the topology and the reservation written **before**
+      the first boot
+- [ ] after the run, `10.255.0.0/24` still has **no pool** — the posture is
+      the point, not an accident of the probe

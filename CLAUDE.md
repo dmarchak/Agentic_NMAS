@@ -3098,6 +3098,31 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   asked … unchecked, not confirmed"* — rather than falling back to the
   unfalsifiable sentence, and a test asserts no state renders as the bare
   promise.
+- **Kea serves no subnet for the management segment, and the fix is
+  reservations-only rather than moving the probe.** Measured: `10.10.10.0/24`
+  and `10.10.20.0/24` with pools, nothing for `10.255.0.0/24`, and **zero
+  reservations anywhere** — so `reservation_for()` answering `not_reserved`
+  was the read path working against an empty set. A pool-less `subnet4`
+  carrying only `reservations` **is legal in Kea** and is the right posture
+  for a segment holding the NMAS, s3's SVI and r6, all static: an unreserved
+  client gets silence rather than an address. Moving the probe to the pooled
+  subnet instead would put it behind the relay — **phase 3's shape**, and a
+  failure could then be the device or the relay, which is the one distinction
+  phase 2 exists to make.
+  Two things a new subnet does **not** imply and both must be checked:
+  `interfaces-config` must list the segment's interface (Kea answers only
+  where it listens, and selects the subnet from the **receiving interface's
+  address**), and `authoritative` decides whether an unreserved client is
+  ignored or actively **NAK'd** — the change turns silence into a refusal,
+  and the two look nothing alike from the client.
+- **A value the tool needs in advance must not be one only the device can
+  tell you after booting without it.** A DHCP reservation is keyed on the
+  MAC; a vrnetlab node's data-interface MAC is assigned at boot unless the
+  topology pins it. Discovering it means boot → read → reserve → reboot, so
+  the node's *first* boot is the unaddressed state the phase exists to
+  prevent. containerlab's per-endpoint `mac:` pins it, and the reservation is
+  written before the first boot. Same rule as the management interface:
+  **chosen, never defaulted.**
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
