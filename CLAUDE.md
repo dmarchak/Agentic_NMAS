@@ -1936,6 +1936,22 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   not a restore — and `scripts/nmas-netbox-repair-addresses` refuses to run
   while the lookup is still address-keyed, because a re-import with the old
   code reproduces the damage.
+- **`load_saved_devices()` takes a PATH, not a list name**, and the fifth
+  inferred-signature defect this stage came from forgetting it. A repair
+  script passed the name, the lookup fell through to a CSV that is not
+  there, `[]` came back, and the loop ran zero times — so *"Nothing to
+  create"* was **honest and empty**. The tell was visible in the output:
+  `default` and `Default` produced identical results, which means nothing
+  downstream depended on the argument. Resolve through the registry
+  (`get_device_lists()`), never `get_list_data_dir()`, which calls
+  `os.makedirs()` — a typo would otherwise create a list.
+  **The floor matters more than the defect**: a tool that examined nothing
+  must refuse, naming the list and the path, because *"nothing to create,
+  examined 0"* is a vacuous pass wearing a careful parenthetical, and for a
+  **repair** script the wrong conclusion is *"the fleet is already
+  correct"* — which ends the investigation. Check the argument **before**
+  the integration, so a wrong name is not reported as a configuration
+  problem.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

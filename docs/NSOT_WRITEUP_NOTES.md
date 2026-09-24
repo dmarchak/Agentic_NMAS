@@ -8736,3 +8736,62 @@ design document"* says the risk was there from the start.
 and `scripts/nmas-netbox-census` already snapshots identity per type — which
 is most of a backup already. Had one been taken routinely, tonight's damage
 assessment would have been a **diff rather than an investigation**.
+
+## The repair examined nothing and said so carefully
+
+The first dry run printed *"Nothing to create"*. It had examined **zero
+devices**.
+
+`plan()` called `load_saved_devices(list_name)`. **That function takes a
+path** — `load_saved_devices(csv_path)` everywhere else in the codebase.
+Handed a name it failed to resolve the owning list, fell through to a CSV
+that is not there, and returned `[]`. The loop ran zero times and every
+count downstream **honestly** reported zero.
+
+**Fifth inferred-signature defect this stage**, after
+`set_device_override(list, host, dict)`, `preflight`'s lambda, `_commit`'s
+spy, and — recursively — the `args[0] == "commit"` stub inside the test
+written to catch stub drift. The rule keeps being right: *read the
+signature.*
+
+The tell was in the output and it took the operator to see it: `default` and
+`Default` produced **identical** results, which means nothing downstream
+depended on the argument at all.
+
+### The floor matters more than the defect
+
+*"Nothing to create — examined 0"* is a vacuous pass wearing a careful
+parenthetical, and that parenthetical was the only thing standing between
+the reader and a clean bill of health. **For a repair script the wrong
+conclusion is "the fleet is already correct"**, which is worse than the
+usual version of this failure because it ends the investigation.
+
+`plan()` now **refuses** when it resolves no devices, naming the list, the
+path it looked in, and whether the file was absent or present-and-empty. An
+examination of zero things is not a result — the same rule as every scan's
+floor, applied to the tool built to repair the damage those scans found.
+
+### The argument is now meaningful, so an unknown one refuses
+
+`resolve_list()` reads the registry: a name **or** its slug resolves, and
+both report the **registered** name so the output cannot be ambiguous
+(`nmas-probe` / `nmas_probe` already cost a runbook correction). Anything
+else is refused with the known lists named.
+
+**Deliberately not `get_list_data_dir()`**, which calls `os.makedirs()`: a
+typo at a repair script would otherwise silently *create* a list. The test
+asserting this is **parsed, not grepped** — its first version matched the
+docstring explaining why the call is absent, which is the fifth instance of
+*the better the comment, the more likely it quotes the code it explains.*
+
+The argument is also checked **before** NetBox, so a wrong list name is not
+reported as a configuration problem — the same correction as a bootstrap
+render failure announced through `unsendable`.
+
+### The goldens are intact, and that is load-bearing
+
+r3's golden still carries `ip address 10.0.0.15 255.255.255.0` under
+`GigabitEthernet1`. So *"nothing was lost, the addresses are derivable from
+the configs"* holds as a **measured fact** rather than an expectation, and
+the NetBox damage is recoverable. Every claim about this being repairable
+rests on that one check.

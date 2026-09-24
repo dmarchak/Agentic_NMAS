@@ -325,3 +325,131 @@ class TestTheRepairRefusesUntilTheFixIsIn:
 
         src = " ".join(inspect.getsource(repair.main).split()).replace('" "', "")
         assert "not a claim that NetBox is correct" in src
+
+
+class TestARepairThatExaminesNothingRefuses:
+    """**The floor, which matters more than the defect it guards.**
+
+    `plan()` called `load_saved_devices(list_name)`. That function takes a
+    **path** — `load_saved_devices(csv_path)` everywhere else — so a name
+    failed to resolve the owning list, fell through to a CSV that is not
+    there, and returned `[]`. The loop ran zero times and every count
+    downstream **honestly** reported zero: *"Nothing to create."*
+
+    The tell was visible: `default` and `Default` produced identical output,
+    which means nothing downstream depended on the argument at all.
+
+    **Fifth inferred-signature defect this stage**, after
+    `set_device_override(list, host, dict)`, `preflight`'s lambda,
+    `_commit`'s spy, and the `args[0] == "commit"` stub inside the test
+    written to catch stub drift. *Read the signature.*
+
+    For a repair script the vacuous pass is worse than usual, because the
+    wrong conclusion it invites is **"the fleet is already correct"**.
+    """
+
+    @pytest.fixture(scope="class")
+    def repair(self):
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+
+        path = os.path.join(ROOT, "scripts", "nmas-netbox-repair-addresses")
+        spec = importlib.util.spec_from_file_location(
+            "repair2", path, loader=SourceFileLoader("repair2", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_zero_devices_REFUSES_and_names_the_path(self, repair, monkeypatch):
+        monkeypatch.setattr(repair, "resolve_list",
+                            lambda n: ("/data/lists/x/devices.csv", "X"))
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda *a, **k: [])
+
+        with pytest.raises(repair.ExaminedNothing) as err:
+            repair.plan("X")
+
+        assert "resolved no devices" in str(err.value)
+        assert "/data/lists/x/devices.csv" in str(err.value), \
+            "the refusal does not say where it looked"
+
+    def test_an_unknown_list_refuses_and_names_the_known_ones(
+            self, repair, monkeypatch):
+        monkeypatch.setattr("modules.device.get_device_lists",
+                            lambda: [{"name": "Default", "filename": "default"}])
+
+        with pytest.raises(repair.UnknownList) as err:
+            repair.resolve_list("nope")
+        assert "Default (default)" in str(err.value)
+
+    def test_the_name_AND_the_slug_both_resolve(self, repair, monkeypatch):
+        """`nmas-probe` registered as display name with slug `nmas_probe`
+        already cost a runbook correction. Both spellings resolve, and both
+        report the **registered** name so the output cannot be ambiguous."""
+        monkeypatch.setattr("modules.device.get_device_lists",
+                            lambda: [{"name": "Default", "filename": "default"}])
+
+        for spelling in ("Default", "default"):
+            path, registered = repair.resolve_list(spelling)
+            assert registered == "Default"
+            assert path.endswith(os.path.join("default", "devices.csv"))
+
+    def test_it_never_resolves_through_get_list_data_dir(self):
+        """That function calls `os.makedirs()`, so resolving a path creates
+        a list — a typo at a repair script would silently make one.
+
+        **Parsed, not grepped.** The first version of this test matched the
+        docstring explaining why the call is absent: *the better the comment,
+        the more likely it quotes the code it explains*, and this file's
+        comments are unusually quotable. Fifth instance of that pattern.
+        """
+        import ast
+
+        path = os.path.join(ROOT, "scripts", "nmas-netbox-repair-addresses")
+        tree = ast.parse(open(path, encoding="utf-8").read())
+
+        names, imported = set(), set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.ImportFrom):
+                imported.update(a.name for a in node.names)
+
+        used = names | imported
+        assert len(used) >= 40, "the parse found almost nothing"
+        assert "get_list_data_dir" not in used, \
+            "the repair resolves through the function that creates a list"
+        assert "get_device_lists" in used, "the registry is the authority"
+
+    def test_the_argument_is_checked_before_NetBox(self, repair):
+        """A wrong list name reported as a configuration problem sends the
+        reader to the wrong place — the same correction as a bootstrap
+        render failure announced through `unsendable`."""
+        import inspect
+
+        src = inspect.getsource(repair.plan)
+        assert src.index("resolve_list") < src.index("get_netbox_config")
+        assert src.index("ExaminedNothing") < src.index("_session_from_config")
+
+    def test_a_real_device_list_is_examined_and_counted(
+            self, repair, monkeypatch):
+        """**The floor on the floor.** Every assertion above is about
+        refusing; a `plan()` that refused everything would satisfy them all
+        and the repair would never run."""
+        monkeypatch.setattr(repair, "resolve_list",
+                            lambda n: ("/data/lists/x/devices.csv", "X"))
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda *a, **k: [{"hostname": "r3", "ip": "x"}])
+        monkeypatch.setattr("modules.netbox_client.get_netbox_config",
+                            lambda: {"url": "http://nb", "token": "t"})
+        monkeypatch.setattr("modules.netbox_client._session_from_config",
+                            lambda cfg: object())
+        monkeypatch.setattr("modules.netbox_client._nb_get",
+                            lambda *a, **k: [])
+
+        out = repair.plan("X")
+        assert out["examined"] == 1
+        assert out["list"] == "X"
+        assert out["skipped"], "a device not in NetBox must be reported"

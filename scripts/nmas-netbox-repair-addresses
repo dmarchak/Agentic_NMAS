@@ -49,8 +49,64 @@ def _lookup_is_interface_keyed() -> bool:
     return "interface_id=interface_id" in src
 
 
+class UnknownList(Exception):
+    """The list argument named nothing. **Refused, never defaulted.**"""
+
+
+class ExaminedNothing(Exception):
+    """No devices resolved. **An examination of zero things is not a
+    result**, and for a repair script the wrong conclusion it invites is
+    *"the fleet is already correct"*."""
+
+
+def resolve_list(list_name: str) -> tuple:
+    """``(csv_path, registered_name)``, or refuse.
+
+    **`load_saved_devices()` takes a PATH, not a list name.** Handed a name
+    it fails to resolve the owning list, falls through to a CSV that does
+    not exist, and returns `[]` — so the loop below ran zero times and every
+    count downstream honestly reported zero. `default` and `Default`
+    produced identical output, which is the tell: nothing downstream
+    depended on the argument at all.
+
+    **Not `get_list_data_dir()`**, which calls `os.makedirs()` — resolving a
+    path there *creates* a list, so a typo at a repair script would silently
+    make one. The registry is the authority, and a name it does not hold is
+    refused with what it does hold.
+    """
+    import os as _os
+
+    from modules import config as _config
+    from modules.device import get_device_lists
+
+    rows = get_device_lists()
+    for row in rows:
+        if list_name in (row["name"], row["filename"]):
+            return (_os.path.join(_config.LISTS_DIR, row["filename"],
+                                  "devices.csv"), row["name"])
+    known = ", ".join(f"{r['name']} ({r['filename']})" for r in rows) or "none"
+    raise UnknownList(f"no device list named {list_name!r}. Known: {known}")
+
+
 def plan(list_name: str) -> dict:
     """What each device's golden config says, against what NetBox holds."""
+    from modules.device import load_saved_devices
+
+    # Resolve and count BEFORE opening a session: a refusal here is about
+    # the argument, and making the operator configure NetBox to be told
+    # their list name was wrong reports the second-most-useful fact first.
+    # Same ordering as the census validating its baseline before taking one.
+    csv_path, registered = resolve_list(list_name)
+    devices = load_saved_devices(csv_path)
+    if not devices:
+        # THE FLOOR, and it matters more than the defect it guards. A repair
+        # that examined nothing and reported "nothing to create" is a
+        # vacuous pass wearing a careful parenthetical -- and here the wrong
+        # conclusion it invites is "the fleet is already correct".
+        raise ExaminedNothing(
+            f"{registered!r} resolved no devices. Looked in {csv_path}"
+            f" ({'the file is not there' if not os.path.exists(csv_path) else 'the file is there and holds no rows'}).")
+
     from modules.netbox_client import (_nb_get, _session_from_config,
                                        _scan_device_from_golden,
                                        get_netbox_config)
@@ -59,10 +115,8 @@ def plan(list_name: str) -> dict:
     session = _session_from_config(cfg)
     base = cfg["url"]
 
-    from modules.device import load_saved_devices
-
     creates, elsewhere, skipped = [], [], []
-    for dev in load_saved_devices(list_name):
+    for dev in devices:
         host = dev.get("hostname") or dev.get("name") or ""
         nb_dev = None
         for d in _nb_get(session, base, "dcim/devices/", name=host):
@@ -104,7 +158,8 @@ def plan(list_name: str) -> dict:
                        "held_by": holder}
                 (elsewhere if holder else creates).append(row)
 
-    return {"creates": creates, "elsewhere": elsewhere, "skipped": skipped}
+    return {"creates": creates, "elsewhere": elsewhere, "skipped": skipped,
+            "examined": len(devices), "list": registered, "csv": csv_path}
 
 
 def _same(a, b) -> bool:
@@ -144,13 +199,23 @@ def main() -> int:
               "Land the lookup fix first.")
         return 2
 
-    from modules.netbox_client import get_netbox_config
-
-    if not get_netbox_config().get("url"):
-        print("NetBox is not configured.")
+    # The ARGUMENT is checked before NetBox, so a wrong list name is not
+    # reported as a configuration problem. `plan()` resolves and counts
+    # before it opens a session.
+    try:
+        p = plan(args.list_name)
+    except (UnknownList, ExaminedNothing) as exc:
+        print(f"REFUSED — {exc}")
+        print("Nothing was examined, which is not the same as nothing being "
+              "wrong.")
+        return 2
+    except Exception as exc:                    # noqa: BLE001
+        print(f"NetBox could not be read: {exc}")
+        print("UNPROVEN — no comparison was made.")
         return 2
 
-    p = plan(args.list_name)
+    print(f"list {p['list']!r}: examined {p['examined']} device(s) "
+          f"from {p['csv']}")
     for row in p["skipped"]:
         print(f"skipped {row['device']}: {row['why']}")
 
@@ -164,12 +229,13 @@ def main() -> int:
               "is wrong, then re-run.")
 
     if not p["creates"]:
-        print("\nNothing to create.")
+        print(f"\nNothing to create, against {p['examined']} device(s) "
+              "examined.")
         # A repair that found nothing and a repair that could not look must
-        # not print the same line.
-        print(f"(examined {len(p['skipped']) + len(p['elsewhere'])} other "
-              "finding(s); this is a statement about what was compared, not "
-              "a claim that NetBox is correct.)")
+        # not print the same line. `plan()` refuses the second case outright
+        # now, so reaching here means something really was compared.
+        print("This is a statement about what was compared, not a claim "
+              "that NetBox is correct.")
         return 0
 
     print(f"\n{len(p['creates'])} address(es) to create:")
