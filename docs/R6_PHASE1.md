@@ -129,7 +129,10 @@ Two consequences worth stating now:
      will read it, rather than in a runbook nobody opens twice.
 
   The second is the fallback and the first is the intent. Neither is "we
-  will get to it".
+  will get to it". **Scoped in [R6_PERSISTENCE.md](R6_PERSISTENCE.md)**,
+  which found that the launch-patch setting is the more dangerous half:
+  fixing only the configs directory would make `verify_startup_applies()`
+  check rcn-lab1's patch for a device r6's own patch boots, and pass.
 * A future `containerlab destroy --cleanup` on rcn-lab1 must not disturb
   r6. It has its own lab name and its own veth, so it will not — but this
   is the same *"what does `--cleanup` do to a bridge node it did not

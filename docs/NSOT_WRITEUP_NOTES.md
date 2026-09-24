@@ -9171,3 +9171,59 @@ reads of live state, several of them identity-scoped, never reusable — a
 copy retained by an intermediary is a small exposure rather than a small
 saving. Harmless to the client: a `fetch` of an uncacheable response behaves
 exactly as it did when the header was absent, asserted by parsing the body.
+
+## Coverage inherited, not designed — the second instance, found the same way
+
+**Nine devices survive a clab host reboot because a pipeline built weeks ago
+covers them. The tenth does not, because it was added by a newer path that
+did not inherit it.**
+
+r6's startup config lives at `~/labs/r6/configs/r6.cfg`; clab-sync harvests
+from Oxidized and writes to `~/labs/lab/configs/`. So a reboot brings r6
+back on its bootstrap config — `password 0`, no rotated credential, NMAS
+locked out of a device it manages. Stage B's failure by another route, live
+from the moment onboarding finished.
+
+This is the drift check's finding again, in a different subsystem. There,
+the nine reference devices were checked only because their pre-migration
+files happened to still sit in `golden_configs/`, and a device onboarded
+after the migration was checked by nothing while its config sat in
+`config_repo/`. **The coverage was inherited, not designed**, and it was
+invisible because the population that had it was the only one anybody
+looked at.
+
+**The generalisation is worth more than either instance:** a property that
+holds for the original population and silently does not for anything added
+afterwards. It comes from the same cause every time — a capability wired to
+*a list that was current when it was built* rather than to the population as
+it is now — and both instances were found by **adding one member**. That is
+the cheapest available test for the class, and it is what onboarding r6 was
+always going to be good for.
+
+### The scoping found a worse half than the sync
+
+Recorded in [R6_PERSISTENCE.md](R6_PERSISTENCE.md). Three settings describe
+**one** lab, and `verify_startup_applies()` — the guard that keeps the
+rcn-lab1 redeploy ban lifted — resolves `clab_launch_patch` internally,
+defaulting to `labs/lab/patches/c8000v-launch.py`.
+
+Today r6 fails closed, because the config path is wrong too and the file is
+not there. **Fixing only the configs directory would create the dangerous
+state**: the guard would read rcn-lab1's patch, which has the user-skip,
+while r6 boots from `labs/r6/patches/c8000v-launch-adopted.py` — verifying a
+file that is not the one in play, and **passing**. The precise hazard it
+exists to prevent, wearing a green result.
+
+So the three settings must move together, which is one of the four reasons
+the answer is a **device → lab map** rather than a second sync target. The
+strongest of the others: `verify_startup_file()` and
+`verify_startup_applies()` are **already parameterised per call** — only the
+defaults are installation-wide. *The machinery existed and one caller was
+not using it*, for the sixth time, still clustering at the edges of a
+feature.
+
+**Necessary and not sufficient**: the sync script is outside this repository
+and writes to one directory with no argument. Until it accepts a target or
+learns the map, NMAS resolving the right path changes nothing about where
+the file lands — and building the NMAS half alone would produce a system
+that verifies the correct path and still writes the wrong one.

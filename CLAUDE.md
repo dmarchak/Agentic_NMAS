@@ -2116,6 +2116,28 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   failures read *"no block defines X"* — a scan finding nothing in the words
   of a real defect) and **one element per file**, or a test indexing into a
   block finds a construct from a different one.
+- **Coverage inherited, not designed — a property that holds for the
+  original population and silently does not for anything added afterwards.**
+  Two instances now, in different subsystems, both found by **adding one
+  member**. The drift check covered the nine reference devices only because
+  their pre-migration files happened to sit in `golden_configs/`; and
+  clab-sync makes nine devices reboot-safe while r6, onboarded into its own
+  lab by a newer path, comes back on its bootstrap config — `password 0`, no
+  rotated credential, NMAS locked out of a device it manages. Same cause
+  each time: a capability wired to *a list that was current when it was
+  built* rather than to the population as it is now, invisible because the
+  population that has it is the only one anybody looks at.
+  Scoped in [docs/R6_PERSISTENCE.md](docs/R6_PERSISTENCE.md), where reading
+  the code found the **worse half**: `clab_configs_dir`, `clab_launch_patch`
+  and `clab_host` describe **one** lab, and `verify_startup_applies()` — the
+  guard keeping the rcn-lab1 redeploy ban lifted — resolves the patch path
+  internally. r6 fails closed today only because its config path is wrong
+  too; **fixing only the configs directory would make the guard read
+  rcn-lab1's patch for a device r6's own patch boots, and pass.** The three
+  must move together, which is one reason the answer is a **device → lab
+  map** rather than a second target — the strongest being that
+  `verify_startup_file()` and `verify_startup_applies()` are **already
+  parameterised per call** and only their defaults are installation-wide.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
