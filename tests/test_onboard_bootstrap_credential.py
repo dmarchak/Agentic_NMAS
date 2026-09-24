@@ -352,6 +352,15 @@ class TestTheOverrideIsWhereTheResolverLooks:
 
         store = tmp_path / "creds.json"
         monkeypatch.setattr(creds, "_FILE", str(store))
+        # `build_plan()` resolves its OWN repo path through
+        # `get_list_data_dir()`, which calls os.makedirs -- passing a tmp
+        # `repo` to the step below does not stop that. LISTS_DIR rather than
+        # the function, because a module that did `from modules.config
+        # import get_list_data_dir` holds its own binding; LISTS_DIR is read
+        # at call time by every caller.
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda n: str(tmp_path / n))
 
         repo = tmp_path / "config_repo"
         repo.mkdir()
@@ -375,6 +384,9 @@ class TestTheOverrideIsWhereTheResolverLooks:
         from modules.nsot import onboard
 
         monkeypatch.setattr(creds, "_FILE", str(tmp_path / "creds.json"))
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda n: str(tmp_path / n))
         repo = tmp_path / "config_repo"
         repo.mkdir()
         plan = onboard.build_plan("bp1", "cisco_iosxe", "probe",
@@ -394,6 +406,9 @@ class TestTheOverrideIsWhereTheResolverLooks:
         from modules.nsot import onboard
 
         monkeypatch.setattr(creds, "_FILE", str(tmp_path / "creds.json"))
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda n: str(tmp_path / n))
         repo = tmp_path / "config_repo"
         repo.mkdir()
         plan = onboard.build_plan("bp1", "cisco_iosxe", "probe",

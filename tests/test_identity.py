@@ -201,15 +201,63 @@ class TestThePeerCheckIsIndependent:
 
         assert identity.peer_address(request) == "10.0.0.30"
 
-    def test_an_empty_trusted_list_disables_the_peer_check(self, configured, keys,
-                                                           monkeypatch):
-        """Blank means 'not configured', not 'trust nothing' — stated in settings."""
+    def test_an_empty_trusted_list_REFUSES(self, configured, keys, monkeypatch):
+        """This test previously asserted the opposite, and pinned a fail-open.
+
+        It read: *"Blank means 'not configured', not 'trust nothing'"* — and
+        then asserted `is_identified is True`. The sentence and the assertion
+        disagree: it says the peer check is not configured and then
+        identifies the caller anyway. `identify()` computed
+
+            peer_trusted = (not allowed) or (peer in allowed)
+
+        so an empty allowlist trusted **every** peer, silently removing the
+        layer `CLAUDE.md` calls *"the one that survives a firewall rule being
+        edited later"*.
+
+        It was masked by the other two Access values also being blank, so
+        `is_configured()` refused first and the composite failed closed —
+        the dangerous kind of safe. Restoring the team domain and the AUD
+        **without** the peer list would have turned verification on with the
+        peer check off: strictly worse than refusing everything, because an
+        assertion captured from a browser replays from anywhere on the LAN.
+
+        Blank now means *not configured*, which is what the old docstring
+        said and the old code did not do.
+        """
         private, _ = keys
         base = dict(configured, cf_access_trusted_peers="")
         monkeypatch.setattr(identity, "_setting",
                             lambda key, default=None: base.get(key, default))
         ident = identity.identify(_Req(token=_token(private), peer="10.0.0.30"))
+
+        assert ident.is_identified is False
+        assert ident.outcome == "not_configured"
+        assert "cf_access_trusted_peers" in ident.reason, (
+            "the refusal must name the missing value — 'Access is not "
+            "configured' sends an operator to read JSON")
+
+    def test_a_configured_peer_still_identifies(self, configured, keys):
+        """The control. A peer check that refused everything would pass the
+        test above and lock the tool out entirely."""
+        private, _ = keys
+        ident = identity.identify(_Req(token=_token(private), peer=TUNNEL))
         assert ident.is_identified is True
+        assert ident.peer_trusted is True
+
+    def test_every_required_access_value_is_named_when_unset(self, keys,
+                                                             monkeypatch):
+        """Each of the three, individually — a list that only ever reported
+        the first would look identical on a one-value gap."""
+        private, _ = keys
+        for missing in identity.REQUIRED_ACCESS_VALUES:
+            base = {"cf_access_team_domain": TEAM, "cf_access_aud": AUD,
+                    "cf_access_trusted_peers": TUNNEL}
+            base[missing] = ""
+            monkeypatch.setattr(identity, "_setting",
+                                lambda key, default=None, _b=base:
+                                _b.get(key, default))
+            assert identity.missing_access_values() == [missing]
 
 
 class TestNoForwardedHeaderTrustAnywhere:

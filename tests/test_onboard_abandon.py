@@ -30,6 +30,9 @@ def repo(tmp_path, monkeypatch):
     list_dir = tmp_path / "probe"
     repo_dir = str(list_dir / "config_repo")
     os.makedirs(os.path.join(repo_dir, "host_vars"), exist_ok=True)
+    # LISTS_DIR too: a module holding its own `get_list_data_dir`
+    # binding would still resolve into the live data directory.
+    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(list_dir))
     monkeypatch.setattr("modules.settings_schema.get_setting",
                         lambda k, d=None: {"nsot_git_author_name": "NMAS",

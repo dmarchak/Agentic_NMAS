@@ -1494,6 +1494,37 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   an empty array. Same correction as "all 9 clean" over ten devices and the
   agent panel's disabled read returning `[]`. Control: with the error branch
   removed, a failed query renders the empty string.
+- **An empty allowlist must never mean "everyone".** `identify()` computed
+  `peer_trusted = (not allowed) or (peer in allowed)`, so an unset
+  `cf_access_trusted_peers` trusted **every** peer — a blank silently
+  removing the layer that survives a firewall rule being edited later. It
+  was masked because the other two Access values were also blank, so
+  `is_configured()` refused first: **the dangerous kind of safe**, since
+  restoring the team domain and AUD *without* the peer list would have
+  turned verification on with the peer check off. `is_configured()` now
+  requires all three, an unset value is a **named** refusal
+  (`missing_access_values()`), and `peer_trusted` is `bool(allowed) and peer
+  in allowed`. A test had pinned the fail-open as intended, with a docstring
+  that said *"blank means not configured"* beside an assertion that the
+  caller **is** identified — the third test in this project to pin a defect
+  as correct.
+- **There is no way to configure Cloudflare Access through the application.**
+  No route, form or function writes `cf_access_*`; the only code that ever
+  writes them is `migrate()` seeding blanks. The posture panel exists because
+  those gates were *"visible only by reading JSON over SSH"* — and setting
+  them still is. A posture you can see and cannot set.
+- **`get_list_data_dir()` calls `os.makedirs()`, so resolving a path creates
+  a list.** Tests must patch **`modules.config.LISTS_DIR`**, not only the
+  function: a module that did `from modules.config import get_list_data_dir`
+  at import time holds its own binding, while `LISTS_DIR` is read at call
+  time by every caller. Ten such tests passed locally and errored elsewhere
+  because `data/lists/probe/` already existed here — the conftest guard
+  snapshots before and after, so **pre-existing residue makes the check
+  vacuous**, exactly as a month-old `C:/TFTP-Root` did for
+  `test_portability`. Deleting the residue reproduced all ten.
+- **A pass count is not a run result.** "2,736 passing" was quoted from a
+  tail reading `2736 passed` with no error line, while the same commit
+  produced ten errors on another machine. State error counts explicitly.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

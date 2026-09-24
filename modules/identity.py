@@ -151,9 +151,46 @@ def trusted_peers() -> list:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+#: Every Access value that must be set before an assertion means anything.
+#:
+#: **`cf_access_trusted_peers` is in here, and that is the fix.**
+#: `identify()` computed `peer_trusted = (not allowed) or (peer in allowed)`,
+#: so an EMPTY allowlist trusted **every** peer — a blank silently removing
+#: the check this file describes as *"the layer that survives a firewall
+#: rule being edited later"*. Two independent conditions, one of which
+#: switched itself off when unset.
+#:
+#: It was masked here by the other two values also being blank, so
+#: `is_configured()` refused first and the composite failed closed. That is
+#: the dangerous kind of safe: restoring the team domain and the AUD
+#: **without** the peer list would have turned verification back on with the
+#: peer check silently off — strictly worse than refusing everything,
+#: because an assertion captured from a browser replays from anywhere on the
+#: LAN.
+REQUIRED_ACCESS_VALUES = ("cf_access_team_domain", "cf_access_aud",
+                          "cf_access_trusted_peers")
+
+
+def missing_access_values() -> list:
+    """Which of :data:`REQUIRED_ACCESS_VALUES` are unset. Named, not counted.
+
+    "Access is not configured" sends an operator to read JSON; "the trusted
+    peer list is unset" tells them what to do.
+    """
+    return [k for k in REQUIRED_ACCESS_VALUES
+            if not (_setting(k, "") or "").strip()]
+
+
 def is_configured() -> bool:
-    return bool((_setting("cf_access_team_domain", "") or "").strip()
-                and (_setting("cf_access_aud", "") or "").strip())
+    """All three, not two.
+
+    An unset peer list used to leave `is_configured()` true while the peer
+    check accepted everything. Requiring it means the check can no longer be
+    disabled by omission — the failure mode is a refusal that names the
+    missing value, which is recoverable, rather than a gate that quietly
+    stopped being one.
+    """
+    return not missing_access_values()
 
 
 def certs_url(team_domain: str = "") -> str:
@@ -209,7 +246,10 @@ def identify(request) -> Identity:
     """Who is making *request*. Never raises; never logs a value."""
     peer = peer_address(request)
     allowed = trusted_peers()
-    peer_trusted = (not allowed) or (peer in allowed)
+    # NO EMPTY-MEANS-EVERYONE. An unset allowlist is not a permissive one;
+    # `is_configured()` refuses before this matters, so an install without
+    # peers gets a named refusal rather than a check that passed vacuously.
+    peer_trusted = bool(allowed) and peer in allowed
     token = request.headers.get(JWT_HEADER, "")
     present = bool(token)
 
@@ -221,8 +261,8 @@ def identify(request) -> Identity:
 
     if not is_configured():
         return _no("not_configured",
-                   "Cloudflare Access is not configured (team domain and AUD "
-                   "tag are unset in Settings)")
+                   "Cloudflare Access is not configured — unset: "
+                   + ", ".join(missing_access_values()))
     if not present:
         return _no("no_header",
                    f"the request carried no {JWT_HEADER} header")

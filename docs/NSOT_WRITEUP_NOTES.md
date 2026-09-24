@@ -7787,3 +7787,123 @@ One minute each. A defect each time it was skipped, over three consecutive
 opportunities in a single session. Worth keeping as a set rather than three
 separate notes, because individually each reads as bad luck and together
 they read as a measurement.
+
+---
+
+## The Access values were never set, and the belief that they were is the finding
+
+Reported symptom: `cf_access_team_domain`, `cf_access_aud` and
+`cf_access_trusted_peers` all `''` in `user_settings.json`, while
+`cf_access_jwks_ttl` (3600) and `cf_access_service_labels` ({}) survived --
+which looked like a writer that serialises string fields and leaves the rest.
+
+**It is not a string/non-string split.** The "survivors" are exactly the
+keys whose **default equals what is in the file**: `jwks_ttl` defaults to
+3600 and `service_labels` to `{}`. Every `cf_access_*` key is at its default;
+only the three whose default is `''` look blanked.
+
+### Every writer audited; none of them blanks
+
+| path | behaviour |
+|---|---|
+| `/settings` POST | per-field `if k in data` |
+| `save_integration` -> `base.save_config` | `if key in values`; a blank secret keeps the stored one |
+| `/settings/integrations/general` | `if k in keys` allowlist; `cf_access_*` not in it |
+| `write_settings` | merges, and refuses undeclared keys |
+| `migrate()` | `if key not in settings` -- never overwrites |
+| `set_user_setting` | faithful read-modify-write |
+
+**No route, form or function writes `cf_access_*` by name.** There is no UI
+field for them. The only code that ever writes them is `migrate()` with
+`SEEDS_BY_VERSION = {1: "*"}`, which on a v0 file seeds every key in
+`DEFAULTS` -- producing exactly the observed state.
+
+### The mtime is what made it falsifiable
+
+`user_settings.json` was last written **20:25:37**; the posture panel was
+read around **21:00**. A file not written after 20:25 cannot hold values at
+21:00 and blanks now. There is no write in between because **there is no
+write at all** -- so the panel at 21:00 read the same blank file it holds
+now.
+
+And the panel cannot invent one: `get_setting()` reads the file on every
+call with no cache and no environment lookup, `access_set` is
+`bool(value)` rather than key presence, and `trusted_peer_count` is
+`len(trusted_peers())`. Explanation (b) -- "the panel reports set for a key
+that EXISTS" -- is out in the code as well as empirically.
+
+**So the unexamined premise was "they were set."** The AUD was *given*, in
+conversation, as a value to store. That it was given became that it was
+stored, and neither of us checked. Identical in shape to the manifest
+identity both of us believed was recorded because the function was called
+`adopt_identity`. Two in one session, and in both the evidence for the
+belief was a name or a sentence rather than a read.
+
+The operational finding is the one underneath: **there is no way to
+configure Access through the application.** The posture panel exists because
+those gates were *"visible only by reading JSON over SSH"* -- and setting
+them still is. A posture you can see and cannot set is 3.2c restated.
+
+## An empty allowlist trusted everyone
+
+```python
+peer_trusted = (not allowed) or (peer in allowed)
+```
+
+An unset `cf_access_trusted_peers` made `allowed == []`, so **every peer was
+trusted** -- a blank silently removing the layer this project calls *"the one
+that survives a firewall rule being edited later"*. Two independent
+conditions, one of which switched itself off when unset.
+
+**It was masked by the other two values also being blank**, so
+`is_configured()` refused first and the composite failed closed. That is the
+dangerous kind of safe: restoring the team domain and the AUD **without**
+the peer list would have turned verification back on with the peer check
+off -- strictly worse than refusing everything, because an assertion
+captured from a browser replays from anywhere on the LAN. Which is precisely
+what "restore the Access values" would have done if taken as two values
+rather than three.
+
+### A test pinned it as correct
+
+```python
+def test_an_empty_trusted_list_disables_the_peer_check(...):
+    """Blank means 'not configured', not 'trust nothing'."""
+    ...
+    assert ident.is_identified is True
+```
+
+The docstring and the assertion disagree: it says *not configured* and then
+identifies the caller anyway. Third test in this project to pin a defect as
+intended behaviour, after `test_bgp_address_families_on_r3_r4_r5` and the
+`next_ts` key.
+
+`is_configured()` now requires all three, `peer_trusted` is
+`bool(allowed) and peer in allowed`, and the refusal **names** the missing
+values rather than saying "Access is not configured", which sends an
+operator to read JSON.
+
+## Residue hid the guard, again
+
+The conftest guard fires per test, snapshotting `data/lists/` before and
+after. Ten tests -- all written in this session -- resolved a path through
+`get_list_data_dir()` without patching it, and `get_list_data_dir()` calls
+`os.makedirs()`, so **merely resolving a path for an unknown list creates
+it**.
+
+They passed here and errored on the deployment checkout because
+`data/lists/probe/` already existed locally from an earlier run: the
+snapshot at test start already contained it, so nothing was created and the
+guard said nothing. **Same shape as `C:/TFTP-Root`** -- an environment
+carrying the evidence of the bug satisfies the assertion as truly as a clean
+one. Removing the two empty directories reproduced all ten immediately.
+
+The fix is `modules.config.LISTS_DIR`, not the function: a module that did
+`from modules.config import get_list_data_dir` at import time holds its own
+binding and would still resolve into the live directory, whereas `LISTS_DIR`
+is read at call time by every caller.
+
+**And the reporting lesson**: "2,736 passing" was quoted from a tail that
+said `2736 passed` with no error line **in this environment**, while the same
+commit produced ten errors elsewhere. A pass count is not a run result. Error
+counts are now stated explicitly rather than inferred from the last line.
