@@ -9323,3 +9323,55 @@ that becomes a refusal when it is blank.
 A refusal fails closed, so nothing broke. It is also **indistinguishable
 from a guard that ran** unless somebody reads the reason, which is the
 property that let this sit for two days.
+
+## The live run found the map bypassed by the caller that checks it
+
+**Result 1, good:** r1–r5 verify properly for the first time since the
+erasure — `dmarchak@10.0.0.210:labs/lab/patches/c8000v-launch.py@e483dd2475b5`,
+named with a sha. The guard is running.
+
+**Result 2, the defect:** r6 read
+`dmarchak@10.0.0.210:labs/lab/configs/r6.cfg` — the **default** lab's
+directory — while `clab_target_for('Default', 'r6')` returned
+`labs/r6/configs`.
+
+`nmas-check-startup-applies` passes no target, and both verifiers **fell
+back to `get_setting()`** when the caller passed nothing. The map existed
+and one caller was not using it, **by omission** — which is precisely the
+failure mode a default fallback is built to create. Seventh instance of that
+class, and the first **inside the thing built to prevent it**.
+
+It failed closed only because the file was absent. **The same accident that
+made the configs-only fix look safe**, twice in one feature.
+
+**The fix is the removal, not a correction.** `_resolve_target()` is the one
+path and the direct `get_setting` reads are gone, so a caller that omits the
+target gets the device's own lab rather than the default one. `_lab_of()`
+with an empty `list_name` **derives the active list** rather than assuming
+`default`: a read may derive it, and the alternative here is not a refusal
+but a *wrong answer*. The control is the one the operator named — a device
+whose lab differs from the default reading its **own** paths, which is what
+r6 now provides, with a floor that a default-lab device still reads the
+default.
+
+**Result 3:** `--stray` called `os.listdir` on a directory that is on the
+clab host while the script runs on the NMAS. `FileNotFoundError` is the
+least informative possible answer to *"is there litter on the clab host"* —
+it names a local path that was never going to exist and says nothing about
+the remote one. It now lists over `ssh` using the host the map carries (a
+fourth column), `strays()` is pure with the listing passed in, and a failed
+listing is **`REFUSED … not the same as finding no litter`** rather than an
+empty result.
+
+### And a control caught me deleting the tests
+
+Rewriting the `--stray` tests with a truncating edit removed
+`TestEveryVerifierGoesThroughTheResolver` entirely, along with two others
+below it. Controls A and B then **passed** — which is what surfaced it, 22
+tests having quietly become 18.
+
+`check_removed_definitions.py` cannot help here: it exits non-zero when a
+removed definition is **still called**, and *nothing calls a test*. So the
+only backstop for deleting a test is a control that was passing before and
+should not be — which is the argument for running controls after an edit to
+the test file and not only after an edit to the code.

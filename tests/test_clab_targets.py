@@ -214,43 +214,75 @@ class TestTheHelperRefusesRatherThanGuessing:
         assert "fetch" in {n.name for n in ast.walk(tree)
                            if isinstance(n, ast.FunctionDef)}
 
-    def test_strays_finds_a_config_in_the_wrong_lab(self, helper, tmp_path):
+    def test_strays_finds_a_config_in_the_wrong_lab(self, helper):
         """`labs/lab/configs/r6.cfg`, written before the sync learned about
-        r6's lab: inert, and a file that looks like a thing it is not."""
-        d = tmp_path / "lab" / "configs"
-        d.mkdir(parents=True)
-        (d / "r1.cfg").write_text("x")
-        (d / "r6.cfg").write_text("x")
+        r6's lab: inert, and a file that looks like a thing it is not.
 
-        found = helper.strays(str(d), [("r1", str(d), "default"),
-                                       ("r6", str(tmp_path / "r6" / "configs"),
-                                        "r6")])
+        The listing is **passed in** — it comes from the clab host over ssh,
+        not from the NMAS's own filesystem, which is what the first version
+        got wrong."""
+        found = helper.strays(
+            "labs/lab/configs",
+            [("r1", "labs/lab/configs", "default", "user@clab"),
+             ("r6", "labs/r6/configs", "r6", "user@clab")],
+            ["r1.cfg", "r6.cfg"])
 
-        assert [os.path.basename(p) for p, _w in found] == ["r6.cfg"]
+        assert [p for p, _w in found] == ["labs/lab/configs/r6.cfg"]
+        assert found[0][1] == "labs/r6/configs"
 
-    def test_and_finds_nothing_when_everything_is_in_place(self, helper,
-                                                           tmp_path):
-        """The floor: a detector that always fires is a detector nobody
-        reads."""
-        d = tmp_path / "configs"
-        d.mkdir(parents=True)
-        (d / "r1.cfg").write_text("x")
+    def test_and_finds_nothing_when_everything_is_in_place(self, helper):
+        """The floor: a detector that always fires is one nobody reads."""
+        assert helper.strays(
+            "labs/lab/configs",
+            [("r1", "labs/lab/configs", "default", "user@clab")],
+            ["r1.cfg"]) == []
 
-        assert helper.strays(str(d), [("r1", str(d), "default")]) == []
+    def test_it_lists_the_REMOTE_directory_not_a_local_one(self, helper):
+        """The directory is on the clab host and this script runs on the
+        NMAS. `os.listdir` raised `FileNotFoundError` — the least
+        informative possible answer to *"is there litter on the clab
+        host"*, because it names a local path that was never going to exist.
+
+        Parsed: the docstring explains the defect using `os.listdir`."""
+        import ast
+        import inspect
+
+        tree = ast.parse(inspect.getsource(helper))
+        attrs = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        assert attrs, "the parse found nothing"
+        assert "listdir" not in attrs, "it lists the NMAS's own filesystem"
+        assert "run" in attrs, "nothing shells out, so nothing asks the host"
+
+    def test_a_failed_listing_is_UNPROVEN_not_clean(self, helper,
+                                                    monkeypatch, capsys):
+        """*"I could not look"* and *"there is nothing there"* are the two
+        answers this must never confuse."""
+        monkeypatch.setattr(helper, "fetch", lambda *a, **k: [
+            ("r1", "labs/lab/configs", "default", "user@clab")])
+        monkeypatch.setattr(helper, "remote_listing", lambda h, d: (_ for _ in ()).throw(
+            helper.StrayLookupFailed("ssh: connect refused")))
+        monkeypatch.setattr(helper.sys, "argv",
+                            ["x", "--url", "http://nmas",
+                             "--stray", "labs/lab/configs"])
+
+        assert helper.main() == helper.EXIT_UNREACHABLE
+        err = capsys.readouterr().err
+        assert "REFUSED" in err
+        assert "not the same as finding no litter" in err
+
+    def test_no_host_in_the_map_is_a_named_refusal(self, helper):
+        """An older NMAS serves three columns. That is a fact about the
+        answer, not about the clab host."""
+        with pytest.raises(helper.StrayLookupFailed) as err:
+            helper.remote_listing("", "labs/lab/configs")
+        assert "no clab host" in str(err.value)
 
     def test_a_lab_that_omits_the_LAUNCH_PATCH_is_refused_too(self,
                                                               monkeypatch):
-        """**Added because a control passed.**
-
-        Making `launch_patch` fall back to the default lab left every test
-        green, because the fixture's lab defines both. The dangerous case is
-        a lab that names `configs_dir` and omits `launch_patch`: the
-        resolver returns `""`, and
-        `verify_startup_applies(launch_patch="")` **falls back to the
-        setting** — so the empty string would have read rcn-lab1's patch for
-        a device booting its own. An empty value must be refused, not
-        forwarded.
-        """
+        """**Added because a control passed.** The dangerous case is a lab
+        that names `configs_dir` and omits `launch_patch`: the resolver
+        returns `""`, and a fallback would read rcn-lab1's patch for a
+        device booting its own."""
         from modules.nsot import credential_rotation as cr
 
         monkeypatch.setattr(
@@ -274,3 +306,127 @@ class TestTheHelperRefusesRatherThanGuessing:
         src = inspect.getsource(cr.persist)
         assert '("configs_dir", "launch_patch")' in src
         assert "not the one booting this device" in src
+
+
+class TestEveryVerifierGoesThroughTheResolver:
+    """**The defect the live run found, and the control for it.**
+
+    `nmas-check-startup-applies` read
+    `dmarchak@10.0.0.210:labs/lab/configs/r6.cfg` — the **default** lab's
+    directory — while `clab_target_for('Default', 'r6')` returned
+    `labs/r6/configs`. The map existed and one caller was not using it,
+    **by omission**: both verifiers fell back to `get_setting()` when the
+    caller passed nothing, which is the failure mode a default fallback is
+    built to create. Seventh instance of that class, and the first inside
+    the thing built to prevent it.
+
+    It failed closed only because the file was absent — *the same accident
+    that made the configs-only fix look safe.*
+
+    **This class was deleted once**, by a truncating edit while rewriting
+    the tests below it, and the deletion was caught by these controls
+    passing rather than by `check_removed_definitions.py` — which cannot
+    help, because nothing *calls* a test.
+    """
+
+    @pytest.fixture
+    def r6(self, monkeypatch):
+        from modules.nsot import credential_rotation as cr
+
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {
+                                "clab_host": "user@clab",
+                                "clab_configs_dir": "labs/lab/configs",
+                                "clab_launch_patch":
+                                    "labs/lab/patches/c8000v-launch.py",
+                                "clab_labs": {"r6": {
+                                    "configs_dir": "labs/r6/configs",
+                                    "launch_patch": "labs/r6/patches/"
+                                                    "c8000v-launch-adopted.py"}},
+                            }.get(k, d))
+        monkeypatch.setattr(cr, "_lab_of",
+                            lambda ln, h: "r6" if h == "r6" else "default")
+        return cr
+
+    def _reads(self, cr, monkeypatch):
+        seen = []
+
+        def _spy(clab, command, **kw):
+            seen.append(command)
+            return {"ok": False, "error": "spy"}
+
+        monkeypatch.setattr(cr, "_ssh_read", _spy)
+        return seen
+
+    def test_applies_reads_the_devices_OWN_configs_dir(self, r6, monkeypatch):
+        from modules.nsot.bootstrap_config import VRNETLAB_INJECTS_USER
+
+        seen = self._reads(r6, monkeypatch)
+        r6.verify_startup_applies("r6",
+                                  platform=sorted(VRNETLAB_INJECTS_USER)[0],
+                                  username="admin")
+
+        assert seen, "it read nothing"
+        assert "labs/r6/configs/r6.cfg" in seen[0]
+        assert "labs/lab/configs" not in seen[0], \
+            "it read the default lab's directory for a device in another lab"
+
+    def test_a_default_lab_device_still_reads_the_default(self, r6,
+                                                          monkeypatch):
+        """**The floor.** A resolver that sent everything to r6's lab would
+        satisfy the test above."""
+        from modules.nsot.bootstrap_config import VRNETLAB_INJECTS_USER
+
+        seen = self._reads(r6, monkeypatch)
+        r6.verify_startup_applies("r1",
+                                  platform=sorted(VRNETLAB_INJECTS_USER)[0],
+                                  username="admin")
+
+        assert "labs/lab/configs/r1.cfg" in seen[0]
+
+    def test_startup_file_resolves_the_same_way(self, r6, monkeypatch):
+        calls = []
+
+        class _P:
+            returncode = 0
+            stdout = "0\n"
+            stderr = ""
+
+        def _run(cmd, **kw):
+            calls.append(" ".join(cmd))
+            return _P()
+
+        monkeypatch.setattr("subprocess.run", _run)
+        out = r6.verify_startup_file("r6", "secret 9 $9$x")
+
+        assert "labs/r6/configs/r6.cfg" in calls[0]
+        assert out["lab"] == "r6", "the result does not say which lab"
+
+    def test_neither_verifier_reads_the_settings_directly_any_more(self):
+        """The fallback IS the defect, so it is gone rather than corrected.
+
+        Parsed: both functions' prose names `get_setting`."""
+        import ast
+        import inspect
+        import textwrap
+
+        from modules.nsot import credential_rotation as cr
+
+        for fn in (cr.verify_startup_file, cr.verify_startup_applies):
+            tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+            called = {getattr(n.func, "id", getattr(n.func, "attr", ""))
+                      for n in ast.walk(tree) if isinstance(n, ast.Call)}
+            assert called, f"the parse found no calls in {fn.__name__}"
+            assert "get_setting" not in called, (
+                f"{fn.__name__} reads the settings directly again — a caller "
+                "that omits the target gets the default lab's paths")
+            assert "_resolve_target" in called
+
+    def test_the_check_script_passes_the_list(self):
+        """The caller that was not using the map."""
+        import os
+
+        src = open(os.path.join(ROOT, "scripts",
+                                "nmas-check-startup-applies"),
+                   encoding="utf-8").read()
+        assert "list_name=ref.name" in src

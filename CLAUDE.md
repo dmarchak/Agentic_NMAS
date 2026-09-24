@@ -2201,6 +2201,26 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   could-not-fail control — so the acceptance was met by a check that
   executed. The **stage** inside `persist()` is a separate claim and likely
   has never run, because reaching it needs a real rotation.
+- **A default fallback is how a caller bypasses a resolver by omission.**
+  `verify_startup_file`/`verify_startup_applies` fell back to
+  `get_setting()` when the caller passed nothing, so
+  `nmas-check-startup-applies` read the **default** lab's
+  `labs/lab/configs/r6.cfg` while `clab_target_for()` returned
+  `labs/r6/configs` — the map existed and one caller was not using it,
+  seventh instance of that class and the first **inside the thing built to
+  prevent it**. It failed closed only because the file was absent, *the same
+  accident that made the configs-only fix look safe*. The fix is the
+  **removal** of the fallback: `_resolve_target()` is the one path, and
+  `_lab_of()` with an empty `list_name` **derives the active list** rather
+  than assuming `default`, because the alternative is not a refusal but a
+  wrong answer. Control: a device whose lab differs from the default reads
+  its **own** paths, with a floor that a default-lab device still reads the
+  default.
+- **`check_removed_definitions.py` cannot catch a deleted TEST**, because it
+  exits non-zero when a removed definition is still *called* and nothing
+  calls a test. A truncating edit removed a whole test class and two others;
+  what surfaced it was **two controls passing** that should not have. Run
+  the controls after editing the test file, not only after editing the code.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

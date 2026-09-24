@@ -9,7 +9,7 @@ back on whatever that directory held.
 
     nmas-clab-targets --url http://10.0.0.211:5000
     nmas-clab-targets --url ... --device r6          # one line, or exit 3
-    nmas-clab-targets --url ... --stray ~/labs/lab/configs
+    nmas-clab-targets --url ... --stray labs/lab/configs
 
 ## The failure mode of asking, and the only acceptable answer to it
 
@@ -24,6 +24,12 @@ to stop -- a sync that silently covered eight of ten devices is exactly the
 and the timer unit's failure is the signal that it happened.
 
 ## --stray
+
+**The directory is on the CLAB HOST, and this script runs on the NMAS**, so
+it lists over `ssh` using the host the map carries. The first version called
+`os.listdir` and raised `FileNotFoundError` — the least informative possible
+answer to *"is there litter on the clab host"*, because it names a local
+path that was never going to exist and says nothing about the remote one.
 
 Lists `.cfg` files in a lab directory whose device the map places somewhere
 else. The known case is `labs/lab/configs/r6.cfg`, written by the sync
@@ -44,6 +50,10 @@ import urllib.request
 _UA = "nmas-automation/1.0"
 
 EXIT_OK, EXIT_UNREACHABLE, EXIT_NOT_FOUND = 0, 2, 3
+
+
+class StrayLookupFailed(Exception):
+    """The remote listing did not happen. **Not the same as no litter.**"""
 
 
 def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
@@ -67,8 +77,10 @@ def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
         if not line.strip():
             continue
         parts = line.split("\t")
-        if len(parts) >= 3:
-            rows.append((parts[0], parts[1], parts[2]))
+        if len(parts) >= 4:
+            rows.append((parts[0], parts[1], parts[2], parts[3]))
+        elif len(parts) == 3:                  # an older NMAS, no host column
+            rows.append((parts[0], parts[1], parts[2], ""))
     if problems:
         # Printed, never silently dropped: a device the NMAS could not place
         # is a device nobody should write.
@@ -77,18 +89,51 @@ def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
     return rows
 
 
-def strays(directory: str, rows: list) -> list:
-    """`.cfg` files here whose device the map puts in another lab."""
-    elsewhere = {h: d for h, d, _lab in rows}
-    here = os.path.abspath(os.path.expanduser(directory))
+def remote_listing(clab_host: str, directory: str) -> list:
+    """`.cfg` names in a directory **on the clab host**.
+
+    Raises `StrayLookupFailed` with what it tried, because the question is
+    *"is there litter on the clab host"* and a traceback about a local path
+    answers a different one.
+    """
+    import shlex
+    import subprocess
+
+    if not clab_host:
+        raise StrayLookupFailed(
+            "the map carries no clab host, so there is nothing to list "
+            "against. An older NMAS serves three columns; this needs four.")
+    cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", clab_host,
+           f"ls -1 {shlex.quote(directory)}/*.cfg 2>/dev/null || true"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    except Exception as exc:                   # noqa: BLE001
+        raise StrayLookupFailed(
+            f"could not list {clab_host}:{directory} -- "
+            f"{type(exc).__name__}: {exc}") from exc
+    if proc.returncode != 0:
+        raise StrayLookupFailed(
+            f"could not list {clab_host}:{directory} -- "
+            f"{(proc.stderr or '').strip()[:160] or f'rc={proc.returncode}'}")
+    return [os.path.basename(line.strip())
+            for line in (proc.stdout or "").splitlines() if line.strip()]
+
+
+def strays(directory: str, rows: list, names: list) -> list:
+    """Of *names* in *directory*, those the map places in another lab.
+
+    Pure: the listing is passed in, so the comparison is testable without a
+    clab host and the ssh failure is reported by its own function.
+    """
+    elsewhere = {h: d for h, d, _lab, _host in rows}
+    here = directory.rstrip("/")
     out = []
-    for name in sorted(os.listdir(here)):
+    for name in sorted(names):
         if not name.endswith(".cfg"):
             continue
-        host = name[:-4]
-        want = elsewhere.get(host)
-        if want and os.path.abspath(os.path.expanduser(want)) != here:
-            out.append((os.path.join(here, name), want))
+        want = elsewhere.get(name[:-4])
+        if want and want.rstrip("/") != here:
+            out.append((f"{here}/{name}", want))
     return out
 
 
@@ -119,12 +164,24 @@ def main() -> int:
         return EXIT_UNREACHABLE
 
     if args.stray:
-        found = strays(args.stray, rows)
+        host = next((h for _n, _d, _l, h in rows if h), "")
+        try:
+            names = remote_listing(host, args.stray)
+        except StrayLookupFailed as exc:
+            # UNPROVEN, not clean. "I could not look" and "there is nothing
+            # there" are the two answers this must never confuse.
+            print(f"REFUSED — {exc}", file=sys.stderr)
+            print("This is not the same as finding no litter.",
+                  file=sys.stderr)
+            return EXIT_UNREACHABLE
+        found = strays(args.stray, rows, names)
         if not found:
-            print(f"no stray configs in {args.stray} "
-                  f"(checked against {len(rows)} mapped device(s))")
+            print(f"no stray configs in {host}:{args.stray} "
+                  f"({len(names)} .cfg file(s) checked against "
+                  f"{len(rows)} mapped device(s))")
             return EXIT_OK
-        print(f"{len(found)} file(s) in {args.stray} belong to another lab:")
+        print(f"{len(found)} file(s) in {host}:{args.stray} belong to "
+              "another lab:")
         for path, want in found:
             print(f"  {path}   -> belongs in {want}")
         return EXIT_NOT_FOUND
@@ -137,7 +194,7 @@ def main() -> int:
         print(f"no target for {args.device!r} in the map", file=sys.stderr)
         return EXIT_NOT_FOUND
 
-    for host, cfg, lab in rows:
+    for host, cfg, lab, _h in rows:
         print(f"{host}\t{cfg}\t{lab}")
     return EXIT_OK
 

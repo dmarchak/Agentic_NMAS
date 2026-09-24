@@ -51,8 +51,14 @@ def check_one(list_name: str, hostname: str) -> dict:
                 "error": f"no platform recorded for {hostname}; the check is "
                          f"platform-specific and cannot guess"}
 
+    # `list_name`, so the lab resolves through `clab_target_for()`. Without
+    # it this read `labs/lab/configs/r6.cfg` -- the DEFAULT lab's directory
+    # -- for a device the map places in `labs/r6/configs`, and failed closed
+    # only because the file was absent. The map existed and this caller was
+    # not using it, by omission.
     out = cr.verify_startup_applies(hostname, platform=platform,
-                                    username=row.get("username", "admin"))
+                                    username=row.get("username", "admin"),
+                                    list_name=ref.name)
     out["platform"] = platform
     return out
 

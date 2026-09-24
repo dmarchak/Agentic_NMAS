@@ -1930,9 +1930,23 @@ def clab_target_for(list_name: str, hostname: str) -> dict:
 
 
 def _lab_of(list_name: str, hostname: str) -> str:
-    """The manifest's `clab_lab` for this device, or the default lab."""
+    """The manifest's `clab_lab` for this device, or the default lab.
+
+    **An empty `list_name` derives the active list rather than assuming the
+    default lab.** A read may derive it; the alternative here is not a
+    refusal but a *wrong answer* — a caller that dropped the list would
+    resolve every device to `default`, which is the silent partial
+    resolution this map exists to remove.
+    """
     try:
         import os
+
+        if not list_name:
+            from modules.device import get_current_device_list
+
+            list_name = get_current_device_list()[0]
+            log.debug("clab lab lookup derived the active list %r for %r",
+                      list_name, hostname)
 
         from modules.config import get_list_data_dir
         from modules.nsot import manifest as _manifest
@@ -1972,6 +1986,7 @@ def sync_targets(list_name: str) -> dict:
             continue
         target = clab_target_for(list_name, name)
         row = {"hostname": name, "lab": target["lab"],
+               "host": target["host"],
                "configs_dir": target["configs_dir"],
                "launch_patch": target["launch_patch"]}
         # A device whose lab is named and undescribed is REPORTED, never
@@ -2007,8 +2022,36 @@ def run_sync(script: str = "") -> dict:
             "tail": (proc.stdout or "")[-400:]}
 
 
+def _resolve_target(list_name: str, hostname: str, clab: str,
+                    remote_dir: str, launch_patch: str) -> dict:
+    """The lab paths for this check — **always through `clab_target_for()`**.
+
+    Both verifiers used to fall back to `get_setting()` when the caller
+    passed nothing, which is how `nmas-check-startup-applies` came to read
+    `labs/lab/configs/r6.cfg` while `clab_target_for('Default', 'r6')`
+    returned `labs/r6/configs`. The map existed and one caller was not using
+    it -- **by omission**, which is the failure mode a default fallback is
+    built to create.
+
+    So the settings are no longer read here. They are read by
+    `clab_target_for()`, once, as the definition of the lab named
+    `default` -- and a caller that passes nothing gets that lab **only if
+    the device is in it**.
+
+    An explicit value still wins, per argument, so `persist()` can pass a
+    target it has already resolved.
+    """
+    target = clab_target_for(list_name, hostname)
+    return {
+        "host":         clab or target["host"],
+        "configs_dir":  remote_dir or target["configs_dir"],
+        "launch_patch": launch_patch or target["launch_patch"],
+        "lab":          target["lab"],
+    }
+
+
 def verify_startup_file(hostname: str, new_hash: str, *, clab: str = "",
-                        remote_dir: str = "") -> dict:
+                        remote_dir: str = "", list_name: str = "") -> dict:
     """Does the file that BOOTS the node contain the new hash?
 
     Reads the clab VM, not the NMAS's local staging copy. Checking the local
@@ -2019,10 +2062,15 @@ def verify_startup_file(hostname: str, new_hash: str, *, clab: str = "",
 
     from modules.settings_schema import get_setting
 
-    clab = clab or get_setting("clab_host", "")
-    remote_dir = remote_dir or get_setting("clab_configs_dir", "labs/lab/configs")
+    target = _resolve_target(list_name, hostname, clab, remote_dir, "")
+    clab, remote_dir = target["host"], target["configs_dir"]
     if not clab:
         return {"ok": False, "error": "clab_host is not configured"}
+    if not remote_dir:
+        return {"ok": False, "error": (
+            f"lab {target['lab']!r} names no configs_dir for {hostname}, so "
+            "there is nowhere to look. Refusing rather than reading the "
+            "default lab's directory.")}
     token = new_hash.split()[-1] if new_hash else ""
     if not token:
         return {"ok": False, "error": "no hash to look for"}
@@ -2038,7 +2086,8 @@ def verify_startup_file(hostname: str, new_hash: str, *, clab: str = "",
         found = int(count[0])
     except ValueError:
         found = 0
-    return {"ok": found > 0, "matches": found, "file": f"{clab}:{remote}"}
+    return {"ok": found > 0, "matches": found, "file": f"{clab}:{remote}",
+            "lab": target["lab"]}
 
 
 def _ssh_read(clab: str, command: str, *, timeout: int = 60) -> dict:
@@ -2058,7 +2107,7 @@ def _ssh_read(clab: str, command: str, *, timeout: int = 60) -> dict:
 
 def verify_startup_applies(hostname: str, *, platform: str, username: str,
                            clab: str = "", remote_dir: str = "",
-                           launch_patch: str = "") -> dict:
+                           launch_patch: str = "", list_name: str = "") -> dict:
     """Will the startup file put the device in the state it describes?
 
     The check :func:`verify_startup_file` should always have been. That one
@@ -2094,12 +2143,23 @@ def verify_startup_applies(hostname: str, *, platform: str, username: str,
                            f"{platform or 'this platform'}; the file's own "
                            f"username line is the only one")}
 
-    clab = clab or get_setting("clab_host", "")
-    remote_dir = remote_dir or get_setting("clab_configs_dir", "labs/lab/configs")
-    launch_patch = launch_patch or get_setting(
-        "clab_launch_patch", "labs/lab/patches/c8000v-launch.py")
+    target = _resolve_target(list_name, hostname, clab, remote_dir,
+                             launch_patch)
+    clab = target["host"]
+    remote_dir, launch_patch = target["configs_dir"], target["launch_patch"]
     if not clab:
         return {"ok": False, "error": "clab_host is not configured"}
+    missing = [n for n, v in (("configs_dir", remote_dir),
+                              ("launch_patch", launch_patch)) if not v]
+    if missing:
+        # The dangerous combination, refused rather than half-resolved: a
+        # launch patch from another lab would be read, found to carry the
+        # user-skip, and this would pass about a file that is not the one
+        # booting this device.
+        return {"ok": False, "lab": target["lab"], "error": (
+            f"lab {target['lab']!r} names no {' and no '.join(missing)} for "
+            f"{hostname}. Refusing rather than falling back to the default "
+            "lab's paths.")}
 
     import shlex
 
