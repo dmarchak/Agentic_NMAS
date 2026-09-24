@@ -853,6 +853,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_deploy_batch.py` | drift skip, breaker, every device accounted for |
 | `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
 | `test_oxidized_freshness.py` | the raw config is the artefact; the gate can reach its own finding; an authorisation covers one divergence; only exit 1 is drift |
+| `test_credential_never_changes_on_deploy.py` | a deploy adds an account and never changes one; the refusal names the form, never the value |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -2563,6 +2564,62 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `ROTATED_PENDING_PERSIST`, so onboarding's phase 2 never enters the chain),
   and **a rotation leaves no durable record** — no audit file, no run log,
   nothing in `data/`. Recorded as a gap rather than guessed at.
+- **A deploy may ADD an account; it may never CHANGE one.**
+  `deploy.assert_credentials_unchanged()` compares every credential-bearing
+  line in the **truthful** render against the same line in the capture, byte
+  for byte, keyed on the account. A type-9 secret carries a per-hash salt and
+  **cannot be regenerated**, so committed intent naming a ref whose stored
+  value is not byte-identical to what the device holds renders a *different*
+  credential — and every other guard passes it: not a mask, printable ASCII,
+  present in the intended config, not a dangerous command. The push succeeds,
+  the device changes password, and the tool keeps the old one. **A lockout
+  dressed as a configuration change**, which is the worst failure available
+  on that path. Deliberate rotation has its own path, which rotates and
+  records atomically, so nothing legitimate changes a credential through a
+  deploy and this **refuses** rather than warns. Three cases and only one
+  refuses: differing → refuse; absent from the render → not its business
+  (merge-only never removes); new in the render → additive and cannot lock
+  anyone out. Ordered **after** `assert_no_mask()` (the masked render differs
+  from the capture by construction and would refuse everything) and **before**
+  anything connects. The capture's lines ride **on the artifact**, never as a
+  parameter — an optional argument is how a caller bypasses a guard by
+  omission. The refusal names the **form** and never the value
+  (`secret 9 <value>`): a guard against a credential must not become a second
+  place the credential lives.
+- **Merge-only is a capability limit on what can be PLANNED, not only on
+  what gets sent.** Scoping r6's branch site, the cheap option turned on
+  removing `passive-interface Vlan99` from s3 — and `assert_merge_only()`
+  requires every pushed command to appear verbatim in the intended config, so
+  a line the render omits and the device holds is a removal warning that
+  sends nothing. **The option chosen to prove the tool can author
+  configuration contained a change the tool cannot author.** The escape does
+  not work either: authoring `no passive-interface Vlan99` passes the guard
+  (provenance, correctly, not a grep for `no`), but `passive-interface` is a
+  non-default setting, so negating it leaves the running config showing
+  **neither** line — the intent would permanently name a line the device can
+  never echo, every plan would re-propose it, and the device would be
+  permanently drifted. A one-off refusal traded for a standing lie in the
+  repository. **Ask what a proposed change REMOVES before costing it.**
+- **A router with one link in the routing domain cannot be a transit path,
+  and that is structural rather than a matter of cost.** Raised against
+  putting r6 on the management segment: would s3 prefer a path through the
+  device the tool just configured, on the wire the manager reaches every
+  device over? No — for SPF to route through r6 it needs a second link, and
+  its only other interface is in a VRF and therefore not in the process. No
+  metric makes a leaf of the shortest-path tree a transit path. The
+  distinction worth keeping is that an adjacency **does** reclassify the
+  segment from stub to transit **in the LSDB**, which is inherent and
+  unavoidable — and inert, because no packet changes path. *Transit in the
+  database is not transit in the forwarding table.*
+- **The fleet's own config was the answer, and reading it beat designing
+  one.** s3 already carries `ip route 10.255.1.10 255.255.255.255
+  10.255.0.10` with `redistribute static subnets` — a static /32 to an
+  address on the management segment, redistributed into area 0, in production
+  and working. So the fleet's existing answer to *"how does something on that
+  segment get a routed /32"* is a static route, **not an adjacency**: one
+  added line, `static_routes` is a modelled host_vars field, it round-trips,
+  and it leaves the segment a stub network. The option that survived pricing
+  was already deployed on the device being asked to change.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

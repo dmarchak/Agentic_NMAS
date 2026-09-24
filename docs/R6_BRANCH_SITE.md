@@ -146,19 +146,137 @@ that already carries the traffic — but it is a change to the path every other
 change travels over, and it should be deployed **alone**, with r6 already
 done, never bundled.
 
+### C, priced — and it does not survive the pricing
+
+Three questions were put to option C before step 1. The answers are below,
+and the third one ends it.
+
+#### What r6 advertises, and whether s3 could prefer a path through it
+
+Two things, and only two: its `Loopback0` as a stub host route
+`10.255.1.16/32`, and its connected `10.255.0.0/24` — **which s3 already
+advertises**, because `passive-interface` suppresses hellos and not the
+prefix.
+
+**s3 cannot prefer a path through r6 to anything, and that is structural
+rather than a matter of cost.** For SPF to route through r6, r6 would need a
+second link to somewhere. It has one: `Gi1` is in the `clab-mgmt` VRF and
+therefore not in the global OSPF process at all, and `Loopback0` is passive.
+A router with one link in the domain is a leaf of the shortest-path tree, and
+no cost, tuning or metric can make a leaf a transit path.
+
+So the specific fear — *the NMAS's route to the fleet goes through the device
+the tool just configured* — **does not arise.** The NMAS is not an OSPF
+speaker; it reaches the fleet through its gateway `10.255.0.1`, which is
+s3's own SVI, and s3 reaches r1–r5 over `Vlan100` exactly as it does today.
+
+#### The blast radius of a bad r6 deploy
+
+**Bounded to r6, even under C.** r6 has no protocol relationship that can
+propagate a mistake: no redistribution, no default origination, no second
+area, no summarisation, and one interface. The worst credible outcomes are an
+adjacency that fails to form (MTU or timers) and a `10.255.1.16/32` that
+nobody learns. Neither touches the management plane.
+
+**The dangerous half was never r6. It is the change to s3** — one line, on
+the device that is the manager's only gateway to every other device.
+
+#### Is there an adjacency without transit? Yes and no, and neither matters
+
+* **In the link-state database**, no: two adjacent routers reclassify the
+  segment from a stub network to a transit network in the Router-LSA. That is
+  inherent to the adjacency and no cost or filter avoids it.
+* **In forwarding**, it was never possible, per the first answer.
+
+So the distinction the question reaches for is real but inert here: the LSDB
+changes shape and no packet changes path. `ip ospf priority 0` on r6's `Gi2`
+is worth having anyway — it keeps r6 out of the DR election, and it is the
+fleet's existing idiom (`s3`/`s4` both carry it on `Vlan100`) — but it is
+hardening, not the answer.
+
+#### The answer that ends option C: **this tool cannot make s3's change**
+
+`passive-interface Vlan99` has to be **removed**, and the deploy path is
+merge-only. `assert_merge_only()` requires every pushed command to appear
+verbatim in the intended config; a line the render omits and the device holds
+is a **removal warning**, never a negation. Mode B removals are not built.
+
+So C's s3 half reaches step 5, produces a removal warning, and sends nothing.
+**The option chosen to prove that the tool can author configuration contains
+a change the tool cannot author.**
+
+The obvious escape does not work either. Authoring `no passive-interface
+Vlan99` into s3's OSPF settings *would* pass `assert_merge_only` — it is in
+the intended config, and the guard checks provenance rather than grepping for
+`no`, correctly. But `passive-interface` is a non-default setting: negating it
+returns the device to default, and the running config then shows **neither**
+line. The intent would permanently name a line the device can never echo, so
+every future plan re-proposes it and the device is permanently drifted. That
+trades a one-off refusal for a standing lie in the repository.
+
+**C is out on capability grounds, not on risk grounds** — which is a better
+outcome than the risk trade, because it would otherwise have been discovered
+at the preview with the change half-made.
+
+### C′ — the option the fleet already uses, and s3 proves it
+
+Reading s3's `static_routes` turned up this, which changes the recommendation:
+
+```
+ip route 10.255.1.10 255.255.255.255 10.255.0.10
+```
+
+s3 **already** carries a static /32 pointing at an address on `Vlan99` — the
+NMAS's own `dummy0` identity — and `redistribute static subnets` is already in
+its OSPF process. **The fleet's existing answer to "how does something on the
+management segment get a routed /32 into area 0" is a static route plus
+redistribution, not an adjacency**, and it is in production and working.
+
+So:
+
+| device | change | properties |
+|---|---|---|
+| **s3** | `+ ip route 10.255.1.16 255.255.255.255 10.255.0.32` | **one added line**, `static_routes` is a modelled host_vars field, merge-only compatible, round-trips cleanly, identical in form to a line s3 already has |
+| **r6** | `Loopback0 10.255.1.16/32`, `+ ip route 10.255.0.0 255.255.0.0 10.255.0.1` | no OSPF process at all |
+
+What that buys, against every objection raised:
+
+* **`Vlan99` stays a stub network.** No adjacency, no DR election, no LSDB
+  reshaping, no hellos on the wire the manager depends on.
+* **Nothing is removed**, so the tool can author the whole of it.
+* **Blast radius of the s3 change is one /32.** If it is wrong,
+  `10.255.1.16` is unreachable and nothing else moves — against C, where the
+  change alters how a routing protocol behaves on the management segment.
+* **Step 7's acceptance survives intact**: r1 learns `10.255.1.16`, nobody
+  touched r1. It arrives as an OSPF **external** (E2) rather than an
+  intra-area route, which is if anything a sharper test — it proves the
+  redistribution path end to end.
+* A `/16` static on r6 rather than a default route, because r6 is not a
+  default gateway for anything and a `0.0.0.0/0` would claim it is.
+
+**It proves exactly the same thing about the tool.** Both devices' changes are
+authored by hand, committed to git, rendered by an approved template,
+previewed as an exact command list, confirmed, sent and verified. Only the
+*networking* is simpler, and the simplification is in the direction of not
+performing a first-ever exercise on the one wire that must survive it.
+
 ### Recommendation
 
-**C now, B when a redeploy is next scheduled anyway.**
+**C′ now, B when a redeploy is next scheduled anyway. C is withdrawn.**
 
-C proves the deliverable this week at near-zero risk and with no outage. B is
-the right topology and should ride along with the next `rcn-lab1` redeploy
-rather than causing one — an eleven-minute outage of nine devices to give the
-tenth a more honest-looking link is a poor trade when the claim under test is
-about the software.
+C was chosen as the cheap proof and priced out: its s3 half is a *removal*,
+and the deploy path is merge-only, so the tool cannot author it. C′ replaces
+it with the mechanism s3 already uses for this exact problem — a static /32
+redistributed into area 0 — which is additive, modelled, and leaves the
+management segment a stub network with no adjacency on it.
 
-If the answer is *"the branch site has to be a real branch site"*, then it is
-**B**, and §3's order changes as marked. **This is the operator's call and
-the plan is written so either answer is one step, not a rewrite.**
+B remains the right **topology** and should ride along with the next
+`rcn-lab1` redeploy rather than causing one: an outage of nine devices to give
+the tenth a more honest-looking link is a poor trade while the claim under
+test is about the software.
+
+If the answer is *"the branch site has to be a real branch site now"*, it is
+**B**, and §3's order changes as marked.
 
 ---
 
@@ -212,10 +330,11 @@ deployable artifact before a single edit.
 | | value | note |
 |---|---|---|
 | `Loopback0` | `10.255.1.16 255.255.255.255` | the address `R6_PHASE1.md` §0d reserved for exactly this |
-| uplink (**C**) | OSPF on the existing `Gi2`, `10.255.0.32/24` | no new interface |
+| uplink (**C′**) | the existing `Gi2`, `10.255.0.32/24`, **no OSPF** | no new interface, no adjacency |
 | uplink (**B**) | new NIC, `10.255.3.26 255.255.255.0` in VLAN 100 | replaces the line above |
-| routing | `router ospf 1`, `router-id 10.255.1.16`, `passive-interface Loopback0`, `network 10.255.0.0 0.0.255.255 area 0` | the same one-line network statement every other device uses |
-| s3 (**C** only) | remove `passive-interface Vlan99` | one line, deployed separately |
+| routing (**C′**) | none on r6; `ip route 10.255.0.0 255.255.0.0 10.255.0.1` | r6 speaks no routing protocol |
+| routing (**B**) | `router ospf 1`, `router-id 10.255.1.16`, `passive-interface Loopback0`, `network 10.255.0.0 0.0.255.255 area 0` | the same one-line network statement every other device uses |
+| s3 (**C′** only) | `+ ip route 10.255.1.16 255.255.255.255 10.255.0.32` | one **added** line, deployed separately |
 | s4 (**B** only) | `Gi0/1`: description, `switchport mode access`, `switchport access vlan 100` | three lines |
 
 Deliberately **not** in it: no static routes, no NAT, no ACLs, no second
@@ -234,6 +353,26 @@ during the first run of a path that has never run.
    phase 2's rotation; the intent must **reference the stored hash**, or the
    render emits a different secret and the deploy changes the credential NMAS
    holds — a lockout dressed as a branch site.
+
+   **This now has a control, and it runs before the preview is shown.**
+   `deploy.assert_credentials_unchanged()` compares every credential-bearing
+   line in the truthful render against the same line in the capture, **byte
+   for byte**, keyed on the account. A deploy may *add* an account and may
+   never *change* one — deliberate credential change has its own path, which
+   rotates and records atomically, so nothing legitimate changes a credential
+   through a deploy and this refuses rather than warns.
+
+   It lives in `prepare_device()`, **after** `assert_no_mask()` (the masked
+   render differs from the capture by construction and would refuse
+   everything) and **before** anything connects. The capture's credential
+   lines are carried **on the artifact**, not passed as an argument, because
+   an optional argument is how a caller bypasses a guard by omission — twice
+   measured in this project. And the refusal **names the form and never the
+   value**: `secret 9 <value>`, because a guard against a credential must not
+   become a second place the credential lives.
+
+   `tests/test_credential_never_changes_on_deploy.py`, 18 tests, four
+   negative controls.
 3. **ASCII only**, `assert_printable()` at commit and `assert_sendable()`
    before the socket. No em dash in a description. This has bitten twice.
 
@@ -256,9 +395,10 @@ during the first run of a path that has never run.
 | 9 | **Persistence**: run the sync. **Predict a `poll_race`** on r6 — the golden is newer than Oxidized's copy until it polls — which does **not** block, by design. Re-run after the next poll and require `match`. | the first time the freshness gate meets a device that legitimately just changed; if it *blocks*, that is a finding |
 | 10 | **`nmas-check-startup-applies r6` → SAFE**, and `nmas-check-credential r6 --expect accepted`. | the branch config is only durable once it is in the startup file |
 
-**Option C inserts one step** between 8 and 9: deploy s3's single-line change
-**alone**, through the same path, and re-verify. Alone because s3's `Vlan99`
-is the segment every other change travels over.
+**Option C′ inserts one step** between 8 and 9: deploy s3's single added
+static route **alone**, through the same path, and re-verify. Alone because
+s3 is the manager's only gateway to every other device — the blast radius is
+one /32, and it is still the device on which a mistake is least convenient.
 
 ### Option B only — the redeploy, and the checklist that applies
 

@@ -70,11 +70,61 @@ def assert_deployable(artifact) -> None:
             + "; ".join(artifact.blocking_reasons))
 
 
+def assert_credentials_unchanged(rendered: str, artifact) -> None:
+    """A deploy may ADD an account; it may never CHANGE one.
+
+    **The worst failure available on this path is a lockout dressed as a
+    configuration change.** A type-9 secret carries a per-hash salt and cannot
+    be regenerated, so if committed intent names a secret ref whose stored
+    value is not byte-identical to the one the device already holds, the render
+    is a *different* credential — and the deploy pushes it, successfully,
+    while the tool keeps the old one. Every other guard passes: it is not a
+    mask, it is printable ASCII, it is in the intended config, and it is not a
+    dangerous command.
+
+    Deliberate credential change has its own path (`credential_rotation`),
+    which rotates and records atomically. **Nothing legitimate changes a
+    credential through a deploy**, so this refuses rather than warns.
+
+    Three cases, and only one refuses:
+
+    * in the capture and in the render, **differing** -> refuse;
+    * in the capture, absent from the render -> not this guard's business:
+      merge-only never removes a line;
+    * in the render, absent from the capture -> a new account. Additive, and
+      it cannot lock anyone out of an account they already use.
+
+    **The refusal names the form and never the value** -- a guard against a
+    credential leaking a credential is the trail that copies the secret it
+    records.
+    """
+    from modules.nsot.render_artifact import (CredentialWouldChange,
+                                              credential_form,
+                                              credential_lines)
+
+    held = getattr(artifact, "capture_credentials", None) or {}
+    proposed = credential_lines(rendered)
+    changed = [key for key, line in held.items()
+               if key in proposed and proposed[key] != line]
+    if not changed:
+        return
+    detail = "; ".join(
+        f"{key}: device has {credential_form(held[key])!r}, "
+        f"this deploy would send {credential_form(proposed[key])!r}"
+        for key in sorted(changed))
+    raise CredentialWouldChange(
+        f"refusing to deploy to {getattr(artifact, 'device', '?')}: it would "
+        f"rewrite {len(changed)} credential(s) the device already holds -- "
+        f"{detail}. A type-9 secret cannot be regenerated, so this is a "
+        "lockout, not a configuration change. Rotate credentials through "
+        "the rotation path, which records what it changed.")
+
+
 def prepare_device(artifact, template_root: str = None) -> dict:
     """Produce the deploy-ready config for one device.
 
     Order matters and is asserted by tests: refuse → render with real secrets →
-    mask check → only then may a caller open a socket.
+    mask check → **credential check** → only then may a caller open a socket.
     """
     assert_deployable(artifact)
 
@@ -89,6 +139,12 @@ def prepare_device(artifact, template_root: str = None) -> dict:
     # The backstop. If a secret failed to resolve, the renderer emits a
     # placeholder and this catches it before it reaches a device.
     assert_no_mask(config, context="deploy")
+
+    # AFTER the mask check, because it compares real values: the masked render
+    # differs from the capture by construction and would refuse everything.
+    # BEFORE anything connects, and before a preview is shown -- the operator
+    # must not be asked to confirm a program that would change a credential.
+    assert_credentials_unchanged(config, artifact)
 
     return {"device": artifact.device, "platform": artifact.platform,
             "config": config, "template": artifact.template}

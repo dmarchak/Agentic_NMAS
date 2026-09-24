@@ -23,6 +23,7 @@ mask string to a device is the failure mode this guards against, so
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
@@ -62,6 +63,55 @@ def assert_no_mask(text: str, context: str = "deploy") -> None:
 # ---------------------------------------------------------------------------
 # Unmodelled acknowledgement (the recorded escape hatch)
 # ---------------------------------------------------------------------------
+
+#: A credential-bearing top-level line, keyed by WHOSE credential it is.
+#: `username <name>` and `enable secret|password` are the two that can lock
+#: this tool out of a device it manages.
+_CREDENTIAL_LINE = re.compile(
+    r"^(?:username\s+(?P<user>\S+)\s+.*?\b(?:secret|password)\b"
+    r"|enable\s+(?:secret|password)\b)")
+
+
+def credential_lines(config_text: str) -> dict:
+    """``{key: the exact line}`` for every credential-bearing top-level line.
+
+    Keyed on the **account**, not the position, so a reordered config compares
+    correctly and a line for a different user is never mistaken for a change
+    to this one.
+    """
+    found = {}
+    for line in (config_text or "").splitlines():
+        if line[:1].isspace():
+            continue
+        match = _CREDENTIAL_LINE.match(line)
+        if not match:
+            continue
+        user = match.group("user")
+        found[f"username:{user}" if user else "enable"] = line.rstrip()
+    return found
+
+
+def credential_form(line: str) -> str:
+    """The line with its VALUE dropped — safe to print in a refusal.
+
+    A guard against a credential change must not quote the credential. The
+    keyword is the diagnostic anyway: `secret 9` becoming `secret 0` is the
+    whole finding, and the digits after it are not.
+    """
+    parts = (line or "").split()
+    for index, word in enumerate(parts):
+        if word in ("secret", "password") and index + 1 < len(parts):
+            # `secret 9 $9$...` -> keep the type digit, drop the hash.
+            keep = parts[:index + 2]
+            if len(keep) > index + 1 and not keep[index + 1].isdigit():
+                keep = parts[:index + 1]
+            return " ".join(keep) + " <value>"
+    return " ".join(parts[:3]) + " …"
+
+
+class CredentialWouldChange(RuntimeError):
+    """A deploy would rewrite a credential the device already holds."""
+
 
 def unmodeled_lines(host_vars: dict) -> list:
     """Every line the parser did not model, device-wide, in a stable order."""
@@ -144,6 +194,13 @@ class RenderArtifact:
     #: Measured here so ``deployable`` subsumes sendability — one answer to
     #: "can this go out", not two that disagree.
     unsendable: tuple = field(default_factory=tuple)
+
+    #: ``{key: line}`` for every credential-bearing line in the **capture**.
+    #: Carried on the artifact rather than passed to `prepare_device()`,
+    #: because an optional argument is how a caller bypasses a guard by
+    #: omission -- measured twice in this project already. `build_artifact()`
+    #: already receives the capture, so there is no call that can lack it.
+    capture_credentials: dict = field(default_factory=dict)
 
     # ── the gate ────────────────────────────────────────────────────────────
 
@@ -372,6 +429,7 @@ def build_artifact(device: str, running_config: str, platform: str,
         template_root=template_root or "",
         unsendable=unsendable,
         rolled_back=rolled_back,
+        capture_credentials=credential_lines(running_config),
     )
 
 
