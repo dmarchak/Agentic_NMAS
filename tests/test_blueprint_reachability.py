@@ -19,6 +19,8 @@ import re
 
 import pytest
 
+from tests.js_source import with_loaded_scripts
+
 #: Blueprints with no route referenced by the rendered page, and why that is
 #: tolerated for now. **Entries must leave as they are built**, exactly like
 #: `KNOWN_DEAD` in `test_no_unreachable_ui.py` — an allowlist that only grows
@@ -42,7 +44,7 @@ GUI_BLUEPRINTS = ("templatize", "templates", "deploy", "golden", "remote",
 def rendered():
     import app as nmas
 
-    return nmas.app.test_client().get("/").get_data(as_text=True)
+    return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
 
 def _routes_by_blueprint():

@@ -28,6 +28,8 @@ import os
 
 import pytest
 
+from tests.js_source import read_shipped
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -146,7 +148,7 @@ class TestTheFakeNetBoxCannotExhibitIt:
         claim has to come through this test.
         """
         path = os.path.join(ROOT, "tests", "test_netbox_preview_fidelity.py")
-        src = open(path, encoding="utf-8").read()
+        src = read_shipped(path)
         assert "FakeNetBox" in src, "the scan is not reading the file"
         assert "preview" in src.lower()
         assert "cascade" not in src.lower(), (
@@ -345,7 +347,7 @@ class TestTheOperatorCanSEEIt:
         escaper it calls."""
         path = os.path.join(ROOT, "templates", "partials",
                             "netbox_safety_modal.html")
-        page = open(path, encoding="utf-8").read()
+        page = read_shipped(path)
         out = []
         for name in ("_nbEscape", "nbCascadeHtml"):
             start = page.index(f"function {name}(")
@@ -430,7 +432,7 @@ class TestTheOperatorCanSEEIt:
         """
         path = os.path.join(ROOT, "templates", "partials",
                             "netbox_safety_modal.html")
-        page = open(path, encoding="utf-8").read()
+        page = read_shipped(path)
 
         defs = page.count("function nbCascadeHtml(")
         calls = page.count("nbCascadeHtml(") - defs

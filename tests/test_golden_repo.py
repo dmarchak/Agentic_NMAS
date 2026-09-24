@@ -15,6 +15,8 @@ import pytest
 from modules.nsot import manifest as M
 from modules.nsot import repo as R
 
+from tests.js_source import read_shipped
+
 pytestmark = pytest.mark.skipif(
     subprocess.run(["git", "--version"], capture_output=True).returncode != 0,
     reason="git is not available",
@@ -101,21 +103,21 @@ class TestOneCallOneCommit:
 class TestFileContent:
     def test_one_stable_header_line(self, lab):
         _seed("Lab", [_item()])
-        content = open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read()
+        content = read_shipped(os.path.join(lab, "golden", "R1.cfg"))
         assert content.startswith("! Golden config — R1 (203.0.113.1)")
 
     def test_no_saved_or_source_headers(self, lab):
         """They created a diff on every save even when nothing changed."""
         _seed("Lab", [_item()])
-        content = open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read()
+        content = read_shipped(os.path.join(lab, "golden", "R1.cfg"))
         assert "! Saved:" not in content
         assert "! Source:" not in content
 
     def test_identical_config_produces_identical_file(self, lab):
         _seed("Lab", [_item()])
-        first = open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read()
+        first = read_shipped(os.path.join(lab, "golden", "R1.cfg"))
         _seed("Lab", [_item()])
-        assert open(os.path.join(lab, "golden", "R1.cfg"), encoding="utf-8").read() == first
+        assert read_shipped(os.path.join(lab, "golden", "R1.cfg")) == first
 
 
 class TestTrailersAndTags:
@@ -791,10 +793,10 @@ class TestSaveGoldenRefusesToLoseSections:
     def test_the_refusal_leaves_the_golden_intact(self, lab):
         self._save(lab, self.FULL)
         path = os.path.join(lab, "golden", "r1.cfg")
-        before = open(path, encoding="utf-8").read()
+        before = read_shipped(path)
 
         self._save(lab, self.FILTERED)
-        assert open(path, encoding="utf-8").read() == before
+        assert read_shipped(path) == before
 
     def test_a_genuine_structural_change_is_accepted_with_acknowledgement(
             self, lab):
@@ -863,8 +865,7 @@ class TestSaveGoldenRefusesToLoseSections:
                            source="manual", actor="test",
                            allow_new=True)["ok"] is True
 
-        before = {h: open(os.path.join(lab, "golden", f"{h}.cfg"),
-                          encoding="utf-8").read() for h in ("r1", "r9")}
+        before = {h: read_shipped(os.path.join(lab, "golden", f"{h}.cfg")) for h in ("r1", "r9")}
 
         # r1 grows (fine); r9 is a filtered capture (refused). r1 must not be
         # written, because the commit as a whole does not happen.
@@ -878,8 +879,7 @@ class TestSaveGoldenRefusesToLoseSections:
         assert out["ok"] is False
         assert "r9" in out["error"]
         for host, text in before.items():
-            assert open(os.path.join(lab, "golden", f"{host}.cfg"),
-                        encoding="utf-8").read() == text, f"{host} was rewritten"
+            assert read_shipped(os.path.join(lab, "golden", f"{host}.cfg")) == text, f"{host} was rewritten"
 
     def test_the_guard_counts_every_kind_it_claims_to(self):
         from modules.nsot.repo import section_counts

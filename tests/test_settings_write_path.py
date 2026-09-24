@@ -27,6 +27,8 @@ import json
 
 import pytest
 
+from tests.js_source import read_shipped, with_loaded_scripts
+
 
 @pytest.fixture
 def store(monkeypatch):
@@ -269,7 +271,7 @@ class TestTheRatifyRouteRequiresAPerson:
 
         import app as nmas
 
-        page = nmas.app.test_client().get("/").get_data(as_text=True)
+        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         flat = re.sub(r"\s+", " ", page)
         assert "/identity/posture/ratify" in flat
         assert page.count("ratifySetting") >= 2
@@ -293,10 +295,13 @@ class TestEverySchemaKeyHasADecision:
         import os
 
         parts = []
-        for base in ("templates", "docs"):
+        # `static/js/gen` too: Stage 7 0b moved the script that
+        # names these keys out of the templates, and a scan of
+        # templates alone would report every one as unsurfaced.
+        for base in ("templates", "docs", "static/js/gen"):
             for root, _d, files in os.walk(base):
                 for f in files:
-                    if f.endswith((".html", ".md")):
+                    if f.endswith((".html", ".md", ".js")):
                         parts.append(io.open(os.path.join(root, f),
                                              encoding="utf-8",
                                              errors="replace").read())
@@ -324,7 +329,7 @@ class TestEverySchemaKeyHasADecision:
     def test_the_settings_doc_exists_and_names_the_write_path(self):
         import io
 
-        text = io.open("docs/SETTINGS.md", encoding="utf-8").read()
+        text = read_shipped("docs/SETTINGS.md")
         assert "write_settings()" in text
         assert "never seeds a default" in text
 
@@ -343,7 +348,7 @@ class TestBackgroundAgentHasAControl:
     def page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_the_form_has_the_switch(self, page):
         assert "settingsBackgroundAgentEnabled" in page
@@ -370,7 +375,7 @@ class TestBackgroundAgentHasAControl:
     def test_the_difference_is_written_down(self):
         import io
 
-        text = io.open("docs/SETTINGS.md", encoding="utf-8").read()
+        text = read_shipped("docs/SETTINGS.md")
         assert "Pause is not disable" in text
 
 
@@ -387,7 +392,7 @@ class TestASaveThatDidNotPersistSaysSo:
     def page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_the_save_compares_what_came_back(self, page):
         assert "did not persist" in page

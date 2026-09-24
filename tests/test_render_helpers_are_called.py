@@ -35,6 +35,8 @@ import re
 
 import pytest
 
+from tests.js_source import read_shipped
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates")
 
@@ -63,14 +65,14 @@ def _template_files() -> list:
 
 
 def _all_text() -> str:
-    return "\n".join(open(p, encoding="utf-8").read() for p in _template_files())
+    return "\n".join(read_shipped(p) for p in _template_files())
 
 
 def declared_helpers() -> dict:
     """``{name: path}`` for every function whose name marks it a helper."""
     found = {}
     for path in _template_files():
-        text = open(path, encoding="utf-8").read()
+        text = read_shipped(path)
         for m in re.finditer(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(", text):
             name = m.group(1)
             if _HELPER.match(name):
@@ -140,16 +142,14 @@ class TestTheOneThatMotivatedIt:
     """
 
     def test_it_is_called_from_the_baseline_row(self):
-        page = open(os.path.join(TEMPLATES, "partials", "golden_repo.html"),
-                    encoding="utf-8").read()
+        page = read_shipped(os.path.join(TEMPLATES, "partials", "golden_repo.html"))
         assert "${_gBaselineCoverage(b)}" in page
 
     def test_and_the_bare_count_is_gone_from_that_row(self):
         """The row rendered `${b.device_count} device(s)` directly. If that
         string returns to the baselines table, the call site was replaced
         rather than added to."""
-        page = open(os.path.join(TEMPLATES, "partials", "golden_repo.html"),
-                    encoding="utf-8").read()
+        page = read_shipped(os.path.join(TEMPLATES, "partials", "golden_repo.html"))
         block = page[page.index("baselines.map"):]
         block = block[:block.index("</table>")]
         assert "device_count" not in block, \

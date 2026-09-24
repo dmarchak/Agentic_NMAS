@@ -13,12 +13,13 @@ import pytest
 
 from modules.nsot import approval, manifest, templates_repo
 
+from tests.js_source import read_shipped
+
 FLEET = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
 
 
 def _config(name):
-    with open(os.path.join(FLEET, f"{name}.cfg"), encoding="utf-8") as fh:
-        return fh.read()
+    return read_shipped(os.path.join(FLEET, f"{name}.cfg"))
 
 
 @pytest.fixture

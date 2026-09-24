@@ -64,11 +64,19 @@ def _rendered():
     import app as nmas
     from flask import render_template
 
+    from tests.js_source import with_loaded_scripts
+
     with nmas.app.test_request_context("/"):
-        return render_template(
+        # `with_loaded_scripts`: Stage 7 0b moved most of the script into
+        # `static/js/gen`, so the rendered page now REFERENCES the
+        # definitions this check looks for. Reading the page alone would
+        # report every extracted function as unreachable -- and the floor
+        # below (">= 100 functions") is what caught that, which is what the
+        # floor is for.
+        return with_loaded_scripts(render_template(
             "index.html",
             devices=[{"ip": "10.0.0.14", "hostname": "s4", "online": True},
-                     {"ip": "10.0.0.11", "hostname": "r1", "online": False}])
+                     {"ip": "10.0.0.11", "hostname": "r1", "online": False}]))
 
 
 def _inline_scripts(html):

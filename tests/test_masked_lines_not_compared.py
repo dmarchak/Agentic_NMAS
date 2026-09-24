@@ -17,6 +17,8 @@ import pytest
 from modules.nsot.render_artifact import MASK
 from modules.nsot.roundtrip import MASKED_TOKEN, canonical_diff
 
+from tests.js_source import read_shipped
+
 GOLDEN = """hostname s1
 !
 snmp-server community s3cr3tRO RO
@@ -116,8 +118,7 @@ class TestThePanelSaysTheComparisonWasIncomplete:
         path = os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "templates", "partials",
             "template_editor.html")
-        with open(path, encoding="utf-8") as handle:
-            return handle.read()
+        return read_shipped(path)
 
     def test_the_route_returns_the_count(self):
         from tests.astcheck import code_of

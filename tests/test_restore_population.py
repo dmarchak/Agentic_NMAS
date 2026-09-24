@@ -23,6 +23,8 @@ import os
 
 import pytest
 
+from tests.js_source import read_shipped
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -176,7 +178,7 @@ class TestThePanelDRAWSTheCoverage:
     @staticmethod
     def _source():
         path = os.path.join(ROOT, "templates", "partials", "golden_repo.html")
-        page = open(path, encoding="utf-8").read()
+        page = read_shipped(path)
         out = []
         for name in ("_gEsc", "_gBaselineCoverage"):
             start = page.index(f"function {name}(")
@@ -236,7 +238,7 @@ class TestThePanelDRAWSTheCoverage:
         """The check that caught this class last time. Counted excluding the
         definition, so existing is not mistaken for being used."""
         path = os.path.join(ROOT, "templates", "partials", "golden_repo.html")
-        page = open(path, encoding="utf-8").read()
+        page = read_shipped(path)
 
         defs = page.count("function _gBaselineCoverage(")
         calls = page.count("_gBaselineCoverage(") - defs

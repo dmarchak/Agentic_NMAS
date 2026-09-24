@@ -22,6 +22,8 @@ import os
 
 import pytest
 
+from tests.js_source import read_shipped
+
 CONFIG = """hostname s4
 !
 interface GigabitEthernet0/1
@@ -252,8 +254,7 @@ class TestItShipsWithItsEntryPoint:
         path = os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "templates", "partials",
             "intent_editor.html")
-        with open(path, encoding="utf-8") as handle:
-            source = handle.read()
+        source = read_shipped(path)
         assert 'id="intentCommitBtn"' in source and "disabled" in source
         assert "_intentArm(true)" in source
         armed = source[source.index("_intentArm(true)"):]
@@ -435,8 +436,7 @@ class TestTheUnchangedDocumentSaysSo:
         path = os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "templates", "partials",
             "intent_editor.html")
-        with open(path, encoding="utf-8") as handle:
-            source = handle.read()
+        source = read_shipped(path)
         assert "d.document_changed" in source
         assert "byte-identical to what is committed" in source
 
@@ -450,8 +450,7 @@ class TestTheEditorReMeasuresWhenTheModalIsShown:
         path = os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "templates", "partials",
             "intent_editor.html")
-        with open(path, encoding="utf-8") as handle:
-            return handle.read()
+        return read_shipped(path)
 
     def test_it_refreshes_on_shown(self):
         source = self._source()

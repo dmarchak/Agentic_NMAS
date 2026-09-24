@@ -24,6 +24,8 @@ import json
 
 import pytest
 
+from tests.js_source import with_loaded_scripts
+
 
 @pytest.fixture
 def settings(tmp_path, monkeypatch):
@@ -228,7 +230,7 @@ class TestItShipsWithItsEntryPoint:
     def page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_the_page_calls_the_route(self, page):
         assert "/identity/posture" in page

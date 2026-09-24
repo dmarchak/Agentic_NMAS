@@ -13,12 +13,13 @@ import pytest
 from modules.nsot import hostvars
 from modules.nsot.parsers import get_parser
 
+from tests.js_source import read_shipped
+
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "configs")
 
 
 def _config(name):
-    with open(os.path.join(FIXTURES, name), encoding="utf-8") as fh:
-        return fh.read()
+    return read_shipped(os.path.join(FIXTURES, name))
 
 
 class TestHashDetection:

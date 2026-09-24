@@ -27,6 +27,8 @@ import re
 
 import pytest
 
+from tests.js_source import read_shipped, with_loaded_scripts
+
 PARTIAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "templates", "partials", "topology_service.html")
 
@@ -34,8 +36,7 @@ SVG_BODY = b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><g/></
 
 
 def _partial():
-    with open(PARTIAL, encoding="utf-8") as handle:
-        return handle.read()
+    return read_shipped(PARTIAL)
 
 
 @pytest.fixture
@@ -242,7 +243,7 @@ class TestTheTabShowsTheServiceFirst:
     def test_the_partial_is_included_and_the_legacy_view_collapsed(self):
         import app as nmas
 
-        html = nmas.app.test_client().get("/").get_data(as_text=True)
+        html = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         block = html[html.index('id="topologyPane"'):html.index("end Topology tab pane")]
         assert "topoSvcImage" in block
         assert 'id="legacyDiscovery"' in block
@@ -252,6 +253,6 @@ class TestTheTabShowsTheServiceFirst:
         """Collapse only. No deletions, no behaviour change."""
         import app as nmas
 
-        html = nmas.app.test_client().get("/").get_data(as_text=True)
+        html = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         for view in ("topoCdpView", "topoOspfView", "topoBgpView", "topoTunnelView"):
             assert view in html, view

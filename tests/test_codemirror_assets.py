@@ -13,6 +13,8 @@ import re
 
 import pytest
 
+from tests.js_source import read_shipped
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PARTIAL = os.path.join(ROOT, "templates", "partials", "template_editor.html")
 VENDOR = os.path.join(ROOT, "static", "js", "vendor", "codemirror")
@@ -20,8 +22,7 @@ VENDOR = os.path.join(ROOT, "static", "js", "vendor", "codemirror")
 
 @pytest.fixture(scope="module")
 def partial():
-    with open(PARTIAL, encoding="utf-8") as fh:
-        return fh.read()
+    return read_shipped(PARTIAL)
 
 
 def _asset_paths(partial_text):

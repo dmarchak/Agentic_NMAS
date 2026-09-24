@@ -25,7 +25,25 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
                                   write_csv)
 
 #: Measured 2026-09-23. Update with a new measurement, never by widening.
-FIXED_PAGE_BYTES = 647_383
+#:
+#: **Re-measured 2026-09-24 after Stage 7 §0b.** 275 KB of pure inline
+#: script moved from the templates into `static/js/gen/`, so the HTML can be
+#: declared uncacheable (§6c) without re-sending the script on every
+#: navigation. The document dropped **647,383 -> 365,417 bytes fixed**, a
+#: 44% reduction.
+#:
+#: **The total first load did not shrink** -- 656,200 bytes in one
+#: uncacheable document became 378,052 of HTML plus 284,662 of JavaScript,
+#: which is marginally MORE. That is the point and not a disappointment:
+#: the 284,662 is now cacheable and the 378,052 is not, where before a
+#: single figure had to be one or the other. The number that improves on a
+#: second visit went from **zero to 43%**.
+#:
+#: §0b's own claim is unchanged and still the bigger one: the fixed cost is
+#: 97% of a nine-device page and is re-sent before a single device row.
+#: Moving it did not make it smaller, it made it cacheable.
+FIXED_PAGE_BYTES = 365_417
+EXTRACTED_SCRIPT_BYTES = 284_662
 BYTES_PER_DEVICE = 2_239
 TOLERANCE = 0.25
 
@@ -146,11 +164,27 @@ class TestThePageGrowsWithTheInventory:
             "— record the new number here rather than widening the tolerance.")
 
     def test_the_fixed_cost_is_shipped_on_every_load(self, measured):
-        """Its own finding, and nothing to do with scale: two thirds of a
-        megabyte of markup and inline script before the first device."""
+        """Its own finding, and nothing to do with scale: a third of a
+        megabyte of markup before the first device row."""
         small = measured[9]
         fixed = small["bytes"] - BYTES_PER_DEVICE * 9
         assert abs(fixed - FIXED_PAGE_BYTES) < FIXED_PAGE_BYTES * TOLERANCE
+
+    def test_the_extracted_script_is_no_longer_in_the_document(self):
+        """**The §0b acceptance**, and the reason the figure above moved.
+
+        Pinned as a number for the same reason the page cost is: a later
+        change that quietly inlines a block again must update this line
+        rather than pass."""
+        import glob
+        import os as _os
+
+        total = sum(_os.path.getsize(f)
+                    for f in glob.glob("static/js/gen/*.js"))
+        assert total > 200_000, (
+            f"only {total} bytes are extracted — the inline script has "
+            "returned to the templates")
+        assert abs(total - EXTRACTED_SCRIPT_BYTES) < EXTRACTED_SCRIPT_BYTES * TOLERANCE
 
     def test_one_render_reads_the_whole_inventory(self, measured):
         """Cheap today — 0.73 ms — and recorded so the claim in §0a is

@@ -21,6 +21,8 @@ import re
 
 import pytest
 
+from tests.js_source import read_shipped
+
 # NOT importorskip: dukpy is pinned in requirements.txt, and a test that
 # skips wherever its dependency is missing protects nothing -- the same
 # reasoning `test_inline_javascript.py` records for its node check, which is
@@ -49,8 +51,7 @@ def _slice_function(text, name):
 
 
 def _helper_source():
-    with open(PARTIAL, encoding="utf-8") as handle:
-        text = handle.read()
+    text = read_shipped(PARTIAL)
     return _slice_function(text, "_gEsc") + _slice_function(text, "_gLastPush")
 
 

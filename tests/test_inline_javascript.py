@@ -44,6 +44,8 @@ import tempfile
 
 import pytest
 
+from tests.js_source import with_loaded_scripts
+
 TEMPLATES = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "templates")
 
@@ -364,7 +366,7 @@ class TestEveryInlineScriptParses:
 
         import app as nmas
 
-        html = nmas.app.test_client().get("/").get_data(as_text=True)
+        html = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         failures = []
         for match in _re.finditer(r"<script([^>]*)>(.*?)</script>", html, _re.S):
             attrs, body = match.group(1), match.group(2)
@@ -382,7 +384,7 @@ class TestEveryInlineScriptParses:
 
         import app as nmas
 
-        html = nmas.app.test_client().get("/").get_data(as_text=True)
+        html = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         inline = [m for m in _re.finditer(r"<script([^>]*)>(.*?)</script>",
                                           html, _re.S)
                   if "src=" not in m.group(1)]

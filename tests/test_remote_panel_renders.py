@@ -17,13 +17,14 @@ Two properties, both of which would have caught it before deployment:
 import os
 import re
 
+from tests.js_source import read_shipped
+
 PARTIAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "templates", "partials", "golden_repo.html")
 
 
 def _source():
-    with open(PARTIAL, encoding="utf-8") as fh:
-        return fh.read()
+    return read_shipped(PARTIAL)
 
 
 def _scripts(text):

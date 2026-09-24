@@ -2084,6 +2084,38 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   and it is the **same work as §0b**, because while 647 KB of script sits
   inside the HTML, the page and the script cannot have the different cache
   policies each needs.
+- **The app's HTML is never cacheable and its static assets are, and §0b is
+  what lets the two differ.** `@app.after_request` in `app.py`: HTML gets
+  `no-cache, must-revalidate` **plus an ETag** — measured, the page had no
+  validator at all, so a bare `no-cache` is a full re-download and with one
+  it is a **304 and zero bytes**; a **versioned** `/static/` URL gets
+  `public, max-age=30d, immutable`; an **unversioned** one gets `no-cache`,
+  because a long lifetime on an unversioned URL is the stale-page problem
+  one layer down. `@app.url_defaults` puts the file mtime in every
+  `url_for('static', ...)`, so a deploy changes the URL rather than needing
+  a purge. **The static branch was nearly the hazard it was written to
+  avoid**: `setdefault` lost to Flask's own `Cache-Control: no-cache` and
+  measured as `no-cache` on a 27 KB extracted script — caught by measuring
+  the response, not by reading the code. JSON gets `no-store`: measured, it
+  carried no cache headers at all and the edge happened not to cache it —
+  **that freshness was somebody else's default, not our policy**, and the
+  argument for a header over a Cache Rule is not to depend on one.
+- **§0b moved 275 KB of pure inline script into `static/js/gen/`.** Measured
+  first: 280 KB of inline script carries no Jinja and 166 KB does, and the
+  Jinja-bearing blocks cannot move verbatim. Document **656 KB → 378 KB**,
+  fixed cost **647,383 → 365,417**. **The total first load did not shrink** —
+  it is marginally larger — and that is the point: 285 KB is now cacheable
+  and 378 KB is not, where before one figure had to be both. The number that
+  improves on a second visit went from **zero to 43%**.
+  It broke **166 tests across 23 files**, because the renderer tests read
+  *the source the browser executes*. `tests/js_source.py` is the one answer:
+  `read_shipped()` for template reads, `with_loaded_scripts()` for tests that
+  already read the rendered page — **strictly more faithful than before**,
+  since it models the program the browser assembles. The appended script must
+  be wrapped in `<script>` (bare, `_scripts()` returned nothing and the
+  failures read *"no block defines X"* — a scan finding nothing in the words
+  of a real defect) and **one element per file**, or a test indexing into a
+  block finds a construct from a different one.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

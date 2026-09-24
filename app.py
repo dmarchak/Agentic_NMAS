@@ -136,6 +136,120 @@ socketio = SocketIO(
     app, async_mode="threading", cors_allowed_origins="*", manage_session=False
 )
 
+# ---------------------------------------------------------------------------
+# Cache policy. Stage 7 6c, measured 2026-09-24.
+# ---------------------------------------------------------------------------
+# The Baselines panel drew a bare "9 device(s)" while /golden/baselines
+# returned `partial: true`: Cloudflare was serving stale HTML while the JSON
+# came through fresh, and a browser hard-reload does NOT bypass the edge. It
+# cost an hour and a wrong diagnosis on a page somebody knew well, and the
+# state it produces -- "the page is wrong and the API is right" -- reads as
+# a code defect to everyone who meets it.
+#
+# THE HEADER RATHER THAN A CACHE RULE AT THE ZONE. A purge-per-deploy is a
+# human step in an external system, invisible when skipped, and what it
+# protects against is silent. This project refuses that shape everywhere
+# else.
+#
+# `no-cache`, NOT `no-store`: no-store forbids keeping a copy at all, so
+# every navigation re-downloads. no-cache keeps the copy and requires
+# revalidation -- which is only cheap with a validator, so an ETag is added
+# below. Measured before it was: the rendered page carried no ETag, no
+# Last-Modified and no Cache-Control at all, so a bare `no-cache` would have
+# been a full re-download every time.
+_STATIC_MAX_AGE = 60 * 60 * 24 * 30           # 30 days
+
+
+@app.url_defaults
+def _static_cache_bust(endpoint, values):
+    """Put the file's mtime in every `url_for('static', ...)`.
+
+    **A long cache lifetime without versioned URLs is the HTML problem
+    again, one layer down**: a deploy would change the file and every
+    browser would keep the old one for a month. With the mtime in the
+    query, a changed file is a different URL and the old one is simply
+    never requested. Nothing to purge, and nothing to remember.
+
+    Two files in `base.html` reference `/static/...` literally rather than
+    through `url_for`, so they never get a version and fall to the
+    `no-cache` branch above -- correct, and visible rather than assumed.
+    """
+    if endpoint != "static" or "filename" not in values:
+        return
+    try:
+        full = os.path.join(app.static_folder, values["filename"])
+        values["v"] = int(os.stat(full).st_mtime)
+    except OSError:
+        pass                                   # a missing file is the
+                                               # route's problem, not ours
+
+
+@app.after_request
+def _cache_policy(resp):
+    """Uncacheable HTML, long-lived static assets.
+
+    **The two halves are opposites and both are required.** Stage 7 0b moved
+    275 KB of script out of the HTML precisely so they could differ: the
+    page carries live inventory, drift state and identity and is never safe
+    to reuse, while the vendored libraries and the extracted script change
+    only on deploy. A blanket no-cache over `/static/` would undo 0b in the
+    same commit that depends on it.
+    """
+    try:
+        path = request.path or ""
+        if path.startswith("/static/"):
+            # ASSIGNED, not `setdefault`. Flask's static handler already
+            # sets `Cache-Control: no-cache`, so a setdefault did nothing
+            # and measured as no-cache on a 27 KB extracted script -- which
+            # would have undone 0b in the commit that depends on it. The
+            # long lifetime is only safe because `_static_cache_bust()`
+            # below puts the file's mtime in the URL, so a deploy changes
+            # the URL rather than needing anybody to purge anything.
+            if "v" in request.args:
+                resp.headers["Cache-Control"] = (
+                    f"public, max-age={_STATIC_MAX_AGE}, immutable")
+            else:
+                # Unversioned: revalidate. Flask's ETag still makes an
+                # unchanged file a 304 and zero bytes, so this is safe
+                # rather than expensive -- and a URL nobody versioned must
+                # never be cached for a month.
+                resp.headers["Cache-Control"] = "no-cache"
+            return resp
+
+        if resp.mimetype == "text/html":
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+            # The validator that makes revalidation a 304 instead of a
+            # re-download. Only for complete, non-streamed responses.
+            if not resp.direct_passthrough and resp.status_code == 200:
+                resp.add_etag()
+                return resp.make_conditional(request)
+
+        elif resp.mimetype == "application/json":
+            # MEASURED before deciding: JSON responses carried no
+            # Cache-Control, no ETag and no Last-Modified, and the edge did
+            # not cache them -- which is why the API stayed fresh while the
+            # page went stale. **That freshness was somebody else's
+            # default, not our policy**, and the whole argument for putting
+            # this in the app rather than in a Cache Rule is not to depend
+            # on one. So it is stated.
+            #
+            # `no-store` rather than `no-cache`: these are per-request reads
+            # of live state, several of them identity-scoped, and none is
+            # ever reusable -- so there is nothing for a validator to save
+            # and a copy retained by an intermediary is a small exposure
+            # rather than a small saving. Harmless to the client: a `fetch`
+            # of an uncacheable response behaves exactly as it did when the
+            # header was absent.
+            resp.headers.setdefault("Cache-Control", "no-store")
+    except Exception as exc:                  # noqa: BLE001
+        # A cache header is not worth failing a response over, and a
+        # silently unheadered page is the state this exists to prevent --
+        # so it is logged rather than swallowed.
+        app.logger.warning("cache policy not applied to %s: %s",
+                           getattr(request, "path", "?"), exc)
+    return resp
+
+
 # New routes live in Flask blueprints under routes/ rather than growing this
 # file further. Registered here, immediately after the app exists.
 try:

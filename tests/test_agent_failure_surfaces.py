@@ -22,6 +22,8 @@ two deserve different words.
 
 import pytest
 
+from tests.js_source import with_loaded_scripts
+
 
 @pytest.fixture
 def log(monkeypatch):
@@ -185,7 +187,7 @@ class TestItReachesTheUI:
     def page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_failing_outranks_active(self, page):
         i = page.index("health.failing")
@@ -299,7 +301,7 @@ class TestDisabledAndFailingAreBothTrue:
     def page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_disabled_outranks_failing_in_the_badge(self, page):
         """Structural only. The BEHAVIOUR is asserted by executing
@@ -460,6 +462,7 @@ class TestTheStreakCountsBackToWhatWORKED:
 
         import app as nmas
 
-        flat = re.sub(r"\s+", " ", nmas.app.test_client().get("/").get_data(as_text=True))
+        flat = re.sub(r"\s+", " ", with_loaded_scripts(
+            nmas.app.test_client().get("/").get_data(as_text=True)))
         assert "It has never completed a run." in flat
         assert "No tool has ever executed" in flat

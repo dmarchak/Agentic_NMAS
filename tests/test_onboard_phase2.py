@@ -24,6 +24,8 @@ dukpy = pytest.importorskip("dukpy")
 from modules.nsot.onboard import (ANSWERED, DID_NOT_ANSWER,  # noqa: E402
                                   REFUSED_CREDENTIAL)
 
+from tests.js_source import with_loaded_scripts
+
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
@@ -182,7 +184,7 @@ def banner_js():
 
     import app as nmas
 
-    page = nmas.app.test_client().get("/").get_data(as_text=True)
+    page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
     out = []
     for name in ("pendingAgeText", "pendingBannerHtml"):
         start = page.index(f"function {name}(")
@@ -285,7 +287,7 @@ class TestTheBannerIsActionable:
 
         import app as nmas
 
-        page = nmas.app.test_client().get("/").get_data(as_text=True)
+        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         body = page[page.index("async function onboardAbandon("):]
         body = body[:body.index("\n}")]
         assert "confirm(" in body
@@ -476,7 +478,7 @@ class TestTheBannerHasAnEntryPoint:
     def _page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_something_outside_the_banner_calls_it(self):
         """The property: at least one caller that is not one of the banner's
@@ -534,7 +536,7 @@ class TestTheBannerCarriesTheListIntoItsActions:
     def _page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_both_buttons_are_given_the_list(self, banner_js):
         html = _banner(banner_js,

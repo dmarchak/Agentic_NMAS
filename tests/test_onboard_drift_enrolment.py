@@ -26,6 +26,8 @@ import re
 
 import pytest
 
+from tests.js_source import with_loaded_scripts
+
 dukpy = pytest.importorskip("dukpy")
 
 NEW = "bp-onboard-c"
@@ -141,7 +143,7 @@ class TestThePanelNamesItToo:
     def js(self):
         import app as nmas
 
-        page = nmas.app.test_client().get("/").get_data(as_text=True)
+        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         start = page.index("function driftDetailHtml(")
         depth, i, seen = 0, page.index("{", start), False
         while i < len(page):

@@ -21,6 +21,8 @@ import re
 
 import pytest
 
+from tests.js_source import with_loaded_scripts
+
 dukpy = pytest.importorskip("dukpy")
 
 
@@ -48,7 +50,7 @@ CLEAN = dict(BLOCKED, hostname="r6", platform="cisco_iosxe",
 def page():
     import app as nmas
 
-    return nmas.app.test_client().get("/").get_data(as_text=True)
+    return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
 
 @pytest.fixture(scope="module")

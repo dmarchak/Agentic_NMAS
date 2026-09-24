@@ -26,6 +26,8 @@ import time
 
 import pytest
 
+from tests.js_source import with_loaded_scripts
+
 CONFIG = "hostname {name}\n!\nend\n"
 
 # The legacy header carries an em dash. It is what the scan matches on, so it
@@ -240,7 +242,7 @@ class TestTheRetirementConditionHasAnEntryPoint:
     def page(self):
         import app as nmas
 
-        return nmas.app.test_client().get("/").get_data(as_text=True)
+        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
     def test_the_page_calls_the_route(self, page):
         assert "/golden/legacy_store" in page

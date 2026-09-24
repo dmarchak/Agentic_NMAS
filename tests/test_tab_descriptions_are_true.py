@@ -27,6 +27,8 @@ import pytest
 
 from tests.astcheck import calls_in
 
+from tests.js_source import with_loaded_scripts
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -34,7 +36,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def page():
     import app as nmas
 
-    return nmas.app.test_client().get("/").get_data(as_text=True)
+    return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
 
 
 def _pane(page, pane_id, end_marker):

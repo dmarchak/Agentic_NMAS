@@ -9079,3 +9079,95 @@ If the edge caches the app's HTML, **every deploy needs a purge or users
 see a stale page while the API is current** — including, at the worst
 moment, a page whose safety-relevant fields have changed. Scoped as
 [NSOT_STAGE7_GUI.md](NSOT_STAGE7_GUI.md) §6c.
+
+## §0b then §6c: the two cache policies are opposites, and that is the design
+
+Implemented in that order because the pairing was the better finding.
+
+### §0b — 275 KB of script out of the HTML
+
+Measured first: **280 KB of inline script contains no Jinja** and 166 KB
+does. The Jinja-bearing blocks cannot move verbatim — that is what
+`test_inline_javascript.py` exists to record — so the extraction took the 24
+pure blocks over 2 KB and left the rest.
+
+**656,200 → 378,052 bytes of document**, with 284,662 bytes now in
+`static/js/gen/`. Fixed page cost **647,383 → 365,417**, a 44% reduction.
+
+**The total first load did not shrink** — 656 KB in one uncacheable
+document became 378 KB of HTML plus 285 KB of JavaScript, marginally
+*more*. That is the point rather than a disappointment: the 285 KB is now
+cacheable and the 378 KB is not, where before one figure had to be both.
+**The number that improves on a second visit went from zero to 43%.**
+
+### It broke 166 tests, and that was the finding worth having
+
+Twenty-three files, because the renderer tests read *the source the browser
+executes* — which was the template and is now the template **plus** what it
+references. Reading the template alone would have made them pass by finding
+nothing: the suite built to catch "defined and never called" would have
+reported every extracted function as absent, or worse, as present-and-fine.
+
+`tests/js_source.py` is the one answer: `read_shipped(path)` for template
+reads and `with_loaded_scripts(html)` for the tests that already read the
+rendered page. The second is **strictly more faithful than before** — it
+models the program the browser assembles rather than one file that happened
+to hold all of it.
+
+Two details cost a round each and are worth keeping:
+
+* the appended script must be **wrapped in `<script>`**, because tests slice
+  the page into blocks — appending it bare made `_scripts()` return nothing
+  and the assertions then read *"no block defines loadRemotePanel"*, a scan
+  finding nothing while wearing the words of a real defect;
+* and **one `<script>` per file**, not one for all, because a test that
+  indexes into a block (`block[block.index("} catch (")]`) would otherwise
+  find a construct belonging to a different extracted file.
+
+`test_scale.py` did its job exactly as designed: the pinned number moved and
+the test demanded a new measurement rather than widening a tolerance.
+
+### §6c — the header, and what each half is for
+
+`@app.after_request`, four behaviours, all measured on the response rather
+than read from the code:
+
+| | policy | why |
+|---|---|---|
+| HTML | `no-cache, must-revalidate` + **ETag** | never reusable; the ETag makes revalidation a **304 and zero bytes** |
+| versioned `/static/` | `public, max-age=30d, immutable` | changes only on deploy |
+| unversioned `/static/` | `no-cache` | a long lifetime on an unversioned URL is the HTML problem one layer down |
+| JSON | `no-store` | per-request live state, several identity-scoped |
+
+**`no-cache`, not `no-store`, and the ETag is what makes that true.**
+Measured before adding it: the page carried no `ETag`, no `Last-Modified`
+and no `Cache-Control` at all, so a bare `no-cache` would have been a full
+re-download every navigation — the pairing argument for doing §0b first
+rested on exactly that, and with a validator it is a 304.
+
+**The static branch was nearly the hazard it was written to avoid.**
+`setdefault` lost to Flask's own `Cache-Control: no-cache` and measured as
+`no-cache` on a 27 KB extracted script — undoing §0b in the commit that
+depends on it. Caught by **measuring the response**, not by reading the
+code, which is the only reason it was caught at all.
+
+**A long lifetime needs versioned URLs or it is the same defect again**: a
+deploy changes the file and every browser keeps the old one for a month.
+`@app.url_defaults` puts the file's mtime in every
+`url_for('static', ...)`, so a changed file is a different URL — nothing to
+purge and nothing to remember. Two files in `base.html` reference
+`/static/...` literally, never get a version, and correctly fall to
+`no-cache`; that is asserted rather than assumed.
+
+### JSON: confirmed, not assumed
+
+Measured before deciding: JSON responses carried **no `Cache-Control`, no
+`ETag`, no `Last-Modified`**, and the edge did not cache them — which is
+precisely why the API stayed fresh while the page went stale. **That
+freshness was somebody else's default, not our policy**, and the whole
+argument for putting this in the app rather than in a Cache Rule is not to
+depend on one. So it is stated: `no-store`, because these are per-request
+reads of live state, several of them identity-scoped, never reusable — a
+copy retained by an intermediary is a small exposure rather than a small
+saving. Harmless to the client: a `fetch` of an uncacheable response behaves
+exactly as it did when the header was absent, asserted by parsing the body.
