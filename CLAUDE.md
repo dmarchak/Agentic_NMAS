@@ -2399,6 +2399,26 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   command and was available from the first report — **meet a silent failure
   with the cheapest question that halves the space, not with the most likely
   explanation**, which was wrong three times running.
+- **A message that says what to do without saying how to do it right
+  produces the wrong thing.** The *"NOT VERSIONED"* report printed
+  `git init && git add -A && git commit`, and a lab directory holds
+  containerlab runtime state beside the configs — so it committed
+  `clab-r6/.tls/ca/ca.key`, **a private key**. The script's own add was
+  already scoped (`git add -A "$(basename "$dir")"` stages `configs` and
+  nothing else) and was fine: **the defect was in the advice, not the
+  action**, and it shipped in the commit that fixed the reporting — written
+  to close a coverage gap and opening a secrets one. The recipe is now an
+  **allowlist** (`.gitignore` first, then named paths, never `-A` at the top
+  of a lab directory), says why, and is verified against a directory with a
+  planted key: the resulting repo tracks `.gitignore` and `configs/` only.
+  **The output is the interface**, and an incomplete instruction is a defect
+  in it — same class as a refusal naming two causes.
+- **Doubting a correct report is what a run of false ones costs.** The
+  *"unchanged - nothing to commit"* line was right and was read as a
+  failure. The defence is to **make a true report say something a false one
+  could not**: *"unchanged — the content did not move"* is a claim with a
+  mechanism in it, while *"nothing to commit"* is a shrug, and a shrug is
+  what you learn to distrust.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

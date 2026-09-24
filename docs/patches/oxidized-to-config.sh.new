@@ -512,6 +512,17 @@ ssh -n "$CLAB" "rm -rf $STAGE"
 #   committed    - history gained something
 #   unchanged    - the system working; the content really did not move
 #   NOT VERSIONED - a gap in coverage, and the only one that needs action
+# THE `git add` BELOW IS SCOPED TO THE CONFIGS DIRECTORY ON PURPOSE.
+# `git add -A "$(basename "$dir")"` stages only that path. A bare
+# `git add -A` here would sweep containerlab's runtime state from the lab
+# directory -- `clab-<lab>/.state.clab.yaml` and `clab-<lab>/.tls/ca/ca.key`,
+# a PRIVATE KEY.
+#
+# Measured 2026-09-24: this script's own add was already scoped and was
+# fine. The bare `git add -A` was in the setup recipe the script PRINTED for
+# an unversioned destination, and it put that key in a commit. The defect
+# was in the advice, not in the action -- which is why the recipe below now
+# writes a .gitignore and names the paths it stages.
 unversioned=()
 while read -r dir; do
   [ -n "$dir" ] || continue
@@ -543,8 +554,20 @@ if [ ${#unversioned[@]} -gt 0 ]; then
   echo "  with. The backup directories beside them are what accumulates when"
   echo "  a versioned store is not receiving anything -- labs/lab has 29"
   echo "  going back to August."
+  echo
+  echo "  The recipe below adds ONLY the configs directory and writes a"
+  echo "  .gitignore first. Do not use a bare 'git add -A' here: a lab"
+  echo "  directory also holds containerlab's runtime state, including"
+  echo "  clab-<lab>/.tls/ca/ca.key -- a PRIVATE KEY. An unscoped add on"
+  echo "  2026-09-24 committed exactly that."
   for d in "${unversioned[@]}"; do
-    echo "    ssh $CLAB \"cd '$(dirname "$d")' && git init && git add -A && git commit -m initial\""
+    parent="$(dirname "$d")"
+    leaf="$(basename "$d")"
+    echo
+    echo "    ssh $CLAB \"cd '$parent' && git init -q && \\"
+    echo "      printf '%s\\n' 'clab-*/' '*.bak-*/' > .gitignore && \\"
+    echo "      git add .gitignore '$leaf' && \\"
+    echo "      git commit -q -m 'initial: $leaf only'\""
   done
 fi
 

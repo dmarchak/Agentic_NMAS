@@ -10035,3 +10035,84 @@ it was available from the first report. **A section that fails silently
 should be met with the cheapest question that halves the space, not with the
 most likely explanation** — the most likely explanation was wrong three
 times running.
+
+## A private key in git, from a message that told you what to do and not how
+
+`clab-r6/.tls/ca/ca.key` and `clab-r6/.state.clab.yaml` were committed,
+because the *"NOT VERSIONED"* message printed:
+
+```
+git init && git add -A && git commit -m initial
+```
+
+**The script's own add was already scoped and was fine.**
+`git add -A "$(basename "$dir")"` stages `configs` and nothing else — that
+line is correct and has been throughout. The bare `git add -A` existed only
+in the **recipe the script printed**, and a lab directory holds
+containerlab's runtime state beside the configs.
+
+So the defect was in the **advice**, not in the action — which is a shape
+worth naming on its own:
+
+> **A message that tells you to do a thing without telling you how to do it
+> right is a message that produces the wrong thing.** It is the same class
+> as a refusal naming two causes, or an advisory that reads as a blocker:
+> the output is the interface, and an incomplete instruction is a defect in
+> it.
+
+And it is sharper here than usual, because the message was added **in the
+commit that fixed the reporting** — written to close a coverage gap, and it
+opened a secrets one. The gap it reported was real; the remedy it offered
+was not checked to the same standard as the code around it.
+
+### The recipe now, and it is verified rather than asserted
+
+```
+ssh <clab> "cd 'labs/r6' && git init -q && \
+  printf '%s\n' 'clab-*/' '*.bak-*/' > .gitignore && \
+  git add .gitignore 'configs' && \
+  git commit -q -m 'initial: configs only'"
+```
+
+An **allowlist**: `.gitignore` first, then the named paths. Never `-A` at
+the top of a lab directory. Run verbatim against a directory holding a
+planted `clab-r6/.tls/ca/ca.key` and `clab-r6/.state.clab.yaml`, the
+resulting repo tracks exactly `.gitignore` and `configs/r6.cfg`.
+
+The message also now says **why**, naming the key, so the next person to
+simplify it has the reason in front of them.
+
+### Remediation, and its limit
+
+One commit, no remote: `rm -rf .git` and redo with the recipe above is a
+complete removal — the key never left the host, and this project's usual
+rule (*"tightening a mode does not undo exposure; rotation is what makes
+past exposure moot"*) applies to exposure, and there was none. Containerlab
+regenerates that CA per lab deployment, so its blast radius is one
+throwaway lab even if it had leaked.
+
+**What would change that answer**: if the repo had ever had a remote, or
+been included in a backup, deleting `.git` removes the copy you can see and
+not the ones you cannot.
+
+### And check `labs/lab` for the same thing
+
+`~/labs/lab` has been a repo since before August, and *something* put an
+initial commit in it. If a human ever ran an unscoped `git add -A` there,
+`clab-lab/.tls/ca/ca.key` is in that history — and that is **not** an
+`rm -rf .git` fix, because the repo holds the nine devices' config history
+that is worth keeping. `git -C ~/labs/lab ls-files` answers it, and the same
+command answers what shape r6's repo should copy.
+
+## Doubting a correct report
+
+The *"unchanged - nothing to commit"* line was **right**, and was read as a
+failure. The initial commit captured `configs/r6.cfg` after an earlier run
+had already removed the marker, so restoring it was genuinely a no-op.
+
+Worth recording because it is the cost of the night's other findings: after
+enough reports turn out to be false, a true one reads as another. The defence
+is the same one that produced the split — **make the true report say
+something a false one could not.** *"unchanged - nothing to commit (the
+content did not move)"* is a claim with a mechanism in it; *"nothing to
+commit"* on its own is a shrug, and a shrug is what you distrust.
