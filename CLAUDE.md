@@ -1984,6 +1984,25 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   warning**, because deleting it nulls the device's primary — the cascade
   map's first known edge, since that is a **modification rather than a
   deletion** and the map only answers "what will be deleted".
+- **A definition below the `if __name__ == "__main__"` guard does not exist
+  for the program.** `--remove-excluded` crashed with
+  `NameError: name '_remove_excluded' is not defined` on its first run: the
+  function was in the file, forty lines below the guard, so `main()`
+  executed and returned before Python reached it. **Importing the file
+  hides this entirely** — `SourceFileLoader(...).exec_module()` runs the
+  whole module with `__name__` set to the module's name, the guard never
+  fires, and a test calling the function would have passed. Same shape as
+  `FakeNetBox` being unable to cascade: the harness's import cannot exhibit
+  the failure, so the check has to be about the **file**, not the loaded
+  module. `test_script_entry_points.py` walks every script in `scripts/`
+  for definitions stranded below the guard and for called names nothing
+  binds, with floors on the script count, the parsed statement count **and**
+  the number of scripts that actually have a guard — without that last one
+  the ordering check passes by finding no guards.
+  Sixth instance in one session of *the test names or constructs its
+  subject, so it cannot notice that the caller does not*, and the purest:
+  not a wrong signature, not an unreachable branch, a call to something
+  that is not there. `nmas-verify-runbook` is the same idea for routes.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

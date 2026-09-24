@@ -8878,3 +8878,71 @@ delete that the cascade map does not cover, **because it is a modification
 rather than a deletion**. Worth noting as the map's first known edge: it
 answers "what will be deleted", and "what will be changed" is a different
 question nobody has asked yet.
+
+## The mode that had never run, and what the controls were actually run against
+
+`--remove-excluded` crashed on its first invocation:
+
+```
+NameError: name '_remove_excluded' is not defined
+```
+
+**The function was in the file** — at line 347, below the
+`if __name__ == "__main__"` guard at line 343. Run as a script, `main()`
+executes and returns before Python reaches the definition. I had appended
+the new mode to the end of the file without noticing the guard was already
+there.
+
+### What the five controls were run against, plainly
+
+Three of the five exercised **`excluded_residue()`** — the planner: the
+provenance skip, the `primary_ip` block, and the VRF scoping. The other two
+exercised the import-side exclusion. **None of them touched
+`_remove_excluded`**, the mode that wires the planner to the CLI. So the
+claim "five controls shown failing" was true and did not cover the thing
+that was broken.
+
+**And a test that called it would have passed anyway.** The suite loads a
+script with `SourceFileLoader(...).exec_module()`, which runs the whole file
+with `__name__` set to the module's name — the guard never fires, every
+definition is reached, and `_remove_excluded` exists. The harness's import
+cannot exhibit the failure, which is the same shape as `FakeNetBox` being
+unable to cascade. **The check therefore has to be about the file, not
+about the loaded module.**
+
+### Sixth instance, and the purest
+
+Not a wrong signature (`set_device_override`, `load_saved_devices`,
+`preflight`'s lambda, `_commit`'s spy) and not an unreachable branch — a
+call to something that is not there. The common cause every time: *the test
+names or constructs its subject, so it cannot notice that the caller does
+not.*
+
+### The check, over the whole directory
+
+`tests/test_script_entry_points.py`, two AST walks across every script:
+
+* **`definitions_below_the_guard()`** — module-level definitions the entry
+  point can never reach. Not dead code: code that exists for every reader
+  and every test and not for the program.
+* **`unresolved_calls()`** — called names nothing in the file or its imports
+  binds. Deliberately conservative (a name counts as bound if anything
+  anywhere in the module binds it), so it cannot catch a scoping mistake and
+  does catch a call to a function that is simply absent.
+
+Both run parametrised over all 29 scripts, so the cost of covering the next
+one is zero. With `_the_scan_finds_something` floors on the script count,
+the parsed statement count, **and** the number of scripts that actually have
+a `__main__` guard — without that last one the ordering check would pass by
+finding no guards at all.
+
+`TestTheCheckItselfCanSayNo` drives both detectors against files built to
+fail, plus the control on the control: the same file with the definition
+*above* the guard is clean, so the detector cannot simply always fire.
+
+The live control is the decisive one: restoring the original ordering
+reproduces the `NameError` verbatim **and** fails the sweep by name.
+
+`scripts/nmas-verify-runbook` already does the equivalent for routes,
+resolving documented URLs against `app.url_map` rather than trusting that a
+blueprint path looks right. Scripts had no such check; they do now.

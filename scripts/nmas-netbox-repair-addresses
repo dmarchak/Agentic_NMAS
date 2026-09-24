@@ -340,10 +340,6 @@ def main() -> int:
     return 1 if failed else 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 def _remove_excluded(args) -> int:
     from modules import netbox_guard as guard
     from modules.netbox_client import (_nb_delete, _session_from_config,
@@ -406,3 +402,6 @@ def _remove_excluded(args) -> int:
     for f in failed:
         print(f"  {f}")
     return 1 if failed else 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
