@@ -1880,6 +1880,62 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   directions with a floor on each; and a **failed** re-fetch marks the panel
   stale with the time of the value it shows, because confidently wrong is
   worse than behind.
+- **An IP address lookup is keyed on the INTERFACE, never on the address.**
+  `_ensure_ip_address()` used to match `{"address": cidr}` narrowed by VRF
+  and nothing else, and PATCH `assigned_object_id` when the hit sat
+  elsewhere. Measured on the real NetBox 2026-09-24: **one object passed
+  between six devices.** All five Lab 1 routers carry the identical
+  `GigabitEthernet1 / vrf forwarding clab-mgmt / ip address 10.0.0.15`
+  (vrnetlab's internal address, the same inside every container), so each
+  import took the object from whoever held it — leaving five routers with an
+  unaddressed management interface in NetBox for weeks, reported by nothing.
+  **Two devices must be able to hold the same value and that is not a
+  compromise**: the address genuinely is duplicated and each instance
+  genuinely belongs to its device. One value, many interfaces, each its own
+  object. VRF narrowing reads like the fix and never was — r3's address is
+  in `clab-mgmt` and so is every other router's. **No interface is a
+  refusal** (`UnscopedAddressLookup`), not a wider search, because the
+  fallback *is* the defect. Addresses are compared as addresses, not text:
+  `2001:DB8::2/64` and `2001:db8::2/64` are one address. The scope is the
+  one `_upsert_device`'s `primary_ip4` read has always used, 160 lines
+  below — **careful in the place where being wrong picked a wrong primary
+  IP, absent from the place where being wrong moved another device's
+  address.**
+- **Provenance protects an OBJECT; a cascade travels a RELATIONSHIP, and
+  nothing checked relationships.** The Stage 4C teardown deleted its eight
+  objects — each tagged, each recorded, every check passing — and the
+  database removed two more that NMAS did not create, because they were
+  assigned to an interface it deleted. The gate was never wrong and its
+  claim was false. **The preview simulated NMAS's own loop and asked NetBox
+  nothing about the consequence**, so it listed eight while ten
+  disappeared — the deploy path's rule (*what is confirmed is what
+  happens*) broken in the one place it had never been stated.
+  `modules/netbox_cascade.py` answers it: `CASCADES` is **measured from the
+  changelog, not inferred from Django's `on_delete`**; a type absent from it
+  is **unknown, never "takes nothing"**, with `UNMEASURED` listing the rest
+  explicitly and a test checking both against `_REMOVAL_ORDER`; an empty
+  tuple means *measured to take nothing*, a different claim from absence; a
+  **failed** dependents query reports unproven rather than empty. The modal
+  names each foreign object, and a clean proven preview renders **nothing at
+  all** — a renderer that always warns trains the operator to click through.
+- **git is versioned and NetBox is not, and that asymmetry is
+  architectural.** `config_repo/` is committed, tagged, pushed and
+  restorable to any point; NetBox is a live database this tool writes to
+  with **no history, no baseline and no rollback**. Baselines are commits of
+  `golden/*.cfg` — device configuration — and version nothing in NetBox.
+  The 2026-09-24 damage was bounded **only because NetBox's contents are
+  derivable from the golden configs**, which is a property of what happened
+  to be damaged rather than a guarantee: anything hand-curated (a site
+  description, a custom field, a tenant, a rack) has nothing to restore it
+  from, and Phase 0's note that the reference NetBox *"was populated by hand
+  from the design document"* says the risk existed from the start. **Plan
+  item: what backs up NetBox.** Its own export plus
+  `scripts/nmas-netbox-census`'s identity-per-type snapshot is most of one
+  already, and would have made that night a **diff rather than an
+  investigation**. The repair is therefore a golden-driven **re-import**,
+  not a restore — and `scripts/nmas-netbox-repair-addresses` refuses to run
+  while the lookup is still address-keyed, because a re-import with the old
+  code reproduces the damage.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

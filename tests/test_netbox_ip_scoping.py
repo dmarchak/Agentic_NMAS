@@ -65,60 +65,141 @@ class TestTheCollisionIsStructural:
         assert found >= 5, f"only {found} routers matched — scan is wrong"
 
 
-class TestTheLookupIsUnscoped:
-    """**By value, and by VRF if one is supplied — never by device.**
+class TestTheLookupIsKeyedOnTheInterface:
+    """**"Does this interface already have this address", never "does this
+    address exist".**
 
-    VRF narrowing cannot save it here: r3's address is in `clab-mgmt` and so
-    is every other router's, so passing the VRF selects the same object.
+    Two devices must be able to hold the same value and that is not a
+    compromise: every containerlab node answers on `10.0.0.15` inside its
+    own namespace, and the same is true behind different VRFs and in
+    disconnected management networks. The address genuinely is duplicated
+    and each instance genuinely belongs to its device. **One value, many
+    interfaces, each its own object.**
+
+    These replace three tests that asserted the *absence* of scoping, each
+    of which said in its own message what to assert once the fix landed.
     """
 
-    def test_the_query_carries_no_device_or_interface(self):
+    def _wire(self, monkeypatch):
+        from tests.fake_netbox import FakeNetBox
+
+        from modules import netbox_guard as guard
+
+        nb = FakeNetBox()
+        monkeypatch.setattr(guard, "writes_allowed", lambda: True)
+        monkeypatch.setattr(guard, "assert_writes_allowed", lambda *a: None)
+        monkeypatch.setattr(guard, "record_created", lambda *a, **k: None)
+        monkeypatch.setattr(guard, "get_current_list", lambda: "probe")
+        return nb
+
+    def _seed_on(self, nb, ip_id, address, iface_id):
+        nb.seed("ipam/ip-addresses",
+                {"id": ip_id, "address": address, "status": "active",
+                 "description": "r3 GigabitEthernet1",
+                 "assigned_object_type": "dcim.interface",
+                 "assigned_object_id": iface_id})
+
+    def test_the_same_value_on_another_interface_is_a_NEW_object(
+            self, monkeypatch):
+        """**The defect, as a test.** r3 holds 10.0.0.15/24 on interface 30;
+        importing bp-onboard-c's identical Gi1 must not touch it."""
+        from modules import netbox_client as nc
+
+        nb = self._wire(monkeypatch)
+        self._seed_on(nb, 22, "10.0.0.15/24", 30)
+
+        out = nc._ensure_ip_address(nb, "http://nb", "10.0.0.15/24",
+                                    interface_id=60,
+                                    description="bp-onboard-c GigabitEthernet1")
+
+        assert out["id"] != 22, "the import took r3's address again"
+        assert out["assigned_object_id"] == 60
+        r3s = [o for o in nb.objects("ipam/ip-addresses") if o["id"] == 22][0]
+        assert r3s["assigned_object_id"] == 30, "r3 lost its address"
+        assert r3s["description"] == "r3 GigabitEthernet1"
+        assert len(nb.objects("ipam/ip-addresses")) == 2, \
+            "one value, two interfaces, two objects"
+
+    def test_a_shared_VRF_does_not_make_them_one(self, monkeypatch):
+        """VRF narrowing reads like the fix and never was: r3's address is
+        in clab-mgmt and so is every other router's."""
+        from modules import netbox_client as nc
+
+        nb = self._wire(monkeypatch)
+        nb.seed("ipam/vrfs", {"id": 2, "name": "clab-mgmt"})
+        self._seed_on(nb, 22, "10.0.0.15/24", 30)
+        nb.objects("ipam/ip-addresses")[0]["vrf"] = {"id": 2}
+
+        out = nc._ensure_ip_address(nb, "http://nb", "10.0.0.15/24",
+                                    interface_id=60, vrf_id=2,
+                                    description="bp-onboard-c Gi1")
+
+        assert out["id"] != 22
+        assert len(nb.objects("ipam/ip-addresses")) == 2
+
+    def test_the_SAME_interface_is_still_reused_not_duplicated(
+            self, monkeypatch):
+        """The floor. A function that always created would satisfy both
+        tests above and fill NetBox with duplicates on every sync."""
+        from modules import netbox_client as nc
+
+        nb = self._wire(monkeypatch)
+        self._seed_on(nb, 22, "10.0.0.15/24", 30)
+
+        out = nc._ensure_ip_address(nb, "http://nb", "10.0.0.15/24",
+                                    interface_id=30,
+                                    description="r3 GigabitEthernet1")
+
+        assert out["id"] == 22, "it created a duplicate on the same interface"
+        assert len(nb.objects("ipam/ip-addresses")) == 1
+
+    def test_case_differs_and_it_is_still_the_same_address(self, monkeypatch):
+        """`2001:DB8::2/64` from a config and `2001:db8::2/64` from NetBox
+        are one address. Compared as addresses, not as text — otherwise the
+        v6 object duplicates on every single sync."""
+        from modules import netbox_client as nc
+
+        nb = self._wire(monkeypatch)
+        self._seed_on(nb, 44, "2001:db8::2/64", 30)
+
+        out = nc._ensure_ip_address(nb, "http://nb", "2001:DB8::2/64",
+                                    interface_id=30, description="r3 Gi1")
+
+        assert out["id"] == 44
+        assert len(nb.objects("ipam/ip-addresses")) == 1
+
+    def test_no_interface_REFUSES_rather_than_matching_by_address(self):
+        """The fallback *is* the defect. A caller with no interface has no
+        business claiming an address, so it raises instead of widening."""
+        import pytest as _pytest
+
+        from modules import netbox_client as nc
+
+        with _pytest.raises(nc.UnscopedAddressLookup) as err:
+            nc._ensure_ip_address(None, "http://nb", "10.0.0.15/24",
+                                  interface_id=None)
+        assert "by address alone" in str(err.value)
+
+    def test_the_query_is_scoped_and_says_so(self):
         import inspect
 
         from modules import netbox_client as nc
 
         src = inspect.getsource(nc._ensure_ip_address)
-        params = src[src.index("params"):src.index("existing =")]
-        assert '"address"' in params, "the scan is not reading the lookup"
-        assert "vrf_id" in params
-        assert "device" not in params, (
-            "the lookup is now device-scoped — if that is the fix, this test "
-            "should assert the scoping rather than its absence")
-        assert "interface" not in params
+        assert "interface_id=interface_id" in src
+        assert 'params' not in src.split('"""')[2], \
+            "an address-keyed params dict is back"
 
-    def test_a_hit_on_another_interface_is_PATCHED_not_left_alone(self):
+    def test_the_read_160_lines_below_uses_the_same_scope(self):
+        """It always did. That is the finding, not the fix: careful in the
+        place where being wrong picked a wrong primary IP, absent from the
+        place where being wrong moved another device's address."""
         import inspect
 
         from modules import netbox_client as nc
 
-        src = inspect.getsource(nc._ensure_ip_address)
-        assert "assigned_object_id" in src
-        assert "_nb_patch" in src
-        # The condition that triggers the steal, verbatim.
-        assert 'existing.get("assigned_object_id") != interface_id' in src
-
-    def test_the_scoping_EXISTS_160_lines_below_in_a_READ(self):
-        """**The sharpest part.** The primary_ip4 fallback searches by
-        address and then filters to interfaces belonging to this device:
-        `if iface_id in nb_iface_map.values()`.
-
-        So the scoping the write path lacks is present, correct, and in the
-        same file — written by someone who had understood the problem in a
-        place where getting it wrong would only have picked a wrong primary
-        IP, not moved another device's address.
-        """
-        import inspect
-
-        from modules import netbox_client as nc
-
-        write = inspect.getsource(nc._ensure_ip_address)
         read = inspect.getsource(nc._upsert_device)
-        assert "nb_iface_map.values()" in read, \
-            "the device-scoped filter is gone — re-derive this finding"
         assert "if iface_id in nb_iface_map.values()" in read
-        assert "nb_iface_map" not in write, (
-            "the write now knows the device's interfaces — if that is the "
-            "fix, assert the scoping rather than its absence")
 
 
 class TestWhyNeitherGuardCaughtIt:
@@ -176,3 +257,71 @@ class TestTheDetector:
 
     def test_a_hyphenated_name_survives(self, tool):
         assert tool.described_host("bp-onboard-c Gi1") == "bp-onboard-c"
+
+
+class TestTheRepairRefusesUntilTheFixIsIn:
+    """**A repair that recreates the damage is worse than no repair.**
+
+    The import is golden-driven, so the addresses are recoverable: nothing
+    on any device was lost — r3 still has `10.0.0.15` on Gi1 in its running
+    config. What was damaged is NetBox, which is not versioned. But a
+    re-import with the *old* code walks the fleet again and reproduces the
+    same one-object-many-claimants state, so the order is forced: the lookup
+    fix lands, then the repair runs.
+
+    `scripts/nmas-netbox-repair-addresses` checks that precondition in the
+    code rather than trusting the operator to sequence it.
+    """
+
+    @pytest.fixture(scope="class")
+    def repair(self):
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+
+        path = os.path.join(ROOT, "scripts", "nmas-netbox-repair-addresses")
+        spec = importlib.util.spec_from_file_location(
+            "repair", path, loader=SourceFileLoader("repair", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_it_recognises_the_fix_is_in(self, repair):
+        assert repair._lookup_is_interface_keyed() is True
+
+    def test_and_it_would_refuse_without_it(self, repair, monkeypatch):
+        """The control, driven through the same function: with an
+        address-keyed lookup the precondition is False and `main` returns 2
+        before touching anything."""
+        import inspect
+
+        monkeypatch.setattr(
+            inspect, "getsource",
+            lambda obj: 'params = {"address": address_cidr}')
+        assert repair._lookup_is_interface_keyed() is False
+
+    def test_it_never_repoints_an_address_that_lives_elsewhere(self, repair):
+        """Moving an address is what caused this, so a repair reports a
+        holder and does not touch it."""
+        import inspect
+
+        src = inspect.getsource(repair)
+        assert "will NOT be moved" in src
+        assert "_nb_patch" not in src, "the repair can move an address"
+        assert "_nb_delete" not in src, "the repair can delete"
+        assert "assigned_object_id" not in src, \
+            "the repair sets an assignment on an existing object"
+
+    def test_dry_run_is_the_default(self, repair):
+        import inspect
+
+        src = inspect.getsource(repair.main)
+        assert 'if not args.apply:' in src
+        assert "Nothing was created" in src
+
+    def test_nothing_to_create_does_not_claim_netbox_is_correct(self, repair):
+        """*"Nothing to create"* and *"NetBox is right"* are different
+        claims, and the first must not be read as the second."""
+        import inspect
+
+        src = " ".join(inspect.getsource(repair.main).split()).replace('" "', "")
+        assert "not a claim that NetBox is correct" in src

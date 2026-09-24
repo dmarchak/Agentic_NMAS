@@ -86,6 +86,16 @@ class FakeNetBox:
                 if str(device.get("id")) != str(value):
                     return False
                 continue
+            if key == "interface_id" and "assigned_object_type" in obj:
+                # NetBox supports ?interface_id= on ipam/ip-addresses by
+                # joining through the generic assignment. Added when the
+                # lookup key became the interface; the fake had only the
+                # device-level join below it.
+                if (obj.get("assigned_object_type") or "") != "dcim.interface":
+                    return False
+                if str(obj.get("assigned_object_id")) != str(value):
+                    return False
+                continue
             if key == "address":
                 # NetBox matches a bare host address against a stored address
                 # that carries a prefix length, so "203.0.113.10" finds

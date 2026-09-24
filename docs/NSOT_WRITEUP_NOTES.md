@@ -8619,3 +8619,120 @@ second device on a containerlab fleet, which is precisely what the probe
 was. `test_netbox_ip_scoping.py` now asserts the fleet's shared stanza as
 the **premise**, with a control that changing one router's address fails it,
 so the premise cannot rot silently.
+
+## The fix, as two findings that outlive each other
+
+### 1. The lookup key is the INTERFACE
+
+**Two devices must be able to hold the same address value, and that is not
+a compromise.** Every containerlab node answers on `10.0.0.15` inside its
+own namespace; the same is true behind different VRFs and in disconnected
+management networks. The address genuinely is duplicated and **each
+instance genuinely belongs to its device**. One value, many interfaces,
+each its own object.
+
+So the question is *"does this interface already have this address"*, never
+*"does this address exist"* — which is the scope `_upsert_device`'s
+`primary_ip4` read has always used, 160 lines below the write that lacked
+it.
+
+Three details worth keeping:
+
+* **VRF narrowing was never the fix**, though it reads like one: r3's
+  address is in `clab-mgmt` and so is every other router's, so passing the
+  VRF selects the same object.
+* **No interface is a refusal, not a wider search.** `_ensure_ip_address`
+  raises `UnscopedAddressLookup` rather than falling back to matching by
+  address — the fallback *is* the defect, and a caller with no interface has
+  no business claiming an address. The one caller that could pass `None`
+  (the `primary_ip4` last resort) now logs a warning naming the consequence,
+  so the refusal cannot reach a debug line and read as "it already existed".
+* **Addresses are compared as addresses, not as text.** `2001:DB8::2/64`
+  from a config and `2001:db8::2/64` from NetBox are one address; comparing
+  the strings would duplicate the v6 object on every sync. A control that
+  removes the normalisation fails.
+
+An address that moves between interfaces now leaves the old object behind.
+**That is not a new class of stale record**: this importer never deletes
+anything, so an address removed from a config already leaves one. A move
+behaves like a removal.
+
+### 2. The cascade gap, which survives that fix
+
+`modules/netbox_cascade.py`. Any delete of any type can take objects with
+it, and the preview reported only what NMAS intended.
+
+**`CASCADES` is measured, not inferred from Django's `on_delete`.**
+`dcim/interfaces -> ipam/ip-addresses` comes from the changelog of request
+`263695a3`: one DELETE, three deletions. `dcim/devices` reaches addresses
+**transitively**, expanded by the walk rather than listed under devices, so
+the two cannot disagree.
+
+**A type absent from the map is UNKNOWN, never "takes nothing"** — an empty
+consequence and an unmeasured one look identical in a preview, and the one
+that reads as safe is the one nobody checked. `UNMEASURED` lists the six
+remaining types explicitly rather than being derived from the map's keys,
+and a test checks it against `_REMOVAL_ORDER` with a floor, so adding an
+endpoint to the removal walk without deciding which it is fails.
+
+`ipam/ip-addresses` is **measured-empty** — an empty tuple, a different
+claim from absence — because the same changelog request showed the
+addresses' own deletion producing nothing further. Leaving it absent would
+have made every preview unproven, and a warning that fires on everything
+trains the reader to skip warnings.
+
+**A failed dependents query reports unproven**, never an empty list, and
+`collateral()` splits what will be taken into NMAS's own and **foreign** —
+the question the provenance gate was built to answer and could not, because
+it was asked about each object rather than about the consequence.
+
+The modal renders three states: a red block naming each foreign object, a
+quiet line for collateral that is NMAS's own, and a separate amber banner
+for *"this preview is incomplete… which is not the same as nothing"*. A
+clean proven preview renders **nothing at all**, asserted, because a
+renderer that always warns trains the operator to click through.
+
+**A control passed, and that was the finding.** Deleting the call site from
+the modal left every renderer test green — they execute `nbCascadeHtml`
+directly, which tests the render and not the wiring. That is
+`loadOnboardPending` having no caller and the `/onboard/create` payload
+seam, for the third time: *a test that constructs its subject cannot notice
+that nothing else does.* A test now counts calls excluding the definition.
+
+### The repair is a re-import, and it refuses to run early
+
+`scripts/nmas-netbox-repair-addresses`, dry-run by default.
+
+**Nothing on any device was lost** — r3 still has `10.0.0.15` on Gi1 in its
+running config — so the addresses come back from the configs that still have
+them. But a re-import **with the old code** walks the fleet again and
+reproduces the same state, so the script checks that
+`_ensure_ip_address` is interface-keyed and **refuses with an explanation
+otherwise**. A repair that recreates the damage is worse than no repair, and
+the ordering is too easy to get wrong to leave to a runbook step.
+
+It never deletes and never re-points: an address found on another interface
+is **reported and left alone**, because moving one is what caused this.
+"Nothing to create" says in the same breath that it is a statement about
+what was compared and not a claim that NetBox is correct.
+
+## The asymmetry: git is versioned, NetBox is not
+
+Architectural rather than incidental, and worth a plan item.
+
+`config_repo/` is committed, tagged, pushed to a remote and restorable to
+any point. **NetBox is a live database this tool writes to with no history,
+no baseline and no rollback.** Baselines are commits of `golden/*.cfg` —
+device configuration — and they version nothing in NetBox.
+
+Tonight's damage was bounded **only because NetBox's contents are derivable
+from the golden configs**. That is a property of what happened to be
+damaged, not a guarantee. Anything hand-curated — a site description, a
+custom field, a tenant, a rack — has nothing to restore it from, and the
+Phase 0 note that *"the reference NetBox was populated by hand from the
+design document"* says the risk was there from the start.
+
+**Plan item: what, if anything, backs up NetBox.** It has its own export,
+and `scripts/nmas-netbox-census` already snapshots identity per type — which
+is most of a backup already. Had one been taken routinely, tonight's damage
+assessment would have been a **diff rather than an investigation**.

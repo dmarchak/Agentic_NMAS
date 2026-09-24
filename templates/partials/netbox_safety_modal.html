@@ -81,6 +81,53 @@ function _nbGroupTable(title, byType, emptyMsg) {
 }
 
 /* ── Import ─────────────────────────────────────────────────────────────── */
+/**
+ * What the DATABASE will take, beyond NMAS's own delete list.
+ *
+ * Pure, and separate from the modal, so the shipped source can be executed
+ * against the payload the endpoint returns -- the correction that came out
+ * of the agent panel, where three guards each hid the same data and every
+ * server test passed while the screen said nothing.
+ *
+ * Three states, never two. An empty consequence and an unmeasured one look
+ * identical in a preview, and the one that reads as safe is the one nobody
+ * checked -- so "could not ask" gets its own banner.
+ */
+function nbCascadeHtml(cascade) {
+  if (!cascade) return '';
+  const taken = cascade.taken || [];
+  const foreign = cascade.foreign || [];
+  const unproven = cascade.unproven || [];
+  let html = '';
+
+  if (foreign.length) {
+    html += `<div class="alert alert-danger py-2 px-3 small mt-3">
+      <strong>${foreign.length} object(s) NMAS did not create will be deleted
+      too.</strong> The database removes them along with the objects above.
+      They carry no <code>nmas-managed</code> tag, so the provenance check
+      would have left them alone &mdash; it protects an object, and this
+      travels a relationship.
+      <ul class="mb-0 mt-1">${foreign.slice(0, 20).map(o =>
+        `<li><span class="font-monospace">${_nbEscape(o.endpoint)}</span>
+           ${_nbEscape(o.name || o.id)} <em>(via ${_nbEscape(o.via)})</em></li>`
+        ).join('')}</ul></div>`;
+  } else if (taken.length) {
+    html += `<p class="small text-muted mt-3">${taken.length} further
+      object(s) will be removed by the database along with these, all of them
+      NMAS's own.</p>`;
+  }
+
+  if (unproven.length) {
+    html += `<div class="alert alert-warning py-2 px-3 small">
+      <strong>This preview is incomplete.</strong> It could not establish
+      what some of these deletions will take with them, which is
+      <em>not</em> the same as nothing.
+      <ul class="mb-0 mt-1">${unproven.slice(0, 10).map(u =>
+        `<li>${_nbEscape(u)}</li>`).join('')}</ul></div>`;
+  }
+  return html;
+}
+
 async function netboxPreviewImport(listName, allLists) {
   _netboxSafetyState = {mode: allLists ? 'import_all' : 'import',
                         list: listName || '', writesAllowed: false};
@@ -206,7 +253,8 @@ async function netboxPreviewRemoval(listName) {
            treated as yours and will not be touched.</p>
         <ul class="small text-muted">${skipped.slice(0, 20).map(o =>
           `<li>${_nbEscape(o.endpoint)} — ${_nbEscape(o.name || o.id)}
-             <em>(${_nbEscape(o.reason)})</em></li>`).join('')}</ul>` : ''}`;
+             <em>(${_nbEscape(o.reason)})</em></li>`).join('')}</ul>` : ''}
+      ${nbCascadeHtml(d.cascade)}`;
 
     document.getElementById('netboxSafetyForgetBtn').classList.remove('d-none');
     if (!d.writes_allowed) {

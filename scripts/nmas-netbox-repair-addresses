@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Give every interface back the addresses its golden config says it has.
+
+**Dry run by default**, like the golden migration: it prints what it would
+create and writes nothing unless `--apply` is passed, and `--apply` still
+goes through the ordinary write gate.
+
+## Why a repair pass rather than "the next import will fix it"
+
+The import is golden-driven, so the addresses are recoverable -- **nothing
+on any device was lost**; r3 still has `10.0.0.15` on Gi1 in its running
+config. What was damaged is NetBox, and NetBox is not versioned.
+
+But a re-import **with the old code** would walk the fleet again and
+reproduce the same one-object-many-claimants state, because the lookup key
+was the address. So the order is: the lookup fix lands, then this runs.
+It refuses to run against a tree whose `_ensure_ip_address` is still
+address-keyed, because a repair that recreates the damage is worse than no
+repair.
+
+## What it creates
+
+One IPAddress per (interface, address) that a golden config declares and
+NetBox lacks. Measured on the Lab 1 fleet: five routers each carrying
+`GigabitEthernet1 / 10.0.0.15/24` and `2001:DB8::2/64`, where NetBox held
+**one v4 object (destroyed on 2026-09-24) and one v6 object (still on r5,
+the last writer)** -- so ten objects where there is now one.
+
+It never deletes and never re-points. An address already on its own
+interface is left alone; an address on a *different* interface is reported
+and not touched, because moving it is what caused this.
+"""
+
+import argparse
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def _lookup_is_interface_keyed() -> bool:
+    """The precondition, checked rather than assumed."""
+    import inspect
+
+    from modules import netbox_client as nc
+
+    src = inspect.getsource(nc._ensure_ip_address)
+    return "interface_id=interface_id" in src
+
+
+def plan(list_name: str) -> dict:
+    """What each device's golden config says, against what NetBox holds."""
+    from modules.netbox_client import (_nb_get, _session_from_config,
+                                       _scan_device_from_golden,
+                                       get_netbox_config)
+
+    cfg = get_netbox_config()
+    session = _session_from_config(cfg)
+    base = cfg["url"]
+
+    from modules.device import load_saved_devices
+
+    creates, elsewhere, skipped = [], [], []
+    for dev in load_saved_devices(list_name):
+        host = dev.get("hostname") or dev.get("name") or ""
+        nb_dev = None
+        for d in _nb_get(session, base, "dcim/devices/", name=host):
+            nb_dev = d
+            break
+        if not nb_dev:
+            skipped.append({"device": host, "why": "not in NetBox"})
+            continue
+
+        try:
+            facts = _scan_device_from_golden(dev)
+        except Exception as exc:
+            skipped.append({"device": host, "why": f"no usable golden: {exc}"})
+            continue
+        if not facts or not facts.get("interfaces"):
+            skipped.append({"device": host, "why": "golden declares no interfaces"})
+            continue
+
+        ifaces = {i.get("name"): i for i in
+                  _nb_get(session, base, "dcim/interfaces/",
+                          device_id=nb_dev["id"])}
+        for intf in facts["interfaces"]:
+            nb_if = ifaces.get(intf.get("name"))
+            if not nb_if:
+                continue
+            have = {a.get("address") for a in
+                    _nb_get(session, base, "ipam/ip-addresses/",
+                            interface_id=nb_if["id"])}
+            wanted = [c for c in ([intf.get("cidr")]
+                                  + list(intf.get("secondary_ips") or [])
+                                  + list(intf.get("ipv6_addresses") or []))
+                      if c]
+            for cidr in wanted:
+                if any(_same(cidr, h) for h in have):
+                    continue
+                holder = _holder_of(session, base, cidr)
+                row = {"device": host, "interface": intf["name"],
+                       "interface_id": nb_if["id"], "address": cidr,
+                       "held_by": holder}
+                (elsewhere if holder else creates).append(row)
+
+    return {"creates": creates, "elsewhere": elsewhere, "skipped": skipped}
+
+
+def _same(a, b) -> bool:
+    from modules.netbox_client import _same_address
+
+    return _same_address(a, b)
+
+
+def _holder_of(session, base, cidr):
+    """Who currently holds an object with this value, if anyone.
+
+    Reported rather than acted on: **moving an address is what caused
+    this**, so a repair never re-points one.
+    """
+    from modules.netbox_client import _nb_get
+
+    for obj in _nb_get(session, base, "ipam/ip-addresses/", address=cidr):
+        if (obj.get("assigned_object_type") or "") == "dcim.interface":
+            assigned = obj.get("assigned_object") or {}
+            dev = (assigned.get("device") or {}).get("name", "?")
+            return f"{dev} {assigned.get('name', '?')} (id {obj['id']})"
+    return ""
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("list_name")
+    ap.add_argument("--apply", action="store_true",
+                    help="actually create them (dry run otherwise)")
+    args = ap.parse_args()
+
+    if not _lookup_is_interface_keyed():
+        print("REFUSED — `_ensure_ip_address` is still keyed on the address.")
+        print("Repairing now would recreate the damage on the next import. "
+              "Land the lookup fix first.")
+        return 2
+
+    from modules.netbox_client import get_netbox_config
+
+    if not get_netbox_config().get("url"):
+        print("NetBox is not configured.")
+        return 2
+
+    p = plan(args.list_name)
+    for row in p["skipped"]:
+        print(f"skipped {row['device']}: {row['why']}")
+
+    if p["elsewhere"]:
+        print(f"\n{len(p['elsewhere'])} address(es) exist on ANOTHER "
+              "interface and will NOT be moved:")
+        for r in p["elsewhere"]:
+            print(f"  {r['device']} {r['interface']} {r['address']} "
+                  f"— currently on {r['held_by']}")
+        print("  Moving one is what caused this. Delete it in NetBox if it "
+              "is wrong, then re-run.")
+
+    if not p["creates"]:
+        print("\nNothing to create.")
+        # A repair that found nothing and a repair that could not look must
+        # not print the same line.
+        print(f"(examined {len(p['skipped']) + len(p['elsewhere'])} other "
+              "finding(s); this is a statement about what was compared, not "
+              "a claim that NetBox is correct.)")
+        return 0
+
+    print(f"\n{len(p['creates'])} address(es) to create:")
+    for r in p["creates"]:
+        print(f"  {r['device']:16s} {r['interface']:24s} {r['address']}")
+
+    if not args.apply:
+        print("\nDry run. Nothing was created. Re-run with --apply.")
+        return 0
+
+    from modules import netbox_guard as guard
+    from modules.netbox_client import (_ensure_ip_address,
+                                       _session_from_config,
+                                       get_netbox_config)
+
+    cfg = get_netbox_config()
+    session = _session_from_config(cfg)
+    made, failed = 0, []
+    with guard.for_list(args.list_name):
+        for r in p["creates"]:
+            try:
+                _ensure_ip_address(session, cfg["url"], r["address"],
+                                   interface_id=r["interface_id"],
+                                   description=f"{r['device']} {r['interface']}")
+                made += 1
+            except Exception as exc:
+                failed.append(f"{r['device']} {r['address']}: {exc}")
+
+    print(f"\ncreated {made}, failed {len(failed)}")
+    for f in failed:
+        print(f"  {f}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

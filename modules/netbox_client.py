@@ -818,15 +818,70 @@ def _ensure_prefix(session, base: str, prefix: str,
     return _nb_post(session, base, "ipam/prefixes/", payload)
 
 
+class UnscopedAddressLookup(Exception):
+    """An address lookup was attempted with no interface to scope it to."""
+
+
 def _ensure_ip_address(session, base: str, address_cidr: str,
                        interface_id: int,
                        description: str = "",
                        vrf_id: Optional[int] = None) -> dict:
-    """Get-or-create an IPAM IP address assigned to a DCIM interface."""
-    params: dict = {"address": address_cidr}
-    if vrf_id:
-        params["vrf_id"] = vrf_id
-    existing = _nb_first(session, base, "ipam/ip-addresses/", **params)
+    """Get-or-create this address **on this interface**.
+
+    **The key is the interface, not the address.** The question is *"does
+    this interface already have this address"*, never *"does this address
+    exist"* -- because two devices genuinely can hold the same value and
+    each instance genuinely belongs to its own device. Every containerlab
+    node answers on `10.0.0.15` inside its own namespace; the same is true
+    behind different VRFs, and in disconnected management networks. One
+    value, many interfaces, **each its own object**.
+
+    This used to look up `{"address": cidr}` narrowed by VRF and nothing
+    else, and PATCH `assigned_object_id` when the hit sat on another
+    interface. Measured on the real NetBox, 2026-09-24: **one object was
+    passed between six devices.** All five Lab 1 routers carry the identical
+    `GigabitEthernet1 / vrf forwarding clab-mgmt / ip address 10.0.0.15`, so
+    each import took the object from whoever held it, leaving five routers
+    with an unaddressed management interface in NetBox for weeks. Nothing
+    reported it: a PATCH neither tags nor records, so the object was
+    correctly classified as not NMAS's by both provenance tests, and the
+    theft was invisible to every guard because **provenance protects an
+    object and this moved a relationship.**
+
+    **VRF narrowing was never the fix**, though it reads like one: r3's
+    address is in `clab-mgmt` and so is every other router's, so passing the
+    VRF selects the same object.
+
+    The scope used here is the one `_upsert_device`'s `primary_ip4` fallback
+    has always used on the read side (`if iface_id in nb_iface_map.values()`)
+    -- careful in the place where being wrong picked a wrong primary IP,
+    absent from the place where being wrong moved another device's address.
+
+    An address that moves from one interface to another leaves the old
+    object where it was. That is not a new class of stale record: **this
+    importer never deletes anything**, so an address removed from a config
+    already leaves one. A move now behaves like a removal.
+
+    Raises `UnscopedAddressLookup` when `interface_id` is missing, rather
+    than falling back to an address-wide match -- the fallback *is* the
+    defect, and a caller with no interface has no business claiming an
+    address.
+    """
+    if not interface_id:
+        raise UnscopedAddressLookup(
+            f"no interface to scope the lookup for {address_cidr} — refusing "
+            "to match by address alone")
+
+    # Scoped to the interface, then matched by value in Python: the answer
+    # is a handful of rows, and it does not depend on NetBox accepting a
+    # particular combination of filter names.
+    existing = None
+    for obj in _nb_get(session, base, "ipam/ip-addresses/",
+                       interface_id=interface_id):
+        if _same_address(obj.get("address"), address_cidr):
+            existing = obj
+            break
+
     payload: dict = {
         "address":              address_cidr,
         "status":               "active",
@@ -837,10 +892,12 @@ def _ensure_ip_address(session, base: str, address_cidr: str,
     if vrf_id is not None:
         payload["vrf"] = vrf_id
     if existing:
+        # It is already on this interface, so nothing here can move it off
+        # another one. Only the description and the VRF can differ.
         needs_update = (
-            existing.get("assigned_object_id") != interface_id
-            or (existing.get("assigned_object_type") or "") != "dcim.interface"
-            or existing.get("description") != payload["description"]
+            existing.get("description") != payload["description"]
+            or (vrf_id is not None
+                and (existing.get("vrf") or {}).get("id") != vrf_id)
         )
         if needs_update:
             try:
@@ -851,6 +908,22 @@ def _ensure_ip_address(session, base: str, address_cidr: str,
                 return existing
         return existing
     return _nb_post(session, base, "ipam/ip-addresses/", payload)
+
+
+def _same_address(a: Optional[str], b: Optional[str]) -> bool:
+    """Compare two CIDR strings as addresses, not as text.
+
+    `2001:DB8::2/64` and `2001:db8::2/64` are one address; NetBox
+    normalises case on write and a config does not.
+    """
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    try:
+        return ipaddress.ip_interface(a) == ipaddress.ip_interface(b)
+    except ValueError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1918,6 +1991,14 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             if not mgmt_ip_id:
                 first_iface_id = next(iter(nb_iface_map.values()), None)
                 mgmt_cidr = f"{ip}/32"
+                if not first_iface_id:
+                    # `_ensure_ip_address` now refuses an unscoped lookup, so
+                    # say WHY rather than letting the refusal reach the debug
+                    # log below and read as "the address already existed".
+                    log.warning("netbox: %s — no interfaces in NetBox, so the "
+                                "management address %s was not created; the "
+                                "device will have no primary_ip4",
+                                hostname, mgmt_cidr)
                 try:
                     nb_mgmt_ip = _ensure_ip_address(
                         session, base,
@@ -2700,6 +2781,33 @@ _REMOVAL_ORDER = (
 _PER_DEVICE_ORDER = ("ipam/ip-addresses", "dcim/interfaces", "dcim/devices")
 
 
+def _cascade_preview(session, base: str, planned: list,
+                     created: dict, what: str) -> dict:
+    """What the DATABASE will take, beyond NMAS's own delete list.
+
+    A removal preview used to be a simulation of NMAS's own loop: it
+    enumerated the intent exactly and asked NetBox nothing about the
+    consequence. Measured on 2026-09-24 it **listed eight objects while ten
+    disappeared** -- the two extra were addresses assigned to an interface
+    it deleted, and the database removed them on its behalf. Same rule the
+    deploy path keeps and this broke: *what is confirmed is what happens.*
+
+    Never raises. A failure returns `proven: False` with the reason, because
+    a preview that could not ask must not render as one that asked and got
+    nothing.
+    """
+    from modules import netbox_cascade
+
+    recorded = {(ep, e.get("id"))
+                for ep, entries in (created or {}).items() for e in entries}
+    try:
+        return netbox_cascade.collateral(session, base, planned, recorded)
+    except Exception as exc:                    # noqa: BLE001
+        log.warning("netbox: the cascade preview failed for %s: %s", what, exc)
+        return {"taken": [], "foreign": [], "proven": False,
+                "unproven": [f"the dependents queries did not run: {exc}"]}
+
+
 def remove_device_from_netbox(list_name: str, hostname: str,
                               dry_run: bool = False) -> dict:
     """Remove ONE device's NetBox objects, provenance-gated.
@@ -2803,7 +2911,14 @@ def remove_device_from_netbox(list_name: str, hostname: str,
              "%d skipped", hostname, list_name,
              " (dry run)" if dry_run else "", len(deleted), len(skipped))
     return {"ok": True, "device": hostname, "dry_run": dry_run,
-            "deleted": deleted, "skipped": skipped, "retained": retained}
+            "deleted": deleted, "skipped": skipped, "retained": retained,
+            # Only on the preview: after an apply the objects are gone, and
+            # the same query would report no consequence for a delete that
+            # had one.
+            "cascade": (_cascade_preview(session, base, deleted,
+                                         _guard.get_created(list_name),
+                                         f"device {hostname!r}")
+                        if dry_run else None)}
 
 
 def remove_list_from_netbox(list_name: str, dry_run: bool = False,
@@ -2908,6 +3023,9 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
              list_name, " (dry run)" if dry_run else "",
              len(deleted), len(skipped), device_count)
 
+    cascade = (_cascade_preview(session, base, deleted, created,
+                                f"list {list_name!r}") if dry_run else None)
+
     return {
         "ok": True,
         "list": list_name,
@@ -2915,6 +3033,7 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
         "deleted": deleted,
         "skipped": skipped,
         "counts": counts,
+        "cascade": cascade,
         # Kept for the existing NetBox tab, which reads both of these.
         "devices": device_count,
         "deleted_devices": device_count,
