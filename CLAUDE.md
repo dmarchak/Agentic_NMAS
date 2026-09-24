@@ -3019,6 +3019,36 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `s.auth` on **every** call rather than at build time. Re-aimed at the real
   path — the wrapper returning a bare session — it fired. The mutation has to
   target the mechanism, not a thing that looks like it.
+- **A staged plan names the variable it changes and assumes the SUBJECT holds
+  still.** Phases 1/2/3 for r6 were each *"one further variable from phase
+  1"*, which is only meaningful while the subject is where phase 1 left it.
+  r6 moved: committed intent, a golden, a route `r1` learns, an acceptance
+  with a measured baseline. **Changing one variable from a different starting
+  point is a different experiment** — phase 2 on r6 would not be phase 2 (can
+  a device be onboarded without a known address) but *re-addressing a managed
+  device*, which nothing needs. When the subject moves, the stage is
+  **re-decided rather than re-run**. Scoped against a throwaway in
+  [docs/PHASE2_DHCP.md](docs/PHASE2_DHCP.md), the way the wizard itself was
+  proven on `bp-onboard-c` and not on a fleet device.
+- **A management-address change is the one class where the ROLLBACK TRAVELS
+  OVER THE THING BEING CHANGED.** `ip address 10.255.0.32 …` →
+  `ip address dhcp` is expressible (merge-only pushes the new form and IOS
+  replaces the old), the push **succeeds**, and what fails afterwards is
+  reachability — at which point `_capture_failure_state()` reads back over a
+  fresh connection and `rollback_commands()` delivers the restore, **both
+  over the address just given up**. Every guard on the path is satisfied and
+  none of them helps: the confirm hash is right, the program is merge-only,
+  the credential guard passes. *The tool does exactly what it was asked,
+  correctly, and loses the device.* Recovery is the console and the
+  break-glass record. On a throwaway the same failure costs a
+  `containerlab destroy`.
+- **"Address optional" would be the wrong shape for DHCP onboarding.**
+  `render_bootstrap()` raises `ManagementAddressRequired` and `build_plan()`
+  makes it blocking, because the failure it prevents is silent — the device
+  boots, reports healthy, answers its console, and is onboardable by nothing.
+  Phase 2 adds a **stated source** (`static` | `dhcp`), not an optional
+  field: a checkbox turns a refusal into something a person switches off, and
+  the two failures then look identical from the wizard.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
