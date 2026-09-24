@@ -8418,3 +8418,102 @@ set difference in both directions with a floor on each. The second is a
 re-fetch that fails and leaves the old value rendered: confidently wrong is
 worse than behind, so a failed refresh marks the panel stale with the time
 of the value it is showing.
+
+## Remove deleted two objects it did not create
+
+**2026-09-24, on the real NetBox.** The Stage 4C probe's teardown deleted
+`10.0.0.15/24` and `2001:db8::2/64` — r3's containerlab management addresses
+from the Lab 1 import. ip-addresses 82 -> 80; total 229 -> 227.
+
+**Every step in the proof of "Remove deletes only what it created" holds.**
+The apply reported `ok: true` and `skipped: []`; the eight objects it deleted
+were each tagged `nmas-managed` and each in `data/netbox_created_ids.json`;
+the provenance gate refused nothing because there was nothing to refuse. The
+damage was done by the database, on Remove's behalf, **after the last point
+at which NMAS was looking.**
+
+This is the worst failure class in the design: the promise the gate exists to
+keep is false, and the gate is working correctly. It is also exactly why the
+teardown was run against the real NetBox instead of being proved by dry run.
+
+### The arithmetic says cascade, not a wrong delete list
+
+The eight objects were created after the baseline and then deleted, so they
+net to zero against it. **-2 is therefore exactly the two addresses, and
+nothing else was lost** — no interface, no device, no VRF or site beyond
+NMAS's own. That rules out the alternative explanation (NMAS deleting an
+object belonging to something else), which would have shown as -3 with an
+interface missing.
+
+So the loss travelled along a link an IPAddress has that is **not** its
+interface, since the interface survived.
+
+### The tension that has to be measured rather than argued
+
+The leading hypothesis is the VRF: Remove deleted `ipam/vrfs` id 4
+(`nmas-probe`), and a VRF deletion can take addresses assigned to it. But
+the two addresses are r3's, in the **`clab-mgmt`** VRF, which Remove did not
+touch. Both of those cannot be true as stated, and **which one is wrong is
+the diagnosis** — not something to settle by reasoning about Django's
+`on_delete`.
+
+`scripts/nmas-netbox-deletions` is the instrument. NetBox records every
+deletion in its changelog with the `request_id` of the HTTP request that
+caused it, and **a cascaded deletion carries the request_id of the delete
+that triggered it** — so the request holding three deletions names the
+culprit and its collateral in one row, and `prechange_data` then says what
+the collateral hung off. Each of NMAS's eight deletes was its own request,
+so one request with more than one deletion is decisive.
+
+Two details in it are the project's own rules applied: the changelog moved
+from `extras/` to `core/` in NetBox 4.0, so it tries both and prints which
+answered — a 404 on the wrong path would read here as *no deletions*, the
+opposite conclusion, and *a lookup that misses is a fact about the query*.
+And an empty window says so in words, because NetBox prunes the changelog:
+*"that is a fact about the window, not about NetBox"*.
+
+### Why the suite could not see it, and still cannot
+
+`FakeNetBox.delete` pops one object out of a dict of lists. **No foreign
+keys, no `on_delete`, no PROTECT, no CASCADE.** Every Remove test measures
+NMAS's loop against a store incapable of the behaviour that caused the
+damage. Not a criticism of the fake — it is the boundary of what a fake can
+prove, and the same seam as everything else this stage found.
+
+The sharp version: **`test_netbox_preview_fidelity.py` is named for the
+property that just failed.** *"The preview count is the executed count"* is
+a stated architecture decision with a test file of its own, and it is false
+in production — eight previewed, ten gone. It passes because the fake cannot
+cascade. The claim was always about NMAS's *delete list*; nothing said so,
+and the file's name says the opposite.
+
+### The preview lies by construction, not by a rendering bug
+
+`remove_list_from_netbox(dry_run=True)` walks the same `_REMOVAL_ORDER` over
+the same created-id record and calls `_nb_delete`, which in a dry run only
+records the intent. **Nothing on that path asks NetBox what a delete would
+take with it** — there is no dependents query anywhere in the module. The
+preview is exactly accurate about NMAS's intent and entirely silent about
+the consequence. Same rule the deploy path keeps and this breaks: *what is
+confirmed is what happens.*
+
+**And the cascade was already known.** `_run()`'s already-gone branch is
+commented *"Already gone, or cascaded by an earlier device delete"* and
+calls `forget_created`. The one place in the program that knows a delete can
+take others with it **drops the id and continues** — not counted, not
+reported, not distinguished from an object a human removed yesterday. A
+cascade detector wired to nothing.
+
+### What the fix has to be, and why it is not built yet
+
+A preview must show consequences, which means a **declared dependency map**:
+per type, the queries that find what the database will take with it. That
+map has to be derived from what NetBox actually does, and deriving it from a
+guess is a second wrong thing that looks right — so it waits on the
+changelog measurement. Two properties it needs regardless:
+
+* the map is an **allowlist with a floor**, like `_REMOVAL_ORDER`, so a type
+  absent from it is absent deliberately rather than forgotten;
+* a preview that could not run its dependents query reports **unproven**
+  rather than an empty consequence list, since "nothing will cascade" and
+  "I could not ask" must not render the same.

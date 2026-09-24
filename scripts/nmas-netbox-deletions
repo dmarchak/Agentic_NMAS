@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""What a NetBox delete ACTUALLY took, from NetBox's own changelog.
+
+Written on 2026-09-24, after the Stage 4C probe's teardown deleted **two
+objects it did not create**: `10.0.0.15/24` and `2001:db8::2/64`, r3's
+containerlab management addresses, from the Lab 1 import. Remove's apply
+reported `ok: true`, `skipped: []`, and deleted exactly the eight objects in
+its own record — **every one of which was genuinely its own.** The extra two
+went by database cascade, on Remove's behalf, and nothing in NMAS saw it.
+
+**The provenance gate cannot see this, by construction.** It checks what
+NMAS asks to delete. A cascade is what the DBMS does *afterwards*, and
+`remove_list_from_netbox`'s own dry run is a simulation of NMAS's loop --
+never a question put to the database -- so the preview is accurate about
+intent and silent about consequence.
+
+**NetBox's changelog is the instrument.** Every object deletion is recorded
+with the `request_id` of the HTTP request that caused it, and a cascade
+carries the request_id of the delete that triggered it. So a request_id
+holding more than one deletion **names the culprit and its collateral in one
+row**, which is the whole diagnosis. `prechange_data` then says what the
+collateral was attached to.
+
+Read-only: GETs against `extras/object-changes` and nothing else.
+
+    scripts/nmas-netbox-deletions --minutes 120
+    scripts/nmas-netbox-deletions --since 2026-09-24T03:00
+    scripts/nmas-netbox-deletions --request-id <uuid>
+"""
+
+import argparse
+import datetime
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+#: Fields of a deleted object's `prechange_data` worth printing: the ones
+#: that say what it HUNG OFF, since that is what a cascade travels along.
+LINKS = ("vrf", "assigned_object_type", "assigned_object_id", "device",
+         "interface", "site", "region", "tenant", "scope_type", "scope_id")
+
+
+def _fmt(value) -> str:
+    if isinstance(value, dict):
+        return str(value.get("name") or value.get("display")
+                   or value.get("id") or value)
+    return str(value)
+
+
+#: The changelog moved from `extras` to `core` in NetBox 4.0. Trying one
+#: and reporting an empty result would be "the gate that silently opens":
+#: a 404 on the wrong path is a fact about the QUERY, and it would read here
+#: as *no deletions*, which is the opposite conclusion.
+CHANGELOG_PATHS = ("core/object-changes/", "extras/object-changes/")
+
+
+def fetch(session, base: str, **params):
+    """``(rows, endpoint_used)``. Raises only if EVERY path failed."""
+    from modules.netbox_client import _nb_get
+
+    errors = []
+    for path in CHANGELOG_PATHS:
+        try:
+            return _nb_get(session, base, path, action="delete", **params), path
+        except Exception as exc:          # 404 on this NetBox version
+            errors.append(f"{path}: {exc}")
+    raise RuntimeError("no changelog endpoint answered — " + "; ".join(errors))
+
+
+def group(changes: list) -> dict:
+    """By `request_id`. **One request, one intended delete** -- so a group of
+    more than one is a delete that took something with it."""
+    out: dict = {}
+    for c in changes:
+        out.setdefault(c.get("request_id") or "(none)", []).append(c)
+    return out
+
+
+def _print_group(rid: str, rows: list) -> None:
+    when = rows[0].get("time", "")
+    user = rows[0].get("user_name") or "(unknown)"
+    flag = "  <-- TOOK OTHERS WITH IT" if len(rows) > 1 else ""
+    print(f"\nrequest {rid}   {when}   user={user}   "
+          f"{len(rows)} deletion(s){flag}")
+    for c in rows:
+        kind = (c.get("changed_object_type") or "?").split(".")[-1]
+        print(f"    {kind:14s} id={c.get('changed_object_id')} "
+              f"{c.get('object_repr', '')}")
+        pre = c.get("prechange_data") or {}
+        links = {k: pre[k] for k in LINKS if pre.get(k) not in (None, "", [])}
+        if links:
+            print("        " + "  ".join(f"{k}={_fmt(v)}"
+                                         for k, v in links.items()))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--minutes", type=int, default=180,
+                    help="look back this many minutes (default 180)")
+    ap.add_argument("--since", help="ISO timestamp, instead of --minutes")
+    ap.add_argument("--request-id", help="one request only")
+    ap.add_argument("--json", action="store_true", help="raw changelog rows")
+    args = ap.parse_args()
+
+    from modules.netbox_client import _session_from_config, get_netbox_config
+
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        print("NetBox URL and API token are not configured.")
+        return 2
+    session = _session_from_config(cfg)
+
+    params = {}
+    if args.request_id:
+        params["request_id"] = args.request_id
+    else:
+        since = args.since or (
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(minutes=args.minutes)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        params["time_after"] = since
+        print(f"deletions since {since}")
+
+    try:
+        changes, used = fetch(session, cfg["url"], **params)
+        print(f"changelog: {used}")
+    except Exception as exc:
+        print(f"the changelog could not be read: {exc}")
+        print("UNPROVEN — this is not the same as 'nothing was deleted'.")
+        return 2
+
+    if args.json:
+        print(json.dumps(changes, indent=2))
+        return 0
+
+    # A scan that found nothing must not read as a clean result. NetBox
+    # prunes the changelog (90 days by default), so an empty window is at
+    # least as likely to mean the evidence is gone as that nothing happened.
+    if not changes:
+        print("\nNo deletions recorded in this window.")
+        print("That is a fact about the WINDOW, not about NetBox: the "
+              "changelog is pruned, and a deletion older than the retention "
+              "leaves no trace here. Widen --since before concluding "
+              "anything.")
+        return 1
+
+    groups = group(changes)
+    for rid, rows in sorted(groups.items(), key=lambda kv: kv[1][0].get("time", "")):
+        _print_group(rid, rows)
+
+    multi = {r: g for r, g in groups.items() if len(g) > 1}
+    print(f"\n{len(changes)} deletion(s) in {len(groups)} request(s).")
+    if multi:
+        print(f"{len(multi)} request(s) deleted more than one object — each "
+              "is one intended delete plus what the database took with it:")
+        for rid, rows in multi.items():
+            kinds = ", ".join(sorted({(c.get("changed_object_type") or "?")
+                                      .split(".")[-1] for c in rows}))
+            print(f"  {rid}: {len(rows)} objects ({kinds})")
+    else:
+        print("No request deleted more than one object — no cascade in this "
+              "window.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
