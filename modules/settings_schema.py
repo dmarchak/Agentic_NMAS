@@ -458,7 +458,7 @@ GUARD_GATING_EMPTY_DEFAULTS = (
     # surviving one, which has the same empty default and therefore the same
     # property. The deprecated key is NOT listed: it gates nothing now, and a
     # list that keeps ghosts stops meaning what it says.
-    "oxidized_url",       # _oxidized_rest_base -> reload_oxidized, confirm_fetch
+    "oxidized_url",       # oxidized_client() -> reload_oxidized, confirm_fetch
 )
 
 #: The refusal these guards write, as a **shape** rather than a list.
