@@ -9792,3 +9792,104 @@ should be deciding, at 2am, whether to look at what they are about to
 overwrite. Removing it leaves one decision, and it is the one that matters.
 The pager already handles a long diff, `--yes` still skips everything for
 cron, and `--no-deploy` still stops before the clab VM is touched.
+
+## Two loose ends after phase 1 closed, both diagnosed rather than patched
+
+r6's startup file is the sanitised 74 lines, `secret 9` present, `password 0`
+absent, and `nmas-check-startup-applies` reads **SAFE** naming
+`labs/r6/patches/c8000v-launch-adopted.py@e483dd2475b5` — **r6's own patch,
+not the default lab's**, which is the map resolving correctly through the
+whole chain. The count and the `cmp -s` read-back both fired: 10 of 10.
+
+### 1. The full diff, failing for a third reason
+
+**The block is correct.** Extracted verbatim from the shipped file and run
+against a stub `ssh` that emits a diff for r6 only: the header prints, the
+diff prints, exit 0. So the loop, the `-n`, the `$(…)` capture and the
+`[ -n "$out" ]` guard are all fine.
+
+What is left is the pager, and that is the finding rather than the bug:
+
+> **The only review step before an irreversible write is piped through an
+> external program and two environment variables, and when any of them is
+> not what the script assumed, the review silently does not happen.**
+
+`${PAGER:-less -R}` depends on: `less` being installed, `$PAGER` being unset
+or usable, and `$LESS` not containing `-F` (quit-if-one-screen, which is a
+very common setting and would flash ~60 lines past and return instantly).
+Three ways to lose the review, none of which produce an error the operator
+would notice among the summary lines.
+
+**Discriminator, one command on the NMAS:**
+
+```bash
+command -v less; echo "PAGER=[${PAGER-unset}] LESS=[${LESS-unset}]"
+```
+
+* `less` absent → "command not found", the left side writes to a broken
+  pipe, output discarded. Straight to the prompt.
+* `LESS` containing `-F` → displayed and exited instantly.
+* `PAGER` set to something that does not display → the same.
+
+**The fix is to remove the dependency, not to harden it.** Write the diff to
+stdout. The terminal has scrollback; the operator asked for the review by
+running the script; and a review step that an unset environment variable can
+defeat is not a review step. **This section has now failed three times for
+three different reasons** — opt-in default, `ssh` eating the tty, and the
+pager — which is the argument for it having no moving parts at all.
+
+### 2. The git commit has never worked
+
+**Reproduced exactly.** With a repo at `labs/lab`, `configs/` tracked and
+unchanged, and untracked `configs.bak-*` directories present:
+
+```
+On branch master
+Untracked files:
+	configs.bak-20260801-120000/
+	configs.bak-20260815-120000/
+	configs.bak-20260924-105059/
+
+nothing added to commit but untracked files present
+Not a git repo, or nothing to commit: labs/lab/configs
+```
+
+That is the observed output, including the status listing "in between".
+
+**So the chain is settled:** `git rev-parse --git-dir` **succeeded** — there
+*is* a repo — `git add -A configs` staged **nothing**, and `git commit -q`
+failed. `-q` suppresses the *success* message and not the failure
+explanation, which is where the untracked list comes from.
+
+**`|| echo "Not a git repo, or nothing to commit"` names two causes and
+distinguishes neither**, which is why this has been printing the same line
+since August while meaning only one of them. The message is what hid it —
+another *reported and never true*, and the reporting is the defect as much as
+the cause.
+
+Two sub-cases remain, and one command tells them apart:
+
+```bash
+ssh dmarchak@10.0.0.210 'cd labs/lab && git rev-parse --show-toplevel && \
+  git check-ignore -v configs; git status --short configs | head'
+```
+
+* **`configs/` ignored** → `check-ignore` names the rule. Then `git add -A`
+  stages nothing by design and always has.
+* **`configs/` tracked and unchanged** → `status --short` is empty. The nine
+  received a header-only change whose `! rN - from Oxidized HEAD <sha>` line
+  is identical when the Oxidized SHA has not moved, so the files really are
+  byte-identical and there is genuinely nothing to commit.
+
+**Did the original single-destination version work?** No — and this is
+checkable rather than inferred: for the `labs/lab` destination the new
+command is **byte-identical to the old one** with `$dir` substituted for
+`$REMOTE_DIR`, same `cd`, same pathspec, same `||`. The per-lab change did
+not introduce this. **29 untracked backup directories going back to August
+are a repo that has received nothing from this script**, and they are
+exactly what a working commit would have made unnecessary: history instead
+of copies.
+
+`labs/r6` is the second destination and is probably not a repo at all, which
+produces the **same message with no status output** — the two sub-cases
+side by side in one run, indistinguishable by the line that reports them.

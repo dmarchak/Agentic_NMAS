@@ -2342,6 +2342,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   opt-in: it is **shown**, and the only question left is whether to proceed.
   Nobody should be deciding at 2am whether to look at what they are about to
   overwrite.
+- **A refusal naming two causes and distinguishing neither hides whichever
+  one is true.** `|| echo "Not a git repo, or nothing to commit"` has been
+  printing since August while meaning only the second: reproduced exactly —
+  `git rev-parse` **succeeds**, `git add -A configs` stages nothing, and
+  `git commit -q` fails, with `-q` suppressing the success message but not
+  the failure explanation, which is where the untracked-backup listing comes
+  from. **The per-lab change did not introduce it**: for that destination the
+  command is byte-identical to the original with `$dir` for `$REMOTE_DIR`, so
+  it has never worked — and 29 untracked backup directories are a repo that
+  has received nothing from this script, which is exactly what a working
+  commit would have made unnecessary.
+- **A review step with moving parts is a review step that will not happen.**
+  The full diff has now failed three times for three different reasons: an
+  opt-in prompt defaulting to No, `ssh` eating the tty `less` needed, and the
+  pager itself. The block is correct — extracted verbatim and run against a
+  stub it prints fine — so what remains is `${PAGER:-less -R}` depending on
+  `less` being installed, `$PAGER` being usable and `$LESS` not carrying
+  `-F`. Three ways to lose the only review before an irreversible write,
+  none producing an error anybody would notice. **Remove the dependency
+  rather than hardening it**: write the diff to stdout and let the terminal's
+  scrollback do its job.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
