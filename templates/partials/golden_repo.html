@@ -156,11 +156,6 @@ async function downloadGoldenVersion(hostname, ref) {
   } catch (e) { showToast(e.message, 'danger'); }
 }
 
-/* A baseline can be stale in two directions. The usual one is being behind.
-   The other is that it names credentials the fleet has rotated away from —
-   re-applying it would re-publish a secret that exists in history precisely
-   because rotation was meant to kill it. validate_restored_intent() refuses
-   such a device at plan time; this says so before the click. */
 /**
  * "N device(s)", and whether that covers the fleet as it is NOW.
  *
@@ -192,6 +187,11 @@ function _gBaselineCoverage(b) {
     <div class="small text-muted mt-1">predates ${_gEsc(names)}</div>`;
 }
 
+/* A baseline can be stale in two directions. The usual one is being behind.
+   The other is that it names credentials the fleet has rotated away from —
+   re-applying it would re-publish a secret that exists in history precisely
+   because rotation was meant to kill it. validate_restored_intent() refuses
+   such a device at plan time; this says so before the click. */
 function _gCredWarning(b) {
   const stale  = b.credential_stale || [];
   const silent = b.credential_silent || [];
