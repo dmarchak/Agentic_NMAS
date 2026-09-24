@@ -2316,6 +2316,32 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   back rather than deployed. Same shape: a guard whose first action after
   repair is to refuse something legitimate, and an alarm whose first firing
   is a false positive of the kind that muted it.
+- **A loop can run the right check fewer times than there are things to
+  check, and every evaluation still be correct.** `ssh` reads stdin to EOF
+  and forwards it, so inside `while read … done < <(list)` the first `ssh`
+  in the body swallows the rest of the list: the copy loop ran **once**,
+  nine of ten files were written, and the script printed *"Startup-configs
+  updated."* and exited **0**. Every command returned 0 — there was nothing
+  for error handling to catch. **A new variety**: everything catalogued
+  before is one evaluation producing a wrong answer (a gate that silently
+  opens, a vacuous assertion, a check answering a different question); this
+  is the right answer, too few times, and **the body cannot see it** because
+  it has no way to know it is the only iteration.
+  **So the check lives outside the loop and comes from the population** —
+  count the destinations independently and refuse unless as many succeeded,
+  which is *"checked 7 of 9"* applied to iterations rather than devices.
+  `ssh -n` on every call not fed by a pipe is the **cause** fixed; the count
+  is the **class** caught — measured, with the count in place, reverting the
+  `-n` fix refuses instead of passing silently. Then **read the destinations
+  back** (`cmp -s` per device, naming every mismatch, before the staging
+  directory is removed): the count says the loop ran enough times and says
+  nothing about what arrived. **A transport that says "done" is evidence
+  about the transport.**
+  The same `ssh` also ate the terminal that `less` needed, so a full diff
+  that *was* asked for never appeared — and that review is no longer
+  opt-in: it is **shown**, and the only question left is whether to proceed.
+  Nobody should be deciding at 2am whether to look at what they are about to
+  overwrite.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

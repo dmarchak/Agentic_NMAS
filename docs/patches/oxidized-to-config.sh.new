@@ -8,9 +8,9 @@
 #   RUN ON THE NMAS VM (where Oxidized lives):
 #     ./oxidized-to-config.sh
 #
-#   It converts, shows a diff against what is currently on the clab VM, and
-#   asks before copying anything. Nothing is written to the clab VM without
-#   an explicit yes.
+#   It converts, shows the full diff against what is currently on the clab
+#   VM, and asks before copying anything. Nothing is written to the clab VM
+#   without an explicit yes.
 #
 #   Options:
 #     ./oxidized-to-config.sh --no-deploy    convert and diff only
@@ -22,17 +22,30 @@
 #   The NMAS, once, via nmas-clab-targets. It used to be SIX places encoding
 #   the same population: three loops over "r1 r2 r3 r4 r5 s1 s2 s3 s4", the
 #   implicit cp glob, the ROUTERS string, and the NODE array. All were
-#   current when they were written. r6 was in none of them, so it would have
-#   been sanitised as a switch - wrong rules, silently - if it had been
-#   reached at all.
-#
-#   NODE is the one that decides what gets READ: it maps a device to the
-#   filename Oxidized stores it under. The map supplies it as a column,
-#   resolved from oxidized_node_identity rather than guessed.
+#   current when they were written. r6 was in none of them.
 #
 #   If the NMAS cannot be asked, this STOPS. It does not fall back to a
 #   default directory: a guess about where a config boots from writes one
 #   device's credentials into another lab.
+#
+# EVERY ssh USES -n WHEN IT IS NOT FED BY A PIPE
+#   ssh reads its stdin to EOF and forwards it to the remote command. Inside
+#   a `while read` loop stdin IS the loop's input, so on 2026-09-24 the first
+#   ssh in the copy body swallowed the rest of the destinations list: the
+#   loop ran ONCE, nine of ten files were copied, and the script printed
+#   "Startup-configs updated." and exited 0. In the full-diff loop the same
+#   ssh ate the terminal that `less` needed, so a diff that was asked for
+#   never appeared.
+#
+#   Every command return code was 0. There was nothing for error handling to
+#   catch, which is why the verification below counts and re-reads rather
+#   than trusting them.
+#
+# THE REVIEW IS NOT OPT-IN
+#   The full diff used to be behind "Show the full diff? [y/N]" - one
+#   keystroke from being skipped, before a script that overwrites boot
+#   configuration. It is now shown first and the only question is whether to
+#   proceed.
 #
 # WHY A SANITISER IS STILL NEEDED
 #   Oxidized's ios model strips very little. Its stored config still contains
@@ -68,7 +81,7 @@ for a in "$@"; do
   case "$a" in
     --no-deploy) DEPLOY=no  ;;
     --yes|-y)    DEPLOY=yes ;;
-    --help|-h)   sed -n '2,52p' "$0"; exit 0 ;;
+    --help|-h)   sed -n '2,65p' "$0"; exit 0 ;;
     *) echo "unknown option: $a"; exit 1 ;;
   esac
 done
@@ -317,7 +330,7 @@ echo " Comparing against ${CLAB}, per lab"
 destinations | sed 's/^/   /'
 echo "=========================================================="
 
-if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$CLAB" true 2>/dev/null; then
+if ! ssh -n -o ConnectTimeout=10 -o BatchMode=yes "$CLAB" true 2>/dev/null; then
   echo
   echo "Cannot reach $CLAB without a password."
   echo "Set up a key so this can run unattended:"
@@ -328,14 +341,14 @@ if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$CLAB" true 2>/dev/null; then
   exit 1
 fi
 
-ssh "$CLAB" "rm -rf $STAGE && mkdir -p $STAGE" || exit 1
+ssh -n "$CLAB" "rm -rf $STAGE && mkdir -p $STAGE" || exit 1
 rsync -a "$OUT"/ "${CLAB}:${STAGE}/" || exit 1
 
 changed=0
 newfiles=0
 echo
 for n in "${DEVICES[@]}"; do
-  d="$(ssh "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>&1" || true)"
+  d="$(ssh -n "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>&1" || true)"
   if [ -z "$d" ]; then
     printf '  %-4s %-16s unchanged\n' "$n" "${LAB[$n]}"
   elif grep -q 'No such file' <<<"$d"; then
@@ -352,22 +365,25 @@ done
 if [ $((changed + newfiles)) -eq 0 ]; then
   echo
   echo "Nothing to do - the clab VM already matches Oxidized."
-  ssh "$CLAB" "rm -rf $STAGE"
+  ssh -n "$CLAB" "rm -rf $STAGE"
   exit 0
 fi
 
 # ---------------------------------------------------------------------------
-# Show the full diff, then ask
+# The full diff, SHOWN rather than offered, then one question
+#
+# It used to be "Show the full diff? [y/N]" - opt-in, defaulting to No, one
+# keystroke from being skipped before a script that overwrites boot
+# configuration. A diff that must be asked for is a diff nobody reads at 2am.
+# The only decision left is whether to proceed.
 # ---------------------------------------------------------------------------
 if [ "$DEPLOY" = ask ]; then
-  echo
-  read -r -p "Show the full diff? [y/N] " ans
-  if [[ "$ans" =~ ^[Yy] ]]; then
+  {
     for n in "${DEVICES[@]}"; do
-      out="$(ssh "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
+      out="$(ssh -n "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
       [ -n "$out" ] && { echo; echo "########## $n  (${LAB[$n]}) ##########"; echo "$out"; }
-    done | ${PAGER:-less -R}
-  fi
+    done
+  } | ${PAGER:-less -R}
 
   echo
   echo "This will overwrite these directories on $CLAB:"
@@ -383,20 +399,22 @@ if [ "$DEPLOY" = ask ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Back up, copy, commit - PER LAB
+# Back up, copy, verify, commit - PER LAB
 #
 # One transfer per DESTINATION, not per device: the unit of work is a lab,
-# which is the unit --stray and the lab map already use, and a failure is then
-# "this lab was not updated" - a claim nmas-check-startup-applies can confirm
-# per device.
+# which is the unit --stray and the lab map already use.
 #
 # --files-from rather than a staging directory per lab: ./configs holds
 # exactly one <hostname>.cfg per device and nothing else, so selecting a
-# subset needs no second copy of it - and a second copy is how the two come
-# to disagree.
+# subset needs no second copy of it.
+#
+# EVERY ssh HERE USES -n. Without it the first one consumes the destinations
+# list this loop is reading from, and the loop runs once.
 # ---------------------------------------------------------------------------
 ts=$(date +%Y%m%d-%H%M%S)
 copy_failed=0
+copied_dests=0
+total_dests=$(destinations | wc -l)
 
 while read -r dir; do
   [ -n "$dir" ] || continue
@@ -406,27 +424,68 @@ while read -r dir; do
   done
   count=$(printf '%s' "$list" | grep -c . || true)
 
+  # FED BY A PIPE, so this one must NOT take -n: its stdin is the file list,
+  # not the loop's input, and -n would send the remote `cat` nothing.
   printf '%s' "$list" | ssh "$CLAB" "cat > '$STAGE/.files'" || { copy_failed=1; continue; }
 
-  if ssh "$CLAB" "cp -r '$dir' '${dir}.bak-${ts}' 2>/dev/null; \
-                  rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/'"; then
+  if ssh -n "$CLAB" "cp -r '$dir' '${dir}.bak-${ts}' 2>/dev/null; \
+                     rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/'"; then
     echo "Copied $count file(s) to $dir   (backup ${dir}.bak-${ts})"
+    copied_dests=$((copied_dests+1))
   else
     echo "Copy FAILED for $dir - staged files left at ${CLAB}:${STAGE}"
     copy_failed=1
   fi
 done < <(destinations)
 
+# ---------------------------------------------------------------------------
+# COUNT, then READ BACK. Both before STAGE is removed.
+#
+# The count catches a loop that ran fewer times than there are destinations -
+# the 2026-09-24 failure, where every command returned 0 and there was
+# nothing for error handling to catch.
+#
+# The read-back is the one that matters: it asks the clab VM what is actually
+# in each destination rather than trusting what the transport reported. Same
+# rule as "a failed push reports what LANDED, not what was pushed", and as
+# verify_startup_carries_current() reading the file rather than the report.
+# ---------------------------------------------------------------------------
+if [ "$copied_dests" -ne "$total_dests" ]; then
+  echo
+  echo "REFUSED - copied $copied_dests of $total_dests destination(s)."
+  echo "The loop ran fewer times than there are destinations. Staged files"
+  echo "left at ${CLAB}:${STAGE} - do not re-run until this is understood."
+  exit 1
+fi
+
+verify=""
+for n in "${DEVICES[@]}"; do
+  verify="${verify}cmp -s '$STAGE/${n}.cfg' '${CFGDIR[$n]}/${n}.cfg' || echo '${n} ${CFGDIR[$n]}'"$'\n'
+done
+mismatched="$(ssh -n "$CLAB" "$verify")"
+
+if [ -n "$mismatched" ]; then
+  echo
+  echo "REFUSED - these devices are NOT what was staged:"
+  printf '%s\n' "$mismatched" | sed 's/^/    /'
+  echo
+  echo "The copy reported success for every destination and the files do not"
+  echo "match. Staged files left at ${CLAB}:${STAGE}."
+  exit 1
+fi
+
+echo "Verified: all ${#DEVICES[@]} file(s) match the staged copy at their destination."
+
 if [ "$copy_failed" -ne 0 ]; then
   echo "One or more labs were not updated. Staged files left at ${CLAB}:${STAGE}"
   exit 1
 fi
 
-ssh "$CLAB" "rm -rf $STAGE"
+ssh -n "$CLAB" "rm -rf $STAGE"
 
 while read -r dir; do
   [ -n "$dir" ] || continue
-  ssh "$CLAB" "cd \$(dirname '$dir') && \
+  ssh -n "$CLAB" "cd \$(dirname '$dir') && \
     git rev-parse --git-dir >/dev/null 2>&1 && \
     git add -A \$(basename '$dir') && \
     git commit -q -m 'harvest from oxidized $ts' && \

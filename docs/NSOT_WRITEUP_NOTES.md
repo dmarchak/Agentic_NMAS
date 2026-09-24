@@ -9723,3 +9723,72 @@ compared against the map.
 *Nothing was overwritten wrongly; the nine received a benign header-only
 update and r6 is exactly as it was.* The state is safe and the report was
 false, which is the combination this project treats as the worst one.
+
+## A loop that ran the right check fewer times than there were things to check
+
+The operator's formulation, and it names a variety this project had not met:
+
+> The script written to make a per-lab failure visible failed per-lab
+> **silently**, because the truncation wasn't a failure — every command
+> returned 0, there was nothing for error handling to catch, and only a
+> count compared against the map could have seen it. **Not a check that
+> verified the wrong thing, but a loop that ran the right check fewer times
+> than there were things to check.**
+
+Everything this project has catalogued so far is a *wrong answer*: a gate
+that silently opens, an assertion that passes vacuously, a check answering a
+different question, a scan with an empty input. Each is one evaluation
+producing the wrong verdict.
+
+This is different. Every evaluation was correct. The destination
+`labs/lab/configs` really was copied, really was backed up, really did
+succeed. **The defect is the cardinality of the loop**, and no amount of
+correctness *inside* the body can see it — the body has no way to know it is
+the only iteration.
+
+**So the check has to be outside the loop, and it has to come from the
+population** — `total_dests=$(destinations | wc -l)` compared against
+`copied_dests`. That is the same structure as the drift checker's
+*"checked 7 of 9"* and `--reconcile`'s three buckets: **count the population
+independently, then account for every member.** Here the thing being counted
+is iterations rather than devices, which is why it did not look like the
+same rule.
+
+### The cause, and why `-n` is not the whole fix
+
+`ssh` reads stdin to EOF and forwards it. Inside `while read`, stdin *is*
+the loop's input. `ssh -n` on every call not fed by a pipe is the cause
+fixed; the count is the **class** caught. Measured against the real loop
+text with a stub `ssh` that consumes stdin unless `-n` is passed:
+
+```
+fixed form      2 destinations, 2 copied   COUNT ASSERT WOULD PASS
+old form        2 destinations, 1 copied   COUNT ASSERT WOULD REFUSE
+```
+
+The second line is the point: **with the count in place, reverting the `-n`
+fix is caught rather than silent.** A cause fix that only works while
+somebody remembers it is a cause fix that will stop working.
+
+### And then read the destinations back
+
+The count says the loop ran the right number of times. It says nothing about
+what arrived. `cmp -s` per device against the staged copy, naming every
+mismatch, before `STAGE` is removed — the same rule as *a failed push
+reports what **landed***, and as `verify_startup_carries_current()` reading
+the file rather than trusting the transport's report.
+
+**A transport that says "done" is evidence about the transport.**
+
+### The review is no longer opt-in
+
+`Show the full diff? [y/N]` was one keystroke from being skipped before a
+script that overwrites boot configuration. The diff is now **shown**, and
+the only question is whether to proceed.
+
+Chosen over "keep the prompt, default to yes" because that still asks
+whether to *review*, and there is no good answer to that question — nobody
+should be deciding, at 2am, whether to look at what they are about to
+overwrite. Removing it leaves one decision, and it is the one that matters.
+The pager already handles a long diff, `--yes` still skips everything for
+cron, and `--no-deploy` still stops before the clab VM is touched.
