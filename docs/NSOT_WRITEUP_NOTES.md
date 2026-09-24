@@ -9630,3 +9630,96 @@ argument against the repair** — and each is worth finding before the switch
 is flipped rather than after. The test is cheap to apply: *before
 re-enabling something that was switched off, ask what it will say first, and
 whether that is the same thing it said last time.*
+
+## The first time a tool we built reported success for work it did not do
+
+r6's startup file was **not copied**. The script printed *"Startup-configs
+updated."* and exited **0**. `~/labs/r6/configs/r6.cfg` is still the
+397-byte bootstrap artefact: `secret 9` → 0, `password 0` → 1.
+
+Per-lab grouping existed to make exactly this visible, and it was invisible:
+no error, no mention of `labs/r6/configs`, and the run reported success for
+nine of ten files.
+
+### 1. Why the second destination was never written — measured
+
+**Not the subshell.** `while read … done < <(destinations)` was right about
+that class. The cause is one line down:
+
+> **`ssh` reads its stdin to EOF and forwards it to the remote command.**
+
+Inside a `while read` loop, stdin *is* the loop's input. So the first `ssh`
+in the body swallowed the rest of the destinations list, `read` hit EOF, and
+the loop ended after **one** iteration.
+
+Reproduced locally with `cat` standing in for `ssh`:
+
+```
+loop as written          TOTAL ITERATIONS: 1
+same loop, stdin denied  TOTAL ITERATIONS: 2
+```
+
+**Three `ssh` calls sit inside `while read` loops**, and two of them eat it:
+
+| line | call | effect |
+|---|---|---|
+| 409 | `printf … \| ssh … "cat > .files"` | **safe** — stdin comes from the pipe |
+| 411 | the `cp`/`rsync` | **ate the list** — one destination copied |
+| 429 | the per-lab `git commit` | **ate the list** — one lab committed |
+
+And it explains why the *per-device* loops were unaffected: **a `for` loop
+expands its list before the body runs**, so nothing in the body can truncate
+it. The bug is specific to `while read`, which is the construct I reached
+for *because* of the subshell rule — a correct fix for one class sitting
+directly on top of another.
+
+### 2. Why the full diff showed nothing — two candidates, one discriminator
+
+The same root cause is available: the `for` loop's `ssh` calls inherit the
+**terminal** as stdin while `less` is trying to own it, so `less` can be
+handed EOF and quit immediately.
+
+But there is a simpler candidate, and it is not a bug: **the prompt defaults
+to No.** `read -r -p "Show the full diff? [y/N]"` followed by
+`[[ "$ans" =~ ^[Yy] ]]` means Enter skips the review.
+
+**The discriminator is one question** — what was answered. If `y` and
+nothing appeared, it is the tty contention. If Enter, the review step did
+nothing *correctly*, and the finding is instead that **the only review step
+in a script that overwrites boot configuration is opt-in and one keystroke
+from being skipped.**
+
+Worth stating either way: a confirmation whose default is "don't show me"
+is not much of a confirmation.
+
+### 3. What makes "copied N of M" checkable rather than reported
+
+The loop's own counter is a **report**. It says what the script believes it
+did, and this run proves the belief can be wrong while every command in it
+succeeded.
+
+**The check is to read the destinations back**, from the map, before the
+staging directory is removed:
+
+* count destinations **before** the loop and refuse unless as many succeeded
+  — that catches the truncation directly;
+* then, per device, compare the file at `${CFGDIR[$n]}/$n.cfg` against the
+  staged copy (`cmp -s`), and **name every device that does not match**.
+
+The second is the one that matters, and it is the principle already applied
+twice tonight: *a failed push reports what landed, not what was pushed*, and
+`verify_startup_carries_current()` reads the file rather than trusting the
+transport's report. **A transport that says "done" is evidence about the
+transport.**
+
+### The shape
+
+The script was written to make a per-lab failure visible, and it failed
+per-lab **silently** — because the mechanism that truncated the loop was not
+a failure at all. Every command returned 0. There was nothing for the error
+handling to catch, and the only thing that could have caught it was a count
+compared against the map.
+
+*Nothing was overwritten wrongly; the nine received a benign header-only
+update and r6 is exactly as it was.* The state is safe and the report was
+false, which is the combination this project treats as the worst one.
