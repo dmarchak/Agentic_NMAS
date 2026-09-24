@@ -544,7 +544,13 @@ def wired(monkeypatch, tmp_path):
                         lambda **kw: state["router"].login(**kw))
     monkeypatch.setattr(cr, "_SLEEP", lambda _s: None)
 
-    monkeypatch.setattr(cr, "preflight", lambda ln, hn: {
+    # `**kw` so the stub does not have to be edited for every parameter the
+    # real `preflight` grows — it gained `device` and `capture` for the
+    # onboarding path, and a fixed-arity lambda made 48 tests fail with a
+    # TypeError rather than with anything about rotation. Third stub-signature
+    # drift in this stage, and the first caught immediately, because the real
+    # signature changed rather than the caller's idea of it.
+    monkeypatch.setattr(cr, "preflight", lambda ln, hn, **kw: {
         "ok": True, "device": hn, "repo": str(repo), "device_row": device,
         "mgmt_ip": device["ip"], "identity": "uid:r2", "username": "admin",
         "privilege": "15", "current_line": state["golden_line"],
@@ -1784,7 +1790,7 @@ class TestTheGoldenIsTheWholeConfigNotTheVerifyRead:
         real = mod._commit
 
         def _spy(list_name, repo, hostname, device, username, privilege,
-                 password, new_hash, post_config, actor):
+                 password, new_hash, post_config, actor, **kw):
             saved["config"] = post_config
             return {"ok": True, "commit": "abc123"}
 
@@ -2308,3 +2314,131 @@ class TestTheInteractiveScript:
         doc = open(self.SCRIPT, encoding="utf-8").read()
         assert "does not pass through them" in doc
         assert "bypass the gate" in doc
+
+
+class TestTheOnboardingParameterisationGoesBothWays:
+    """`rotate()` grew `device`, `capture` and `record` for the onboarding
+    path. **A parameterisation can collapse to one behaviour and still
+    pass**, so all three directions are pinned: the inventory path unchanged,
+    the pending path recording to the override, and the inventory path still
+    writing the CSV row.
+
+    What is atomic is *"the device holds a new password"* and *"the tool has
+    written that password where it can read it"*. What is NOT part of that
+    unit is promotion, which claims something different — that the device is
+    finished and belongs in the inventory — and happens later, reading the
+    credential back out rather than being handed it down a call chain.
+
+    The ordering below `preflight` is untouched: it is the lockout defence.
+    """
+
+    def _commit_args(self, monkeypatch):
+        """Capture what `_commit` was asked to do, without doing it."""
+        from modules.nsot import credential_rotation as cr
+
+        seen = {}
+
+        def _spy(list_name, repo, hostname, device, username, privilege,
+                 password, new_hash, post_config, actor, **kw):
+            seen.update(record=kw.get("record", "csv"), device=device,
+                        password=password, hostname=hostname)
+            return {"ok": True, "commit": "abc123"}
+
+        monkeypatch.setattr(cr, "_commit", _spy)
+        return seen
+
+    def test_the_default_is_unchanged(self):
+        """An inventory device rotates exactly as before: `record` defaults
+        to csv and preflight looks the device up itself."""
+        import inspect
+
+        from modules.nsot import credential_rotation as cr
+
+        sig = inspect.signature(cr.rotate)
+        assert sig.parameters["record"].default == "csv"
+        assert sig.parameters["device"].default is None
+        assert sig.parameters["capture"].default == ""
+
+        pre = inspect.signature(cr.preflight)
+        assert pre.parameters["device"].default is None
+        assert pre.parameters["capture"].default == ""
+
+    def test_a_pending_device_records_to_the_override(self, tmp_path,
+                                                      monkeypatch):
+        """**And writes no CSV row.** A pending device has none — promotion
+        writes it, last — so recording to the CSV would write into nothing
+        and leave the tool holding a credential the device no longer
+        accepts."""
+        import modules.credentials as creds
+        from modules.nsot import credential_rotation as cr
+
+        # LISTS_DIR, not the function: `get_list_data_dir()` calls
+        # os.makedirs, so merely resolving a path creates a list.
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr(creds, "_FILE", str(tmp_path / "creds.json"))
+        wrote_csv = []
+        monkeypatch.setattr("modules.device.write_devices_csv",
+                            lambda *a, **k: wrote_csv.append(a))
+
+        cr._commit("probe", str(tmp_path), "bp1",
+                   {"ip": "203.0.113.31", "hostname": "bp1"}, "admin", 15,
+                   "N3wR0tatedValue", "", "", "t", record="override")
+
+        assert wrote_csv == [], "a pending rotation wrote a devices.csv"
+        got = creds.resolve("203.0.113.31")
+        assert got["ok"] is True
+        assert got["source"] == "device-override"
+        assert got["password"] == "N3wR0tatedValue"
+
+    def test_an_inventory_device_still_writes_the_csv_row(self, tmp_path,
+                                                          monkeypatch):
+        """The other direction. Without this the parameterisation could have
+        collapsed to 'always override' and every test above would pass."""
+        from modules.nsot import credential_rotation as cr
+
+        # LISTS_DIR, not the function: `get_list_data_dir()` calls
+        # os.makedirs, so merely resolving a path creates a list.
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        wrote_csv = []
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda p: [{"hostname": "r2", "ip": "203.0.113.2",
+                                        "password": "old", "secret": "old"}])
+        monkeypatch.setattr("modules.device.write_devices_csv",
+                            lambda rows, path: wrote_csv.append(rows))
+        monkeypatch.setattr(cr, "_csv_path_for", lambda ln: str(tmp_path / "d.csv"))
+
+        cr._commit("Lab", str(tmp_path), "r2",
+                   {"ip": "203.0.113.2", "hostname": "r2"}, "admin", 15,
+                   "N3wR0tatedValue", "", "", "t")
+
+        assert wrote_csv, "an inventory rotation did not write the CSV row"
+        row = next(r for r in wrote_csv[0] if r["hostname"] == "r2")
+        assert row["password"] not in ("old", "N3wR0tatedValue"), (
+            "the credential must be encrypted at rest in the CSV")
+
+    def test_preflight_accepts_a_supplied_device_and_capture(self, monkeypatch):
+        """`device_in_inventory` and `golden_config_present` were PROXIES —
+        for "we know this device's address" and "we know what it looks
+        like". A caller holding both has better answers than the stores."""
+        from modules.nsot import credential_rotation as cr
+
+        monkeypatch.setattr("modules.config.LISTS_DIR", "/tmp/nmas-nonexistent")
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda p: [])          # nothing in the inventory
+        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
+        monkeypatch.setattr(cr, "live_user_line",
+                            lambda dev, user: {"ok": False, "line": "",
+                                               "kind": ""})
+
+        out = cr.preflight("probe", "bp1",
+                           device={"ip": "203.0.113.31", "hostname": "bp1",
+                                   "username": "admin"},
+                           capture="hostname bp1\nusername admin privilege 15 "
+                                   "password 0 boot\n!\nend\n")
+        names = {c["name"] for c in out["checks"]}
+        assert "device_supplied_by_caller" in names
+        assert "capture_supplied_by_caller" in names
+        assert "device_in_inventory" not in names, (
+            "the inventory was consulted for a device that has no row")
+        assert out["mgmt_ip"] == "203.0.113.31"
+        assert "username admin" in out["capture"]

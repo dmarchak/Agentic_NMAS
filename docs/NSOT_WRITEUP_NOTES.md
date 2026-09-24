@@ -8100,3 +8100,62 @@ security improvement**, and that is the stronger half of the argument for
 building it. The weaker half — that `scp`ing files by hand is tedious — is
 the one that would otherwise have justified wiring `clab-sync` straight in,
 which would have produced a tool that only onboards emulated devices.
+
+---
+
+## A result field scoped to a part, read as the whole
+
+A new variety of the pattern this project keeps finding, and worth separating
+from the others.
+
+The familiar shape is **a check that verifies a proxy**: `_list_golden_configs()`
+enumerating a directory while content came from the manifest, `ok` meaning
+"the sync ran" rather than "the devices landed", a two-byte needle in 953
+bytes of ciphertext.
+
+This one is different. `verify_and_promote()` did:
+
+```python
+out["ok"] = out["promoted"]
+```
+
+**`ok` was scoped to one step and consumed as the verdict on the phase.** The
+function's *name* promises two things and its result reports on one — and the
+one it reports on is the step that changes what the operator SEES. Everything
+that does the work (capture, rotation, RW removal, the golden, the NetBox
+record) either failed silently or was never built, and the run returned
+`ok: true`.
+
+So the operator saw a promoted device with a full action set, holding a
+throwaway bootstrap password, with no golden and an empty credential in the
+CSV. **The one step that changes the display ran; the four that do the work
+did not.**
+
+The rule: **a result field named for the whole must be computed from the
+whole.** If a function's name promises N things, `ok` means all N or it means
+nothing — and if only one part can be reported on, the field must be named
+for that part (`promoted`, not `ok`).
+
+## A fact recorded where nobody reads it is not a fact reported
+
+The NetBox step **did** report itself. The result carried
+`netbox: {"deferred": true, "reason": "…has no captured config yet…"}`,
+accurate and complete. Nothing surfaced it: the toast said the device was
+promoted, the banner cleared, and the deferral sat in a JSON response nobody
+opened.
+
+Identical to the background agent's 26 consecutive failures living in
+`data/agent_activity.json` while the badge read **Active, in green** — and to
+the drift checker's `disabled` state being visible only by reading JSON over
+SSH.
+
+Three instances now, and the common form is worth stating: **the recording is
+the easy half.** A value written into a result, a log line, or a state file
+discharges the author's sense of having reported it, and discharges nothing
+else. The test is not "is it recorded" but **"where would somebody have to
+look, and would they have reason to look there?"** — and if the answer is a
+response body during a successful-looking run, it is not reported.
+
+This is why `redact.health()` goes in `GET /identity/status`, why the drift
+panel says "checked 7 of 9" on screen, and why the pending banner draws its
+own read failure above the rows rather than logging it.

@@ -872,8 +872,30 @@ def verify_with_retry(device: dict, username: str, password: str, *,
 # The operation
 # ---------------------------------------------------------------------------
 
-def preflight(list_name: str, hostname: str) -> dict:
-    """Everything checked before a password is even generated."""
+def preflight(list_name: str, hostname: str, *, device: dict = None,
+              capture: str = "") -> dict:
+    """Everything checked before a password is even generated.
+
+    *device* and *capture* exist for the **onboarding** path, and they change
+    only WHERE two facts come from — never the ordering below, which is the
+    lockout defence.
+
+    A device being onboarded has no `devices.csv` row: that is the pending
+    model, and the row is written last, by promotion. So this looked the
+    device up in the inventory and refused it, and `golden_config_present`
+    checked for a file that onboarding deliberately does not write until
+    after the RW community has been removed from the capture.
+
+    Both checks were **proxies**. `device_in_inventory` stands for "we know
+    this device's address and username"; `golden_config_present` stands for
+    "we know what this device looks like". A caller holding the device dict
+    and the capture in hand has better answers to both than the stores do,
+    and handing them in is the same correction as every other proxy replaced
+    in this stage.
+
+    For an inventory device both arguments are omitted and every check runs
+    exactly as before — pinned by a test that rotates one and compares.
+    """
     import os
 
     from modules.config import get_list_data_dir
@@ -891,12 +913,18 @@ def preflight(list_name: str, hostname: str) -> dict:
     _check("helper_installed_and_matching", helper["ok"],
            helper.get("reason") or f"sha {helper.get('installed_sha','')}")
 
-    _name, csv_path = get_current_device_list()
-    device = next((d for d in load_saved_devices(csv_path)
-                   if d.get("hostname") == hostname), None)
-    if not _check("device_in_inventory", device is not None,
-                  "" if device else f"{hostname} is not in this list"):
-        return out
+    if device is None:
+        _name, csv_path = get_current_device_list()
+        device = next((d for d in load_saved_devices(csv_path)
+                       if d.get("hostname") == hostname), None)
+        if not _check("device_in_inventory", device is not None,
+                      "" if device else f"{hostname} is not in this list"):
+            return out
+    else:
+        # Named differently so a reader of the checks can tell which answer
+        # was used. "device_in_inventory: ok" would be false here.
+        _check("device_supplied_by_caller", True,
+               "onboarding: the device is pending and has no inventory row")
     out["device_row"] = device
     out["mgmt_ip"] = device.get("ip", "")
 
@@ -908,13 +936,19 @@ def preflight(list_name: str, hostname: str) -> dict:
     from modules.inventory import is_stale
     _check("device_not_stale", not is_stale(device.get("ip", ""), list_name))
 
-    config = ""
-    path = _m.golden_path_for(repo, entry) if entry else ""
-    if path and os.path.exists(path):
-        with open(path, encoding="utf-8") as fh:
-            config = fh.read()
-    out["capture"] = config
-    _check("golden_config_present", bool(config))
+    config = capture
+    if not config:
+        path = _m.golden_path_for(repo, entry) if entry else ""
+        if path and os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                config = fh.read()
+        out["capture"] = config
+        _check("golden_config_present", bool(config))
+    else:
+        out["capture"] = config
+        _check("capture_supplied_by_caller", True,
+               "onboarding: the capture is in hand and no golden is written "
+               "until the RW community has been removed from it")
 
     username = device.get("username", "")
     out["username"] = username
@@ -1137,7 +1171,8 @@ def _yang_push_consumer(mgmt_ip: str) -> dict:
 
 
 def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
-           actor: str = "", actor_kind: str = "") -> dict:
+           actor: str = "", actor_kind: str = "", device: dict = None,
+           capture: str = "", record: str = "csv") -> dict:
     """Rotate one device. Returns one of the five states.
 
     The ordering is the lockout defence, and every line of it is load-bearing:
@@ -1161,7 +1196,10 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
         return bool(ok)
 
     # ---- preflight ------------------------------------------------------
-    pre = preflight(list_name, hostname)
+    # `device` / `capture` / `record` change only WHERE two facts come from
+    # and where one is written. The ordering below is untouched: it is the
+    # lockout defence, and every line of it is load-bearing.
+    pre = preflight(list_name, hostname, device=device, capture=capture)
     if not pre["ok"]:
         _step("preflight", False,
               "; ".join(c["name"] for c in pre["checks"] if not c["ok"]))
@@ -1350,7 +1388,7 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
               "recorded. Re-capture this device's golden.")
 
     commit = _commit(list_name, repo, hostname, device, username, privilege,
-                     password, new_hash, golden_config, actor)
+                     password, new_hash, golden_config, actor, record=record)
     result["golden_updated"] = capture_ok
     _step("commit", commit["ok"], commit.get("error", commit.get("commit", "")))
     result["commit"] = commit
@@ -1447,12 +1485,32 @@ def _csv_path_for(list_name: str) -> str:
 
 
 def _commit(list_name, repo, hostname, device, username, privilege, password,
-            new_hash, post_config, actor) -> dict:
+            new_hash, post_config, actor, *, record: str = "csv") -> dict:
     """Record the rotation: credential store, devices.csv, golden + intent.
 
     One commit for the golden capture and the intent change, because the
     device's stored secret and the intent that renders it are the same fact
     about the same moment.
+
+    *record* selects where the working credential is written.
+
+    ``"csv"`` is the inventory device's home and the default — unchanged.
+
+    ``"override"`` is the **device override store, keyed on the management
+    IP**: the same place onboarding put the bootstrap value, and the place
+    `credentials.resolve()` reads **without a `devices.csv` row**. A device
+    being onboarded has no row — promotion writes it, last — so recording to
+    the CSV would write into nothing and leave the tool holding a credential
+    the device no longer accepts.
+
+    **"The device holds a new password" and "the tool has written that
+    password where it can read it" must be atomic.** They are, either way:
+    this happens in one place, immediately after the device accepts the
+    change. What is NOT part of that unit is promotion, which claims
+    something different — that the device is finished and belongs in the
+    inventory — and therefore happens later, reading the credential back out
+    of the override rather than being handed it down a call chain. No step
+    passes a credential to another step, so none can pass an empty one.
     """
     import os
 
@@ -1478,15 +1536,23 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
         # and this commit would write the new credential into a different
         # network's inventory — the same defect the pipeline had at three
         # points after its push.
-        csv_path = _csv_path_for(list_name)
-        rows = load_saved_devices(csv_path)
-        from modules.device import fernet
-        for row in rows:
-            if row.get("hostname") == hostname:
-                row["password"] = fernet.encrypt(password.encode()).decode()
-                row["secret"] = fernet.encrypt(password.encode()).decode()
-        write_devices_csv(rows, csv_path)
-        out["devices_csv"] = "this row only"
+        if record == "override":
+            from modules import credentials as _creds
+
+            mgmt_ip = (device or {}).get("ip", "")
+            _creds.set_device_override(mgmt_ip, username, password, password)
+            out["devices_csv"] = "not written — pending device"
+            out["device_override"] = mgmt_ip
+        else:
+            csv_path = _csv_path_for(list_name)
+            rows = load_saved_devices(csv_path)
+            from modules.device import fernet
+            for row in rows:
+                if row.get("hostname") == hostname:
+                    row["password"] = fernet.encrypt(password.encode()).decode()
+                    row["secret"] = fernet.encrypt(password.encode()).decode()
+            write_devices_csv(rows, csv_path)
+            out["devices_csv"] = "this row only"
 
         # 3. Intent: the keyword changes password -> secret, and so does the
         #    ref name, because _h_username derives it from the keyword.

@@ -1716,6 +1716,39 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   holds"*, with `nmas-check-credential` as the command — the one cause the
   tool can answer about itself, and a control asserts it is **not** offered
   when a credential was in fact used.
+- **`rotate()` is parameterised on WHERE it reads the device and records the
+  result — never on its ordering**, which is the lockout defence. A device
+  being onboarded has no `devices.csv` row (promotion writes it, last), so
+  `preflight`'s `device_in_inventory` refused it and its
+  `golden_config_present` looked for a file onboarding deliberately does not
+  write until the RW community has been removed. **Both were proxies** — for
+  *"we know this device's address"* and *"we know what it looks like"* — and
+  a caller holding the device dict and the capture has better answers than
+  the stores. `record="override"` writes the new credential to the **device
+  override store, keyed on management IP**: the same place phase 1 put the
+  bootstrap value, and the place `resolve()` reads without a CSV row.
+- **What is atomic is "the device holds a new password" and "the tool has
+  written it where it can read it".** Promotion is not part of that unit: it
+  claims something different — *this device is finished and belongs in the
+  inventory* — so it happens last and reads the credential back out of the
+  override rather than being handed it. **No step passes a credential to
+  another step, so none can pass an empty one**, which is the empty-CSV
+  password bug fixed at its cause rather than its symptom.
+- **A parameterisation can collapse to one behaviour and still pass**, so it
+  is proven in both directions: a pending device records to the override and
+  writes **no** CSV row, and an inventory device **still** writes one.
+  Controls run both ways — forcing `override` for everyone fails one test,
+  forcing `csv` for everyone fails a different one, and a single-direction
+  suite would have passed one of the two.
+- **Onboarding saves its golden after the RW community is removed, not
+  before.** Capture → remove RW → rotate → save once. The golden is the
+  approved record of what a device should look like, and writing one that
+  contains a read-write community and then removing it makes the
+  repository's **first** record of the device a state we deliberately do not
+  want, preserved in history where a remote may publish it. The deploy path
+  saves after verify because the device *changed*; onboarding saves after
+  removal because the first record should be the one you would want
+  restored — an analogy worth not drawing.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
