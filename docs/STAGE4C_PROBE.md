@@ -81,6 +81,77 @@ cleaning up — it changes nothing — so it does not break the rule.
 
 ---
 
+## Where this probe stands — 2026-09-24 01:45
+
+**Paused mid-run, deliberately.** The four remaining phase-2 steps are the
+most consequential work of the stage — a device that rotates its own
+credential and writes its first golden — and they deserve a session where a
+mistake gets caught.
+
+### The device
+
+| | |
+|---|---|
+| `bp-onboard-c` | booted on `10.255.0.31`, holding the bootstrap credential |
+| staged credential | present, and **matches** what the node booted |
+| state | **promoted** (`verified_at` 01:38:33, CSV row exists) and **unfinished** |
+| golden | none — no capture was taken |
+| rotation | did not run; the device still holds the throwaway password |
+| NetBox record | none; `netbox_id` is null |
+| RW community | still present — there is no capture to remove it from |
+| **CSV row** | exists with an **empty password**, so anything resolving through the inventory fails on a device that answers fine |
+
+### Elsewhere
+
+* Three NetBox scaffolding objects — region, site, VRF, all named after the
+  list — created by the phase-1 import that could never have created the
+  device. They are in the created-object record and are **step 12's** job.
+* Census baseline: `/home/dmarchak/nmas-probe-before.json`.
+
+### The state the design did not intend to exist
+
+`promoted and unfinished` is reachable today only because promotion runs
+**second** of three instead of last. Once the four steps land in the agreed
+order — verify → capture → rotate (+record) → remove RW → save golden →
+NetBox → promote — promotion happens only when everything before it
+succeeded, and this state becomes unreachable.
+
+**Two measured consequences of it, both worth fixing before the resume:**
+
+1. **The banner will not offer Abandon for it.** `pending_devices()` skips
+   any entry carrying `verified_at`, so the device is in no pending row and
+   the button does not exist. The only path is `POST
+   /onboard/abandon/bp-onboard-c` directly.
+2. **`references()` does not check the CSV row.** It checks committed
+   intent, the golden, NetBox and the credential override — so for a
+   promoted device `release()` finds nothing and **hands the name back while
+   the inventory row remains**. An inventory row for a device with no
+   identity, no intent and no credential is the wrong-and-looks-right state,
+   inside the flow written to prevent exactly that.
+
+### The resume, when the four steps land
+
+**Abandon → re-create → boot → verify**, so the whole phase runs as one
+piece. Repairing this device in place would mean writing code for a state
+the fix makes impossible, and the probe's value is proving what the code
+does rather than patching what it did.
+
+But **abandon should refuse a promoted device and say why**, rather than
+learning to handle one: a promoted device is in the inventory, and removing
+it is the existing delete path, not an onboarding undo. Which leaves
+`bp-onboard-c` itself to be cleared by hand — and the probe list is
+disposable, so deleting and re-creating the list is the cheaper answer than
+teaching abandon a case that is about to stop existing.
+
+**Caution for that:** deleting a device list does **not** cascade into
+NetBox unless `netbox_remove_on_list_delete` is on. The created-object
+record is keyed on the list slug, so confirm it survives — or run step 12's
+Remove **before** deleting the list, while the record is certainly there.
+Otherwise the three scaffolding objects become orphaned: tagged, real, and
+no longer in NMAS's record, which is exactly the pair Remove requires.
+
+---
+
 ## Step −1 — verify every endpoint this runbook uses
 
 **Local. Reads nothing, writes nothing, costs a few seconds.**
