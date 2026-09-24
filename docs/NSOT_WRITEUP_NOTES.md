@@ -8159,3 +8159,60 @@ response body during a successful-looking run, it is not reported.
 This is why `redact.health()` goes in `GET /identity/status`, why the drift
 panel says "checked 7 of 9" on screen, and why the pending banner draws its
 own read failure above the rows rather than logging it.
+
+---
+
+## What the Stage 4C probe found, and why that is the stage's result
+
+The probe is **half-run**. It has not yet proved the thing it was built to
+prove — that the wizard onboards a device end to end and that Remove cleans
+up after itself. Judged on its stated acceptance it is incomplete.
+
+Judged on what it produced, it is the most productive exercise of the
+project so far. **Every one of these was live in code the suite passed:**
+
+| found | what it was |
+|---|---|
+| the empty-password connection | phase 2 offered `""` to a device whose credential sat in the store; Netmiko with the staged password reached it on the first try |
+| an importer with nothing to import | `sync_list_to_netbox` builds objects from a golden config, and an onboarding device has none — so it created a region, a site and a VRF and no device, and reported *"Device onboarded"* |
+| an unreachable banner | `loadOnboardPending()` called only by buttons inside the banner it draws |
+| unreachable banner actions | Verify and Abandon reading the wizard's select for a list the row already carried |
+| a discarded artefact | `render(plan)`'s return value thrown away — phase 1's entire product existed only on a screen, before Create |
+| a settings file that erased itself | truncate-in-place + `{}`-on-unreadable, which took the Cloudflare Access configuration with it |
+| a peer check that trusted everyone | `(not allowed) or (peer in allowed)` — a blank allowlist ending replay protection |
+
+**Not one was findable from the suite, and the suite was not weak.** It had
+2,700+ tests, negative controls on every new mechanism, floors on the scans,
+duktape executing the shipped JavaScript, and an AST checker for removed
+definitions. Every test passed throughout — before each defect, during it,
+and after.
+
+### Why the suite could not see them
+
+They are not defects *in* units. Every unit was correct:
+
+* `pendingBannerHtml` renders perfectly — nothing called it;
+* `render_bootstrap` produces exactly the right config — nothing kept it;
+* `sync_list_to_netbox` imports correctly — it was handed a device with
+  nothing to import;
+* `load_user_settings` returns `{}` on an unreadable file, which is what it
+  was written to do;
+* `identify()`'s peer check evaluates its expression correctly.
+
+**They live in the relationships between correct parts** — in whether
+anything calls a function, in whether a value survives from where it is
+produced to where it is used, in whether two stores mean the same thing by
+the same name. A test that constructs its subject cannot see that nothing
+else does, and a test that mocks a collaborator cannot see that the
+collaborator's real signature differs.
+
+### The transferable claim
+
+**Running a thing end to end on real hardware is not a higher grade of
+testing; it is a different instrument.** It measures the seams, and the
+seams are where every one of these lived.
+
+That is the argument for the probe existing, and it is the stage's result —
+more so than the feature, which is still unfinished. A suite proves the
+parts work. A probe proves the thing works, and the difference between those
+two sentences is seven defects.

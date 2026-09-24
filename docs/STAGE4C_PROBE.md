@@ -143,12 +143,33 @@ it is the existing delete path, not an onboarding undo. Which leaves
 disposable, so deleting and re-creating the list is the cheaper answer than
 teaching abandon a case that is about to stop existing.
 
-**Caution for that:** deleting a device list does **not** cascade into
-NetBox unless `netbox_remove_on_list_delete` is on. The created-object
-record is keyed on the list slug, so confirm it survives — or run step 12's
-Remove **before** deleting the list, while the record is certainly there.
-Otherwise the three scaffolding objects become orphaned: tagged, real, and
-no longer in NMAS's record, which is exactly the pair Remove requires.
+### Two things that are easy to lose between sessions
+
+**1. Step 12's Remove runs BEFORE the list is deleted, and that ordering is
+the whole teardown's acceptance.**
+
+Not a caution — the claim. The census baseline at
+`/home/dmarchak/nmas-probe-before.json` is what proves Remove cleaned up
+exactly what it created, by identity, and **a deleted list takes the
+created-object record with it** (the record is keyed on the list slug).
+
+Reversed, the three scaffolding objects become **tagged and unrecorded** —
+the one combination Remove cannot act on, since it deletes only the
+intersection of *tagged* and *in NMAS's own record*. They would then need
+removing in NetBox by hand, and **the probe's central claim — that the
+provenance-based Remove cleans up after itself — goes unmeasured.** That
+claim is why the teardown is a first-class step and why the baseline was
+taken before anything was created.
+
+So: `--compare` first, then delete the list. Never the other way.
+
+**2. The node stays running.**
+
+`bp-onboard-c` on `10.255.0.31` is the reachable device the four remaining
+steps are tested against — capture, rotation, RW removal and the golden all
+need something that answers SSH. Rebuilding it costs a boot plus the
+config-download-and-scp dance, for no gain: the device is fine, it is the
+tool's record of it that is half-finished.
 
 ---
 
