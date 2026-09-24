@@ -2298,6 +2298,24 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   chain is a stanza, and `_strip()` matches line prefixes) and **narrow**: a
   CA-signed trustpoint is configuration somebody chose and a change to it is
   real drift.
+- **Before re-enabling something that was switched off, ask what it will say
+  FIRST, and whether that is the same thing it said last time.** The drift
+  checker was silenced on 2026-08-30 three minutes after flagging all nine
+  devices. Turning it back on would have flagged every C8000v again — for a
+  regenerated self-signed certificate, which is correct device behaviour.
+  **A latent defect whose surfacing would have reproduced the condition that
+  hid it**: silenced by noise, and the noise on return is of the same kind,
+  so the likely outcome is a second silencing that is harder to undo than
+  the first. The argument it makes: **fix a known-noisy check before turning
+  a checker back on, not after.** Turn-it-on-and-triage is right for an
+  *unknown* signal and wrong for a measured one — the certificate diff was
+  measurable from the repository without touching a device, so shipping the
+  noise would have spent the checker's credibility to learn something
+  already known. **The 24 lost days were not a technical outage** — the code
+  ran fine when re-enabled — they were a trust outage, and that is earned
+  back rather than deployed. Same shape: a guard whose first action after
+  repair is to refuse something legitimate, and an alarm whose first firing
+  is a false positive of the kind that muted it.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -9570,3 +9570,63 @@ the pattern to every trustpoint fails.
 Block-aware, because `_strip()` matches line prefixes and a certificate
 chain is a stanza. It is a **fifth filter job** in a module whose header
 already says the filters are not one list.
+
+## A latent defect whose surfacing would have reproduced its own cause
+
+The certificate finding's third face, and the most transferable thing from
+this stage.
+
+**The drift checker was switched off on 2026-08-30, three minutes after a
+run that flagged all nine devices** against ad-hoc, stale goldens. Correct
+then. The reason was fixed weeks later and nothing anywhere prompted a
+re-evaluation — the state file recorded neither who switched it off nor why,
+which is its own recorded finding.
+
+**Turning it back on would have flagged every C8000v again** — this time for
+a regenerated self-signed certificate, which is *correct device behaviour*.
+Five devices, a wall of red, none of it actionable.
+
+So the defect had a property worth naming on its own:
+
+> **Its surfacing would have reproduced the condition that hid it.**
+
+The checker was silenced by noise. The noise it would have produced on
+return was noise of exactly the same kind — many devices, all flagged, for
+something nobody did and nobody can fix by changing a config. The most
+likely outcome of re-enabling it is that somebody switches it off again, and
+the second silencing is harder to undo than the first, because now there is
+a precedent and a memory of "we tried that".
+
+### The argument it makes
+
+**Fix a known-noisy check before turning a checker back on, not after.**
+
+The instinct is the other way round: turn it on, see what it says, then
+triage. That is right for an *unknown* signal and wrong for a known one. For
+a defect you have already measured — and the certificate diff was
+measurable, cheaply, from the repository, without touching a device — the
+triage has already happened. Shipping the noise anyway spends the checker's
+credibility to learn something you know.
+
+And credibility is the scarce thing. A checker is only useful while people
+read it; every wall of red that turns out to be correct behaviour teaches
+the reader that red does not mean act. **The 24 days the drift checker was
+lost were not a technical outage** — the code ran fine when it was
+re-enabled. They were a trust outage, and the fix for a trust outage is not
+deployed, it is earned back.
+
+### The general form
+
+A latent defect is usually described by what it *does* when it surfaces.
+This one is better described by what its surfacing *causes*:
+
+* a check that is noisy in a way that resembles its own last failure;
+* a guard whose first action after repair is to refuse something legitimate;
+* an alarm whose first firing is a false positive of the kind that got it
+  muted.
+
+Each has the same shape — **the repair's first visible act re-creates the
+argument against the repair** — and each is worth finding before the switch
+is flipped rather than after. The test is cheap to apply: *before
+re-enabling something that was switched off, ask what it will say first, and
+whether that is the same thing it said last time.*

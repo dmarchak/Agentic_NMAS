@@ -9,6 +9,65 @@ with the relay) each change one further variable and are not in scope here.
 
 ---
 
+## Where r6 stands — 2026-09-24, end of session
+
+**Read this first.** It is the state, not a summary of the plan.
+
+### Done
+
+* **Onboarded and promoted** — in the manifest, in NetBox (`netbox_id 10`),
+  in `devices.csv`, verified at 03:42:21.
+* **Rotated** — the CSV carries the rotated credential, the device holds a
+  device-generated `secret 9`, `admin`/`admin` refused,
+  `nmas-check-credential r6 --expect` → **ACCEPTED, exit 0**.
+* **First golden committed** — 6,907 bytes, tagged
+  `golden/bp-onboard-c/20260924T034213Z`, **no `snmp-server` RW line**
+  because the removal ran before the capture.
+* **In the break-glass record** — re-exported for **ten**, verified
+  `complete: True`.
+* **`cisco_iosxe/base.j2` re-approved against six devices**, which is what
+  binding r6 revoked at Create.
+* **Save All produced a fleet baseline of ten**; every earlier baseline now
+  renders `9 of 10 — partial · predates r6`.
+* **`clab_host` restored** (`dmarchak@10.0.0.210`) and `clab_labs` names
+  r6's lab. r1–r5 verify with a real sha for the first time since the
+  settings erasure.
+
+### NOT done — the open item from phase 1
+
+**r6 is not reboot-safe.** Its startup file at `labs/r6/configs/r6.cfg`
+still holds the bootstrap `password 0`, and
+`nmas-check-startup-applies r6` reads **NOT SAFE**, naming the form and
+stating that a reboot would bring it back on a credential NMAS does not
+hold.
+
+A clab host reboot today locks NMAS out of a device it manages — recoverable
+only through the console and the break-glass record.
+
+**What closes it:** the sync half — the three changes in
+[R6_PERSISTENCE.md](R6_PERSISTENCE.md) §10, on `~/bin/clab-sync` and
+`~/lab-configs/oxidized-to-config.sh`. The NMAS half is built and deployed;
+`nmas-clab-targets` serves the map and `--reconcile` / `--stray` are ready.
+
+**The acceptance is already a test**, and the same one both ways:
+`test_a_bootstrap_file_reads_NOT_SAFE_even_though_it_applies` (r6 now) and
+`test_and_goes_green_once_the_file_carries_secret_9` (r6 after).
+
+### Running order from here
+
+1. **Finish the sync half** → r6 reboot-safe. *The open item.*
+2. **The Oxidized freshness comparison**, four parts in order: the Oxidized
+   read client and the sanitizer's pre-write **gate** first, since those
+   stop an unapproved state becoming durable; the **Monitoring signal**
+   after. Authorisation path included — a gate with no way through gets
+   disabled. The comparator it needs is already correct as of `747e506`.
+3. **Then phase 2 (address from Kea) or the branch site** — operator's
+   choice, not a sequencing constraint.
+
+Stages 5, 6, 7, 8 and the settings rebuild are unchanged.
+
+---
+
 ## 0. What is different from the probe, up front
 
 Most of this is proven. These four things are not, and three of them are
