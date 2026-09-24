@@ -56,10 +56,54 @@ def check_one(list_name: str, hostname: str) -> dict:
     # -- for a device the map places in `labs/r6/configs`, and failed closed
     # only because the file was absent. The map existed and this caller was
     # not using it, by omission.
-    out = cr.verify_startup_applies(hostname, platform=platform,
-                                    username=row.get("username", "admin"),
-                                    list_name=ref.name)
-    out["platform"] = platform
+    username = row.get("username", "admin")
+
+    # PRESENCE FIRST, THEN APPLICABILITY, and the composite is what is
+    # reported.
+    #
+    # `verify_startup_applies()` answers truthfully and answers a DIFFERENT
+    # question: *"will this file put the device in the state it
+    # describes"*. On r6 it returned **APPLIES** -- correctly, because a
+    # `password 0` form genuinely does apply behind vrnetlab's injected line
+    # -- while the file held the BOOTSTRAP credential. Green, meaning "this
+    # device will come back on a credential NMAS does not hold".
+    #
+    # Inside `persist()` that is safe because the presence stage runs first
+    # and stops the chain. Read directly, as this tool does, **that ordering
+    # was not there** -- so it told an operator a device was fine when it
+    # was not, which is worse than the absent-file failure it replaced
+    # because that one was loud and this one was green.
+    #
+    # The ordering is therefore reproduced here rather than relied upon
+    # elsewhere, and **"the file does not carry the credential NMAS holds"
+    # outranks "the form would apply"**.
+    carries = cr.verify_startup_carries_current(
+        hostname, username=username, list_name=ref.name)
+    applies = cr.verify_startup_applies(hostname, platform=platform,
+                                        username=username,
+                                        list_name=ref.name)
+
+    out = {"platform": platform, "carries": carries, "applies": applies,
+           "kind": carries.get("kind") or applies.get("kind", ""),
+           "lab": carries.get("lab") or applies.get("lab", ""),
+           "file": carries.get("file") or applies.get("file", ""),
+           "startup_line": carries.get("startup_line", "")}
+
+    if not carries.get("ok"):
+        out["ok"] = False
+        out["verdict"] = ("INCONCLUSIVE" if carries.get("inconclusive")
+                          else "NOT SAFE")
+        out["reason"] = carries.get("reason") or carries.get("error", "")
+        # Named even when it loses, so nobody reads the composite as a
+        # verdict on applicability it never reached.
+        if applies.get("ok"):
+            out["reason"] += (" (the form WOULD apply on boot — that is a "
+                              "true statement about a different question)")
+        return out
+
+    out["ok"] = bool(applies.get("ok"))
+    out["verdict"] = "SAFE" if out["ok"] else "WILL NOT APPLY"
+    out["reason"] = applies.get("reason") or applies.get("error", "")
     return out
 
 
@@ -90,8 +134,14 @@ def main() -> int:
     worst = 0
     for name in names:
         out = check_one(ref.name, name)
-        verdict = "APPLIES" if out.get("ok") else "WILL NOT APPLY"
-        print(f"  {name:<10} {verdict:<16} {out.get('platform', '')}")
+        verdict = out.get("verdict") or ("SAFE" if out.get("ok") else "NOT SAFE")
+        # THE FORM IS ALWAYS NAMED. "applies" must never be printable
+        # without saying what applies -- that is the whole distinction
+        # between the two questions.
+        form = out.get("startup_line") or (f"{out['kind']} form"
+                                           if out.get("kind") else "")
+        print(f"  {name:<10} {verdict:<14} {out.get('platform', ''):<14} "
+              f"{form}")
         detail = out.get("reason") or out.get("error") or ""
         for line in _wrap(detail):
             print(f"             {line}")

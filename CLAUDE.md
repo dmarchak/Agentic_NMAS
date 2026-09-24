@@ -2221,6 +2221,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   calls a test. A truncating edit removed a whole test class and two others;
   what surfaced it was **two controls passing** that should not have. Run
   the controls after editing the test file, not only after editing the code.
+- **A check can be truthful, correct, and answering a different question.**
+  `nmas-check-startup-applies r6` reported **APPLIES** — *"the password form
+  applies behind the injected line"* — while r6's startup file held the
+  **bootstrap** credential. True: a `password 0` form does apply. What it
+  meant was *"this device will come back on a credential NMAS does not
+  hold"*, printed green. **Worse than the absent-file failure it replaced,
+  because that one was loud.** Inside `persist()` it is safe only because
+  presence runs first and stops the chain — an **accident of ordering**, and
+  the second such composite tonight. **Fix the checker, not the function**:
+  `verify_startup_applies()`'s question is legitimate, and nothing was
+  asking presence on that path. The checker now asks both, presence first,
+  and *"the file does not carry the credential NMAS holds"* outranks *"the
+  form would apply"*.
+  The presence question needed a source, because `$9$` carries a per-hash
+  salt and **cannot be recomputed**: `verify_startup_carries_current()`
+  compares the startup file's `username` line against **the device's own
+  golden**, with `inconclusive` as a third state when there is no golden.
+  **"Applies" is never printable without naming what applies** — the result
+  carries the line, `_redact_value()` keeps the form and drops the value,
+  and a losing presence still reports the applicability answer labelled as
+  *a true statement about a different question*.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

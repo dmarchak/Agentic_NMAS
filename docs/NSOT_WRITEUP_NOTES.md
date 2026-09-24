@@ -9375,3 +9375,70 @@ removed definition is **still called**, and *nothing calls a test*. So the
 only backstop for deleting a test is a control that was passing before and
 should not be — which is the argument for running controls after an edit to
 the test file and not only after an edit to the code.
+
+## "Applies" is a true answer to a different question
+
+`nmas-check-startup-applies r6` reported **APPLIES** — *"the password form
+applies behind the injected line; the device ends up with this
+credential"* — while r6's startup file held the **bootstrap** credential.
+
+The statement is correct. A `password 0` form genuinely does apply behind
+vrnetlab's injected line, and the device genuinely does end up holding it.
+What it *means* for r6 is **"this device will come back on a credential NMAS
+does not hold"**, and the tool printed it green.
+
+**Worse than the absent-file failure it replaced, because that one was loud
+and this one was green.** Eighth instance of the class tonight, and the
+second where a composite was safe by an **accident of ordering** rather than
+by design: inside `persist()` the presence stage runs first and stops the
+chain, so the truthful-but-irrelevant answer is never reached. Read
+directly, that ordering was not there.
+
+### The fix is the checker, not the function
+
+`verify_startup_applies()`'s question is legitimate and its answer is
+correct. What was missing is that **nothing asked the presence question on
+this path**, so the checker now asks both, presence first, and reports the
+composite — *"the file does not carry the credential NMAS holds"* outranks
+*"the form would apply"*.
+
+### The presence question needed a source
+
+`verify_startup_file()` greps for a `new_hash` the caller just generated. A
+checker run after the fact has none, and a `$9$` hash carries a per-hash
+salt, so it **cannot be recomputed** from the plaintext NMAS holds.
+
+`verify_startup_carries_current()` compares the startup file's `username`
+line against **the same line in the device's own golden** — the captured
+record of what the device is running, which `nmas-check-credential` is what
+proves NMAS can still use. Equal means a reboot brings the device back as it
+is now. It is a real chain from artefacts NMAS already has, rather than a
+hash nobody can reproduce.
+
+Three states, not two: **matches**, **does not match** (naming what a reboot
+would do), and **inconclusive** when there is no golden to compare against —
+because with nothing to compare, *"the file holds a credential"* says
+nothing about whether it is the one NMAS can use.
+
+### The form is always named, and the value never is
+
+*"Applies"* must never be printable without saying **what** applies — that
+is the entire distinction between the two questions. So the result carries
+the `username` line it found and the printer shows it.
+
+`_redact_value()` keeps the form and drops the value:
+`username admin privilege 15 secret 9 <redacted>`. A checker that prints the
+hash has put the credential in a terminal buffer and a scrollback, and the
+question was which form applies.
+
+When presence loses, the applicability answer is **still reported** and
+still labelled true — *"(the form WOULD apply on boot — that is a true
+statement about a different question)"* — so nobody reads the composite as a
+verdict on applicability it never reached.
+
+### It is also the acceptance for the sync half
+
+r6 must read **NOT SAFE** now and go green **only** once its startup file
+carries `secret 9`. One test, two purposes, which is what makes it worth
+having: `test_a_bootstrap_file_reads_NOT_SAFE_even_though_it_applies` and
+`test_and_goes_green_once_the_file_carries_secret_9`.

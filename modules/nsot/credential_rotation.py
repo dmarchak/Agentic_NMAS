@@ -2105,6 +2105,124 @@ def _ssh_read(clab: str, command: str, *, timeout: int = 60) -> dict:
     return {"ok": True, "text": proc.stdout or ""}
 
 
+def verify_startup_carries_current(hostname: str, *, username: str = "admin",
+                                   list_name: str = "", clab: str = "",
+                                   remote_dir: str = "") -> dict:
+    """Does the startup file hold the credential the DEVICE currently has?
+
+    **The presence question, asked where there is no rotation to supply a
+    hash.** `verify_startup_file()` greps for a `new_hash` the caller just
+    generated; a checker run after the fact has none, and a `$9$` hash
+    carries a per-hash salt so it cannot be recomputed from the plaintext
+    NMAS holds.
+
+    So it compares the startup file's `username` line against **the same
+    line in the device's own golden** — the captured record of what the
+    device is running, which `nmas-check-credential` is what proves NMAS can
+    still use. Equal means a reboot brings the device back as it is now.
+
+    **Why this exists.** `verify_startup_applies()` answers *"will this file
+    put the device in the state it describes"* and answers it truthfully: a
+    `password 0` form genuinely does apply behind vrnetlab's injected line.
+    On r6 that is a green result meaning *"this device will come back on a
+    credential NMAS does not hold"*. Inside `persist()` the presence stage
+    runs first and stops the chain; read **directly**, that ordering is not
+    there, and the tool told an operator a device was fine when it was not
+    — **worse than the absent-file failure it replaced, because that one
+    was loud and this one was green.**
+
+    Returns `ok`, `kind` (`secret` / `password` / `""`), the two lines it
+    compared, and a `reason`. It never says "applies".
+    """
+    import os
+    import shlex
+
+    from modules.config import get_list_data_dir
+
+    target = _resolve_target(list_name, hostname, clab, remote_dir, "")
+    if not target["host"]:
+        return {"ok": False, "error": "clab_host is not configured"}
+    if not target["configs_dir"]:
+        return {"ok": False, "lab": target["lab"], "error": (
+            f"lab {target['lab']!r} names no configs_dir for {hostname}")}
+
+    remote = f"{target['configs_dir']}/{hostname}.cfg"
+    read = _ssh_read(target["host"], f"cat {shlex.quote(remote)}")
+    if not read["ok"]:
+        return {"ok": False, "lab": target["lab"],
+                "file": f"{target['host']}:{remote}",
+                "error": f"could not read the startup file -- {read['error']}"}
+
+    startup_line = _user_line(read["text"], username)
+    if not startup_line:
+        return {"ok": False, "lab": target["lab"],
+                "file": f"{target['host']}:{remote}", "kind": "",
+                "error": (f"no `username {username}` line in the startup "
+                          "file, so a reboot leaves whatever the launch "
+                          "script injects")}
+
+    repo = os.path.join(get_list_data_dir(
+        list_name or _active_list_name()), "config_repo")
+    golden_line = _user_line(_current_golden(repo, hostname), username)
+    kind = entry_kind(startup_line)
+
+    if not golden_line:
+        # INCONCLUSIVE, and it must not read as a pass: with nothing to
+        # compare against, "the file holds a credential" says nothing about
+        # whether it is the one NMAS can use.
+        return {"ok": False, "inconclusive": True, "lab": target["lab"],
+                "kind": kind, "file": f"{target['host']}:{remote}",
+                "startup_line": _redact_value(startup_line),
+                "error": (f"no golden config for {hostname} to compare "
+                          "against, so whether this file carries the current "
+                          "credential is unknown -- which is not the same as "
+                          "it carrying it")}
+
+    same = " ".join(startup_line.split()) == " ".join(golden_line.split())
+    return {
+        "ok": same, "lab": target["lab"], "kind": kind,
+        "file": f"{target['host']}:{remote}",
+        "startup_line": _redact_value(startup_line),
+        "golden_line": _redact_value(golden_line),
+        "reason": (
+            f"the startup file's `{kind or 'username'}` line matches the "
+            "device's golden, so a reboot brings it back as it is now"
+            if same else
+            f"the startup file holds a `{kind or 'username'}` form that is "
+            f"NOT what the device is running. A reboot would bring "
+            f"{hostname} back on a credential NMAS does not hold."),
+    }
+
+
+def _user_line(text: str, username: str) -> str:
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"username {username} "):
+            return stripped
+    return ""
+
+
+def _redact_value(line: str) -> str:
+    """The FORM, never the value. `username admin privilege 15 secret 9 …`.
+
+    A checker that prints the hash has put the credential in a terminal
+    buffer and a scrollback, and the question here is which form applies,
+    not what it is.
+    """
+    parts = (line or "").split()
+    for i, part in enumerate(parts):
+        if part in ("secret", "password") and i + 1 < len(parts):
+            keep = parts[:i + 2] if parts[i + 1].isdigit() else parts[:i + 1]
+            return " ".join(keep) + " <redacted>"
+    return " ".join(parts)
+
+
+def _active_list_name() -> str:
+    from modules.device import get_current_device_list
+
+    return get_current_device_list()[0]
+
+
 def verify_startup_applies(hostname: str, *, platform: str, username: str,
                            clab: str = "", remote_dir: str = "",
                            launch_patch: str = "", list_name: str = "") -> dict:
