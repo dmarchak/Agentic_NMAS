@@ -4,6 +4,79 @@
 
 ---
 
+## Where this stands — DONE, 2026-09-24
+
+**Read this first. It is the state, not a summary of the plan.**
+
+### The acceptance, measured
+
+```
+r1:  10.255.1.16/32  metric 20, type extern 2, from 10.255.1.23, via Gi2
+     10.255.1.10/32  metric 20, type extern 2, from 10.255.1.23, via Gi2   (baseline)
+```
+
+**Identical in form, differing only in age** — two minutes against 1d22h.
+Nobody touched r1. The comparator was taken from the fleet's own existing
+answer to this problem (step 0c), so the acceptance was a *comparison* rather
+than an expectation: same originator, same type, same metric, or it is a
+finding even if the route appears.
+
+* **NMAS → `10.255.1.16` replies**, with an **ICMP redirect from s3 pointing
+  at `10.255.0.32`** — s3 telling the manager it shares the segment with r6.
+  That is the forwarding path C′ predicted, confirmed from the wire rather
+  than from the routing table.
+* **`s3: Vl99  1  area 0  10.255.0.1/24  cost 1  DR  0/0 neighbours.`** Five
+  adjacencies, all on Vlan100. **The management segment carries no OSPF
+  relationship** — the property C′ was chosen for, asserted rather than
+  assumed.
+
+### What it establishes
+
+Intent authored by hand into git, rendered by an approved template, previewed
+as an exact command list, confirmed by hash, sent merge-only, verified, and
+captured back — **on two devices as two independent changes with separate
+rollback boundaries.**
+
+> Every golden in this repository before tonight was extracted from a config
+> somebody wrote by hand. **These two were written by the tool.**
+
+### What it does NOT establish
+
+Listed up front and unchanged by the result:
+
+* **No removals.** Merge-only cannot remove a line; Mode B is not built. The
+  option originally chosen for this stage (C) died on exactly that.
+* **No multi-platform in one plan.** r6 and s3 were deployed separately and
+  the boundary was deliberate — one device, one intent commit, one plan, one
+  confirm, one deploy, one golden commit.
+* **Nothing about a value wrong at the source.** *IaC guarantees you did what
+  you said; it cannot know that what you said was wrong.*
+
+### The defects this found, all on the path it had to travel
+
+The path had never carried anything, and **every one of these surfaced on its
+first real use** — none was reachable from the suite as it stood:
+
+| # | defect | latent since |
+|---|---|---|
+| 1 | duplicated stanza header for every brand-new container | the merge path was built |
+| 2 | self-cancelling rollback for a created container | the merge path was built |
+| 3 | the provenance guard refused the correct rollback, and the pipeline silently dropped the device | (2)'s fix |
+| 4 | a created container negated even if it never landed | (2)'s fix |
+| 5 | an empty pre-change snapshot made every section look created | (2)'s fix |
+| 6 | the capture-hash refusal named neither operand and asserted a cause it had not established | the guard was written |
+| 7 | the deploy wizard never sends `command_hashes`, so the confirm-fingerprint recompute does not run from the UI | **open** |
+| 8 | `vs_intent` reads the working tree, so it is vacuous for anyone editing the file on disk | **open** |
+| 9 | `StrictUndefined` makes a hand-authored interface dict unrenderable | **open** |
+| 10 | `load_saved_devices()` with no argument returned an empty fleet | fixed |
+
+Six fixed, three open and queued, one (#10) found in passing. **That ratio is
+the argument for walking the path rather than testing it**: the suite was
+green at every point, and the assertions were exact — they were pointed at
+fixtures that could not reach the case.
+
+---
+
 ## What this proves, and what the probe and phase 1 did not
 
 The Stage 4C probe and r6's phase 1 proved the tool can **onboard** a device:

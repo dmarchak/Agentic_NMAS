@@ -2844,6 +2844,31 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   the two short strings that were the actual question. Bulk is not evidence.
   (The config in that field is also an unredacted secret surface on an API
   response; noted, not yet addressed.)
+- **The branch site landed, and it is the first configuration this tool
+  AUTHORED** (2026-09-24, [docs/R6_BRANCH_SITE.md](docs/R6_BRANCH_SITE.md)).
+  Intent written by hand into git, rendered by an approved template,
+  previewed as an exact command list, confirmed by hash, sent merge-only,
+  verified, captured back — two devices, two independent changes, separate
+  rollback boundaries. Every golden in this repository before it was
+  extracted from a config somebody wrote by hand.
+  **The acceptance was a COMPARISON, not an expectation**: r1 learned
+  `10.255.1.16/32` as *metric 20, type extern 2, from 10.255.1.23* — the same
+  form in which it already carried `10.255.1.10/32`, measured before anything
+  was deployed (step 0c). Same originator, same type, same metric, or it is a
+  finding even if the route appears. Nobody touched r1. `s3: Vl99 … DR 0/0
+  neighbours` asserts the property C′ was chosen for rather than assuming it.
+  **What it does not prove**, stated up front and unchanged by the result: no
+  removals (merge-only cannot, and option C died on exactly that), no
+  multi-platform in one plan, and nothing about a value wrong at the source.
+- **A path that has never carried anything fails on first use, and the suite
+  cannot tell you that in advance.** Ten defects surfaced walking the deploy
+  path end to end for the first time — a duplicated stanza header and a
+  self-cancelling rollback, both latent since the merge path was built; three
+  more uncovered by fixing those; a refusal naming neither operand; and three
+  still open. **The suite was green throughout and its assertions were
+  exact** — they were pointed at fixtures that could not reach the case. The
+  ratio is the argument: *walk the path, do not only test it.* Same method
+  that produced every serious finding in Stage 4C.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
