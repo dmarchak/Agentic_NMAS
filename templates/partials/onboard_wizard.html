@@ -285,8 +285,16 @@ async function openOnboardWizard() {
 <script>
 /* Phase 2, from the pending banner. Both actions live here because the
    banner renders them and the wizard owns the onboarding vocabulary. */
-async function onboardVerify(hostname) {
-  const list = (document.getElementById('obList') || {}).value || '';
+/* `listName` is passed IN, not read from the wizard's select.
+   Both of these read `#obList` — the wizard's own control, which is empty
+   until `openOnboardWizard()` populates it. From the pending banner the
+   modal has never been opened, so both sent `list_name: ''` and every
+   action the banner offers was refused. The banner knows the list: it came
+   back in the `/onboard/pending` response that drew the row.
+   `carried, never derived`, failing in the direction the rule is FOR — the
+   value in hand, dropped on the way to the call. */
+async function onboardVerify(hostname, listName) {
+  const list = listName || (document.getElementById('obList') || {}).value || '';
   try {
     const r = await fetch('/onboard/verify/' + encodeURIComponent(hostname), {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -330,12 +338,12 @@ function verifyFailureHtml(hostname, d) {
     <ol class="small mb-0">${causes}</ol>${recovery}</div>`;
 }
 
-async function onboardAbandon(hostname) {
+async function onboardAbandon(hostname, listName) {
   if (!confirm(`Abandon ${hostname}? This removes its NetBox objects, its `
              + `committed intent and its credential, then gives the name back.`)) {
     return;
   }
-  const list = (document.getElementById('obList') || {}).value || '';
+  const list = listName || (document.getElementById('obList') || {}).value || '';
   try {
     const r = await fetch('/onboard/abandon/' + encodeURIComponent(hostname), {
       method: 'POST', headers: {'Content-Type': 'application/json'},

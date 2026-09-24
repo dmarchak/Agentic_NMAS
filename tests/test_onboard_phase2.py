@@ -516,3 +516,104 @@ class TestTheBannerHasAnEntryPoint:
         body = nmas.app.test_client().get("/onboard/pending").get_json()
         assert body.get("ok") is True, body
         assert "list" in body, "the response must say which list it answered for"
+
+
+class TestTheBannerCarriesTheListIntoItsActions:
+    """Both buttons read `#obList` — the WIZARD's select, empty until
+    `openOnboardWizard()` populates it. From the banner the modal has never
+    been opened, so every action it offers sent `list_name: ''` and was
+    refused.
+
+    **`carried, never derived`, failing in the direction the rule is for:**
+    the value was in hand — `/onboard/pending` echoes the list it answered
+    for, and that response drew the row — and was dropped on the way to the
+    call. The same shape as `loadOnboardPending` having no caller: the
+    feature renders and nothing it offers works.
+    """
+
+    def _page(self):
+        import app as nmas
+
+        return nmas.app.test_client().get("/").get_data(as_text=True)
+
+    def test_both_buttons_are_given_the_list(self, banner_js):
+        html = _banner(banner_js,
+                       {"ok": True, "list": "nmas-probe",
+                        "pending": [_row(state="stale", age=999999)]})
+        assert "onboardVerify('bp1', 'nmas-probe')" in html
+        assert "onboardAbandon('bp1', 'nmas-probe')" in html
+
+    def test_neither_action_falls_back_to_the_wizards_select(self):
+        """A fallback would make the banner work by accident once the wizard
+        had been opened, and fail otherwise — which is how this shipped."""
+        page = self._page()
+        for fn in ("onboardVerify", "onboardAbandon"):
+            sig = page[page.index(f"async function {fn}("):]
+            sig = sig[:sig.index(")") + 1]
+            assert "listName" in sig, (fn, sig)
+
+    def test_the_list_is_escaped_like_the_name(self, banner_js):
+        html = _banner(banner_js,
+                       {"ok": True, "list": "<script>x</script>",
+                        "pending": [_row()]})
+        assert "<script>x</script>" not in html
+
+
+class TestARefusalNamesTheCallersOperation:
+    """`_target_list()` is shared by plan, create, verify and abandon, and
+    its refusal explained why ONBOARDING carries its list — to an operator
+    who had pressed Abandon.
+
+    A correct refusal describing a different action reads as a bug in the
+    tool: it sent the reader looking for a wizard they had not opened. The
+    consequence clause differs too — onboarding is about what a wrong list
+    leaves behind, abandon about what it would remove.
+    """
+
+    def test_each_caller_gets_its_own_action(self):
+        from routes.onboard import NoTargetList, _target_list
+
+        expected = {"plan": "plan an onboarding",
+                    "create": "onboard a device",
+                    "verify": "verify a pending device",
+                    "abandon": "abandon a pending device"}
+        for what, phrase in expected.items():
+            try:
+                _target_list({}, what)
+            except NoTargetList as exc:
+                assert phrase in str(exc), (what, str(exc))
+            else:
+                raise AssertionError(f"{what} did not refuse")
+
+    def test_abandon_does_not_talk_about_onboarding(self):
+        """The exact confusion, as an assertion."""
+        from routes.onboard import NoTargetList, _target_list
+
+        try:
+            _target_list({}, "abandon")
+        except NoTargetList as exc:
+            text = str(exc)
+        assert "onboarding into the wrong one" not in text, text
+        assert "would delete" in text
+
+    def test_every_route_passes_its_own_name(self):
+        """Parsed, not grepped. A route left on the default would give the
+        onboarding message for something else — the defect itself."""
+        import ast
+        import inspect
+
+        import routes.onboard as mod
+
+        seen = {}
+        for node in ast.walk(ast.parse(inspect.getsource(mod))):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for inner in ast.walk(node):
+                if (isinstance(inner, ast.Call)
+                        and getattr(inner.func, "id", "") == "_target_list"):
+                    assert len(inner.args) == 2, (
+                        f"{node.name} calls _target_list without naming its "
+                        f"operation, so it would use the onboarding message")
+                    seen[node.name] = inner.args[1].value
+        assert seen == {"verify": "verify", "abandon": "abandon",
+                        "plan": "plan", "create": "create"}, seen

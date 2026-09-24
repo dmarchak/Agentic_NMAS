@@ -35,7 +35,35 @@ class NoTargetList(ValueError):
     """The request did not say which list to onboard into."""
 
 
-def _target_list(data) -> str:
+#: What each caller of `_target_list()` is doing, in its own words.
+#:
+#: The refusal used to explain why ONBOARDING carries its list — to an
+#: operator who had pressed Abandon. A correct refusal describing a
+#: different action reads as a bug in the tool, and sent the reader looking
+#: for a wizard they had not opened.
+#:
+#: **A refusal on a shared helper names the caller's operation, not the
+#: helper's reason for existing.** The consequence clause differs too: the
+#: onboarding one is about what a wrong list leaves behind, and the abandon
+#: one is about what it would remove.
+_WHAT = {
+    "plan":    ("plan an onboarding",
+                "onboarding into the wrong one leaves a commit and a NetBox "
+                "object behind"),
+    "create":  ("onboard a device",
+                "onboarding into the wrong one leaves a commit and a NetBox "
+                "object behind"),
+    "verify":  ("verify a pending device",
+                "the device, its credential and its manifest entry all live "
+                "in one list"),
+    "abandon": ("abandon a pending device",
+                "abandoning the wrong one would delete another list's "
+                "commit and NetBox objects"),
+    "pending": ("list pending devices", "pending state is per list"),
+}
+
+
+def _target_list(data, what: str = "plan") -> str:
     """The list this request names. **Never the active one as a fallback.**
 
     `PipelineContext.list_name` already established this rule the expensive
@@ -60,11 +88,11 @@ def _target_list(data) -> str:
     """
     name = ((data or {}).get("list_name") or "").strip()
     if not name:
+        action, why = _WHAT.get(what, _WHAT["plan"])
         raise NoTargetList(
-            "no target list was chosen. The wizard sends the list it is "
-            "onboarding into rather than inheriting whichever list happens "
-            "to be active, because onboarding into the wrong one leaves a "
-            "commit and a NetBox object behind.")
+            f"no target list was sent with the request to {action}. The "
+            f"list is carried by the caller rather than inherited from "
+            f"whichever list happens to be active, because {why}.")
     return name
 
 
@@ -214,7 +242,7 @@ def verify(hostname):
 
     data = request.get_json(silent=True) or {}
     try:
-        list_name = _target_list(data)
+        list_name = _target_list(data, "verify")
     except NoTargetList as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -246,7 +274,7 @@ def abandon(hostname):
 
     data = request.get_json(silent=True) or {}
     try:
-        list_name = _target_list(data)
+        list_name = _target_list(data, "abandon")
     except NoTargetList as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -300,7 +328,7 @@ def plan():
 
     data = request.get_json(silent=True) or {}
     try:
-        list_name = _target_list(data)
+        list_name = _target_list(data, "plan")
     except NoTargetList as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     try:
@@ -345,7 +373,7 @@ def create():
 
     data = request.get_json(silent=True) or {}
     try:
-        list_name = _target_list(data)
+        list_name = _target_list(data, "create")
     except NoTargetList as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")

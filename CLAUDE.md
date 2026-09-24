@@ -1648,6 +1648,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   another. **Before restating a blocker, ask what exists downstream of it**:
   "Create is blocked" is refuted by "a device exists that Create made", and
   that refutation needs no new measurement.
+- **The pending banner's own actions dropped the list they had in hand.**
+  `onboardVerify` and `onboardAbandon` read `#obList` — the **wizard's**
+  select, which is empty until `openOnboardWizard()` populates it — so from
+  the banner both sent `list_name: ''` and every action it offers was
+  refused. `carried, never derived` failing in the direction the rule is
+  **for**: `/onboard/pending` echoes the list it answered for, that response
+  drew the row, and the value was dropped on the way to the call. Same shape
+  as `loadOnboardPending` having no caller — the feature renders and nothing
+  it offers works. Both now take `listName` from the row, and a test asserts
+  the parameter exists so a fallback cannot make it work by accident once
+  the wizard has been opened.
+- **A refusal on a shared helper names the CALLER's operation.**
+  `_target_list()` is used by plan, create, verify and abandon, and its
+  message explained why *onboarding* carries its list — to an operator who
+  had pressed Abandon. **A correct refusal describing a different action
+  reads as a bug in the tool**, and sent the reader looking for a wizard they
+  had not opened. Each caller now passes its own name and gets its own
+  consequence clause (onboarding: what a wrong list *leaves behind*;
+  abandon: what it would *remove*), pinned by an AST test that every call
+  site supplies one — a route left on the default would give the onboarding
+  message for something else, which is the defect itself.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

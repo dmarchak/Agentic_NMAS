@@ -62,11 +62,11 @@ function pendingBannerHtml(data) {
        The confirm in `onboardAbandon()` is what stops a misclick; an age
        gate never was. */
     const abandon = ` <button class="btn btn-sm btn-outline-danger py-0 px-1"
-            onclick="onboardAbandon('${esc(r.name)}')">Abandon</button>`;
+            onclick="onboardAbandon('${esc(r.name)}', '${esc(data.list)}')">Abandon</button>`;
     return `<li><code>${esc(r.name)}</code> at <code>${esc(r.mgmt_ip)}</code>
       — pending ${esc(age)}${flag}
       <button class="btn btn-sm btn-outline-primary py-0 px-1"
-        onclick="onboardVerify('${esc(r.name)}')">Verify now</button>${abandon}</li>`;
+        onclick="onboardVerify('${esc(r.name)}', '${esc(data.list)}')">Verify now</button>${abandon}</li>`;
   }).join('');
 
   return `<div class="alert ${tone} py-2 px-3 mb-0">
