@@ -2006,15 +2006,39 @@ def sync_targets(list_name: str) -> dict:
         except Exception as exc:               # noqa: BLE001
             log.debug("clab: no usable platform for %r: %s", name, exc)
 
+        # THE OXIDIZED NODE KEY -- the FIFTH hardcoded list in the
+        # sanitizer, and the one that decides what gets read at all.
+        # `declare -A NODE=(...)` maps a device to the filename Oxidized
+        # stores it under, per `router.db`. r6 is in
+        # neither that array nor the loops, so without this column the map
+        # can say where r6's config goes and still not know where to read
+        # it from.
+        #
+        # `oxidized_node_identity` decides the form: `hostname` or `ip`.
+        # Read here rather than guessed, because the two produce different
+        # filenames and a wrong one is a silent "nothing stored".
+        ox_identity = ""
+        try:
+            from modules.settings_schema import get_setting
+
+            ox_identity = (name if get_setting("oxidized_node_identity",
+                                               "hostname") == "hostname"
+                           else (entry.get("mgmt_ip") or ""))
+        except Exception as exc:               # noqa: BLE001
+            log.debug("clab: no oxidized node key for %r: %s", name, exc)
+
         row = {"hostname": name, "lab": target["lab"],
                "host": target["host"],
                "platform": platform,
+               "oxidized_node": ox_identity,
                "configs_dir": target["configs_dir"],
                "launch_patch": target["launch_patch"]}
         # A device whose lab is named and undescribed is REPORTED, never
         # defaulted: writing its config into another lab's directory is the
         # failure this whole map exists to prevent.
         gaps = [k for k in ("configs_dir", "launch_patch") if not target[k]]
+        if not ox_identity:
+            gaps.append("oxidized_node")
         if not platform:
             # Reported, never defaulted. A consumer that picks a device kind
             # from a missing value picks the wrong one for exactly the

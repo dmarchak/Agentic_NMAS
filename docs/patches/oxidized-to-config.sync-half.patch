@@ -1,0 +1,203 @@
+--- a/oxidized-to-config.sh
++++ b/oxidized-to-config.sh
+@@
+ #   Options:
+ #     ./oxidized-to-config.sh --no-deploy    convert and diff only
+ #     ./oxidized-to-config.sh --yes          skip the prompt (for cron)
+ #     CLAB=user@host ./oxidized-to-config.sh
+-#     REMOTE_DIR=~/labs/lab/configs ./oxidized-to-config.sh
++#     NMAS_URL=http://10.0.0.211:5000 ./oxidized-to-config.sh
++#
++# WHERE THE DEVICE LIST COMES FROM
++#   The NMAS, once, via `nmas-clab-targets`. It used to be four hardcoded
++#   loops over `r1 r2 r3 r4 r5 s1 s2 s3 s4`, a `ROUTERS` string and a `NODE`
++#   array - six places encoding the same population, all current when they
++#   were written. r6 was in none of them, so it would have been sanitised as
++#   a switch (wrong rules, silently) if it had been reached at all.
++#
++#   If the NMAS cannot be asked, this STOPS. It does not fall back to a
++#   default directory: a guess about where a config boots from writes one
++#   device's credentials into another lab.
+ # ---------------------------------------------------------------------------
+ set -uo pipefail
+ 
+ REPO="${REPO:-/opt/oxidized/rcn-lab.git}"
+ OUT="${OUT:-configs}"
+ REF="${REF:-HEAD}"
+ CLAB="${CLAB:-dmarchak@10.0.0.210}"
+-REMOTE_DIR="${REMOTE_DIR:-labs/lab/configs}"
+ STAGE="/tmp/oxidized-staged"
++NMAS_URL="${NMAS_URL:-http://10.0.0.211:5000}"
++TARGETS="${TARGETS:-nmas-clab-targets}"
+ 
+ DEPLOY=ask
+ for a in "$@"; do
+@@
+-# device -> the filename Oxidized stores it under (see router.db)
+-declare -A NODE=(
+-  [r1]=10.255.1.11 [r2]=10.255.1.12 [r3]=10.255.1.13
+-  [r4]=10.255.1.14 [r5]=10.255.1.15
+-  [s1]=10.255.1.21 [s2]=10.255.1.22 [s3]=10.255.1.23 [s4]=10.255.1.24
+-)
+-ROUTERS="r1 r2 r3 r4 r5"
++# ---------------------------------------------------------------------------
++# The map, fetched ONCE. Replaces NODE, ROUTERS and all four device loops.
++# ---------------------------------------------------------------------------
++declare -A NODE CFGDIR PLATFORM LAB
++DEVICES=()
++
++map="$("$TARGETS" --url "$NMAS_URL")" || {
++  echo "REFUSED - the NMAS could not be asked where configs belong."
++  echo "Not falling back to a default directory."
++  exit 2
++}
++
++while IFS=$'\t' read -r n cfgdir lab clabhost platform oxnode; do
++  [ -n "${n:-}" ] || continue
++  # A row the NMAS could not complete is a device nobody should write.
++  if [ -z "${cfgdir:-}" ] || [ -z "${platform:-}" ] || [ -z "${oxnode:-}" ]; then
++    echo "REFUSED $n: incomplete map row (configs_dir='${cfgdir:-}' platform='${platform:-}' oxidized_node='${oxnode:-}')"
++    exit 2
++  fi
++  DEVICES+=("$n")
++  NODE[$n]="$oxnode"
++  CFGDIR[$n]="$cfgdir"
++  PLATFORM[$n]="$platform"
++  LAB[$n]="$lab"
++  [ -n "${clabhost:-}" ] && CLAB="$clabhost"
++done <<<"$map"
++
++[ ${#DEVICES[@]} -gt 0 ] || { echo "REFUSED - the map is empty."; exit 2; }
++
++# The config DIALECT decides the sanitising rules, not the hostname.
++# `*)` refuses: a default here picks a device kind for exactly the devices
++# nobody thought about, which is what `ROUTERS` did.
++kind_for() {
++  case "$1" in
++    cisco_iosxe) echo router ;;
++    cisco_ios)   echo switch ;;
++    *) echo "REFUSED - no sanitising rules for platform '$1'" >&2; return 1 ;;
++  esac
++}
+ 
+ GIT=(git -C "$REPO")
+ sudo -n true 2>/dev/null && GIT=(sudo git -C "$REPO")
+@@
+-for n in r1 r2 r3 r4 r5 s1 s2 s3 s4; do
+-  case " $ROUTERS " in *" $n "*) kind=router ;; *) kind=switch ;; esac
++for n in "${DEVICES[@]}"; do
++  kind="$(kind_for "${PLATFORM[$n]}")" || { echo "$n: ${PLATFORM[$n]}"; fail=1; continue; }
+   printf '%-4s ' "$n"
+@@
+ echo "All files converted and validated."
+ 
++# Every mapped device accounted for, before anything is copied. A device
++# the sanitiser produced nothing for is NAMED rather than silently skipped -
++# that was r6's state for two days and nothing reported it.
++if ! "$TARGETS" --url "$NMAS_URL" --reconcile "$OUT"; then
++  echo "PROBLEMS ABOVE - nothing will be copied."
++  exit 1
++fi
++
+ [ "$DEPLOY" = no ] && { echo "--no-deploy set, stopping here."; exit 0; }
+ 
+ # ---------------------------------------------------------------------------
+ # Diff against what is currently on the clab VM
+ # ---------------------------------------------------------------------------
+ echo
+ echo "=========================================================="
+-echo " Comparing against ${CLAB}:${REMOTE_DIR}"
++echo " Comparing against ${CLAB}, per lab"
+ echo "=========================================================="
+@@
+ changed=0
+ newfiles=0
+ echo
+-for n in r1 r2 r3 r4 r5 s1 s2 s3 s4; do
+-  d="$(ssh "$CLAB" "diff -u '$REMOTE_DIR/${n}.cfg' '$STAGE/${n}.cfg' 2>&1" || true)"
++for n in "${DEVICES[@]}"; do
++  d="$(ssh "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>&1" || true)"
+   if [ -z "$d" ]; then
+-    printf '  %-4s unchanged\n' "$n"
++    printf '  %-4s %-16s unchanged\n' "$n" "${LAB[$n]}"
+   elif grep -q 'No such file' <<<"$d"; then
+-    printf '  %-4s NEW - no current file on the clab VM\n' "$n"
++    printf '  %-4s %-16s NEW - no current file on the clab VM\n' "$n" "${LAB[$n]}"
+     newfiles=$((newfiles+1))
+   else
+     add=$(grep -c '^+[^+]' <<<"$d")
+     del=$(grep -c '^-[^-]' <<<"$d")
+-    printf '  %-4s CHANGED  +%s / -%s lines\n' "$n" "$add" "$del"
++    printf '  %-4s %-16s CHANGED  +%s / -%s lines\n' "$n" "${LAB[$n]}" "$add" "$del"
+     changed=$((changed+1))
+   fi
+ done
+@@
+   read -r -p "Show the full diff? [y/N] " ans
+   if [[ "$ans" =~ ^[Yy] ]]; then
+-    for n in r1 r2 r3 r4 r5 s1 s2 s3 s4; do
+-      out="$(ssh "$CLAB" "diff -u '$REMOTE_DIR/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
++    for n in "${DEVICES[@]}"; do
++      out="$(ssh "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
+       [ -n "$out" ] && { echo; echo "########## $n ##########"; echo "$out"; }
+     done | ${PAGER:-less -R}
+   fi
+ 
+   echo
+-  echo "This will overwrite $REMOTE_DIR on $CLAB."
++  echo "This will overwrite these directories on $CLAB:"
++  printf '%s\n' "${DEVICES[@]}" | while read -r n; do echo "${CFGDIR[$n]}"; done | sort -u | sed 's/^/    /'
+   echo "A timestamped backup is taken first, and these are startup-configs -"
+   echo "they only take effect on the next 'containerlab deploy --cleanup'."
+@@
+ # ---------------------------------------------------------------------------
+-# Back up, copy, commit
++# Back up, copy, commit - PER LAB
+ # ---------------------------------------------------------------------------
+ ts=$(date +%Y%m%d-%H%M%S)
+-ssh "$CLAB" "cp -r '$REMOTE_DIR' '${REMOTE_DIR}.bak-${ts}' 2>/dev/null; \
+-             cp $STAGE/*.cfg '$REMOTE_DIR/' && rm -rf $STAGE" || {
+-  echo "Copy failed - staged files left at ${CLAB}:${STAGE}"; exit 1; }
+-
+-echo "Copied. Backup at ${REMOTE_DIR}.bak-${ts}"
+-
+-ssh "$CLAB" "cd \$(dirname '$REMOTE_DIR') && \
+-  git rev-parse --git-dir >/dev/null 2>&1 && \
+-  git add -A configs && \
+-  git commit -q -m 'harvest from oxidized $ts' && \
+-  echo 'Committed to git.' || echo 'Not a git repo, or nothing to commit.'"
++# One transfer per DESTINATION, not per device: the unit of work is a lab,
++# which is the unit --stray and the lab map already use, and a failure is
++# then "this lab was not updated" - a claim nmas-check-startup-applies can
++# confirm per device.
++#
++# --files-from rather than a staging dir per lab: ./configs holds exactly
++# one <hostname>.cfg per device and nothing else, so selecting a subset
++# needs no second copy of it - and a second copy is how the two diverge.
++copy_failed=0
++for dir in $(printf '%s\n' "${DEVICES[@]}" | while read -r n; do echo "${CFGDIR[$n]}"; done | sort -u); do
++  list=""
++  for n in "${DEVICES[@]}"; do
++    [ "${CFGDIR[$n]}" = "$dir" ] && list="${list}${n}.cfg"$'\n'
++  done
++  printf '%s' "$list" > "$STAGE.files.$$"
++  scp -q "$STAGE.files.$$" "${CLAB}:${STAGE}/.files" && rm -f "$STAGE.files.$$"
++  if ssh "$CLAB" "cp -r '$dir' '${dir}.bak-${ts}' 2>/dev/null; \
++                  rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/'"; then
++    echo "Copied $(printf '%s' "$list" | grep -c .) file(s) to $dir   (backup ${dir}.bak-${ts})"
++  else
++    echo "Copy FAILED for $dir - staged files left at ${CLAB}:${STAGE}"
++    copy_failed=1
++  fi
++done
++
++[ "$copy_failed" -eq 0 ] || exit 1
++ssh "$CLAB" "rm -rf $STAGE"
++
++for dir in $(printf '%s\n' "${DEVICES[@]}" | while read -r n; do echo "${CFGDIR[$n]}"; done | sort -u); do
++  ssh "$CLAB" "cd \$(dirname '$dir') && \
++    git rev-parse --git-dir >/dev/null 2>&1 && \
++    git add -A \$(basename '$dir') && \
++    git commit -q -m 'harvest from oxidized $ts' && \
++    echo \"Committed \$(basename '$dir') to git.\" || echo \"Not a git repo, or nothing to commit: $dir\""
++done

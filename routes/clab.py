@@ -55,7 +55,7 @@ def sync_targets():
     # Columns are APPENDED, never reordered: an older consumer reading the
     # first three keeps working, and a newer one reads what it needs.
     lines = [f"{r['hostname']}\t{r['configs_dir']}\t{r['lab']}\t{r['host']}"
-             f"\t{r['platform']}"
+             f"\t{r['platform']}\t{r['oxidized_node']}"
              for r in result["targets"] if not r.get("error")]
     body = "\n".join(lines) + ("\n" if lines else "")
     if result["incomplete"]:

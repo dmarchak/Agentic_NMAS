@@ -8,7 +8,7 @@ reboot: the file lands somewhere plausible either way, and the device comes
 back on whatever that directory held.
 
     nmas-clab-targets --url http://10.0.0.211:5000
-        -> hostname<TAB>configs_dir<TAB>lab<TAB>host<TAB>platform
+        -> hostname<TAB>configs_dir<TAB>lab<TAB>host<TAB>platform<TAB>oxidized_node
     nmas-clab-targets --url ... --device r6          # one line, or exit 3
     nmas-clab-targets --url ... --stray labs/lab/configs
 
@@ -52,6 +52,14 @@ _UA = "nmas-automation/1.0"
 
 EXIT_OK, EXIT_UNREACHABLE, EXIT_NOT_FOUND = 0, 2, 3
 
+#: `--reconcile` only. **A mapped device that produced no file is blocking;
+#: a file nobody mapped is not.** They exited the same code, so a caller
+#: doing `--reconcile ... || exit 2` refused to sync because somebody left a
+#: stray file -- which is not a reason to stop, and is how a gate comes to
+#: be bypassed. `--strict` makes the second blocking for a caller that wants
+#: it, rather than making every caller live with the stricter reading.
+EXIT_MISSING_OUTPUT = 3
+
 
 class StrayLookupFailed(Exception):
     """The remote listing did not happen. **Not the same as no litter.**"""
@@ -77,11 +85,12 @@ def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
             continue
         if not line.strip():
             continue
-        parts = line.split("\t") + ["", "", ""]
-        # hostname, configs_dir, lab, host, platform -- columns are appended
+        parts = line.split("\t") + ["", "", "", ""]
+        # hostname, configs_dir, lab, host, platform, oxidized_node --
+        # columns are appended
         # by the NMAS and never reordered, so a short row from an older one
         # simply carries blanks in the later fields.
-        rows.append(tuple(parts[:5]))
+        rows.append(tuple(parts[:6]))
     if problems:
         # Printed, never silently dropped: a device the NMAS could not place
         # is a device nobody should write.
@@ -150,6 +159,8 @@ def main() -> int:
     ap.add_argument("--reconcile", default="",
                     help="compare the map against a LOCAL sanitizer output "
                          "directory and account for every device")
+    ap.add_argument("--strict", action="store_true",
+                    help="with --reconcile: an unmapped file blocks too")
     ap.add_argument("--group", action="store_true",
                     help="print one line per destination: "
                          "configs_dir<TAB>host<TAB>space-separated hostnames")
@@ -194,7 +205,7 @@ def main() -> int:
         return EXIT_NOT_FOUND
 
     if args.reconcile:
-        return _reconcile(args.reconcile, rows)
+        return _reconcile(args.reconcile, rows, strict=args.strict)
 
     if args.group:
         # ONE LINE PER DESTINATION, so the caller's unit of work can be a
@@ -203,7 +214,7 @@ def main() -> int:
         # a failure becomes "this lab was not updated", which is a statement
         # the per-device checker can then confirm.
         groups = {}
-        for host, cfg, _lab, clab, _plat in rows:
+        for host, cfg, _lab, clab, _plat, _ox in rows:
             groups.setdefault((cfg, clab), []).append(host)
         for (cfg, clab), hosts in sorted(groups.items()):
             print(f"{cfg}\t{clab}\t{' '.join(sorted(hosts))}")
@@ -222,7 +233,7 @@ def main() -> int:
     return EXIT_OK
 
 
-def _reconcile(directory: str, rows: list) -> int:
+def _reconcile(directory: str, rows: list, strict: bool = False) -> int:
     """Account for every device in the map AND every file in *directory*.
 
     **The population question, asked in both directions.** The sanitizer's
@@ -281,7 +292,18 @@ def _reconcile(directory: str, rows: list) -> int:
               "sanitizer's output, not about the fleet.", file=sys.stderr)
         return EXIT_UNREACHABLE
 
-    return EXIT_NOT_FOUND if (no_file or unmapped) else EXIT_OK
+    # A MAPPED DEVICE WITH NO FILE BLOCKS; AN UNMAPPED FILE DOES NOT.
+    # The first means a device will not be updated and nothing else reports
+    # it -- r6's state for two days. The second is a fact worth knowing and
+    # not a reason to stop a sync, and conflating them is how a caller
+    # learns to drop the `|| exit`.
+    if no_file:
+        return EXIT_MISSING_OUTPUT
+    if unmapped and strict:
+        return EXIT_MISSING_OUTPUT
+    if unmapped:
+        print("\n(unmapped files do not block; pass --strict if they should)")
+    return EXIT_OK
 
 if __name__ == "__main__":
     raise SystemExit(main())

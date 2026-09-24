@@ -223,8 +223,8 @@ class TestTheHelperRefusesRatherThanGuessing:
         got wrong."""
         found = helper.strays(
             "labs/lab/configs",
-            [("r1", "labs/lab/configs", "default", "user@clab"),
-             ("r6", "labs/r6/configs", "r6", "user@clab")],
+            [("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe", "r1"),
+             ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe", "r6")],
             ["r1.cfg", "r6.cfg"])
 
         assert [p for p, _w in found] == ["labs/lab/configs/r6.cfg"]
@@ -234,7 +234,7 @@ class TestTheHelperRefusesRatherThanGuessing:
         """The floor: a detector that always fires is one nobody reads."""
         assert helper.strays(
             "labs/lab/configs",
-            [("r1", "labs/lab/configs", "default", "user@clab")],
+            [("r1", "labs/lab/configs", "default", "user@clab", "cisco_ios", "r1")],
             ["r1.cfg"]) == []
 
     def test_it_lists_the_REMOTE_directory_not_a_local_one(self, helper):
@@ -275,7 +275,7 @@ class TestTheHelperRefusesRatherThanGuessing:
         """*"I could not look"* and *"there is nothing there"* are the two
         answers this must never confuse."""
         monkeypatch.setattr(helper, "fetch", lambda *a, **k: [
-            ("r1", "labs/lab/configs", "default", "user@clab")])
+            ("r1", "labs/lab/configs", "default", "user@clab", "cisco_ios", "r1")])
         monkeypatch.setattr(helper, "remote_listing", lambda h, d: (_ for _ in ()).throw(
             helper.StrayLookupFailed("ssh: connect refused")))
         monkeypatch.setattr(helper.sys, "argv",
@@ -544,7 +544,7 @@ class TestThePlatformIsCarriedNotInferred:
         assert "{r['platform']}" in src
         assert "never reordered" in src
 
-    def test_the_helper_reads_five_columns_and_survives_three(self, ):
+    def test_the_helper_reads_six_columns_and_survives_three(self, ):
         import importlib.util
         import os as _os
         from importlib.machinery import SourceFileLoader
@@ -557,7 +557,7 @@ class TestThePlatformIsCarriedNotInferred:
 
         class _R:
             def read(self):
-                return (b"r6\tlabs/r6/configs\tr6\tuser@clab\tcisco_iosxe\n"
+                return (b"r6\tlabs/r6/configs\tr6\tuser@clab\tcisco_iosxe\tr6\n"
                         b"old\tlabs/lab/configs\tdefault\n")
 
             def __enter__(self):
@@ -575,8 +575,8 @@ class TestThePlatformIsCarriedNotInferred:
             urllib.request.urlopen = orig
 
         assert rows[0] == ("r6", "labs/r6/configs", "r6", "user@clab",
-                           "cisco_iosxe")
-        assert rows[1] == ("old", "labs/lab/configs", "default", "", ""), \
+                           "cisco_iosxe", "r6")
+        assert rows[1] == ("old", "labs/lab/configs", "default", "", "", ""), \
             "a three-column row from an older NMAS must not raise"
 
 
@@ -606,8 +606,38 @@ class TestEveryDeviceAndEveryFileIsAccountedFor:
         spec.loader.exec_module(mod)
         return mod
 
-    ROWS = [("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe"),
-            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe")]
+    ROWS = [("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe", "r1"),
+            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe", "r6")]
+
+    def test_a_missing_output_BLOCKS_and_a_stray_file_does_not(
+            self, helper, tmp_path, capsys):
+        """**A gate that stops the sync for a stray file gets bypassed.**
+
+        Both exited 3, so a caller doing `--reconcile … || exit 2` refused
+        to sync because somebody left a file behind — which is not a reason
+        to stop. The two findings are different claims: *"a device will not
+        be updated and nothing else reports it"* is blocking; *"here is a
+        file nobody mapped"* is worth knowing.
+        """
+        for name in ("r1.cfg", "r6.cfg", "ghost.cfg"):
+            (tmp_path / name).write_text("x")
+
+        assert helper._reconcile(str(tmp_path), self.ROWS) == helper.EXIT_OK
+        assert "do not block" in capsys.readouterr().out
+
+        (tmp_path / "r6.cfg").unlink()
+        assert helper._reconcile(str(tmp_path), self.ROWS) == \
+            helper.EXIT_MISSING_OUTPUT
+
+    def test_strict_makes_an_unmapped_file_block_too(self, helper, tmp_path):
+        """For a caller that wants it — rather than making every caller live
+        with the stricter reading."""
+        for name in ("r1.cfg", "r6.cfg", "ghost.cfg"):
+            (tmp_path / name).write_text("x")
+
+        assert helper._reconcile(str(tmp_path), self.ROWS) == helper.EXIT_OK
+        assert helper._reconcile(str(tmp_path), self.ROWS, strict=True) == \
+            helper.EXIT_MISSING_OUTPUT
 
     def test_a_mapped_device_with_no_file_is_NAMED(self, helper, tmp_path,
                                                     capsys):
@@ -695,9 +725,9 @@ class TestGroupingIsByDestination:
     def test_devices_sharing_a_destination_are_one_line(self, helper,
                                                         monkeypatch, capsys):
         monkeypatch.setattr(helper, "fetch", lambda *a, **k: [
-            ("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe"),
-            ("s1", "labs/lab/configs", "default", "user@clab", "cisco_ios"),
-            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe")])
+            ("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe", "r1"),
+            ("s1", "labs/lab/configs", "default", "user@clab", "cisco_ios", "s1"),
+            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe", "r6")])
         monkeypatch.setattr(helper.sys, "argv",
                             ["x", "--url", "http://nmas", "--group"])
 
