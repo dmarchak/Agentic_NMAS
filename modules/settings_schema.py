@@ -429,6 +429,31 @@ DEFAULTS: dict = {
 # JSON Schema
 # ---------------------------------------------------------------------------
 
+#: **Settings a GUARD REFUSES WITHOUT, whose default is empty.**
+#:
+#: Enumerated because of a measured loss. `clab_host` was set on
+#: 2026-09-22 -- `nmas-check-startup-applies` passes no `clab=` and read
+#: two remote files per device, which it cannot do otherwise -- and is
+#: empty now. The settings file erased itself on 2026-09-23 and a
+#: version-0 reseed wrote 107 defaults; `clab_configs_dir` and
+#: `clab_launch_patch` have plausible non-empty defaults and survived
+#: **looking** correct, while the keys below went blank leaving no trace.
+#:
+#: **`scripts/nmas-settings-diff` cannot find these**, by construction:
+#: it lists what differs from the default, and a reset key is equal to
+#: it. The loss is recoverable from knowledge, not from measurement,
+#: which is why the list is written down rather than derived.
+#:
+#: Each one turns a guard into a refusal that fails closed -- safe, and
+#: indistinguishable from a guard that ran, unless somebody reads the
+#: reason.
+GUARD_GATING_EMPTY_DEFAULTS = (
+    "clab_host",          # verify_startup_file, verify_startup_applies
+    "clab_sync_script",   # run_sync
+    "yang_push_script",   # the rotation's consumer warning
+)
+
+
 _STR = {"type": "string"}
 _BOOL = {"type": "boolean"}
 

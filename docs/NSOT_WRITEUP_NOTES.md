@@ -9255,3 +9255,71 @@ The practice this argues for is already the project's: **read the function,
 do not infer it** — extended from signatures to problem statements. A stated
 problem is a hypothesis with a symptom attached, and the cheap discriminator
 is usually one file away.
+
+## `clab_host` was set, and then it was not — reading the record
+
+**The question:** if `clab_host` was empty on 2026-09-22, Stage 2's item 2.2
+acceptance — *"the `startup_applies` stage runs on a real rotation and
+passes for a C8000v because the launch script carries the skip, demonstrably
+failing if the skip is removed"* — was recorded as met while the check
+refused.
+
+**The record says otherwise, and it is this project's own notes.** "Four
+controls that could not fail, in one stage", control 4:
+
+> It ran against the live host with the marker renamed and reported
+> **APPLIES for all five routers**, with the same reason text naming the
+> helper.
+
+`nmas-check-startup-applies` passes **no `clab=`**, so it resolves
+`get_setting("clab_host", "")` — and with that empty it returns
+`{"ok": False, "error": "clab_host is not configured"}` and reads nothing.
+It cannot produce "APPLIES for all five routers" with a reason naming a
+helper it found inside a remote file. **So `clab_host` was set then.**
+
+More than that: the marker-rename run is the check being **calibrated** —
+watched failing when the property was false, which is the only evidence a
+check measures anything. That is the strongest form of the acceptance, and
+it happened.
+
+### The narrower true statement
+
+The **function** has run, on the live host, and has been calibrated. The
+**stage** — `startup_applies` inside `persist()` — is a different claim, and
+`nmas-check-startup-applies`'s own docstring says why it exists:
+
+> the only way to reach it was to perform a **real rotation** — a new random
+> password on a live device. The Stage 2 runbook asked for exactly that,
+> minutes before a redeploy whose post-items verify those same credentials.
+
+So the stage, *as a stage of the chain*, likely has never run. That is worth
+knowing and it is not "one stated guard has never run".
+
+### What actually happened to the setting
+
+`clab_host` was set on 2026-09-22 and is empty now. Between those, on
+2026-09-23, **the settings file erased itself** and a version-0 reseed wrote
+107 defaults.
+
+`clab_host`'s default is `""`. So is `clab_sync_script`'s and
+`yang_push_script`'s. `clab_configs_dir` and `clab_launch_patch` have
+plausible **non-empty** defaults and survived *looking correct* — which is
+why the loss was invisible for two days and surfaced only when somebody
+asked why a verification had never produced a sha.
+
+**The erasure's blast radius was assessed as "the Cloudflare Access values"
+and it was wider.** That is the fourth instance tonight of a stated problem
+being narrower than the real one, and the first where the narrow statement
+was mine.
+
+### `nmas-settings-diff` cannot find these, by construction
+
+It lists what **differs** from the default; a key reset to its default is
+equal to it. **The loss is recoverable from knowledge, not from
+measurement**, which is why `settings_schema.GUARD_GATING_EMPTY_DEFAULTS`
+is written down rather than derived — three keys today, each one a guard
+that becomes a refusal when it is blank.
+
+A refusal fails closed, so nothing broke. It is also **indistinguishable
+from a guard that ran** unless somebody reads the reason, which is the
+property that let this sit for two days.

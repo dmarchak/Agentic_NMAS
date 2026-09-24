@@ -166,3 +166,73 @@ class TestTheWriteIsAtomic:
         cfg, path = settings
         cfg.save_user_settings(dict(FULL))
         assert not os.path.exists(str(path) + ".tmp")
+
+
+class TestTheReseedsBlastRadiusIsEnumerable:
+    """**What a version-0 reseed destroys without leaving a trace.**
+
+    Measured, two days after the fact: `clab_host` was set on 2026-09-22 —
+    `nmas-check-startup-applies` passes no `clab=` and read two remote files
+    per device, which it cannot do with an empty setting — and it is empty
+    now. The settings file erased itself on 2026-09-23 and the reseed wrote
+    107 defaults.
+
+    **The blast radius was assessed as "the Cloudflare Access values" and
+    was wider.** `clab_configs_dir` and `clab_launch_patch` have plausible
+    non-empty defaults, so they survived *looking* correct; the keys whose
+    default is empty went blank leaving nothing to notice.
+
+    **`scripts/nmas-settings-diff` cannot find them, by construction** — it
+    lists what differs from the default, and a reset key equals it. The loss
+    is recoverable from knowledge, not from measurement, which is the whole
+    reason the list is written down rather than derived.
+    """
+
+    def test_the_gating_keys_are_named(self):
+        from modules.settings_schema import GUARD_GATING_EMPTY_DEFAULTS
+
+        assert len(GUARD_GATING_EMPTY_DEFAULTS) >= 3, \
+            "the list is the only record of what a reseed silently takes"
+        assert "clab_host" in GUARD_GATING_EMPTY_DEFAULTS
+
+    def test_each_is_declared_and_each_default_really_is_empty(self):
+        """If a default stops being empty, the key stops being invisible and
+        belongs off the list — so this fails rather than quietly over-listing."""
+        from modules.settings_schema import (DEFAULTS,
+                                             GUARD_GATING_EMPTY_DEFAULTS)
+
+        for key in GUARD_GATING_EMPTY_DEFAULTS:
+            assert key in DEFAULTS, f"{key} is not a declared setting"
+            assert DEFAULTS[key] == "", (
+                f"{key}'s default is no longer empty, so a reseed would "
+                "leave a visible value — take it off the list")
+
+    def test_a_setting_with_a_REAL_default_is_not_on_it(self):
+        """**The floor.** A list containing everything would be a list
+        nobody reads, and the point is which losses are *invisible*."""
+        from modules.settings_schema import (DEFAULTS,
+                                             GUARD_GATING_EMPTY_DEFAULTS)
+
+        assert "clab_configs_dir" not in GUARD_GATING_EMPTY_DEFAULTS
+        assert DEFAULTS["clab_configs_dir"] != ""
+
+    def test_the_diff_script_cannot_detect_these(self):
+        """Stated as a test because it is the reason the list exists, and
+        because somebody will otherwise reach for the script."""
+        import inspect
+        import importlib.util
+        import os
+        from importlib.machinery import SourceFileLoader
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(root, "scripts", "nmas-settings-diff")
+        spec = importlib.util.spec_from_file_location(
+            "sdiff", path, loader=SourceFileLoader("sdiff", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        src = inspect.getsource(mod)
+        assert "DEFAULTS" in src, "the scan is not reading the script"
+        # It compares against DEFAULTS, so a key reset TO its default is
+        # equal and cannot appear.
+        assert "!=" in src or "differ" in src.lower()

@@ -305,3 +305,43 @@ control found a real gap rather than a broken control.
    guard that passes for a device in either lab is checking nothing.
 4. `nmas-clab-targets --stray ~/labs/lab/configs` reports nothing.
 5. Redeploy checklist item 4.5 applies to r6 on the next reboot.
+
+---
+
+## 9. Settings to write on the NMAS
+
+Not written from here — they are a live settings change on your box, and
+`write_settings()` is the one path in.
+
+```python
+from modules.settings_schema import write_settings
+write_settings({
+    "clab_host": "dmarchak@10.0.0.210",
+    "clab_labs": {
+        # Names ONLY the two paths. `host` and `sync_script` inherit, by
+        # the resolver's design: one containerlab VM, several labs on it.
+        "r6": {
+            "configs_dir":  "labs/r6/configs",
+            "launch_patch": "labs/r6/patches/c8000v-launch-adopted.py",
+        },
+    },
+}, actor="<you>")
+```
+
+And r6's manifest entry, which is what makes the resolver pick that lab:
+
+```python
+from modules.nsot import manifest
+manifest.upsert_device(repo, identity, "r6", clab_lab="r6")
+```
+
+**Check `clab_sync_script` and `yang_push_script` while you are there.**
+Both have empty defaults, both gate a guard, and both were in the reseed's
+path — see `settings_schema.GUARD_GATING_EMPTY_DEFAULTS`. `nmas-settings-diff`
+cannot tell you whether they were lost, because a key reset to its default
+does not differ from it.
+
+Then the acceptance in §8 becomes runnable, and item (2) is the one to read
+closely: `verify_startup_applies("r6")` must name
+`labs/r6/patches/c8000v-launch-adopted.py` in its result. Naming
+`labs/lab/patches/c8000v-launch.py` is the finding.

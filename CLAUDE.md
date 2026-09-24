@@ -2180,6 +2180,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   copies: no cache, and an unreachable NMAS **refuses** rather than falling
   back to a directory, because a guess about where a config boots from
   writes one device's credentials into another lab.
+- **A setting whose default is EMPTY loses silently, and
+  `nmas-settings-diff` cannot find it.** `clab_host` was set on 2026-09-22 —
+  `nmas-check-startup-applies` passes no `clab=` and reported *"APPLIES for
+  all five routers"* naming a helper it found inside a remote file, which an
+  empty setting cannot do — and it is empty now. Between those the settings
+  file erased itself and a version-0 reseed wrote 107 defaults.
+  `clab_configs_dir` and `clab_launch_patch` have plausible non-empty
+  defaults and survived **looking correct**; `clab_host`,
+  `clab_sync_script` and `yang_push_script` went blank leaving no trace.
+  The diff script lists what **differs** from the default and a reset key
+  **equals** it, so the loss is recoverable from knowledge rather than
+  measurement — hence `settings_schema.GUARD_GATING_EMPTY_DEFAULTS`, written
+  down rather than derived. **The erasure's blast radius was assessed as
+  "the Cloudflare Access values" and was wider**, which is the fourth
+  instance of a stated problem being narrower than the real one and the
+  first where the narrow statement was mine.
+  On Stage 2's acceptance: the **function** ran on the live host and was
+  *calibrated* — the marker-rename control is what caught the fourth
+  could-not-fail control — so the acceptance was met by a check that
+  executed. The **stage** inside `persist()` is a separate claim and likely
+  has never run, because reaching it needs a real rotation.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
