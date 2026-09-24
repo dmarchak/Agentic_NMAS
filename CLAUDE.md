@@ -1634,6 +1634,20 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   to the write path** (`_plan_args`, `_target_list`, `plan`, `create`) with a
   floor asserting those functions were found. A module-wide scan would have
   forced a read to carry a list the page does not always know.
+- **A stale premise runs in both directions.** Two were caught in one
+  session by believing something was **done** when it was not — the manifest
+  identity (trusted because the function was called `adopt_identity`) and the
+  Access values (trusted because they had been *given* in conversation). The
+  counterpart is believing something is **unresolved** when the evidence has
+  already resolved it: the Create blocker was restated twice after the
+  operator had set the values and `identity/status` reported
+  `access_configured: true`. The sharp form is that the refuting evidence had
+  **already been used** — the NetBox diagnosis was derived from the run
+  reporting *"Device onboarded"*, which presupposes Create passed its
+  identity gate. A fact consumed for one conclusion and not propagated to
+  another. **Before restating a blocker, ask what exists downstream of it**:
+  "Create is blocked" is refuted by "a device exists that Create made", and
+  that refutation needs no new measurement.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

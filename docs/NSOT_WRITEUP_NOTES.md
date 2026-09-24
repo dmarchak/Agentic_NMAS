@@ -8005,3 +8005,52 @@ truncated file must raise (the previous loader returns `{}` — shown), a
 missing file must still return `{}` (first run), and a healthy file must
 still write (a guard refusing everything would pass every other test and make
 the settings page read-only for ever).
+
+---
+
+## The counterpart failure: a resolved fact re-asserted as pending
+
+Two stale premises were caught tonight, both in the same direction —
+**believing something was done when it was not**:
+
+* the manifest identity, believed recorded because the function was named
+  `adopt_identity`;
+* the Cloudflare Access values, believed set because they had been *given*
+  in conversation.
+
+This is the third, and it runs the other way: **believing something is
+unresolved when the evidence has already resolved it.**
+
+Having established that Access was unconfigured and that `/onboard/create`
+therefore answered 403, that blocker was restated **twice more** — after the
+operator had reported setting the values, after the posture panel had shown
+all three, and after `identity/status` reported `access_configured: true`.
+
+### What makes it the sharp form rather than mere inattention
+
+The refuting evidence was not merely present — **it had already been used**.
+The NetBox diagnosis was derived from the run reporting *"Device
+onboarded."* That report presupposes `run_onboarding` completed, which
+presupposes `/onboard/create` passed its identity gate, which presupposes a
+verified person, which presupposes Access was configured. The inference was
+made, acted on, and written up — and the belief three steps upstream was
+never revised.
+
+So the failure is not "the fact was missed". It is **a fact consumed for one
+conclusion and not propagated to another**, which is exactly the shape of
+every stale premise in this project: `adopt_identity`'s name was read and
+believed without reading the body; a docstring's ordering claim was read as
+a derivation; a stub's signature was written from the same misreading as the
+caller.
+
+### The check, stated so it is usable
+
+**Before restating a blocker, ask what exists downstream of it.** "Create is
+blocked" is refuted by "a device exists that Create made", and that
+refutation is available without re-measuring anything — it is already in the
+artefacts under discussion.
+
+The general rule: a blocker is a claim about the present, and claims about
+the present expire. An established *absence* needs re-checking on the same
+schedule as an established presence, and **the arrival of a downstream
+artefact is the cheapest possible re-check**.
