@@ -882,6 +882,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_abandon.py` | release refuses while named; abandon reverses creation; a partial abandon never reclaims |
 | `test_onboard_pending.py` | pending has an exit; 24h/7d; promotion refuses the bootstrap credential |
 | `test_onboard_phase2.py` | reaching is the verification; silence is not a cause; the banner tells error from empty |
+| `test_onboard_phase_two.py` | the full phase: every step reported, promotion last, the first golden a true record |
 | `test_settings_file_integrity.py` | absent vs unreadable; a write on defaults refused; the save is atomic |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
@@ -1749,6 +1750,38 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   saves after verify because the device *changed*; onboarding saves after
   removal because the first record should be the one you would want
   restored — an analogy worth not drawing.
+- **Phase 2 runs seven steps and `ok` means all of them**: verify → capture
+  → rotate (+record) → remove RW → golden → NetBox → **promote**. Promotion
+  is last for two independent reasons, which is why it is not a preference:
+  4C.3's rule (the visible, durable change goes last among the fallible),
+  and rotation forcing it anyway (the CSV row must carry the **rotated**
+  credential). A partial run therefore leaves the device **pending** with a
+  named reason and every step that did not run listed — *"the phase failed"*
+  is not actionable, *"rotate failed and these four therefore did not run"*
+  is. A control moves promotion earlier and the suite notices.
+- **The first golden is a true record, and the order is what makes it one.**
+  The capture is held **in memory** until the RW community has been removed
+  and the credential rotated, then the device is **re-read** and saved once.
+  A golden written earlier and corrected later leaves the state we
+  deliberately do not want in history, where a remote may publish it — and
+  re-reading rather than filtering matters too: a config with the RW lines
+  stripped out is a claim about the device, not a record of it. Asserted on
+  the **file**: no `RW`, no bootstrap credential, the RO community intact,
+  one commit.
+- **No step passes a credential to another step**, so none can pass an empty
+  one. Each reads it from the device override — where phase 1 put it and
+  where rotation replaces it — which is how the empty-CSV password is fixed
+  at its cause. Promotion re-reads it last, so the row carries the rotated
+  value.
+- **Two of five negative controls did not fire on the first pass**, and both
+  were findings. `ok` forced True passed the suite because every failure
+  returned through `_stop`, which set `ok` itself — so the computation from
+  the step rows was never load-bearing; `ok` is now decided in one place,
+  from the rows, and asserted as a **relationship** (`ok` and the steps can
+  never disagree) rather than as a value. The other was a **dud control, not
+  a dud test**: the mutation left an earlier post-rotation read in scope and
+  so reintroduced nothing. **A control that passes is either a missing test
+  or a broken control, and telling which is the work.**
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -650,7 +650,9 @@ def clear_bootstrap_credential(repo: str, hostname: str) -> None:
 
 def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
                      confirmed_fingerprint: str, actor: str = "",
-                     actor_kind: str = "", rotate=None) -> dict:
+                     actor_kind: str = "", rotate=None,
+                     device: dict = None, capture: str = "",
+                     record: str = "override") -> dict:
     """Replace the bootstrap credential with a device-generated secret.
 
     Returns ``{"rotated", "state", "reason", "recoverable"}``.
@@ -682,9 +684,17 @@ def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
         from modules.nsot.credential_rotation import rotate
 
     try:
+        # `device`, `capture` and `record` carried through rather than
+        # re-derived: this device has no inventory row (promotion writes it,
+        # last) and no golden yet (the capture is in hand and is not written
+        # until the RW community has been removed from it). `record` defaults
+        # to "override" here because every caller of THIS function is
+        # onboarding a pending device — the inventory default belongs to
+        # `rotate`, whose other callers are rotating inventory devices.
         result = rotate(list_name, hostname,
                         confirmed_fingerprint=confirmed_fingerprint,
-                        actor=actor, actor_kind=actor_kind) or {}
+                        actor=actor, actor_kind=actor_kind,
+                        device=device, capture=capture, record=record) or {}
     except Exception as exc:                   # noqa: BLE001
         log.error("onboard: rotation raised for %s: %s", hostname, exc)
         result = {"state": NOT_STARTED, "error": f"rotation raised: {exc}"}
@@ -1216,6 +1226,25 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     if not identity:
         result["error"] = (f"'{hostname}' has no identity in this list's "
                            f"manifest — nothing to abandon")
+        return result
+
+    # ABANDON IS FOR AN UNFINISHED ONBOARDING, AND A PROMOTED DEVICE IS NOT
+    # ONE. It is in the inventory, which is a different claim — that the
+    # device is finished and belongs there — and removing it is the existing
+    # delete path, not an onboarding undo.
+    #
+    # Refused rather than handled: `promoted and unfinished` was reachable
+    # only while promotion ran second of three, and with it last that state
+    # cannot occur. Teaching abandon about it would be building for a case
+    # the ordering has removed — and `references()` does not check the
+    # inventory row, so abandoning a promoted device would hand the name
+    # back while the row remained.
+    if (entry or {}).get("verified_at"):
+        result["error"] = (
+            f"'{hostname}' is promoted — it is in the inventory and phase 2 "
+            f"has run for it, so this is not an unfinished onboarding. "
+            f"Remove it through the device list rather than by abandoning "
+            f"an onboarding that finished.")
         return result
 
     def _step(name, ok, detail, how=""):
@@ -1763,3 +1792,326 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
         return {"ok": False, "config": "", "reason": str(exc)}
 
     return {"ok": True, "config": config, "reason": ""}
+
+
+# ---------------------------------------------------------------------------
+# Phase 2, in full
+# ---------------------------------------------------------------------------
+
+#: The order, and **promotion is last because it is the claim**.
+#:
+#: 4C.3 ordered phase 1 by what a failure leaves behind and put the only
+#: durable, publishing step last among the fallible. Phase 2 had promotion
+#: SECOND of three, so the one step that changes what the operator sees ran
+#: before the four that do the work — and a device could sit promoted with a
+#: throwaway password, no golden, no NetBox record and the read-write
+#: community still on it, reporting `ok: true`.
+#:
+#: Two independent arguments put promotion last, which is why it is not a
+#: preference:
+#:
+#: 1. **4C.3's rule, unchanged.** The visible, durable change goes last.
+#: 2. **Rotation forces it anyway.** The CSV row must carry the ROTATED
+#:    credential, so it cannot be written before rotation without being
+#:    wrong — which is exactly what happened.
+#:
+#: `promoted` is therefore not a state a partial run can reach. See
+#: `test_onboard_phase_two.py`, whose control moves promotion earlier and
+#: asserts the suite notices.
+PHASE_TWO_STEPS = ("verify", "capture", "rotate", "remove_rw", "golden",
+                   "netbox", "promote")
+
+
+def capture_config(mgmt_ip: str, username: str, password: str, secret: str,
+                   device_type: str) -> dict:
+    """Read the device's running config. Returns ``{"ok", "config", "error"}``.
+
+    Held **in memory** by the caller until the RW community has been removed
+    from the device — the golden is the approved record of what a device
+    should look like, and its first version must not be a state we
+    deliberately do not want, preserved in history where a remote may
+    publish it.
+    """
+    from modules.connection import connection_params
+
+    try:
+        from netmiko import ConnectHandler
+
+        conn = ConnectHandler(**connection_params(
+            {"device_type": device_type, "ip": mgmt_ip, "username": username},
+            password=password, secret=secret))
+        try:
+            conn.enable()
+            config = conn.send_command("show running-config",
+                                       read_timeout=_read_timeout())
+        finally:
+            conn.disconnect()
+    except Exception as exc:                   # noqa: BLE001
+        log.error("phase2: capture failed for %s: %s", mgmt_ip, exc)
+        return {"ok": False, "config": "", "error": str(exc)}
+
+    if len(config.splitlines()) < 10:
+        # The same guard the rotation path applies: a short read is a failed
+        # command, not a small config, and committing it would replace a
+        # device's record with an error message.
+        return {"ok": False, "config": config, "error": (
+            f"the capture was {len(config.splitlines())} lines — that is a "
+            f"failed read, not a configuration")}
+    return {"ok": True, "config": config, "error": ""}
+
+
+def _read_timeout() -> int:
+    from modules.settings_schema import get_setting
+
+    return int(get_setting("nsot_config_read_timeout", 120) or 120)
+
+
+def remove_rw_communities(mgmt_ip: str, username: str, password: str,
+                          secret: str, device_type: str,
+                          config: str) -> dict:
+    """Send the `no snmp-server community …` lines, verbatim.
+
+    Wires `rw_removal_plan()`, which had no production caller. The lines are
+    the device's own, verbatim: a rebuilt line drops the ACL, and
+    `no snmp-server community public RW` against a device whose line reads
+    `… RW 99` is a command that does not match.
+
+    Returns ``{"ok", "removed", "kept", "error"}``. **Nothing to remove is a
+    success** — a vrnetlab node arrives with an RW community, a real one may
+    not, and refusing would make the common case an error.
+    """
+    plan = rw_removal_plan(config)
+    out = {"ok": True, "removed": [], "kept": plan["keep"], "error": ""}
+    if not plan["remove"]:
+        return out
+
+    from modules.connection import connection_params
+
+    try:
+        from netmiko import ConnectHandler
+
+        conn = ConnectHandler(**connection_params(
+            {"device_type": device_type, "ip": mgmt_ip, "username": username},
+            password=password, secret=secret))
+        try:
+            conn.enable()
+            conn.send_config_set(plan["remove"], read_timeout=_read_timeout())
+        finally:
+            conn.disconnect()
+    except Exception as exc:                   # noqa: BLE001
+        log.error("phase2: RW removal failed for %s: %s", mgmt_ip, exc)
+        return {"ok": False, "removed": [], "kept": plan["keep"],
+                "error": str(exc)}
+
+    out["removed"] = list(plan["remove"])
+    return out
+
+
+def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
+                  actor_kind: str = "", online=None, reach=None,
+                  capture=None, rotate=None, remove_rw=None, save=None,
+                  netbox=None, promote=None) -> dict:
+    """Finish onboarding a pending device. **`ok` means all of it.**
+
+    Returns ``{"ok", "steps", "remaining", "reason", ...}`` with one entry
+    per :data:`PHASE_TWO_STEPS`. A step that did not run is reported as not
+    run, with the reason the previous one gave — a phase that stops halfway
+    and reports the steps that did succeed is the defect this replaces.
+
+    **A partial run leaves the device PENDING.** Promotion is the last step
+    and is the only thing that clears `verified_at` and writes the inventory
+    row, so there is no path to "promoted" that does not pass through every
+    step before it. That is not a convention; it is the order, and a control
+    in the tests moves promotion earlier and asserts the suite notices.
+
+    Every collaborator is injected for the same reason `run_onboarding`'s
+    are: the ordering and the failure behaviour are the thing under test,
+    and a test that has to reach a device to check them is not a test.
+    """
+    from modules.nsot import manifest as _m
+
+    result = {"ok": False, "device": hostname, "list": list_name,
+              "steps": [], "remaining": [], "reason": "", "promoted": False}
+
+    def _step(name, ok, detail="", **extra):
+        row = {"step": name, "ok": bool(ok), "detail": detail}
+        row.update(extra)
+        result["steps"].append(row)
+        return bool(ok)
+
+    def _finish():
+        """**The one place `ok` is decided, and it is decided FROM the steps.**
+
+        `_stop` used to set `result["ok"] = False` itself, so the computation
+        below was never the thing that decided anything — and a control that
+        forced `ok = True` at the end passed the whole suite. A field named
+        for the whole must be computed from the whole, or the next edit sets
+        it beside them and nothing notices.
+        """
+        result["ok"] = bool(result["steps"]) and all(r["ok"]
+                                                     for r in result["steps"])
+        return result
+
+    def _stop(name, reason):
+        """Record why, and name every step that therefore did not run."""
+        result["reason"] = reason
+        ran = {r["step"] for r in result["steps"]}
+        for step in PHASE_TWO_STEPS:
+            if step not in ran:
+                result["steps"].append({"step": step, "ok": False,
+                                        "detail": "did not run"})
+                result["remaining"].append({"step": step, "why": reason})
+        return _finish()
+
+    identity, entry = _m.find_by_name(repo, hostname)
+    if not identity:
+        return _stop("verify", f"'{hostname}' is not in this list's manifest")
+    if entry.get("verified_at"):
+        return _stop("verify", f"'{hostname}' is already promoted — phase 2 "
+                               f"has run for it")
+
+    mgmt_ip = entry.get("mgmt_ip", "")
+    platform = entry.get("platform", "")
+    try:
+        from modules.nsot.platform import netmiko_type_for_dialect
+
+        device_type = netmiko_type_for_dialect(platform)
+    except Exception as exc:                   # noqa: BLE001
+        return _stop("verify", f"no Netmiko driver for '{platform}': {exc}")
+
+    # ---- 1. verify ------------------------------------------------------
+    seen = (verify_device if online is None and reach is None
+            else verify_device)(repo, hostname, list_name, mgmt_ip=mgmt_ip,
+                                device_type=device_type, online=online,
+                                reach=reach)
+    result["verify"] = seen
+    if not _step("verify", seen.get("answered"), seen.get("state", ""),
+                 credential_source=seen.get("credential_source", "")):
+        return _stop("verify", seen.get("error") or "the device did not answer")
+
+    # NO STEP PASSES A CREDENTIAL TO ANOTHER STEP. Each reads it from the
+    # override, which is where phase 1 put it and where rotation replaces
+    # it — so none of them can pass an empty one, which is how the CSV row
+    # came to hold nothing.
+    def _cred():
+        from modules import credentials
+
+        found = credentials.resolve(mgmt_ip) or {}
+        return (found.get("username", "admin"), found.get("password", ""),
+                found.get("secret", ""))
+
+    user, pw, sec = _cred()
+
+    # ---- 2. capture, held in memory -------------------------------------
+    cap = (capture or capture_config)(mgmt_ip, user, pw, sec, device_type)
+    if not _step("capture", cap.get("ok"),
+                 f"{len(cap.get('config', '').splitlines())} lines"):
+        return _stop("capture", cap.get("error") or "the capture failed")
+    config = cap["config"]
+
+    # ---- 3. rotate, and record in the same act ---------------------------
+    device_row = {"hostname": hostname, "ip": mgmt_ip, "username": user,
+                  "device_type": device_type, "platform": platform}
+    rot = (rotate or finish_bootstrap)(
+        repo, hostname, list_name,
+        confirmed_fingerprint=_phase_two_fingerprint(hostname, mgmt_ip),
+        actor=actor, actor_kind=actor_kind,
+        device=device_row, capture=config, record="override")
+    result["rotate"] = rot
+    if not _step("rotate", rot.get("rotated"), rot.get("state", "")):
+        return _stop("rotate", rot.get("reason")
+                     or "the credential was not rotated")
+
+    # The credential changed, so everything after this reads it again.
+    user, pw, sec = _cred()
+
+    # ---- 4. remove the RW community --------------------------------------
+    rw = (remove_rw or remove_rw_communities)(mgmt_ip, user, pw, sec,
+                                              device_type, config)
+    result["remove_rw"] = rw
+    if not _step("remove_rw", rw.get("ok"),
+                 f"{len(rw.get('removed') or [])} removed, "
+                 f"{len(rw.get('kept') or [])} kept"):
+        return _stop("remove_rw", rw.get("error") or "the removal failed")
+
+    # ---- 5. the golden, captured AFTER the removal ------------------------
+    # Re-read rather than edited: the golden must be what the device
+    # actually holds, and a config with the RW lines filtered out of it is a
+    # claim about the device rather than a record of it.
+    post = (capture or capture_config)(mgmt_ip, user, pw, sec, device_type)
+    if not _step("golden", post.get("ok"), "re-read after the removal"):
+        return _stop("golden", post.get("error")
+                     or "the device could not be re-read")
+    saved = (save or _save_first_golden)(list_name, hostname, mgmt_ip,
+                                         platform, post["config"], actor)
+    result["golden"] = saved
+    if not saved.get("ok"):
+        result["steps"][-1]["ok"] = False
+        result["steps"][-1]["detail"] = saved.get("error", "")
+        return _stop("golden", saved.get("error") or "the golden was not saved")
+
+    # ---- 6. NetBox, now that there is something to import ----------------
+    nb = (netbox or create_netbox_record)(repo, hostname, list_name)
+    result["netbox"] = nb
+    if not _step("netbox", nb.get("ok"),
+                 nb.get("reason") or f"{len(nb.get('created') or [])} object(s)"):
+        return _stop("netbox", nb.get("reason") or "the NetBox record failed")
+    if nb.get("device_id") is not None:
+        _m.upsert_device(repo, identity, hostname, netbox_id=nb["device_id"])
+
+    # ---- 7. promote, LAST ------------------------------------------------
+    user, pw, sec = _cred()
+    prom = (promote or promote_device)(repo, hostname, list_name, actor=actor,
+                                       device_type=device_type, username=user,
+                                       password=pw, secret=sec)
+    result["promote"] = prom
+    if not _step("promote", prom.get("ok"), prom.get("error", "")):
+        return _stop("promote", prom.get("error") or "promotion failed")
+
+    result["promoted"] = True
+    return _finish()
+
+
+def _phase_two_fingerprint(hostname: str, mgmt_ip: str) -> str:
+    """The confirmation phase 2 rotates under.
+
+    Onboarding IS the confirmation: the operator pressed Create on a review
+    screen naming this device and this address, and phase 2 finishes what
+    that authorised. It is derived rather than passed so no caller can
+    supply one for a different device.
+    """
+    import hashlib
+
+    # Joined rather than f-string-interpolated, and deliberately.
+    # `test_the_key_is_built_in_exactly_one_place` scans for a
+    # `f"...{hostname}:{...}"` shape, because a template-secret key built by
+    # hand is what let one list's extraction overwrite another's. It cannot
+    # tell that shape from this one — which is the point of the check — so
+    # the fix is to stop looking like a secret key rather than to exempt
+    # this line from a scan that guards a real hazard.
+    parts = ("onboard-confirmation", hostname, mgmt_ip)
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def _save_first_golden(list_name: str, hostname: str, mgmt_ip: str,
+                       platform: str, config: str, actor: str) -> dict:
+    """The device's first golden. **One commit, one true record.**
+
+    Written only after the RW community has been removed and the bootstrap
+    credential rotated, so the repository's first record of this device
+    contains neither. A golden written earlier and corrected later leaves the
+    state we deliberately do not want in history, where a remote may publish
+    it.
+    """
+    from modules.nsot.repo import GoldenItem, save_golden
+
+    try:
+        return save_golden(
+            list_name,
+            [GoldenItem(hostname, config, mgmt_ip=mgmt_ip, platform=platform)],
+            source="onboarding", actor=actor or "nmas", allow_new=False,
+            message=f"onboarding: {hostname} first capture")
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("phase2: could not save the first golden for %r",
+                      hostname)
+        return {"ok": False, "error": str(exc)}

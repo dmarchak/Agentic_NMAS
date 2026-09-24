@@ -288,16 +288,12 @@ def verify(hostname):
     except NoTargetList as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    from modules.nsot.onboard import verify_and_promote
+    from modules.nsot.onboard import run_phase_two
 
     try:
-        out = verify_and_promote(
+        out = run_phase_two(
             _repo_for(list_name), hostname, list_name, actor=ident.actor,
-            username=(data.get("username") or "admin").strip(),
-            password=data.get("password") or "",
-            secret=data.get("secret") or "",
-            device_type=_driver_for(list_name, hostname, data),
-            interface=(data.get("interface") or "").strip())
+            actor_kind=ident.kind)
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: verify failed for %r", hostname)
         return jsonify({"ok": False, "error": str(exc)}), 500

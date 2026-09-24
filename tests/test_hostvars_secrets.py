@@ -468,7 +468,17 @@ class TestSecretsAreScopedToTheirDeviceList:
         assert store.get_template_secret("campus:r1:snmp_community_ro") == "NEW"
 
     def test_the_key_is_built_in_exactly_one_place(self):
-        """Four f-strings in three modules is how the shapes drifted apart."""
+        """Four f-strings in three modules is how the shapes drifted apart.
+
+        **Comments are skipped, and that is not a weakening.** This grepped
+        every line and matched a comment in `onboard.py` explaining why the
+        line beneath it is deliberately *not* shaped like a secret key — the
+        documented hazard that *a pattern which can appear in English needs
+        an anchor*, and that the better the comment, the more likely it
+        quotes the code it explains. A prose mention of the shape is not a
+        construction of the key, and a check that cannot tell them apart
+        pressures the next author into deleting the explanation.
+        """
         import inspect
         import re
         import subprocess
@@ -481,9 +491,16 @@ class TestSecretsAreScopedToTheirDeviceList:
             capture_output=True, text=True).stdout
         # The one legitimate construction is the body of template_secret_key.
         owner = inspect.getsource(credentials.template_secret_key)
-        strays = [line for line in out.splitlines()
-                  if line.strip() and line.split(":", 2)[-1].strip() not in
-                  [l.strip() for l in owner.splitlines()]]
+        strays = []
+        for line in out.splitlines():
+            if not line.strip():
+                continue
+            code = line.split(":", 2)[-1].strip()
+            if code.startswith("#") or code.startswith('"""'):
+                continue          # a mention, not a construction
+            if code in [l.strip() for l in owner.splitlines()]:
+                continue          # the one legitimate construction
+            strays.append(line)
         assert strays == [], (
             "a template-secret key is built outside template_secret_key():\n"
             + "\n".join(strays))
