@@ -822,6 +822,30 @@ class UnscopedAddressLookup(Exception):
     """An address lookup was attempted with no interface to scope it to."""
 
 
+def excluded_vrfs() -> set:
+    """VRF names whose addresses the import does not model, lowercased.
+
+    `netbox_excluded_vrfs`, defaulting to `clab-mgmt`. Read at call time, so
+    changing the setting takes effect without a restart.
+    """
+    from modules.settings_schema import DEFAULTS, get_setting
+
+    # `settings_schema.get_setting()`, not `config.get_user_setting()`: the
+    # first falls back to the declared DEFAULT, the second reads only the
+    # file and returns None for a key no install has ever written -- which
+    # for this setting means excluding nothing, silently, on every install
+    # that predates it. The DEFAULTS fallback below covers an unreadable
+    # settings file, where a read is survivable and must not silently turn
+    # the exclusion off.
+    try:
+        raw = get_setting("netbox_excluded_vrfs")
+    except Exception:                           # noqa: BLE001
+        raw = DEFAULTS.get("netbox_excluded_vrfs", [])
+    if isinstance(raw, str):                    # a hand-edited file
+        raw = [p for p in raw.replace(",", " ").split() if p]
+    return {str(v).strip().lower() for v in (raw or []) if str(v).strip()}
+
+
 def _ensure_ip_address(session, base: str, address_cidr: str,
                        interface_id: int,
                        description: str = "",
@@ -1777,6 +1801,28 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
 
             # Skip IPAM for interfaces without any IP
             if not intf.get("cidr") and not intf.get("secondary_ips") and not intf.get("ipv6_addresses"):
+                continue
+
+            # An EXCLUDED VRF's addresses are the emulator's plumbing, not
+            # the network. Every containerlab node answers on the same
+            # internal management address, so NetBox -- which enforces
+            # global uniqueness -- cannot represent five of them, and the
+            # one it accepts is a claim that one device has an address all
+            # five have. The interface is still modelled; its addresses are
+            # not. Counted, never silent: a skip nobody can see is the
+            # failure mode this stack is most prone to.
+            if vrf_name and vrf_name.lower() in excluded_vrfs():
+                ipam_stats["ips_excluded"] = (
+                    ipam_stats.get("ips_excluded", 0)
+                    + len([c for c in ([intf.get("cidr")]
+                                       + list(intf.get("secondary_ips") or [])
+                                       + list(intf.get("ipv6_addresses") or []))
+                           if c]))
+                ipam_stats.setdefault("excluded_vrfs", [])
+                if vrf_name not in ipam_stats["excluded_vrfs"]:
+                    ipam_stats["excluded_vrfs"].append(vrf_name)
+                log.info("netbox: %s %s — addresses not modelled, VRF %r is "
+                         "excluded", hostname, intf.get("name"), vrf_name)
                 continue
 
             # Primary IPv4

@@ -304,12 +304,18 @@ class TestTheRepairRefusesUntilTheFixIsIn:
         holder and does not touch it."""
         import inspect
 
-        src = inspect.getsource(repair)
+        # Scoped to the CREATION path. `--remove-excluded` is a separate
+        # mode that deletes deliberately, under provenance, and asserting
+        # over the whole module would conflate the two.
+        src = inspect.getsource(repair.plan) + inspect.getsource(repair.main)
         assert "will NOT be moved" in src
         assert "_nb_patch" not in src, "the repair can move an address"
-        assert "_nb_delete" not in src, "the repair can delete"
         assert "assigned_object_id" not in src, \
             "the repair sets an assignment on an existing object"
+        create_branch = inspect.getsource(repair.main).split(
+            "_remove_excluded(args)")[-1]
+        assert "_nb_delete" not in create_branch, \
+            "the creation path can delete"
 
     def test_dry_run_is_the_default(self, repair):
         import inspect
@@ -453,3 +459,220 @@ class TestARepairThatExaminesNothingRefuses:
         assert out["examined"] == 1
         assert out["list"] == "X"
         assert out["skipped"], "a device not in NetBox must be reported"
+
+
+class TestAnExcludedVRFIsNotModelled:
+    """**NetBox enforces global uniqueness, so five identical addresses
+    cannot be represented.** Measured 2026-09-24: the repair created one and
+    NetBox refused the other four with *"Duplicate IP address found in
+    global table: 10.0.0.15/24"*.
+
+    Three honest options — disable the uniqueness check, do not model the
+    addresses, or accept that NetBox is wrong about four interfaces — and
+    the deciding test is **would this make sense on a network the tool did
+    not build.** No real device has `10.0.0.15`; it is unreachable from
+    anywhere, and NMAS reaches the fleet on a different range entirely.
+    Importing it teaches NetBox about the emulator's plumbing rather than
+    about the network, and weakening the uniqueness check would sacrifice a
+    genuinely useful constraint to accommodate an artefact.
+
+    **A setting, not a constant**, because another lab's emulator will name
+    its management VRF something else — the network-agnostic rule that
+    already makes the TFTP root and the Jenkins shell settings.
+    """
+
+    def test_the_default_excludes_the_containerlab_vrf(self):
+        from modules.settings_schema import DEFAULTS
+
+        assert DEFAULTS["netbox_excluded_vrfs"] == ["clab-mgmt"]
+
+    def test_it_is_read_through_the_schema_not_the_raw_file(self):
+        """`config.get_user_setting()` reads only the file and returns None
+        for a key no install has written — which would exclude nothing,
+        silently, on every install predating the setting.
+
+        **Parsed, not grepped** — the function's own comment names
+        `config.get_user_setting()` as the thing it does not use, and a
+        substring search matched that. Third time tonight.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from modules import netbox_client as nc
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(nc.excluded_vrfs)))
+        called, imported = set(), set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                called.add(node.id)
+            elif isinstance(node, ast.ImportFrom):
+                imported.add(node.module)
+                called.update(a.name for a in node.names)
+
+        assert "get_setting" in called, "the parse found nothing"
+        assert "modules.settings_schema" in imported
+        assert "get_user_setting" not in called, \
+            "it reads the raw file, so a key no install has written "\
+            "excludes nothing"
+
+    def test_an_unreadable_settings_file_does_not_turn_it_off(self,
+                                                              monkeypatch):
+        """A read is survivable; silently dropping the exclusion is not."""
+        from modules import netbox_client as nc
+        from modules import settings_schema
+
+        def _boom(*a, **k):
+            raise RuntimeError("settings unreadable")
+
+        monkeypatch.setattr(settings_schema, "get_setting", _boom)
+        assert nc.excluded_vrfs() == {"clab-mgmt"}
+
+    def test_a_hand_edited_string_is_accepted(self, monkeypatch):
+        from modules import netbox_client as nc
+        from modules import settings_schema
+
+        monkeypatch.setattr(settings_schema, "get_setting",
+                            lambda k, d=None: "clab-mgmt, mgmt-vrf")
+        assert nc.excluded_vrfs() == {"clab-mgmt", "mgmt-vrf"}
+
+    def test_an_EMPTY_setting_excludes_nothing(self, monkeypatch):
+        """**The floor.** An operator who empties it gets the old behaviour,
+        and a helper that always returned `clab-mgmt` would satisfy every
+        test above."""
+        from modules import netbox_client as nc
+        from modules import settings_schema
+
+        monkeypatch.setattr(settings_schema, "get_setting",
+                            lambda k, d=None: [])
+        assert nc.excluded_vrfs() == set()
+
+    def test_the_import_skips_addresses_and_COUNTS_the_skip(self):
+        """A skip nobody can see is the failure mode this stack is most
+        prone to, so it lands in `ipam_stats` and in the log."""
+        import inspect
+
+        from modules import netbox_client as nc
+
+        src = inspect.getsource(nc._upsert_device)
+        assert "excluded_vrfs()" in src
+        assert "ips_excluded" in src
+        assert "excluded_vrfs\"]" in src or "excluded_vrfs\"]." in src
+
+    def test_the_INTERFACE_is_still_modelled(self):
+        """`vrf forwarding clab-mgmt` really is configured on the device.
+        It is the addresses inside the VRF that describe the emulator, so
+        the skip sits after the interface is created."""
+        import inspect
+
+        from modules import netbox_client as nc
+
+        src = inspect.getsource(nc._upsert_device)
+        assert src.index("_ensure_interface") < src.index("excluded_vrfs()"), \
+            "the exclusion now skips the interface too"
+
+
+class TestTheResidueIsRemovedNotLeft:
+    """**Two objects exist that nothing will ever update again.**
+
+    r1 holds the v4 (created by the repair), r5 the v6 (from the Lab 1
+    import). Once the VRF is excluded the import cannot reach them: no
+    future run touches, corrects or removes them.
+
+    Removed rather than left, for three reasons that compound:
+
+    * each is **wrong in a specific way** — it claims one device has an
+      address all five have, and a half-true record reads as complete;
+    * **nothing will ever update them**, which is precisely the state the
+      drift checker and the census exist to prevent;
+    * they **hold the globally-unique slot**, so nothing else can ever
+      legitimately use that value.
+    """
+
+    @pytest.fixture(scope="class")
+    def repair(self):
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+
+        path = os.path.join(ROOT, "scripts", "nmas-netbox-repair-addresses")
+        spec = importlib.util.spec_from_file_location(
+            "repair3", path, loader=SourceFileLoader("repair3", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _nb(self, monkeypatch, addresses, devices=(), recorded=()):
+        from modules import netbox_guard as guard
+
+        def _get(session, base, path, **params):
+            if "devices" in path:
+                return list(devices)
+            return list(addresses)
+
+        monkeypatch.setattr("modules.netbox_client._nb_get", _get)
+        monkeypatch.setattr(guard, "get_created",
+                            lambda ln, ep="": {"ipam/ip-addresses":
+                                               [{"id": i} for i in recorded]})
+
+    def test_an_NMAS_created_address_in_the_excluded_vrf_is_eligible(
+            self, repair, monkeypatch):
+        self._nb(monkeypatch,
+                 [{"id": 84, "address": "10.0.0.15/24",
+                   "vrf": {"name": "clab-mgmt"}, "description": "r1 Gi1",
+                   "tags": [{"slug": "nmas-managed"}]}],
+                 recorded=[84])
+
+        r = repair.excluded_residue(None, "http://nb", "Default")
+        assert [x["id"] for x in r["eligible"]] == [84]
+
+    def test_an_address_NMAS_did_not_create_is_left_alone(
+            self, repair, monkeypatch):
+        """Provenance still governs. This clean-up is not an exemption from
+        it."""
+        self._nb(monkeypatch,
+                 [{"id": 7, "address": "10.0.0.99/24",
+                   "vrf": {"name": "clab-mgmt"}, "tags": []}],
+                 recorded=[])
+
+        r = repair.excluded_residue(None, "http://nb", "Default")
+        assert r["eligible"] == []
+        assert "not NMAS's" in r["skipped"][0]["why"]
+
+    def test_a_devices_primary_ip_BLOCKS_rather_than_warns(
+            self, repair, monkeypatch):
+        """Deleting it sets the device's primary to null — a consequence of
+        a delete that the cascade map does not cover, because it is a
+        modification rather than a deletion."""
+        self._nb(monkeypatch,
+                 [{"id": 84, "address": "10.0.0.15/24",
+                   "vrf": {"name": "clab-mgmt"},
+                   "tags": [{"slug": "nmas-managed"}]}],
+                 devices=[{"name": "r1", "primary_ip4": {"id": 84}}],
+                 recorded=[84])
+
+        r = repair.excluded_residue(None, "http://nb", "Default")
+        assert r["eligible"] == []
+        assert "r1.primary_ip4" in r["blocked"][0]["why"]
+
+    def test_an_address_OUTSIDE_the_excluded_vrf_is_never_considered(
+            self, repair, monkeypatch):
+        """**The floor.** A clean-up that considered everything would be a
+        fleet-wide address deleter wearing a narrow name."""
+        self._nb(monkeypatch,
+                 [{"id": 50, "address": "10.255.1.11/32",
+                   "vrf": None, "tags": [{"slug": "nmas-managed"}]}],
+                 recorded=[50])
+
+        r = repair.excluded_residue(None, "http://nb", "Default")
+        assert r["eligible"] == []
+        assert r["skipped"] == []
+
+    def test_with_no_excluded_vrf_configured_it_does_nothing(
+            self, repair, monkeypatch):
+        from modules import settings_schema
+
+        monkeypatch.setattr(settings_schema, "get_setting",
+                            lambda k, d=None: [])
+        r = repair.excluded_residue(None, "http://nb", "Default")
+        assert r["excluded"] == []
+        assert r["eligible"] == []

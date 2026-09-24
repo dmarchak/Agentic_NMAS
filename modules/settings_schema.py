@@ -249,6 +249,35 @@ DEFAULTS: dict = {
     #: than a flag that opens all of them at once.
     "service_allowed_operations": [],
 
+    #: VRFs whose addresses and prefixes the NetBox import does NOT model.
+    #:
+    #: **The second deliberate exception to "every new default reproduces the
+    #: behaviour that predates the setting"**, after `netbox_allow_writes` —
+    #: and for a different reason. The prior behaviour is not a behaviour
+    #: anybody chose: NetBox enforces global uniqueness on IP addresses, and
+    #: every containerlab node answers on the same internal management
+    #: address, so importing them is **not representable**. Measured
+    #: 2026-09-24: the repair created one and NetBox refused the other four
+    #: with *"Duplicate IP address found in global table"*. Defaulting to
+    #: empty would preserve an error, not a choice.
+    #:
+    #: **A setting rather than a constant** because another lab's emulator
+    #: will name its management VRF something else — the same
+    #: network-agnostic rule that makes the TFTP root and the Jenkins shell
+    #: settings.
+    #:
+    #: The decision rule is *would this make sense on a network the tool did
+    #: not build*: no real device has `10.0.0.15`, it is unreachable from
+    #: anywhere, and NMAS reaches the fleet on a different range entirely.
+    #: Importing it teaches NetBox about the emulator's plumbing rather than
+    #: about the network. Disabling NetBox's uniqueness check instead would
+    #: weaken a genuinely useful constraint to accommodate an artefact.
+    #:
+    #: The VRF *object* is still modelled — `vrf forwarding clab-mgmt` really
+    #: is configured on the devices. It is the addresses inside it that
+    #: describe the emulator.
+    "netbox_excluded_vrfs": ["clab-mgmt"],
+
     # ── Config persistence (Oxidized → containerlab startup files) ──────────
     # The pipeline lives outside this repo; see docs/ARCHITECTURE.md. These are
     # settings rather than constants because they are deployment facts, and
@@ -467,6 +496,7 @@ SCHEMA: dict = {
         "require_person_for_confirm": _BOOL,
         "require_person_for_publish_remote": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
+        "netbox_excluded_vrfs": {"type": "array", "items": _STR},
 
         "oxidized_rest_url": _STR,
         "oxidized_router_db": _STR,

@@ -88,11 +88,20 @@ Each with a reason. These are settable by editing
 | `oxidized_router_db`, `oxidized_rest_url` | Paths on the Oxidized host, set once at installation alongside the sudoers entry for `nmas-oxidized-cred`. Changing one without the other breaks the helper. |
 | `clab_host`, `clab_configs_dir`, `clab_sync_script`, `clab_launch_patch` | Containerlab paths on the lab host, used by the redeploy tooling. They describe a machine, not a preference. |
 | `yang_push_script` | Path to the telemetry helper; same. |
+| `netbox_excluded_vrfs` | VRFs whose **addresses** the NetBox import does not model, default `["clab-mgmt"]`. It describes the emulator, not a preference — every containerlab node answers on the same internal management address, and NetBox enforces global uniqueness, so importing them is not representable rather than merely untidy (measured: one created, four refused with *"Duplicate IP address found in global table"*). A setting rather than a constant because another lab will name its management VRF something else. Belongs in a future "lab host" section with the `clab_*` group rather than as a field of its own. |
 
 **Two of these are honest gaps rather than decisions**, and are recorded as
 such so they are not mistaken for settled: `kea_services` should be in the Kea
 card, and the `clab_*` group would be better as a small "lab host" section
-than as four keys nobody can find.
+than as four keys nobody can find — `netbox_excluded_vrfs` belongs in that
+same section when it exists.
+
+**`netbox_excluded_vrfs` is the second deliberate exception to "every new
+default reproduces the behaviour that predates the setting"**, after
+`netbox_allow_writes`, and for a different reason. The prior behaviour is not
+a behaviour anybody chose: it is an error NetBox returns. Defaulting the
+exclusion to empty would preserve that error on every install in the name of
+a rule written to prevent surprises.
 
 ---
 

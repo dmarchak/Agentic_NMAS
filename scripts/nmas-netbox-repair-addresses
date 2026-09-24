@@ -184,13 +184,80 @@ def _holder_of(session, base, cidr):
     return ""
 
 
+def excluded_residue(session, base: str, list_name: str) -> dict:
+    """Addresses that survive in a VRF the import no longer models.
+
+    **They are removed, not left**, and the argument is that leaving them is
+    the worse of two bad options:
+
+    * they are **wrong in a specific way**. NetBox's global uniqueness meant
+      only one of five identical addresses could exist, so the surviving
+      object claims *one* device has an address that *all five* have. A
+      half-true record reads as complete, which is the failure this whole
+      stage has been about.
+    * **nothing will ever update them again.** The exclusion makes them
+      unreachable by the import: no future run touches, corrects or removes
+      them. They become exactly what the drift checker and the census exist
+      to prevent -- a store describing something that does not exist, with
+      nothing reporting it.
+    * they **hold the globally-unique slot**. While `10.0.0.15/24` exists as
+      an artefact, nothing else can ever legitimately use that value.
+
+    Provenance still governs: only objects that are tagged `nmas-managed`
+    **and** in NMAS's own created record are eligible, and anything else is
+    reported as skipped. A device's `primary_ip4`/`primary_ip6` is a
+    **blocker**, not a warning -- deleting one sets the device's primary to
+    null, which is a consequence of a delete that the cascade map does not
+    cover because it is a modification rather than a deletion.
+    """
+    from modules import netbox_guard as guard
+    from modules.netbox_client import (_nb_get, _session_from_config,
+                                       excluded_vrfs, get_netbox_config)
+
+    excluded = excluded_vrfs()
+    if not excluded:
+        return {"eligible": [], "skipped": [], "blocked": [],
+                "excluded": sorted(excluded)}
+
+    created = guard.get_created(list_name) or {}
+    recorded = {e.get("id") for e in created.get("ipam/ip-addresses", [])}
+
+    primaries = {}
+    for dev in _nb_get(session, base, "dcim/devices/"):
+        for field in ("primary_ip4", "primary_ip6"):
+            obj = dev.get(field) or {}
+            if obj.get("id"):
+                primaries[obj["id"]] = f"{dev.get('name')}.{field}"
+
+    eligible, skipped, blocked = [], [], []
+    for ip in _nb_get(session, base, "ipam/ip-addresses/"):
+        vrf = ((ip.get("vrf") or {}).get("name") or "").lower()
+        if vrf not in excluded:
+            continue
+        row = {"id": ip["id"], "address": ip.get("address"),
+               "vrf": (ip.get("vrf") or {}).get("name"),
+               "description": ip.get("description", "")}
+        if ip["id"] in primaries:
+            blocked.append(dict(row, why=f"it is {primaries[ip['id']]}"))
+        elif not guard.has_managed_tag(ip):
+            skipped.append(dict(row, why="no nmas-managed tag — not NMAS's"))
+        elif ip["id"] not in recorded:
+            skipped.append(dict(row, why="not in NMAS's created record"))
+        else:
+            eligible.append(row)
+    return {"eligible": eligible, "skipped": skipped, "blocked": blocked,
+            "excluded": sorted(excluded)}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("list_name")
     ap.add_argument("--apply", action="store_true",
-                    help="actually create them (dry run otherwise)")
+                    help="actually write (dry run otherwise)")
+    ap.add_argument("--remove-excluded", action="store_true",
+                    help="instead: delete addresses left in an excluded VRF")
     args = ap.parse_args()
 
     if not _lookup_is_interface_keyed():
@@ -198,6 +265,9 @@ def main() -> int:
         print("Repairing now would recreate the damage on the next import. "
               "Land the lookup fix first.")
         return 2
+
+    if args.remove_excluded:
+        return _remove_excluded(args)
 
     # The ARGUMENT is checked before NetBox, so a wrong list name is not
     # reported as a configuration problem. `plan()` resolves and counts
@@ -272,3 +342,67 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _remove_excluded(args) -> int:
+    from modules import netbox_guard as guard
+    from modules.netbox_client import (_nb_delete, _session_from_config,
+                                       get_netbox_config)
+
+    try:
+        _csv, registered = resolve_list(args.list_name)
+    except UnknownList as exc:
+        print(f"REFUSED — {exc}")
+        return 2
+
+    cfg = get_netbox_config()
+    if not cfg.get("url"):
+        print("NetBox is not configured.")
+        return 2
+    session = _session_from_config(cfg)
+
+    try:
+        r = excluded_residue(session, cfg["url"], registered)
+    except Exception as exc:                    # noqa: BLE001
+        print(f"NetBox could not be read: {exc}")
+        print("UNPROVEN — nothing was examined.")
+        return 2
+
+    if not r["excluded"]:
+        print("REFUSED — `netbox_excluded_vrfs` is empty, so there is no "
+              "excluded VRF to clean up. Set it first.")
+        return 2
+
+    print(f"excluded VRFs: {', '.join(r['excluded'])}")
+    for row in r["blocked"]:
+        print(f"  BLOCKED {row['address']} (id {row['id']}) — {row['why']}")
+        print("          deleting it would null that device's primary IP.")
+    for row in r["skipped"]:
+        print(f"  left alone {row['address']} (id {row['id']}) — {row['why']}")
+
+    if not r["eligible"]:
+        print("\nNothing eligible to remove.")
+        print(f"(examined every address in {', '.join(r['excluded'])}; "
+              f"{len(r['skipped'])} not NMAS's, {len(r['blocked'])} blocked.)")
+        return 0
+
+    print(f"\n{len(r['eligible'])} address(es) to delete:")
+    for row in r["eligible"]:
+        print(f"  {row['address']:24s} id={row['id']:<6} "
+              f"{row['description']}")
+
+    if not args.apply:
+        print("\nDry run. Nothing was deleted. Re-run with --apply.")
+        return 0
+
+    gone, failed = 0, []
+    with guard.for_list(registered):
+        for row in r["eligible"]:
+            if _nb_delete(session, cfg["url"], "ipam/ip-addresses/", row["id"]):
+                gone += 1
+            else:
+                failed.append(f"{row['address']} (id {row['id']})")
+    print(f"\ndeleted {gone}, failed {len(failed)}")
+    for f in failed:
+        print(f"  {f}")
+    return 1 if failed else 0

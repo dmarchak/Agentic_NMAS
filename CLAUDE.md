@@ -1952,6 +1952,38 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   correct"* — which ends the investigation. Check the argument **before**
   the integration, so a wrong name is not reported as a configuration
   problem.
+- **NetBox enforces global IP uniqueness, so the emulator's addresses are
+  not modelled at all.** Five identical `10.0.0.15/24` cannot be
+  represented — measured: one created, four refused with *"Duplicate IP
+  address found in global table"*. Three honest options (disable the
+  uniqueness check / do not model them / accept NetBox is wrong about four
+  interfaces), decided by the stage's own test: **would this make sense on
+  a network the tool did not build.** No real device has that address, it
+  is unreachable from anywhere, and NMAS reaches the fleet on a different
+  range — importing it teaches NetBox about the emulator's plumbing rather
+  than the network, and disabling the check would weaken the one constraint
+  that made the duplication visible. `netbox_excluded_vrfs` (default
+  `["clab-mgmt"]`) is a **setting, not a constant**, because another lab
+  will name its management VRF something else. It is the **second
+  deliberate exception** to "every new default reproduces prior behaviour",
+  after `netbox_allow_writes`: the prior behaviour is not a behaviour
+  anybody chose, it is an error NetBox returns. Read through
+  `settings_schema.get_setting()` (which falls back to `DEFAULTS`), never
+  `config.get_user_setting()` (which reads only the file, so a key no
+  install has written excludes nothing, silently). **The interface is still
+  modelled** — `vrf forwarding clab-mgmt` really is on the device; it is the
+  addresses inside it that describe the emulator — and the skip is counted
+  in `ipam_stats`, never silent.
+- **Residue in an excluded scope is removed, not left**, because the
+  exclusion makes it unreachable: nothing will ever update, correct or
+  remove it again, and it claims one device has an address all five have —
+  a half-true record that reads as complete, which is the state the drift
+  checker and census exist to prevent. It also holds the globally-unique
+  slot. `--remove-excluded` is dry-run first and **provenance still
+  governs**; a device's `primary_ip4`/`primary_ip6` is a **blocker, not a
+  warning**, because deleting it nulls the device's primary — the cascade
+  map's first known edge, since that is a **modification rather than a
+  deletion** and the map only answers "what will be deleted".
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

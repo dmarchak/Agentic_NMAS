@@ -8795,3 +8795,86 @@ r3's golden still carries `ip address 10.0.0.15 255.255.255.0` under
 the configs"* holds as a **measured fact** rather than an expectation, and
 the NetBox damage is recoverable. Every claim about this being repairable
 rests on that one check.
+
+## NetBox cannot represent the emulator, so the emulator is not modelled
+
+The repair ran and **NetBox refused four of five**:
+
+```
+Duplicate IP address found in global table: 10.0.0.15/24
+created 1 (r1, id 84), failed 4
+```
+
+The script behaved correctly — errors verbatim, and a second run recomputed
+against the new reality instead of repeating its plan — and the state is no
+worse, only redistributed: r1 holds the v4, r5 the v6, three Gi1s empty.
+
+So it became a design question with three honest answers: **(a)** disable
+global uniqueness so NetBox can model namespaced duplicates, **(b)** do not
+model containerlab management addresses at all, **(c)** leave it and accept
+NetBox is wrong about four interfaces.
+
+**(b), and the deciding argument is the test set earlier in this stage:
+would this make sense on a network the tool did not build.** A containerlab
+management address would not exist on real hardware — no device has
+`10.0.0.15`, it is unreachable from anywhere, and NMAS reaches the fleet on
+a different range entirely. Importing it teaches NetBox about the emulator's
+plumbing rather than about the network. **(a) weakens a genuinely useful
+check to accommodate an artefact**, and the check is the only thing that
+made the duplication visible at all.
+
+### A setting, not a constant
+
+`netbox_excluded_vrfs`, defaulting to `["clab-mgmt"]` — another lab's
+emulator will name its management VRF something else, the same
+network-agnostic rule that already makes the TFTP root and the Jenkins shell
+settings.
+
+It is the **second deliberate exception** to *"every new default reproduces
+the behaviour that predates the setting"*, after `netbox_allow_writes`, and
+for a different reason: the prior behaviour is not a behaviour anybody
+chose, it is an error NetBox returns. Defaulting the exclusion to empty
+would preserve that error on every install in the name of a rule written to
+prevent surprises.
+
+Three details:
+
+* Read through **`settings_schema.get_setting()`**, which falls back to
+  `DEFAULTS`, not `config.get_user_setting()`, which reads only the file and
+  returns `None` for a key no install has ever written — that would exclude
+  nothing, silently, on every install predating the setting. An unreadable
+  settings file falls back to the default too: a read is survivable, and
+  silently dropping the exclusion is not.
+* **The interface is still modelled.** `vrf forwarding clab-mgmt` really is
+  configured on the devices; it is the addresses inside the VRF that
+  describe the emulator. The skip sits after the interface is created, and a
+  test pins that ordering.
+* **The skip is counted**, in `ipam_stats` and in the log. A skip nobody can
+  see is the failure mode this stack is most prone to.
+
+### The two surviving objects are removed, not left
+
+r1's v4 (id 84) and r5's v6 (id 23). Removed, and the argument is that
+leaving them is the worse of two bad options:
+
+* each is **wrong in a specific way** — it claims one device has an address
+  that all five have, and a half-true record reads as complete;
+* **nothing will ever update them again.** The exclusion makes them
+  unreachable by the import: no future run touches, corrects or removes
+  them. That is precisely the state the drift checker and the census exist
+  to prevent — a store describing something that does not exist, with
+  nothing reporting it;
+* they **hold the globally-unique slot**, so while they exist nothing else
+  can legitimately use that value.
+
+`--remove-excluded` is dry-run first and **provenance still governs**: only
+objects tagged `nmas-managed` *and* in NMAS's created record are eligible,
+and anything else is reported as left alone. This clean-up is not an
+exemption from the gate that the rest of tonight was about.
+
+A device's `primary_ip4`/`primary_ip6` is a **blocker, not a warning** —
+deleting one sets the device's primary to null, which is a consequence of a
+delete that the cascade map does not cover, **because it is a modification
+rather than a deletion**. Worth noting as the map's first known edge: it
+answers "what will be deleted", and "what will be changed" is a different
+question nobody has asked yet.
