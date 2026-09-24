@@ -8517,3 +8517,105 @@ changelog measurement. Two properties it needs regardless:
 * a preview that could not run its dependents query reports **unproven**
   rather than an empty consequence list, since "nothing will cascade" and
   "I could not ask" must not render the same.
+
+## The write, not the delete: the import took two of r3's addresses
+
+**The cascade was diagnosed and the hypothesis was wrong.** Request
+`263695a3` deleted **interface id 60** — `GigabitEthernet1` on device 10,
+`bp-onboard-c`, the probe's own device — and the database took ipaddress 44
+(`2001:db8::2/64`) and ipaddress 22 (`10.0.0.15/24`) with it, both
+`assigned_object_id=60`. The cascade is `IPAddress.assigned_object`, not the
+VRF; `clab-mgmt` (vrf 2) was never deleted.
+
+So **Remove behaved correctly given the database it was handed.** By the
+time it ran, those two addresses genuinely did hang off NMAS's own
+interface. The damage was done about forty minutes earlier, by the import.
+
+### `_ensure_ip_address()` matches by value and takes what it finds
+
+```python
+params: dict = {"address": address_cidr}
+if vrf_id:
+    params["vrf_id"] = vrf_id
+existing = _nb_first(session, base, "ipam/ip-addresses/", **params)
+...
+needs_update = existing.get("assigned_object_id") != interface_id ...
+if needs_update:
+    return _nb_patch(... {"assigned_object_id": interface_id, ...})
+```
+
+**Address, optionally VRF, and nothing else** — no device, no interface, no
+list. When the hit is assigned somewhere else it re-points it. The docstring
+says *"Get-or-create an IPAM IP address assigned to a DCIM interface"*; the
+behaviour is get-or-create-**or-take**.
+
+VRF narrowing cannot help here, which is worth stating because it looks like
+the fix: r3's address is in `clab-mgmt` and so is every other router's, so
+passing the VRF selects the same object.
+
+### It is structural, not a probe accident
+
+Every vrnetlab node answers on the same internal management address.
+Measured against the fleet fixtures in the repository — **all five Lab 1
+routers carry the identical stanza**:
+
+```
+interface GigabitEthernet1
+ description Containerlab management interface
+ vrf forwarding clab-mgmt
+ ip address 10.0.0.15 255.255.255.0
+ ipv6 address 2001:DB8::2/64
+```
+
+So **one NetBox object has been passed between six devices**, and whichever
+import ran last owns it. The census counts two such objects where a
+correctly-scoped import would hold ten. This has been happening since the
+Lab 1 import weeks ago; the probe did not introduce it, it made it visible
+by deleting the interface the object had most recently been moved to.
+
+### Both guards worked correctly and neither could help
+
+A PATCH never adds `nmas-managed` and never records to
+`netbox_created_ids.json` — deliberately, and documented. So the stolen
+address was correctly classified as **not NMAS's**, and Remove would have
+skipped it had it been asked. It died anyway: **provenance protects the
+object, and a cascade travels along the relationship**, which nothing
+checks. Two correct mechanisms with a gap between them that is neither's
+responsibility — the same shape as every other defect this stage found,
+one level up.
+
+### The scoping exists, 160 lines below, in a read
+
+`_upsert_device`'s `primary_ip4` fallback searches by address and then
+filters to this device's own interfaces:
+
+```python
+if iface_id in nb_iface_map.values():
+    mgmt_ip_id = h["id"]
+```
+
+The scoping the write path lacks is present, correct, and in the same
+function — written by someone who had understood the problem **in the one
+place where getting it wrong would only have picked a wrong primary IP**,
+rather than moved another device's address. *A read that is careful beside a
+write that is not.*
+
+### The description is the only trace, and it makes the rest findable
+
+The sync writes `f"{hostname} {interface}"` on every address it touches, so
+the field names the **last writer**. An address whose description names a
+different device than the one its interface belongs to was taken from that
+device and never given back — which is exactly what
+`scripts/nmas-netbox-ip-provenance` looks for. It finds damage that is
+**still present**; an address taken and later taken back reads as clean
+there, and the changelog is where that lives.
+
+### Why the suite could not see this one either
+
+`FakeNetBox` has no uniqueness semantics and every existing sync test
+imports devices with distinct addresses. The collision needs two devices
+sharing an address value, which no fixture had — so the defect required a
+second device on a containerlab fleet, which is precisely what the probe
+was. `test_netbox_ip_scoping.py` now asserts the fleet's shared stanza as
+the **premise**, with a control that changing one router's address fails it,
+so the premise cannot rot silently.

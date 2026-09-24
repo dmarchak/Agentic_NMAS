@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""IP addresses in NetBox that are assigned to one device and describe another.
+
+Written on 2026-09-24, after onboarding **moved two of r3's addresses onto a
+brand-new device**. `_ensure_ip_address()` looks an address up by **value
+alone** — `{"address": "10.0.0.15/24"}`, optionally narrowed by VRF and by
+nothing else — and when it finds one already assigned elsewhere it PATCHes
+`assigned_object_id` to the interface it is currently importing. The
+docstring says *get-or-create*; the behaviour is get-or-create-**or-take**.
+
+Every vrnetlab node answers on the same internal management address. All
+five Lab 1 routers carry the identical
+`interface GigabitEthernet1 / vrf forwarding clab-mgmt / ip address
+10.0.0.15 255.255.255.0`, so **one NetBox object has been passed between
+six devices**, and the last import to run owns it.
+
+**The `description` field is the evidence.** The sync writes
+`f"{hostname} {interface}"` on every address it touches, so an address whose
+description names a different device than the one its interface belongs to
+was taken from that device and never given back. That is what this finds.
+
+It is a detector for damage that is still present, not a record of what
+happened — an address taken and then taken back reads as clean here, and the
+changelog is where that lives (`nmas-netbox-deletions`).
+
+Read-only: GETs against ip-addresses, interfaces and devices.
+
+    scripts/nmas-netbox-ip-provenance
+    scripts/nmas-netbox-ip-provenance --device r3
+"""
+
+import argparse
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+#: The sync writes `"<hostname> <interface>"`, `"... secondary"`, or
+#: `"<hostname> management (device list SSH IP)"`. The first token is the
+#: hostname in all three.
+_LEADING_HOST = re.compile(r"^([A-Za-z0-9][-A-Za-z0-9_.]*)\s")
+
+
+def described_host(description: str) -> str:
+    m = _LEADING_HOST.match((description or "").strip())
+    return m.group(1) if m else ""
+
+
+def audit(session, base: str) -> tuple:
+    """``(findings, examined)``. `examined` is the floor: a scan that looked
+    at nothing must not be reported as a scan that found nothing."""
+    from modules.netbox_client import _nb_get
+
+    devices = {d["id"]: d.get("name") or ""
+               for d in _nb_get(session, base, "dcim/devices/")}
+    ifaces = {i["id"]: (i.get("name") or "",
+                        (i.get("device") or {}).get("id"))
+              for i in _nb_get(session, base, "dcim/interfaces/")}
+
+    findings, examined = [], 0
+    for ip in _nb_get(session, base, "ipam/ip-addresses/"):
+        if (ip.get("assigned_object_type") or "") != "dcim.interface":
+            continue
+        iface_id = ip.get("assigned_object_id")
+        iface_name, dev_id = ifaces.get(iface_id, ("", None))
+        holder = devices.get(dev_id, "")
+        claimed = described_host(ip.get("description", ""))
+        examined += 1
+        if claimed and holder and claimed.lower() != holder.lower():
+            findings.append({
+                "id": ip["id"], "address": ip.get("address", ""),
+                "holder": holder, "holder_interface": iface_name,
+                "claimed": claimed, "description": ip.get("description", ""),
+                "vrf": (ip.get("vrf") or {}).get("name", "global"),
+            })
+    return findings, examined
+
+
+def device_state(session, base: str, name: str) -> dict:
+    from modules.netbox_client import _nb_first, _nb_get
+
+    dev = _nb_first(session, base, "dcim/devices/", name=name)
+    if not dev:
+        return {"found": False, "name": name}
+    ifaces = _nb_get(session, base, "dcim/interfaces/", device_id=dev["id"])
+    ips = _nb_get(session, base, "ipam/ip-addresses/", device_id=dev["id"])
+    on_iface: dict = {}
+    for ip in ips:
+        on_iface.setdefault(ip.get("assigned_object_id"), []).append(ip)
+    return {
+        "found": True, "name": dev.get("name"), "id": dev["id"],
+        "primary_ip4": (dev.get("primary_ip4") or {}).get("address"),
+        "primary_ip6": (dev.get("primary_ip6") or {}).get("address"),
+        "interfaces": [{"id": i["id"], "name": i.get("name", ""),
+                        "addresses": [a.get("address")
+                                      for a in on_iface.get(i["id"], [])]}
+                       for i in ifaces],
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--device", help="report one device's addresses instead")
+    args = ap.parse_args()
+
+    from modules.netbox_client import _session_from_config, get_netbox_config
+
+    cfg = get_netbox_config()
+    if not cfg["url"] or not cfg["token"]:
+        print("NetBox URL and API token are not configured.")
+        return 2
+    session = _session_from_config(cfg)
+
+    if args.device:
+        st = device_state(session, cfg["url"], args.device)
+        if not st["found"]:
+            print(f"no device named {args.device!r} in NetBox")
+            return 1
+        print(f"{st['name']}  (id {st['id']})")
+        print(f"  primary_ip4: {st['primary_ip4'] or '(none)'}")
+        print(f"  primary_ip6: {st['primary_ip6'] or '(none)'}")
+        print("  interfaces:")
+        for i in st["interfaces"]:
+            addrs = ", ".join(a for a in i["addresses"] if a) or "(no addresses)"
+            print(f"    {i['name']:28s} id={i['id']:<6} {addrs}")
+        return 0
+
+    findings, examined = audit(session, cfg["url"])
+
+    # A scan that could not run must not read as a clean result.
+    if not examined:
+        print("No interface-assigned addresses were examined.")
+        print("UNPROVEN — that is a fact about the QUERY, not about NetBox. "
+              "A clean result requires having looked at something.")
+        return 2
+
+    print(f"examined {examined} interface-assigned address(es)")
+    if not findings:
+        print("\nNone is assigned to a device other than the one its "
+              "description names.")
+        print("Note this finds damage that is STILL PRESENT: an address "
+              "taken and later taken back reads as clean here.")
+        return 0
+
+    print(f"\n{len(findings)} address(es) assigned to a device other than the "
+          "one their description names:\n")
+    for f in findings:
+        print(f"  {f['address']}  (id {f['id']}, vrf {f['vrf']})")
+        print(f"      now on: {f['holder']} {f['holder_interface']}")
+        print(f"      described as: {f['description']!r} -> {f['claimed']}")
+    print("\nEach is an address the import TOOK from the device its "
+          "description names. Nothing reported it at the time.")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
