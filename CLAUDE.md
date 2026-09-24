@@ -852,7 +852,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
 | `test_deploy_batch.py` | drift skip, breaker, every device accounted for |
 | `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
-| `test_oxidized_freshness.py` | the raw config is the artefact; the gate can reach its own finding; an authorisation covers one divergence |
+| `test_oxidized_freshness.py` | the raw config is the artefact; the gate can reach its own finding; an authorisation covers one divergence; only exit 1 is drift |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -2491,6 +2491,78 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `os.makedirs()`, so *asking whether a divergence was authorised* brought
   a list into existence. The known rule in the place it is easiest to
   overlook — nothing about the call looks like a write.
+- **A designed distinction can be discarded at the only place it is read.**
+  `nmas-oxidized-freshness` defines 0 clean / 1 drifted / **2 could-not-ask**
+  precisely to keep *"the fleet has drifted"* apart from *"I could not tell
+  you whether it has"*. The sanitiser then did `elif [ $gate_rc -ne 0 ]` ->
+  *"a change nobody approved"*, so every code the helper does not define read
+  as drift. Measured: the helper was not on `PATH`, the shell returned
+  **127**, and the run printed `command not found` followed by a finding
+  about the devices. **The helper was right, was tested, and the caller threw
+  it away one line later** — and the script's own header promised the
+  opposite (*"If the NMAS cannot be asked, this STOPS, exactly as it does for
+  the map"*). Now **only 1 is drifted, only 0 is clean, everything else is
+  could-not-ask**, naming the code and the command, with **127 its own
+  message** because a missing binary reported as unapproved drift sends the
+  operator to look at their devices. Pinned by lifting the `case` block out
+  of the shipped script and running it under bash for each code — a
+  reimplementation would have passed at every stage. Fourth instance of two
+  outcomes of different severity sharing a report, after the census's missing
+  baseline, *"Not a git repo, or nothing to commit"*, and the gate's own
+  `failed_checks: []`.
+- **Two settings keys named one fact, and only one had a form.**
+  `oxidized_url` (the integration client, Settings > Integrations) and
+  `oxidized_rest_url` (read only by the persistence chain) were both the
+  oxidized-web base URL — **both fetch `nodes.json` from it**.
+  `_oxidized_rest_base()` is the one resolver and **refuses rather than
+  adopting**: a set legacy key gets a refusal naming the move and carrying
+  the value, because copying it across would be a settings write nobody asked
+  for and the rename would then be invisible. The key stays in the schema
+  (keys are never deleted) and is read by nothing, pinned by an AST scan with
+  a floor on the surviving key. Same rule as `ListRef`, the `nmas-managed`
+  slug and the device → lab map.
+- **Two names for one string was the stated defect; two owners of one
+  CONNECTION was the real one.** `OxidizedIntegration` carries the URL, HTTP
+  basic auth and the TLS-verify toggle; the persistence chain speaks bare
+  `urllib` and sends **none of the auth**. On an Oxidized with auth on,
+  stages 2 and 3 get a 401 reported as a failed reload — *a credential error,
+  during a credential rotation, about the wrong credential entirely.* Latent
+  (both auth keys are empty), so it is a **named refusal** now rather than a
+  401; userinfo in the URL is accepted, because urllib does send that. Found
+  by reading the two call sites rather than the two key names — the stated
+  problem narrower than the real one, again.
+- **A guard whose enabling setting defaults to EMPTY is indistinguishable,
+  from its output, from a guard that ran.** It refuses, which is safe; it
+  says "not configured", which is true; and nothing downstream can tell that
+  apart from a check that executed and passed. `nmas-settings-diff` cannot
+  see any of them, because a reset key equals its default by construction.
+  `oxidized_rest_url` was the fourth — same refusal shape as the other three,
+  same empty default, outside the hand-written tuple for its whole life
+  because adding it depended on somebody remembering.
+  **So the list became a scan.**
+  `settings_schema.discover_empty_default_guards()` reads every string
+  constant matching `"<key> is not configured"` **at position 0** (a pattern
+  that can appear in English needs an anchor — the module's own prose quotes
+  it), where `DEFAULTS[key] == ""`, excluding docstrings. The contract is
+  **one-directional**: everything discovered must be recorded, which is the
+  direction that would have caught the fourth. It is a **lower bound** —
+  `yang_push_script` names its key in an advisory rather than a refusal and
+  stays recorded by hand; asserting the reverse would force it off the list
+  to make a test pass. The scan's first run produced a finding of its own:
+  **`oxidized_url` has the same property**, the guard having moved onto the
+  surviving key. The deprecated key is **not** listed — it gates nothing now,
+  and a list that keeps ghosts stops meaning what it says.
+- **`oxidized_reload` is stage 2 of the seven-stage persistence chain and
+  `fetch_confirmed` is stage 3**, so an empty URL fails closed at the two
+  earliest fallible stages after the router.db write — **loudly**, unlike
+  `clab_host`'s silence: the state is `ROTATED_UNVERIFIED` and `summarise()`
+  names the stage and says not to redeploy. **Whether it has been failing
+  since the 2026-09-23 erasure is not knowable from the repository**, and
+  that is its own finding: `persist()` is reached only from
+  `nmas-rotate-credential` and `nmas-persist-credential` (`rotate()` stops at
+  `ROTATED_PENDING_PERSIST`, so onboarding's phase 2 never enters the chain),
+  and **a rotation leaves no durable record** — no audit file, no run log,
+  nothing in `data/`. Recorded as a gap rather than guessed at.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

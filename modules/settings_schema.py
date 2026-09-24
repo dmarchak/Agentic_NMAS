@@ -17,6 +17,7 @@ encrypted; the defaults here are always "" (unset).
 
 import logging
 import os
+import re
 
 from modules.config import load_user_settings, save_user_settings
 
@@ -451,7 +452,94 @@ GUARD_GATING_EMPTY_DEFAULTS = (
     "clab_host",          # verify_startup_file, verify_startup_applies
     "clab_sync_script",   # run_sync
     "yang_push_script",   # the rotation's consumer warning
+    # THE FOURTH, AND WHAT MADE THIS A PATTERN RATHER THAN A LIST. It was
+    # `oxidized_rest_url`, read by `reload_oxidized` and `confirm_fetch` and
+    # by nothing else; collapsing the two keys moved the guard onto the
+    # surviving one, which has the same empty default and therefore the same
+    # property. The deprecated key is NOT listed: it gates nothing now, and a
+    # list that keeps ghosts stops meaning what it says.
+    "oxidized_url",       # _oxidized_rest_base -> reload_oxidized, confirm_fetch
 )
+
+#: The refusal these guards write, as a **shape** rather than a list.
+#: `"<key> is not configured"` at the start of a message string, which is what
+#: every one of them says. Anchored at position 0 because a pattern that can
+#: appear in English needs an anchor, and this one appears in prose about
+#: itself three paragraphs above.
+_NOT_CONFIGURED = re.compile(r"^([a-z][a-z0-9_]*) is not configured\b")
+
+#: Where to look. Not `tests/`: a test naming the message is a mention.
+_GUARD_SCAN_DIRS = ("modules", "routes", "scripts")
+
+
+def discover_empty_default_guards(root: str = "") -> dict:
+    """Derive the list above from the code. ``{key: [where, ...]}``.
+
+    **A hand-maintained list of this is the wrong shape**, and
+    `oxidized_rest_url` is the proof: it was written with the same refusal as
+    the other three, defaulted to empty like the other three, and sat outside
+    the tuple for as long as it existed because nobody thought to add it.
+
+    The pattern, stated once: **a guard whose enabling setting defaults to
+    empty is indistinguishable, from its output, from a guard that ran.** It
+    refuses, which is safe; it says "not configured", which is true; and
+    nothing downstream can tell that apart from a check that executed and
+    passed. `scripts/nmas-settings-diff` cannot find these either, because a
+    reset key equals its default by construction.
+
+    **This is a lower bound, deliberately.** It reads string constants, so it
+    finds a guard that names its key in its own refusal and misses one that
+    does not -- `yang_push_script` names its key in an advisory rather than a
+    refusal, and stays recorded by hand. So the contract the tests enforce is
+    one-directional: **everything discovered must be recorded**, which is what
+    would have caught the fourth. Docstrings are excluded, because a docstring
+    quoting a refusal is a mention.
+    """
+    import ast
+    import os
+
+    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    found: dict = {}
+
+    def _docstrings(tree):
+        out = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+                body = getattr(node, "body", None) or []
+                if (body and isinstance(body[0], ast.Expr)
+                        and isinstance(body[0].value, ast.Constant)
+                        and isinstance(body[0].value.value, str)):
+                    out.add(id(body[0].value))
+        return out
+
+    for directory in _GUARD_SCAN_DIRS:
+        base = os.path.join(root, directory)
+        for dirpath, _dirs, files in os.walk(base):
+            for name in files:
+                path = os.path.join(dirpath, name)
+                if not (name.endswith(".py") or "." not in name):
+                    continue
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        tree = ast.parse(fh.read())
+                except (OSError, SyntaxError, ValueError):
+                    continue
+                skip = _docstrings(tree)
+                for node in ast.walk(tree):
+                    if not (isinstance(node, ast.Constant)
+                            and isinstance(node.value, str)
+                            and id(node) not in skip):
+                        continue
+                    match = _NOT_CONFIGURED.match(node.value)
+                    if not match:
+                        continue
+                    key = match.group(1)
+                    if DEFAULTS.get(key, None) != "":
+                        continue
+                    found.setdefault(key, []).append(
+                        f"{os.path.relpath(path, root)}:{node.lineno}")
+    return found
 
 
 _STR = {"type": "string"}

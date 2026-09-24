@@ -236,3 +236,103 @@ class TestTheReseedsBlastRadiusIsEnumerable:
         # It compares against DEFAULTS, so a key reset TO its default is
         # equal and cannot appear.
         assert "!=" in src or "differ" in src.lower()
+
+
+class TestTheEmptyDefaultGuardListIsDerivedNotRemembered:
+    """A hand-maintained list of these is the wrong shape, and the fourth
+    instance is the proof.
+
+    `oxidized_rest_url` was written with the same refusal as the other three
+    (*"<key> is not configured"*), defaulted to empty like the other three, and
+    sat outside the tuple for as long as it existed — because adding it
+    depended on somebody remembering to.
+
+    The pattern, stated once: **a guard whose enabling setting defaults to
+    empty is indistinguishable, from its output, from a guard that ran.** It
+    refuses, which is safe; it says "not configured", which is true; and
+    nothing downstream can tell that apart from a check that executed and
+    passed.
+
+    The contract is one-directional on purpose — see
+    `test_a_key_the_scan_cannot_see_may_still_be_recorded`.
+    """
+
+    def test_the_scan_finds_something(self):
+        """**The floor.** Everything below is a set difference, and a scan
+        that could not run produces no offenders either."""
+        from modules.settings_schema import discover_empty_default_guards
+
+        found = discover_empty_default_guards()
+        assert len(found) >= 3, (
+            f"the guard scan found {len(found)} — it is matching nothing, "
+            "which is indistinguishable from a codebase with no such guards")
+        assert "clab_host" in found, \
+            "the known instance is not being found, so the scan is broken"
+        assert all(found.values()), "every hit must name where it was found"
+
+    def test_everything_discovered_is_recorded(self):
+        """The direction that would have caught the fourth.
+
+        A new guard on an empty-defaulting key fails this the day it is
+        written, rather than being noticed four instances later.
+        """
+        from modules.settings_schema import (GUARD_GATING_EMPTY_DEFAULTS,
+                                             discover_empty_default_guards)
+
+        found = discover_empty_default_guards()
+        missing = sorted(set(found) - set(GUARD_GATING_EMPTY_DEFAULTS))
+        assert not missing, (
+            "these refuse on a setting whose default is empty and are not in "
+            f"GUARD_GATING_EMPTY_DEFAULTS: "
+            + "; ".join(f"{k} ({', '.join(found[k])})" for k in missing))
+
+    def test_a_key_the_scan_cannot_see_may_still_be_recorded(self):
+        """The scan is a LOWER BOUND, deliberately.
+
+        It reads string constants, so it finds a guard that names its key in
+        its own refusal and misses one that does not. `yang_push_script` names
+        its key in an advisory (*"set yang_push_script to check"*) rather than
+        a refusal, so it stays recorded by hand — and asserting the reverse
+        direction would force it out of the list to make a test pass.
+        """
+        from modules.settings_schema import (GUARD_GATING_EMPTY_DEFAULTS,
+                                             discover_empty_default_guards)
+
+        unseen = set(GUARD_GATING_EMPTY_DEFAULTS) - set(
+            discover_empty_default_guards())
+        assert unseen == {"yang_push_script"}, (
+            "the set the scan cannot see has changed: "
+            f"{sorted(unseen)}. Each one needs a reason, or it is a ghost")
+
+    def test_the_deprecated_key_is_not_listed(self):
+        """A list that keeps ghosts stops meaning what it says.
+
+        `oxidized_rest_url` gated two stages and now gates nothing; the guard
+        moved onto `oxidized_url`, which has the same empty default. Listing
+        the dead one would claim a live guard that is not there.
+        """
+        from modules.settings_schema import GUARD_GATING_EMPTY_DEFAULTS
+
+        assert "oxidized_rest_url" not in GUARD_GATING_EMPTY_DEFAULTS
+        assert "oxidized_url" in GUARD_GATING_EMPTY_DEFAULTS
+
+    def test_a_docstring_quoting_the_refusal_is_a_mention(self):
+        """A pattern that can appear in English needs an anchor.
+
+        The module's own prose quotes `"<key> is not configured"` while
+        explaining it, which is the sixth time in this project that the
+        explanation of a construct would have matched a search for it.
+        """
+        import ast
+
+        from modules.settings_schema import _NOT_CONFIGURED
+
+        tree = ast.parse('def f():\n    """clab_host is not configured."""\n'
+                         '    return {"error": "clab_host is not configured"}\n')
+        doc = tree.body[0].body[0].value
+        assert _NOT_CONFIGURED.match(doc.value), \
+            "the pattern itself must match, or this proves nothing"
+        from modules.settings_schema import discover_empty_default_guards
+        assert "settings_schema.py" not in "".join(
+            sum(discover_empty_default_guards().values(), [])), (
+            "the scanner is matching its own explanatory prose")

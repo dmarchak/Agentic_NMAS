@@ -87,6 +87,11 @@
 #   every device.
 #
 #   If the NMAS cannot be asked, this STOPS, exactly as it does for the map.
+#   ONLY exit 1 means drifted; only 0 means clean; every other code -- a
+#   missing helper (127) included -- is could-not-ask and says so. The first
+#   version collapsed that at the caller, so a helper that was not on PATH
+#   was announced as "a change nobody approved".
+#
 #   There is no --force: the way through is an authorisation per device, tied
 #   to the fingerprint of what differs and recorded with who and why. A flag
 #   would cover the next divergence too.
@@ -379,19 +384,51 @@ echo " Is Oxidized's copy the approved one?"
 echo "=========================================================="
 "$FRESH" --url "$NMAS_URL" --raw-dir "$RAW"
 gate_rc=$?
-if [ $gate_rc -eq 2 ]; then
-  echo
-  echo "REFUSED - the approval check could not run. Nothing will be copied."
-  echo "Not proceeding unchecked: a comparison that did not happen is not a"
-  echo "comparison that passed."
-  exit 2
-elif [ $gate_rc -ne 0 ]; then
-  echo
-  echo "REFUSED - one or more devices carry a change nobody approved."
-  echo "Nothing will be copied. Either save a golden for what is on the"
-  echo "device, or authorise that exact divergence (the command is above)."
-  exit 1
-fi
+
+# ONLY 1 IS DRIFTED. ONLY 0 IS CLEAN. EVERYTHING ELSE IS COULD-NOT-ASK.
+#
+# This was `elif [ $gate_rc -ne 0 ]` -> "a change nobody approved", so every
+# code the helper does not define was reported as drift. Measured
+# 2026-09-24: the helper was not on PATH, the shell returned **127**, and the
+# run printed "command not found" followed by "one or more devices carry a
+# change nobody approved" -- sending the reader to look at their devices for
+# a missing binary. The helper defines 0/1/2 precisely to keep those apart
+# and the caller undid it one line later, which is where an exit code is
+# actually read.
+#
+# Third instance of two outcomes of different severity sharing a report,
+# after the census's missing baseline exiting 1 and "Not a git repo, or
+# nothing to commit".
+case $gate_rc in
+  0) ;;
+  1)
+    echo
+    echo "REFUSED - one or more devices carry a change nobody approved."
+    echo "Nothing will be copied. Either save a golden for what is on the"
+    echo "device, or authorise that exact divergence (the command is above)."
+    exit 1
+    ;;
+  127)
+    # A missing binary is never drift. Named separately because the generic
+    # could-not-ask message would send the reader to the NMAS, and the NMAS
+    # is fine.
+    echo
+    echo "REFUSED - '$FRESH' is not installed or not on PATH (exit 127)."
+    echo "This is NOT a finding about your devices: nothing was compared."
+    echo "Install it, or point FRESH= at it:"
+    echo "    FRESH=/path/to/nmas-oxidized-freshness $0"
+    exit 2
+    ;;
+  *)
+    echo
+    echo "REFUSED - the approval check could not run (exit $gate_rc from"
+    echo "'$FRESH'). Nothing will be copied."
+    echo "Not proceeding unchecked: a comparison that did not happen is not a"
+    echo "comparison that passed. This says nothing about whether the fleet"
+    echo "has drifted -- only that nobody asked."
+    exit 2
+    ;;
+esac
 
 [ "$DEPLOY" = no ] && { echo "--no-deploy set, stopping here."; exit 0; }
 

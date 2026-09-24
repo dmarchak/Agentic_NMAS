@@ -350,3 +350,122 @@ reported `authorised` — a wrong thing wearing a passing result. There is no
 name exists. That test was itself a finding: its first version was a substring
 search and matched the module's own paragraph explaining why there is no
 switch.
+
+
+---
+
+## 9. Three findings from the gate's first live run
+
+The gate itself worked: **10 of 10 checked, 10 approved, 0 unapproved, 0 poll
+race, 0 inconclusive**, stated as a count so a run that checked fewer would
+show it. It ran in `--no-deploy`, before the copy, sending raw configs.
+
+That closes the Oxidized/golden question as a **capability rather than a
+fact**. Today's answer is "they agree"; what changed is that the sanitiser
+now proves it before writing instead of assuming it.
+
+### 9.1 The exit-code collapse — undone at the only place a code is read
+
+The helper was not on `PATH`:
+
+```
+./oxidized-to-config.sh: line 380: nmas-oxidized-freshness: command not found
+REFUSED - one or more devices carry a change nobody approved.
+```
+
+127 is neither 0 nor 1, and the caller's `elif [ $gate_rc -ne 0 ]` treated
+everything that was not 0 as drifted. So **"I could not ask" was reported as
+"a change nobody approved"** — the exact pair `0/1/2` exists to keep apart,
+collapsed one line after the helper took care to separate them.
+
+The helper was right and the caller was wrong, which is the sharp part: *the
+distinction was designed, implemented, tested and documented, and then
+discarded at the only place an exit code is actually read.* The script's own
+header even promised the behaviour — *"If the NMAS cannot be asked, this
+STOPS, exactly as it does for the map"* — and the map's refusal does say so.
+
+Now: **only 1 is drifted, only 0 is clean, everything else is could-not-ask**,
+naming the code and the command, with **127 given its own message** because a
+missing binary reported as unapproved drift sends the reader to look at their
+devices. Pinned by `TestOnlyOneIsDriftedAndOnlyZeroIsClean`, which lifts the
+`case` block out of the shipped script and runs it under bash for each code —
+a reimplementation would have passed at every stage.
+
+Third instance of **two outcomes of different severity sharing a report**,
+after the census's missing baseline exiting 1 and *"Not a git repo, or nothing
+to commit"*.
+
+### 9.2 Two keys, one fact
+
+`oxidized_url` (the integration client, with a Settings form) and
+`oxidized_rest_url` (read only by the persistence chain) were both the
+oxidized-web base URL — **both fetch `nodes.json` from it**. `oxidized_url`
+wins: it is the one with a form, a client and a documented meaning.
+
+`modules/nsot/credential_rotation._oxidized_rest_base()` is now the one
+resolver, and it **refuses rather than adopting**: a set `oxidized_rest_url`
+gets a refusal naming the move and carrying the value. Copying it across
+would be a settings write nobody asked for, and the rename would then be
+invisible.
+
+**Reading the two sites turned up a second divergence.** Two names for one
+string was the stated defect; two owners of one *connection* was the real
+one. `OxidizedIntegration` carries the URL, HTTP basic auth
+(`oxidized_username` / `oxidized_password`) and the TLS-verify toggle; the
+persistence chain speaks bare `urllib` and sends **none of the auth**. On an
+Oxidized with auth on, stages 2 and 3 would get a 401 reported as a failed
+reload — *a credential error, during a credential rotation, about the wrong
+credential entirely.* Latent here (both auth keys are empty), so it is now a
+**named refusal** rather than a 401: userinfo in the URL is accepted, because
+urllib does send that.
+
+### 9.3 The third empty-defaulted guard, and why the list became a scan
+
+`oxidized_rest_url` gates **stage 2 (`oxidized_reload`) and stage 3
+(`fetch_confirmed`) of the seven-stage persistence chain** — the two earliest
+fallible stages after the router.db write.
+
+**Is it failing closed?** Yes, and loudly, which is the difference from
+`clab_host`'s silence: `persist()` returns on the first failed stage, the
+state is `ROTATED_UNVERIFIED`, and `summarise()` names the stage through
+`_failed_stage()` and says *"A redeploy would boot the OLD password, so do
+not redeploy until this is finished"*. The device is rotated and committed;
+only the boot-time copy is behind.
+
+**"Has it been failing the whole time?" cannot be answered from the
+repository, and that is its own finding.** `persist()` is reached only from
+`scripts/nmas-rotate-credential` and `scripts/nmas-persist-credential` —
+`rotate()` itself stops at `ROTATED_PENDING_PERSIST`, so onboarding's phase 2
+never enters the chain. **A rotation leaves no durable record**: no audit
+file, no log of runs, nothing in `data/`. So whether anyone has rotated since
+the 2026-09-23 erasure is not knowable here. Recorded as a gap rather than
+guessed at.
+
+#### The list became a scan
+
+`GUARD_GATING_EMPTY_DEFAULTS` was hand-maintained, and this was the fourth
+member — written with the same refusal as the other three, defaulting to
+empty like the other three, and outside the tuple for its whole life because
+adding it depended on somebody remembering.
+
+`settings_schema.discover_empty_default_guards()` derives it: every string
+constant matching `"<key> is not configured"` **at position 0** (a pattern
+that can appear in English needs an anchor, and the module's own prose quotes
+it), where `DEFAULTS[key] == ""`, excluding docstrings. The contract is
+**one-directional**: everything discovered must be recorded, which is the
+direction that would have caught the fourth. It is a **lower bound** —
+`yang_push_script` names its key in an advisory rather than a refusal and
+stays recorded by hand, and asserting the reverse would force it off the list
+to make a test pass.
+
+The scan immediately produced a finding of its own: **`oxidized_url` has the
+same property.** The guard moved onto the surviving key, whose default is
+also empty. `oxidized_rest_url` is *not* listed — it gates nothing now, and a
+list that keeps ghosts stops meaning what it says.
+
+**The pattern, stated once:** *a guard whose enabling setting defaults to
+empty is indistinguishable, from its output, from a guard that ran.* It
+refuses, which is safe; it says "not configured", which is true; and nothing
+downstream can tell that apart from a check that executed and passed.
+`nmas-settings-diff` cannot see any of them, because a reset key equals its
+default by construction.

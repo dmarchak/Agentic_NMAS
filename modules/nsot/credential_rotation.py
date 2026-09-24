@@ -1674,6 +1674,76 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
     return body
 
 
+# ---------------------------------------------------------------------------
+# ONE OWNER FOR THE OXIDIZED REST URL
+# ---------------------------------------------------------------------------
+
+#: Read by nothing. Kept because settings keys are never deleted, and named
+#: here so the deprecation is a fact in the code rather than a memory.
+DEPRECATED_REST_KEY = "oxidized_rest_url"
+
+
+def _oxidized_rest_base(rest: str = "") -> tuple:
+    """``(base_url, refusal)``. The **one** resolver for Oxidized's REST API.
+
+    There were two settings keys for one fact: `oxidized_url`, owned by
+    `OxidizedIntegration` and surfaced in Settings, and `oxidized_rest_url`,
+    read only here. Both point at the same oxidized-web base URL -- both
+    fetch `nodes.json` from it -- and a second name for one thing is the
+    shape this project keeps removing (`ListRef`, the `nmas-managed` slug,
+    the device -> lab map). `oxidized_url` wins because it is the one with a
+    form, a client and a documented meaning.
+
+    **It refuses rather than adopting.** Copying a value across would be a
+    settings write nobody asked for, and the deprecation would then be
+    invisible; naming the move costs one sentence and cannot be wrong.
+
+    **It also refuses when this path cannot carry the configured
+    credentials.** `OxidizedIntegration` sends HTTP basic auth from
+    `oxidized_username` / `oxidized_password`; the persistence chain speaks
+    `urllib` and sends none. On an Oxidized with auth on, those stages would
+    get a 401 reported as a failed reload -- a credential error, during a
+    credential rotation, about the wrong credential entirely. Userinfo in the
+    URL is accepted, because urllib does send that.
+
+    An explicit *rest* still wins, per argument, so a caller that knows
+    better is not overridden by a setting.
+    """
+    from modules.settings_schema import get_setting
+
+    if rest:
+        return rest, None
+
+    base = (get_setting("oxidized_url", "") or "").rstrip("/")
+    if not base:
+        legacy = (get_setting(DEPRECATED_REST_KEY, "") or "").strip()
+        if legacy:
+            return "", {"ok": False, "error": (
+                f"{DEPRECATED_REST_KEY} is set and is no longer read. There is "
+                "one key for Oxidized's REST URL and it is 'oxidized_url' -- "
+                f"copy the value across ({legacy}) and this will run. Nothing "
+                "was adopted automatically: a settings write nobody asked for "
+                "would have hidden the rename.")}
+        return "", {"ok": False, "error": (
+            "oxidized_url is not configured -- Oxidized's REST URL, set in "
+            "Settings > Integrations. Nothing was asked; this says nothing "
+            "about the device.")}
+
+    user = (get_setting("oxidized_username", "") or "").strip()
+    if user and "@" not in base.split("//", 1)[-1].split("/", 1)[0]:
+        return "", {"ok": False, "error": (
+            f"oxidized_username is set ({user}) and this stage cannot send "
+            "it: the persistence chain speaks urllib and only "
+            "OxidizedIntegration carries the basic-auth credentials. "
+            "Refusing rather than sending an unauthenticated request, which "
+            "Oxidized would answer 401 and this would report as a failed "
+            "reload -- a credential error, during a credential rotation, "
+            "about the wrong credential. Put the userinfo in oxidized_url, "
+            "or clear oxidized_username if the API is open.")}
+
+    return base, None
+
+
 def reload_oxidized(*, rest: str = "", timeout: float = 30.0, sleep=None,
                     **_ignored) -> dict:
     """Tell Oxidized to re-read router.db. **GET /reload, and nothing else.**
@@ -1708,13 +1778,10 @@ def reload_oxidized(*, rest: str = "", timeout: float = 30.0, sleep=None,
     import time
     import urllib.request
 
-    from modules.settings_schema import get_setting
-
-    rest = rest or get_setting("oxidized_rest_url", "")
+    rest, refusal = _oxidized_rest_base(rest)
     sleep = sleep or time.sleep
-    if not rest:
-        return {"ok": False, "mechanism": "rest_reload",
-                "error": "oxidized_rest_url is not configured"}
+    if refusal:
+        return {"mechanism": "rest_reload", **refusal}
 
     try:
         urllib.request.urlopen(f"{rest}/reload", timeout=15).read()
@@ -1796,11 +1863,9 @@ def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
     import time
     import urllib.request
 
-    from modules.settings_schema import get_setting
-
-    rest = rest or get_setting("oxidized_rest_url", "")
-    if not rest:
-        return {"ok": False, "error": "oxidized_rest_url is not configured"}
+    rest, refusal = _oxidized_rest_base(rest)
+    if refusal:
+        return refusal
     sleep = sleep or time.sleep
     want = as_utc(after_iso)
     last = {}

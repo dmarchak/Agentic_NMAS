@@ -730,3 +730,103 @@ class TestTheSignalRenders:
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "static", "js", "gen", "partials__freshness_signal.1.js"))
         assert "DOMContentLoaded" in js and "loadFreshnessSignal" in js
+
+
+# ---------------------------------------------------------------------------
+# The caller's reading of the exit code
+# ---------------------------------------------------------------------------
+
+SANITISER = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "docs", "patches", "oxidized-to-config.sh.new")
+
+
+def _gate_case_block():
+    """The sanitiser's own `case $gate_rc in … esac`, lifted verbatim.
+
+    The shipped source, not a paraphrase — the defect was in this block and a
+    reimplementation of it would have passed at every stage.
+    """
+    src = open(SANITISER, encoding="utf-8").read()
+    start = src.index("case $gate_rc in")
+    end = src.index("esac", start) + len("esac")
+    return src[start:end]
+
+
+class TestOnlyOneIsDriftedAndOnlyZeroIsClean:
+    """Measured 2026-09-24: the helper was not on PATH, the shell returned
+    **127**, and the run printed
+
+        ./oxidized-to-config.sh: line 380: nmas-oxidized-freshness: command not found
+        REFUSED - one or more devices carry a change nobody approved.
+
+    The helper defines 0/1/2 precisely to keep *"the fleet has drifted"* apart
+    from *"I could not tell you whether it has"*, and the caller collapsed it
+    one line later with `elif [ $gate_rc -ne 0 ]` — **at the only place an
+    exit code is actually read.** A missing binary reported as unapproved
+    drift sends the operator to look at their devices.
+
+    Third instance of two outcomes of different severity sharing a report,
+    after the census's missing baseline exiting 1 and *"Not a git repo, or
+    nothing to commit"*.
+    """
+
+    @staticmethod
+    def _run(code):
+        import shutil
+        import subprocess
+
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash not available")
+        script = ('FRESH="${FRESH:-nmas-oxidized-freshness}"\n'
+                  'gate_rc="$1"\n' + _gate_case_block() + '\necho CLEAN\n')
+        proc = subprocess.run([bash, "-c", script, "_", str(code)],
+                              capture_output=True, text=True, timeout=30)
+        return proc.returncode, proc.stdout + proc.stderr
+
+    def test_zero_proceeds(self):
+        rc, out = self._run(0)
+        assert rc == 0 and "CLEAN" in out
+
+    def test_one_is_the_only_code_reported_as_drift(self):
+        rc, out = self._run(1)
+        assert rc == 1
+        assert "change nobody approved" in out
+
+    def test_two_is_could_not_ask(self):
+        rc, out = self._run(2)
+        assert rc == 2
+        assert "could not run" in out
+        assert "nobody approved" not in out
+
+    def test_127_names_the_missing_helper_and_is_not_drift(self):
+        """THE MEASURED FAILURE. A missing binary is never a finding about a
+        device, and the generic could-not-ask message would send the reader to
+        the NMAS, which is fine."""
+        rc, out = self._run(127)
+        assert rc == 2
+        assert "not installed or not on PATH" in out
+        assert "nmas-oxidized-freshness" in out
+        assert "nobody approved" not in out, (
+            "a missing helper is being reported as unapproved drift — this is "
+            "the 2026-09-24 failure exactly")
+
+    def test_an_undefined_code_is_could_not_ask_and_names_itself(self):
+        """The helper defines three codes; a fourth means something went wrong
+        that neither end anticipated, which is the definition of could-not-ask
+        rather than of drift."""
+        rc, out = self._run(3)
+        assert rc == 2
+        assert "exit 3" in out
+        assert "nobody approved" not in out
+
+    def test_every_outcome_is_distinguishable_from_the_others(self):
+        """The floor: three codes must produce three readings. A block that
+        printed one message for everything would satisfy several assertions
+        above by accident."""
+        seen = {code: self._run(code) for code in (0, 1, 2, 127)}
+        assert len({rc for rc, _ in seen.values()}) == 3, \
+            "clean / drifted / could-not-ask must not share an exit status"
+        assert len({out for _, out in seen.values()}) == 4, \
+            "127 must say something 2 does not, or naming it bought nothing"
