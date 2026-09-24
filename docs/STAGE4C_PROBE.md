@@ -27,6 +27,31 @@ than with r6.
 
 **Roughly 45 minutes**, most of it waiting for a C8000v to boot.
 
+### Method: every ACTION through the GUI; the shell only MEASURES
+
+**Changed for the clean run, and the change is the point.** The first run
+created the list with `curl`, and the API answered success while the
+directory did not exist — harmless as it turned out, and it exercised none
+of what a person uses.
+
+**A curl-driven probe tests the functions underneath the tool.** That is a
+different instrument from the one this probe exists to be: seven defects
+tonight lived in the seams between correct parts — a renderer nothing
+called, buttons that dropped a value they held, a payload of `{}` — and
+every one of them is invisible to a request sent by hand, because sending it
+by hand *is* supplying the wiring the tool was missing.
+
+So:
+
+| | |
+|---|---|
+| **In the UI** | anything a person does: creating the list, the Settings toggle, the wizard, Verify, Abandon, the NetBox Remove preview and confirm, deleting the list |
+| **In the shell** | only reading state afterwards: the census, manifest and golden reads, `--compare`, the secret check — and the containerlab host, which is a different machine |
+
+If a step below says "in the UI" and you cannot find the control, **stop and
+record it**: a feature without a reachable entry point is the finding, not
+an inconvenience to work around with `curl`.
+
 ### ⚠ Two names for this list, and the commands use different ones
 
 The list is created as **`nmas-probe`**. Its directory is **`nmas_probe`**.
@@ -173,26 +198,31 @@ tool's record of it that is half-finished.
 
 ---
 
-## Step −1 — verify every endpoint this runbook uses
+## Step −1 — retired, and what replaced it
 
-**Local. Reads nothing, writes nothing, costs a few seconds.**
+**`scripts/nmas-verify-runbook` no longer applies to this file**, and its
+refusal says so: *"only 1 command(s) found — the scan is not reading the file
+it claims to read."* That floor is working. The runbook simply has almost no
+`curl localhost:5000/…` lines left to check.
 
-```bash
-python scripts/nmas-verify-runbook docs/STAGE4C_PROBE.md
-```
+Step −1 existed because the runbook **drove the tool by curl**, and a wrong
+path cost a sitting: two routes were reported missing by grepping the source,
+when a blueprint's `url_prefix` is applied at registration and the full path
+appears in no file.
 
-**Proves:** every URL this runbook names is a real route on this instance,
-with the method it is called with — **and that the deployed code is new
-enough to have them.**
+With every action in the UI that hazard is gone, and a different one replaces
+it: **a control that is missing, or present and wired to nothing.** No script
+checks that — the probe does, which is the point, and the suite covers the
+half it can (`test_blueprint_reachability.py` for the routes,
+`test_onboard_wizard_renders.py` and `test_onboard_phase2.py` for the shipped
+JavaScript, executed).
 
-**Why this step exists.** Two paths in the first draft were checked by
-grepping the source and reported missing. They were not missing: a blueprint
-route's decorator says `@bp.route("/remove/preview")` and the `/netbox/safety`
-prefix is added **at registration**, so the full path appears **nowhere in
-the source.** Grepping cannot find it and the URL map can.
+So the rule in **Method** above carries what step −1 used to: *if a step says
+"in the UI" and you cannot find the control, stop and record it.* A feature
+without a reachable entry point is the finding — three of tonight's seven
+were exactly that.
 
-**If it fails:** a wrong path costs a grep rather than a sitting. Fix the
-runbook and re-run this before anything is created.
+`nmas-verify-runbook` stays for runbooks that are genuinely API-driven.
 
 ---
 
@@ -202,7 +232,10 @@ runbook and re-run this before anything is created.
 you: a switch flipped as a side effect of confirming something else is not a
 decision anybody made.
 
-Settings → Integrations → **Allow writes to NetBox** → on. Then:
+**In the UI.** Settings → Integrations → **Allow writes to NetBox** → on.
+
+Then read it back, in the shell — the toggle is the action, this is the
+measurement:
 
 ```bash
 curl -s localhost:5000/settings/integrations \
@@ -224,28 +257,22 @@ is the designed behaviour, not a problem to work around.
 
 ## Step 1 — a temporary list, not `default`
 
-**Local.** Everything the probe creates lands in a repo that gets thrown away.
+**In the UI.** Everything the probe creates lands in a repo that gets thrown
+away.
 
-```bash
-curl -s -X POST localhost:5000/device_lists \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "nmas-probe"}'
+Device List bar → **+ New List** → name it `nmas-probe` → create. Then
+select it in the **Device List** dropdown, so every later step acts on it.
 
-curl -s localhost:5000/device_lists | python -m json.tool | grep -A3 nmas-probe
-```
-
-**Proves:** the list is registered — it appears in `GET /device_lists` with
-`device_count: 0`.
+**Proves:** the list exists and is selected — the dropdown reads
+`nmas-probe (0 devices)`.
 
 **Not** `ls data/lists/nmas_probe`. The directory is created **lazily**, by
 `get_list_data_dir()`'s `os.makedirs()` on the first write, so it does not
-exist yet and its absence here is correct. The registration lives in
-`data/device_lists.json`.
+exist yet and its absence here is correct.
 
-*(The first draft asserted the directory. Worth noting because the same
-laziness was a real defect elsewhere: `build_plan()` resolved the repo path
-before validating its inputs, so a **refused** plan created a list directory
-for a device never onboarded — caught by the conftest guard in 4C.7.)*
+*(The first run created this with `curl` and asserted the directory. Both
+were wrong in the same way: the API answered success, the directory was
+absent, and nothing a person touches had been exercised.)*
 
 **If it fails:** stop. Everything after this writes into that list.
 
@@ -368,13 +395,12 @@ step that says "probably safe" is a step nobody can check.
 
 ## Step 4 — confirm NMAS sees nothing yet
 
-**Local.**
+**In the UI.** Devices tab with `nmas-probe` selected.
 
-```bash
-curl -s localhost:5000/drift/status | python -m json.tool | grep -E 'inventory|checked'
-```
+**Proves:** *"No devices saved yet"*, and **no pending banner** — so step 9's
+`N+1` has a known `N` of zero, and any banner appearing later was put there
+by this run.
 
-**Proves:** the list is empty, so step 9's `N+1` has a known `N`.
 **If it shows devices:** stop — you are not on the probe list.
 
 ---
@@ -536,7 +562,11 @@ config on the device; the artefact is the thing under test.
 
 ---
 
-> **⚠ Steps 8-10 are BLOCKED on §8.6 of the Stage 4C plan.** Phase 2 —
+> **Steps 8-10 read what step 7c produced.** They were blocked while phase 2
+> was unwired; it is wired now, so they are measurements rather than
+> aspirations. The old notice read:
+>
+> > ~~Steps 8-10 are BLOCKED on §8.6 of the Stage 4C plan.~~ Phase 2 —
 > reach, capture, remove the RW community, rotate — is built and **not
 > wired**: `finish_bootstrap()` has no production caller. So the staged
 > credential will still be present, and there is no golden capture to grep.
@@ -547,6 +577,42 @@ config on the device; the artefact is the thing under test.
 >
 > **The probe stops at 7b for now.** Run the teardown (11-14) when you are
 > done, or leave the node up if phase 2 is next.
+
+## Step 7c — ⭐ Verify: the whole of phase 2, from the banner
+
+**In the UI. This is the step the four new pieces exist for.**
+
+Devices tab → the pending banner → **Verify now** on `bp-onboard-c`.
+
+One click runs seven steps: **verify → capture → rotate (+record) → remove
+RW → golden → NetBox → promote.** `ok` is true only if all seven ran.
+
+**Proves** — and read the response, because each step reports separately:
+
+- [ ] `verify` — the device answered, with `credential_source:
+      device-override` (the credential onboarding staged, not one you typed)
+- [ ] `capture` — a line count, not a handful
+- [ ] `rotate` — the throwaway password replaced, and **recorded in the same
+      act** to the override
+- [ ] `remove_rw` — the RW community removed, the RO one **kept**
+- [ ] `golden` — re-read after the removal and saved once
+- [ ] `netbox` — the device created, now that there is something to import
+- [ ] `promote` — **last**, and the only step that puts it in the inventory
+
+**If any step fails**, the device stays **pending** with a named reason and
+every step that did not run listed. That is the design: promotion is last,
+so there is no path to a promoted device with the work unperformed — which
+is exactly the state the first run reached.
+
+**If it fails:** stop and paste the step list. Do not press it again — a
+retry after a partial run is a second run against a half-finished device.
+
+> **Its diagnosis is the thing to read on failure**, not the error string.
+> A device that did not answer gets causes in the order they are worth
+> checking, each with the console command that settles it, and the
+> staged-credential recovery command with the real repo path.
+
+---
 
 ## Step 8 — inspect every artefact
 
@@ -628,82 +694,74 @@ docker ps -a | grep onboard-c || echo "gone"
 
 ## Step 12 — NetBox Remove, through the provenance path
 
-**SHARED — deletes from the real NetBox.**
+**SHARED — deletes from the real NetBox. In the UI.**
 
-Preview first. It reports what it *would* delete and what it **skips as not
-NMAS's**:
+**NetBox tab** → find `nmas-probe` in the list → **Remove**.
+
+That opens the safety modal, which runs a read-only dry run and shows every
+object it *would* delete **and** every object it skips as not NMAS's.
+
+> **Check the button is there first.** It renders only when the list has a
+> sync summary. `nmas-probe` has one — phase 1's import recorded it — but if
+> the button is absent, **stop and record it**: the teardown would have no
+> UI path, and that is a finding rather than a reason to reach for `curl`.
+
+**Read the skipped list before confirming.** Remove deletes only the
+intersection of *tagged `nmas-managed`* and *in NMAS's own record*; anything
+a human curated is reported as skipped, and that claim is being tested here
+for the first time.
+
+Expect **three** objects eligible: a region, a site and a VRF, all named
+after the list — created by phase 1's import in the earlier run and left
+behind deliberately. **No device**, because none was ever created there.
+
+Confirm. The modal handles the one-shot token itself: the preview issues it,
+the confirm consumes it, and the plan is recomputed — a changed plan is
+refused with *"NetBox changed since preview"*, which is the recompute doing
+its job rather than an error.
+
+### Then measure, in the shell
 
 ```bash
-curl -s -X POST localhost:5000/netbox/safety/remove/preview \
-  -H 'Content-Type: application/json' -d '{"list_name":"nmas-probe"}' \
-  | python -m json.tool
-```
-
-**Read the skipped list before applying.** Remove deletes only the
-intersection of *tagged `nmas-managed`* and *in NMAS's own record*; anything a
-human curated is reported as skipped, and that claim is now being tested for
-the first time.
-
-**Apply requires the one-shot token the preview issued** — read from
-`routes/netbox_safety.py`, where `_authorize()` checks the master switch,
-consumes the token, and **recomputes the plan**, refusing if it has changed
-since the preview. An apply without a token is refused with *"Missing
-confirmation. Run the preview again."*
-
-So preview and apply are one command, and the token never leaves the shell:
-
-```bash
-TOKEN=$(curl -s -X POST localhost:5000/netbox/safety/remove/preview \
-  -H 'Content-Type: application/json' -d '{"list_name":"nmas-probe"}' \
-  | python -c "import json,sys; print(json.load(sys.stdin)['token'])")
-
-curl -s -X POST localhost:5000/netbox/safety/remove/apply \
-  -H 'Content-Type: application/json' \
-  -d "{\"list_name\":\"nmas-probe\",\"token\":\"$TOKEN\"}" \
-  | python -m json.tool
-
 python scripts/nmas-netbox-census --compare /home/dmarchak/nmas-probe-before.json
 ```
 
-**The token expires in five minutes and is burned even on a failed
-validation**, so it cannot be replayed. If apply reports `stale`, run the
-preview again — and **read it again**, because a changed plan is the thing
-the recompute exists to catch.
+**This is the acceptance for the whole teardown:** `--compare` exits **0**,
+meaning every counted type holds **exactly the objects** it held before, by
+identity, with the `nmas-managed` set unchanged too.
 
-**Proves — and this is the acceptance for the whole teardown:** `--compare`
-exits **0**, meaning every counted type holds **exactly the objects** it held
-before, **by identity**, with the `nmas-managed` set unchanged too.
-
-**If it exits 1:** do not clean up by hand. Paste the output. It names the
-type and the objects, and there are three distinct findings it can report:
-
-- **left behind** — Remove did not delete something it created;
-- **removed** — Remove deleted something that was there before, which is the
-  worse failure;
-- **the count matches and the objects do not** — something was created while
-  something else was removed, which a count-only check would have called a
-  pass.
+**If it exits 1:** do not clean up by hand. Paste the output — it names the
+type and the objects, and distinguishes three findings: something **left
+behind**, something **removed** that was there before (the worse failure),
+or **the count matching while the objects differ**, which a count-only check
+would have called a pass.
 
 ---
 
 ## Step 13 — the local side
 
-**Local.**
+**In the UI, and in this order.**
+
+1. **NetBox Remove has already run** (step 12). It must, because deleting the
+   list takes the created-object record with it — the record is keyed on the
+   list slug — and the three objects would become **tagged and unrecorded**,
+   the one combination Remove cannot act on.
+2. Device List bar → **Delete List** → confirm.
+3. Settings → Integrations → **Allow writes to NetBox** → **off**. It
+   defaults off and should end off.
+
+The delete does **not** cascade into NetBox unless
+`netbox_remove_on_list_delete` is on — leave it off, because step 12 already
+did the removal through the provenance path, and running both would make it
+impossible to say which one cleaned up.
+
+### Then measure
 
 ```bash
-curl -s -X DELETE localhost:5000/device_lists/nmas-probe \
-  -H 'Content-Type: application/json' -d '{"remove_from_netbox": false}'
 ls data/lists/
 ```
 
-`remove_from_netbox: false` because step 12 already did it through the
-provenance path — the cascade is a different mechanism and running both would
-make it impossible to say which cleaned up.
-
-Then **turn step 0 back off**: Settings → Integrations → Allow writes to
-NetBox → **off**. It defaults off and should end off.
-
-**Proves:** `data/lists/` holds only the real lists.
+**Proves:** only the real lists remain.
 
 ---
 
