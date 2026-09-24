@@ -1200,10 +1200,18 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     # and where one is written. The ordering below is untouched: it is the
     # lockout defence, and every line of it is load-bearing.
     pre = preflight(list_name, hostname, device=device, capture=capture)
+    # CARRIED OUT, ALWAYS. `failed_before_any_change` is the safety property
+    # and covers every refusal here; the CHECK that refused is the finding.
+    # A caller given only the state knows it stopped and not what to fix.
+    result["preflight_checks"] = pre["checks"]
     if not pre["ok"]:
+        refused = [c for c in pre["checks"] if not c["ok"]]
         _step("preflight", False,
-              "; ".join(c["name"] for c in pre["checks"] if not c["ok"]))
-        result["reason"] = "preflight refused"
+              "; ".join(f"{c['name']}: {c['detail']}".rstrip(": ")
+                        for c in refused))
+        result["reason"] = ("preflight refused: "
+                            + "; ".join(f"{c['name']}: {c['detail']}".rstrip(": ")
+                                        for c in refused))
         return result
     _step("preflight", True)
 

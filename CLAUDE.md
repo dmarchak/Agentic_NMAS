@@ -1782,6 +1782,25 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   a dud test**: the mutation left an earlier post-rotation read in scope and
   so reintroduced nothing. **A control that passes is either a missing test
   or a broken control, and telling which is the work.**
+- **A device dict carries its credentials Fernet-encrypted, like a CSV
+  row** — the shape the inventory adapter already established, "because
+  callers decrypt at use". `run_phase_two` built one without them, so
+  `preflight`'s `live_user_line_read` connected with `""` and the device
+  refused it: rotation returned `failed_before_any_change` and phase 2 
+  stopped with nothing half-done. **The deadlock reappearing at a check the
+  parameterisation did not reach** — `device`, `capture` and `record`
+  covered where the device comes from and where the credential is written,
+  and not the credential the device dict itself carries. `live_user_line()`
+  opens a session because the program depends on whether the account holds a
+  `secret` or a `password` **on the device now**, not in a stored capture.
+- **The state is not the reason.** `failed_before_any_change` is the safety
+  property and covers **every** preflight refusal, while preflight runs a
+  dozen named checks — so reporting the state alone is the background
+  agent's *"failed at: {stage}"* with no reason attached: enough to know it
+  stopped, not enough to act. `rotate()` now carries `preflight_checks`
+  always, and phase 2 puts the failing check into the step row **and into
+  the reason**, which is what the skipped steps quote — otherwise all four
+  of them repeat a state that names nothing.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

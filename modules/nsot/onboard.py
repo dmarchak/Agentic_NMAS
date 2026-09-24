@@ -2010,17 +2010,47 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     config = cap["config"]
 
     # ---- 3. rotate, and record in the same act ---------------------------
+    # A DEVICE DICT CARRIES ITS CREDENTIALS FERNET-ENCRYPTED, like a CSV row.
+    #
+    # The first version omitted them entirely, and `preflight` refused with
+    # `failed_before_any_change` — the lockout defence working, and the
+    # result said only that. The check that failed was
+    # `live_user_line_read`: `live_user_line()` does
+    # `decrypt_field(device.get("password", ""))` and opens a session,
+    # because the program depends on whether the account holds a `secret` or
+    # a `password` **on the device now**, not in a stored capture. With no
+    # password key it connected with "" and the device refused it.
+    #
+    # The deadlock reappearing at a check the parameterisation did not
+    # reach: `device`, `capture` and `record` covered where the device comes
+    # from and where the credential is written, and not the credential the
+    # device dict itself carries. Encrypted rather than plaintext because
+    # that is the established shape — the inventory adapter returns
+    # credentials still encrypted "because callers decrypt at use", and
+    # `decrypt_field` is what this one calls.
+    from modules.device import fernet
+
     device_row = {"hostname": hostname, "ip": mgmt_ip, "username": user,
-                  "device_type": device_type, "platform": platform}
+                  "device_type": device_type, "platform": platform,
+                  "password": fernet.encrypt(pw.encode()).decode() if pw else "",
+                  "secret": fernet.encrypt(sec.encode()).decode() if sec else ""}
     rot = (rotate or finish_bootstrap)(
         repo, hostname, list_name,
         confirmed_fingerprint=_phase_two_fingerprint(hostname, mgmt_ip),
         actor=actor, actor_kind=actor_kind,
         device=device_row, capture=config, record="override")
     result["rotate"] = rot
-    if not _step("rotate", rot.get("rotated"), rot.get("state", "")):
-        return _stop("rotate", rot.get("reason")
-                     or "the credential was not rotated")
+    # THE STATE IS NOT THE REASON. `failed_before_any_change` covers every
+    # preflight refusal, and preflight runs a dozen named checks — reporting
+    # the state without the check is the agent's "failed at: {stage}" with
+    # no reason attached: enough to know it stopped, not enough to act.
+    refused = [c for c in (rot.get("preflight_checks") or []) if not c["ok"]]
+    if not _step("rotate", rot.get("rotated"), rot.get("state", ""),
+                 failed_checks=refused):
+        detail = "; ".join(f"{c['name']}: {c['detail']}" or c["name"]
+                           for c in refused)
+        return _stop("rotate", (rot.get("reason") or "the credential was not "
+                                "rotated") + (f" — {detail}" if detail else ""))
 
     # The credential changed, so everything after this reads it again.
     user, pw, sec = _cred()

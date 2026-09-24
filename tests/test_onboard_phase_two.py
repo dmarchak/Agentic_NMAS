@@ -341,3 +341,99 @@ class TestAbandonRefusesAPromotedDevice:
                                                        "skipped": []})
         assert out["ok"] is True, out
         assert out["released"] == "bp1"
+
+
+class TestARefusalNamesTheCheckNotOnlyTheState:
+    """`failed_before_any_change` is the **safety property** — preflight
+    refused before touching the device, which is the lockout defence
+    working — and it covers *every* preflight refusal.
+
+    Preflight runs a dozen named checks. Reporting the state without the
+    check is the background agent's *"failed at: {stage}"* carrying no
+    reason: enough to know it stopped, not enough to act. Measured on the
+    live probe, where the response named the state and none of the checks.
+    """
+
+    def test_the_failed_check_reaches_the_step_row(self, world):
+        from modules.nsot.onboard import run_phase_two
+
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            rotate=lambda *a, **k: {
+                "rotated": False, "state": "failed_before_any_change",
+                "reason": "preflight refused",
+                "preflight_checks": [
+                    {"name": "helper_installed_and_matching", "ok": True,
+                     "detail": ""},
+                    {"name": "live_user_line_read", "ok": False,
+                     "detail": "Authentication to device failed"}]}))
+        row = next(r for r in out["steps"] if r["step"] == "rotate")
+        assert [c["name"] for c in row["failed_checks"]] == [
+            "live_user_line_read"]
+
+    def test_the_reason_names_it_too(self, world):
+        """The reason is what the four skipped steps carry, so the check has
+        to be in it — otherwise every one of them says only the state."""
+        from modules.nsot.onboard import run_phase_two
+
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            rotate=lambda *a, **k: {
+                "rotated": False, "state": "failed_before_any_change",
+                "reason": "preflight refused",
+                "preflight_checks": [{"name": "live_user_line_read",
+                                      "ok": False, "detail": "auth failed"}]}))
+        assert "live_user_line_read" in out["reason"]
+        assert all("live_user_line_read" in r["why"] for r in out["remaining"])
+
+    def test_a_rotation_with_no_checks_still_reports(self, world):
+        """The control. A refusal carrying no `preflight_checks` at all must
+        still produce a reason rather than an empty string appended to
+        nothing."""
+        from modules.nsot.onboard import run_phase_two
+
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            rotate=lambda *a, **k: {"rotated": False, "state": "failed",
+                                    "reason": "the device rejected it"}))
+        assert out["reason"] == "the device rejected it"
+
+
+class TestTheDeviceDictCarriesItsCredentials:
+    """`live_user_line()` does `decrypt_field(device.get("password", ""))`
+    and opens a session — the program depends on whether the account holds a
+    `secret` or a `password` **on the device now**, not in a stored capture.
+
+    The first version of `run_phase_two` built a device dict with no
+    password key, so preflight's `live_user_line_read` connected with `""`
+    and the device refused it. **The deadlock reappearing at a check the
+    parameterisation did not reach**: `device`, `capture` and `record`
+    covered where the device comes from and where the credential is written,
+    and not the credential the device dict itself carries.
+    """
+
+    def test_the_dict_handed_to_rotate_carries_an_encrypted_password(self,
+                                                                     world):
+        from modules.device import decrypt_field
+        from modules.nsot.onboard import run_phase_two
+
+        seen = {}
+
+        def _rotate(repo, hostname, list_name, **kw):
+            seen.update(kw.get("device") or {})
+            return {"rotated": True, "state": "rotated"}
+
+        run_phase_two(world["repo"], "bp1", "probe", **_steps(rotate=_rotate))
+        assert seen.get("password"), "no password reached preflight"
+        assert seen["password"] != "BOOT5trap", (
+            "a device dict carries its credentials ENCRYPTED, like a CSV row")
+        assert decrypt_field(seen["password"]) == "BOOT5trap"
+
+    def test_it_is_the_shape_live_user_line_reads(self, world):
+        """Asserted through the real decryptor rather than by comparing to
+        what the producer wrote — the two agreeing is the property."""
+        from modules.device import decrypt_field
+        from modules.nsot.onboard import run_phase_two
+
+        seen = {}
+        run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            rotate=lambda r, h, l, **kw: seen.update(kw.get("device") or {})
+            or {"rotated": True, "state": "rotated"}))
+        assert decrypt_field(seen["secret"]) == "BOOT5trap"
