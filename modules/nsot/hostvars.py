@@ -270,6 +270,84 @@ def assert_printable(text: str, hostname: str) -> None:
             "desynchronises the device's line parser and truncates the command.")
 
 
+# ---------------------------------------------------------------------------
+# The authoring schema: what a hand-written interface may omit, and what it
+# may not misspell
+# ---------------------------------------------------------------------------
+
+#: Every key the interface macro reads, with the value that means "absent".
+#:
+#: **The template renders under `StrictUndefined`**, so a dict lacking any of
+#: these raises `UndefinedError: 'dict object' has no attribute
+#: 'no_switchport'` — for a key the author has never heard of and that does
+#: nothing. A parser always emits all thirty, so every render this project had
+#: ever done was fed a complete dict and the authoring path was the first to
+#: meet it. That is the shortest distance between *"this tool lets you write
+#: configuration"* and *"this tool doesn't"*.
+#:
+#: Filling an absent key with its falsy default changes **no output**: the
+#: macro's `{% if i.x %}` emits nothing either way. `test_authoring_schema.py`
+#: pins that against the whole fleet, and pins this set equal to what the
+#: parsers actually emit — a second copy of a key list is how the two come to
+#: disagree.
+INTERFACE_DEFAULTS = {
+    "name": "", "description": "", "ipv4": "", "vrf": "", "mtu": "",
+    "negotiation": "", "encapsulation": "", "channel_group": "",
+    "switchport_mode": "", "switchport_access_vlan": "",
+    "switchport_trunk_encapsulation": "",
+    "no_switchport": False, "shutdown": False, "no_shutdown": False,
+    "ipv6_enable": False, "no_ip_address": False,
+    "ipv6": [], "ipv6_nd": [], "ospf": [], "ospfv3": [], "ripng": [],
+    "vrrp": [], "vrrp_groups": [], "mop": [], "ip_nat": [], "switchport": [],
+    "switchport_trunk_vlans": [], "helper_addresses": [], "dhcpv6_relay": [],
+    "unmodeled": [],
+}
+
+
+def complete_interfaces(host_vars: dict) -> dict:
+    """*host_vars* with every absent interface key filled with its default.
+
+    Returns a **copy**; the caller's document is never mutated, because the
+    committed file is the record and a render must not edit it.
+    """
+    if not isinstance(host_vars, dict):
+        return host_vars
+    interfaces = host_vars.get("interfaces")
+    if not isinstance(interfaces, list):
+        return host_vars
+    filled = []
+    for entry in interfaces:
+        if not isinstance(entry, dict):
+            filled.append(entry)
+            continue
+        merged = {key: (list(value) if isinstance(value, list) else value)
+                  for key, value in INTERFACE_DEFAULTS.items()}
+        merged.update(entry)
+        filled.append(merged)
+    return {**host_vars, "interfaces": filled}
+
+
+def unknown_interface_keys(host_vars: dict) -> list:
+    """``[(index, key)]`` for interface keys nothing reads.
+
+    **The opposite half of the same problem, and the silent one.**
+    `StrictUndefined` catches a *missing* key and can never catch a
+    *misspelled* one: `descripton` is simply never read, the line does not
+    render, and nothing says a word. That is the failure a human author
+    actually has — and before this, the noisy half fired on the keys they were
+    right to omit while the quiet half said nothing about the key they got
+    wrong.
+    """
+    found = []
+    for index, entry in enumerate(host_vars.get("interfaces") or []):
+        if not isinstance(entry, dict):
+            continue
+        for key in entry:
+            if key not in INTERFACE_DEFAULTS:
+                found.append((index, key))
+    return found
+
+
 def write_committed(repo: str, host_vars: dict) -> str:
     """Write committed intent. Refuses anything carrying a resolved secret."""
     hostname = host_vars.get("hostname") or "unknown"

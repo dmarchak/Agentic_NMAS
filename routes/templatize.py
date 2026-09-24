@@ -337,6 +337,28 @@ def preview_committed_edit(hostname):
                                  f"file names its own device, and editing "
                                  f"{hostname}'s must say {hostname!r}"}), 400
 
+    # 2b. UNKNOWN INTERFACE KEYS — the silent half.
+    #
+    # `StrictUndefined` catches a MISSING key and can never catch a MISSPELLED
+    # one: `descripton` is simply never read, the line does not render, and
+    # nothing says a word. That is the failure a human author actually has,
+    # and it is the one the render cannot report — so it is reported here,
+    # with the line, like a YAML error.
+    unknown = hostvars.unknown_interface_keys(parsed)
+    if unknown:
+        first_key = unknown[0][1]
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.strip().startswith(f"{first_key}:")), 1)
+        names = ", ".join(sorted({f"{key!r} (interfaces[{i}])"
+                                  for i, key in unknown}))
+        return jsonify({
+            "ok": False, "stage": "schema", "line": line, "column": 1,
+            "error": (f"nothing reads {names}. An interface key that is not "
+                      "one of the known thirty is silently ignored — the line "
+                      "simply does not render — so it is refused here rather "
+                      "than at the device. Omitting a key is fine and needs "
+                      "no action; misspelling one does.")}), 400
+
     # 3. The secret guards, BEFORE anything is rendered or written. Same two
     #    checks `write_committed_text()` applies, run here so the editor
     #    refuses rather than the commit.

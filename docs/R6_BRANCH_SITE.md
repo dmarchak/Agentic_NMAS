@@ -67,13 +67,18 @@ first real use** — none was reachable from the suite as it stood:
 | 6 | the capture-hash refusal named neither operand and asserted a cause it had not established | the guard was written |
 | 7 | the deploy wizard never sends `command_hashes`, so the confirm-fingerprint recompute does not run from the UI | **open** |
 | 8 | `vs_intent` reads the working tree, so it is vacuous for anyone editing the file on disk | **open** |
-| 9 | `StrictUndefined` makes a hand-authored interface dict unrenderable | **open** |
+| 9 | `StrictUndefined` makes a hand-authored interface dict unrenderable, and never catches a misspelled one | fixed |
 | 10 | `load_saved_devices()` with no argument returned an empty fleet | fixed |
 
-Six fixed, three open and queued, one (#10) found in passing. **That ratio is
-the argument for walking the path rather than testing it**: the suite was
-green at every point, and the assertions were exact — they were pointed at
-fixtures that could not reach the case.
+**The suite was green throughout and its assertions were exact — they were
+pointed at fixtures that could not reach the case.** Ten defects on one path,
+two latent since the merge path was built, three more surfaced by fixing
+those. That is the argument for walking a path rather than only testing it,
+and this is the second stage where the same method produced every serious
+finding.
+
+Seven fixed, two open and queued (#7 the wizard's `command_hashes`, #8
+git-backed `vs_intent`), one (#10) found in passing.
 
 ---
 

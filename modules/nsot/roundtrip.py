@@ -159,6 +159,7 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     non-default template within the platform directory.
     """
     from jinja2 import Environment, FileSystemLoader, StrictUndefined
+    from jinja2.exceptions import UndefinedError
 
     secrets = dict(host_vars.get("secrets") or {})
 
@@ -184,7 +185,27 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     env.globals["secret"] = _secret
     env.filters["resolve_secrets"] = _resolve_markers
     template = env.get_template(template_name)
-    return template.render(vars=host_vars, secret=_secret)
+
+    # ABSENT INTERFACE KEYS FILLED FIRST. `StrictUndefined` is right about a
+    # key the template needs and cannot exist, and wrong about one a person
+    # had no reason to write: a parser emits all thirty, so hand-authored
+    # intent -- the whole point of an intent editor -- was the first document
+    # ever to omit one. Filling changes no output, since the macro's
+    # `{% if i.x %}` emits nothing for a falsy value either way.
+    from modules.nsot.hostvars import complete_interfaces
+
+    prepared = complete_interfaces(host_vars)
+    try:
+        return template.render(vars=prepared, secret=_secret)
+    except UndefinedError as exc:
+        # NAME WHAT TO DO, not only what is missing. "missing no_switchport"
+        # sends a person hand-copying thirty lines they do not need.
+        raise UndefinedError(
+            f"{exc}. Known interface keys default to falsy and omitted ones "
+            "are filled automatically, so this names a section that is not "
+            "an interface — check the top-level keys of the document "
+            "(routing, vlans, lines, snmp, logging) against a device the "
+            "parser has already produced.") from exc
 
 
 def configs_equivalent(left: str, right: str) -> dict:

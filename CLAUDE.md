@@ -857,6 +857,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_inventory_dispatch_refuses.py` | the no-argument form resolves the active list; a name where a path was wanted refuses; a correctly built path never does |
 | `test_new_container_programs.py` | a stanza the device lacks: emitted once, undone by a single negation, and a fixture that can actually contain the case |
 | `test_deploy_plan_apply_seam.py` | plan driven into apply: the capture-hash handshake, and the command_hashes the wizard does not send |
+| `test_authoring_schema.py` | omitting an interface key is fine and misspelling one is refused; filling changes no output |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -2869,6 +2870,39 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   exact** — they were pointed at fixtures that could not reach the case. The
   ratio is the argument: *walk the path, do not only test it.* Same method
   that produced every serious finding in Stage 4C.
+- **THE SUITE WAS GREEN THROUGHOUT AND ITS ASSERTIONS WERE EXACT — THEY WERE
+  POINTED AT FIXTURES THAT COULD NOT REACH THE CASE.** Ten defects on one
+  path, two latent since the merge path was built, three more surfaced by
+  fixing those. That is the argument for **walking a path rather than only
+  testing it**, and the branch site is the second stage where the same method
+  produced every serious finding.
+- **`StrictUndefined` catches the key a person was right to omit and never
+  the one they got wrong.** The template reads ~30 interface keys and a
+  parser emits all of them, so every render this project had ever done was
+  fed a complete dict; the **first hand-authored intent** — the deliverable —
+  met `UndefinedError: 'dict object' has no attribute 'no_switchport'` for a
+  key that does nothing. *The shortest distance between "this tool lets you
+  write configuration" and "this tool doesn't."* `INTERFACE_DEFAULTS` fills
+  absent known keys, which **changes no output** (the macro's `{% if i.x %}`
+  emits nothing for a falsy value either way) — pinned against the whole
+  fleet, since approval, preview and deploy all render through it.
+  **The opposite half is the silent one and is the failure a human actually
+  has**: a *misspelled* key is never read, the line does not render, and
+  nothing says a word. `unknown_interface_keys()` is refused at the authoring
+  gate with a line number, like a YAML error, because the render cannot
+  report it at all. Two halves of one problem, and before this only the wrong
+  half spoke.
+- **A failure on an authoring path names the ACTION, not the absence.**
+  *"missing `no_switchport`"* sends a person hand-copying thirty lines they
+  do not need; *"known interface keys default to falsy and omitted ones are
+  filled automatically"* ends it. Same rule as a refusal naming the right
+  cause — and the refusal for a misspelling has to say **"omitting a key is
+  fine and needs no action; misspelling one does"**, or the reader treats
+  both as the same class and copies the thirty lines anyway.
+- **The declared key set and the emitted key set are asserted equal in BOTH
+  directions.** A key the parsers emit and the declaration lacks makes a
+  parser's own document unrenderable; a declared key nothing emits is a ghost
+  that would **bless a misspelling as official**. One producer, two floors.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
