@@ -247,11 +247,28 @@ class TestTheHelperRefusesRatherThanGuessing:
         import ast
         import inspect
 
-        tree = ast.parse(inspect.getsource(helper))
+        # SCOPED TO THE STRAY PATH. `--reconcile` lists a LOCAL directory
+        # deliberately -- the sanitizer's own output, on the NMAS -- so a
+        # module-wide assertion would forbid the correct thing to make a
+        # point about a different function.
+        tree = ast.parse(inspect.getsource(helper.remote_listing))
         attrs = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
         assert attrs, "the parse found nothing"
         assert "listdir" not in attrs, "it lists the NMAS's own filesystem"
         assert "run" in attrs, "nothing shells out, so nothing asks the host"
+
+    def test_and_reconcile_is_the_only_LOCAL_listing(self, helper):
+        """The two modes ask different machines, and each says which."""
+        import ast
+        import inspect
+
+        tree = ast.parse(inspect.getsource(helper))
+        local = {n.name for n in ast.walk(tree)
+                 if isinstance(n, ast.FunctionDef)
+                 and "listdir" in ast.dump(n)}
+        assert local == {"_reconcile"}, (
+            f"something other than --reconcile lists the NMAS's own "
+            f"filesystem: {sorted(local)}")
 
     def test_a_failed_listing_is_UNPROVEN_not_clean(self, helper,
                                                     monkeypatch, capsys):
@@ -561,3 +578,132 @@ class TestThePlatformIsCarriedNotInferred:
                            "cisco_iosxe")
         assert rows[1] == ("old", "labs/lab/configs", "default", "", ""), \
             "a three-column row from an older NMAS must not raise"
+
+
+class TestEveryDeviceAndEveryFileIsAccountedFor:
+    """**The population question, asked in both directions.**
+
+    The sanitizer's own list and the NMAS's map are two statements about the
+    same fleet by two owners — until tonight, a hardcoded
+    `ROUTERS="r1 r2 r3 r4 r5"` and a manifest. When they disagree, iterating
+    one and letting the difference fall out silently is the shape that lost
+    r6 three times over.
+
+    Three buckets, every device and every file in exactly one — the drift
+    checker's rule, applied to the sync.
+    """
+
+    @pytest.fixture(scope="class")
+    def helper(self):
+        import importlib.util
+        import os as _os
+        from importlib.machinery import SourceFileLoader
+
+        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        spec = importlib.util.spec_from_file_location(
+            "clabt3", path, loader=SourceFileLoader("clabt3", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    ROWS = [("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe"),
+            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe")]
+
+    def test_a_mapped_device_with_no_file_is_NAMED(self, helper, tmp_path,
+                                                    capsys):
+        """*"The sanitizer produced nothing for these"* — otherwise the
+        device is simply absent, which is the state r6 was in."""
+        (tmp_path / "r1.cfg").write_text("x")
+
+        rc = helper._reconcile(str(tmp_path), self.ROWS)
+
+        out = capsys.readouterr().out
+        assert "NO FILE" in out and "r6" in out
+        assert rc != helper.EXIT_OK
+
+    def test_a_file_the_map_does_not_account_for_is_NAMED(self, helper,
+                                                          tmp_path, capsys):
+        for name in ("r1.cfg", "r6.cfg", "ghost.cfg"):
+            (tmp_path / name).write_text("x")
+
+        helper._reconcile(str(tmp_path), self.ROWS)
+
+        out = capsys.readouterr().out
+        assert "unmapped" in out and "ghost" in out
+        assert "not deleted from here" in out, \
+            "an unmapped file must not read as something to remove"
+
+    def test_agreement_is_a_clean_exit(self, helper, tmp_path, capsys):
+        """**The floor.** A reconciler that always complained would be one
+        nobody reads."""
+        for name in ("r1.cfg", "r6.cfg"):
+            (tmp_path / name).write_text("x")
+
+        assert helper._reconcile(str(tmp_path), self.ROWS) == helper.EXIT_OK
+        out = capsys.readouterr().out
+        assert "produced : 2" in out
+        assert "NO FILE" not in out and "unmapped" not in out
+
+    def test_nothing_produced_is_a_REFUSAL_not_a_clean_run(self, helper,
+                                                            tmp_path, capsys):
+        """*"Nothing to ship"* is a fact about the sanitizer's output, not
+        about the fleet — and a sync that shipped nothing and exited 0 is
+        the vacuous pass one more time."""
+        rc = helper._reconcile(str(tmp_path), self.ROWS)
+
+        assert rc == helper.EXIT_UNREACHABLE
+        assert "not about the fleet" in capsys.readouterr().err
+
+    def test_a_missing_directory_says_it_is_LOCAL(self, helper, tmp_path,
+                                                   capsys):
+        """`--stray` reaches the clab host and this does not. Saying so
+        stops the next person debugging the wrong machine."""
+        rc = helper._reconcile(str(tmp_path / "nope"), self.ROWS)
+
+        assert rc == helper.EXIT_UNREACHABLE
+        assert "does not reach the clab host" in capsys.readouterr().err
+
+    def test_the_totals_are_checked(self, helper):
+        """Every mapped device in exactly one bucket, asserted rather than
+        assumed — a bucket that swallowed one would otherwise be a rounding
+        difference."""
+        import inspect
+
+        src = inspect.getsource(helper._reconcile)
+        assert "DEFECT" in src
+        assert "accounted != len(mapped)" in src
+
+
+class TestGroupingIsByDestination:
+    """One line per `configs_dir`, so the caller's unit of work can be a
+    **lab** rather than a device — which is how `--stray` already thinks
+    about it, and which makes a failure *"this lab was not updated"*."""
+
+    @pytest.fixture(scope="class")
+    def helper(self):
+        import importlib.util
+        import os as _os
+        from importlib.machinery import SourceFileLoader
+
+        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        spec = importlib.util.spec_from_file_location(
+            "clabt4", path, loader=SourceFileLoader("clabt4", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_devices_sharing_a_destination_are_one_line(self, helper,
+                                                        monkeypatch, capsys):
+        monkeypatch.setattr(helper, "fetch", lambda *a, **k: [
+            ("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe"),
+            ("s1", "labs/lab/configs", "default", "user@clab", "cisco_ios"),
+            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe")])
+        monkeypatch.setattr(helper.sys, "argv",
+                            ["x", "--url", "http://nmas", "--group"])
+
+        assert helper.main() == helper.EXIT_OK
+        lines = capsys.readouterr().out.strip().splitlines()
+
+        assert len(lines) == 2, f"expected one line per destination: {lines}"
+        assert lines[0] == "labs/lab/configs\tuser@clab\tr1 s1"
+        assert lines[1] == "labs/r6/configs\tuser@clab\tr6"

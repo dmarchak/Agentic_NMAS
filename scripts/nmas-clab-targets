@@ -147,6 +147,12 @@ def main() -> int:
     ap.add_argument("--device", default="", help="print one device's target")
     ap.add_argument("--stray", default="",
                     help="list .cfg files here that belong to another lab")
+    ap.add_argument("--reconcile", default="",
+                    help="compare the map against a LOCAL sanitizer output "
+                         "directory and account for every device")
+    ap.add_argument("--group", action="store_true",
+                    help="print one line per destination: "
+                         "configs_dir<TAB>host<TAB>space-separated hostnames")
     args = ap.parse_args()
 
     try:
@@ -187,6 +193,22 @@ def main() -> int:
             print(f"  {path}   -> belongs in {want}")
         return EXIT_NOT_FOUND
 
+    if args.reconcile:
+        return _reconcile(args.reconcile, rows)
+
+    if args.group:
+        # ONE LINE PER DESTINATION, so the caller's unit of work can be a
+        # LAB rather than a device: one transfer per configs_dir instead of
+        # one per device. It changes the failure mode as much as the cost --
+        # a failure becomes "this lab was not updated", which is a statement
+        # the per-device checker can then confirm.
+        groups = {}
+        for host, cfg, _lab, clab, _plat in rows:
+            groups.setdefault((cfg, clab), []).append(host)
+        for (cfg, clab), hosts in sorted(groups.items()):
+            print(f"{cfg}\t{clab}\t{' '.join(sorted(hosts))}")
+        return EXIT_OK
+
     if args.device:
         for host, cfg, lab in rows:
             if host == args.device:
@@ -199,6 +221,67 @@ def main() -> int:
         print("\t".join(row))
     return EXIT_OK
 
+
+def _reconcile(directory: str, rows: list) -> int:
+    """Account for every device in the map AND every file in *directory*.
+
+    **The population question, asked in both directions.** The sanitizer's
+    own list and the NMAS's map are two statements about the same fleet by
+    two owners, and until tonight they were a hardcoded
+    `ROUTERS="r1 r2 r3 r4 r5"` and a manifest. When they disagree the honest
+    answer is to **report it**, not to iterate one of them and let the
+    difference fall out silently -- which is the shape that lost r6 three
+    times over.
+
+    Three buckets, every device and every file in exactly one:
+
+    * **produced** -- in the map and a file exists;
+    * **no file** -- in the map, the sanitizer produced nothing. Oxidized
+      may not have it, or the sanitizer skipped it. Either way this device
+      is **not going to be reboot-safe** and nothing else will say so;
+    * **unmapped** -- a file the map does not account for. Not necessarily
+      wrong, and not something to delete from here, but it is a device the
+      NMAS does not know about writing into a lab directory.
+    """
+    here = os.path.abspath(os.path.expanduser(directory))
+    if not os.path.isdir(here):
+        print(f"REFUSED — {here} is not a directory. This mode compares the "
+              "map against the sanitizer's LOCAL output; it does not reach "
+              "the clab host.", file=sys.stderr)
+        return EXIT_UNREACHABLE
+
+    files = {n[:-4] for n in os.listdir(here) if n.endswith(".cfg")}
+    mapped = {r[0] for r in rows}
+
+    produced = sorted(mapped & files)
+    no_file = sorted(mapped - files)
+    unmapped = sorted(files - mapped)
+
+    print(f"map: {len(mapped)} device(s)   {here}: {len(files)} file(s)")
+    print(f"  produced : {len(produced)}")
+    if no_file:
+        print(f"  NO FILE  : {len(no_file)} — {' '.join(no_file)}")
+        print("             the sanitizer produced nothing for these, so "
+              "they will not be updated and nothing else reports it")
+    if unmapped:
+        print(f"  unmapped : {len(unmapped)} — {' '.join(unmapped)}")
+        print("             a file the NMAS does not account for; not "
+              "deleted from here, and worth knowing")
+
+    # The totals are checked, so a bucket that silently swallowed a device
+    # is a defect rather than a rounding difference.
+    accounted = len(produced) + len(no_file)
+    if accounted != len(mapped):
+        print(f"  DEFECT   : {len(mapped)} mapped device(s) but "
+              f"{accounted} accounted for", file=sys.stderr)
+        return EXIT_NOT_FOUND
+
+    if not produced:
+        print("\nREFUSED — nothing to ship. That is a fact about the "
+              "sanitizer's output, not about the fleet.", file=sys.stderr)
+        return EXIT_UNREACHABLE
+
+    return EXIT_NOT_FOUND if (no_file or unmapped) else EXIT_OK
 
 if __name__ == "__main__":
     raise SystemExit(main())

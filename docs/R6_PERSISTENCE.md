@@ -426,3 +426,77 @@ r6          labs/r6/configs      r6        user@clab  cisco_iosxe
 **Columns are appended, never reordered**, so a consumer reading the first
 three keeps working; `nmas-clab-targets` pads a short row from an older NMAS
 rather than raising.
+
+---
+
+## 11. Grouping, and a correction about what I have read
+
+**I have not read `oxidized-to-config.sh`.** It is on the clab host, outside
+this repository, and what I have is the three lines quoted in §10. An
+answer to *"which is cleaner in this script"* built on three greps would be
+an inference wearing the clothes of a reading, which is the thing this stage
+has spent itself removing. So: the parts that are about shape, answered; the
+part that needs the file, named.
+
+### Grouped by destination — agreed, and for a reason beyond cost
+
+Ten transfers versus two is the smaller half. **The unit of work becomes the
+unit of failure**, and per-lab is the unit everything else here already
+uses: `--stray` is per directory, `clab_labs` is per lab, and a failure
+reported as *"labs/r6/configs was not updated"* maps onto *"these devices
+are not reboot-safe"* — a statement `nmas-check-startup-applies` can then
+**confirm per device**. A per-device transfer failure leaves the run's own
+report as the only record of which devices are current, and a report is
+weaker evidence than a check.
+
+`nmas-clab-targets --group` emits it:
+
+```
+labs/lab/configs   user@clab   r1 s1 …
+labs/r6/configs    user@clab   r6
+```
+
+### `--files-from` or a staging directory — what decides it
+
+I can give the criterion, not the verdict:
+
+* **`--files-from` keeps one source of truth for what was produced.** A
+  staging directory per lab is a *second copy* of `./configs`, and a second
+  copy is how the two come to disagree — the rule behind `ListRef`, the
+  one-producer sync map, and `devices_for_template()` never persisting its
+  device list. On that principle alone, `--files-from` wins.
+* **A staging directory wins if `./configs` holds anything else.** If the
+  sanitizer writes intermediates, per-run artefacts, or names that can
+  collide across labs, selecting a subset from a shared directory is
+  fragile and staging is the safer read.
+
+So the question the file answers is narrow: **does `./configs` contain
+exactly one `<hostname>.cfg` per device and nothing else?** If yes,
+`--files-from` with the hostname list from `--group`. If no, stage per lab
+— and then `--stray` that staging directory before shipping, which gives
+the litter check a second place to earn its keep.
+
+### The device in the map with no file
+
+You are right that it is the same population question, and the honest answer
+is to report it. `nmas-clab-targets --reconcile ./configs` does, in **both**
+directions, with every device and every file in exactly one bucket:
+
+* **produced** — in the map, file exists;
+* **NO FILE** — in the map, the sanitizer produced nothing. *"They will not
+  be updated and nothing else reports it"*, which is precisely r6's state
+  for the last two days;
+* **unmapped** — a file the map does not account for. Named, and explicitly
+  **not** offered for deletion: it is a fact worth knowing, not litter this
+  tool should act on.
+
+The totals are checked against the map size, so a bucket that swallowed a
+device is a **defect** rather than a rounding difference — the drift
+checker's rule, applied to the sync. And **nothing produced is a refusal**,
+not a clean run: *"that is a fact about the sanitizer's output, not about
+the fleet"*.
+
+It lists a **local** directory deliberately — the sanitizer's own output, on
+the NMAS — and says so, because `--stray` reaches the clab host and
+confusing the two sends somebody to debug the wrong machine. A test asserts
+`_reconcile` is the only local listing in the script.
