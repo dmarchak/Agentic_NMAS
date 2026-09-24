@@ -1985,14 +1985,41 @@ def sync_targets(list_name: str) -> dict:
         if not name:
             continue
         target = clab_target_for(list_name, name)
+        # PLATFORM AS THE DIALECT, stated by its owner rather than inferred
+        # from the name. The sanitizer keyed router-vs-switch on a hardcoded
+        # `ROUTERS="r1 r2 r3 r4 r5"` and a `case` whose default is *switch*,
+        # so r6 would have been sanitised with the wrong rules -- silently,
+        # because the list was current when it was written. r6 also proves
+        # the naming convention is not a source of truth: the next device
+        # might be called anything.
+        #
+        # `assert_dialect()` at this boundary, so a NetBox SLUG can never
+        # reach a consumer keyed on the dialect. That failure is the same
+        # one it was written for: a lookup that misses returns the default,
+        # and here the default is a device kind.
+        platform = ""
+        try:
+            from modules.nsot.platform import assert_dialect
+
+            platform = assert_dialect(platform_of(list_name, name),
+                                      where="clab sync target")
+        except Exception as exc:               # noqa: BLE001
+            log.debug("clab: no usable platform for %r: %s", name, exc)
+
         row = {"hostname": name, "lab": target["lab"],
                "host": target["host"],
+               "platform": platform,
                "configs_dir": target["configs_dir"],
                "launch_patch": target["launch_patch"]}
         # A device whose lab is named and undescribed is REPORTED, never
         # defaulted: writing its config into another lab's directory is the
         # failure this whole map exists to prevent.
         gaps = [k for k in ("configs_dir", "launch_patch") if not target[k]]
+        if not platform:
+            # Reported, never defaulted. A consumer that picks a device kind
+            # from a missing value picks the wrong one for exactly the
+            # devices nobody thought about.
+            gaps.append("platform")
         if gaps:
             row["error"] = (f"lab {target['lab']!r} names no "
                             f"{' and no '.join(gaps)}, so there is nowhere "

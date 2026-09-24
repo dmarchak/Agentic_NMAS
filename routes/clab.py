@@ -52,7 +52,10 @@ def sync_targets():
     # The HOST too, because `--stray` has to list a directory that is on the
     # clab VM and not on the NMAS. Without it the helper had nothing to ssh
     # to and fell back to a local `os.listdir`, which raised.
+    # Columns are APPENDED, never reordered: an older consumer reading the
+    # first three keeps working, and a newer one reads what it needs.
     lines = [f"{r['hostname']}\t{r['configs_dir']}\t{r['lab']}\t{r['host']}"
+             f"\t{r['platform']}"
              for r in result["targets"] if not r.get("error")]
     body = "\n".join(lines) + ("\n" if lines else "")
     if result["incomplete"]:

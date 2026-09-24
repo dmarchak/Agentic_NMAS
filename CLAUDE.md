@@ -2242,6 +2242,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   carries the line, `_redact_value()` keeps the form and drops the value,
   and a losing presence still reports the applicability answer labelled as
   *a true statement about a different question*.
+- **The clab sync map carries the PLATFORM DIALECT as a column, asserted at
+  the boundary.** `oxidized-to-config.sh` split router from switch on a
+  hardcoded `ROUTERS="r1 r2 r3 r4 r5"` with `*) kind=switch`, so r6 would
+  have been sanitised **as a switch** — silently, because the list was
+  current when it was written. Third *"coverage inherited, not designed"*,
+  and the third found by adding one member. A **column, not a per-device
+  ask**: the sync iterates the fleet once, so one answer is one consistent
+  snapshot; a per-device ask is N chances to become unreachable **mid-run**
+  and a partial map is worse than none. `assert_dialect()` is applied where
+  the column is built, because a slug reaching a consumer keyed on the
+  dialect is a lookup that misses — and there the default is a **device
+  kind**. A device whose platform will not resolve is reported *incomplete*
+  and **omitted from the text form**, so the sanitizer cannot receive a
+  device it has no rules for; the shell's `*)` branch must **refuse**, not
+  pick a kind. Columns are appended and never reordered.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

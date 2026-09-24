@@ -430,3 +430,134 @@ class TestEveryVerifierGoesThroughTheResolver:
                                 "nmas-check-startup-applies"),
                    encoding="utf-8").read()
         assert "list_name=ref.name" in src
+
+
+class TestThePlatformIsCarriedNotInferred:
+    """**The second gap the sanitizer's shape revealed.**
+
+    `oxidized-to-config.sh` line 62: `ROUTERS="r1 r2 r3 r4 r5"`, and line
+    153: `case " $ROUTERS " in *" $n "*) kind=router ;; *) kind=switch ;;`.
+    So r6 would have been sanitised **as a switch** — wrong rules, silently,
+    because the list was current when it was written.
+
+    *"Coverage inherited, not designed"* for the third time, and the third
+    found by adding one member.
+
+    **A column, not a per-device ask**, for three reasons:
+
+    * the sync iterates the fleet once, so one answer is one consistent
+      snapshot — per-device asks can straddle a change and leave half the
+      run sanitised under one map and half under another;
+    * a per-device ask is N chances to become unreachable **mid-run**, and a
+      partial map is worse than none: some devices written, some not, with
+      the failure per-device instead of at the top;
+    * the agreed design is that an unreachable NMAS **stops the run**. That
+      is a single decision at the top with one ask, and N decisions with N.
+
+    **And the dialect, asserted** — `platform_map` and NetBox are keyed on
+    slugs (`cisco-ios-xe`), the parsers and templates on dialects
+    (`cisco_iosxe`). A slug reaching a consumer keyed on the dialect is a
+    lookup that misses, and the sanitizer's `case` default is a **device
+    kind** — the same silently-opening gate one layer out.
+    """
+
+    @pytest.fixture
+    def fleet(self, monkeypatch, tmp_path):
+        from modules.nsot import credential_rotation as cr
+
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: {"clab_host": "user@clab",
+                                               "clab_configs_dir": "labs/lab/configs",
+                                               "clab_launch_patch": "p.py",
+                                               "clab_labs": {}}.get(k, d))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda ln: str(tmp_path))
+        monkeypatch.setattr("modules.nsot.manifest.load", lambda repo: {
+            "devices": {"uid:1": {"name": "r6"}, "uid:2": {"name": "s1"}}})
+        return cr
+
+    def test_the_dialect_is_carried_per_device(self, fleet, monkeypatch):
+        monkeypatch.setattr(fleet, "platform_of", lambda ln, h:
+                            "cisco_iosxe" if h == "r6" else "cisco_ios")
+
+        rows = {r["hostname"]: r for r in fleet.sync_targets("Default")["targets"]}
+
+        assert rows["r6"]["platform"] == "cisco_iosxe"
+        assert rows["s1"]["platform"] == "cisco_ios"
+        assert rows["r6"]["hostname"] not in ("r1", "r2", "r3", "r4", "r5"), \
+            "the fixture must use a device the hardcoded list never had"
+
+    def test_a_SLUG_never_reaches_the_column(self, fleet, monkeypatch):
+        """`assert_dialect()` at the boundary. A slug would be looked up in
+        a dialect-keyed consumer, miss, and take the default — which here is
+        a device kind."""
+        monkeypatch.setattr(fleet, "platform_of", lambda ln, h: "cisco-ios-xe")
+
+        rows = {r["hostname"]: r for r in fleet.sync_targets("Default")["targets"]}
+        assert rows["r6"]["platform"] == "", "a slug was served as a dialect"
+        assert "platform" in rows["r6"]["error"]
+
+    def test_a_device_with_no_platform_is_INCOMPLETE_not_defaulted(
+            self, fleet, monkeypatch):
+        """Reported, never guessed: a consumer that picks a device kind from
+        a missing value picks the wrong one for exactly the devices nobody
+        thought about."""
+        monkeypatch.setattr(fleet, "platform_of", lambda ln, h: "")
+
+        out = fleet.sync_targets("Default")
+        assert sorted(out["incomplete"]) == ["r6", "s1"]
+
+    def test_and_a_complete_device_is_NOT_incomplete(self, fleet,
+                                                     monkeypatch):
+        """**The floor.** A check that flagged everything would be one
+        nobody reads."""
+        monkeypatch.setattr(fleet, "platform_of", lambda ln, h: "cisco_ios")
+
+        assert fleet.sync_targets("Default")["incomplete"] == []
+
+    def test_the_text_format_appends_and_never_reorders(self):
+        """An older consumer reading the first three columns keeps
+        working."""
+        import inspect
+
+        from routes import clab
+
+        src = inspect.getsource(clab.sync_targets)
+        assert "r['hostname']}\\t{r['configs_dir']}\\t{r['lab']}" in src
+        assert "{r['platform']}" in src
+        assert "never reordered" in src
+
+    def test_the_helper_reads_five_columns_and_survives_three(self, ):
+        import importlib.util
+        import os as _os
+        from importlib.machinery import SourceFileLoader
+
+        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        spec = importlib.util.spec_from_file_location(
+            "clabt2", path, loader=SourceFileLoader("clabt2", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        class _R:
+            def read(self):
+                return (b"r6\tlabs/r6/configs\tr6\tuser@clab\tcisco_iosxe\n"
+                        b"old\tlabs/lab/configs\tdefault\n")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        import urllib.request
+        orig = urllib.request.urlopen
+        try:
+            urllib.request.urlopen = lambda *a, **k: _R()
+            rows = mod.fetch("http://nmas")
+        finally:
+            urllib.request.urlopen = orig
+
+        assert rows[0] == ("r6", "labs/r6/configs", "r6", "user@clab",
+                           "cisco_iosxe")
+        assert rows[1] == ("old", "labs/lab/configs", "default", "", ""), \
+            "a three-column row from an older NMAS must not raise"

@@ -8,6 +8,7 @@ reboot: the file lands somewhere plausible either way, and the device comes
 back on whatever that directory held.
 
     nmas-clab-targets --url http://10.0.0.211:5000
+        -> hostname<TAB>configs_dir<TAB>lab<TAB>host<TAB>platform
     nmas-clab-targets --url ... --device r6          # one line, or exit 3
     nmas-clab-targets --url ... --stray labs/lab/configs
 
@@ -76,11 +77,11 @@ def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
             continue
         if not line.strip():
             continue
-        parts = line.split("\t")
-        if len(parts) >= 4:
-            rows.append((parts[0], parts[1], parts[2], parts[3]))
-        elif len(parts) == 3:                  # an older NMAS, no host column
-            rows.append((parts[0], parts[1], parts[2], ""))
+        parts = line.split("\t") + ["", "", ""]
+        # hostname, configs_dir, lab, host, platform -- columns are appended
+        # by the NMAS and never reordered, so a short row from an older one
+        # simply carries blanks in the later fields.
+        rows.append(tuple(parts[:5]))
     if problems:
         # Printed, never silently dropped: a device the NMAS could not place
         # is a device nobody should write.
@@ -125,7 +126,7 @@ def strays(directory: str, rows: list, names: list) -> list:
     Pure: the listing is passed in, so the comparison is testable without a
     clab host and the ssh failure is reported by its own function.
     """
-    elsewhere = {h: d for h, d, _lab, _host in rows}
+    elsewhere = {r[0]: r[1] for r in rows}
     here = directory.rstrip("/")
     out = []
     for name in sorted(names):
@@ -164,7 +165,7 @@ def main() -> int:
         return EXIT_UNREACHABLE
 
     if args.stray:
-        host = next((h for _n, _d, _l, h in rows if h), "")
+        host = next((r[3] for r in rows if r[3]), "")
         try:
             names = remote_listing(host, args.stray)
         except StrayLookupFailed as exc:
@@ -194,8 +195,8 @@ def main() -> int:
         print(f"no target for {args.device!r} in the map", file=sys.stderr)
         return EXIT_NOT_FOUND
 
-    for host, cfg, lab, _h in rows:
-        print(f"{host}\t{cfg}\t{lab}")
+    for row in rows:
+        print("\t".join(row))
     return EXIT_OK
 
 

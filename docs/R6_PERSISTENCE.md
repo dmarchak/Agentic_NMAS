@@ -345,3 +345,84 @@ Then the acceptance in §8 becomes runnable, and item (2) is the one to read
 closely: `verify_startup_applies("r6")` must name
 `labs/r6/patches/c8000v-launch-adopted.py` in its result. Naming
 `labs/lab/patches/c8000v-launch.py` is the finding.
+
+---
+
+## 10. The sync half — three changes, and the one that is not about paths
+
+Reading `oxidized-to-config.sh` found a second gap, and it is the same class
+as everything else:
+
+```sh
+line  43: REMOTE_DIR="${REMOTE_DIR:-labs/lab/configs}"   # already a variable
+line  62: ROUTERS="r1 r2 r3 r4 r5"                       # hardcoded
+line 153: case " $ROUTERS " in *" $n "*) kind=router ;; *) kind=switch ;;
+```
+
+**r6 would have been sanitised as a switch** — wrong rules, silently,
+because the list was current when it was written. *"Coverage inherited, not
+designed"* for the third time, and the third found by adding one member.
+
+Note the `case` default: an unknown device **becomes a switch**. That is a
+lookup that misses taking the default, with a **device kind** as the
+default — the same silently-opening gate `assert_dialect()` exists for, one
+layer out.
+
+### 1. The destination becomes per-device
+
+`REMOTE_DIR` is already a variable, so this is moving it inside the loop and
+taking it from column 2 of the map. **Supplied by `nmas-clab-targets`.**
+
+### 2. The router/switch split stops being a hardcoded list
+
+**Supplied by `nmas-clab-targets`, as a column — not asked per device.**
+Three reasons:
+
+* the sync iterates the fleet **once**, so one answer is one consistent
+  snapshot; per-device asks can straddle a change and leave half the run
+  sanitised under one map and half under another;
+* a per-device ask is N chances to become unreachable **mid-run**, and a
+  partial map is worse than none — some devices written, some not, with the
+  failure per-device instead of at the top;
+* the agreed design is that an unreachable NMAS **stops the run**. That is
+  one decision with one ask, and N decisions with N.
+
+**And it carries the dialect, asserted at the boundary.** `platform_map` and
+NetBox are keyed on slugs (`cisco-ios-xe`); the parsers, templates and this
+column are keyed on dialects (`cisco_iosxe`). `assert_dialect()` is applied
+where the column is built, so a slug can never reach a consumer keyed on the
+dialect — because the consumer's miss lands on `kind=switch`.
+
+A device whose platform cannot be resolved is reported **incomplete** and
+**omitted from the text form**, exactly like a device with no `configs_dir`.
+The sanitizer therefore cannot receive a device it has no rules for.
+
+**The shell must refuse an unknown platform rather than defaulting.**
+Replacing one hardcoded list with a `case "$platform" in cisco_iosxe) …;; *)
+kind=switch ;;` reproduces the defect with a different literal. The `*)`
+branch belongs to *"stop and say which device and which platform"*.
+
+### 3. `clab-sync` calls the helper and stops on exit 2
+
+Per the design: no fallback directory, no cache, and the timer unit's
+failure is the signal.
+
+```sh
+map=$(nmas-clab-targets --url http://10.0.0.211:5000) || exit 2
+while IFS=$'\t' read -r host cfgdir lab clabhost platform; do
+    [ -n "$cfgdir" ] && [ -n "$platform" ] || {
+        echo "REFUSING $host: incomplete map row" >&2; exit 2; }
+    …
+done <<<"$map"
+```
+
+### What the NMAS now serves
+
+```
+hostname <TAB> configs_dir <TAB> lab <TAB> host <TAB> platform
+r6          labs/r6/configs      r6        user@clab  cisco_iosxe
+```
+
+**Columns are appended, never reordered**, so a consumer reading the first
+three keeps working; `nmas-clab-targets` pads a short row from an older NMAS
+rather than raising.
