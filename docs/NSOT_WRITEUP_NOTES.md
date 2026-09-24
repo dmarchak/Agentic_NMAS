@@ -10095,14 +10095,22 @@ throwaway lab even if it had leaked.
 been included in a backup, deleting `.git` removes the copy you can see and
 not the ones you cannot.
 
-### And check `labs/lab` for the same thing
+### `labs/lab` was checked, and is clean
 
-`~/labs/lab` has been a repo since before August, and *something* put an
-initial commit in it. If a human ever ran an unscoped `git add -A` there,
-`clab-lab/.tls/ca/ca.key` is in that history — and that is **not** an
-`rm -rf .git` fix, because the repo holds the nine devices' config history
-that is worth keeping. `git -C ~/labs/lab ls-files` answers it, and the same
-command answers what shape r6's repo should copy.
+`~/labs/lab` has been a repo since before August, and if a human had ever run
+an unscoped `git add -A` there, `clab-lab/.tls/ca/ca.key` would be in that
+history — **not** an `rm -rf .git` fix, because that repo holds the nine
+devices' config history worth keeping.
+
+Measured: it tracks **only `configs`**, and `git log --all --name-only` finds
+no `.key`, no `.tls/`, no `.state`. **Nothing to rewrite.**
+
+Two things follow. The worry was unfounded, and **a null result from a
+question that could have been expensive is a result** — the alternative was
+not "no problem", it was "no answer". And it settled r6's shape by reading
+rather than by invention: r6's repo now tracks `.gitignore` and
+`configs/r6.cfg`, matching what was already there instead of the `.gitignore`
+I had guessed at.
 
 ## Doubting a correct report
 
@@ -10116,3 +10124,61 @@ is the same one that produced the split — **make the true report say
 something a false one could not.** *"unchanged - nothing to commit (the
 content did not move)"* is a claim with a mechanism in it; *"nothing to
 commit"* on its own is a shrug, and a shrug is what you distrust.
+
+## Phase 1 closed — and both closing findings are about the shape of a message
+
+r6 is onboarded by the wizard, rotated, captured, in NetBox, in the
+inventory, in the break-glass record, its platform template approved against
+six, its startup file verified **SAFE naming its own launch patch**, and its
+lab versioned. `docs/R6_PHASE1.md` carries the state.
+
+The last stretch produced two findings, and neither is about whether a
+message was **true**:
+
+### 1. An incomplete instruction is a defect in the interface
+
+> **A message that tells you to do a thing without telling you how to do it
+> right is a message that produces the wrong thing. The output is the
+> interface, and an incomplete instruction is a defect in it.**
+
+`NOT VERSIONED` printed `git init && git add -A && git commit`, and a lab
+directory holds containerlab runtime state beside the configs — so it
+committed a private key. Every word of the message was accurate. The gap it
+reported was real, the destination it named was right, and following it
+exactly produced the wrong repository.
+
+**And it shipped in the commit that fixed the reporting.** The reporting
+split was held to the usual standard — four outcomes, each reproduced
+against a real repo. The remedy printed beside it was not tested at all. A
+fix and its instructions went out together and only one of them was
+evidence.
+
+That is the generalisable part: **the advice a tool gives is code that runs
+on a human**, and it deserves the same treatment — an allowlist rather than
+a catch-all, a stated reason, and a run to confirm it does what it says. The
+recipe now writes `.gitignore` first, names the paths it stages, says which
+key an unscoped add would have taken, and was verified against a directory
+with one planted in it.
+
+### 2. Make a true report say something a false one could not
+
+> **A shrug is what you learn to distrust.**
+
+The `unchanged - nothing to commit` line was correct — the initial commit
+captured the file after an earlier run had already removed the marker, so
+restoring it really was a no-op — and it was read as another failure. After
+a night of reports that turned out to be false, a true one arrives with no
+credit.
+
+The defence is not to be more emphatic. It is to **carry the mechanism**:
+*"unchanged — the content did not move"* is a claim that a broken path could
+not have produced, because it names *why* there was nothing to do.
+*"Nothing to commit"* is compatible with success, with a wrong directory,
+with an ignored path, and with never having looked — which is exactly why it
+earns no belief.
+
+Same principle as every other correction in this stage, turned on the
+success case rather than the failure: `inconclusive` rather than `failed`,
+*"checked 7 of 9"* rather than a number that reads as complete, *"this is
+not the same as none being pending"* — and now **a success that says what it
+measured**, so it can be told apart from a shrug.

@@ -9,59 +9,72 @@ with the relay) each change one further variable and are not in scope here.
 
 ---
 
-## Where r6 stands — 2026-09-24, end of session
+## Where r6 stands — PHASE 1 CLOSED, 2026-09-24
 
 **Read this first.** It is the state, not a summary of the plan.
 
-### Done
+### r6 is a full member of the fleet
 
-* **Onboarded and promoted** — in the manifest, in NetBox (`netbox_id 10`),
-  in `devices.csv`, verified at 03:42:21.
+* **Onboarded by the wizard and promoted** — in the manifest, in NetBox
+  (`netbox_id 10`), in `devices.csv`, verified at 03:42:21.
 * **Rotated** — the CSV carries the rotated credential, the device holds a
   device-generated `secret 9`, `admin`/`admin` refused,
   `nmas-check-credential r6 --expect` → **ACCEPTED, exit 0**.
 * **First golden committed** — 6,907 bytes, tagged
-  `golden/bp-onboard-c/20260924T034213Z`, **no `snmp-server` RW line**
+  `golden/bp-onboard-c/20260924T034213Z`, **no `snmp-server` RW line**,
   because the removal ran before the capture.
 * **In the break-glass record** — re-exported for **ten**, verified
   `complete: True`.
-* **`cisco_iosxe/base.j2` re-approved against six devices**, which is what
+* **`cisco_iosxe/base.j2` approved against six devices**, which is what
   binding r6 revoked at Create.
-* **Save All produced a fleet baseline of ten**; every earlier baseline now
-  renders `9 of 10 — partial · predates r6`.
-* **`clab_host` restored** (`dmarchak@10.0.0.210`) and `clab_labs` names
-  r6's lab. r1–r5 verify with a real sha for the first time since the
-  settings erasure.
+* **A fleet baseline of ten**; every earlier baseline now renders
+  `9 of 10 — partial · predates r6`.
 
-### NOT done — the open item from phase 1
+### It is reboot-safe, and that is measured rather than assumed
 
-**r6 is not reboot-safe.** Its startup file at `labs/r6/configs/r6.cfg`
-still holds the bootstrap `password 0`, and
-`nmas-check-startup-applies r6` reads **NOT SAFE**, naming the form and
-stating that a reboot would bring it back on a credential NMAS does not
-hold.
+`labs/r6/configs/r6.cfg` is the sanitised 74 lines: **`secret 9` present,
+`password 0` absent**. `nmas-check-startup-applies r6` reads:
 
-A clab host reboot today locks NMAS out of a device it manages — recoverable
-only through the console and the break-glass record.
+```
+r6  SAFE  cisco_iosxe  username admin privilege 15 secret 9 <redacted>
+    dmarchak@10.0.0.210:labs/r6/patches/c8000v-launch-adopted.py@e483dd2475b5
+```
 
-**What closes it:** the sync half — the three changes in
-[R6_PERSISTENCE.md](R6_PERSISTENCE.md) §10, on `~/bin/clab-sync` and
-`~/lab-configs/oxidized-to-config.sh`. The NMAS half is built and deployed;
-`nmas-clab-targets` serves the map and `--reconcile` / `--stray` are ready.
+**Naming r6's own launch patch rather than the default lab's** — the
+device → lab map resolving correctly through the whole chain, which is the
+thing that check exists to prove.
 
-**The acceptance is already a test**, and the same one both ways:
-`test_a_bootstrap_file_reads_NOT_SAFE_even_though_it_applies` (r6 now) and
-`test_and_goes_green_once_the_file_carries_secret_9` (r6 after).
+The sync run's own accounting agreed: the destination count and the `cmp -s`
+read-back both fired and reported **10 of 10**.
 
-### Running order from here
+### The lab is versioned
 
-1. **Finish the sync half** → r6 reboot-safe. *The open item.*
-2. **The Oxidized freshness comparison**, four parts in order: the Oxidized
-   read client and the sanitizer's pre-write **gate** first, since those
+`~/labs/r6` is a git repo tracking exactly `.gitignore` and
+`configs/r6.cfg` — the same shape as `~/labs/lab`, which was **read rather
+than guessed** (`git -C ~/labs/lab ls-files`) and tracks only `configs`.
+
+`~/labs/lab`'s history was checked for the secrets exposure that a bare
+`git add -A` caused in r6's first attempt: `git log --all --name-only` finds
+no `.key`, no `.tls/`, no `.state`. **Nothing to rewrite**, and the check was
+worth making — a null result from a question that could have been expensive
+is a result.
+
+### Nothing from phase 1 is open
+
+The sync half is done: `~/bin/clab-sync` and
+`~/lab-configs/oxidized-to-config.sh` take the map from
+`nmas-clab-targets`, write per destination, and report per lab. The whole
+file is `docs/patches/oxidized-to-config.sh.new`.
+
+### Next
+
+1. **The Oxidized freshness comparison**, four parts in order: the Oxidized
+   **read client** and the sanitiser's pre-write **gate** first, since those
    stop an unapproved state becoming durable; the **Monitoring signal**
    after. Authorisation path included — a gate with no way through gets
-   disabled. The comparator it needs is already correct as of `747e506`.
-3. **Then phase 2 (address from Kea) or the branch site** — operator's
+   disabled, which is how the drift checker was lost for 24 days. The
+   comparator it needs is correct as of `747e506`.
+2. **Then phase 2 (address from Kea) or the branch site** — operator's
    choice, not a sequencing constraint.
 
 Stages 5, 6, 7, 8 and the settings rebuild are unchanged.
