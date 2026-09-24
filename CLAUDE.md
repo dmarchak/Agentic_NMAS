@@ -2280,6 +2280,24 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   should be the source"* without reading the script, one turn after saying I
   had not read it — **every piece of evidence from one artifact, the
   conclusion about another**, which is the Stage 2 tell verbatim.
+- **A regenerated self-signed certificate is not drift, and it had been
+  reported as drift.** Measured both ways before deciding either: r1–r5 run
+  `restconf` with `ip http secure-server`, which **uses** the certificate,
+  while the yang-push subscriptions ride NETCONF over SSH and need none, and
+  nothing pins one — so it **must exist and need not survive**, making the
+  sanitizer dropping it a *correct omission*. And `configs_equivalent()`
+  **did** report it: a regenerated body plus a new chassis-derived
+  `TP-self-signed-<digits>` name gave three `only_left` and three
+  `only_right` lines with nothing configured by anyone. So every C8000v has
+  carried a standing unexplained difference since the 2026-09-22 redeploy
+  (`758d1f56`'s only changes were certificates) — **unnoticed because the
+  drift checker has been off since 2026-08-30, switched off three minutes
+  after a run that flagged all nine devices.** Re-enabling it would have
+  flagged every C8000v for something correct, which is the condition that
+  silenced it. `normalize.strip_self_signed_certs()` is **block-aware** (a
+  chain is a stanza, and `_strip()` matches line prefixes) and **narrow**: a
+  CA-signed trustpoint is configuration somebody chose and a change to it is
+  real drift.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

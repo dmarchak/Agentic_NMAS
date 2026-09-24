@@ -26,6 +26,7 @@ Four jobs:
   would understate coverage for a reason that has nothing to do with modelling.
 """
 
+import re
 import logging
 
 log = logging.getLogger(__name__)
@@ -129,6 +130,62 @@ def _strip(text, prefixes, drop_blank=True, drop_bang=False) -> list:
             continue
         if _matches(stripped, line, prefixes):
             continue
+        out.append(line)
+    return out
+
+
+#: The trustpoint a device generates for ITSELF, named after its own chassis
+#: id. Narrow on purpose: `TP-self-signed-<digits>`, not every trustpoint.
+_SELF_SIGNED = re.compile(
+    r"^crypto pki (?:trustpoint|certificate chain) TP-self-signed-\d+\s*$")
+
+
+def strip_self_signed_certs(text) -> list:
+    """Drop the device's own self-signed trustpoint and certificate chain.
+
+    **Block-aware**, because `_strip()` matches line prefixes and a
+    certificate chain is a stanza: a header plus an indented body of hex.
+
+    **Volatile in the true sense** — it changes with nobody changing the
+    config. The clab sanitizer drops these blocks wholesale, the device
+    regenerates one at boot, and the new body and trustpoint name differ
+    from the ones in the golden. Measured on the 2026-09-22 redeploy: r1, r2
+    and r4 logged *"yang-infra: ERROR: Failed to create a new self-signed
+    trustpoint"*, the goldens then showed regenerated bodies with new
+    validity dates, and commit 758d1f56's **only** changes were
+    certificates.
+
+    **It is a correct omission, not a blind spot.** Measured: r1-r5 run
+    `restconf` with `ip http secure-server`, which uses the certificate, so
+    one must *exist* — and the device makes a fresh one every boot. The
+    yang-push subscriptions ride NETCONF over SSH and need no certificate at
+    all, and nothing in this stack pins one. So it must exist and need not
+    survive.
+
+    **What it leaves behind is a permanent, unexplained difference between
+    golden and device**, and `configs_equivalent()` reported it as drift:
+    measured, a regenerated body and trustpoint name produce three
+    `only_left` and three `only_right` lines. Nobody saw it because the
+    drift checker has been off since 2026-08-30 — **switched off three
+    minutes after a run that flagged all nine devices.** Re-enabling it
+    without this would flag every C8000v for something correct, which is
+    precisely the condition that silenced it last time.
+
+    **Narrow on purpose.** A CA-signed trustpoint is configuration somebody
+    chose, and a change to it is real drift. Only the device's own
+    `TP-self-signed-<digits>` is removed.
+    """
+    lines = text if isinstance(text, list) else (text or "").splitlines()
+    out, skipping = [], False
+    for line in lines:
+        if _SELF_SIGNED.match(line.strip()) and not line[:1].isspace():
+            skipping = True
+            continue
+        if skipping:
+            # The stanza's body is indented; the next unindented line ends it.
+            if line[:1].isspace() or not line.strip():
+                continue
+            skipping = False
         out.append(line)
     return out
 

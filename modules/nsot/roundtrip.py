@@ -203,8 +203,23 @@ def configs_equivalent(left: str, right: str) -> dict:
     report every unmodelled construct as a difference. That question is
     ``compare()``, and it is a different question.
     """
-    left_sections = _sections("\n".join(normalize.strip_for_diff(left or "")))
-    right_sections = _sections("\n".join(normalize.strip_for_diff(right or "")))
+    # SELF-SIGNED CERTIFICATES OUT, on both sides. The device regenerates
+    # its own at boot with a new body and a new `TP-self-signed-<chassis>`
+    # name, so keeping them makes every C8000v permanently non-equivalent to
+    # its own golden -- measured: three `only_left` and three `only_right`
+    # lines, with nothing in the config changed by anyone.
+    #
+    # Nobody saw it because the drift checker has been off since 2026-08-30,
+    # switched off three minutes after a run that flagged all nine devices.
+    # Re-enabling it without this flags every C8000v for something correct,
+    # which is the condition that silenced it.
+    #
+    # Narrow: a CA-signed trustpoint is configuration somebody chose, and a
+    # change to it is real drift.
+    left_sections = _sections("\n".join(normalize.strip_self_signed_certs(
+        normalize.strip_for_diff(left or ""))))
+    right_sections = _sections("\n".join(normalize.strip_self_signed_certs(
+        normalize.strip_for_diff(right or ""))))
 
     only_left, only_right = [], []
     for header in sorted(set(left_sections) | set(right_sections)):

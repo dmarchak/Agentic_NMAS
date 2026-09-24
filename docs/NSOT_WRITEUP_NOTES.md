@@ -9516,3 +9516,57 @@ one"*.
 Neither alone: gate-only leaves divergence invisible until a sync, and
 signal-only would have shown the s1/s2 VLAN loss **and still let the
 redeploy persist it**.
+
+## The third blind spot, measured: a correct omission that had been reported as drift
+
+Asked in both directions before deciding either.
+
+### Does anything depend on the certificate surviving a rebuild?
+
+| | r1–r5 | s1–s4 |
+|---|---|---|
+| `restconf` + `ip http secure-server` | **yes** — uses the certificate | no |
+| yang-push / telemetry | r1–r4, over **NETCONF/SSH** — no certificate | no |
+| `crypto pki trustpoint` | 3 each | none |
+
+**It must exist and it need not survive.** RESTCONF needs *a* certificate;
+the device makes a fresh one every boot; the yang-push subscriptions ride
+SSH; and nothing in this stack pins one. So the sanitizer dropping the
+blocks is a **correct omission, not a blind spot** — which was the
+possibility worth checking rather than assuming.
+
+### Does the drift comparison report it?
+
+**Yes.** Measured through `configs_equivalent()` with a regenerated body and
+a new chassis-derived trustpoint name: **three `only_left` and three
+`only_right` lines**, with nothing in the configuration changed by anyone.
+`strip_for_diff` keeps both the header and the body; `strip_for_roundtrip`
+already removed them, so only the **drift** path carried it.
+
+So every C8000v has held a standing, unexplained difference since the
+2026-09-22 redeploy — r1, r2 and r4 logged *"yang-infra: ERROR: Failed to
+create a new self-signed trustpoint"*, and commit `758d1f56`'s **only**
+changes were certificates.
+
+**Nobody noticed because the drift checker has been off since 2026-08-30** —
+switched off three minutes after a run that flagged all nine devices. The
+same shape as the others, and this one was *waiting* rather than acting:
+re-enabling the checker would have flagged every C8000v for something
+correct, **which is precisely the condition that silenced it last time.**
+
+That is why it is fixed before the freshness comparison rather than beside
+it. The new comparison uses the same `configs_equivalent()`, so without this
+it would have reported every C8000v as divergent on its first run — a
+brand-new check whose first act is to cry wolf about a certificate.
+
+### The filter is narrow on purpose
+
+`normalize.strip_self_signed_certs()` removes only
+`crypto pki trustpoint|certificate chain TP-self-signed-<digits>` and its
+indented body. **A CA-signed trustpoint is configuration somebody chose**,
+and a change to it is real drift — asserted, with a control that broadening
+the pattern to every trustpoint fails.
+
+Block-aware, because `_strip()` matches line prefixes and a certificate
+chain is a stanza. It is a **fifth filter job** in a module whose header
+already says the filters are not one list.
