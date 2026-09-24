@@ -93,20 +93,84 @@ def _load_devices_csv(filename: str | None = None) -> list[dict[str, Any]]:
         return list(csv.DictReader(f))
 
 
+class UnknownDeviceList(ValueError):
+    """A path that names no list and is not on disk. See `load_saved_devices`."""
+
+
+def active_devices_file() -> str:
+    """The **active list's** CSV path.
+
+    `DEVICES_FILE` is `data/Devices.csv`, a pre-lists constant kept "for
+    backwards compatibility" that nothing has written since lists existed. It
+    was also `load_saved_devices()`'s no-argument default, so an ad-hoc call
+    read a file that does not exist and got `[]` — an honestly empty fleet,
+    and every count downstream honestly zero.
+
+    **A read may derive the active list; a write may not.** This is a read.
+    """
+    from modules.config import get_current_list_data_dir
+
+    return os.path.join(get_current_list_data_dir(), "devices.csv")
+
+
 def load_saved_devices(filename: str | None = None) -> list[dict[str, Any]]:
     """Load the devices for the list owning *filename*.
 
     The single dispatch point between a local CSV list and a NetBox-sourced one.
-    There are ~79 call sites for this function across the codebase; routing the
+    There are ~87 call sites for this function across the codebase; routing the
     decision through here means none of them need to know which kind of list
     they are looking at.
 
     NetBox-sourced lists are served from a cache that a background thread keeps
     fresh — **this function never performs network I/O**, because several of its
     callers sit in request handlers and tight loops.
+
+    **It takes a PATH, not a list name**, and two failures of that this week
+    both ended in a silently empty fleet rather than a refusal:
+    `nmas-netbox-repair-addresses` passed a name and reported *"nothing to
+    create"*; and a no-argument call read `DEVICES_FILE` and returned zero
+    rows. With ~87 call sites the blast radius is the point — every downstream
+    count is *honestly* zero, which is the hardest kind of wrong to notice.
+
+    So the two ways of not knowing which list was meant are now separated:
+
+    * **no argument** resolves the **active list** (:func:`active_devices_file`)
+      rather than a pre-lists constant nothing writes;
+    * **a string that is not a path at all** — no separator, no `.csv`, and
+      not a file — raises :class:`UnknownDeviceList`. Measured before changing
+      it: of 87 call sites, **none** passes no argument and **none** passes a
+      name-shaped variable, so no in-repo caller can reach the refusal, which
+      is what makes refusing safe rather than brave.
+
+    A correctly built path whose file is absent still returns `[]`: a list with
+    no devices yet is a real state, and onboarding writes that file only at
+    promotion. The first version of the refusal missed that and broke twelve
+    tests passing `<tmpdir>/devices.csv` — the discriminator had to be measured
+    against the real callers, not reasoned about.
     """
     if not filename:
-        filename = DEVICES_FILE
+        filename = active_devices_file()
+
+    # THE REFUSAL IS SHAPE-BASED, and the shape was MEASURED against the real
+    # callers rather than reasoned about. The first version refused any path
+    # that named no known list and did not exist -- and broke twelve tests
+    # passing `<tmpdir>/devices.csv`, which is a correctly built path for a
+    # directory that has no file yet. That is a legitimate state; a bare list
+    # name is not.
+    #
+    # So: no separator and no `.csv` suffix is not a path at all. It is the
+    # `nmas-netbox-repair-addresses` shape exactly -- `"Default"` where
+    # `data/lists/default/devices.csv` was wanted -- and no legitimate caller
+    # can produce it.
+    looks_like_a_path = (os.sep in filename or "/" in filename
+                         or filename.lower().endswith(".csv"))
+    if not looks_like_a_path and not os.path.exists(filename):
+        raise UnknownDeviceList(
+            f"{filename!r} is not a path. load_saved_devices() takes the PATH "
+            "to a list's devices.csv, never a list NAME — resolve it through "
+            "get_device_lists() or get_current_device_list(). Refusing rather "
+            "than returning an empty fleet, which reads as 'this network has "
+            "no devices' and makes every count downstream honestly zero.")
 
     list_name = _list_name_for_path(filename)
     if list_name:

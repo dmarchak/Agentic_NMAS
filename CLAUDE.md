@@ -854,6 +854,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
 | `test_oxidized_freshness.py` | the raw config is the artefact; the gate can reach its own finding; an authorisation covers one divergence; only exit 1 is drift |
 | `test_credential_never_changes_on_deploy.py` | a deploy adds an account and never changes one; the refusal names the form, never the value |
+| `test_inventory_dispatch_refuses.py` | the no-argument form resolves the active list; a name where a path was wanted refuses; a correctly built path never does |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -2653,6 +2654,39 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   shared commit means reverting one device's rollback reverts the other's
   change. The deploy boundary and the commit boundary have to be the same
   boundary.
+- **`load_saved_devices()`'s no-argument default read a pre-lists constant,
+  and the survey moved the fix.** `DEVICES_FILE` is `data/Devices.csv`, kept
+  *"for backwards compatibility"* and written by nothing since lists existed,
+  so a bare `load_saved_devices()` returned **zero rows** on the deployment —
+  an honestly empty fleet, with every count downstream honestly zero. Second
+  instance in a week, after `nmas-netbox-repair-addresses` passed a list
+  **name** where a path was wanted and reported *"nothing to create"*.
+  **Surveyed before fixing, and the survey changed the fix**: of **87** call
+  sites, **none** passes no argument and **none** passes a name-shaped
+  variable — so the in-repo callers were never the exposure and the trap is
+  ad-hoc and script use, which is exactly where both instances happened. Of
+  25 sites branching on emptiness, most are single-device lookups; of the
+  whole-inventory ones, `drift_check` already names it (*"Inventory is empty
+  — nothing to check"*, correct since 3.3b) and `event_monitor` returns
+  silently. No argument now resolves the **active list** (`a read may derive
+  it; a write may not`), and a string that is not a path at all raises
+  `UnknownDeviceList`.
+- **A refusal's discriminator has to be measured against the real callers,
+  not reasoned about.** The first version refused any path naming no known
+  list that did not exist — and broke **twelve** tests passing
+  `<tmpdir>/devices.csv`, which is a correctly built path for a directory
+  with no file yet. A list with no devices is a real state; onboarding writes
+  that CSV only at promotion. The shape that is actually wrong is narrower:
+  **no separator, no `.csv`, and not a file** — a bare name, which no
+  legitimate caller produces. *Refusing inside a function with 87 call sites
+  is only safe because none of them can reach the refusal*, and that is a
+  measurement with a test and a floor, not a belief.
+- **A scan's own test is a mention, not a caller.** The survey test pinning
+  *"no call site passes a bare name"* failed on **its own sibling**, which
+  passes `"Default"` precisely to exercise the refusal. Scoped to non-test
+  files, with a floor and a positive anchor (`app.py` must appear). Seventh
+  instance of a scan matching the thing written to explain it — the same
+  distinction `check_removed_definitions.py` had to learn.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
