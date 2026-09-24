@@ -161,6 +161,37 @@ async function downloadGoldenVersion(hostname, ref) {
    re-applying it would re-publish a secret that exists in history precisely
    because rotation was meant to kill it. validate_restored_intent() refuses
    such a device at plan time; this says so before the click. */
+/**
+ * "N device(s)", and whether that covers the fleet as it is NOW.
+ *
+ * Pure, so the shipped source can be executed against the payload the
+ * endpoint returns. Written because the route was taught to compute
+ * `partial` and `missing_devices` and the panel rendered NEITHER -- a value
+ * carried to the browser and drawn nowhere, in the commit whose whole
+ * purpose was to fix a coverage-reporting gap.
+ *
+ * The count alone is not a statement: an older baseline reads 9 and a newer
+ * one 10, and nothing says the first covers less than the network does now.
+ * A device onboarded after the tag has no golden at it, so re-applying
+ * leaves that device untouched -- correct, and not what "restore the
+ * network" sounds like.
+ */
+function _gBaselineCoverage(b) {
+  const count = b.device_count;
+  const total = b.inventory_size;
+  const missing = b.missing_devices || [];
+  if (!b.partial) {
+    return `<span class="badge bg-secondary-subtle text-secondary-emphasis">
+      ${count} device(s)</span>`;
+  }
+  const names = missing.slice(0, 4).join(', ')
+              + (missing.length > 4 ? `, +${missing.length - 4} more` : '');
+  return `<span class="badge bg-warning-subtle text-warning-emphasis"
+      title="This baseline predates ${_gEsc(names)}. Re-applying it leaves ${missing.length > 1 ? 'those devices' : 'that device'} exactly as ${missing.length > 1 ? 'they are' : 'it is'}.">
+      ${count} of ${total} &mdash; partial</span>
+    <div class="small text-muted mt-1">predates ${_gEsc(names)}</div>`;
+}
+
 function _gCredWarning(b) {
   const stale  = b.credential_stale || [];
   const silent = b.credential_silent || [];
@@ -535,8 +566,7 @@ async function loadGoldenRepoPanel() {
                 <tr>
                   <td class="font-monospace small">${_gEsc(b.tag)}</td>
                   <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
-                  <td><span class="badge bg-secondary-subtle text-secondary-emphasis">
-                    ${b.device_count} device(s)</span></td>
+                  <td>${_gBaselineCoverage(b)}</td>
                   <td>${_gCredWarning(b)}</td>
                   <td class="text-end">
                     <button class="btn btn-outline-warning btn-sm"

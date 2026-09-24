@@ -157,3 +157,142 @@ class TestTheSurvey:
         src = inspect.getsource(deploy._baseline_earned)
         assert "load_saved_devices" in src
         assert "not targeted" in src
+
+
+class TestThePanelDRAWSTheCoverage:
+    """**I computed it and drew nothing.**
+
+    Step 1 taught `/golden/baselines` to return `partial`, `inventory_size`
+    and `missing_devices`, and the panel rendered `${b.device_count}
+    device(s)` exactly as before — a value carried to the browser and drawn
+    nowhere, **in the commit whose whole purpose was to fix a
+    coverage-reporting gap**.
+
+    That is `loadOnboardPending` having no caller and `nbCascadeHtml` never
+    being called, for the fourth time in this session, and the first where I
+    introduced it rather than found it.
+    """
+
+    @staticmethod
+    def _source():
+        path = os.path.join(ROOT, "templates", "partials", "golden_repo.html")
+        page = open(path, encoding="utf-8").read()
+        out = []
+        for name in ("_gEsc", "_gBaselineCoverage"):
+            start = page.index(f"function {name}(")
+            depth, i, seen = 0, page.index("{", start), False
+            while i < len(page):
+                if page[i] == "{":
+                    depth += 1
+                    seen = True
+                elif page[i] == "}":
+                    depth -= 1
+                    if seen and depth == 0:
+                        break
+                i += 1
+            out.append(page[start:i + 1])
+        return "\n".join(out)
+
+    def _render(self, baseline):
+        import json
+
+        dukpy = pytest.importorskip("dukpy")
+        return dukpy.evaljs(self._source()
+                            + f"\n_gBaselineCoverage({json.dumps(baseline)})")
+
+    def test_a_partial_baseline_says_partial_and_names_what_it_predates(self):
+        html = self._render({"device_count": 9, "inventory_size": 10,
+                             "partial": True, "missing_devices": ["r6"]})
+
+        assert "partial" in html
+        assert "9 of 10" in html
+        assert "r6" in html, "it does not say WHICH device"
+        assert "warning" in html, "it renders as an ordinary count"
+
+    def test_a_complete_baseline_is_a_plain_count(self):
+        """**The floor.** A renderer that always warned would satisfy the
+        test above and train the operator to ignore the badge."""
+        html = self._render({"device_count": 10, "inventory_size": 10,
+                             "partial": False, "missing_devices": []})
+
+        assert "10 device(s)" in html
+        assert "partial" not in html
+        assert "warning" not in html
+
+    def test_many_missing_devices_are_summarised_not_dumped(self):
+        html = self._render({"device_count": 2, "inventory_size": 10,
+                             "partial": True,
+                             "missing_devices": [f"d{i}" for i in range(8)]})
+
+        assert "+4 more" in html
+        assert "2 of 10" in html
+
+    def test_an_OLD_payload_without_the_fields_still_renders(self):
+        """A cached response from before step 1 carries no `partial`."""
+        html = self._render({"device_count": 9})
+        assert "9 device(s)" in html
+
+    def test_the_renderer_is_actually_CALLED_by_the_table(self):
+        """The check that caught this class last time. Counted excluding the
+        definition, so existing is not mistaken for being used."""
+        path = os.path.join(ROOT, "templates", "partials", "golden_repo.html")
+        page = open(path, encoding="utf-8").read()
+
+        defs = page.count("function _gBaselineCoverage(")
+        calls = page.count("_gBaselineCoverage(") - defs
+        assert defs == 1
+        assert calls >= 1, "computed, carried to the browser, drawn nowhere"
+        assert "${_gBaselineCoverage(b)}" in page
+
+
+class TestABootstrapConfigRoundTripsCleanly:
+    """**Whether the cohort's approval can be re-granted at all.**
+
+    Onboarding binds the new device to its platform template at Create, so
+    `cisco_iosxe/base.j2` cannot be approved again until every bound device
+    — including the new one — round-trips. If a bootstrap-shaped config did
+    not, the cohort's deploy path would stay offline until the device was
+    configured further, which is a materially different operational answer.
+
+    Measured: **100% modeled coverage, zero unmodelled, nothing missing or
+    extra.** The one line that does not survive the round-trip is the
+    generator's own banner comment, and IOS does not retain `!` comments in
+    `show running-config`, so a **capture** does not carry it.
+    """
+
+    def _bootstrap(self):
+        from modules.nsot import bootstrap_config
+
+        return bootstrap_config.render_bootstrap(
+            "cisco_iosxe", hostname="r6", username="admin",
+            secret="$9$abc123", domain="rcn.lab",
+            manager_interface="GigabitEthernet2",
+            manager_address="10.255.0.32", manager_mask="255.255.255.0")
+
+    def test_a_captured_bootstrap_round_trips_at_100_percent(self):
+        from modules.nsot import roundtrip
+        from modules.nsot.parsers import get_parser
+
+        capture = "\n".join(l for l in self._bootstrap().splitlines()
+                            if not l.strip().startswith("! ")) + "\n"
+        parsed = get_parser("cisco_iosxe").parse(capture)
+        report = roundtrip.compare(
+            capture, roundtrip.render(parsed, "cisco_iosxe", None), parsed)
+
+        assert report["ok"] is True, report["details"]
+        assert report["modeled_coverage"] == 100.0
+        assert report["unmodeled"] == 0
+
+    def test_the_only_unrenderable_line_is_the_generator_s_comment(self):
+        """Named, so that if this ever fails it is obvious whether a NEW
+        construct appeared or the comment handling changed."""
+        from modules.nsot import roundtrip
+        from modules.nsot.parsers import get_parser
+
+        text = self._bootstrap()
+        parsed = get_parser("cisco_iosxe").parse(text)
+        report = roundtrip.compare(
+            text, roundtrip.render(parsed, "cisco_iosxe", None), parsed)
+
+        missing = [m["line"] for m in report["details"]["missing"]]
+        assert missing == ["! minimal bootstrap - management plane only"], missing
