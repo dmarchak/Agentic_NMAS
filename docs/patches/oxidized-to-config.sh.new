@@ -41,11 +41,19 @@
 #   catch, which is why the verification below counts and re-reads rather
 #   than trusting them.
 #
-# THE REVIEW IS NOT OPT-IN
+# THE REVIEW IS NOT OPT-IN, AND HAS NO MOVING PARTS
 #   The full diff used to be behind "Show the full diff? [y/N]" - one
 #   keystroke from being skipped, before a script that overwrites boot
 #   configuration. It is now shown first and the only question is whether to
 #   proceed.
+#
+#   It is also written straight to stdout. This one section failed four
+#   times for four different causes - the opt-in default, ssh consuming the
+#   tty that less needed, and finally less itself swallowing the output on
+#   this machine with PAGER and LESS both unset. None of the four was the
+#   logic: the loop, the diff and the comparison were right every time, and
+#   only the display was lost. A review step with dependencies is a review
+#   step that will eventually not happen.
 #
 # WHY A SANITISER IS STILL NEEDED
 #   Oxidized's ios model strips very little. Its stored config still contains
@@ -81,7 +89,7 @@ for a in "$@"; do
   case "$a" in
     --no-deploy) DEPLOY=no  ;;
     --yes|-y)    DEPLOY=yes ;;
-    --help|-h)   sed -n '2,65p' "$0"; exit 0 ;;
+    --help|-h)   sed -n '2,73p' "$0"; exit 0 ;;
     *) echo "unknown option: $a"; exit 1 ;;
   esac
 done
@@ -378,12 +386,20 @@ fi
 # The only decision left is whether to proceed.
 # ---------------------------------------------------------------------------
 if [ "$DEPLOY" = ask ]; then
-  {
-    for n in "${DEVICES[@]}"; do
-      out="$(ssh -n "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
-      [ -n "$out" ] && { echo; echo "########## $n  (${LAB[$n]}) ##########"; echo "$out"; }
-    done
-  } | ${PAGER:-less -R}
+  # STDOUT, NO PAGER. Measured 2026-09-24: with PAGER and LESS both unset
+  # and /usr/bin/less present, `less -R` swallowed this output on the NMAS
+  # while `PAGER=cat` showed it correctly. The same block, the same data,
+  # the same comparison - only the display was lost.
+  #
+  # Not chased further, because the finding is not which less flag did it:
+  # the only review step before an irreversible write depended on an
+  # external program behaving, and on this machine it did not. The
+  # terminal's scrollback is already a pager and it cannot be misconfigured
+  # into showing nothing.
+  for n in "${DEVICES[@]}"; do
+    out="$(ssh -n "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
+    [ -n "$out" ] && { echo; echo "########## $n  (${LAB[$n]}) ##########"; echo "$out"; }
+  done
 
   echo
   echo "This will overwrite these directories on $CLAB:"

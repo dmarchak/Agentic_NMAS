@@ -2378,6 +2378,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   happened**: somebody adds a lab and forgets. The map already knows every
   destination, so the tool reports the gap every run rather than relying on
   anyone to remember — the same move as *"checked 7 of 9"*.
+- **Four failures of one section, four causes, none of them the logic.** The
+  sync's full diff failed as an opt-in prompt defaulting to No, then because
+  `ssh` consumed the tty `less` needed, and finally because **`less -R`
+  itself swallowed the output** with `PAGER` and `LESS` unset — measured,
+  `PAGER=cat` displayed it correctly. The loop, the `diff` and the
+  comparison were right every time; everything that broke was **between the
+  correct answer and the operator's eyes**. A different axis from the rest
+  of the catalogue, which is all wrong answers: not *is the computation
+  correct* but *does it survive the trip to the reader*. A pipeline into
+  `$PAGER` is three dependencies — the binary, `$PAGER`, `$LESS` — in the one
+  place with no fallback and no error path, guarding the one action that
+  cannot be undone. **Put the moving parts where a failure is visible, and
+  none where a failure is silence**: the diff now goes to stdout and the
+  terminal's scrollback is a pager that cannot be misconfigured into showing
+  nothing.
+  Also the limit of a local reproduction: running the block under a **pty**
+  showed `less` paging correctly *here* and therefore cleared nothing
+  *there*. The discriminator that settled it was one word in front of the
+  command and was available from the first report — **meet a silent failure
+  with the cheapest question that halves the space, not with the most likely
+  explanation**, which was wrong three times running.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

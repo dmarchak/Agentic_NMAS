@@ -9979,3 +9979,59 @@ script now names every one that is not versioned, every run, with the
 command to fix it. That turns "per-lab repos" from a thing somebody must
 remember into a thing the tool reports — which is the same move as the
 drift check's *"checked 7 of 9"* and `--reconcile`'s three buckets.
+
+## Four failures, four causes, none of them the logic
+
+`PAGER=cat` displayed the diff. So the fourth cause **was** the pager:
+`less -R` with `PAGER` and `LESS` both unset and `/usr/bin/less` present
+swallowed the output on that machine, while `cat` showed it correctly —
+rendering `-! test marker` with `+0/-1`, which is the comparison being right
+at the same moment the display was lost.
+
+Not chased further, and the reason is the finding rather than the flag:
+
+> **The only review step before an irreversible write depended on an
+> external program behaving, and on this machine it did not.**
+
+The pager is gone. The diff goes to stdout and the terminal's scrollback
+does the job — a pager that cannot be misconfigured into showing nothing.
+
+### The tally is the point
+
+| # | cause | was the logic wrong? |
+|---|---|---|
+| 1 | the prompt was opt-in and defaulted to No | no |
+| 2 | `ssh` consumed the tty `less` needed | no |
+| 3 | *(the same run — the `-n` fix addressed 2, not this)* | no |
+| 4 | `less` itself swallowed the output | no |
+
+**Four failures of one section, four different causes, and the loop, the
+`diff` and the comparison were correct every single time.** Everything that
+broke was between the correct answer and the operator's eyes.
+
+That is worth separating from the rest of tonight's catalogue. The other
+findings are wrong answers — a gate that opens, a check answering a
+different question, a loop running too few times. **This one produced the
+right answer four times and failed to deliver it four times**, which is a
+different axis entirely: not *is the computation correct* but *does it
+survive the trip to the reader*.
+
+And it argues something about where dependencies belong. A pipeline into
+`$PAGER` is three dependencies — the binary, `$PAGER`, `$LESS` — in the one
+place with no fallback and no error path, guarding the one action that
+cannot be undone. **Put the moving parts where a failure is visible, and
+none where a failure is silence.**
+
+### What the measurement cost, and what it bought
+
+Five candidates were ruled out here by measurement — including running the
+block under a pty, which reproduced `less` paging correctly on *this*
+machine and therefore did **not** clear `less` on theirs. That is the limit
+of a local reproduction: it can show a thing works somewhere, never that it
+works there.
+
+The discriminator that settled it was one word in front of the command, and
+it was available from the first report. **A section that fails silently
+should be met with the cheapest question that halves the space, not with the
+most likely explanation** — the most likely explanation was wrong three
+times running.
