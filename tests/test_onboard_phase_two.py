@@ -437,3 +437,127 @@ class TestTheDeviceDictCarriesItsCredentials:
             rotate=lambda r, h, l, **kw: seen.update(kw.get("device") or {})
             or {"rotated": True, "state": "rotated"}))
         assert decrypt_field(seen["secret"]) == "BOOT5trap"
+
+
+class TestARefusalCanNeverClaimNothingFailed:
+    """**The design test on the fix itself.**
+
+    The live run reported `failed_checks: []` beside state
+    `failed_before_any_change` — *something stopped me and nothing failed*,
+    which is worse than the state alone, because the state alone did not
+    claim to know.
+
+    Two causes, and both are recorded because each alone would have been
+    diagnosed wrongly:
+
+    1. The refusal came from an exit that is **not a preflight check** — the
+       confirmation fingerprint, compared after preflight passed. So the
+       checks were all `ok` and the reporting read only them.
+    2. `finish_bootstrap` preferred `result["error"]`, a key `rotate()`
+       never sets, over `result["reason"]` which it does — so *"the
+       confirmation does not match this device's current state"* was
+       computed, returned, and discarded one frame later.
+
+    The fix is on the refusal path, not the reporting: `rotate()` calls
+    `_step(name, False, detail)` on **every** exit, so its steps cover them
+    by construction, and `_rotation_refusals()` merges those with the failed
+    checks. An empty answer is impossible — it falls back to the reason,
+    then the state, and finally says the refusal was unattributed, which is
+    a defect report rather than a blank.
+    """
+
+    def test_a_refusal_from_a_non_preflight_exit_is_still_named(self, world):
+        """The confirmation mismatch: every check passed, and a step did
+        not."""
+        from modules.nsot.onboard import run_phase_two
+
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            rotate=lambda *a, **k: {
+                "rotated": False, "state": "failed_before_any_change",
+                "reason": "the confirmation does not match",
+                "preflight_checks": [{"name": "live_user_line_read",
+                                      "ok": True, "detail": ""}],
+                "steps": [{"name": "preflight", "ok": True, "detail": ""},
+                          {"name": "confirmation", "ok": False,
+                           "detail": "the device or the plan changed"}]}))
+        row = next(r for r in out["steps"] if r["step"] == "rotate")
+        assert row["failed_steps"], "a refusal named nothing"
+        assert any("confirmation" in r for r in row["failed_steps"])
+        assert "confirmation" in out["reason"]
+
+    def test_a_refusal_naming_nothing_at_all_says_so(self, world):
+        """**The invariant.** A rotation that refuses with no steps, no
+        checks and no reason must not produce an empty list — it must say
+        that the refusal was unattributed, which is a defect report."""
+        from modules.nsot.onboard import run_phase_two
+
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            rotate=lambda *a, **k: {"rotated": False,
+                                    "state": "failed_before_any_change"}))
+        row = next(r for r in out["steps"] if r["step"] == "rotate")
+        assert row["failed_steps"], "empty beside a failure state"
+        assert "named no step" in row["failed_steps"][0]
+        assert "defect" in row["failed_steps"][0]
+
+    def test_no_failure_ever_reports_an_empty_attribution(self, world):
+        """Across every failure shape a rotation can return."""
+        from modules.nsot.onboard import run_phase_two
+
+        shapes = [
+            {"rotated": False, "state": "failed_before_any_change"},
+            {"rotated": False, "state": "failed", "reason": "the push failed"},
+            {"rotated": False, "state": "x",
+             "steps": [{"name": "push", "ok": False, "detail": "rejected"}]},
+            {"rotated": False, "state": "y",
+             "preflight_checks": [{"name": "helper_installed_and_matching",
+                                   "ok": False, "detail": "sha mismatch"}]},
+        ]
+        for shape in shapes:
+            out = run_phase_two(world["repo"], "bp1", "probe",
+                                **_steps(rotate=lambda *a, _s=shape, **k: _s))
+            row = next(r for r in out["steps"] if r["step"] == "rotate")
+            assert row["failed_steps"], shape
+            assert out["reason"], shape
+
+    def test_a_SUCCESSFUL_rotation_names_nothing(self, world):
+        """The control. A function that always returned something would
+        satisfy every assertion above and mean nothing."""
+        from modules.nsot.onboard import _rotation_refusals
+
+        assert _rotation_refusals({"rotated": True, "state": "rotated",
+                                   "steps": [{"name": "push", "ok": True}]}) \
+            == []
+
+
+class TestPhaseTwoOpensNoSocketOfItsOwn:
+    """Every collaborator is injected so the ordering can be tested without a
+    device. A version of the fingerprint helper called `preflight()` here,
+    which opens a live session — **ten seconds of connect timeout per call,
+    221 seconds across the suite.**
+
+    The slowness was the symptom; the defect is a function whose contract is
+    "nothing here touches the network" quietly acquiring something that
+    does.
+    """
+
+    def test_a_full_run_connects_to_nothing(self, world, monkeypatch):
+        import socket
+
+        from modules.nsot.onboard import run_phase_two
+
+        def _refuse(self, addr):
+            raise AssertionError(f"run_phase_two opened a socket to {addr}")
+
+        monkeypatch.setattr(socket.socket, "connect", _refuse)
+        out = run_phase_two(world["repo"], "bp1", "probe", actor="t",
+                            **_steps())
+        assert out["ok"] is True, out
+
+    def test_the_confirmation_is_the_shared_constant(self):
+        """Not a hash of our own. The first version invented one that could
+        never match, which is the defect `fingerprint_for()`'s docstring
+        exists to describe."""
+        from modules.nsot.credential_rotation import SELF_CONFIRMED
+        from modules.nsot.onboard import _phase_two_confirmation
+
+        assert _phase_two_confirmation() == SELF_CONFIRMED

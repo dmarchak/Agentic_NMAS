@@ -2442,3 +2442,62 @@ class TestTheOnboardingParameterisationGoesBothWays:
             "the inventory was consulted for a device that has no row")
         assert out["mgmt_ip"] == "203.0.113.31"
         assert "username admin" in out["capture"]
+
+
+class TestSelfConfirmationAtItsOwnSite:
+    """**`SELF_CONFIRMED`, tested where `rotate()` reads it.**
+
+    Onboarding's phase 2 is one click running seven steps; there is no
+    separate plan step, so there is no window between plan and apply for the
+    fingerprint to protect, and `_phase_two_confirmation()` sends the shared
+    sentinel rather than a hash.
+
+    A control found this untested: deleting the branch from `rotate()` —
+    exactly the live failure, where every phase-2 rotation refused with
+    `failed_before_any_change` — left the whole suite green. Phase 2's own
+    tests inject a stubbed `rotate`, so they cannot reach the comparison,
+    and this file never sent the sentinel. **The seam between two tested
+    halves, again.**
+    """
+
+    def test_the_sentinel_is_honoured_and_the_rotation_proceeds(self, wired):
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=cr.SELF_CONFIRMED)
+
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST, result.get("reason")
+        assert "confirmation does not match" not in (result.get("reason") or "")
+
+    def test_it_is_recorded_as_a_step_rather_than_passing_silently(self, wired):
+        """A check that passed because it did not run must say so — that is
+        what the fingerprint was added to stop."""
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=cr.SELF_CONFIRMED)
+
+        rows = [s for s in result["steps"] if s["name"] == "confirmation"]
+        assert len(rows) == 1, f"one confirmation step, got {rows}"
+        assert rows[0]["ok"] is True
+        assert "self-confirmed" in rows[0]["detail"]
+
+    def test_an_ordinary_confirmation_still_records_no_such_detail(self, wired):
+        """The control on the step text: a genuine comparison must not be
+        reportable as self-confirmed."""
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+
+        rows = [s for s in result["steps"] if s["name"] == "confirmation"]
+        assert len(rows) == 1, f"one confirmation step, got {rows}"
+        assert "self-confirmed" not in rows[0]["detail"]
+
+    def test_a_WRONG_fingerprint_is_still_refused(self, wired):
+        """The control that matters. A branch honouring the sentinel must
+        not honour anything else — otherwise it is not an exemption, it is
+        the check removed."""
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint="not-the-hash")
+
+        assert result["state"] == cr.NOT_STARTED
+        assert "confirmation does not match" in result["reason"]
+        assert not wired["session"].sent, "a refused rotation sent something"
+
+    def test_the_sentinel_is_not_a_hash_anyone_could_arrive_at(self):
+        """It is a literal, deliberately outside the hash's alphabet: a
+        64-character hex digest can never equal it by accident."""
+        assert ":" in cr.SELF_CONFIRMED
+        assert cr.SELF_CONFIRMED != cr.fingerprint_for(
+            {"capture": "", "device_row": {}, "entry_kind": "x"})

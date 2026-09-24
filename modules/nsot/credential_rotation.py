@@ -92,6 +92,20 @@ REVERT_FAILED = "revert_failed"
 REVERTED_UNPROVEN = "reverted_proof_inconclusive"
 NOT_STARTED = "failed_before_any_change"
 
+#: Passed as *confirmed_fingerprint* by a caller with **no separate plan
+#: step**, so there is no window between a plan and an apply to protect.
+#:
+#: The fingerprint check exists because `plan()` shows an operator a program
+#: and `rotate()` must refuse if the device or the plan moved in between.
+#: Onboarding's phase 2 is one click running seven steps atomically: the
+#: preflight it would rotate against is the one it just computed, and
+#: comparing a hash to itself protects nothing.
+#:
+#: **Explicit, and recorded as a step**, so a reader of the result sees that
+#: the comparison was skipped and why. A silently skipped check is what the
+#: fingerprint was added to stop.
+SELF_CONFIRMED = "self-confirmed:no-separate-plan-step"
+
 #: The only step whose failure reverts the device.
 VERIFY = "verify_new_credential"
 
@@ -1215,15 +1229,29 @@ def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
         return result
     _step("preflight", True)
 
-    import hashlib
+    # Through `fingerprint_for()`, never a hash built here: two callers
+    # computing one hash from one input is a rule that can be broken.
     expected = fingerprint_for(pre)
-    if confirmed_fingerprint != expected:
+    if confirmed_fingerprint == SELF_CONFIRMED:
+        # RECORDED, not skipped. A caller with no separate plan step has no
+        # window between plan and apply, so there is nothing for the
+        # comparison to protect — but a check that passes silently because
+        # it was not run is what the fingerprint exists to stop, so the
+        # result says which of the two happened.
+        _step("confirmation", True,
+              "self-confirmed: the caller has no separate plan step, so "
+              "there is no window between plan and apply to protect")
+    elif confirmed_fingerprint != expected:
         _step("confirmation", False, "the device or the plan changed since "
                                      "you confirmed")
         result["reason"] = ("the confirmation does not match this device's "
                             "current state — re-run the plan")
         return result
-    _step("confirmation", True)
+    else:
+        # An `else`, not a trailing call: unconditional, it appended a
+        # SECOND confirmation step on the self-confirmed path, so the one
+        # result that had to say which branch ran said both.
+        _step("confirmation", True)
 
     device, repo = pre["device_row"], pre["repo"]
     username, privilege = pre["username"], pre["privilege"]

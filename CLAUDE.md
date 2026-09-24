@@ -1399,6 +1399,46 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   one.** That check printed `stderr.splitlines()[-1]`, which on node 18 is
   the version banner: a real syntax error reported `Node.js v18.19.1` and
   named no file, line or token. Take the first line containing `Error`.
+- **A refusal must never report that nothing failed.** Phase 2's second live
+  run returned `failed_checks: []` beside state `failed_before_any_change` —
+  "something stopped me and nothing failed", which is worse than the state
+  alone, because the state alone did not claim to know. Three causes, each
+  of which alone produces that output: the exit was the **confirmation
+  fingerprint**, compared *after* preflight passes, so every check was `ok`
+  and the empty list was truthful; `finish_bootstrap` read
+  `result["error"]`, a key `rotate()` never sets, over the `reason` it does
+  set; and the reporting read one field. `_rotation_refusals()` merges
+  `steps` and `preflight_checks` rather than choosing, so neither has to be
+  canonical, and an empty answer is **impossible** — reason, then state,
+  then plainly that the refusal was unattributed, which is a defect report
+  rather than a blank. A **successful** rotation returns `[]`: the
+  never-empty rule is about refusals, and applying it to every result made a
+  success report a defect in its own reporting — the invariant eating the
+  distinction it was built to protect, caught by the one control that asked
+  whether a success returns nothing.
+- **`SELF_CONFIRMED` is an exemption that is RECORDED, not a check skipped.**
+  Onboarding's phase 2 is one click running seven steps: no separate plan
+  step, so no window between plan and apply for the fingerprint to protect.
+  The first version invented `sha256("onboard-confirmation|host|ip")`, which
+  can never equal `fingerprint_for(pre)` — **verbatim the defect that
+  function's docstring describes** — so every phase-2 rotation refused,
+  permanently and safely. `rotate()` records honouring the sentinel as a
+  step, because a check that passed because it did not run is exactly what
+  the fingerprint was added to stop. The second version called `preflight()`
+  inside `run_phase_two()`: correct about the function, and it put a **live
+  SSH session** inside a function whose collaborators are otherwise all
+  injected — ten seconds per call, 221 seconds across the suite. A socket
+  spy pins it.
+- **A control that passes is either a missing test or a broken control, and
+  telling which is the work.** Deleting the `SELF_CONFIRMED` branch from
+  `rotate()` — which *is* the live failure — left the whole suite green:
+  phase 2's tests stub `rotate` and cannot reach the comparison, and the
+  rotation suite never sent the sentinel. **The seam between two tested
+  halves**, third this stage after `body: '{}'` and the agent panel's three
+  guards. The missing test is `TestSelfConfirmationAtItsOwnSite`, and it
+  carries its own control that the exemption is not the check removed —
+  widening it to `if confirmed_fingerprint:` fails seven tests, four of them
+  pre-existing.
 - **A pass count that cannot distinguish "passed" from "never ran" is not a
   pass count.** With no pytest available, 4C.8's test bodies were executed
   through a hand-rolled driver that ran only `Test*` classes and fixtureless

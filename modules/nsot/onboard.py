@@ -701,10 +701,18 @@ def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
 
     state = result.get("state", NOT_STARTED)
     if not rotation_succeeded(result):
-        reason = result.get("error") or f"rotation ended in state {state!r}"
+        # ROTATE'S OWN REASON FIRST. This preferred `error`, a key `rotate()`
+        # never sets, and fell through to a sentence naming only the state —
+        # so "the confirmation does not match this device's current state"
+        # was computed, returned, and thrown away one frame later.
+        reason = (result.get("reason") or result.get("error")
+                  or f"rotation ended in state {state!r}")
         log.error("onboard: rotation did not succeed for %s: %s",
                   hostname, reason)
         return {"rotated": False, "state": state, "reason": reason,
+                # Carried so the caller can name the exit, not only the state.
+                "steps": result.get("steps") or [],
+                "preflight_checks": result.get("preflight_checks") or [],
                 "recoverable": staged_bootstrap_credential(repo, hostname)
                 is not None}
 
@@ -2036,21 +2044,34 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
                   "secret": fernet.encrypt(sec.encode()).decode() if sec else ""}
     rot = (rotate or finish_bootstrap)(
         repo, hostname, list_name,
-        confirmed_fingerprint=_phase_two_fingerprint(hostname, mgmt_ip),
+        confirmed_fingerprint=_phase_two_confirmation(),
         actor=actor, actor_kind=actor_kind,
         device=device_row, capture=config, record="override")
     result["rotate"] = rot
-    # THE STATE IS NOT THE REASON. `failed_before_any_change` covers every
-    # preflight refusal, and preflight runs a dozen named checks — reporting
-    # the state without the check is the agent's "failed at: {stage}" with
-    # no reason attached: enough to know it stopped, not enough to act.
-    refused = [c for c in (rot.get("preflight_checks") or []) if not c["ok"]]
+    # THE STATE IS NOT THE REASON, and the reason is not only in the checks.
+    #
+    # The first version read `preflight_checks` alone, so a refusal from any
+    # of rotate's OTHER exits — the confirmation mismatch, an entry-kind
+    # recheck, a rejected push — reported `failed_checks: []` beside
+    # `failed_before_any_change`: *something stopped me and nothing failed*,
+    # which is worse than the state before it, because that one at least did
+    # not claim to know.
+    #
+    # `rotate()` calls `_step(name, False, detail)` on **every** refusal, so
+    # its `steps` cover every exit by construction where a hand-maintained
+    # list of fields cannot. Checks are still carried, for the detail they
+    # add when it IS a preflight refusal.
+    refused = _rotation_refusals(rot)
     if not _step("rotate", rot.get("rotated"), rot.get("state", ""),
-                 failed_checks=refused):
-        detail = "; ".join(f"{c['name']}: {c['detail']}" or c["name"]
-                           for c in refused)
-        return _stop("rotate", (rot.get("reason") or "the credential was not "
-                                "rotated") + (f" — {detail}" if detail else ""))
+                 failed_checks=[c for c in (rot.get("preflight_checks") or [])
+                                if not c["ok"]],
+                 failed_steps=refused):
+        base = rot.get("reason") or "the credential was not rotated"
+        # Only what the reason does not already say. `_rotation_refusals()`
+        # falls back to the reason when the steps name nothing, and appending
+        # it to itself produced "the device refused — the device refused".
+        extra = "; ".join(r for r in refused if r not in base)
+        return _stop("rotate", base + (f" — {extra}" if extra else ""))
 
     # The credential changed, so everything after this reads it again.
     user, pw, sec = _cred()
@@ -2102,25 +2123,87 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     return _finish()
 
 
-def _phase_two_fingerprint(hostname: str, mgmt_ip: str) -> str:
-    """The confirmation phase 2 rotates under.
+def _rotation_refusals(rot: dict) -> list:
+    """Why a rotation refused, from every exit it has. **Never empty.**
 
-    Onboarding IS the confirmation: the operator pressed Create on a review
-    screen naming this device and this address, and phase 2 finishes what
-    that authorised. It is derived rather than passed so no caller can
-    supply one for a different device.
+    `rotate()` names each refusal with `_step(name, False, detail)`, and
+    those cover its exits by construction — preflight, the confirmation
+    fingerprint, the entry-kind recheck, the push, the verify. Reading one
+    field instead (`preflight_checks`) described one exit and reported
+    silence for the rest.
+
+    A **successful** rotation returns `[]` — the rule below is about
+    refusals, and applying it to every result made a success report a
+    defect in its own reporting.
+
+    **An empty list beside a failure state is impossible here, not merely
+    unlikely**: if the steps name nothing, this falls back to the reason,
+    then to the state, and finally says plainly that the refusal was
+    unattributed — which is a defect report rather than a blank. A result
+    claiming "something stopped me and nothing failed" is worse than one
+    that admits it does not know.
     """
-    import hashlib
+    # A rotation that WORKED refuses nothing, and must say so. The
+    # never-empty rule below is about refusals; without this guard it
+    # applied to every result, so a success reported "named no step — that
+    # is a defect", which is the invariant eating the distinction it was
+    # built to protect. Caught by the control, not by the three tests
+    # asserting a refusal is always named: a function that always returns
+    # something satisfies all of them.
+    if rot.get("rotated"):
+        return []
+    refused = [f"{st.get('name')}: {st.get('detail')}".rstrip(": ")
+               for st in (rot.get("steps") or []) if not st.get("ok")]
+    # BOTH SOURCES, not whichever one happens to be populated. A preflight
+    # refusal names the failing check in `preflight_checks` and summarises
+    # it in a step; another exit names only a step. Reading one described
+    # one exit and reported silence for the rest, which is the defect this
+    # function replaced — reading both cannot miss, and merging rather than
+    # choosing means neither has to be the canonical one.
+    for check in (rot.get("preflight_checks") or []):
+        if check.get("ok"):
+            continue
+        named = f"{check.get('name')}: {check.get('detail')}".rstrip(": ")
+        if not any(check.get("name") in r for r in refused):
+            refused.append(named)
+    if refused:
+        return refused
+    if rot.get("reason"):
+        return [rot["reason"]]
+    state = rot.get("state") or "unknown"
+    return [f"the rotation refused in state {state!r} and named no step — "
+            f"that is a defect in the rotation's own reporting"]
 
-    # Joined rather than f-string-interpolated, and deliberately.
-    # `test_the_key_is_built_in_exactly_one_place` scans for a
-    # `f"...{hostname}:{...}"` shape, because a template-secret key built by
-    # hand is what let one list's extraction overwrite another's. It cannot
-    # tell that shape from this one — which is the point of the check — so
-    # the fix is to stop looking like a secret key rather than to exempt
-    # this line from a scan that guards a real hazard.
-    parts = ("onboard-confirmation", hostname, mgmt_ip)
-    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+def _phase_two_confirmation() -> str:
+    """**`SELF_CONFIRMED`, and why phase 2 is entitled to it.**
+
+    The fingerprint check refuses when the device or the plan moved between
+    a `plan()` and a `rotate()`. Phase 2 is one click running seven steps
+    atomically — no plan step, so no window, and nothing to protect.
+    `rotate()` records the skip as a step rather than passing silently.
+
+    Two wrong versions preceded this, and both are worth keeping:
+
+    1. It invented `sha256("onboard-confirmation|host|ip")`, which could
+       never equal `fingerprint_for(pre)` — **verbatim the defect that
+       function's docstring describes**, whose closing line is the rule it
+       broke: *"Two callers computing the same hash from the same data is a
+       rule that can be broken. One function is a rule that cannot."* Every
+       confirmation was refused, safely and permanently, reporting only
+       `failed_before_any_change`.
+    2. It called `preflight()` here and hashed it with `fingerprint_for()`.
+       Correct about the function — and it put a **live SSH session** inside
+       a function whose collaborators are otherwise all injected. Measured:
+       ten seconds of connect timeout per call, 221 seconds across the
+       suite, traced to `preflight -> live_user_line -> ConnectHandler`.
+
+    Not doing the comparison is right for this caller. Doing it twice was a
+    worse way to be wrong than not doing it at all.
+    """
+    from modules.nsot.credential_rotation import SELF_CONFIRMED
+
+    return SELF_CONFIRMED
 
 
 def _save_first_golden(list_name: str, hostname: str, mgmt_ip: str,

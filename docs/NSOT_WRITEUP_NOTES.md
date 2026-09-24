@@ -8216,3 +8216,109 @@ That is the argument for the probe existing, and it is the stage's result —
 more so than the feature, which is still unfinished. A suite proves the
 parts work. A probe proves the thing works, and the difference between those
 two sentences is seven defects.
+
+## Phase 2's second live failure: "something stopped me and nothing failed"
+
+The first phase-2 run on hardware failed at `rotate` with the device dict
+carrying no credentials — fixed, and a real defect. The second run failed at
+`rotate` again, and reported:
+
+```
+"state": "failed_before_any_change",
+"failed_checks": []
+```
+
+Two readings, both bad: either preflight refused without naming the check
+that refused, or the reporting could not see what did. **Measured rather
+than guessed, and the answer was neither** — three separate defects, each of
+which alone would have produced the same output and been diagnosed wrongly.
+
+### 1. The refusal was not a preflight check at all
+
+`rotate()` compares `confirmed_fingerprint` against `fingerprint_for(pre)`
+**after** preflight has passed. So every check was `ok`, `failed_checks: []`
+was *truthful*, and the state was truthful — the two were describing
+different exits.
+
+Phase 2 had sent a fingerprint computed by its own
+`_phase_two_fingerprint()`, as `sha256("onboard-confirmation|host|ip")`.
+That can never equal `fingerprint_for(pre)`, so **every phase-2 rotation
+refused, permanently and safely**. It is verbatim the defect that function's
+own docstring describes, whose closing line is the rule it broke:
+
+> *Two callers computing the same hash from the same data is a rule that can
+> be broken. One function is a rule that cannot.*
+
+The fix is not a second correct hash. Phase 2 is one click running seven
+steps: there is no separate plan step, so there is **no window between plan
+and apply** for the comparison to protect. `SELF_CONFIRMED` is a shared
+sentinel, and `rotate()` records honouring it as a **step** rather than
+skipping silently — a check that passed because it did not run is exactly
+what the fingerprint was added to stop.
+
+The first attempt at the fix was worse than the defect: it called
+`preflight()` inside `run_phase_two()` to hash its result. Correct about the
+function, and it put a **live SSH session** inside a function every one of
+whose collaborators is otherwise injected — ten seconds of connect timeout
+per call, **221 seconds across the suite**. The slowness was the symptom;
+the defect is a function whose contract is *nothing here touches the
+network* quietly acquiring something that does.
+`TestPhaseTwoOpensNoSocketOfItsOwn` asserts it with a socket spy.
+
+### 2. The reason was computed, returned, and thrown away
+
+`finish_bootstrap` read `result.get("error")` — a key `rotate()` never sets
+— in preference to `result["reason"]`, which it does. So *"the confirmation
+does not match this device's current state"* existed, correctly, one frame
+below where it was needed. Same shape as the discarded bootstrap artefact
+and the discarded `adopt_identity` return: **a fact produced where nobody
+reads it is not a fact reported.**
+
+### 3. The reporting read one field
+
+`_rotation_refusals()` now merges `steps` and `preflight_checks` rather than
+choosing, so neither has to be the canonical one, and **an empty answer is
+impossible**: it falls back to the reason, then the state, and finally says
+the refusal was unattributed — which is a defect report rather than a blank.
+The rule the user set for the fix:
+
+> An empty `failed_checks` alongside a failure state must be IMPOSSIBLE, not
+> merely unlikely. A state that says "something stopped me and nothing
+> failed" is worse than the state before, because the first version at least
+> didn't claim to know.
+
+### The controls found two more, and one was in the fix itself
+
+Six negative controls were run. Four reproduced the defects above. The other
+two are the finding:
+
+* **The success control.** `_rotation_refusals()` applied its never-empty
+  rule to *every* result, so a **successful** rotation reported *"named no
+  step — that is a defect in the rotation's own reporting"*. The invariant
+  had eaten the distinction it was built to protect. Three tests asserting
+  *a refusal is always named* all passed; a function that always returns
+  something satisfies every one of them. Only the control asking whether a
+  success returns nothing could see it.
+* **A control that passed.** Deleting the `SELF_CONFIRMED` branch from
+  `rotate()` — which *is* the live failure — left the entire suite green.
+  Phase 2's tests inject a stubbed `rotate` and cannot reach the
+  comparison; the rotation suite never sent the sentinel. **The seam between
+  two tested halves**, for the third time this stage, after `body: '{}'` and
+  the three guards in the agent panel. A control that passes is either a
+  missing test or a broken control, and telling which is the work:
+  `TestSelfConfirmationAtItsOwnSite` is the missing test, and it carries the
+  control that the exemption is not the check removed — widening it to
+  `if confirmed_fingerprint:` fails seven tests, four of them pre-existing.
+
+Reading that branch to write the test found a fourth, minor defect: the
+trailing `_step("confirmation", True)` was unconditional, so the
+self-confirmed path recorded the step **twice** — the one result whose job
+is to say which branch ran said both.
+
+### Process, recorded because it cost time
+
+Two errors of my own. A `pkill -f "pytest -q"` issued in the same command as
+a heredoc killed the heredoc, so one edit silently never landed and was
+found by grep rather than by a failure. And three numbers quoted in commit
+messages were stale by the time they were read — a pass count is a
+measurement with a timestamp, not a property of the branch.
