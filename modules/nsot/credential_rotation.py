@@ -1683,65 +1683,86 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
 DEPRECATED_REST_KEY = "oxidized_rest_url"
 
 
-def _oxidized_rest_base(rest: str = "") -> tuple:
-    """``(base_url, refusal)``. The **one** resolver for Oxidized's REST API.
+class _PinnedOxidized:
+    """An :class:`OxidizedIntegration` whose base URL is given, not read.
 
-    There were two settings keys for one fact: `oxidized_url`, owned by
-    `OxidizedIntegration` and surfaced in Settings, and `oxidized_rest_url`,
-    read only here. Both point at the same oxidized-web base URL -- both
-    fetch `nodes.json` from it -- and a second name for one thing is the
-    shape this project keeps removing (`ListRef`, the `nmas-managed` slug,
-    the device -> lab map). `oxidized_url` wins because it is the one with a
-    form, a client and a documented meaning.
-
-    **It refuses rather than adopting.** Copying a value across would be a
-    settings write nobody asked for, and the deprecation would then be
-    invisible; naming the move costs one sentence and cannot be wrong.
-
-    **It also refuses when this path cannot carry the configured
-    credentials.** `OxidizedIntegration` sends HTTP basic auth from
-    `oxidized_username` / `oxidized_password`; the persistence chain speaks
-    `urllib` and sends none. On an Oxidized with auth on, those stages would
-    get a 401 reported as a failed reload -- a credential error, during a
-    credential rotation, about the wrong credential entirely. Userinfo in the
-    URL is accepted, because urllib does send that.
-
-    An explicit *rest* still wins, per argument, so a caller that knows
-    better is not overridden by a setting.
+    Only for a caller that passes an explicit *rest*, which is an override
+    that has always existed and must keep working. Everything else -- the
+    session, the basic auth, the TLS toggle, the retry policy -- comes from
+    the real client, so this pins one value rather than becoming a second
+    transport.
     """
+
+    def __init__(self, base: str, timeout: float):
+        from modules.integrations.oxidized import OxidizedIntegration
+
+        self._inner = OxidizedIntegration(timeout=timeout)
+        self._base = (base or "").rstrip("/")
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    @property
+    def url(self) -> str:
+        return self._base
+
+    def is_configured(self) -> bool:
+        return bool(self._base)
+
+
+def oxidized_client(rest: str = "", timeout: float = 15.0) -> tuple:
+    """``(client, refusal)`` — the **one owner** of Oxidized's connection.
+
+    There were two keys for one fact and, underneath that, **two owners of one
+    connection**. `OxidizedIntegration` carries the URL, HTTP basic auth from
+    `oxidized_username` / `oxidized_password`, the TLS-verify toggle and a
+    retry policy; the persistence chain spoke bare `urllib` and sent **none of
+    the auth**. On an Oxidized with auth on, stages 2 and 3 would take a 401
+    and report it as a failed reload -- *a credential error, during a
+    credential rotation, about the wrong credential entirely.*
+
+    Collapsing the keys (`oxidized_rest_url` -> `oxidized_url`) fixed the name.
+    This fixes the thing the name was standing in for.
+
+    The deprecated key is **not** a gate: `oxidized_url` is what is read, and
+    the legacy key is only consulted to name the move when the surviving key
+    is empty. A guard gated on a key nothing sets always refuses, which is the
+    `clab_host` shape with the setting removed rather than blanked; this is not
+    that.
+    """
+    from modules.integrations.oxidized import OxidizedIntegration
     from modules.settings_schema import get_setting
 
     if rest:
-        return rest, None
+        return _PinnedOxidized(rest, timeout), None
 
-    base = (get_setting("oxidized_url", "") or "").rstrip("/")
-    if not base:
-        legacy = (get_setting(DEPRECATED_REST_KEY, "") or "").strip()
-        if legacy:
-            return "", {"ok": False, "error": (
-                f"{DEPRECATED_REST_KEY} is set and is no longer read. There is "
-                "one key for Oxidized's REST URL and it is 'oxidized_url' -- "
-                f"copy the value across ({legacy}) and this will run. Nothing "
-                "was adopted automatically: a settings write nobody asked for "
-                "would have hidden the rename.")}
-        return "", {"ok": False, "error": (
-            "oxidized_url is not configured -- Oxidized's REST URL, set in "
-            "Settings > Integrations. Nothing was asked; this says nothing "
-            "about the device.")}
+    client = OxidizedIntegration(timeout=timeout)
+    if client.is_configured():
+        return client, None
 
-    user = (get_setting("oxidized_username", "") or "").strip()
-    if user and "@" not in base.split("//", 1)[-1].split("/", 1)[0]:
-        return "", {"ok": False, "error": (
-            f"oxidized_username is set ({user}) and this stage cannot send "
-            "it: the persistence chain speaks urllib and only "
-            "OxidizedIntegration carries the basic-auth credentials. "
-            "Refusing rather than sending an unauthenticated request, which "
-            "Oxidized would answer 401 and this would report as a failed "
-            "reload -- a credential error, during a credential rotation, "
-            "about the wrong credential. Put the userinfo in oxidized_url, "
-            "or clear oxidized_username if the API is open.")}
+    legacy = (get_setting(DEPRECATED_REST_KEY, "") or "").strip()
+    if legacy:
+        return None, {"ok": False, "error": (
+            f"{DEPRECATED_REST_KEY} is set and is no longer read. There is "
+            "one key for Oxidized's REST URL and it is 'oxidized_url' -- "
+            f"copy the value across ({legacy}) and this will run. Nothing "
+            "was adopted automatically: a settings write nobody asked for "
+            "would have hidden the rename.")}
+    return None, {"ok": False, "error": (
+        "oxidized_url is not configured -- Oxidized's REST URL, set in "
+        "Settings > Integrations. Nothing was asked; this says nothing "
+        "about the device.")}
 
-    return base, None
+
+def _oxidized_get(client, path: str) -> tuple:
+    """``(body_text, error)``. Never raises; the client never does either."""
+    result = client._get(path)                 # noqa: SLF001 - the client's API
+    if not result.get("ok"):
+        return None, result.get("error") or "unknown error"
+    try:
+        return result["response"].text, None
+    except Exception as exc:                   # noqa: BLE001
+        return None, f"unreadable response: {exc}"
 
 
 def reload_oxidized(*, rest: str = "", timeout: float = 30.0, sleep=None,
@@ -1776,31 +1797,28 @@ def reload_oxidized(*, rest: str = "", timeout: float = 30.0, sleep=None,
     rather than of the mechanism.
     """
     import time
-    import urllib.request
 
-    rest, refusal = _oxidized_rest_base(rest)
+    client, refusal = oxidized_client(rest)
     sleep = sleep or time.sleep
     if refusal:
         return {"mechanism": "rest_reload", **refusal}
 
-    try:
-        urllib.request.urlopen(f"{rest}/reload", timeout=15).read()
-    except Exception as exc:                   # noqa: BLE001
+    _body, error = _oxidized_get(client, "reload")
+    if error:
         return {"ok": False, "mechanism": "rest_reload",
-                "error": f"GET {rest}/reload failed: {type(exc).__name__}"}
+                "error": f"GET {client.url}/reload failed: {error}"}
 
     # Serving again? A fetch queued against a reloading Oxidized goes nowhere.
     deadline = time.time() + timeout
     while True:
-        try:
-            urllib.request.urlopen(f"{rest}/nodes.json", timeout=5).read()
+        _nodes, error = _oxidized_get(client, "nodes.json")
+        if not error:
             return {"ok": True, "mechanism": "rest_reload"}
-        except Exception:                      # noqa: BLE001
-            if time.time() >= deadline:
-                return {"ok": False, "mechanism": "rest_reload",
-                        "error": f"node list not served within {timeout}s "
-                                 f"of the reload"}
-            sleep(2)
+        if time.time() >= deadline:
+            return {"ok": False, "mechanism": "rest_reload",
+                    "error": f"node list not served within {timeout}s "
+                             f"of the reload"}
+        sleep(2)
 
 
 #: Oxidized reports times as ``'2026-09-21 09:12:44 UTC'`` — measured on the
@@ -1861,22 +1879,20 @@ def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
     """
     import json
     import time
-    import urllib.request
 
-    rest, refusal = _oxidized_rest_base(rest)
+    client, refusal = oxidized_client(rest)
     if refusal:
         return refusal
     sleep = sleep or time.sleep
     want = as_utc(after_iso)
     last = {}
     for attempt in range(attempts):
-        try:
-            urllib.request.urlopen(f"{rest}/node/next/{mgmt_ip}", timeout=10).read()
-        except Exception:                      # noqa: BLE001
-            pass
+        _oxidized_get(client, f"node/next/{mgmt_ip}")
         sleep(base_delay * (2 ** attempt) / 2)
         try:
-            raw = urllib.request.urlopen(f"{rest}/nodes.json", timeout=10).read()
+            raw, error = _oxidized_get(client, "nodes.json")
+            if error:
+                raise OSError(error)
             for node in json.loads(raw):
                 if node.get("name") != mgmt_ip:
                     continue
@@ -1899,7 +1915,7 @@ def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
     # rotation went wrong, and an operator who cannot tell those apart will
     # go looking at the device instead of re-running the persist-only
     # command, which is all this needs.
-    detail = _fetch_failure_detail(rest, mgmt_ip)
+    detail = _fetch_failure_detail(client, mgmt_ip)
     return {"ok": False, "attempts": attempts, "last": last,
             "cause": detail.get("cause", ""),
             "error": detail.get("error", "no successful fetch after the "
@@ -1921,16 +1937,17 @@ _FETCH_CAUSES = {
 }
 
 
-def _fetch_failure_detail(rest: str, mgmt_ip: str) -> dict:
+def _fetch_failure_detail(client, mgmt_ip: str) -> dict:
     """Ask Oxidized why its last attempt on this device failed."""
     import json
-    import urllib.request
 
     generic = {"cause": "", "error": "no successful fetch after the rotation"}
-    if not rest:
+    if client is None:
         return generic
     try:
-        raw = urllib.request.urlopen(f"{rest}/nodes.json", timeout=10).read()
+        raw, error = _oxidized_get(client, "nodes.json")
+        if error:
+            return generic
         for node in json.loads(raw):
             if node.get("name") != mgmt_ip:
                 continue

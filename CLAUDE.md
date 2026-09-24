@@ -2983,6 +2983,42 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   the same reason, recorded in the same file — `save_golden()` was called
   there because `_captured_golden()` reads at HEAD. One store learned the
   lesson and its neighbour had not.
+- **Two keys for one fact was the name; two owners of one CONNECTION was the
+  thing.** Collapsing `oxidized_rest_url` into `oxidized_url` fixed the
+  former. `OxidizedIntegration` carries the URL, HTTP basic auth, the
+  TLS-verify toggle and a retry policy; the persistence chain spoke bare
+  `urllib` and sent **none of the auth** — so on an Oxidized with auth on,
+  stages 2 and 3 take a 401 and report it as a failed reload: *a credential
+  error, during a credential rotation, about the wrong credential entirely.*
+  `oxidized_client()` is now the one owner and the chain's three call sites go
+  through it; a test parses the module's imports to assert no second transport
+  returns. An explicit `rest=` override pins the base URL through a delegating
+  wrapper rather than becoming a second transport, so the auth still rides
+  along.
+  **The deprecated key gates nothing**: `oxidized_url` is what is read, and
+  the legacy key is consulted only to *name the move* when the surviving key
+  is empty. A guard gated on a key nothing sets always refuses — the
+  `clab_host` shape with the setting removed rather than blanked — and a test
+  pins that an empty legacy key never refuses a configured client.
+- **A test that passes alone and fails in the suite is telling you which
+  binding it is missing.** `get_setting` is bound in **three** modules — the
+  definition, `integrations/base` (for `url`), `integrations/oxidized` (for
+  `oxidized_username`) — and patching only the definition reached the chain
+  and not the client. Run alone, `integrations.base` was imported for the
+  first time *during* the patch, so its `from … import get_setting` bound the
+  **stub** and kept it; run after another file had imported it, it held the
+  real function. The `LISTS_DIR` rule, in its nastiest form: not a wrong
+  answer but an **order-dependent** one. Worse, the old tests patched
+  `urllib.request.urlopen`, which after the change intercepted nothing — so
+  they began making **real DNS calls** and passing or failing on name
+  resolution, in a suite whose rule is that no test touches a live network.
+  One `_patch_settings()` helper and one seam (`_oxidized_get`) now.
+- **A control that passes is either a missing test or a broken control** —
+  and this time it was broken. Replacing the client's cached session to drop
+  the auth changed nothing, because `OxidizedIntegration.session()` re-applies
+  `s.auth` on **every** call rather than at build time. Re-aimed at the real
+  path — the wrapper returning a bare session — it fired. The mutation has to
+  target the mechanism, not a thing that looks like it.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

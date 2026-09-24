@@ -1359,6 +1359,30 @@ class TestARefusedPushIsNotASuccessfulOne:
             assert not re.search(IOS_ERROR_PATTERN, benign), benign
 
 
+
+def _patch_settings(monkeypatch, values):
+    """Patch `get_setting` **everywhere it is bound**.
+
+    Three modules hold the name: `modules.settings_schema` (the definition),
+    `modules.integrations.base` (for `OxidizedIntegration.url`) and
+    `modules.integrations.oxidized` (for `oxidized_username`). Patching only
+    the first reaches the chain and not the client.
+
+    It bit in the worst way. Patching one binding made these tests pass **in
+    this file and fail in the suite** — alone, `modules.integrations.base` was
+    imported for the first time *during* the patch, so its `from ... import
+    get_setting` bound the stub and kept it; run after another file had
+    imported it, it held the real function. **A test whose result depends on
+    import order is telling you which binding it is missing.** Same rule as
+    `LISTS_DIR`: patch where the value is read, not only where it is defined.
+    """
+    stub = lambda k, d=None: values.get(k, d)              # noqa: E731
+    for target in ("modules.settings_schema.get_setting",
+                   "modules.integrations.base.get_setting",
+                   "modules.integrations.oxidized.get_setting"):
+        monkeypatch.setattr(target, stub)
+
+
 class TestTheChainMakesOxidizedRereadRouterDb:
     """The defect that stranded r2: writing router.db is not enough.
 
@@ -1420,8 +1444,7 @@ class TestTheChainMakesOxidizedRereadRouterDb:
         refreshes a credential on its own, so none of that is needed.
         """
         import subprocess
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: {"oxidized_url": "http://x"}.get(k, d))
+        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
 
         def _forbidden(*a, **k):
             raise AssertionError("reload_oxidized must not shell out")
@@ -1429,9 +1452,13 @@ class TestTheChainMakesOxidizedRereadRouterDb:
         monkeypatch.setattr(subprocess, "run", _forbidden)
         monkeypatch.setattr(subprocess, "Popen", _forbidden)
 
-        import urllib.request
-        monkeypatch.setattr(urllib.request, "urlopen",
-                            lambda *a, **k: type("R", (), {"read": lambda s: b"[]"})())
+        # PATCHED AT `_oxidized_get`, the chain's one door to Oxidized.
+        # These used to patch `urllib.request.urlopen`; routing the chain
+        # through OxidizedIntegration made that patch intercept nothing, so
+        # the tests started making REAL DNS calls to `http://x` and passing
+        # or failing on name resolution. A test that reaches the network is
+        # a test this suite does not have.
+        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: ("[]", None))
         assert cr.reload_oxidized()["ok"] is True
 
     def test_no_docker_command_is_reachable_from_the_module(self):
@@ -1452,28 +1479,23 @@ class TestTheChainMakesOxidizedRereadRouterDb:
 
     def test_the_reload_is_not_ok_until_the_node_list_is_served(self, monkeypatch):
         """A fetch queued against a reloading Oxidized goes nowhere."""
-        import urllib.request
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: {"oxidized_url": "http://x"}.get(k, d))
+        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
         calls = {"n": 0}
 
-        def _urlopen(url, **k):
+        def _get(_client, path):
             calls["n"] += 1
-            if "nodes.json" in str(url):
-                raise OSError("still reloading")
-            return type("R", (), {"read": lambda s: b"ok"})()
+            if "nodes.json" in path:
+                return None, "still reloading"
+            return "ok", None
 
-        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        monkeypatch.setattr(cr, "_oxidized_get", _get)
         out = cr.reload_oxidized(timeout=0.01, sleep=lambda _s: None)
         assert out["ok"] is False
         assert "node list not served" in out["error"]
 
     def test_a_failed_reload_call_is_reported_not_swallowed(self, monkeypatch):
-        import urllib.request
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: {"oxidized_url": "http://x"}.get(k, d))
-        monkeypatch.setattr(urllib.request, "urlopen",
-                            lambda *a, **k: (_ for _ in ()).throw(OSError("refused")))
+        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
+        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (None, "refused"))
         out = cr.reload_oxidized()
         assert out["ok"] is False
         assert "/reload failed" in out["error"]
@@ -1625,17 +1647,13 @@ class TestTimestampsAreTimezoneAware:
 
     def _drive(self, monkeypatch, *, end, start, expect):
         import json as _json
-        import urllib.request
 
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: {"oxidized_url": "http://x"}.get(k, d))
+        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
         payload = _json.dumps([{"name": "10.255.1.12",
-                                "last": {"status": "success", "end": end}}]).encode()
-
-        def _urlopen(url, **k):
-            return type("R", (), {"read": lambda s: payload})()
-
-        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+                                "last": {"status": "success", "end": end}}])
+        # `_oxidized_get` is the chain's one door to Oxidized; patching
+        # `urllib` intercepts nothing now and lets the test reach the network.
+        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (payload, None))
         out = cr.confirm_fetch("10.255.1.12", cr.as_utc(start), attempts=1,
                                base_delay=0, sleep=lambda _s: None)
         assert out["ok"] is expect, out
@@ -2045,12 +2063,9 @@ class TestPromptUndetectIsNamedInThePersistSummary:
 
     def _fetch(self, monkeypatch, payload):
         import json
-        import urllib.request
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: {"oxidized_url": "http://x"}.get(k, d))
-        blob = json.dumps(payload).encode()
-        monkeypatch.setattr(urllib.request, "urlopen",
-                            lambda *a, **k: type("R", (), {"read": lambda s: blob})())
+        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
+        blob = json.dumps(payload)
+        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (blob, None))
         return cr.confirm_fetch("10.255.1.21", cr.utc_now(), attempts=1,
                                 base_delay=0, sleep=lambda _s: None)
 
@@ -2248,8 +2263,9 @@ class TestPersistenceNeverReverts:
 
         stale = [{"name": "203.0.113.12",
                   "last": {"status": "success", "end": "2026-09-21 07:00:00 UTC"}}]
-        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _Resp(stale))
-        monkeypatch.setattr(cr, "_setting_rest", None, raising=False)
+        import json as _json
+        blob = _json.dumps(stale)
+        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (blob, None))
 
         out = cr.confirm_fetch("203.0.113.12", "2026-09-21 08:00:00",
                                attempts=2, base_delay=0, rest="http://x",
@@ -2599,32 +2615,67 @@ class TestThePersistenceChainFailsClosedOnAHalfDeploy:
         assert out["matches"] == 0
 
 
-class TestOneOwnerForTheOxidizedRestUrl:
-    """Two settings keys named one fact, and only one had a form.
+class TestOneOwnerForTheOxidizedConnection:
+    """Two settings keys named one fact — and underneath, **two owners of one
+    connection**.
 
-    `oxidized_url` (the integration client, Settings > Integrations) and
-    `oxidized_rest_url` (read only by the persistence chain) were both the
-    oxidized-web base URL — both fetch `nodes.json` from it. A second name for
-    one thing is the shape this project keeps removing: `ListRef`, the
-    `nmas-managed` slug, the device → lab map.
+    Collapsing `oxidized_rest_url` into `oxidized_url` fixed the name. The
+    thing the name stood in for was the transport: `OxidizedIntegration`
+    carries the URL, HTTP basic auth, the TLS-verify toggle and a retry
+    policy, and the persistence chain spoke bare `urllib` and sent **none of
+    the auth** — so on an Oxidized with auth on, stages 2 and 3 take a 401 and
+    report it as a failed reload: *a credential error, during a credential
+    rotation, about the wrong credential entirely.*
     """
 
     def _settings(self, monkeypatch, values):
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: values.get(k, d))
+        """Patch BOTH bindings.
 
-    def test_the_surviving_key_is_oxidized_url(self, monkeypatch):
+        `modules/integrations/base.py` does `from modules.settings_schema
+        import get_setting` at import time, so it holds its **own** name and
+        patching `modules.settings_schema.get_setting` does not reach
+        `OxidizedIntegration.url`. The same rule as `LISTS_DIR`: patch where
+        the value is read, not only where it is defined.
+
+        It bit in the worst way — these tests passed **alone** and failed in
+        the file, because in isolation `base` had not been imported yet and
+        the `from` ran after the patch. A test whose result depends on import
+        order is telling you which binding it is missing.
+        """
+        _patch_settings(monkeypatch, values)
+
+    def test_the_client_is_the_owner_and_reads_oxidized_url(self, monkeypatch):
         self._settings(monkeypatch, {"oxidized_url": "http://ox:8888/"})
-        base, refusal = cr._oxidized_rest_base()
+        client, refusal = cr.oxidized_client()
         assert refusal is None
-        assert base == "http://ox:8888", "the trailing slash is the client's job"
+        assert client.url == "http://ox:8888", "the trailing slash is the client's job"
+
+    def test_the_auth_the_client_holds_reaches_the_session(self, monkeypatch):
+        """**The divergence this closes.** The chain could not send these."""
+        self._settings(monkeypatch, {"oxidized_url": "http://ox:8888",
+                                     "oxidized_username": "oxi"})
+        # `oxidized.py` holds its own `get_secret` too — same binding rule.
+        monkeypatch.setattr("modules.integrations.oxidized.get_secret",
+                            lambda _k: "s3cret")
+        client, _refusal = cr.oxidized_client()
+        assert client.session().auth == ("oxi", "s3cret")
+
+    def test_nothing_in_the_chain_speaks_urllib_any_more(self):
+        """One transport, or the auth diverges again. Parsed, not grepped:
+        the module's own prose names `urllib` while explaining why."""
+        import ast
+        import inspect
+
+        tree = ast.parse(inspect.getsource(cr))
+        imported = {alias.name for node in ast.walk(tree)
+                    if isinstance(node, ast.Import) for alias in node.names}
+        imported |= {node.module for node in ast.walk(tree)
+                     if isinstance(node, ast.ImportFrom) and node.module}
+        assert not any((m or "").startswith("urllib") for m in imported), \
+            f"a second transport is back: {sorted(imported)}"
 
     def test_the_deprecated_key_is_read_by_nothing(self):
-        """Parsed, not grepped — the module names it in its own docstring.
-
-        A floor comes with it: the scan must find the surviving key being
-        read, or it is a scan that could not run reporting no offenders.
-        """
+        """Parsed, not grepped — the module names it in its own docstring."""
         import ast
 
         offenders, surviving = [], 0
@@ -2642,65 +2693,60 @@ class TestOneOwnerForTheOxidizedRestUrl:
                     offenders.append(f"{path}:{node.lineno}")
                 if key == "oxidized_url":
                     surviving += 1
-        assert surviving >= 1, ("no reader of oxidized_url was found — this "
-                                "scan cannot distinguish 'collapsed' from "
-                                "'could not run'")
-        assert offenders == [], (
-            f"oxidized_rest_url is still read at {offenders} — it is "
-            "deprecated, and a second reader is how two keys come back")
+        # THE ANCHOR MOVED WITH THE FIX, and the floor caught it. The chain no
+        # longer calls `get_setting("oxidized_url")` at all — the client does,
+        # and it declares the key rather than calling for it. So the positive
+        # anchor is that declaration; without updating it this scan would have
+        # gone on "finding no offenders" in a file that reads nothing.
+        declares = "url_key = \"oxidized_url\"" in open(
+            "modules/integrations/oxidized.py", encoding="utf-8").read()
+        assert surviving >= 1 or declares, (
+            "no reader of oxidized_url was found — this scan cannot "
+            "distinguish 'collapsed' from 'could not run'")
+        assert offenders == [], f"oxidized_rest_url is still READ at {offenders}"
+
+    def test_the_deprecated_key_is_not_a_GATE(self, monkeypatch):
+        """**A guard gated on a key nothing sets always refuses** — the
+        `clab_host` shape with the setting removed rather than blanked. The
+        legacy key is consulted only to name the move when the surviving key
+        is empty; it gates nothing."""
+        self._settings(monkeypatch, {"oxidized_url": "http://ox:8888",
+                                     "oxidized_rest_url": ""})
+        _client, refusal = cr.oxidized_client()
+        assert refusal is None, "an empty legacy key refused a configured client"
 
     def test_a_set_legacy_key_names_the_move_and_adopts_nothing(self, monkeypatch):
-        """It refuses. Copying the value across would be a settings write
-        nobody asked for, and the rename would then be invisible."""
         written = []
         monkeypatch.setattr("modules.config.set_user_setting",
                             lambda *a, **k: written.append(a))
         self._settings(monkeypatch, {"oxidized_url": "",
                                      "oxidized_rest_url": "http://old:8888"})
-        base, refusal = cr._oxidized_rest_base()
-        assert base == ""
+        client, refusal = cr.oxidized_client()
+        assert client is None
         assert "oxidized_url" in refusal["error"]
-        assert "http://old:8888" in refusal["error"], \
-            "the refusal must carry the value, or the operator has to go find it"
+        assert "http://old:8888" in refusal["error"]
         assert written == [], "nothing may be adopted silently"
 
     def test_both_empty_names_the_surviving_key_only(self, monkeypatch):
         self._settings(monkeypatch, {"oxidized_url": "", "oxidized_rest_url": ""})
-        _base, refusal = cr._oxidized_rest_base()
+        _client, refusal = cr.oxidized_client()
         assert "oxidized_url is not configured" in refusal["error"]
-        assert "oxidized_rest_url" not in refusal["error"], \
-            "a deprecated key named in a first-run refusal is advice to set it"
+        assert "oxidized_rest_url" not in refusal["error"]
 
-    def test_an_explicit_argument_still_wins(self, monkeypatch):
-        self._settings(monkeypatch, {"oxidized_url": "http://from-settings"})
-        base, refusal = cr._oxidized_rest_base("http://explicit")
-        assert (base, refusal) == ("http://explicit", None)
-
-    def test_configured_auth_this_path_cannot_send_is_a_named_refusal(
+    def test_an_explicit_argument_still_wins_and_keeps_the_session(
             self, monkeypatch):
-        """A 401 during a credential rotation reads as the wrong credential.
-
-        `OxidizedIntegration` sends basic auth; the persistence chain speaks
-        urllib and sends none. Unauthenticated against an Oxidized with auth
-        on gets a 401, reported as a failed reload — a credential error,
-        during a credential rotation, about a different credential entirely.
-        """
-        self._settings(monkeypatch, {"oxidized_url": "http://ox:8888",
+        """An override that has always existed. It pins one value — it does
+        not become a second transport, so the auth still rides along."""
+        self._settings(monkeypatch, {"oxidized_url": "http://from-settings",
                                      "oxidized_username": "oxi"})
-        base, refusal = cr._oxidized_rest_base()
-        assert base == ""
-        assert "cannot send" in refusal["error"]
-        assert "oxi" in refusal["error"]
+        monkeypatch.setattr("modules.integrations.oxidized.get_secret",
+                            lambda _k: "s")
+        client, refusal = cr.oxidized_client("http://explicit/")
+        assert refusal is None
+        assert client.url == "http://explicit"
+        assert client.session().auth == ("oxi", "s")
 
-    def test_userinfo_in_the_url_is_accepted(self, monkeypatch):
-        """urllib does send that, so refusing would be wrong."""
-        self._settings(monkeypatch, {"oxidized_url": "http://u:p@ox:8888",
-                                     "oxidized_username": "oxi"})
-        base, refusal = cr._oxidized_rest_base()
-        assert refusal is None and base == "http://u:p@ox:8888"
-
-    def test_the_refusal_reaches_the_chain_stages(self, monkeypatch):
-        """Both stages, because both had their own copy of the read."""
+    def test_the_refusal_reaches_both_chain_stages(self, monkeypatch):
         self._settings(monkeypatch, {"oxidized_url": ""})
         reload_out = cr.reload_oxidized()
         assert reload_out["ok"] is False
