@@ -2501,3 +2501,99 @@ class TestSelfConfirmationAtItsOwnSite:
         assert ":" in cr.SELF_CONFIRMED
         assert cr.SELF_CONFIRMED != cr.fingerprint_for(
             {"capture": "", "device_row": {}, "entry_kind": "x"})
+
+
+class TestThePersistenceChainFailsClosedOnAHalfDeploy:
+    """**The window between the NMAS half and the sync half.**
+
+    r6 lives in its own containerlab lab, so its startup config is at
+    `labs/r6/configs/r6.cfg` while clab-sync writes to
+    `labs/lab/configs/`. Fixing that needs a change in this repository (a
+    device -> lab map) and a change in the sync script, and the two will not
+    deploy in the same instant.
+
+    **Measured, so it is known before starting rather than discovered
+    between two commits:**
+
+    * *NMAS half first.* The resolver points the checks at
+      `labs/r6/configs/r6.cfg`, which **exists** — the operator wrote the
+      bootstrap artefact there in phase 1 — and holds `password 0`, not the
+      rotated `secret 9`. `verify_startup_file()` greps for the new hash,
+      does not find it, and the chain stops. **Fails closed.**
+    * *Sync half first.* The sync writes the right file, the checks still
+      read `labs/lab/configs/r6.cfg`, which is absent, and the chain stops.
+      A false negative — safe, and it would send somebody chasing a
+      non-problem.
+
+    **The first case is only safe because of the ORDERING**, and the
+    ordering was written for a different reason. `verify_startup_applies()`
+    on that same bootstrap file returns **`ok: True, applies: True`** — a
+    `password` form *does* apply behind vrnetlab's injected line, and the
+    device really does end up holding it. The function answers its own
+    question truthfully; the question is not *"is this device reboot-safe
+    with the credential NMAS holds"*. Presence runs first and returns early,
+    so applicability is never reached — and that is a safety property this
+    project inherited rather than designed, which is the third shape of that
+    kind found in one night.
+
+    So: pinned. Reorder these two stages, or call `startup_applies` alone,
+    and the window stops failing closed.
+    """
+
+    def _stage_order(self):
+        import inspect
+
+        import modules.nsot.credential_rotation as cr
+
+        src = inspect.getsource(cr.persist)
+        return src
+
+    def test_presence_is_checked_before_applicability(self):
+        src = self._stage_order()
+        assert src.index('"startup_file"') < src.index('"startup_applies"'), (
+            "applicability now runs first — a bootstrap file reports "
+            "`applies: True` and the half-deploy window stops failing closed")
+
+    def test_a_failed_stage_returns_rather_than_continuing(self):
+        """`if not _stage(...): return result` — the short-circuit is what
+        stops `startup_applies` being reached on a stale file."""
+        src = self._stage_order()
+        window = src[src.index('"startup_file"'):src.index('"startup_applies"')]
+        assert "return result" in window
+
+    def test_applies_says_yes_to_a_bootstrap_file(self, monkeypatch):
+        """**The reason the ordering matters**, asserted rather than
+        described: the guard passes a file carrying the credential the
+        rotation replaced."""
+        import modules.nsot.credential_rotation as cr
+        from modules.nsot.bootstrap_config import VRNETLAB_INJECTS_USER
+
+        platform = sorted(VRNETLAB_INJECTS_USER)[0]
+        monkeypatch.setattr(cr, "_ssh_read", lambda clab, cmd, **k: {
+            "ok": True,
+            "text": "hostname r6\nusername admin privilege 15 password 0 boot\n"})
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: "clabhost" if k == "clab_host" else (d or "x"))
+
+        out = cr.verify_startup_applies("r6", platform=platform,
+                                        username="admin")
+        assert out["ok"] is True and out["applies"] is True
+        assert out["kind"] == "password"
+
+    def test_and_the_presence_check_says_no_to_the_same_file(self,
+                                                             monkeypatch):
+        """The stage that actually closes the window."""
+        import modules.nsot.credential_rotation as cr
+
+        class _P:
+            returncode = 0
+            stdout = "0\n"
+            stderr = ""
+
+        monkeypatch.setattr("subprocess.run", lambda *a, **k: _P())
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: "clabhost" if k == "clab_host" else (d or "x"))
+
+        out = cr.verify_startup_file("r6", "secret 9 $9$rotated")
+        assert out["ok"] is False
+        assert out["matches"] == 0

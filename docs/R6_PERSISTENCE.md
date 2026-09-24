@@ -125,3 +125,117 @@ than to the population as it is now.
 Both instances were found by adding one member. That is the cheapest
 available test for this class, and it is what onboarding r6 was always
 going to be good for.
+
+---
+
+## 5. The sync half — it ASKS, it does not keep a copy
+
+The sync is `~/lab-configs/oxidized-to-config.sh`, `~/bin/clab-sync` and
+`clab-sync.timer`, so both halves are ours. Scoped together so neither
+ships alone.
+
+**It asks the NMAS.** A second copy of the device → lab map is how the two
+come to disagree — the rule that produced `ListRef` and the tag-slug import,
+and the reason `platform_for_device()` is the only translator. A map in the
+sync would be a second producer of the same fact, and the failure would be
+invisible: the file lands somewhere plausible and the device boots wrong
+only at the next reboot.
+
+### The endpoint
+
+`GET /clab/sync_targets` → one line per device, the simplest thing a shell
+script can consume without a JSON parser:
+
+```
+r1	labs/lab/configs	rcn-lab1
+…
+r6	labs/r6/configs	r6
+```
+
+Plus `GET /clab/sync_targets?format=json` for anything that wants the lab
+definitions whole. It reveals **paths, not secrets** — the same class as the
+posture panel's gate states, and it is a read, so it is not identity-gated.
+
+### The failure mode of asking, and the only acceptable answer to it
+
+**If the NMAS cannot be reached, the sync skips that device and says so. It
+does not fall back to a default directory.**
+
+That is the whole design. A fallback is a guess about where a config boots
+from, and a wrong guess writes a device's credentials into another lab's
+directory — the same class as `_ensure_ip_address` matching by value, and
+the same class as `PipelineContext.list_name` being re-derived. A cached
+last-good answer is a second copy wearing a different name, so there is no
+cache either.
+
+`clab-sync` therefore exits non-zero when the map is unavailable, and the
+timer unit's failure is the signal. **A sync that silently covered eight of
+ten devices is the "coverage inherited, not designed" shape one more time**,
+and it is the thing this item exists to remove.
+
+### What each piece changes
+
+| piece | change |
+|---|---|
+| `settings_schema` | `clab_labs` mapping; existing `clab_*` become the lab `default` |
+| `manifest` | `clab_lab` per device; absent ⇒ `default` |
+| `credential_rotation` | one resolver, passed to the three verifiers and to `run_sync` per lab |
+| `routes/` | `GET /clab/sync_targets` |
+| `oxidized-to-config.sh` | takes a target directory per device instead of one constant |
+| `~/bin/clab-sync` | fetches the map, iterates, **refuses on an unreachable NMAS** |
+
+---
+
+## 6. The window: what happens if one half ships first
+
+**Measured, not assumed, because the answer decides whether they must land
+together.** They do not — **both single-half windows fail closed** — but one
+of them is safe for a reason that was not designed, and that is worth more
+than the answer.
+
+### NMAS half first, sync unchanged
+
+The resolver points the checks at `labs/r6/configs/r6.cfg`. That file
+**exists** — the operator wrote the bootstrap artefact there in phase 1 —
+and holds `password 0`, not the rotated `secret 9`.
+`verify_startup_file()` greps for the new hash, does not find it, and the
+chain stops. **Fails closed.**
+
+The unchanged sync still writes `labs/lab/configs/r6.cfg`: inert, because
+rcn-lab1's topology does not reference it, but **litter that looks like a
+startup config for r6** and should be removed when the sync half lands.
+
+### Sync half first, NMAS unchanged
+
+The sync writes the right file; the checks still read
+`labs/lab/configs/r6.cfg`, which is absent, and the chain stops. A **false
+negative** — safe, and it would send somebody chasing a problem that no
+longer exists.
+
+### The partial state I identified is NOT reachable
+
+Only because the map moves all three settings **together by construction**.
+Fixing `clab_configs_dir` alone was the dangerous version, and the map makes
+that combination unrepresentable rather than merely unlikely.
+
+### But there is one, and the ordering is what stops it
+
+`verify_startup_applies()` on that same bootstrap file returns
+**`ok: True, applies: True`** — a `password` form *does* apply behind
+vrnetlab's injected line, and the device really does end up holding it. The
+function answers its own question truthfully. **Its question is not "is this
+device reboot-safe with the credential NMAS holds."**
+
+It is never reached, because `persist()` runs presence **before**
+applicability and returns on failure — an ordering written for a different
+reason entirely ("presence is not applicability", after Stage B). So the
+window fails closed on a property this chain **inherited rather than
+designed**, which is the third shape of that kind in one night.
+
+`TestThePersistenceChainFailsClosedOnAHalfDeploy` pins it: the ordering, the
+short-circuit, that `applies` really does say yes to a bootstrap file, and
+that presence really does say no to the same file. Swapping the two stages
+fails it.
+
+**So the halves may ship separately, in either order**, and the ordering
+assertion is what keeps that true.
