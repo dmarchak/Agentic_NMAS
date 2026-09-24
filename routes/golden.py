@@ -136,9 +136,25 @@ def baselines():
 
         list_name = _active_list()
         entries = list_baselines(repo)
+        # The population, read ONCE for all baselines.
+        from modules.device import load_saved_devices
+        from modules.config import get_list_data_dir
+        inventory = {d.get("hostname", "") for d in load_saved_devices(
+            os.path.join(get_list_data_dir(list_name), "devices.csv"))}
+
         for entry in entries:
             devices = devices_at(repo, entry["tag"])
             entry["device_count"] = len(devices)
+            # PARTIAL RELATIVE TO TODAY'S FLEET, named rather than left to
+            # arithmetic. The count alone made an older baseline read "9"
+            # and a newer one "10" with nothing saying the first covers less
+            # than the network does now -- visible as a number, and a number
+            # is not a statement. A device onboarded after the tag has no
+            # golden at it, so re-applying leaves that device untouched:
+            # correct, and not what "restore the network" sounds like.
+            entry["inventory_size"] = len(inventory)
+            entry["missing_devices"] = sorted(inventory - set(devices))
+            entry["partial"] = bool(entry["missing_devices"])
             # Which devices' credentials this ref predates, computed here so
             # it can be shown BESIDE the re-apply button rather than after
             # the operator has committed to the operation.

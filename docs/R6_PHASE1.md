@@ -31,6 +31,17 @@ makes "what did onboarding create" a **diff rather than a recollection**,
 which is the same argument as the NetBox-backup plan item. It is evidence,
 not an acceptance gate.
 
+**The break-glass record does NOT cover r6, and that is step 6b.**
+`nmas-breakglass export --list Default` snapshots the list **at the time it
+runs**; the existing record was exported for nine. Until it is re-exported,
+r6's credential exists in exactly one place — `devices.csv`, encrypted with
+`data/key.key`, on the NMAS. **A tenth device absent from the record is a
+device with no recovery path at all**, which is precisely the state stage B
+measured and the record was created to prevent.
+
+It must be re-exported **after** rotation, not before: the record has to
+hold the *rotated* credential, for the same reason promotion goes last.
+
 ### 0b. It joins the Default list, so baselines change meaning
 
 This is the item with a gap in it, and the gap is worth closing before the
@@ -45,11 +56,13 @@ pre-r6 baseline is **denied the tag** and says why, naming the device:
 1 device(s) were not measured against baseline/2026…: ['r6']
 ```
 
-**What the Baselines panel will show: exactly what it shows today.**
-`repo.list_baselines()` returns tag, creation date and subject — **it
-computes no coverage**. Every existing baseline will keep rendering as it
-does now. The only hint is inside the subject text of baselines created by
-an unchanged Save All:
+**What the Baselines panel will show** — corrected after reading
+`routes/golden.py` rather than only `repo.list_baselines()`, which returns
+tag, date and subject alone. The panel adds
+`entry["device_count"] = len(devices_at(repo, tag))`, so an older baseline
+renders **9** and a newer one **10**. The difference is therefore *visible
+as a number* and is **never named as partial** — and a number is not a
+statement. The subject text of baselines from an unchanged Save All says:
 
 ```
 network baseline — no changes; all 9 capture(s) verified equal to HEAD
@@ -93,10 +106,30 @@ lifecycle instead of a teardown.
 Two consequences worth stating now:
 
 * **The lab is separate, so the persistence pipeline does not know about
-  it.** `clab_configs_dir` and the redeploy tooling point at rcn-lab1; r6's
-  startup config lives beside its own topology and needs its own entry
-  before any claim that r6 survives a host reboot. **Phase 1 does not make
-  that claim.**
+  it — and that is not a footnote.** rcn-lab1's nine survive a rebuild
+  because clab-sync writes harvested configs back to their startup files.
+  r6 has no such path, so **a clab host reboot brings r6 back on its
+  BOOTSTRAP config**: `password 0`, no rotated credential, and NMAS locked
+  out of a device it manages and believes it has rotated.
+
+  **That is the stage B failure arriving by a different route** — a node
+  that boots, reports healthy, answers SSH and holds a credential nobody
+  has — and it is **live from step 6 onward**, not at some later phase.
+
+  Tonight proceeds anyway, because the exposure is bounded by the
+  break-glass record (6b) and a reboot is a deliberate act. But it gets a
+  **deadline, not an open end**, and one of these two happens:
+
+  1. **r6's lab joins the persistence sync before phase 2 begins** — the
+     preferred outcome, since phase 2 changes how the address arrives and
+     should not also be carrying an unresolved reboot hazard; or
+  2. **"What phase 1 does not establish" gains a line stating the device is
+     NOT reboot-safe**, naming clab-sync coverage as the thing that would
+     make it so — so the gap is recorded where somebody reaching for r6
+     will read it, rather than in a runbook nobody opens twice.
+
+  The second is the fallback and the first is the intent. Neither is "we
+  will get to it".
 * A future `containerlab destroy --cleanup` on rcn-lab1 must not disturb
   r6. It has its own lab name and its own veth, so it will not — but this
   is the same *"what does `--cleanup` do to a bridge node it did not
@@ -123,6 +156,27 @@ partial, and the tool should say so before that is true rather than after.
 
 **Acceptance:** a restore preview against a ref that predates a device in
 the inventory names that device, and the confirm reads *"N of M"*.
+
+**Done**, with the survey that was asked for alongside it — *how many other
+readers iterate an artefact where the inventory is the right population.*
+**Three, two now fixed:** `drift_check` (corrected in Phase 3.3),
+`restore.plan_restore()`, and the **Baselines panel**, whose `device_count`
+came from `devices_at()` with no reference to the inventory.
+
+Correct as they stand, listed so the next survey does not re-check them:
+`_baseline_earned()` reads the current inventory; `event_monitor` iterates
+the **inventory** and looks the artefact up, which is the right way round;
+`check_runner` and `pipeline_builder` build CI checks from goldens, where
+the artefact genuinely is the population — though **neither states its
+coverage**, a smaller version of the same thing; and the `next(...)` lookups
+in `routes/deploy.py` and `routes/templates.py` are single-device, not
+populations.
+
+**A fourth exists and is not fixed:** `routes/templatize.py`'s fleet
+validation report iterates goldens and drops a device with an unreadable one
+through a bare `continue`. Recorded rather than fixed blind, for when that
+panel is next touched. `ai_assistant`'s copies are Stage 8 and already
+recorded as deferred.
 
 ---
 
@@ -218,6 +272,22 @@ NetBox → promote.
 
 ---
 
+## Step 6b — re-export the break-glass record, for ten
+
+```bash
+python3 scripts/nmas-breakglass export --list Default --out /media/usb/rcn.bg
+python3 scripts/nmas-breakglass verify /media/usb/rcn.bg
+```
+
+**After rotation, before the night is called done.** The record must hold
+r6's *rotated* credential; exporting before step 6 would record the
+bootstrap one, which is worse than not recording it — a recovery path that
+produces a credential the device no longer accepts.
+
+`verify` names the devices it covers. **Expect ten.** Nine is the finding.
+
+---
+
 ## Step 7 — the first fleet baseline of ten
 
 **Save All.** Expect a single commit, ten devices, and a `baseline/<ts>`
@@ -227,14 +297,36 @@ tag whose subject names ten.
 r6 was not in the inventory when the batch was judged, and `coverage still
 governs`.
 
+### ⚠ This baseline is not a restore point FOR r6
+
+At phase 1 r6 is a router with a management address and nothing else. So
+the first baseline covering ten is **correct as a record and wrong as a
+target**: re-applying it would restore r6 to a bootstrap-shaped config —
+which is exactly what r6 looked like at that moment, and is not a state
+anybody will want to return to once phase 3 has given it `Loopback0`, OSPF
+and a position in the fabric.
+
+Nothing in the tool can know that. It is the same class as the credential
+staleness warnings on the Baselines panel — a ref that is internally
+consistent and is nonetheless the wrong thing to reach for — and it is
+recorded here for the same reason those are shown beside the button rather
+than after it.
+
+**The first baseline that is a meaningful restore point for r6 is the one
+taken after phase 3.** Until then, treat r6's entry in any baseline as *"it
+existed and had an address"*.
+
 ---
 
 ## What phase 1 does NOT establish
 
 Stated so it is not assumed later:
 
-* **that r6 survives a host reboot** — the persistence pipeline does not
-  know about its lab yet (0c);
+* **that r6 survives a host reboot.** It does not. A clab host reboot
+  brings it back on its **bootstrap config**, with `password 0` and no
+  rotated credential — recoverable only through the console and the
+  break-glass record. What would make it reboot-safe is **clab-sync
+  coverage of r6's lab**, and 0c sets the deadline for that;
 * **anything about DHCP** — the address is static, from the config. That is
   phase 2, and phase 2 exists precisely to separate *"does the device fetch
   and apply"* from *"does the relay work"*;

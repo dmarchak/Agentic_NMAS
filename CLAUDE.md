@@ -2021,6 +2021,29 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   own identity field, which is correct. Pinned with a floor and a positive
   anchor, since "no offenders" is also what a scan that could not run
   produces.
+- **The inventory is the population for a RESTORE PREVIEW, not the ref.**
+  `plan_restore()` iterated `devices_at(ref)`, so a device onboarded after
+  the tag was **absent from the preview entirely** — not an error, not a
+  skip, not named — and the summary read *"Restoring 9 of 9"* over a
+  ten-device fleet. The drift checker's *"all 9 clean"* over ten, arriving
+  again in a different reader. **The tag decision was right all along and
+  disagreed with the preview**: `_baseline_earned()` reads the current
+  inventory and refuses the tag naming the device, while the screen the
+  operator confirms from said nothing — two readers of one question, and
+  the correct one is not the one a person looks at. The denominator is now
+  the inventory, absent devices are named with what will happen to them
+  ("leave it exactly as it is"), and the ref is flagged `partial`.
+  **Surveyed for the same shape**: three instances, two now fixed
+  (`drift_check`, `plan_restore`) plus the **Baselines panel**, whose
+  `device_count` came from `devices_at()` so an old baseline read *9* and a
+  new one *10* with nothing calling the first partial — **a number is not a
+  statement**. Correct as they stand: `_baseline_earned()`,
+  `event_monitor` (iterates the inventory and looks the artefact up, the
+  right way round), and the single-device `next(...)` lookups.
+  `check_runner` / `pipeline_builder` build CI checks from goldens where the
+  artefact genuinely is the population, but state no coverage. A fourth
+  instance is recorded unfixed: `routes/templatize.py`'s fleet report drops
+  a device with an unreadable golden through a bare `continue`.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

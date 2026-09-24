@@ -61,8 +61,34 @@ def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
     wanted = set(devices) if devices else set(at_ref)
     restorable, skipped = [], []
 
+    inventory = _devices_of(list_name)
     ip_by_host = {d.get("hostname", ""): d.get("ip", "")
-                  for d in _devices_of(list_name)}
+                  for d in inventory}
+
+    # THE INVENTORY IS THE POPULATION, and this loop's is the ref.
+    #
+    # A device onboarded after *ref* has no golden there, so iterating
+    # `at_ref` alone left it **absent from the preview entirely** -- not an
+    # error, not a skip, not named -- and the summary read "Restoring 9 of
+    # 9" over a ten-device fleet. Textually the drift checker's "all 9
+    # device(s) clean" over a ten-device inventory, which this project has
+    # already corrected once.
+    #
+    # `_baseline_earned()` was right about this all along and names the
+    # device when it denies the tag; the preview the operator reads before
+    # confirming did not. The tag decision and the preview disagreed about
+    # the population.
+    if not devices:                     # a whole-baseline restore
+        for name in sorted(set(ip_by_host) - set(at_ref)):
+            skipped.append({
+                "hostname": name, "ip": ip_by_host.get(name, ""),
+                "reason": "not in this baseline",
+                "detail": (f"'{ref}' predates this device, so it holds no "
+                           "golden config for it. Restoring will leave it "
+                           "exactly as it is -- which is correct, and is "
+                           "why this baseline is a PARTIAL restore point "
+                           "for the current fleet."),
+                "not_at_ref": True})
 
     for hostname in sorted(at_ref):
         if hostname not in wanted:
@@ -90,8 +116,14 @@ def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
     return {
         "ok": True, "ref": ref, "list": list_name,
         "restorable": restorable, "skipped": skipped,
+        "inventory_size": len(ip_by_host),
+        "partial": bool([s for s in skipped if s.get("not_at_ref")]),
+        # "N of M device(s) in this list" -- M is the INVENTORY, so a number
+        # that reads as complete cannot be produced by a ref that covers
+        # only part of the fleet.
         "summary": (
-            f"Restoring {len(restorable)} of {len(restorable) + len(skipped)} device(s)."
+            f"Restoring {len(restorable)} of {len(ip_by_host)} device(s) "
+            f"in this list."
             + (f" Skipped: {', '.join(s['hostname'] for s in skipped)}."
                if skipped else "")
         ),
