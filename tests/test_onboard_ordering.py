@@ -428,6 +428,14 @@ class TestTheREALStepsSatisfyTheContract:
             hostname = "bp-onboard-c"
             list_name = "probe"
             mgmt_ip = "203.0.113.60"
+            # The bootstrap parameters `commit_step` commits as intent, so
+            # the config can be re-derived from the staged credential. A
+            # stand-in missing them fails the step rather than the test,
+            # which is the stand-in drifting from what it stands in for.
+            mgmt_mask = "255.255.255.0"
+            manager_interface = "GigabitEthernet2"
+            manager_gateway = ""
+            domain = "rcn.lab"
             platform = "cisco_iosxe"
             host_vars = {"hostname": "bp-onboard-c"}
             bootstrap_config = "hostname bp-onboard-c\n!\nend\n"

@@ -1669,6 +1669,29 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   abandon: what it would *remove*), pinned by an AST test that every call
   site supplies one — a route left on the default would give the onboarding
   message for something else, which is the defect itself.
+- **Phase 1's entire product was rendered, validated and thrown away.**
+  `render(plan)`'s return value was discarded, the create response carried no
+  config, and the bootstrap artefact appeared only on the review screen
+  **before** Create — so the one thing phase 1 exists to produce was gone the
+  moment the toast cleared, and the only way back was abandon-and-re-create,
+  which mints a new credential. **The credential was durable and the config
+  carrying it was ephemeral**, leaving the recoverable half the one you
+  cannot use. Two halves of one thing must not have different lifetimes.
+  `bootstrap_artifact()` re-derives the config from committed intent plus the
+  staged credential, so it exists **exactly while it is usable** — after
+  rotation the device holds a different credential and producing the old file
+  would hand over something that looks usable and is not. A test asserts the
+  re-render is **byte-identical** to the original.
+- **Not `intended/`, and the reason cuts both ways.** That directory is
+  committed, so writing the bootstrap config there would put the one-time
+  credential in git in the clear on a repo that may have a remote — and
+  masking it would make the file useless for its one purpose, since a node
+  cannot boot a masked password. Wrong unmasked and wrong masked, which is
+  what makes re-derivation the answer rather than a preference.
+  `GET /onboard/bootstrap/<hostname>` is a **reveal**: gated on a person and
+  recorded in `data/reveal_audit.jsonl`, like `?reveal=1` on a golden, and a
+  refusal returns no config at all because a masked bootstrap config is the
+  one thing this artefact must never be.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -60,6 +60,8 @@ _WHAT = {
                 "abandoning the wrong one would delete another list's "
                 "commit and NetBox objects"),
     "pending": ("list pending devices", "pending state is per list"),
+    "bootstrap": ("download a bootstrap config",
+                  "the config and its staged credential belong to one list"),
 }
 
 
@@ -224,6 +226,46 @@ def pending():
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: could not list pending devices")
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@bp.route("/bootstrap/<hostname>", methods=["GET"])
+def bootstrap(hostname):
+    """The config a pending device was onboarded with. **A reveal.**
+
+    It carries the one-time bootstrap credential in the clear, because a
+    node cannot boot a masked password — so this is gated and audited
+    exactly like `/golden/version/<host>?reveal=1`, and for the same reason.
+    Requires a person by default: a service credential leaking would
+    otherwise hand over the credential of every device still pending.
+
+    Re-rendered rather than stored. See `bootstrap_artifact()` for why the
+    config and the credential must share a lifetime.
+    """
+    from modules import identity as ident_mod, reveal_audit
+
+    try:
+        list_name = _target_list(request.args, "bootstrap")
+    except NoTargetList as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    ident, refusal = ident_mod.require(request, action="reveal",
+                                       operation="onboard_bootstrap")
+    if refusal is not None:
+        # A refused reveal returns no config at all — there is no masked
+        # form worth returning, since a masked bootstrap config is the one
+        # thing this artefact must never be.
+        return jsonify({**refusal, "config": ""}), 403
+
+    from modules.nsot.onboard import bootstrap_artifact
+
+    out = bootstrap_artifact(_repo_for(list_name), hostname)
+    if not out.get("ok"):
+        return jsonify(out), 404
+
+    reveal_audit.record(actor=ident.actor, kind=ident.kind,
+                        what="bootstrap_config", target=hostname,
+                        detail=f"list={list_name}", peer=ident.peer)
+    return jsonify({**out, "revealed_by": ident.actor})
 
 
 @bp.route("/verify/<hostname>", methods=["POST"])

@@ -91,6 +91,13 @@ class OnboardPlan:
     #: property of bootstrap configs.
     manager_gateway: str = ""
 
+    #: The DNS domain the bootstrap config sets. A `build_plan()` argument
+    #: the plan did not carry — which made the artefact un-re-renderable,
+    #: because a re-render defaulting to `rcn.lab` would produce a different
+    #: config from the one the node booted whenever a caller passed anything
+    #: else. Carried now, and committed with the other bootstrap parameters.
+    domain: str = "rcn.lab"
+
     #: The startup config the new node boots from. Rendered here so the
     #: review step shows what will be created, not a description of it.
     bootstrap_config: str = ""
@@ -441,6 +448,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         hostname=hostname, platform=platform, list_name=list_name,
         source_kind=source_kind, mgmt_ip=mgmt_ip, mgmt_mask=mgmt_mask,
         manager_interface=manager_interface, manager_gateway=manager_gateway,
+        domain=domain,
         bootstrap_config=config, cred_source=cred_source,
         netbox_plan=tuple(netbox_plan), host_vars=dict(host_vars or {}),
         template=template, template_approved=approved,
@@ -1069,8 +1077,38 @@ def commit_step(plan, *, actor: str) -> str:
     manifest.upsert_device(repo, identity, plan.hostname,
                            mgmt_ip=plan.mgmt_ip, platform=plan.platform,
                            pending=True)
+    # THE BOOTSTRAP PARAMETERS ARE COMMITTED AS INTENT.
+    #
+    # Phase 1's entire product is a config the operator boots the node with,
+    # and it was rendered, validated and **thrown away**: `render(plan)`'s
+    # return value was discarded, the result carried no config, and the
+    # artefact existed only on the review screen BEFORE Create. After the
+    # toast cleared there was no way to get it back except abandoning and
+    # re-creating -- which mints a new credential, so the staged one on disk
+    # would no longer match what was booted.
+    #
+    # **The durable half and the usable half must have the same lifetime.**
+    # The credential is durable and encrypted; the config carrying it was
+    # ephemeral, which left the recoverable half the one you cannot use.
+    #
+    # So the config is not stored -- it is made RE-DERIVABLE. Everything
+    # `render_bootstrap()` needs except the secret is ordinary intent and
+    # goes in committed host_vars; the secret comes from the staging file.
+    # The artefact is then available exactly while the credential is staged,
+    # which is exactly the window in which it is useful: after rotation the
+    # device has a different credential and the old config would not log in.
+    # Same lifetime by construction rather than by two stores agreeing.
+    bootstrap_intent = {
+        "address":   plan.mgmt_ip,
+        "mask":      plan.mgmt_mask,
+        "interface": plan.manager_interface,
+        "gateway":   plan.manager_gateway,
+        "domain":    plan.domain,
+        "platform":  plan.platform,
+    }
     hostvars.write_committed(repo, dict(plan.host_vars or {},
-                                        hostname=plan.hostname))
+                                        hostname=plan.hostname,
+                                        bootstrap=bootstrap_intent))
     result = save_host_vars(plan.list_name, [plan.hostname], actor=actor,
                             message=f"onboarding: {plan.hostname}",
                             source="onboarding")
@@ -1611,3 +1649,58 @@ def verify_and_promote(repo: str, hostname: str, list_name: str, *,
             _m.upsert_device(repo, identity, hostname,
                              netbox_id=out["netbox"]["device_id"])
     return out
+
+
+def bootstrap_artifact(repo: str, hostname: str) -> dict:
+    """Re-render the config a pending device was onboarded with.
+
+    **Nothing stores the config, and that is deliberate.** It is derived
+    from committed intent (address, mask, interface, gateway, domain,
+    platform) plus the staged bootstrap credential — so it exists exactly
+    while the credential does, which is exactly the window in which it is
+    useful. After rotation the device holds a different credential and the
+    old config would not log in; producing it then would be handing over
+    something that looks usable and is not.
+
+    **Why not `intended/`.** That directory is committed, so writing this
+    there would put the bootstrap credential in git in the clear, on a repo
+    that may have a remote. Masking it would make the file useless for its
+    one purpose — a node cannot boot a masked password — so `intended/` is
+    wrong in both directions, and neither is a matter of preference.
+
+    Returns ``{"ok", "config", "reason"}``.
+    """
+    from modules.nsot import hostvars
+
+    staged = staged_bootstrap_credential(repo, hostname)
+    if not staged:
+        return {"ok": False, "config": "", "reason": (
+            f"no bootstrap credential is staged for '{hostname}'. Either "
+            f"rotation completed and cleared it — in which case the device "
+            f"has a different credential and this config would no longer "
+            f"log in — or onboarding never reached the credential step.")}
+
+    committed = hostvars.read_committed(repo, hostname) or {}
+    params = committed.get("bootstrap") or {}
+    if not params.get("address"):
+        return {"ok": False, "config": "", "reason": (
+            f"'{hostname}' has no committed bootstrap parameters, so the "
+            f"config cannot be re-derived. Devices onboarded before these "
+            f"were recorded are in this state; abandon and re-create.")}
+
+    try:
+        from modules.nsot.bootstrap_config import render_bootstrap
+
+        config = render_bootstrap(
+            params.get("platform", ""), hostname=hostname, username="admin",
+            secret=staged, domain=params.get("domain", "rcn.lab"),
+            manager_interface=params.get("interface", ""),
+            manager_address=params.get("address", ""),
+            manager_mask=params.get("mask", ""),
+            manager_gateway=params.get("gateway", ""))
+    except Exception as exc:                   # noqa: BLE001
+        log.error("onboard: could not re-render bootstrap for %r: %s",
+                  hostname, exc)
+        return {"ok": False, "config": "", "reason": str(exc)}
+
+    return {"ok": True, "config": config, "reason": ""}

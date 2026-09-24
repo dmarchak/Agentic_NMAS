@@ -356,3 +356,32 @@ async function onboardAbandon(hostname, listName) {
   loadOnboardPending(list);
 }
 </script>
+
+<script>
+/* The artefact, on demand. Phase 1 rendered it and threw it away: the
+   render step's return value was discarded, the create response carried no
+   config, and it appeared only on the review screen BEFORE Create — so the
+   one thing phase 1 exists to produce was gone the moment the toast
+   cleared. Re-rendered from the staged credential rather than stored, so
+   the durable half and the usable half share a lifetime. */
+async function onboardBootstrap(hostname, listName) {
+  const list = listName || (document.getElementById('obList') || {}).value || '';
+  try {
+    const r = await fetch('/onboard/bootstrap/' + encodeURIComponent(hostname)
+                          + '?list_name=' + encodeURIComponent(list));
+    const d = await r.json();
+    if (!d.ok) { showToast(d.reason || d.error || 'No config available', 'danger'); return; }
+    /* Downloaded, not shown: it carries the bootstrap credential in the
+       clear, and a file is what the operator needs — it goes into the
+       topology directory as the node's startup config. */
+    const blob = new Blob([d.config], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = hostname + '.cfg';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+    showToast(`${hostname}.cfg downloaded — it carries the one-time `
+            + `credential, so treat it as a secret.`, 'success');
+  } catch (e) { showToast('Config download failed: ' + e, 'danger'); }
+}
+</script>

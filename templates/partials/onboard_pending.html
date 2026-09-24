@@ -65,6 +65,10 @@ function pendingBannerHtml(data) {
             onclick="onboardAbandon('${esc(r.name)}', '${esc(data.list)}')">Abandon</button>`;
     return `<li><code>${esc(r.name)}</code> at <code>${esc(r.mgmt_ip)}</code>
       — pending ${esc(age)}${flag}
+      <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+        onclick="onboardBootstrap('${esc(r.name)}', '${esc(data.list)}')"
+        title="Re-rendered from the staged credential; gone once it is rotated"
+        >Config</button>
       <button class="btn btn-sm btn-outline-primary py-0 px-1"
         onclick="onboardVerify('${esc(r.name)}', '${esc(data.list)}')">Verify now</button>${abandon}</li>`;
   }).join('');
@@ -72,6 +76,10 @@ function pendingBannerHtml(data) {
   return `<div class="alert ${tone} py-2 px-3 mb-0">
     <div class="fw-semibold mb-1">${rows.length} device(s) onboarded and not
       yet reached</div>
+    <div class="small mb-1"><strong>Config</strong> re-renders the file the
+      node boots with, from the staged credential — it is available only
+      until that credential is rotated, because after rotation the device
+      holds a different one and the old file would not log in.</div>
     <div class="small mb-1">Their management interface is
       <strong>unverified</strong> until the tool reaches them — it was
       checked for spelling, never against the device. They are deliberately

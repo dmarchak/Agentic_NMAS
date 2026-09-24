@@ -615,5 +615,117 @@ class TestARefusalNamesTheCallersOperation:
                         f"{node.name} calls _target_list without naming its "
                         f"operation, so it would use the onboarding message")
                     seen[node.name] = inner.args[1].value
-        assert seen == {"verify": "verify", "abandon": "abandon",
-                        "plan": "plan", "create": "create"}, seen
+        assert seen == {"bootstrap": "bootstrap", "verify": "verify",
+                        "abandon": "abandon", "plan": "plan",
+                        "create": "create"}, seen
+
+
+class TestTheArtefactSurvivesTheRun:
+    """**Phase 1's entire product is a config the operator boots the node
+    with, and it was rendered, validated and thrown away.**
+
+    `render(plan)`'s return value was discarded, the create response carried
+    no config, and the artefact appeared only on the review screen BEFORE
+    Create. Once the toast cleared the only way back was abandon-and-
+    re-create — which mints a new credential, so the staged one on disk
+    would no longer match what was booted.
+
+    That is the sharp form: **the credential was durable and the config
+    carrying it was ephemeral**, leaving the recoverable half the one you
+    cannot use. They must share a lifetime, and here they do by construction
+    — the config is re-derived from the staged credential rather than
+    stored, so it exists exactly while it is usable.
+    """
+
+    def _onboard(self, repo, secret="OneTimeBootstrapValue1"):
+        from modules.nsot import hostvars
+        from modules.nsot.onboard import stage_bootstrap_credential
+
+        stage_bootstrap_credential(repo, "bp1", secret)
+        hostvars.write_committed(repo, {
+            "hostname": "bp1",
+            "bootstrap": {"address": "203.0.113.31", "mask": "255.255.255.0",
+                          "interface": "GigabitEthernet2", "gateway": "",
+                          "domain": "rcn.lab", "platform": "cisco_iosxe"}})
+        return secret
+
+    def test_it_is_re_renderable_after_the_run(self, repo):
+        from modules.nsot.onboard import bootstrap_artifact
+
+        secret = self._onboard(repo)
+        out = bootstrap_artifact(repo, "bp1")
+        assert out["ok"] is True, out
+        assert "interface GigabitEthernet2" in out["config"]
+        assert "ip address 203.0.113.31 255.255.255.0" in out["config"]
+        assert secret in out["config"], (
+            "the re-render must carry the credential the node booted with")
+
+    def test_it_is_byte_identical_to_what_was_rendered(self, repo):
+        """Re-derived, not approximated. A config that differs by a line
+        from the one the node booted is worse than none."""
+        from modules.nsot.bootstrap_config import render_bootstrap
+        from modules.nsot.onboard import bootstrap_artifact
+
+        secret = self._onboard(repo)
+        original = render_bootstrap(
+            "cisco_iosxe", hostname="bp1", username="admin", secret=secret,
+            domain="rcn.lab", manager_interface="GigabitEthernet2",
+            manager_address="203.0.113.31", manager_mask="255.255.255.0")
+        assert bootstrap_artifact(repo, "bp1")["config"] == original
+
+    def test_it_is_gone_once_the_credential_is_rotated(self, repo):
+        """**The lifetimes are the same by construction.** After rotation
+        the device holds a different credential and the old config would not
+        log in; producing it then would hand over something that looks
+        usable and is not."""
+        from modules.nsot.onboard import (bootstrap_artifact,
+                                          clear_bootstrap_credential)
+
+        self._onboard(repo)
+        clear_bootstrap_credential(repo, "bp1")
+        out = bootstrap_artifact(repo, "bp1")
+        assert out["ok"] is False
+        assert "would no longer log in" in out["reason"]
+
+    def test_a_device_without_committed_parameters_says_so(self, repo):
+        """Devices onboarded before the parameters were committed cannot be
+        re-derived, and the refusal says what to do rather than failing
+        obscurely."""
+        from modules.nsot.onboard import (bootstrap_artifact,
+                                          stage_bootstrap_credential)
+
+        stage_bootstrap_credential(repo, "bp1", "OneTimeBootstrapValue1")
+        out = bootstrap_artifact(repo, "bp1")
+        assert out["ok"] is False
+        assert "abandon and re-create" in out["reason"]
+
+    def test_the_config_is_never_written_to_intended(self, repo):
+        """`intended/` is committed, so writing it there would put the
+        bootstrap credential in git in the clear on a repo that may have a
+        remote — and masking it would make the file useless for its one
+        purpose, since a node cannot boot a masked password. Wrong in both
+        directions."""
+        import os
+
+        from modules.nsot.onboard import bootstrap_artifact
+
+        self._onboard(repo)
+        bootstrap_artifact(repo, "bp1")
+        intended = os.path.join(repo, "intended")
+        listing = os.listdir(intended) if os.path.isdir(intended) else []
+        assert not [f for f in listing if "bp1" in f], listing
+
+    def test_the_route_requires_a_person_and_audits(self):
+        """It hands over a credential in the clear, so it is a reveal and is
+        gated like one."""
+        import ast
+        import inspect
+
+        import routes.onboard as mod
+
+        src = inspect.getsource(mod.bootstrap)
+        tree = ast.parse(inspect.cleandoc(src).replace("@bp.route", "#"))
+        names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        assert "require" in names, "not gated"
+        assert "record" in names, "a reveal that is not audited"
+        assert '"reveal"' in src or "'reveal'" in src
