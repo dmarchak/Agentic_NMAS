@@ -2257,6 +2257,29 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   and **omitted from the text form**, so the sanitizer cannot receive a
   device it has no rules for; the shell's `*)` branch must **refuse**, not
   pick a kind. Columns are appended and never reordered.
+- **A running config is not a startup config, and a golden IS a captured
+  running config.** The clab sanitizer is not cleaning up Oxidized's
+  quirks — it compensates for two facts about running configs in general:
+  **`no shutdown` re-injection** (a running config records `shutdown` on a
+  down interface and **nothing** on an up one, so any harvested config
+  brings every addressed interface back admin-down — a full rebuild on
+  2026-08-30) and **`crypto key generate rsa`** for switches. A golden has
+  both blind spots identically, so sourcing startup files from goldens
+  changes only *which capture gets sanitised*.
+  **The real risk is freshness, not source**: Oxidized's copy may be newer
+  than the approved one, so a redeploy can bake in a change nobody
+  approved. That makes the work a **comparison, not a migration** — of
+  **content**, with time as context, since Oxidized polls and is newer most
+  of the time. `roundtrip.configs_equivalent()` is the comparator, the same
+  one a restore baseline uses. It belongs in **both** places: a pre-write
+  gate in the sanitizer (the last moment before an unapproved state becomes
+  durable — with an explicit authorisation path, or it gets disabled like
+  the drift checker) **and** a Monitoring signal (a report, whose value is
+  discovering divergence while the person who caused it still remembers).
+  Recorded with how I got it wrong: I reasoned from *"the source of truth
+  should be the source"* without reading the script, one turn after saying I
+  had not read it — **every piece of evidence from one artifact, the
+  conclusion about another**, which is the Stage 2 tell verbatim.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

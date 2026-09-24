@@ -9442,3 +9442,77 @@ r6 must read **NOT SAFE** now and go green **only** once its startup file
 carries `secret 9`. One test, two purposes, which is what makes it worth
 having: `test_a_bootstrap_file_reads_NOT_SAFE_even_though_it_applies` and
 `test_and_goes_green_once_the_file_carries_secret_9`.
+
+## A running config is not a startup config — and I reasoned past the reason
+
+**Proposed:** build startup files from goldens rather than from Oxidized, so
+a redeploy restores the approved state.
+
+**Wrong, and the sanitizer's own header says why.** It is not cleaning up
+Oxidized's quirks. It compensates for two facts about **running configs in
+general**:
+
+1. **`no shutdown` re-injection** — a running config records `shutdown` on a
+   down interface and **nothing** on an up one, so any harvested config
+   brings every addressed interface back admin-down. That cost a full
+   rebuild on 2026-08-30.
+2. **`crypto key generate rsa` re-issued for switches** — the RSA key is not
+   in a running config either.
+
+**A golden IS a captured running config**, so it has both blind spots
+identically. Swapping the source changes only *which capture gets
+sanitised*.
+
+### The corrected risk
+
+Not *"Oxidized is the wrong store"* but **"its copy may be newer than the
+approved one"**, so a redeploy can bake in a change nobody approved. **A
+freshness question, not a source question** — which makes the work a
+**comparison rather than a migration**, and leaves the sanitizer's two
+compensations exactly where they belong.
+
+### How I got there, since the shape recurs
+
+I reasoned from *"the source of truth should be the source"* — a principle
+this project does hold — without reading the thing that would have said it
+does not apply. **And I had said one turn earlier that I had not read the
+script**, then produced a full assessment of it anyway.
+
+The tell was available and is the Stage 2 one verbatim: **every piece of
+evidence came from one artifact and the conclusion was about another.** An
+assessment whose central claim is about a shell script, built entirely from
+this repository.
+
+What the reading cost to obtain: one paste. What the wrong version would
+have cost: a migration that reintroduces the 2026-08-30 rebuild.
+
+### What the comparison is, precisely
+
+**Content, with time as context.** *"Newer"* alone fires constantly and
+means nothing — Oxidized polls, so its copy is newer than the golden most of
+the time, including right after an approved save. The finding is that the
+**content differs**; the timestamp then says which way, and only
+*differs + Oxidized newer* is *"a change nobody approved"*.
+
+`roundtrip.configs_equivalent()` is the comparator — section-aware over
+`strip_for_diff`, the same function a restore baseline is measured with,
+which is the right precedent: both ask *"is this device's state the approved
+one"*.
+
+### Where it belongs: both, and they are not the same check
+
+* **The sanitizer's pre-write gate** is the one that matters — the last
+  moment before an unapproved state becomes **durable**. It must refuse per
+  device and name what differs. **And it needs an explicit authorisation
+  path**, because the legitimate case is real (an approved change whose
+  golden is not saved yet) and a gate with no way through teaches operators
+  to disable it — which is how the drift checker came to be off for 24 days.
+  `authorise_retry()` is the precedent.
+* **The Monitoring signal** answers *"is the fleet diverging"* continuously.
+  A report, not a gate. Its value is **timing**: the gate discovers
+  divergence when somebody is already preparing a redeploy; the signal
+  discovers it when the person who caused it still remembers what they did.
+
+Neither alone: gate-only leaves divergence invisible until a sync, and
+signal-only would have shown the s1/s2 VLAN loss **and still let the
+redeploy persist it**.
