@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Ask the NMAS where each device's startup config belongs.
+
+For `~/bin/clab-sync` and `~/lab-configs/oxidized-to-config.sh` to call
+instead of holding a device -> lab map of their own. **A second copy is how
+the two come to disagree**, and here the disagreement is invisible until a
+reboot: the file lands somewhere plausible either way, and the device comes
+back on whatever that directory held.
+
+    nmas-clab-targets --url http://10.0.0.211:5000
+    nmas-clab-targets --url ... --device r6          # one line, or exit 3
+    nmas-clab-targets --url ... --stray ~/labs/lab/configs
+
+## The failure mode of asking, and the only acceptable answer to it
+
+**If the NMAS cannot be reached, this exits non-zero and prints nothing
+usable. It never falls back to a default directory and it never caches.**
+
+A fallback is a guess about where a config boots from, and a wrong guess
+writes one device's credentials into another lab's directory. A cache is a
+second copy wearing a different name. So the caller's correct behaviour is
+to stop -- a sync that silently covered eight of ten devices is exactly the
+"coverage inherited, not designed" shape this whole change exists to remove,
+and the timer unit's failure is the signal that it happened.
+
+## --stray
+
+Lists `.cfg` files in a lab directory whose device the map places somewhere
+else. The known case is `labs/lab/configs/r6.cfg`, written by the sync
+before it learned about r6's lab: inert, because rcn-lab1's topology does
+not reference it, and **a file that looks like a thing it is not is how the
+next person forms a wrong belief**. Reported as a measured list rather than
+one remembered filename, because the next one will not be remembered.
+"""
+
+import argparse
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+#: Honest, and accepted by the integrity check that rejects `Python-urllib`.
+_UA = "nmas-automation/1.0"
+
+EXIT_OK, EXIT_UNREACHABLE, EXIT_NOT_FOUND = 0, 2, 3
+
+
+def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
+    """``[(hostname, configs_dir, lab)]``. Raises on anything else."""
+    endpoint = url.rstrip("/") + "/clab/sync_targets"
+    if list_name:
+        endpoint += "?list=" + urllib.parse.quote(list_name)
+    req = urllib.request.Request(endpoint, headers={"User-Agent": _UA})
+    for name in ("CF-Access-Client-Id", "CF-Access-Client-Secret"):
+        value = os.environ.get(name.upper().replace("-", "_"))
+        if value:
+            req.add_header(name, value)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = resp.read().decode("utf-8", "replace")
+
+    rows, problems = [], []
+    for line in body.splitlines():
+        if line.startswith("# INCOMPLETE"):
+            problems.append(line[2:])
+            continue
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            rows.append((parts[0], parts[1], parts[2]))
+    if problems:
+        # Printed, never silently dropped: a device the NMAS could not place
+        # is a device nobody should write.
+        for p in problems:
+            print(p, file=sys.stderr)
+    return rows
+
+
+def strays(directory: str, rows: list) -> list:
+    """`.cfg` files here whose device the map puts in another lab."""
+    elsewhere = {h: d for h, d, _lab in rows}
+    here = os.path.abspath(os.path.expanduser(directory))
+    out = []
+    for name in sorted(os.listdir(here)):
+        if not name.endswith(".cfg"):
+            continue
+        host = name[:-4]
+        want = elsewhere.get(host)
+        if want and os.path.abspath(os.path.expanduser(want)) != here:
+            out.append((os.path.join(here, name), want))
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--url", required=True, help="the NMAS base URL")
+    ap.add_argument("--list", default="", help="device list (default: current)")
+    ap.add_argument("--device", default="", help="print one device's target")
+    ap.add_argument("--stray", default="",
+                    help="list .cfg files here that belong to another lab")
+    args = ap.parse_args()
+
+    try:
+        rows = fetch(args.url, args.list)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        print(f"REFUSED — the NMAS could not be asked where configs belong: "
+              f"{exc}", file=sys.stderr)
+        print("Not falling back to a default directory: a guess about where a "
+              "config boots from writes one device's credentials into another "
+              "lab.", file=sys.stderr)
+        return EXIT_UNREACHABLE
+
+    if not rows:
+        print("REFUSED — the map is empty. That is a fact about the answer, "
+              "not about the fleet.", file=sys.stderr)
+        return EXIT_UNREACHABLE
+
+    if args.stray:
+        found = strays(args.stray, rows)
+        if not found:
+            print(f"no stray configs in {args.stray} "
+                  f"(checked against {len(rows)} mapped device(s))")
+            return EXIT_OK
+        print(f"{len(found)} file(s) in {args.stray} belong to another lab:")
+        for path, want in found:
+            print(f"  {path}   -> belongs in {want}")
+        return EXIT_NOT_FOUND
+
+    if args.device:
+        for host, cfg, lab in rows:
+            if host == args.device:
+                print(f"{host}\t{cfg}\t{lab}")
+                return EXIT_OK
+        print(f"no target for {args.device!r} in the map", file=sys.stderr)
+        return EXIT_NOT_FOUND
+
+    for host, cfg, lab in rows:
+        print(f"{host}\t{cfg}\t{lab}")
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

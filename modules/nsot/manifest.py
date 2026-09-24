@@ -115,7 +115,7 @@ PENDING_STALE_SECONDS = 7 * 24 * 3600
 
 def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
                   netbox_id=None, platform: str = "", golden: str = "",
-                  pending: bool = False) -> dict:
+                  pending: bool = False, clab_lab: str = "") -> dict:
     """Record or update a device. Returns its manifest entry.
 
     *pending* marks a device **onboarded but never reached**: it stamps
@@ -142,6 +142,13 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
             "platform":  platform or entry.get("platform", ""),
             "golden":    golden or entry.get("golden", f"golden/{name}.cfg"),
         })
+        # WRITTEN ONLY WHEN SUPPLIED, so the nine devices that predate the
+        # setting keep no key at all and resolve to the lab named `default`.
+        # An absent value is "the default lab", not "unknown" -- a device
+        # whose lab nobody has stated is in the one everything was in before
+        # labs were a concept.
+        if clab_lab:
+            entry["clab_lab"] = clab_lab
         # Deliberately no "last_seen" here. The manifest is version-controlled,
         # so a timestamp touched on every call would produce a one-line diff on
         # every refresh and make the migration non-idempotent. Freshness is

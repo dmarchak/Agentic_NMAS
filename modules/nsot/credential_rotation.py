@@ -1880,6 +1880,115 @@ def _fetch_failure_detail(rest: str, mgmt_ip: str) -> dict:
     return generic
 
 
+#: The lab a device is in when its manifest says nothing. Every device
+#: predating `clab_labs` is in it, which is why an absent value means this
+#: rather than "unknown".
+DEFAULT_LAB = "default"
+
+
+def clab_target_for(list_name: str, hostname: str) -> dict:
+    """Where this device's startup config lives, and what boots it.
+
+    **All four values together, from one resolver.** `platform_for_device()`
+    is the precedent and the reason: a second copy of a mapping is how the
+    two come to disagree. Here the cost of disagreement is specific --
+    resolving `configs_dir` for one lab and `launch_patch` for another makes
+    `verify_startup_applies()` read a launch script that is not the one in
+    play **and pass**, which is the hazard that check exists to prevent.
+
+    Returns `host`, `configs_dir`, `launch_patch`, `sync_script` and the
+    `lab` **name**, because a verdict about a remote file that does not say
+    which lab it came from is a verdict nobody can check.
+    """
+    from modules.settings_schema import get_setting
+
+    defaults = {
+        "host":         get_setting("clab_host", ""),
+        "configs_dir":  get_setting("clab_configs_dir", "labs/lab/configs"),
+        "launch_patch": get_setting("clab_launch_patch",
+                                    "labs/lab/patches/c8000v-launch.py"),
+        "sync_script":  get_setting("clab_sync_script", ""),
+    }
+    labs = get_setting("clab_labs", {}) or {}
+    name = _lab_of(list_name, hostname)
+    if name == DEFAULT_LAB or name not in labs:
+        return {**defaults, "lab": DEFAULT_LAB,
+                "named": name in labs or name == DEFAULT_LAB}
+
+    lab = labs[name] or {}
+    # The host falls back: one containerlab VM, several labs on it. The three
+    # PATHS do not -- a lab that names no configs_dir is a lab nobody has
+    # described, and inheriting the default one is exactly the wrong answer.
+    return {
+        "host":         lab.get("host") or defaults["host"],
+        "configs_dir":  lab.get("configs_dir", ""),
+        "launch_patch": lab.get("launch_patch", ""),
+        "sync_script":  lab.get("sync_script") or defaults["sync_script"],
+        "lab":          name,
+        "named":        True,
+    }
+
+
+def _lab_of(list_name: str, hostname: str) -> str:
+    """The manifest's `clab_lab` for this device, or the default lab."""
+    try:
+        import os
+
+        from modules.config import get_list_data_dir
+        from modules.nsot import manifest as _manifest
+
+        repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+        for entry in _manifest.load(repo)["devices"].values():
+            if (entry.get("name") or "").lower() == (hostname or "").lower():
+                return entry.get("clab_lab") or DEFAULT_LAB
+    except Exception as exc:                   # noqa: BLE001
+        log.debug("clab lab lookup failed for %r: %s", hostname, exc)
+    return DEFAULT_LAB
+
+
+def sync_targets(list_name: str) -> dict:
+    """Every device in this list with the lab that boots it.
+
+    What `GET /clab/sync_targets` serves and what `nmas-clab-targets`
+    prints. **One producer**: the sync asks rather than keeping a copy,
+    because a second copy of this map is how the two come to disagree, and
+    the disagreement is invisible until a reboot.
+    """
+    import os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot import manifest as _manifest
+
+    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+    rows, incomplete = [], []
+    try:
+        devices = _manifest.load(repo)["devices"]
+    except Exception as exc:                   # noqa: BLE001
+        return {"ok": False, "error": f"manifest unreadable: {exc}"}
+
+    for entry in devices.values():
+        name = entry.get("name") or ""
+        if not name:
+            continue
+        target = clab_target_for(list_name, name)
+        row = {"hostname": name, "lab": target["lab"],
+               "configs_dir": target["configs_dir"],
+               "launch_patch": target["launch_patch"]}
+        # A device whose lab is named and undescribed is REPORTED, never
+        # defaulted: writing its config into another lab's directory is the
+        # failure this whole map exists to prevent.
+        gaps = [k for k in ("configs_dir", "launch_patch") if not target[k]]
+        if gaps:
+            row["error"] = (f"lab {target['lab']!r} names no "
+                            f"{' and no '.join(gaps)}, so there is nowhere "
+                            "safe to write or verify this device")
+            incomplete.append(name)
+        rows.append(row)
+
+    return {"ok": True, "list": list_name, "targets": sorted(
+        rows, key=lambda r: r["hostname"]), "incomplete": sorted(incomplete)}
+
+
 def run_sync(script: str = "") -> dict:
     """Run the startup-config sync. No privilege: same user, flock inside."""
     import subprocess
@@ -2159,6 +2268,35 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
                                                       "rest", "sleep")
                                    if k in kw})):
         return result
+    # RESOLVED ONCE, and passed to every stage below. Reading the settings
+    # separately in each is how `configs_dir` and `launch_patch` come to
+    # describe different labs, which is the combination that makes the
+    # applicability check verify a file that is not in play.
+    target = clab_target_for(kw.get("list_name", ""), hostname)
+    # BOTH PATHS, and the second is the one a control caught. `configs_dir`
+    # empty is obvious. `launch_patch` empty is NOT: the resolver returns ""
+    # deliberately for a lab that names none, and
+    # `verify_startup_applies(launch_patch="")` falls back to the SETTING --
+    # so passing the empty string through would read the default lab's patch
+    # for a device booting its own, which is precisely the state this map
+    # exists to make unrepresentable. An empty value must be refused here,
+    # not forwarded.
+    missing = [k for k in ("configs_dir", "launch_patch") if not target[k]]
+    if missing:
+        result["reason"] = (
+            f"lab {target['lab']!r} names no {' and no '.join(missing)} for "
+            f"{hostname}. Refusing rather than falling back to the default "
+            "lab's paths: a launch patch from another lab would be read, "
+            "found to carry the user-skip, and the check would pass about a "
+            "file that is not the one booting this device.")
+        _stage("clab_target", False)
+        return result
+    kw.setdefault("clab", target["host"])
+    kw.setdefault("remote_dir", target["configs_dir"])
+    kw.setdefault("launch_patch", target["launch_patch"])
+    kw.setdefault("script", target["sync_script"])
+    result["clab_lab"] = target["lab"]
+
     if not _stage("clab_sync",
                   run_sync(**{k: kw[k] for k in ("script",) if k in kw})):
         return result
@@ -2167,8 +2305,25 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
                                       **{k: kw[k] for k in ("clab", "remote_dir")
                                          if k in kw})):
         return result
-    # Presence is not applicability. Stage B measured five routers whose files
-    # contained the right hash and would not have applied one of them.
+    # PRESENCE IS NOT APPLICABILITY, and the order is now load-bearing for a
+    # second reason it was not written for.
+    #
+    # Originally: Stage B measured five routers whose files contained the
+    # right hash and would not have applied one of them.
+    #
+    # Since the device -> lab map: `verify_startup_applies()` answers
+    # **truthfully** and answers a **different question**. Given a bootstrap
+    # file it returns `ok: True, applies: True` -- a `password 0` form
+    # genuinely does apply behind vrnetlab's injected line, and the device
+    # really does end up holding it. Its question is *"will this file put the
+    # device in the state it describes"*, which is not *"is this device
+    # reboot-safe with the credential NMAS holds"*.
+    #
+    # So presence has to run FIRST and return on failure: during the window
+    # where this half is deployed and the sync half is not, r6's file exists
+    # and is the bootstrap one, and only the hash check says no.
+    # **Reordering these two for efficiency reopens that window.**
+    # `TestThePersistenceChainFailsClosedOnAHalfDeploy` fails if you do.
     if not _stage("startup_applies",
                   verify_startup_applies(hostname, platform=platform,
                                          username=username,

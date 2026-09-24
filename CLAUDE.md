@@ -2165,6 +2165,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   window never reaches it. Swap the two stages and a half-deployed r6 stops
   failing closed; `TestThePersistenceChainFailsClosedOnAHalfDeploy` pins the
   order, the short-circuit, and both verdicts on the same file.
+- **`clab_labs` + `manifest.clab_lab` + `clab_target_for()`: one resolver,
+  all four values together.** The four `clab_*` settings **are** the lab
+  named `default`, and an absent `clab_lab` means that lab — so every device
+  predating the map is unchanged with no edit. The paths do **not** inherit:
+  a lab naming no `configs_dir` or no `launch_patch` is refused by
+  `persist()` before the sync runs, because
+  `verify_startup_applies(launch_patch="")` falls back to the *setting* and
+  would read another lab's patch for a device booting its own — **the exact
+  state the map exists to prevent, reachable through the map itself**. Found
+  by a control that passed, which is the third time in one night that a
+  passing control was a missing test rather than a broken one. The sync
+  **asks** (`GET /clab/sync_targets`, `scripts/nmas-clab-targets`) and never
+  copies: no cache, and an unreachable NMAS **refuses** rather than falling
+  back to a directory, because a guess about where a config boots from
+  writes one device's credentials into another lab.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

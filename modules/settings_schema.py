@@ -303,6 +303,21 @@ DEFAULTS: dict = {
     # the user-skip that lets a `secret` line in a startup file apply.
     "clab_launch_patch":    "labs/lab/patches/c8000v-launch.py",
 
+    #: Containerlab labs by name. **The four keys above define the lab named
+    #: `default`**, so an install that has never heard of this key behaves
+    #: exactly as it does today -- the rule that every new default
+    #: reproduces the behaviour that predates the setting, which this one
+    #: can honour.
+    #:
+    #: A device onboarded into its own lab (Phase 1 established that as the
+    #: pattern, not an exception) names its lab in the manifest, and
+    #: `credential_rotation.clab_target_for()` resolves all four values
+    #: **together**. They must move together: `clab_configs_dir` alone was
+    #: the dangerous fix, because `verify_startup_applies()` would then read
+    #: rcn-lab1's launch patch for a device booting its own -- verifying a
+    #: file that is not the one in play, and passing.
+    "clab_labs":            {},
+
     # ── S3-compatible archive ───────────────────────────────────────────────
     "s3_endpoint":   "",
     "s3_bucket":     "",
@@ -505,6 +520,7 @@ SCHEMA: dict = {
         "clab_host": _STR,
         "clab_configs_dir": _STR,
         "clab_launch_patch": _STR,
+        "clab_labs": {"type": "object"},
 
         "s3_endpoint": _STR,
         "s3_bucket": _STR,

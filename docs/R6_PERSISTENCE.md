@@ -239,3 +239,69 @@ fails it.
 
 **So the halves may ship separately, in either order**, and the ordering
 assertion is what keeps that true.
+
+---
+
+## 7. Built — what landed, and the gap a passing control found
+
+### NMAS half
+
+| piece | what it does |
+|---|---|
+| `settings_schema.clab_labs` | labs by name; the four `clab_*` keys **are** the lab `default`, so an install that never heard of this key is unchanged |
+| `manifest.upsert_device(clab_lab=…)` | written **only when supplied**, so the nine keep no key and resolve to `default` |
+| `credential_rotation.clab_target_for()` | the one resolver — host, configs_dir, launch_patch, sync_script **and the lab name** |
+| `credential_rotation.sync_targets()` | the whole map, with undescribed labs reported rather than defaulted |
+| `persist()` | resolves **once**, refuses on a missing path, passes the target to all three stages |
+| `GET /clab/sync_targets` | `hostname⇥configs_dir⇥lab`, or `?format=json` |
+
+### Sync half
+
+`scripts/nmas-clab-targets`, for `~/bin/clab-sync` and
+`oxidized-to-config.sh` to call. It **asks and never copies**: no cache, no
+file, and an unreachable NMAS **exits 2 with nothing usable on stdout**
+rather than falling back to a directory. `--device r6` for the single
+lookup, `--stray ~/labs/lab/configs` for the litter.
+
+### The comment at the ordering site
+
+`persist()` now says *why* presence must run before applicability, in those
+terms: `verify_startup_applies()` answers truthfully and answers a different
+question, so reordering the two for efficiency reopens the half-deploy
+window. `TestThePersistenceChainFailsClosedOnAHalfDeploy` fails if you do.
+
+### The litter
+
+`--stray` lists `.cfg` files in a lab directory whose device the map places
+elsewhere — `labs/lab/configs/r6.cfg` being the known one. **As a measured
+list rather than a remembered filename**, because the next one will not be
+remembered. Run it when the sync half lands, delete what it names.
+
+### A control passed, and that was the finding
+
+Making `launch_patch` fall back to the default lab left **every test
+green** — because the fixture's r6 lab defines both paths, so the fallback
+never fired.
+
+The case it hides is a lab that names `configs_dir` and **omits**
+`launch_patch`: the resolver returns `""`, and
+`verify_startup_applies(launch_patch="")` **falls back to the setting**. So
+the empty string would have read rcn-lab1's patch for a device booting its
+own — **the exact state this map was built to make unrepresentable,
+reachable through the map itself.**
+
+`persist()` now refuses on **either** missing path, and the refusal says
+what would otherwise have happened. Third time tonight that a passing
+control found a real gap rather than a broken control.
+
+## 8. Acceptance — unchanged, and now runnable
+
+1. After a rotation, `labs/r6/configs/r6.cfg` carries `secret 9` and **not**
+   `password 0`, **read from the file**.
+2. `verify_startup_applies("r6")` passes **against r6's own patch** and
+   **names the file it read** — it returns
+   `launch_patch: "<host>:labs/r6/patches/c8000v-launch-adopted.py@<sha12>"`.
+3. **The control**: point r6's lab at the default patch and (2) must fail. A
+   guard that passes for a device in either lab is checking nothing.
+4. `nmas-clab-targets --stray ~/labs/lab/configs` reports nothing.
+5. Redeploy checklist item 4.5 applies to r6 on the next reboot.
