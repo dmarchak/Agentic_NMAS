@@ -378,33 +378,112 @@ during the first run of a path that has never run.
 
 ---
 
-## 3. The order
+## 3. The order — C′, as agreed
 
-### Common to both options
+### One plan or two, and which way round
 
-| # | step | why here |
+**Two plans, two confirms, r6 first.** The instinct is right and the reason is
+sharper than the one it was offered with.
+
+*"r6's loopback must exist before s3 points a static at it"* is not
+mechanically true: `ip route 10.255.1.16 255.255.255.255 10.255.0.32` installs
+as soon as its **next hop** resolves, and `10.255.0.32` is on s3's connected
+`Vlan99` and live today. The destination need not exist.
+
+The real reason is worse than a prerequisite. **s3-first makes step 7's
+acceptance pass vacuously**: s3 installs the static, redistributes it, and r1
+learns `10.255.1.16` as an E2 — pointing at an address nothing answers. The
+criterion *"r1 learns 10.255.1.16, nobody touched r1"* would be **satisfied by
+a route to nowhere**, with traffic reaching r6 and being dropped. So r6-first
+is not a convenience; it is what stops the acceptance being a wrong thing that
+looks like a working thing.
+
+**Two plans rather than one batch**, for three reasons:
+
+1. **The confirm hash covers the whole program.** One plan means r6's half
+   changing between plan and apply refuses s3's confirmed line too — coupling
+   two independent changes so that either one's failure is the other's.
+2. **s3 is the manager's only gateway.** Its one line deserves its own
+   confirm, read on its own, not under a summary that also covers r6.
+3. **The intent commits must match the deploy boundary.**
+   `.nsot/rolled_back.json` keys on the device's *current intent commit*, and
+   "Revert intent" applies the inverse of **that commit's own diff**. A shared
+   commit would mean reverting r6's rollback also reverts s3's change.
+
+So the boundary is the same all the way down: **one device → one intent commit
+→ one plan → one confirm → one deploy → one golden commit.**
+
+**Predicted, so it is not read as a failure:** neither deploy earns a
+`baseline/` tag. Coverage governs, and a batch targeting one device out of ten
+is denied the tag with the other nine named. That is correct behaviour.
+
+---
+
+### 0. Before anything is changed
+
+| # | step | why |
 |---|---|---|
-| 1 | **Freshness + Save All.** Run `oxidized-to-config.sh --no-deploy`; require the gate's **10 of 10 approved**. Then Save All. | the pre-change comparison point, and the gate says the fleet is at its approved state *before* anything moves |
-| 2 | **Seed r6's intent from its capture** — `POST /templatize/extract/r6`, review, `POST /templatize/commit/r6`. | r6 has **no committed intent**: it is `bootstrap` and not deployable by design |
-| 3 | **Control: the preview is empty.** `POST /templatize/committed/r6/preview` must show no diff. | if the seed is not faithful, every later diff is measuring the seed |
-| 4 | **Author the branch edits**, commit (`host_vars: r6 branch site`). | the *edit* is the intent — this is the step the whole stage exists for |
-| 5 | **Preview again.** `from_this_edit` must be exactly the branch lines and `pre_existing` empty. | the first time this split has ever had non-trivial content |
-| 6 | **Deploy r6** — `/deploy/plan` → read the exact program → confirm → `/deploy/apply`. | merge-only; expect **no dangerous lines**, and if any appear, stop and read them |
-| 7 | **Verify**: OSPF settle window (45 s), adjacency up, and **`r1` learns `10.255.1.16`**. | r1 was never touched; this is the acceptance that cannot be faked by the tool |
-| 8 | **Stage 8.5 golden + one commit + baseline coverage.** | one batch, one commit, one baseline |
-| 9 | **Persistence**: run the sync. **Predict a `poll_race`** on r6 — the golden is newer than Oxidized's copy until it polls — which does **not** block, by design. Re-run after the next poll and require `match`. | the first time the freshness gate meets a device that legitimately just changed; if it *blocks*, that is a finding |
-| 10 | **`nmas-check-startup-applies r6` → SAFE**, and `nmas-check-credential r6 --expect accepted`. | the branch config is only durable once it is in the startup file |
+| 0a | **`cisco_ios/base.j2` is approved.** C′ puts s3 on the deploy path, and approval is per platform: `routes/deploy.py` computes it per template and `deployable` requires it. | If it is not approved, approving it needs a clean round-trip against **every bound device** (s1–s4) and **refuses naming any that lack a capture** — a refusal that is load-bearing, not an obstacle to route around |
+| 0b | **`10.255.1.16` is free, three ways** — NetBox holds nothing on it, nothing answers a ping, and no golden in the repo mentions it (`grep -rl 10.255.1.16 config_repo/golden/`). | the convention `R6_PHASE1.md` §0d used for `.32`, and `.31` before it |
+| 0c | **Prove the mechanism works TODAY.** On r1: `show ip route 10.255.1.10` must show `O E2 … [110/20]`. | s3 already redistributes that /32 by exactly this route. **If it is absent, C′'s premise is wrong and nothing should be deployed.** It also gives step 7 a known-good comparator rather than a bare expectation |
+| 0d | **Freshness + Save All.** `oxidized-to-config.sh --no-deploy`, require **10 of 10 approved**, then Save All. | the pre-change comparison point, and the gate says the fleet is at its approved state before anything moves |
 
-**Option C′ inserts one step** between 8 and 9: deploy s3's single added
-static route **alone**, through the same path, and re-verify. Alone because
-s3 is the manager's only gateway to every other device — the blast radius is
-one /32, and it is still the device on which a mistake is least convenient.
+### 1–5. r6: author, preview, deploy
+
+| # | step | check |
+|---|---|---|
+| 1 | **Seed r6's intent** — `POST /templatize/extract/r6`, review, `POST /templatize/commit/r6` (`host_vars: r6 seed from capture`). | r6 has **no committed intent**: it is `bootstrap` and not deployable by design |
+| 2 | **Control: the preview is empty.** `POST /templatize/committed/r6/preview`. | if the seed is not faithful, every later diff is measuring the seed rather than the change |
+| 3 | **Author r6's branch intent** and commit (`host_vars: r6 branch site`): `Loopback0 10.255.1.16/32` (description, passive not needed — no OSPF), and `static_routes: [{family: ipv4, spec: "10.255.0.0 255.255.0.0 10.255.0.1"}]`. | a `/16` rather than a default route: r6 is not a default gateway for anything and `0.0.0.0/0` would claim it is |
+| 4 | **Preview.** `from_this_edit` must be **exactly** the loopback stanza and the one static; `pre_existing` empty. | the first time this split has had non-trivial content |
+| 5 | **Deploy r6** — `POST /deploy/plan`, read the exact program, confirm, `POST /deploy/apply`. | expect **no dangerous lines** and **no credential lines at all**; `assert_credentials_unchanged()` runs before the preview is shown |
+
+### 6. r6's own acceptance, before s3 is touched
+
+- [ ] `10.255.1.16` answers from r6 itself
+- [ ] r1 does **not** yet have a route to it — *nothing has advertised it, and this is the state step 8's check must move*
+- [ ] `nmas-check-credential r6 --expect accepted` — the credential is unchanged, which is what the new guard exists to make true
+
+### 7. s3: one added line, deployed alone
+
+| # | step | check |
+|---|---|---|
+| 7a | **Seed s3's intent if it has none**, then the empty-preview control, as steps 1–2. | s3 may already be `bootstrap` like r6 |
+| 7b | **Author the one line** and commit (`host_vars: s3 route to r6 loopback`): `static_routes` gains `{family: ipv4, spec: "10.255.1.16 255.255.255.255 10.255.0.32"}`. | the same shape as the `10.255.1.10` route s3 already carries |
+| 7c | **Preview.** `from_this_edit` must be **one line**. | anything else on the manager's gateway is a stop |
+| 7d | **Deploy s3 alone.** | its own confirm, read on its own |
+
+### 8. The acceptance — and it is stronger than "a route appears"
+
+- [ ] **r1 learns `10.255.1.16` as `O E2 … [110/20]`** — the **same form** in which it already shows `10.255.1.10`, verified at step 0c. Nobody edited r1.
+
+  This proves three things at once, which is why the E2 framing is kept
+  rather than just the route appearing:
+
+  1. **reachability without an adjacency** — `Vlan99` is still a stub network,
+     no hellos, no DR election;
+  2. **the redistribution path end to end** — a static on s3 becoming an
+     external LSA that a device two hops away installs;
+  3. **that the tool authored both halves** — neither the route nor the
+     loopback existed anywhere before it was written into git.
+
+- [ ] `10.255.1.16` answers from **r1**, not only from r6
+- [ ] `Vlan99` shows **no OSPF neighbour** — the property C′ was chosen for, asserted rather than assumed
+- [ ] s3's other routes unchanged; the NMAS still reaches every device
+
+### 9. Persistence and capture
+
+- [ ] Stage 8.5 saved a golden for each device — **two commits, two events**
+- [ ] Neither earned a `baseline/` tag, with the other nine named (predicted above)
+- [ ] Run the sync. **Expect a `poll_race` on r6 and s3** — their goldens are newer than Oxidized's copies until it polls — which does **not** block, by design. **If it blocks, that is a finding.** Re-run after the next poll and require `match`
+- [ ] `nmas-check-startup-applies r6` → **SAFE**; the branch config is only durable once it is in the startup file
 
 ### Option B only — the redeploy, and the checklist that applies
 
 B's topology edit comes **first**, because IOS will not accept an interface
 stanza for a NIC that does not exist. So: edit both topology files → redeploy
-→ then steps 1–10 above.
+→ then the steps above, with r6's uplink becoming `10.255.3.26/24` in VLAN 100
+and OSPF replacing the statics.
 
 From Stage 2.4's **Before** list, still applicable:
 
@@ -421,9 +500,8 @@ break-glass record, re-exported for **ten** and verified `complete: True`),
 
 - [ ] **The freshness gate reports 10 of 10 approved before the destroy.**
       The nodes boot what the sanitiser wrote, and as of `ac40401` that is
-      gate-checked. Skipping it means booting configs nobody compared —
-      which is the whole hazard the gate was built for, met at the one moment
-      it is irreversible.
+      gate-checked. Skipping it means booting configs nobody compared — the
+      hazard the gate was built for, met at the one moment it is irreversible.
 
 From the **After** list, every item applies unchanged (nine nodes reach
 `Startup complete`; no `%CVAC-4-CLI_FAILURE`; the skip fired; `secret 9` on
@@ -433,27 +511,11 @@ nine; Save All shows no unexpected diff; drift; the Remote card).
 
 **Plus three r6-specific items:**
 
-- [ ] `--cleanup` on rcn-lab1 **did not disturb `br-mgmt`, `br-core` or r6** —
-      r6 is a separate lab and the bridges are owned by neither, the same
-      question step 3c measured on a scratch bridge
+- [ ] `--cleanup` on rcn-lab1 **did not disturb `br-mgmt`, `br-core` or r6**
 - [ ] r6's own lab redeployed for its new NIC — **the first test of r6's
       startup file**, which has never booted
 - [ ] `nmas-check-startup-applies r6` → **SAFE** afterwards, and the
       credential NMAS holds still accepted
-
-### Every route named above resolved against `app.url_map`
-
-`/templatize/extract/<host>`, `/templatize/commit/<host>`,
-`/templatize/committed/<host>/preview`, `/deploy/plan`, `/deploy/apply` —
-**all POST**. The preview was written `GET` in the first draft of this plan
-and corrected by the check, which is the whole reason a blueprint route's
-path and method are resolved against the map rather than remembered: the
-`url_prefix` is applied at registration and appears nowhere in the source.
-
-`scripts/nmas-verify-runbook` refuses this file — *"only 0 command(s)
-found"* — because it resolves literal `curl localhost:5000/…` lines and this
-plan names routes in prose. **That refusal is the floor working**, not a
-failure: a scan that found nothing reported it instead of passing.
 
 ### If any step fails
 

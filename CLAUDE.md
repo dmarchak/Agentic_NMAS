@@ -2620,6 +2620,39 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   added line, `static_routes` is a modelled host_vars field, it round-trips,
   and it leaves the segment a stub network. The option that survived pricing
   was already deployed on the device being asked to change.
+- **A plan is for failing at the plan.** The branch site's cheap option was
+  chosen to prove the tool can **author** configuration, and it contained a
+  change the tool **cannot author** — `passive-interface Vlan99` had to be
+  removed and the deploy path is merge-only. Nothing about that was visible
+  from the option's risk profile, which is what it was being argued on; it
+  came out of asking *what does this change remove* and reading
+  `assert_merge_only()`. **It would otherwise have surfaced at the preview,
+  as a removal warning that sends nothing, with the other device's half
+  already deployed** — a half-made change on the manager's only gateway,
+  discovered by the tool refusing to finish. Instead it cost nothing. The
+  entry is here rather than in the plan because the general form is the
+  useful part: **an option's capability cost is not visible from its risk
+  profile, and the two get argued as if they were one thing.**
+- **s3-first would have made the acceptance pass vacuously**, which is a
+  better argument for the ordering than the prerequisite it was proposed on.
+  `ip route 10.255.1.16 255.255.255.255 10.255.0.32` installs as soon as its
+  **next hop** resolves — and the next hop is a live connected address — so
+  the destination need not exist. Deploy s3 first and r1 learns
+  `10.255.1.16` as an E2 pointing at an address nothing answers: the
+  acceptance *"r1 learns the route, nobody touched r1"* **satisfied by a
+  route to nowhere**. Ordering rules justified by prerequisite are worth
+  re-deriving from *what would a wrong order let a check claim* — the two
+  answers differ, and only one of them is about the check being worth
+  anything.
+- **One device → one intent commit → one plan → one confirm → one deploy →
+  one golden commit.** Two devices' changes in one plan couples them through
+  the **confirm hash** (either half moving between plan and apply refuses the
+  other's confirmed program) and through the **intent commit**, since
+  `.nsot/rolled_back.json` keys on the device's current intent commit and
+  "Revert intent" applies the inverse of *that commit's own diff* — so a
+  shared commit means reverting one device's rollback reverts the other's
+  change. The deploy boundary and the commit boundary have to be the same
+  boundary.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
