@@ -9014,3 +9014,68 @@ pinned anyway, with a floor on the number of reads parsed, a **positive
 anchor** naming the id-keyed filters it expects to find, and a control that
 introducing `vrf="clab-mgmt"` on a read fails it — because "no offenders"
 is also what a scan that could not run produces.
+
+## The edge caches HTML and not JSON, and that looks exactly like a rendering defect
+
+**2026-09-24.** `/golden/baselines` returned `partial: true`,
+`inventory_size: 10`, `missing_devices: ["r6"]`, and the Baselines panel
+drew a bare *"9 device(s)"*. With `?x=1` it drew
+*"9 of 10 — partial · predates r6"*. The code was correct throughout;
+**Cloudflare was serving hours-old HTML while the JSON came through
+fresh.**
+
+### Why the two halves disagree
+
+The app is reached through a Cloudflare tunnel. The edge caches the
+**HTML** and does not cache the **JSON** the page fetches, so a page can be
+arbitrarily old while every endpoint it calls is current. **A browser
+hard-reload does not bypass it** — `Ctrl-Shift-R` clears the browser's copy
+and asks the edge, which answers from its own.
+
+So the signature is precise and easy to read once seen: *fresh data,
+stale rendering, and a hard reload that changes nothing.*
+
+### Every "the data is there and the page ignores it" symptom now has two explanations
+
+They are **indistinguishable from the browser**, and the discriminator is
+one command that asks the origin directly, bypassing the tunnel:
+
+```bash
+curl -s http://10.0.0.211:5000/ | grep -c '<helperName>'
+```
+
+* **≥1** — the origin serves the current page. The staleness is between the
+  origin and the screen: purge, or `?x=1`, and the code is not the problem.
+* **0** — the origin does not have it. Now it is a deploy or a code
+  question, and only now.
+
+**Run it first.** It is one command and it partitions the space; every
+minute spent reading a renderer before running it is spent on the wrong
+half.
+
+### The misattribution is the finding, not the cache
+
+Four defects of the shape *"computed, carried to the browser, drawn
+nowhere"* had been found the same night — `loadOnboardPending`, the pending
+banner's buttons, `nbCascadeHtml`, and `_gBaselineCoverage`'s route fields.
+By the fifth report the prior was so high that the diagnosis was made
+before the measurement.
+
+**The more instances of a shape you have found, the more likely you are to
+misattribute the next thing that resembles it.** A pattern that has been
+right four times is exactly the one to distrust on the fifth, because
+confidence is what stops you running the cheap discriminator.
+
+What recovered it was measuring instead of agreeing: rendering the page
+through `app.test_client().get("/")` showed **one** baselines table, **one**
+`baselines.map`, and `${_gBaselineCoverage(b)}` present in the output. The
+correct response to a report that contradicts a measurement is to say so,
+not to edit correct code — which is the same rule that kept
+`_ensure_ip_address` from being "fixed" by VRF narrowing.
+
+### Consequence for deploys
+
+If the edge caches the app's HTML, **every deploy needs a purge or users
+see a stale page while the API is current** — including, at the worst
+moment, a page whose safety-relevant fields have changed. Scoped as
+[NSOT_STAGE7_GUI.md](NSOT_STAGE7_GUI.md) §6c.

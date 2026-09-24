@@ -149,6 +149,33 @@ nothing on it, no ping reply, and the neighbour table shows it `INCOMPLETE`.
 
 ---
 
+### ⚠ Before diagnosing ANY "the page ignores the data" symptom
+
+The app is behind a Cloudflare tunnel, **the edge caches HTML and does not
+cache JSON**, and a browser hard-reload does not bypass it. So a page can be
+hours old while every endpoint it fetches is current — which looks exactly
+like a value computed, carried to the browser and drawn nowhere.
+
+Measured 2026-09-24: the Baselines panel drew a bare *"9 device(s)"* while
+`/golden/baselines` returned `partial: true`. `?x=1` rendered it correctly.
+The code had been right the whole time, and the wrong diagnosis was made
+because that shape had been a genuine defect **four times the same night** —
+*the more instances of a shape you have found, the more likely you are to
+misattribute the next thing that resembles it.*
+
+**Ask the origin first. One command, and it partitions the space:**
+
+```bash
+curl -s http://10.0.0.211:5000/ | grep -c '<helperNameOrMarkup>'
+```
+
+* **≥1** — the origin is current; the staleness is the edge. Add `?x=1` or
+  purge. **Stop reading the code.**
+* **0** — the origin does not have it. *Now* it is a deploy or a code
+  question.
+
+---
+
 ## Step 1 — close the restore-preview gap (0b)
 
 Not optional, and it comes first: after step 6 every existing baseline is

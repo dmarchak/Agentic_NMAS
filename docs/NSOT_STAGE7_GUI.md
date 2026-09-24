@@ -949,6 +949,79 @@ one goes first: it is the checklist every later step is written against. A
 step that adds a mutating action after 7.0 declares its invalidations as
 part of adding it; a step that adds one before would have to be revisited.
 
+## 6c. The app's HTML must not be cached at the edge
+
+**Measured 2026-09-24**, and it cost a wrong diagnosis: the Baselines panel
+drew a bare *"9 device(s)"* while `/golden/baselines` returned
+`partial: true`. Cloudflare was serving stale HTML; the JSON was fresh.
+`?x=1` rendered it correctly. **A browser hard-reload does not bypass the
+edge.**
+
+### Is it configurable at the tunnel?
+
+Yes — at the Cloudflare zone rather than at `cloudflared`, which proxies
+and does not cache. A Cache Rule scoped to the hostname can bypass the
+cache outright. **I have not read this zone's configuration and am not
+claiming what is set there**, only that the lever exists and is not in this
+repository.
+
+### The honest fix is at the app, and it is small
+
+**This app's HTML is never static.** Every page is rendered per request
+against live inventory, drift state and identity, so nothing about it is
+safe to cache for anyone. A response header says that once, at the origin,
+for every path, and does not depend on somebody remembering a purge:
+
+```python
+@app.after_request
+def _no_stale_html(resp):
+    if resp.mimetype == "text/html":
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
+```
+
+`no-cache` rather than `no-store`: it permits a `304 Not Modified`, so an
+unchanged page still costs a round trip and not a re-download. **That
+distinction is load-bearing here** — see below.
+
+**A purge-per-deploy is the weaker answer.** It is a human step in an
+external system, it is invisible when skipped, and the state it produces is
+*"the page is wrong and the API is right"*, which this stage has just
+demonstrated reads as a code defect. Everything that depends on somebody
+remembering ends up in this document as a defect eventually.
+
+### It is the same work as §0b, seen from the other side
+
+§0b measured **647 KB of fixed page cost, 97% of the page, re-sent on every
+load before a single device row** — because the JavaScript is inline in the
+templates.
+
+Those two facts are fused, and that is why this is not a one-line change:
+
+* the **HTML** must not be cached, because it carries live state;
+* the **script** must be cached, because it is 647 KB and changes rarely.
+
+While the script is *inside* the HTML they cannot have different policies —
+declaring the page uncacheable makes every navigation re-download the
+script, and leaving it cacheable is what produced this finding. **Moving
+the inline script into files is what lets each get the policy it needs**,
+which makes §0b a prerequisite for doing §6c well rather than two unrelated
+performance and correctness items.
+
+Shipping §6c alone is still correct and still an improvement — a revalidated
+647 KB is worse than a cached one and far better than a stale panel — but
+the pairing is the reason to do §0b first rather than "when there is time".
+
+### Acceptance
+
+* `curl -sI http://<origin>:5000/` shows `Cache-Control: no-cache` on HTML
+  and **not** on the static asset paths;
+* a deploy is visible to a browser that has loaded the page before, without
+  a purge and without `?x=1`;
+* a test asserts the header is present on an HTML response and absent on a
+  cached asset, because a header applied to everything is the §0b cost
+  multiplied by every navigation.
+
 ## 7. Sequencing
 
 Each step is independently shippable and leaves the interface working. Nothing
@@ -959,6 +1032,7 @@ here starts before Stage 6 closes.
 | **7.0** | Per-route reachability test, allowlist seeded from §1.2, allowed only to shrink; **the invalidation map of §6b** | Both are the checklist every later step is written against, and both are worth having whether or not the redesign happens |
 | **7.1** | Entry points for the three features that have none: rollback retry, template revocation, credential profiles | They are defects today, independent of layout |
 | **7.2** | The service-status bar, on the existing layout | Small, visible, and proves the shared-header pattern before anything moves |
+| **7.2b** | §0b's inline script moved to cacheable files, then §6c's `Cache-Control` on HTML | They are one piece of work: the HTML must not be cached and the 647 KB of script must be, and while the script is inside the HTML neither can have the policy it needs |
 | **7.3** | `Device` page at `/device/<hostname>`, folding in `device.html` and the four NSoT actions | The largest win; everything per-device stops being scattered |
 | **7.4** | `Fleet → Versions`: Git tab absorbs the golden panel, baselines, remote | §4 |
 | **7.5** | Monitoring: Grafana embed **after (a) and (b) are done and the iframe test is recorded**; then Kea leases, then Loki query | §3, and the blockers gate it |

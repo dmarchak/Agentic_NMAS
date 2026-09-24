@@ -2062,6 +2062,28 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   deliberately — binding on the manifest entry is exactly what makes the
   gate notice its population changed, and a test pins the current behaviour
   so a later change is a decision rather than a discovery.
+- **The edge caches HTML and not JSON, so fresh data beside a stale page is
+  NOT a rendering defect.** The app is behind a Cloudflare tunnel; a page
+  can be hours old while every endpoint it fetches is current, and **a
+  browser hard-reload does not bypass it**. Measured 2026-09-24: the
+  Baselines panel drew a bare *"9 device(s)"* while `/golden/baselines`
+  returned `partial: true`, and `?x=1` rendered it correctly. **Ask the
+  origin first** — `curl -s http://<nmas>:5000/ | grep -c '<helper>'` — which
+  is one command and partitions the space: ≥1 means stop reading the code.
+  **The misattribution is the finding, not the cache.** Four defects of the
+  shape *"computed, carried to the browser, drawn nowhere"* had been found
+  the same night, so by the fifth report the diagnosis preceded the
+  measurement. **A pattern that has been right four times is exactly the one
+  to distrust on the fifth**, because confidence is what stops you running
+  the cheap discriminator. What recovered it was rendering the page through
+  `app.test_client().get("/")` and finding the call site present — and the
+  right response to a report contradicting a measurement is to say so, not
+  to edit correct code. Scoped as [NSOT_STAGE7_GUI.md](docs/NSOT_STAGE7_GUI.md)
+  §6c: the honest fix is `Cache-Control: no-cache` on the app's HTML at the
+  origin, not a purge-per-deploy that depends on somebody remembering —
+  and it is the **same work as §0b**, because while 647 KB of script sits
+  inside the HTML, the page and the script cannot have the different cache
+  policies each needs.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
