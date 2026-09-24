@@ -2903,6 +2903,30 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   directions.** A key the parsers emit and the declaration lacks makes a
   parser's own document unrenderable; a declared key nothing emits is a ghost
   that would **bless a misspelling as official**. One producer, two floors.
+- **The deploy wizard never sent `command_hashes`, so the confirm-fingerprint
+  recompute had never run from the UI.** `/deploy/apply` compares the
+  recomputed program against the confirmed one *only* when that field is
+  supplied, and the wizard sent `{confirmations}` from the day it was
+  written — so the deploy path's central claim, *the list is recomputed at
+  apply and refused if anything moved*, was not exercised by the only client
+  that reaches it. A plan left open while the device changed, or two people
+  planning the same device, applied against a program nobody had read.
+  **The hashes are carried in the DOM, never re-fetched**, and that is
+  designed in rather than added after: re-fetching the plan at confirm time
+  would recompute against whatever is current and agree with itself — the
+  comparison would pass **by construction**, which is precisely the failure a
+  confirm hash exists to prevent. A test asserts `applyDeploy` contains no
+  call to `/deploy/plan`.
+- **Turning on a guard that was never running makes its first refusal look
+  like a malfunction**, because the path used to succeed. So the message says
+  what it **did** (*"Nothing was sent"*), what the rule is (*"what you confirm
+  is what is sent, so a list you have not read is never deployed"*), and —
+  the part that costs nothing — **which side moved**: the capture hash is
+  already in hand, so comparing it separates *the device changed* from *the
+  intent or template changed*. `"the device or intent changed"` makes the
+  reader check both; naming the one that moved leaves one place to look.
+  Reported as `moved: capture | intent_or_template` alongside all four
+  operands.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

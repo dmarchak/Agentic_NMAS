@@ -376,14 +376,49 @@ def apply():
                                 "reason": f"could not recompute commands: {exc}"})
                 continue
             if now != expected:
+                # WHICH SIDE MOVED, not just that something did.
+                #
+                # The capture hash is already in hand — it is what
+                # `confirmations` carries — so comparing it separates the two
+                # causes at no cost. "The device or intent changed" makes the
+                # reader check both; naming the one that moved makes it one
+                # place to look.
+                #
+                # This refusal is also NEW BEHAVIOUR on a path that used to
+                # succeed: the wizard never sent `command_hashes`, so the
+                # recompute never ran and a plan left open while the device
+                # moved was applied against a program nobody had seen. The
+                # message says so, because the first time somebody meets a
+                # guard that was not there yesterday it reads as a
+                # malfunction.
+                capture_now = _capture_hash(captured)
+                capture_confirmed = confirmations.get(hostname)
+                if capture_confirmed and capture_now != capture_confirmed:
+                    moved = ("the device's captured config has changed since "
+                             f"you planned ({capture_confirmed} -> "
+                             f"{capture_now})")
+                else:
+                    moved = ("the device's captured config is unchanged, so "
+                             "the difference is in the intent or the template "
+                             "— a host_vars commit or a template edit landed "
+                             "between your plan and this apply")
                 log.warning("deploy: %s refused — commands changed since "
                             "confirmation (%s -> %s)", hostname, expected, now)
-                refused.append({"device": hostname, "outcome": "refused",
-                                "reason": ("the device or intent changed since "
-                                           "you confirmed — re-run the preview "
-                                           "and confirm the new command list"),
-                                "confirmed_hash": expected,
-                                "current_hash": now})
+                refused.append({
+                    "device": hostname, "outcome": "refused",
+                    "reason": (
+                        f"the exact command list changed since you confirmed "
+                        f"it ({expected} -> {now}): {moved}. Nothing was sent. "
+                        "Re-run the preview and confirm the new list — what "
+                        "you confirm is what is sent, so a list you have not "
+                        "read is never deployed."),
+                    "confirmed_hash": expected,
+                    "current_hash": now,
+                    "capture_confirmed": capture_confirmed,
+                    "capture_current": capture_now,
+                    "moved": ("capture" if capture_confirmed
+                              and capture_now != capture_confirmed
+                              else "intent_or_template")})
                 continue
 
         artifacts.append(artifact)

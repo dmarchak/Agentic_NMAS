@@ -65,7 +65,7 @@ first real use** — none was reachable from the suite as it stood:
 | 4 | a created container negated even if it never landed | (2)'s fix |
 | 5 | an empty pre-change snapshot made every section look created | (2)'s fix |
 | 6 | the capture-hash refusal named neither operand and asserted a cause it had not established | the guard was written |
-| 7 | the deploy wizard never sends `command_hashes`, so the confirm-fingerprint recompute does not run from the UI | **open** |
+| 7 | the deploy wizard never sent `command_hashes`, so the confirm-fingerprint recompute never ran from the UI | fixed |
 | 8 | `vs_intent` reads the working tree, so it is vacuous for anyone editing the file on disk | **open** |
 | 9 | `StrictUndefined` makes a hand-authored interface dict unrenderable, and never catches a misspelled one | fixed |
 | 10 | `load_saved_devices()` with no argument returned an empty fleet | fixed |
@@ -77,8 +77,8 @@ those. That is the argument for walking a path rather than only testing it,
 and this is the second stage where the same method produced every serious
 finding.
 
-Seven fixed, two open and queued (#7 the wizard's `command_hashes`, #8
-git-backed `vs_intent`), one (#10) found in passing.
+Eight fixed, one open and queued (#8, git-backed `vs_intent`), one (#10)
+found in passing.
 
 ---
 

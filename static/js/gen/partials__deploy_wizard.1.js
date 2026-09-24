@@ -50,6 +50,7 @@ function _deviceCard(d) {
           <div class="form-check">
             <input class="form-check-input" type="checkbox" id="${id}"
                    data-device="${_dEsc(d.device)}" data-hash="${_dEsc(d.capture_hash || '')}"
+                   data-command-hash="${_dEsc(d.command_hash || '')}"
                    ${blocked ? 'disabled' : ''} onchange="_updateDeploySummary()">
             <label class="form-check-label fw-semibold" for="${id}">${_dEsc(d.device)}</label>
           </div>
@@ -104,8 +105,23 @@ function _updateDeploySummary() {
 
 async function applyDeploy() {
   const boxes = [...document.querySelectorAll('#deployPlanBody input[type=checkbox]:checked')];
-  const confirmations = {};
-  boxes.forEach(b => { confirmations[b.dataset.device] = b.dataset.hash; });
+  // BOTH HASHES, CARRIED FROM THE PLAN THAT WAS RENDERED — never re-fetched.
+  //
+  // `command_hashes` is what makes /deploy/apply recompute the exact program
+  // and compare it; without it the branch never runs, and this wizard sent
+  // only `confirmations` from the day it was written. So a plan left open
+  // while the device changed, or two people planning the same device, applied
+  // against a program nobody had read.
+  //
+  // The values live in the DOM because they must be the ones the operator was
+  // shown. Re-fetching the plan at confirm time would recompute against
+  // whatever is current and agree with itself — the comparison would pass by
+  // construction, which is the failure the confirm hash exists to prevent.
+  const confirmations = {}, commandHashes = {};
+  boxes.forEach(b => {
+    confirmations[b.dataset.device] = b.dataset.hash;
+    if (b.dataset.commandHash) commandHashes[b.dataset.device] = b.dataset.commandHash;
+  });
 
   const btn = document.getElementById('deployApplyBtn');
   btn.disabled = true;
@@ -115,7 +131,7 @@ async function applyDeploy() {
   try {
     const r = await fetch('/deploy/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmations}),
+      body: JSON.stringify({confirmations, command_hashes: commandHashes}),
     });
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); btn.disabled = false; return; }

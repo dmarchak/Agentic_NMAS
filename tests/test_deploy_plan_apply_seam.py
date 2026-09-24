@@ -122,8 +122,8 @@ class TestTheClientSendsWhatTheRouteReads:
         assert "d.capture_hash" in source, \
             "the checkbox no longer carries the hash the plan published"
 
-    def test_the_apply_call_does_NOT_send_command_hashes(self):
-        """**A recorded gap, pinned so it cannot change unnoticed.**
+    def test_the_apply_call_sends_command_hashes(self):
+        """**It did not, from the day the wizard was written.**
 
         `/deploy/apply` recomputes the command fingerprint and compares it
         *only* when `command_hashes` is supplied:
@@ -132,21 +132,34 @@ class TestTheClientSendsWhatTheRouteReads:
             if expected is not None:
                 ...
 
-        The wizard sends `{confirmations}` and nothing else, so from the UI
-        that comparison **never runs** — the deploy path's central claim, that
-        the program is recomputed at apply and refused if anything moved, is
-        not exercised by the only client that reaches it. The restore path
-        (`partials__golden_repo.3.js`) does send `command_hashes`.
-
-        Pinned rather than fixed here because changing what the wizard sends
-        changes deploy behaviour, and this file's job is to record the seam.
+        The wizard sent `{confirmations}` and nothing else, so from the only
+        client that reaches this route the comparison **never ran** — and the
+        deploy path's central claim, that the program is recomputed at apply
+        and refused if anything moved, was not exercised. A plan left open
+        while the device changed, or two people planning the same device,
+        applied against a program nobody had read.
         """
         source = self._wizard_js()
         apply_call = source[source.index("async function applyDeploy"):]
-        assert "command_hashes" not in apply_call, (
-            "the wizard now sends command_hashes — good, and this test should "
-            "become an assertion that it does, plus one that a stale one is "
-            "refused")
+        assert "command_hashes: commandHashes" in apply_call
+        assert "b.dataset.commandHash" in apply_call
+
+    def test_the_hashes_come_from_the_DOM_not_a_re_fetch(self):
+        """**Designed in, not added after.**
+
+        The confirmed values must be the ones the operator was *shown*.
+        Re-fetching the plan at confirm time would recompute against whatever
+        is current and agree with itself — the comparison would pass by
+        construction, which is exactly the failure a confirm hash exists to
+        prevent.
+        """
+        source = self._wizard_js()
+        apply_call = source[source.index("async function applyDeploy"):]
+        assert "/deploy/plan" not in apply_call, (
+            "applyDeploy re-fetches the plan — the comparison then passes by "
+            "construction")
+        assert 'data-command-hash="${_dEsc(d.command_hash' in source, \
+            "the card no longer carries the plan's command hash into the DOM"
 
     def test_the_restore_path_does_send_them(self):
         """The positive anchor: the payload is not impossible to build, and
@@ -274,5 +287,96 @@ class TestOnlyOneConditionProducesThisOutcome:
 
         source = inspect.getsource(rd.apply)
         block = source[source.index("if now != expected:"):]
-        assert '"outcome": "refused"' in block[:400]
+        # The whole block, not a slice of it: the first version read
+        # `block[:400]` and broke when a comment was added above the append,
+        # which is a test asserting a byte offset rather than a property.
+        assert '"outcome": "refused"' in block
         assert "SKIPPED_DRIFTED" not in block
+        assert "continue" in block, "the device must not fall through to plan_batch"
+
+
+class TestTheCommandFingerprintRefusalSaysWhatMoved:
+    """**The first refusal a user sees is new behaviour on a path that used to
+    work**, because the wizard never sent `command_hashes`. So the message has
+    to explain what changed rather than only that something did — and it can,
+    because the capture hash is already in hand and separates the two causes
+    at no cost.
+    """
+
+    CAPTURE = ("hostname r6\n"
+               "interface GigabitEthernet2\n"
+               " ip address 10.255.0.32 255.255.255.0\n"
+               "end\n")
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        import app as nmas
+        import routes.deploy as rd
+        from modules.nsot.render_artifact import build_artifact
+
+        def _fake(list_name, hostname, cache=None):
+            artifact = build_artifact(hostname, self.CAPTURE, "cisco_iosxe",
+                                      template_approved=True)
+            return (artifact, self.CAPTURE, {"hostname": hostname,
+                                             "ip": "203.0.113.32"}), ""
+
+        monkeypatch.setattr(rd, "_artifact_for", _fake)
+        nmas.app.config["TESTING"] = False
+        return nmas.app.test_client()
+
+    def _plan(self, client):
+        return client.post("/deploy/plan",
+                           json={"devices": ["r6"]}).get_json()["devices"][0]
+
+    def test_the_matching_pair_deploys(self, client):
+        """**The floor.** Sending both hashes must not refuse a plan that has
+        not moved — otherwise this fix makes every deploy impossible."""
+        device = self._plan(client)
+        result = client.post("/deploy/apply", json={
+            "confirmations": {"r6": device["capture_hash"]},
+            "command_hashes": {"r6": device["command_hash"]}}).get_json()
+        assert "r6" in result.get("deployed", []), result.get("refused")
+
+    def test_a_stale_command_hash_is_refused_with_both_operands(self, client):
+        device = self._plan(client)
+        result = client.post("/deploy/apply", json={
+            "confirmations": {"r6": device["capture_hash"]},
+            "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
+        refused = result.get("refused") or []
+        assert refused and refused[0]["device"] == "r6"
+        entry = refused[0]
+        assert entry["confirmed_hash"] == "deadbeefdeadbeef"
+        assert entry["current_hash"] == device["command_hash"]
+        assert "deadbeefdeadbeef" in entry["reason"]
+
+    def test_an_unchanged_capture_attributes_the_move_to_intent(self, client):
+        """The capture is byte-identical, so the difference is in the intent
+        or the template — and saying so is one place to look instead of two."""
+        device = self._plan(client)
+        result = client.post("/deploy/apply", json={
+            "confirmations": {"r6": device["capture_hash"]},
+            "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
+        entry = (result.get("refused") or [])[0]
+        assert entry["moved"] == "intent_or_template"
+        assert "captured config is unchanged" in entry["reason"]
+
+    def test_a_moved_capture_is_attributed_to_the_device(self, client):
+        device = self._plan(client)
+        result = client.post("/deploy/apply", json={
+            "confirmations": {"r6": "0" * 16},
+            "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
+        entry = (result.get("refused") or [])[0]
+        assert entry["moved"] == "capture"
+        assert "captured config has changed" in entry["reason"]
+        assert entry["capture_confirmed"] == "0" * 16
+
+    def test_the_refusal_says_nothing_was_sent(self, client):
+        """New behaviour on a path that used to succeed reads as a malfunction
+        unless it says what it did."""
+        device = self._plan(client)
+        result = client.post("/deploy/apply", json={
+            "confirmations": {"r6": device["capture_hash"]},
+            "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
+        reason = (result.get("refused") or [])[0]["reason"]
+        assert "Nothing was sent" in reason
+        assert "what you confirm is what is sent" in reason.lower()
