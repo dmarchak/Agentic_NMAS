@@ -131,9 +131,21 @@ def committed_dir(repo: str) -> str:
     return path
 
 
+def _safe_hostname(hostname: str) -> str:
+    """The on-disk form of a device name. **One producer.**
+
+    It was inline in `committed_path()`, which was fine while that was the
+    only reader. `committed_at_head()` reads the same file out of git and
+    needs the identical spelling — a second copy of this mapping is how the
+    working-tree reader and the git reader come to disagree about which file
+    they are talking about, which is the class of defect this whole change is
+    correcting.
+    """
+    return "".join(c if c.isalnum() or c in "-_." else "_" for c in hostname)
+
+
 def committed_path(repo: str, hostname: str) -> str:
-    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in hostname)
-    return os.path.join(committed_dir(repo), f"{safe}.yml")
+    return os.path.join(committed_dir(repo), f"{_safe_hostname(hostname)}.yml")
 
 
 def read_committed(repo: str, hostname: str):
@@ -346,6 +358,83 @@ def unknown_interface_keys(host_vars: dict) -> list:
             if key not in INTERFACE_DEFAULTS:
                 found.append((index, key))
     return found
+
+
+#: `vs_intent` answers *"what does my edit change"*, and "what is committed"
+#: has to mean **committed**. See :func:`committed_at_head`.
+NEVER_COMMITTED = "never_committed"
+COMMITTED = "committed"
+
+
+def committed_at_head(repo: str, hostname: str) -> tuple:
+    """``(text | None, state)`` — committed intent read from **git**, not disk.
+
+    `read_committed()` opens the working file, which is correct for *"what
+    would deploy"* and wrong for *"what is committed"*. The two are the same
+    bytes only while nobody edits the file directly — and editing it directly
+    is how a person actually works. Measured: with the file edited in place,
+    the editor's `vs_intent` compared the edit against itself and was empty by
+    construction, and `document_changed`, added precisely to disambiguate an
+    empty diff, read the **same** working file and was fooled by the same
+    cause. Two signals that look independent, sharing one source, so their
+    agreement carried no information.
+
+    Reads through :class:`repo.RefSource` with `host_vars/` declared, so the
+    capability is bounded at the call site rather than by this function being
+    careful.
+
+    **Three states, not two.** `None` with :data:`NEVER_COMMITTED` is a
+    different fact from committed-and-identical, and both currently render as
+    an empty diff — the absent-versus-empty distinction that erased the
+    settings file, arriving in the editor.
+    """
+    from modules.nsot.repo import RefSource
+
+    source = RefSource(repo, "HEAD", allow=("host_vars/",))
+    raw = source.read(f"{COMMITTED_REL}/{_safe_hostname(hostname)}.yml")
+    if raw is None:
+        return None, NEVER_COMMITTED
+    return raw, COMMITTED
+
+
+def intent_gap_note(repo: str, hostname: str) -> dict:
+    """What the editor SAYS for a device with no committed intent.
+
+    A state the payload carries and the screen does not name is the defect the
+    state was added to prevent. And the same absence means opposite things:
+    **mid-onboarding it is normal and expected**; for a device that has been
+    in the fleet for weeks it is a gap — nothing has ever declared what that
+    device should look like, so it is `bootstrap` and not deployable.
+    """
+    try:
+        from modules.nsot import manifest as _m
+
+        entry = _m.find_by_name(repo, hostname)[1] or {}
+    except Exception:                          # noqa: BLE001
+        entry = {}
+    # PENDING IS DERIVED, NOT STORED. The manifest has no `pending` key --
+    # `upsert_device(pending=True)` writes `onboarded_at` and leaves
+    # `verified_at` None, and `manifest.pending_devices()` is the one place
+    # that reads the pair. The first version of this function read
+    # `entry["pending"]`, a field nothing writes, so every device answered
+    # "not pending" and the mid-onboarding case was unreachable -- a field
+    # declared and never written, which is the `next_ts` shape.
+    is_pending = bool(entry.get("onboarded_at")) and not entry.get("verified_at")
+    if is_pending:
+        return {"severity": "info", "pending": True,
+                "note": (f"{hostname} has no committed intent yet. It is "
+                         "mid-onboarding, which is the normal state here — "
+                         "intent is written once the device has been reached "
+                         "and captured.")}
+    since = entry.get("onboarded_at") or ""
+    return {"severity": "warning", "pending": False, "onboarded_at": since,
+            "note": (f"{hostname} has **no committed intent**"
+                     + (f" and has been in the fleet since {since[:10]}"
+                        if since else "")
+                     + ". Nothing has ever declared what this device should "
+                       "look like, so it is 'bootstrap' and cannot be "
+                       "deployed. Seed it from its own capture (Extract, "
+                       "review, Commit) and the next edit becomes a diff.")}
 
 
 def write_committed(repo: str, host_vars: dict) -> str:

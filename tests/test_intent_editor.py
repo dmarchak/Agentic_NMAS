@@ -77,7 +77,16 @@ def world(tmp_path, monkeypatch):
     document["hostname"] = "s4"
     document["unmodeled"] = [{"line": "some-construct nobody modelled",
                               "children": [], "lineno": 12}]
+    # COMMITTED, NOT MERELY WRITTEN -- the same correction the golden above
+    # needed, arriving for host_vars. `vs_intent` and `document_changed` now
+    # read the blob at HEAD rather than the working file, because the working
+    # file IS the edit when a person edits on disk, and comparing it to itself
+    # is empty by construction. So a fixture that writes intent and skips the
+    # commit is testing a device with NO committed intent -- which is now a
+    # named third state and a different assertion.
     hostvars.write_committed(repo_dir, document)
+    _repo.save_host_vars("lab", ["s4"], actor="test",
+                         message="host_vars: s4 seed for the editor tests")
 
     import app as nmas
 
@@ -467,3 +476,148 @@ class TestTheEditorReMeasuresWhenTheModalIsShown:
         body = source[source.index("function _intentRefresh"):]
         body = body[:body.index("}")]
         assert "if (_intentCM)" in body
+
+
+class TestVsIntentReadsGitNotTheWorkingTree:
+    """*"What is committed"* has to mean **committed**.
+
+    `read_committed()` opens the file on disk — correct for *"what would
+    deploy"*, wrong for *"what does my edit change"*. Editing the file
+    directly, which is how a person actually works, made `vs_intent` compare
+    the edit against itself: **empty by construction, permanently**.
+
+    The worse half: `document_changed` was added precisely to disambiguate an
+    empty `vs_intent` — its comment said so — and it read the **same working
+    file**, so the disambiguator was fooled by the cause it existed to expose.
+    Two signals that look independent, sharing one source, so their agreement
+    carried no information.
+    """
+
+    def test_an_on_disk_edit_still_produces_a_diff(self, world):
+        """The case that was vacuous: the file is edited in place, so the
+        working tree and the posted text are identical."""
+        from modules.nsot import hostvars
+
+        document = hostvars.read_committed(world["repo"], "s4")
+        document["ntp_servers"] = list(document.get("ntp_servers") or []) + \
+            ["203.0.113.99"]
+        edited = hostvars.to_yaml(document)
+        # Edit the file in place, exactly as an operator with an editor does.
+        with open(hostvars.committed_path(world["repo"], "s4"), "w",
+                  encoding="utf-8") as handle:
+            handle.write(edited)
+
+        body = _preview(world, edited).get_json()
+        assert body["ok"] is True
+        assert body["document_changed"] is True, \
+            "document_changed compared the edit against itself"
+        assert body["vs_intent_changed"] is True, \
+            "vs_intent compared the edit against itself"
+        assert "203.0.113.99" in body["vs_intent"]
+
+    def test_the_committed_blob_is_read_through_a_scoped_source(self):
+        """Bounded at the call site, not by the function being careful."""
+        import inspect
+
+        from modules.nsot import hostvars
+
+        source = inspect.getsource(hostvars.committed_at_head)
+        assert "RefSource" in source
+        assert 'allow=("host_vars/",)' in source
+
+    def test_reading_out_of_scope_is_refused(self, world):
+        from modules.nsot.repo import RefSource, ScopeRefused
+
+        source = RefSource(world["repo"], "HEAD", allow=("host_vars/",))
+        with pytest.raises(ScopeRefused):
+            source.read("templates/cisco_ios/base.j2")
+
+
+class TestNeverCommittedIsItsOwnState:
+    """**"No committed intent" and "committed and unchanged" both rendered as
+    an empty diff**, and the operator could not tell them apart — the
+    absent-versus-empty distinction that erased the settings file, arriving in
+    the editor.
+
+    And the same absence means opposite things: mid-onboarding it is normal;
+    for a device that has been in the fleet for weeks it is a gap.
+    """
+
+    def _uncommitted(self, world):
+        """A device whose intent exists on disk and in no commit."""
+        from modules.nsot import hostvars
+        from modules.nsot.parsers import get_parser
+
+        from modules.nsot import repo as _repo
+
+        # A capture too: the preview refuses before it reaches the intent
+        # state without one, so a fixture lacking it tests the wrong refusal.
+        _repo.save_golden("lab", [_repo.GoldenItem("s9", CONFIG, "10.0.0.9")],
+                          source="test", actor="test", allow_new=True)
+        document = get_parser("cisco_ios").parse(CONFIG)
+        document["hostname"] = "s9"
+        hostvars.write_committed(world["repo"], document)
+        return hostvars.to_yaml(document)
+
+    def test_the_state_is_reported(self, world):
+        from modules.nsot import hostvars
+
+        text = self._uncommitted(world)
+        body = world["client"].post("/templatize/committed/s9/preview",
+                                    json={"yaml": text}).get_json()
+        assert body["intent_state"] == hostvars.NEVER_COMMITTED
+
+    def test_the_committed_device_is_NOT_in_that_state(self, world):
+        """**The floor.** A route answering `never_committed` for everything
+        would satisfy the test above and make the state meaningless."""
+        from modules.nsot import hostvars
+
+        document = hostvars.read_committed(world["repo"], "s4")
+        body = _preview(world, hostvars.to_yaml(document)).get_json()
+        assert body["intent_state"] == hostvars.COMMITTED
+        assert body["intent_note"] is None
+
+    def test_it_carries_a_note_a_reader_can_act_on(self, world):
+        text = self._uncommitted(world)
+        body = world["client"].post("/templatize/committed/s9/preview",
+                                    json={"yaml": text}).get_json()
+        note = body["intent_note"]
+        assert note and "no committed intent" in note["note"].lower()
+        assert "Extract" in note["note"], \
+            "the note must name the action, not only the absence"
+
+    def test_mid_onboarding_is_normal_and_says_so(self, world):
+        """The same absence, the opposite meaning."""
+        from modules.nsot import hostvars, manifest as _m
+        from modules.nsot.repo import GoldenItem, adopt_identity
+
+        identity = adopt_identity(world["repo"], GoldenItem("s9", "", "10.0.0.9"))
+        _m.upsert_device(world["repo"], identity, "s9", mgmt_ip="10.0.0.9",
+                         platform="cisco_ios", pending=True)
+        # `pending` is DERIVED from onboarded_at/verified_at; the manifest
+        # stores no such key. Asserted here so the helper cannot go back to
+        # reading a field nothing writes.
+        entry = _m.find_by_name(world["repo"], "s9")[1]
+        assert entry.get("onboarded_at") and not entry.get("verified_at")
+        note = hostvars.intent_gap_note(world["repo"], "s9")
+        assert note["pending"] is True
+        assert note["severity"] == "info"
+        assert "normal" in note["note"]
+
+    def test_a_settled_device_is_flagged_as_a_gap(self, world):
+        from modules.nsot import hostvars
+
+        note = hostvars.intent_gap_note(world["repo"], "s4")
+        assert note["pending"] is False
+        assert note["severity"] == "warning"
+        assert "cannot be deployed" in note["note"]
+
+    def test_one_producer_for_the_on_disk_name(self):
+        """The git reader and the working-tree reader must spell the file the
+        same way, or they disagree about which file they are discussing."""
+        import inspect
+
+        from modules.nsot import hostvars
+
+        assert "_safe_hostname" in inspect.getsource(hostvars.committed_path)
+        assert "_safe_hostname" in inspect.getsource(hostvars.committed_at_head)

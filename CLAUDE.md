@@ -2947,6 +2947,42 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   with it rather than stubbed**, because a harness that supplies its own
   escaper tests a renderer whose every field passes through a function that
   was not shipped.
+- **`vs_intent` read the WORKING TREE, so it was vacuous for anyone editing
+  the file on disk** — which is how a person actually works. The edit and
+  "what is committed" were the same bytes, so the diff built to answer *"what
+  does my edit do"* was empty by construction, permanently. **The worse half**:
+  `document_changed` was added precisely to disambiguate an empty `vs_intent`
+  — its own comment says so — and read the **same working file**, so the
+  disambiguator was fooled by the cause it existed to expose. *Two signals
+  that look independent, sharing one source, so their agreement carries no
+  information.* Both now read the blob at **HEAD** through
+  `RefSource(..., allow=("host_vars/",))`, bounded at the call site rather
+  than by the function being careful. What saved the branch site was
+  `vs_device`, which compares against the **device** and no local editing can
+  fool — worth noting which of the two an operator would have trusted if only
+  one had been shown.
+- **"Never committed" and "committed and unchanged" both rendered as an empty
+  diff.** The absent-versus-empty distinction that erased the settings file,
+  arriving in the editor. `committed_at_head()` returns a third state and the
+  editor **names** it — a state the payload carries and the screen does not is
+  the defect the state was added to prevent. **The same absence means opposite
+  things**: mid-onboarding it is normal and expected; for a device that has
+  been in the fleet for weeks it is a gap — nothing has ever declared what it
+  should look like, so it is `bootstrap` and not deployable — and the note
+  names the action (*Extract, review, Commit*) rather than only the absence.
+- **`pending` is DERIVED, not stored**, and the first version of the note read
+  `entry["pending"]` — a manifest key nothing writes. Every device answered
+  "not pending" and the mid-onboarding branch was unreachable: a field
+  declared and never written, the `next_ts` shape, caught by its own test.
+  `manifest.pending_devices()` is the one reader of the real pair
+  (`onboarded_at` set, `verified_at` None).
+- **A fixture that writes intent and skips the commit is testing a device with
+  NO committed intent.** Four editor tests broke on the change and were right
+  to: `write_committed()` puts a file on disk, and *committed* now means in
+  git. The same correction the fixture's **golden** had already needed, for
+  the same reason, recorded in the same file — `save_golden()` was called
+  there because `_captured_golden()` reads at HEAD. One store learned the
+  lesson and its neighbour had not.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

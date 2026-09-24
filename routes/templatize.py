@@ -404,17 +404,31 @@ def preview_committed_edit(hostname):
         return jsonify({"ok": False, "stage": "render",
                         "error": f"{type(exc).__name__}: {exc}"}), 400
 
-    committed = hostvars.read_committed(repo, hostname)
+    # BOTH READ GIT, NOT THE WORKING TREE.
+    #
+    # `read_committed()` opens the file on disk, which is correct for "what
+    # would deploy" and wrong for "what is committed". Editing the file
+    # directly — how a person actually works — made `vs_intent` compare the
+    # edit against itself: empty by construction, permanently. And
+    # `document_changed`, added precisely to disambiguate an empty diff, read
+    # the **same** working file, so the disambiguator was fooled by the cause
+    # it was there to expose. Two signals that look independent, sharing one
+    # source, so their agreement carried no information.
+    committed_raw, intent_state = hostvars.committed_at_head(repo, hostname)
+    committed = (hostvars.from_yaml(committed_raw)
+                 if committed_raw is not None else None)
+    document_changed = (committed_raw is not None and committed_raw != text)
+
     vs_intent = ""
-    # Whether the DOCUMENT changed, compared byte for byte against the file.
-    # Without it the UI cannot tell "no edit" from "an edit the render does
-    # not show", and said the second when the first was true.
-    document_changed = False
-    committed_path = hostvars.committed_path(repo, hostname)
-    if os.path.exists(committed_path):
-        with open(committed_path, encoding="utf-8") as handle:
-            document_changed = handle.read() != text
-    if committed:
+    intent_note = None
+    if intent_state == hostvars.NEVER_COMMITTED:
+        # THE THIRD STATE, NAMED. "Never committed" and "committed and
+        # identical" both render as an empty diff, and the operator cannot
+        # tell them apart — the absent-versus-empty distinction that erased
+        # the settings file, arriving in the editor. The same absence also
+        # means opposite things depending on where the device is.
+        intent_note = hostvars.intent_gap_note(repo, hostname)
+    elif committed:
         current = artifact_for(hostname, capture, repo, platform, template,
                                host_vars=hostvars.hydrate_secrets(
                                    committed, hostname, list_name))
@@ -432,6 +446,8 @@ def preview_committed_edit(hostname):
         "blocking_reasons": list(edited.blocking_reasons),
         "vs_intent": vs_intent,
         "vs_intent_changed": bool(vs_intent),
+        "intent_state": intent_state,
+        "intent_note": intent_note,
         "document_changed": document_changed,
         "vs_device": vs_device,
         "masked_not_compared": masked,
