@@ -766,6 +766,107 @@ the onboarding path.
 * **The reveal gate still applies.** Delivering the file is handing over the
   credential, so it is gated and audited exactly as the download is.
 
+### The structure: destinations are per-list, method is per-device
+
+Settled as a **shape** rather than a feature list, because the two halves
+answer different questions and live in different places.
+
+**DESTINATIONS — per list, in Settings.** A containerlab host with a path
+and a credential; a TFTP root *and* the address devices fetch from; a ZTP
+server. They are properties of the **environment**, they do not change per
+device, and asking every time invites a typo in a path that was right the
+last fifty times.
+
+**METHOD — per device, in the wizard.** A property of the **platform and the
+situation**: the same list can hold a virtual node the platform can feed and
+a physical box that must fetch. So the wizard:
+
+* offers only methods that have a destination configured;
+* defaults to what fits the platform — a C8000v in containerlab is a file
+  drop;
+* always offers **download**, always last, because it needs nothing.
+
+#### A mismatch to resolve first
+
+The settings that would become destinations are **installation-wide today**:
+`clab_host`, `clab_configs_dir`, `tftp_root`, `tftp_server_ip`. Nothing in
+`settings_schema` is per list — the only per-list precedent is
+`collector_config`'s ports, which live beside the list rather than in
+`user_settings.json`.
+
+So "destinations are per-list" is not a field to add; it is either a new
+per-list store (beside `source.json` and `drift_state.json`, which is the
+established shape) or a per-list override layered over the installation
+default. **Worth deciding before the first destination is written**, because
+the second network is what reveals which was chosen — the same lesson as the
+template-secret key that was installation-wide until two lists each held an
+`r1`.
+
+### "Where" is not one field
+
+Each method needs different things, and the wizard should reveal them once
+the method is chosen rather than showing the union:
+
+| method | what "where" means |
+|---|---|
+| **file drop** | host + path + credential |
+| **TFTP** | a root to write to **and** the address the device fetches from — which may differ, and usually does when the server is multi-homed |
+| **ZTP** | a serial number or MAC **known before the device exists** |
+
+The ZTP row is the one with teeth. It changes **what the wizard collects**,
+not just where it sends: a serial is a fact about hardware nobody has racked
+yet, and it is required for that method and meaningless for the others. So
+`blocking_reasons` becomes **method-dependent** — which is a real change to
+`build_plan()`, whose refusals are currently a flat list true of every
+device. The rule that survives unchanged is *the interface is chosen, never
+defaulted*: a method-specific field is refused when missing, not guessed.
+
+### Pending gains states
+
+*"Generated, not yet reached"* is currently one state and would become
+three, with different next steps and different reasons for being stuck:
+
+* **written-to-host** — the file is in place; the node has not booted it;
+* **served-and-awaiting-fetch** — TFTP is serving it; nothing has asked;
+* **downloaded-and-out-of-our-hands** — a person has it; the tool cannot
+  know more.
+
+**The banner must name which**, or *"pending 3 days"* means three different
+problems with three different fixes — and the operator learns that the
+number carries no information.
+
+Two consequences that follow, and are easier to design than to discover:
+
+1. **The 24h/7d thresholds are derived and may not survive the split.** They
+   come from "one human action against a six-minute boot". A file already on
+   the host is minutes from booting; a device awaiting a ZTP fetch may
+   legitimately wait for a shipment. Per-state thresholds, or the flag
+   stops meaning anything — which is the argument the single threshold was
+   chosen by.
+2. **Each new state needs its wrong-and-looks-right named** (§9.3).
+   `served-and-awaiting-fetch` while the TFTP root is unwritable, or the
+   fetch address is one no device can route to, is the tool reporting that
+   it is waiting when nothing can arrive. What makes that visible is not
+   obvious, and it should be built rather than assumed.
+
+### Who moves the bytes
+
+The framing that makes the file drop worth building even though ZTP is the
+impressive one. These are **not a hierarchy** — they answer different
+questions about who does the moving, and they correspond to three classes of
+device:
+
+| | who moves the bytes | when |
+|---|---|---|
+| **file drop** | the platform | before boot — virtual devices only |
+| **TFTP** | a person at a console | at boot |
+| **ZTP** | the device itself | the only answer when nothing can place the file |
+
+A tool that built only ZTP would be unable to onboard the emulated fleet it
+is developed against; one that built only the file drop would be unable to
+onboard anything real. **Three classes of device, not three grades of
+sophistication.**
+
 ### Open question for when it is built
 
 Does delivery change the **pending** lifecycle? A device whose config has
