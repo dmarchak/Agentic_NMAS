@@ -804,7 +804,12 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
         # and with error_pattern live that command could itself be refused and
         # take the repair down.
         assert ctx.rollback_not_undone["10.0.0.1"] == [" description x"]
-        assert sent == [], sent
+        # The interface DID land -- the capture shows it -- and the device did
+        # not have it before, so this push created it and the rollback removes
+        # it. The old expectation was `[]`, which left a created-but-empty
+        # stanza on the device and reported "nothing to undo": the residue
+        # defect in its partial-push form.
+        assert sent == ["no interface GigabitEthernet0/1"], sent
 
     @pytest.mark.parametrize("rejection", REJECTIONS)
     def test_a_line_that_DID_land_is_undone(self, rejection):
@@ -839,23 +844,24 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
 
         assert ctx.rollback_performed is True
         assert ctx.rolled_back_ips == ["10.0.0.1"]
-        assert sent == ["interface GigabitEthernet0/1",
-                        " no description x", "exit"], sent
+        # `interface GigabitEthernet0/1` is absent from the pre-change config
+        # ("hostname s4\n"), so this push CREATED it and undoing a creation is
+        # removing it. On a physical port `no interface` resets it to default,
+        # which is the same claim: the state the device had before.
+        assert sent == ["no interface GigabitEthernet0/1"], sent
         assert ctx.rollback_not_undone.get("10.0.0.1") is None
 
     def test_an_unreadable_capture_undoes_everything_pushed(self):
         """Conservative when you do not know what landed."""
         from modules.nsot.deploy import rollback_commands
         undo = rollback_commands(self.PUSHED, "hostname s4\n", landed=None)
-        assert undo == ["interface GigabitEthernet0/1",
-                        " no description x", "exit"]
+        assert undo == ["no interface GigabitEthernet0/1"]
 
     def test_a_rejected_push_is_a_rollback_target(self):
         """The filter that once excluded exactly this device."""
         from modules.nsot.deploy import rollback_commands
         undo = rollback_commands(self.PUSHED, "hostname s4\n")
-        assert undo == ["interface GigabitEthernet0/1",
-                        " no description x", "exit"]
+        assert undo == ["no interface GigabitEthernet0/1"]
 
 
 class TestTheNotesListingEvaluatesApplicability:

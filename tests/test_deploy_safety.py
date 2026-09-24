@@ -851,12 +851,24 @@ class TestAncestryIsNotASetting:
         assert "interface Loopback0" not in undo
 
     def test_router_bgp_is_never_matched_against_router_ospf(self):
-        """Both reduce to the key `router`."""
+        """Both reduce to the key `router`.
+
+        **This test's fixture was the only one in the suite with a container
+        absent from the pre-change config**, and it therefore pinned the
+        residue-leaving rollback as correct — under a name about key matching.
+        `router bgp 65001` is not in `router ospf 1\n…`, so this push CREATED
+        it, and undoing a creation is removing it.
+
+        The property it was written for is unchanged and still asserted below:
+        nothing derived from `router ospf` may appear.
+        """
         from modules.nsot.deploy import rollback_commands
         undo = rollback_commands(
             ["router bgp 65001", " bgp log-neighbor-changes", "exit"],
             "router ospf 1\n router-id 10.0.0.1\n")
-        assert undo == ["router bgp 65001", " no bgp log-neighbor-changes", "exit"]
+        assert undo == ["no router bgp 65001"]
+        assert not any("ospf" in line for line in undo), \
+            "a line derived from router ospf reached the rollback"
         assert "router ospf 1" not in undo
 
     def test_the_classification_is_shared_not_re_derived(self):

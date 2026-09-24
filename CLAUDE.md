@@ -855,6 +855,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_oxidized_freshness.py` | the raw config is the artefact; the gate can reach its own finding; an authorisation covers one divergence; only exit 1 is drift |
 | `test_credential_never_changes_on_deploy.py` | a deploy adds an account and never changes one; the refusal names the form, never the value |
 | `test_inventory_dispatch_refuses.py` | the no-argument form resolves the active list; a name where a path was wanted refuses; a correctly built path never does |
+| `test_new_container_programs.py` | a stanza the device lacks: emitted once, undone by a single negation, and a fixture that can actually contain the case |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -2724,6 +2725,70 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   illustrates: **survey before fixing, and let the survey move the fix**, not
   only confirm it. The same instinct that produced *"a pattern right four
   times is the one to distrust on the fifth"*.
+- **A FIXTURE THAT CANNOT EXHIBIT THE CASE — a third variety.** Everything
+  else catalogued here is a check that computed the wrong answer, ran too few
+  times, or was read from the wrong place. This one is different: **the
+  assertions were exact and the input could never reach them.**
+  `test_each_group_is_unwound_one_exit_per_level` compares the whole command
+  list and would have caught the duplicated stanza header outright — but
+  `TestMergeCommands.RUNNING` contains every container the intended config
+  mentions, so no header is ever in `to_add` and the duplicating branch is
+  unreachable. **The natural fixture for a merge path has the parent present
+  by construction**: you cannot show that a child is given its header unless
+  the header already exists somewhere, and the obvious place to put it is the
+  device. Two siblings: `FakeNetBox` had no foreign keys, so the harness could
+  not cascade and the cascade *was* the defect; and `SourceFileLoader` runs a
+  module with `__name__` set, so a definition stranded below
+  `if __name__ == "__main__"` is reachable in the test and absent in the
+  program. Each time the test was correct and **the world it tested in was too
+  small**. The repair is never a stronger assertion — one added to the same
+  fixture passes too — it is a fixture that can fail.
+- **The duplicated stanza header, and what it was masking.**
+  `_section_chains()` yields a line's ancestors *excluding itself*, so a
+  header that is itself in `to_add` was appended once as its own line and
+  again as its first child's ancestor chain. It fired for **every brand-new
+  stanza** — interface, `router ospf`, `vlan`, `line` — and a two-level one
+  also exited and re-entered its parent. Forward it is harmless, IOS being
+  idempotent about re-entering a section, which is why nothing noticed; but
+  it is a line nobody authored in the program whose whole claim is that it is
+  exactly what was confirmed.
+  **Removing it alone would have made things worse.** It was what made
+  `merge_commands()`'s consistency assertion hold, and that assertion was
+  phrased as *"the program's leaves are exactly the lines I set out to add"* —
+  an equivalence that is **false whenever a container is itself new**, since
+  `interface Loopback0` is both an added line and the ancestry of two others.
+  Restated rather than relaxed, into the two directions it was really
+  guarding: nothing intended was dropped, and **no leaf is configuration
+  nobody asked for**.
+- **Undoing a creation is removing it, and the duplicate was hiding that this
+  was broken.** With the duplicate, `program_structure()` called the first
+  copy a leaf, so the rollback for a new interface came out as
+  `no interface Loopback0` **followed by** `interface Loopback0` and the child
+  negations — **self-cancelling**, deleting the section and recreating it
+  empty. Deduplicated it would have been coherent and still wrong: the child
+  negations leave a stanza the device never had. The correct rollback is the
+  **single negation**, children implied. Latent since the merge path was
+  built, and visible only during a rollback — *the one moment nobody is
+  placed to notice, because they are already dealing with a failed push.*
+  `created_containers()` is the one producer, consumed by the rollback builder
+  and the provenance guard, for the same reason `program_structure()` exists.
+- **An optional argument that can only TIGHTEN is not the
+  bypassed-by-omission shape.** `assert_rollback_provenance(rollback, pushed,
+  pre_config=None)` permits the negation of a created section only when told
+  the prior config; omitting it makes `no <section>` an orphan exactly as
+  before. The rule earned earlier — *a default fallback is how a caller
+  bypasses a resolver by omission* — is about an argument whose absence
+  **loosens** a check. Absence that only strengthens is safe, and the
+  distinction is worth stating or the rule gets applied as a ban.
+- **A created container is undone only if it LANDED.** `landed_leaves()` sees
+  leaves, so a container needed its own check — without it, a push rejected at
+  its very first line would be "undone" by negating a section that was never
+  created. The same derive-from-the-wrong-source error `landed` already exists
+  to prevent, one level up from the leaves it covered.
+- **An empty pre-change snapshot is not evidence the device had nothing.**
+  Without that guard every section looks created and the repair becomes `no`
+  on all of them — the worst push this tool could produce, generated by the
+  path meant to fix a failure. Absent and empty, again.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -421,13 +421,29 @@ def merge_commands(intended_config: str, running_config: str) -> list:
 
     remaining = dict.fromkeys(wanted)          # preserves order, de-duplicates
     commands, open_chain = [], []
+    entries = _section_chains(intended_config)
+
+    # A LINE THAT IS ALSO A CONTAINER OPENS THE LEVEL IT NAMES.
+    #
+    # Without this, a header that is itself being added was emitted twice --
+    # once as its own line from `to_add`, and again as the ancestor chain of
+    # its first child, because `open_chain` was still empty when that child
+    # was reached. Measured on r6's branch site: `interface Loopback0`,
+    # `interface Loopback0`, ` description ...`.
+    #
+    # It fired for EVERY brand-new stanza, not just an interface, and a
+    # two-level one also exited and re-entered its parent. Harmless forward --
+    # IOS re-entering a stanza is idempotent -- which is why nothing noticed,
+    # and a line nobody authored in a program whose whole claim is that it is
+    # exactly what was confirmed.
+    containers = {ancestor for _line, chain in entries for ancestor in chain}
 
     def _close():
         for _level in reversed(open_chain):
             commands.append("exit")
         open_chain.clear()
 
-    for line, chain in _section_chains(intended_config):
+    for line, chain in entries:
         if line not in remaining:
             continue
         if chain != open_chain:
@@ -436,6 +452,8 @@ def merge_commands(intended_config: str, running_config: str) -> list:
             open_chain = list(chain)
         commands.append(line)
         del remaining[line]
+        if line in containers:
+            open_chain = list(chain) + [line]
 
     _close()
 
@@ -443,15 +461,29 @@ def merge_commands(intended_config: str, running_config: str) -> list:
     # program_structure() calls a leaf. Asserting it here is what keeps the two
     # from drifting apart again: change either and this fails loudly, instead
     # of the rollback quietly disagreeing later.
+    # RESTATED, NOT RELAXED. It used to assert that the program's leaves are
+    # exactly the lines we set out to add -- an equivalence that is FALSE
+    # whenever a container is itself new, because `interface Loopback0` is
+    # both a line being added and the ancestry of two others. The duplicate
+    # above was what made it hold, so removing the duplicate made it fire
+    # correctly about something it had been phrased too narrowly to express.
+    #
+    # The two directions it was really guarding, separated:
+    #   * nothing we meant to add was dropped from the program;
+    #   * no LEAF of the program is configuration nobody asked for -- which is
+    #     the half that stops a synthesised line reaching a device.
     from modules.nsot import ifnames as _ifnames
-    classified = {_ifnames.canonicalise_line(e.line)
-                  for e in program_leaves(commands)}
     expected = {_ifnames.canonicalise_line(l) for l in wanted
                 if l not in remaining}
-    if classified != expected:
+    carried = {_ifnames.canonicalise_line(e["line"])
+               for e in program_structure(commands)}
+    leaves = {_ifnames.canonicalise_line(e.line) for e in program_leaves(commands)}
+    dropped = expected - carried
+    invented = leaves - expected
+    if dropped or invented:
         raise RuntimeError(
-            "merge_commands and program_structure disagree about which lines "
-            f"are configuration: {sorted(classified ^ expected)}")
+            "merge_commands and program_structure disagree about the program: "
+            f"dropped={sorted(dropped)} invented={sorted(invented)}")
 
     # Before anything connects. A command list that cannot be sent is a defect
     # in the intent, not a transport problem, and it should never become
@@ -560,6 +592,44 @@ def landed_leaves(pushed: list, landed) -> tuple:
     return applied, rejected
 
 
+def created_containers(pushed: list, pre_config: str) -> set:
+    """``{(chain, line)}`` for every section this push BROUGHT INTO EXISTENCE.
+
+    **One producer, consumed by the rollback builder and by the provenance
+    guard**, for the reason `program_structure()` itself exists: the forward
+    and rollback paths each having their own notion of ancestry is what sent
+    ``interface Loopback0`` to a device once already.
+
+    A container the device already had is context. A container that was not
+    there is a thing this deploy created, and undoing a creation is removing
+    it — not negating its children one at a time and leaving the empty shell
+    behind.
+    """
+    from modules.nsot import ifnames
+
+    # AN EMPTY SNAPSHOT IS NOT EVIDENCE THE DEVICE HAD NOTHING. Without this,
+    # a capture that came back blank would make every section look created and
+    # the rollback would be `no` on all of them -- turning a repair into the
+    # worst push this tool could produce. Absent and empty are different facts;
+    # collapsing them erased the settings file once already.
+    if not (pre_config or "").strip():
+        return set()
+
+    present = set()
+    for line, chain in _section_chains(pre_config):
+        present.add((tuple(ifnames.canonicalise_line(c) for c in chain),
+                     ifnames.canonicalise_line(line)))
+    created = set()
+    for entry in program_structure(pushed):
+        if entry["leaf"]:
+            continue
+        key = (tuple(ifnames.canonicalise_line(c) for c in entry["chain"]),
+               ifnames.canonicalise_line(entry["line"]))
+        if key not in present:
+            created.add(key)
+    return created
+
+
 def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     """The inverse of exactly what was pushed, and nothing else.
 
@@ -624,11 +694,62 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     commands, open_chain = [], []
     pending = []
     applied, _rejected = landed_leaves(pushed, landed)
-    for entry in applied:
-        line = entry.line
-        chain = list(entry.chain)
+    applied_ids = {(tuple(e.chain), e.line) for e in applied}
+
+    # UNDOING A CREATION IS REMOVING IT, not negating its children one at a
+    # time. `no interface Loopback0` restores a device that never had the
+    # interface; negating ` description` and ` ip address` leaves the empty
+    # shell behind, which is residue the device never carried.
+    #
+    # This was latent from the day the merge path was built and could only
+    # surface during a rollback -- the one moment nobody is in a position to
+    # notice, because they are already dealing with a failed push. The
+    # duplicated header was masking it: `interface Loopback0` appeared twice,
+    # so `program_structure` called the first copy a leaf, and the rollback
+    # came out as `no interface Loopback0` FOLLOWED BY `interface Loopback0` --
+    # self-cancelling. Removing the duplicate alone would have made it quieter
+    # rather than right.
+    created = created_containers(pushed, pre_config)
+
+    # A CREATED CONTAINER IS UNDONE ONLY IF IT LANDED. `landed_leaves()` sees
+    # leaves only, so a container needs its own check -- and without one, a
+    # push rejected at its very first line would be "undone" by negating a
+    # section that was never created. That is the same derive-from-the-wrong-
+    # source error `landed` exists to prevent, one level up from the leaves it
+    # already covers. `landed is None` means the capture could not be read, and
+    # everything pushed is then treated as applied.
+    if landed is None:
+        landed_containers = set(created)
+    else:
+        seen = {ifnames.canonicalise_line(l).strip() for l in landed}
+        landed_containers = {(chain, line) for chain, line in created
+                             if line.strip() in seen}
+    created = landed_containers
+    under_created = {chain + (line,) for chain, line in created}
+
+    def _is_implied(chain) -> bool:
+        canon_chain = tuple(ifnames.canonicalise_line(c) for c in chain)
+        return any(canon_chain[:len(prefix)] == prefix
+                   for prefix in under_created)
+
+    for entry in program_structure(pushed):
+        line = entry["line"]
+        chain = list(entry["chain"])
         indent = len(line) - len(line.lstrip())
         canonical = ifnames.canonicalise_line(line)
+        key = (tuple(ifnames.canonicalise_line(c) for c in chain), canonical)
+
+        if _is_implied(chain):
+            continue                      # removing the container removes it
+
+        if not entry["leaf"]:
+            if key in created:
+                pending.append((chain, f"{' ' * indent}no {line.strip()}"))
+            continue                      # pre-existing ancestry is context
+
+        if (tuple(entry["chain"]), line) not in applied_ids:
+            continue                      # rejected: never applied, not undone
+
         previous = _previous(chain, canonical)
         if previous is not None and previous != canonical:
             pending.append((chain, previous))
@@ -760,7 +881,8 @@ class RollbackNotInverse(RuntimeError):
     """A rollback negation does not correspond to anything this deploy pushed."""
 
 
-def assert_rollback_provenance(rollback: list, pushed: list) -> None:
+def assert_rollback_provenance(rollback: list, pushed: list,
+                               pre_config: str = None) -> None:
     """Every rollback line must trace to the pushed program. No exceptions.
 
     Exactly three things may appear in a rollback:
@@ -779,9 +901,19 @@ def assert_rollback_provenance(rollback: list, pushed: list) -> None:
     never looked at it. A guard that inspects one category and waves the rest
     through is the same family as a guard positioned where it cannot fail — it
     reads as a check, and the thing that went wrong was never in its scope.
+
+    A fourth thing is permitted **only when *pre_config* is supplied**: the
+    negation of a container this push *created*, which is how a creation is
+    undone. *pre_config* is optional and that is not the
+    bypassed-by-omission shape, because **omitting it can only make this
+    stricter** — without it, ``no <section>`` is an orphan exactly as before.
+    An optional argument that can only tighten is safe; one that can only
+    loosen is the bypass.
     """
     from modules.nsot import ifnames
 
+    created = (created_containers(pushed, pre_config)
+               if pre_config is not None else set())
     pushed_leaves, pushed_ancestry = {}, set()
     for entry in program_structure(pushed):
         chain = tuple(ifnames.canonicalise_line(c) for c in entry["chain"])
@@ -814,6 +946,8 @@ def assert_rollback_provenance(rollback: list, pushed: list) -> None:
         if stripped.startswith("no "):
             if stripped[3:].strip() in known:
                 continue
+            if (chain, ifnames.canonicalise_line(stripped[3:].strip())) in created:
+                continue          # undoing a section this push created
             if f"key:{precise}" in known or broad_ok:
                 continue
             orphans.append((entry["line"], "negates nothing this deploy pushed"))

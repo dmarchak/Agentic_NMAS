@@ -1337,7 +1337,12 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                 log.info("pipeline[rollback]: %s — %d line(s) not undone, never "
                          "applied: %s", hostname, len(rejected),
                          [e.line for e in rejected])
-            assert_rollback_provenance(undo, pushed)
+            # `pre_cfg` too: without it the guard cannot tell a section this
+            # push CREATED from one it merely entered, and refuses the single
+            # negation that undoes a creation. Omitting it only ever makes the
+            # guard stricter, which is why it is optional there and required
+            # here -- this is the caller that knows.
+            assert_rollback_provenance(undo, pushed, pre_cfg)
             ctx.rollback_commands[ip] = undo
 
             if not undo:
