@@ -500,3 +500,52 @@ It lists a **local** directory deliberately — the sanitizer's own output, on
 the NMAS — and says so, because `--stray` reaches the clab host and
 confusing the two sends somebody to debug the wrong machine. A test asserts
 `_reconcile` is the only local listing in the script.
+
+---
+
+## 12. The sync half, as a whole file
+
+`docs/patches/oxidized-to-config.sh.new` — the complete script, not a patch.
+The first attempt was a hand-written unified diff whose `@@` headers carried
+no line ranges, so `patch(1)` rejected it outright as garbage. A full file
+avoids line numbers entirely and `diff -u` against the original gives the
+same review.
+
+### Verified here
+
+* `bash -n` parses it;
+* the awk program contains **zero apostrophes** — asserted, because one
+  would truncate the single-quoted shell string and the original says so in
+  its own comment;
+* `--help`'s `sed -n` range re-measured to cover the longer header (it was
+  `2,34p`, now `2,52p`) — a trap, since changing the header silently
+  truncates the help;
+* zero non-ASCII bytes;
+* **all six population lists are gone**: no `for n in r1 r2 …` loops, no
+  `ROUTERS=`, no `declare -A NODE=(`, no `cp $STAGE/*.cfg`, no `REMOTE_DIR`.
+  Five `"${DEVICES[@]}"` iterations and four `${CFGDIR[$n]}` uses replace
+  them.
+
+### What is NOT verified
+
+It has never run. No bash here has a map to fetch, a git repo to read, or a
+clab host to reach. `--no-deploy` is the first real test.
+
+### Two things to read closely
+
+* **`CLAB_FROM_ENV`** is captured *before* the default is applied, so an
+  explicit `CLAB=user@host` still wins over the host the map carries. Get
+  that backwards and the env override silently stops working.
+* **`while read … done < <(destinations)`** rather than a pipeline, so the
+  loop body runs in **this** shell and `copy_failed` survives it. A pipeline
+  would set it in a subshell and the script would report success after a
+  failed copy — which is the failure mode the per-lab grouping exists to
+  make visible.
+
+### Before `--no-deploy`
+
+**r6 is almost certainly not in Oxidized's `router.db`.** If it is not, the
+sanitiser produces no `r6.cfg`, and `--reconcile` reports
+`NO FILE: r6` and **stops before anything is copied**. That is the gate
+working, not a bug — but it means adding r6 to `router.db` is a prerequisite
+for closing its reboot-safety, and it is better known now than at the prompt.

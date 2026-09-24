@@ -1,0 +1,438 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# oxidized-to-config.sh
+#
+# Turns Oxidized's stored device configs into replayable containerlab
+# startup-configs.
+#
+#   RUN ON THE NMAS VM (where Oxidized lives):
+#     ./oxidized-to-config.sh
+#
+#   It converts, shows a diff against what is currently on the clab VM, and
+#   asks before copying anything. Nothing is written to the clab VM without
+#   an explicit yes.
+#
+#   Options:
+#     ./oxidized-to-config.sh --no-deploy    convert and diff only
+#     ./oxidized-to-config.sh --yes          skip the prompt (for cron)
+#     CLAB=user@host ./oxidized-to-config.sh
+#     NMAS_URL=http://10.0.0.211:5000 ./oxidized-to-config.sh
+#
+# WHERE THE DEVICE LIST COMES FROM
+#   The NMAS, once, via nmas-clab-targets. It used to be SIX places encoding
+#   the same population: three loops over "r1 r2 r3 r4 r5 s1 s2 s3 s4", the
+#   implicit cp glob, the ROUTERS string, and the NODE array. All were
+#   current when they were written. r6 was in none of them, so it would have
+#   been sanitised as a switch - wrong rules, silently - if it had been
+#   reached at all.
+#
+#   NODE is the one that decides what gets READ: it maps a device to the
+#   filename Oxidized stores it under. The map supplies it as a column,
+#   resolved from oxidized_node_identity rather than guessed.
+#
+#   If the NMAS cannot be asked, this STOPS. It does not fall back to a
+#   default directory: a guess about where a config boots from writes one
+#   device's credentials into another lab.
+#
+# WHY A SANITISER IS STILL NEEDED
+#   Oxidized's ios model strips very little. Its stored config still contains
+#   the full crypto PKI certificate chains, the clab-mgmt VRF and management
+#   interface, licensing state, and its own metadata header. Replay that as a
+#   startup-config and vrnetlab will fight its own bootstrap.
+#
+#   It also has a blind spot that is easy to miss: a running-config records
+#   "shutdown" on a down interface but records NOTHING on an up one. Harvest
+#   a working device and every interface comes back administratively down on
+#   the next deploy. This cost a full rebuild on 2026-08-30 - all SVIs and
+#   every routed port on r1-r4 came up shut, so only s3 was reachable.
+#   The sanitiser therefore re-injects "no shutdown" into any interface block
+#   that carries an address and does not explicitly say shutdown.
+#
+# ALWAYS review 'git diff configs/' before redeploying.
+# ---------------------------------------------------------------------------
+set -uo pipefail
+
+REPO="${REPO:-/opt/oxidized/rcn-lab.git}"
+OUT="${OUT:-configs}"
+REF="${REF:-HEAD}"
+# Whether CLAB was set in the environment, checked BEFORE the default is
+# applied: the map carries a host too, and an explicit CLAB= must still win.
+CLAB_FROM_ENV="${CLAB+yes}"
+CLAB="${CLAB:-dmarchak@10.0.0.210}"
+STAGE="/tmp/oxidized-staged"
+NMAS_URL="${NMAS_URL:-http://10.0.0.211:5000}"
+TARGETS="${TARGETS:-nmas-clab-targets}"
+
+DEPLOY=ask
+for a in "$@"; do
+  case "$a" in
+    --no-deploy) DEPLOY=no  ;;
+    --yes|-y)    DEPLOY=yes ;;
+    --help|-h)   sed -n '2,52p' "$0"; exit 0 ;;
+    *) echo "unknown option: $a"; exit 1 ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# The map, fetched ONCE. Replaces NODE, ROUTERS and all four device loops.
+# One ask is one consistent snapshot; a per-device ask is N chances to become
+# unreachable mid-run, and a partial map is worse than none.
+# ---------------------------------------------------------------------------
+declare -A NODE CFGDIR PLATFORM LAB
+DEVICES=()
+
+map="$("$TARGETS" --url "$NMAS_URL")" || {
+  echo "REFUSED - the NMAS could not be asked where configs belong."
+  echo "Not falling back to a default directory: a guess about where a"
+  echo "config boots from writes one device's credentials into another lab."
+  exit 2
+}
+
+while IFS=$'\t' read -r n cfgdir lab clabhost platform oxnode; do
+  [ -n "${n:-}" ] || continue
+  case "$n" in '#'*) continue ;; esac
+  # A row the NMAS could not complete is a device nobody should write.
+  if [ -z "${cfgdir:-}" ] || [ -z "${platform:-}" ] || [ -z "${oxnode:-}" ]; then
+    echo "REFUSED $n: incomplete map row"
+    echo "   configs_dir='${cfgdir:-}' platform='${platform:-}' oxidized_node='${oxnode:-}'"
+    exit 2
+  fi
+  DEVICES+=("$n")
+  NODE[$n]="$oxnode"
+  CFGDIR[$n]="$cfgdir"
+  PLATFORM[$n]="$platform"
+  LAB[$n]="$lab"
+  [ -z "$CLAB_FROM_ENV" ] && [ -n "${clabhost:-}" ] && CLAB="$clabhost"
+done <<<"$map"
+
+[ ${#DEVICES[@]} -gt 0 ] || { echo "REFUSED - the map is empty. That is a fact about the answer, not about the fleet."; exit 2; }
+
+echo "Map: ${#DEVICES[@]} device(s) from $NMAS_URL"
+
+# The config DIALECT decides the sanitising rules, not the hostname. The
+# default branch REFUSES: picking a kind for a platform nobody described is
+# what ROUTERS did, and it picks wrong for exactly the devices nobody
+# thought about.
+kind_for() {
+  case "$1" in
+    cisco_iosxe) echo router ;;
+    cisco_ios)   echo switch ;;
+    *) return 1 ;;
+  esac
+}
+
+GIT=(git -C "$REPO")
+sudo -n true 2>/dev/null && GIT=(sudo git -C "$REPO")
+
+"${GIT[@]}" rev-parse --git-dir >/dev/null 2>&1 || {
+  echo "Cannot read $REPO"
+  echo "Try: sudo git config --global --add safe.directory $REPO"
+  exit 1
+}
+
+mkdir -p "$OUT"
+
+sanitise() {   # sanitise router|switch
+awk -v kind="$1" '
+  # ---- flush a pending "no shutdown" ---------------------------------------
+  # Must be the FIRST rule. Any non-indented line ends the current interface
+  # block, and several rules below use next, so the flush has to happen
+  # before any of them can swallow the line. In particular a crypto pki
+  # block immediately after an interface would otherwise lose the injection.
+  # NOTE: no apostrophes anywhere in this awk program - it is inside a
+  # single-quoted shell string and one quote truncates the whole thing.
+  !/^[ \t]/ && inif { if (hadaddr && !hadshut) { print " no shutdown"; b=0 } inif=0 }
+
+  # ---- Oxidized metadata header, and every "! comment" line ---------------
+  /^![ \t]/ { next }
+
+  # ---- IOSv banner blocks: banner exec ^C ... ^C
+  # Multi-line, and the ^C is a literal control character. vrnetlab pushes
+  # config line by line and waits for a prompt, so a banner block breaks the
+  # expect matching and HANGS THE BOOT. Drop them.
+  /^banner [a-z-]+ / { ban=1; next }
+  ban { if ($0 ~ /\003|\^C/) ban=0; next }
+
+  # ---- multi-line blocks dropped whole ------------------------------------
+  /^crypto pki (trustpoint|certificate chain)/ { blk=1 }
+  /^vrf definition clab-mgmt$/                 { blk=1 }
+  /^interface GigabitEthernet1$/ && kind=="router" { blk=1 }
+  /^call-home$/ { ch=1; next }
+  ch && /^!$/      { ch=0; next }
+  ch && !/^[ \t]/ { ch=0 }
+  ch               { next }
+  blk && /^!$/ { blk=0; next }
+  blk          { next }
+
+  # ---- interface blocks ----------------------------------------------------
+  # A running-config shows "shutdown" but never "no shutdown", so an
+  # interface that was up loses that fact when harvested. Re-inject it for
+  # any block that carries an address and was not explicitly shut.
+  # Addressless blocks (switchports) are left alone - they default to up.
+  /^interface / { inif=1; hadshut=0; hadaddr=0; b=0; print; next }
+  inif && /^[ \t]/ {
+      if ($0 ~ /^[ \t]+(ip|ipv6) address/) hadaddr=1
+      if ($0 ~ /^[ \t]+shutdown[ \t]*$/)   hadshut=1
+      b=0; print; next
+  }
+
+  # ---- single lines --------------------------------------------------------
+  /^Building configuration/      { next }
+  /^Current configuration/       { next }
+  /^version /                    { next }
+  /^boot-(start|end)-marker$/    { next }
+  /^license /                    { next }
+  /^diagnostic bootup/           { next }
+  /^memory free low-watermark/   { next }
+  /^platform /                   { next }
+  /^service call-home/           { next }
+  /^ip ssh maxstartups/          { next }
+  /^ip tftp source-interface/    { next }
+  /^ip route vrf clab-mgmt/      { next }
+  /^ipv6 route vrf clab-mgmt/    { next }
+  /^crypto key/                  { next }
+  /^ip domain name example.com$/ { next }
+  /^end$/                        { next }
+  /^[ \t]*$/                     { next }
+
+  # ---- collapse runs of bare bangs -----------------------------------------
+  /^!$/ { if (b) next; b=1; print; next }
+        { b=0; print }
+
+  # ---- file ended mid-interface --------------------------------------------
+  END { if (inif && hadaddr && !hadshut) print " no shutdown" }
+'
+}
+
+# Every distinct destination in the map, once.
+destinations() {
+  local n
+  for n in "${DEVICES[@]}"; do echo "${CFGDIR[$n]}"; done | sort -u
+}
+
+SRC_SHA="$("${GIT[@]}" rev-parse --short "$REF" 2>/dev/null || echo unknown)"
+echo "Reading $REPO at $REF ($SRC_SHA)"
+echo
+fail=0
+
+for n in "${DEVICES[@]}"; do
+  if ! kind="$(kind_for "${PLATFORM[$n]}")"; then
+    printf '%-4s REFUSED - no sanitising rules for platform %s\n' "$n" "${PLATFORM[$n]}"
+    fail=1; continue
+  fi
+  printf '%-4s ' "$n"
+
+  raw="$("${GIT[@]}" show "${REF}:${NODE[$n]}" 2>/dev/null)"
+  if ! grep -q '^hostname' <<<"$raw"; then
+    echo "SKIPPED - nothing stored for ${NODE[$n]}"
+    fail=1; continue
+  fi
+
+  {
+    echo "!"
+    echo "! ${n} - from Oxidized ${REF} ${SRC_SHA}"
+    echo "!"
+    # only add the header line if the harvested config does not already have it
+    if [ "$kind" = switch ] && ! grep -q '^no logging console$' <<<"$raw"; then
+      printf 'no logging console\n!\n'
+    fi
+    sanitise "$kind" <<<"$raw"
+    # the RSA key is not in running-config; re-issue so SSH works on a fresh boot
+    if [ "$kind" = switch ]; then
+      printf '!\nip domain-name rcn.lab\ncrypto key generate rsa modulus 2048\nip ssh version 2\n'
+    fi
+    printf '!\nend\n'
+  } > "$OUT/${n}.cfg"
+
+  lines=$(wc -l < "$OUT/${n}.cfg")
+  ends=$(grep -c '^end$'  "$OUT/${n}.cfg")
+  mg=$(grep -c '^interface GigabitEthernet1$' "$OUT/${n}.cfg")
+  cert=$(grep -cE '^ +[0-9A-F]{8} ' "$OUT/${n}.cfg")
+  ban=$(grep -c '^banner ' "$OUT/${n}.cfg")
+
+  # addressed interfaces that would come up administratively down
+  ifdown=$(awk '
+    !/^[ \t]/ && v { if (a && !s) c++; v=0 }
+    /^interface / { v=1; a=0; s=0; next }
+    v && /^[ \t]/ {
+        if ($0 ~ /^[ \t]+(ip|ipv6) address/) a=1
+        if ($0 ~ /^[ \t]+no shutdown[ \t]*$/) s=1
+    }
+    END { if (v && a && !s) c++; print c+0 }' "$OUT/${n}.cfg")
+
+  # sanity: a real config has exactly one hostname. An empty file has none,
+  # and the old validation could not tell the difference.
+  hn=$(grep -c '^hostname ' "$OUT/${n}.cfg")
+
+  # truncation guard: every interface/router block Oxidized stored must survive
+  # sanitising (routers legitimately lose GigabitEthernet1, the mgmt port).
+  raw_if=$(grep -c '^interface ' <<<"$raw")
+  [ "$kind" = router ] && grep -q '^interface GigabitEthernet1$' <<<"$raw" && raw_if=$((raw_if-1))
+  out_if=$(grep -c '^interface ' "$OUT/${n}.cfg")
+  raw_rt=$(grep -c '^router ' <<<"$raw")
+  out_rt=$(grep -c '^router ' "$OUT/${n}.cfg")
+
+  printf '%4s lines  end=%s  up-ifs-ok' "$lines" "$ends"
+  [ "$ends" -ne 1 ]                        && { printf '  <-- BAD end count'; fail=1; }
+  [ "$hn"   -ne 1 ]                        && { printf '  <-- hostname count %s' "$hn"; fail=1; }
+  [ "$out_if" -ne "$raw_if" ] && { printf '  <-- interfaces %s of %s (TRUNCATED?)' "$out_if" "$raw_if"; fail=1; }
+  [ "$out_rt" -ne "$raw_rt" ] && { printf '  <-- router blocks %s of %s (TRUNCATED?)' "$out_rt" "$raw_rt"; fail=1; }
+  [ "$kind" = router ] && [ "$mg" -ne 0 ]  && { printf '  <-- mgmt leaked';   fail=1; }
+  [ "$cert" -ne 0 ]                        && { printf '  <-- cert leaked';   fail=1; }
+  [ "$ban"  -ne 0 ]                        && { printf '  <-- banner leaked (will hang boot)'; fail=1; }
+  [ "$ifdown" -ne 0 ]                      && { printf '  <-- %s addressed interface(s) missing no shutdown' "$ifdown"; fail=1; }
+  echo
+done
+
+echo
+if [ $fail -ne 0 ]; then
+  echo "PROBLEMS ABOVE - nothing will be copied. Fix these first."
+  exit 1
+fi
+echo "All files converted and validated."
+
+# ---------------------------------------------------------------------------
+# Account for every mapped device BEFORE anything is copied. A device the
+# sanitiser produced nothing for is NAMED rather than silently skipped - that
+# was r6's state for two days and nothing reported it.
+#
+# A mapped device with no file blocks. A file nobody mapped does not: that is
+# worth knowing and is not a reason to stop a sync.
+# ---------------------------------------------------------------------------
+echo
+if ! "$TARGETS" --url "$NMAS_URL" --reconcile "$OUT"; then
+  echo
+  echo "PROBLEMS ABOVE - nothing will be copied."
+  exit 1
+fi
+
+[ "$DEPLOY" = no ] && { echo "--no-deploy set, stopping here."; exit 0; }
+
+# ---------------------------------------------------------------------------
+# Diff against what is currently on the clab VM
+# ---------------------------------------------------------------------------
+echo
+echo "=========================================================="
+echo " Comparing against ${CLAB}, per lab"
+destinations | sed 's/^/   /'
+echo "=========================================================="
+
+if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$CLAB" true 2>/dev/null; then
+  echo
+  echo "Cannot reach $CLAB without a password."
+  echo "Set up a key so this can run unattended:"
+  echo "    ssh-keygen -t ed25519 -N ''"
+  echo "    ssh-copy-id $CLAB"
+  echo
+  echo "Converted files are in ./$OUT - copy them by hand if you prefer."
+  exit 1
+fi
+
+ssh "$CLAB" "rm -rf $STAGE && mkdir -p $STAGE" || exit 1
+rsync -a "$OUT"/ "${CLAB}:${STAGE}/" || exit 1
+
+changed=0
+newfiles=0
+echo
+for n in "${DEVICES[@]}"; do
+  d="$(ssh "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>&1" || true)"
+  if [ -z "$d" ]; then
+    printf '  %-4s %-16s unchanged\n' "$n" "${LAB[$n]}"
+  elif grep -q 'No such file' <<<"$d"; then
+    printf '  %-4s %-16s NEW - no current file on the clab VM\n' "$n" "${LAB[$n]}"
+    newfiles=$((newfiles+1))
+  else
+    add=$(grep -c '^+[^+]' <<<"$d")
+    del=$(grep -c '^-[^-]' <<<"$d")
+    printf '  %-4s %-16s CHANGED  +%s / -%s lines\n' "$n" "${LAB[$n]}" "$add" "$del"
+    changed=$((changed+1))
+  fi
+done
+
+if [ $((changed + newfiles)) -eq 0 ]; then
+  echo
+  echo "Nothing to do - the clab VM already matches Oxidized."
+  ssh "$CLAB" "rm -rf $STAGE"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Show the full diff, then ask
+# ---------------------------------------------------------------------------
+if [ "$DEPLOY" = ask ]; then
+  echo
+  read -r -p "Show the full diff? [y/N] " ans
+  if [[ "$ans" =~ ^[Yy] ]]; then
+    for n in "${DEVICES[@]}"; do
+      out="$(ssh "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
+      [ -n "$out" ] && { echo; echo "########## $n  (${LAB[$n]}) ##########"; echo "$out"; }
+    done | ${PAGER:-less -R}
+  fi
+
+  echo
+  echo "This will overwrite these directories on $CLAB:"
+  destinations | sed 's/^/    /'
+  echo "A timestamped backup is taken first, and these are startup-configs -"
+  echo "they only take effect on the next 'containerlab deploy --cleanup'."
+  echo
+  read -r -p "Copy the new configs over? [y/N] " ans
+  if [[ ! "$ans" =~ ^[Yy] ]]; then
+    echo "Left alone. Staged copy is at ${CLAB}:${STAGE}"
+    exit 0
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Back up, copy, commit - PER LAB
+#
+# One transfer per DESTINATION, not per device: the unit of work is a lab,
+# which is the unit --stray and the lab map already use, and a failure is then
+# "this lab was not updated" - a claim nmas-check-startup-applies can confirm
+# per device.
+#
+# --files-from rather than a staging directory per lab: ./configs holds
+# exactly one <hostname>.cfg per device and nothing else, so selecting a
+# subset needs no second copy of it - and a second copy is how the two come
+# to disagree.
+# ---------------------------------------------------------------------------
+ts=$(date +%Y%m%d-%H%M%S)
+copy_failed=0
+
+while read -r dir; do
+  [ -n "$dir" ] || continue
+  list=""
+  for n in "${DEVICES[@]}"; do
+    [ "${CFGDIR[$n]}" = "$dir" ] && list="${list}${n}.cfg"$'\n'
+  done
+  count=$(printf '%s' "$list" | grep -c . || true)
+
+  printf '%s' "$list" | ssh "$CLAB" "cat > '$STAGE/.files'" || { copy_failed=1; continue; }
+
+  if ssh "$CLAB" "cp -r '$dir' '${dir}.bak-${ts}' 2>/dev/null; \
+                  rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/'"; then
+    echo "Copied $count file(s) to $dir   (backup ${dir}.bak-${ts})"
+  else
+    echo "Copy FAILED for $dir - staged files left at ${CLAB}:${STAGE}"
+    copy_failed=1
+  fi
+done < <(destinations)
+
+if [ "$copy_failed" -ne 0 ]; then
+  echo "One or more labs were not updated. Staged files left at ${CLAB}:${STAGE}"
+  exit 1
+fi
+
+ssh "$CLAB" "rm -rf $STAGE"
+
+while read -r dir; do
+  [ -n "$dir" ] || continue
+  ssh "$CLAB" "cd \$(dirname '$dir') && \
+    git rev-parse --git-dir >/dev/null 2>&1 && \
+    git add -A \$(basename '$dir') && \
+    git commit -q -m 'harvest from oxidized $ts' && \
+    echo \"Committed \$(basename '$dir') to git.\" || echo \"Not a git repo, or nothing to commit: $dir\""
+done < <(destinations)
+
+echo
+echo "Startup-configs updated. They take effect on the next destroy/deploy of"
+echo "each affected lab."
