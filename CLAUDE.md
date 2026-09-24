@@ -879,6 +879,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_abandon.py` | release refuses while named; abandon reverses creation; a partial abandon never reclaims |
 | `test_onboard_pending.py` | pending has an exit; 24h/7d; promotion refuses the bootstrap credential |
 | `test_onboard_phase2.py` | reaching is the verification; silence is not a cause; the banner tells error from empty |
+| `test_settings_file_integrity.py` | absent vs unreadable; a write on defaults refused; the save is atomic |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
 All HTTP and SSH is mocked; **no test touches a live network.**
@@ -1525,6 +1526,34 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 - **A pass count is not a run result.** "2,736 passing" was quoted from a
   tail reading `2736 passed` with no error line, while the same commit
   produced ten errors on another machine. State error counts explicitly.
+- **Absent and unreadable are different facts, and collapsing them erased
+  the settings file.** `load_user_settings()` caught `JSONDecodeError` and
+  returned `{}`, so an unreadable file looked like a first run and the next
+  write persisted the empty dict — taking `settings_schema_version` with it,
+  which made the file read as v0 so the next panel GET seeded **107
+  defaults**, materialising the Cloudflare Access config as blanks. It became
+  reachable because `save_user_settings()` opened the real path with `"w"`
+  (truncate in place), leaving a window in which the file is a fragment; two
+  settings requests 10 ms apart is enough. **A read on defaults is
+  survivable; a WRITE on defaults destroyed the file** — so the loader raises
+  `SettingsUnreadable`, `set_user_setting()` propagates it,
+  `get_user_setting()` catches it, the save is temp-then-`os.replace`, and
+  the damaged file is preserved as `user_settings.json.corrupt-<ts>` at
+  `0600`. **The failure is drawn on the posture panel above every gate row**,
+  because if the file cannot be read each row shows its default and looks
+  deliberate.
+- **Five defensible mechanisms composed into an invisible failure.** Truncate
+  in place → a read catches the fragment → `{}` returned as if empty → the
+  next write persists it → the file reads as v0 → a GET seeds 107 defaults →
+  and the peer check, fail-open on a blank list, stops protecting against
+  replay. Nothing announced any step. It surfaced only because the onboarding
+  wizard refused to create a device.
+- **Severity, both halves.** The gates were real: exactly one path to a person
+  identity exists, `is_configured()` is checked first, and
+  `_actor_from_claims()` runs only on claims `jwt.decode()` verified — so
+  reveal/approve/confirm/publish_remote were **never satisfiable by an HTTP
+  header**. The exposure was **replay of a genuine assertion from any LAN
+  host** while the peer list was blank, not forgery.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

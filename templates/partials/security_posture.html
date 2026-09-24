@@ -130,7 +130,26 @@ async function loadSecurityPosture() {
         </td>
       </tr>`).join('');
 
+    /* THE FILE'S OWN HEALTH, ABOVE EVERYTHING IT CLAIMS TO REPORT.
+       If the settings file cannot be read, every row below shows its
+       DEFAULT and looks deliberate -- a panel built to make the posture
+       checkable, quietly reporting a posture nobody chose. Drawn first and
+       in red, because the rows under it are not evidence while it shows. */
+    const unreadable = d.settings_readable === false
+      ? `<div class="alert alert-danger py-2 px-3 mb-2">
+           <div class="fw-semibold mb-1">The settings file could not be read.</div>
+           <div class="small">Every row below is a <strong>default</strong>,
+             not a decision — nothing here reflects what was configured.
+             Writes are refused until it is repaired or removed.
+             ${esc((d.settings_read_failure || {}).reason || '')}
+             ${(d.settings_read_failure || {}).preserved_as
+               ? `The damaged file was kept as
+                  <code>${esc(d.settings_read_failure.preserved_as)}</code>.` : ''}
+           </div></div>`
+      : '';
+
     host.innerHTML = `
+      ${unreadable}
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-2">
           <thead><tr class="text-muted small">

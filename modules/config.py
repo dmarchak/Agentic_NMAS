@@ -9,10 +9,13 @@ Handles both normal Python execution and PyInstaller frozen executables by resol
 BASE_DIR at import time.
 """
 
+import logging
 import os
 import sys
 import json
 import re as _re
+
+log = logging.getLogger(__name__)
 
 # Determine base path - handles both normal Python and PyInstaller frozen executable
 if getattr(sys, 'frozen', False):
@@ -152,15 +155,98 @@ def get_current_list_data_dir() -> str:
 # User Settings Functions
 # ---------------------------------------------------------------------------
 
-def load_user_settings() -> dict:
-    """Load user settings from JSON file."""
-    if os.path.exists(USER_SETTINGS_FILE):
-        try:
-            with open(USER_SETTINGS_FILE, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return {}
-    return {}
+class SettingsUnreadable(RuntimeError):
+    """The settings file exists and could not be read.
+
+    **Distinct from absent, and that distinction is the whole point.** This
+    function used to catch the parse error and return ``{}`` -- so an
+    unreadable file was indistinguishable from a first run, and the next
+    write persisted the empty dict. Measured: one truncated read followed by
+    a single `set_user_setting()` left a file containing exactly that one
+    key. Everything else was gone, including ``settings_schema_version``,
+    which made the file read as v0 so the next panel load seeded 107
+    defaults over it -- and the Cloudflare Access configuration materialised
+    as empty strings.
+
+    Same shape as `inconclusive` against `failed`, one layer under every
+    setting in the program.
+    """
+
+
+#: Read failures, for the posture panel. A settings layer running on
+#: defaults because it could not read its own file is the wrong-thing-
+#: looking-right state, and `device_manager.log` is not read until something
+#: else has already gone wrong.
+_read_failure: dict = {}
+
+
+def settings_read_health() -> dict:
+    """``{}`` when the file reads cleanly, else what failed and when."""
+    return dict(_read_failure)
+
+
+def _preserve_corrupt(reason: str) -> str:
+    """Copy the damaged file aside before anything can overwrite it.
+
+    Owner-only: it is a settings file, and settings files hold secrets --
+    true of this one in general even when the particular values are already
+    lost.
+    """
+    import shutil
+    import time
+
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    target = f"{USER_SETTINGS_FILE}.corrupt-{stamp}"
+    try:
+        if not os.path.exists(target):
+            with open(USER_SETTINGS_FILE, "rb") as src:
+                data = src.read()
+            with open_secure(target, "wb") as dst:
+                dst.write(data)
+        log.error("settings: %s — preserved the damaged file as %s",
+                  reason, os.path.basename(target))
+    except OSError as exc:
+        log.error("settings: %s — and it could not be preserved: %s",
+                  reason, exc)
+        return ""
+    return target
+
+
+def load_user_settings(strict: bool = False) -> dict:
+    """Load user settings.
+
+    A **missing** file is a first run and returns ``{}``. A file that exists
+    and cannot be parsed raises :class:`SettingsUnreadable` -- because the
+    caller that matters is the one about to write, and writing defaults over
+    an unreadable file is what destroyed it.
+
+    *strict* is accepted for callers that want the raise regardless; the
+    raise is now the default behaviour for a parse failure either way.
+    """
+    global _read_failure
+
+    if not os.path.exists(USER_SETTINGS_FILE):
+        _read_failure = {}
+        return {}
+    try:
+        with open(USER_SETTINGS_FILE, "r") as f:
+            data = json.load(f)
+        _read_failure = {}
+        return data
+    except (json.JSONDecodeError, OSError) as exc:
+        import time
+
+        reason = f"{type(exc).__name__}: {exc}"
+        preserved = _preserve_corrupt(reason)
+        _read_failure = {
+            "unreadable": True,
+            "reason": reason,
+            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "preserved_as": os.path.basename(preserved) if preserved else "",
+            "effect": ("settings are being read from defaults; writes are "
+                       "refused until the file is repaired or removed"),
+        }
+        raise SettingsUnreadable(reason) from exc
 
 
 def save_user_settings(settings: dict) -> bool:
@@ -171,25 +257,54 @@ def save_user_settings(settings: dict) -> bool:
     mode is not redundant with the encryption, it is what stops the two being
     readable together.
     """
+    # ATOMIC. This used to open the real path with "w", which truncates in
+    # place: a reader arriving mid-write got a partial document, and
+    # `load_user_settings()` turned that into `{}`. Two settings requests
+    # 10ms apart is enough. `credentials._save()` already had this shape;
+    # this one did not, and the two defects together erased the file.
+    tmp = f"{USER_SETTINGS_FILE}.tmp"
     try:
-        with open_secure(USER_SETTINGS_FILE, "w") as f:
+        with open_secure(tmp, "w") as f:
             json.dump(settings, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, USER_SETTINGS_FILE)
         return True
-    except IOError:
+    except OSError:
+        log.error("settings: could not write %s", USER_SETTINGS_FILE)
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
         return False
 
 
-def get_user_setting(key: str, default=None):
-    """Get a specific user setting."""
-    settings = load_user_settings()
-    return settings.get(key, default)
-
-
 def set_user_setting(key: str, value) -> bool:
-    """Set a specific user setting."""
+    """Set a specific user setting.
+
+    **Refuses while the file is unreadable.** `load_user_settings()` raises
+    rather than returning `{}`, and that raise propagates here on purpose: a
+    write built on defaults is exactly what erased every other key.
+    """
     settings = load_user_settings()
     settings[key] = value
     return save_user_settings(settings)
+
+
+def get_user_setting(key: str, default=None):
+    """Read one setting, surviving an unreadable file.
+
+    **A read on defaults is survivable; a write on defaults destroyed the
+    file.** So this catches what `set_user_setting()` deliberately does not,
+    and the failure is recorded in `settings_read_health()` for the posture
+    panel rather than only logged.
+    """
+    try:
+        settings = load_user_settings()
+    except SettingsUnreadable:
+        return default
+    return settings.get(key, default)
 
 # Application settings
 PING_INTERVAL = 5

@@ -520,7 +520,23 @@ def posture(reveal_config: bool = False) -> dict:
     allowed = _setting("service_allowed_operations", []) or []
     access_set = {k: bool((_setting(k, "") or "")) for k in _POSTURE_SENSITIVE}
 
+    # THE SETTINGS FILE'S OWN HEALTH, on the panel that reports what it read.
+    #
+    # A settings layer running on defaults because it could not read its own
+    # file is the wrong-thing-looking-right state: every gate below would
+    # report its default and look deliberate. It was logged and nothing
+    # more, and `device_manager.log` is not read until something else has
+    # already gone wrong.
+    try:
+        from modules.config import settings_read_health
+
+        read_health = settings_read_health()
+    except Exception:                          # noqa: BLE001
+        read_health = {}
+
     out = {
+        "settings_readable": not read_health.get("unreadable"),
+        "settings_read_failure": read_health,
         "gates": gates,
         "service_allowed_operations": list(allowed),
         "service_allowlist_origin": _setting_origin("service_allowed_operations"),

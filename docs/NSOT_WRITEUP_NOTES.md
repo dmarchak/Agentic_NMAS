@@ -7907,3 +7907,101 @@ is read at call time by every caller.
 said `2736 passed` with no error line **in this environment**, while the same
 commit produced ten errors elsewhere. A pass count is not a run result. Error
 counts are now stated explicitly rather than inferred from the last line.
+
+---
+
+## The long fuse: five mechanisms, none of which announced anything
+
+The best example of silent failure this project has produced, and the only
+reason it was ever found is that the onboarding wizard refused to create a
+device and the operator happened to believe the Access values had been set.
+
+### The chain
+
+1. **`save_user_settings()` opened the real path with `"w"`** — truncate in
+   place, no atomic rename. The file on disk is briefly a partial document.
+   Defensible on its own: it is the obvious way to write JSON, and
+   `credentials._save()` had already been given the correct shape without
+   anyone noticing this one had not.
+2. **A read arrived in that window.** Two settings requests 10 ms apart is
+   enough, and the settings page issues exactly that pair.
+3. **`load_user_settings()` caught the `JSONDecodeError` and returned `{}`** —
+   making an unreadable file indistinguishable from a first run. Defensible
+   on its own: it keeps the settings page up when the file is missing.
+4. **The next write persisted that `{}`** plus the one key being set.
+   Everything else was gone, including `settings_schema_version`.
+5. **The file then read as v0**, so the next settings-panel GET ran
+   `migrate()` and seeded **107 defaults** over it. The Cloudflare Access
+   configuration materialised as three empty strings, `jwks_ttl: 3600` and
+   `service_labels: {}` — the exact fingerprint that looked like a form
+   submitting only what it renders.
+6. **And `cf_access_trusted_peers` blank meant** `peer_trusted = (not
+   allowed) or (peer in allowed)` trusted **every** peer, silently ending
+   replay protection.
+
+Each step is defensible in isolation. Each is invisible. The composite
+destroys the security configuration of the application and reports nothing —
+no error, no log line anybody reads, no badge, no refusal that names the
+cause.
+
+### What made it nearly unfalsifiable
+
+Every intermediate belief was reasonable and wrong:
+
+* *"a form submit blanked the string keys"* — the fingerprint fits perfectly,
+  and no form writes those keys;
+* *"they were never set"* — the mtime supports it, and the acknowledgement
+  record refutes it;
+* *"the mtime proves they were blank since creation"* — it rules out writes
+  **after** 20:25:37 and says nothing about the write **at** 20:25:37;
+* *"no code path blanks them"* — true, and irrelevant: nothing blanked them,
+  the whole file was replaced by `{}` and then re-seeded.
+
+The audit that finally worked was not of writers but of the **reader**, one
+layer below everything the writers do.
+
+### Severity, both halves stated
+
+**The gates were real.** There is exactly one path to a person identity:
+`identify()` checks `is_configured()` first, `jwt.decode()` must succeed, and
+`_actor_from_claims()` runs only on verified claims. Both `verified=True`
+sites are inside that function, and the untrusted-peer one sets
+`actor=UNAUTHENTICATED, kind=""` so it can never produce a person. The
+2026-09-21 source is byte-identical to today's on every one of those
+functions. **Reveal, approve, confirm and publish_remote were never
+satisfiable by an HTTP header.**
+
+**The exposure was replay, not forgery.** With the peer list blank, a genuine
+assertion captured from a browser and replayed from any host on the LAN would
+have been accepted. An attacker needed a real Cloudflare JWT — but the layer
+that exists to stop exactly that was off for the whole window. Fixing
+`peer_trusted` closed it, and neither of us realised at the time that this was
+what it closed.
+
+### The fix, and the split that is the point
+
+**A read on defaults is survivable. A write on defaults destroyed the file.**
+
+* `load_user_settings()` returns `{}` for a **missing** file and raises
+  `SettingsUnreadable` for one that exists and cannot be parsed. The damaged
+  file is preserved as `user_settings.json.corrupt-<ts>` at `0600` —
+  a settings file holds secrets in general, even when this one's are
+  already gone.
+* `set_user_setting()` lets that raise propagate. `get_user_setting()`
+  catches it and falls back, because a read continuing is survivable.
+* `save_user_settings()` writes a temp file in the same directory and
+  `os.replace()`s it, so a reader sees the old document or the new one and
+  never a fragment.
+* **The failure reaches the UI**, not just the log: `settings_read_health()`
+  feeds `identity.posture()`, and the panel draws it **above** every gate row
+  in red — because if the file cannot be read, every row below shows its
+  default and looks deliberate. A panel built to make the posture checkable,
+  quietly reporting a posture nobody chose, is the same defect one level up.
+  `device_manager.log` is not read until something else has already gone
+  wrong; that is now measured twice.
+
+Controls both ways, since collapsing the two halves was the defect: a
+truncated file must raise (the previous loader returns `{}` — shown), a
+missing file must still return `{}` (first run), and a healthy file must
+still write (a guard refusing everything would pass every other test and make
+the settings page read-only for ever).
