@@ -143,3 +143,98 @@ class KeaIntegration(IntegrationClient):
                          "state": "down" if errors else "up"}],
             "detail": errors + detail,
         }
+
+    # ── reservations ────────────────────────────────────────────────────────
+
+    #: A reservation lookup that could not be performed. **Not "no
+    #: reservation"** — absent and unreadable are different facts, and a
+    #: precondition that could not be checked has not passed.
+    UNKNOWN = "unknown"
+    RESERVED = "reserved"
+    NOT_RESERVED = "not_reserved"
+
+    def reservation_for(self, mac: str) -> dict:
+        """Is there a **host reservation** for *mac*?
+
+        ``{"state": reserved | not_reserved | unknown, "address": str,
+        "source": str, "error": str}``
+
+        **A dynamic lease is not an address a source of truth can record.** It
+        is correct on the day it is written and wrong at some renewal the tool
+        is not watching — the two-stores-disagreeing shape with a clock
+        attached, and nothing in this system would notice: the manifest, the
+        CSV and NetBox would all agree with each other and all disagree with
+        the device.
+
+        Two sources, because one of them needs a hook library that is not
+        always loaded:
+
+        * ``reservation-get`` (the ``host_cmds`` hook), authoritative;
+        * otherwise ``config-get``, scanning the subnets' own
+          ``reservations`` — which is where a lab defines them.
+
+        Neither readable is :data:`UNKNOWN`, never :data:`NOT_RESERVED`.
+        """
+        wanted = (mac or "").strip().lower().replace("-", ":")
+        if not wanted:
+            return {"state": self.UNKNOWN, "address": "", "source": "",
+                    "error": "no MAC address given"}
+
+        probe = self.command("reservation-get-all")
+        entries, source = None, ""
+        if probe.get("ok"):
+            entries, source = self._reservations_from(probe["result"]), "host_cmds"
+        if entries is None:
+            config = self.command("config-get")
+            if not config.get("ok"):
+                return {"state": self.UNKNOWN, "address": "", "source": "",
+                        "error": ("Kea could not be asked: "
+                                  f"{config.get('error') or probe.get('error')}")}
+            entries = self._reservations_from_config(config["result"])
+            source = "config"
+        if entries is None:
+            return {"state": self.UNKNOWN, "address": "", "source": source,
+                    "error": "Kea's answer could not be read"}
+
+        for entry in entries:
+            if (entry.get("hw-address") or "").strip().lower() == wanted:
+                return {"state": self.RESERVED,
+                        "address": entry.get("ip-address", ""),
+                        "source": source, "error": ""}
+        return {"state": self.NOT_RESERVED, "address": "", "source": source,
+                "error": ""}
+
+    @staticmethod
+    def _reservations_from(result) -> list:
+        """Reservations out of a ``reservation-get-all`` response."""
+        rows = result if isinstance(result, list) else [result]
+        found = []
+        for row in rows:
+            if not isinstance(row, dict):
+                return None
+            if row.get("result") not in (0, None):
+                return None
+            hosts = (row.get("arguments") or {}).get("hosts")
+            if hosts is None:
+                return None
+            found.extend(h for h in hosts if isinstance(h, dict))
+        return found
+
+    @staticmethod
+    def _reservations_from_config(result) -> list:
+        """Reservations defined in the server's own configuration."""
+        rows = result if isinstance(result, list) else [result]
+        found = []
+        for row in rows:
+            if not isinstance(row, dict):
+                return None
+            arguments = row.get("arguments") or {}
+            dhcp4 = arguments.get("Dhcp4")
+            if not isinstance(dhcp4, dict):
+                continue
+            for subnet in dhcp4.get("subnet4") or []:
+                found.extend(r for r in (subnet.get("reservations") or [])
+                             if isinstance(r, dict))
+            found.extend(r for r in (dhcp4.get("reservations") or [])
+                         if isinstance(r, dict))
+        return found

@@ -858,6 +858,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_new_container_programs.py` | a stanza the device lacks: emitted once, undone by a single negation, and a fixture that can actually contain the case |
 | `test_deploy_plan_apply_seam.py` | plan driven into apply: the capture-hash handshake, and the command_hashes the wizard does not send |
 | `test_authoring_schema.py` | omitting an interface key is fine and misspelling one is refused; filling changes no output |
+| `test_onboard_dhcp_source.py` | dhcp is a source not an absence; the reservation refuses at plan time; the review claim is checkable |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -3049,6 +3050,54 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   Phase 2 adds a **stated source** (`static` | `dhcp`), not an optional
   field: a checkbox turns a refusal into something a person switches off, and
   the two failures then look identical from the wizard.
+- **THE REPAIR PATH TRAVELS OVER THE THING BEING CHANGED.** Its own class,
+  and the first one where **every guard is correct and every guard is
+  useless**. Changing a device's management address from static to DHCP is
+  expressible (merge-only pushes `ip address dhcp` and IOS replaces the old
+  form), the confirm hash is right, the program is merge-only, the credential
+  guard passes — and **the push succeeds**. What fails afterwards is
+  reachability, at which point `_capture_failure_state()` reads back over a
+  **fresh connection** and `rollback_commands()` delivers the restore, both
+  over the address just given up. *The tool does exactly what it was asked,
+  correctly, and loses the device.*
+  **The general form covers more than addressing**: any change to the path the
+  tool reaches the device on — the management interface itself, the VTY
+  configuration, the credential, the route to the manager. Several already
+  have ad-hoc protection and now there is a reason why:
+  `credential_rotation` verifies the new credential on the **held session**
+  before trusting it and reverts on that same session; `assert_sendable()` and
+  the ASCII rule exist because a truncated line on a console-replayed platform
+  hangs a boot; `manager_interface_lines()` refuses to guess an interface. Each
+  was solved once, locally. **Naming the class says what they have in common,
+  and what a new feature in it has to supply: a repair route that does not
+  depend on the thing being changed.** Where none exists — as here — the
+  subject must be something whose loss costs a `containerlab destroy`.
+- **A DHCP address is onboardable only if it is RESERVED, and that is a
+  precondition rather than an acceptance item.** A dynamic lease is correct
+  the day it is recorded and wrong at some renewal nothing is watching: the
+  manifest, the CSV and NetBox would all agree with each other and all
+  disagree with the device — **two stores disagreeing, with a clock
+  attached**, and this tool has no watcher for it. `build_plan()` asks Kea and
+  refuses at plan time. Three states, not two: `reserved`, `not_reserved`, and
+  **`unknown`** for a Kea that could not be asked — which also refuses,
+  because *a check that did not run has not passed* and an unchecked
+  precondition is indistinguishable from a met one afterwards.
+- **`dhcp` is a stated SOURCE, never an "address optional" flag.**
+  `render_bootstrap()` refuses an empty address because the failure it
+  prevents is silent — the device boots, reports healthy, answers its console,
+  and is onboardable by nothing. A checkbox turns that refusal into something
+  a person switches off, after which *"I meant DHCP"* and *"I forgot the
+  address"* look identical from the wizard. `address_source` carries the
+  choice, the refusals are untouched for `static`, and the generator takes an
+  explicit sentinel rather than inferring intent from absence.
+- **The review screen states a claim the tool CAN CHECK.** *"assigned by
+  DHCP"* is a promise about what will happen later and nothing here would
+  notice it failing; *"assigned by Kea reservation `<mac>` → `<address>`"* is
+  a claim checked a moment ago, naming the address the device will actually
+  get. When the check could not run the screen says **that** — *"could not be
+  asked … unchecked, not confirmed"* — rather than falling back to the
+  unfalsifiable sentence, and a test asserts no state renders as the bare
+  promise.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

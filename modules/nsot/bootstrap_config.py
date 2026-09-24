@@ -244,15 +244,22 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
     config that is both minimal and sufficient, and this segment is what buys
     the way out of that.
     """
-    if not address:
-        raise ManagementAddressRequired(
-            "a bootstrap config needs an address the manager can reach: "
-            "without one the device boots healthy and is onboardable by "
-            "nothing")
-    if not mask:
-        raise ManagementAddressRequired(
-            f"no mask given for {address}. A /24 assumption is how a tool "
-            f"works in exactly one lab")
+    # DHCP IS A STATED SOURCE, NOT AN ABSENT ADDRESS. The sentinel is
+    # explicit and arrives from `OnboardPlan.address_source`, so "the operator
+    # chose DHCP" can never be reached by leaving the field blank -- which is
+    # what an "address optional" flag would have made indistinguishable from
+    # "the operator forgot". The refusals below are untouched for `static`.
+    dhcp = (address or "").strip().lower() == "dhcp"
+    if not dhcp:
+        if not address:
+            raise ManagementAddressRequired(
+                "a bootstrap config needs an address the manager can reach: "
+                "without one the device boots healthy and is onboardable by "
+                "nothing")
+        if not mask:
+            raise ManagementAddressRequired(
+                f"no mask given for {address}. A /24 assumption is how a tool "
+                f"works in exactly one lab")
     if not interface:
         raise ManagementAddressRequired(
             "no interface given for the management address. On a platform "
@@ -292,13 +299,13 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
         raise ReservedInterface(
             f"'{interface}' is already being configured as the containerlab "
             f"management interface in this same config. One interface cannot "
-            f"hold both a DHCP address and a static one.")
+            f"hold two addresses, whatever their source.")
 
     if platform not in LAYER2_PLATFORMS:
         body = [
             f"interface {interface}",
             " description NMAS management - manager is on this subnet",
-            f" ip address {address} {mask}",
+            (" ip address dhcp" if dhcp else f" ip address {address} {mask}"),
             " negotiation auto",
             " no shutdown",
             "!",
@@ -314,7 +321,7 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
             f"interface {interface}",
             " description NMAS management - manager is on this subnet",
             " no switchport",
-            f" ip address {address} {mask}",
+            (" ip address dhcp" if dhcp else f" ip address {address} {mask}"),
             " no shutdown",
             "!",
         ]

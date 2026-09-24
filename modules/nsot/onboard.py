@@ -84,6 +84,24 @@ class OnboardPlan:
     #: did not.**
     mgmt_ip: str = ""
     mgmt_mask: str = ""
+
+    #: Where the management address COMES FROM: ``static`` or ``dhcp``.
+    #:
+    #: **A source, never an "address optional" flag.** `render_bootstrap()`
+    #: refuses an empty address because the failure it prevents is silent --
+    #: the device boots, reports healthy, answers its console, and is
+    #: onboardable by nothing. A checkbox turns that refusal into something a
+    #: person switches off, after which "I meant DHCP" and "I forgot the
+    #: address" look identical from the wizard. Naming the source keeps them
+    #: distinct and lets each carry its own preconditions.
+    address_source: str = "static"
+    #: DHCP only. The reservation is checked against Kea **at plan time**.
+    mgmt_mac: str = ""
+    #: What Kea said: ``reserved`` / ``not_reserved`` / ``unknown``.
+    reservation_state: str = ""
+    reservation_address: str = ""
+    reservation_source: str = ""
+    reservation_error: str = ""
     #: Chosen, never defaulted -- on a C8000v, Gi1 belongs to vrnetlab.
     manager_interface: str = ""
     #: Omitted unless the manager is on another subnet. See
@@ -186,7 +204,33 @@ class OnboardPlan:
         if self.name_taken_in_netbox:
             reasons.append(f"'{self.hostname}' already exists in NetBox")
 
-        if not self.mgmt_ip:
+        if self.address_source == "dhcp":
+            # A PRECONDITION, not an acceptance item. A dynamic lease is
+            # correct on the day it is recorded and wrong at some renewal
+            # nothing is watching: the manifest, the CSV and NetBox would all
+            # agree with each other and all disagree with the device. That is
+            # the two-stores-disagreeing shape with a clock attached, and the
+            # tool has no watcher for it.
+            if not self.mgmt_mac:
+                reasons.append(
+                    "no MAC address — a DHCP device is identified to Kea by "
+                    "its MAC, and without one the reservation cannot be "
+                    "checked")
+            elif self.reservation_state == "not_reserved":
+                reasons.append(
+                    f"Kea has no host reservation for {self.mgmt_mac}. A "
+                    "dynamic lease would move at a renewal and the record "
+                    "here would not — add a reservation and re-plan")
+            elif self.reservation_state != "reserved":
+                # A check that did not run has not passed.
+                reasons.append(
+                    "Kea could not be asked whether "
+                    f"{self.mgmt_mac} has a reservation"
+                    + (f" ({self.reservation_error})" if self.reservation_error
+                       else "")
+                    + " — refusing rather than assuming, because an unchecked "
+                      "precondition and a met one look the same afterwards")
+        elif not self.mgmt_ip:
             reasons.append("no management address — the device would be "
                            "created and unreachable")
         elif not self.mgmt_mask:
@@ -197,7 +241,8 @@ class OnboardPlan:
         # operator is told which half is missing. On a C8000v the first
         # interface is vrnetlab's, and a management address landing there is
         # the failure 4C.8 exists to prevent.
-        if self.mgmt_ip and not self.manager_interface:
+        if (self.mgmt_ip or self.address_source == "dhcp") \
+                and not self.manager_interface:
             reasons.append(
                 "no interface chosen for the management address — it cannot "
                 "be defaulted, because on this platform vrnetlab may own the "
@@ -313,6 +358,26 @@ class OnboardPlan:
         return "after it answers — promotion adds the row, not onboarding"
 
     @property
+    def address_claim(self) -> str:
+        """The address line for the review screen, as a **checkable** claim."""
+        if self.address_source != "dhcp":
+            return (f"{self.mgmt_ip} {self.mgmt_mask}".strip()
+                    or "no address given")
+        if self.reservation_state == "reserved":
+            where = (f" (from Kea's {self.reservation_source})"
+                     if self.reservation_source else "")
+            address = self.reservation_address or "an address Kea did not name"
+            return (f"assigned by Kea reservation {self.mgmt_mac} → "
+                    f"{address}{where}")
+        if self.reservation_state == "not_reserved":
+            return (f"DHCP, and Kea has NO reservation for {self.mgmt_mac} — "
+                    "a dynamic lease moves and this record would not")
+        return (f"DHCP, and Kea could not be asked about {self.mgmt_mac}"
+                + (f" ({self.reservation_error})" if self.reservation_error
+                   else "")
+                + " — unchecked, not confirmed")
+
+    @property
     def summary(self) -> dict:
         """What the review step shows. No secrets, by construction."""
         return {
@@ -325,6 +390,21 @@ class OnboardPlan:
             # and an address with a mask and an interface are different
             # claims -- and only the second is a config a device can boot.
             "mgmt_mask":         self.mgmt_mask,
+            "address_source":    self.address_source,
+            "mgmt_mac":          self.mgmt_mac,
+            "reservation_state": self.reservation_state,
+            # WHAT THE REVIEW SCREEN SAYS WHERE THE ADDRESS WOULD BE.
+            #
+            # "assigned by DHCP" is a claim this tool cannot check -- it is a
+            # statement about what will happen later, and nothing here would
+            # notice if it did not. "assigned by Kea reservation <mac> ->
+            # <address>" is a claim it checked a moment ago against Kea, and
+            # the address is the one the device will actually get.
+            #
+            # The honest version is the checkable one, and when the check
+            # could not run the screen says THAT rather than falling back to
+            # the unfalsifiable sentence.
+            "address_claim":     self.address_claim,
             "manager_interface": self.manager_interface,
             "manager_gateway":   self.manager_gateway,
             "cred_source":    self.cred_source,
@@ -394,13 +474,34 @@ def _name_in_netbox(hostname: str):
         return False, False
 
 
+def _reservation(mac: str, kea=None) -> dict:
+    """Ask Kea whether *mac* has a host reservation. **Never raises.**
+
+    An exception, an unconfigured client and an unreachable one all come back
+    as `unknown`, which `blocking_reasons` treats as a refusal -- *a check
+    that did not run has not passed*, and the alternative is a device
+    onboarded against a lease that moves.
+    """
+    try:
+        if kea is None:
+            from modules.integrations.kea import KeaIntegration
+
+            kea = KeaIntegration()
+        return kea.reservation_for(mac)
+    except Exception as exc:                   # noqa: BLE001
+        log.warning("onboard: reservation lookup failed for %s: %s", mac, exc)
+        return {"state": "unknown", "address": "", "source": "",
+                "error": f"{type(exc).__name__}: {exc}"}
+
+
 def build_plan(hostname: str, platform: str, list_name: str, *,
                mgmt_ip: str = "", source_kind: str = "local",
                secret: str = "", domain: str = "rcn.lab",
                mgmt_interface: str = "", host_vars: dict = None,
                netbox_plan=(), cred_source: str = "",
                mgmt_mask: str = "", manager_interface: str = "",
-               manager_gateway: str = "") -> OnboardPlan:
+               manager_gateway: str = "", address_source: str = "static",
+               mgmt_mac: str = "", kea=None) -> OnboardPlan:
     """The only constructor. Always validates; never writes anything.
 
     *secret* is the one-time bootstrap credential (4C.2). It reaches the
@@ -437,16 +538,31 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         unchecked.append("NetBox")
 
     template, approved = _template_for(repo, hostname, platform)
+
+    # THE RESERVATION IS CHECKED HERE, at plan time, so the refusal reaches
+    # the review screen rather than a device that has already been created.
+    reservation = {"state": "", "address": "", "source": "", "error": ""}
+    if address_source == "dhcp" and mgmt_mac:
+        reservation = _reservation(mgmt_mac, kea)
+
+    # DHCP emits `ip address dhcp`, so the generator is given no address --
+    # and its refusal for a MISSING one still stands for `static`.
     config, unsendable, render_error = _render(
         platform, hostname, secret, domain,
         mgmt_interface, manager_interface=manager_interface,
-        manager_address=mgmt_ip, manager_mask=mgmt_mask,
+        manager_address=("dhcp" if address_source == "dhcp" else mgmt_ip),
+        manager_mask=("dhcp" if address_source == "dhcp" else mgmt_mask),
         manager_gateway=manager_gateway)
 
     return OnboardPlan(
         unmet_preconditions=tuple(unmet_preconditions(netbox_plan)),
         hostname=hostname, platform=platform, list_name=list_name,
         source_kind=source_kind, mgmt_ip=mgmt_ip, mgmt_mask=mgmt_mask,
+        address_source=address_source, mgmt_mac=mgmt_mac,
+        reservation_state=reservation["state"],
+        reservation_address=reservation["address"],
+        reservation_source=reservation["source"],
+        reservation_error=reservation["error"],
         manager_interface=manager_interface, manager_gateway=manager_gateway,
         domain=domain,
         bootstrap_config=config, cred_source=cred_source,

@@ -116,9 +116,10 @@ from the wizard.
       NetBox → promote) completes against that address
 - [ ] the address the tool records **is** the lease Kea issued, checked against
       Kea rather than against the device's own claim
-- [ ] **the lease is reserved, not dynamic** — or the device's address changes
-      under the tool at the next renewal, which is a worse failure than not
-      having DHCP
+- [x] ~~the lease is reserved, not dynamic~~ — **promoted to a precondition**
+      and built: `build_plan()` asks Kea and refuses at plan time, with
+      `unknown` (Kea unreachable) refusing as well, because a check that did
+      not run has not passed
 - [ ] teardown: census `--compare` clean, exit 0
 
 ### Explicitly out of scope
@@ -130,6 +131,23 @@ from the wizard.
 * **The relay** — phase 3, behind a switch. Phase 2 is L2-adjacent to the pool
   on purpose, so a failure means *"the device did not fetch"* rather than
   *"something between them did not forward"*.
+
+## 3a. Built ahead of the probe, 2026-09-24
+
+The tool half is done, so the probe measures the network rather than the code:
+
+* `KeaIntegration.reservation_for(mac)` — `reserved` / `not_reserved` /
+  **`unknown`**, via `reservation-get-all` where the `host_cmds` hook is
+  loaded and `config-get` otherwise. Unreadable is never "no reservation".
+* `OnboardPlan.address_source` (`static` | `dhcp`), `mgmt_mac`, and the
+  reservation result carried on the plan.
+* `blocking_reasons` refuses a DHCP device with no MAC, with no reservation,
+  or whose reservation could not be checked.
+* `manager_interface_lines()` emits `ip address dhcp` for the explicit
+  sentinel; every refusal for a **missing** address is untouched for `static`.
+* `OnboardPlan.address_claim` — the checkable sentence, in `summary`.
+
+`tests/test_onboard_dhcp_source.py`, 23 tests, four negative controls.
 
 ## 4. What this leaves r6 as
 
