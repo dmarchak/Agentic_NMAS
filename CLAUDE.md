@@ -2363,6 +2363,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   none producing an error anybody would notice. **Remove the dependency
   rather than hardening it**: write the diff to stdout and let the terminal's
   scrollback do its job.
+- **Per-lab config repos, and the coverage check is what makes that safe.**
+  `labs/lab` is a git repo whose `configs/` is tracked and byte-identical to
+  HEAD — a **correct no-op** — while `labs/r6` is not a repo at all, and both
+  were reported with the same sentence. Outcomes of different severity
+  sharing a report, the census's missing-baseline exit code again: one is the
+  system working, the other a gap in coverage. Now `committed` /
+  `unchanged` / **`NOT VERSIONED`** / `commit FAILED`, with only the last two
+  needing action and the run naming every unversioned destination plus the
+  `git init` line to paste. One repo at `~/labs` would cover future labs
+  automatically but needs `labs/lab`'s history moved up a level — a migration
+  against the store whose value is being the record. Per-lab is one
+  `git init` and no migration, and **its failure mode is exactly what
+  happened**: somebody adds a lab and forgets. The map already knows every
+  destination, so the tool reports the gap every run rather than relying on
+  anyone to remember — the same move as *"checked 7 of 9"*.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

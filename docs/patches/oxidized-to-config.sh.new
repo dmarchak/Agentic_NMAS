@@ -483,14 +483,54 @@ fi
 
 ssh -n "$CLAB" "rm -rf $STAGE"
 
+# THREE OUTCOMES, NOT ONE SENTENCE.
+#
+# `|| echo "Not a git repo, or nothing to commit"` named two causes and
+# distinguished neither, so it printed the same line since August while
+# meaning only one of them. Measured 2026-09-24: labs/lab IS a repo with
+# configs/ tracked and byte-identical to HEAD - a correct no-op - while
+# labs/r6 is not a repo at all. Two genuinely different states, one
+# sentence. Same shape as the census exiting 1 for both "the teardown left
+# objects behind" and "there was no baseline".
+#
+#   committed    - history gained something
+#   unchanged    - the system working; the content really did not move
+#   NOT VERSIONED - a gap in coverage, and the only one that needs action
+unversioned=()
 while read -r dir; do
   [ -n "$dir" ] || continue
-  ssh -n "$CLAB" "cd \$(dirname '$dir') && \
-    git rev-parse --git-dir >/dev/null 2>&1 && \
-    git add -A \$(basename '$dir') && \
-    git commit -q -m 'harvest from oxidized $ts' && \
-    echo \"Committed \$(basename '$dir') to git.\" || echo \"Not a git repo, or nothing to commit: $dir\""
+  outcome="$(ssh -n "$CLAB" "cd \$(dirname '$dir') 2>/dev/null || { echo nodir; exit 0; }; \
+    git rev-parse --git-dir >/dev/null 2>&1 || { echo norepo; exit 0; }; \
+    git add -A \$(basename '$dir') >/dev/null 2>&1 || { echo addfailed; exit 0; }; \
+    git diff --cached --quiet && { echo unchanged; exit 0; }; \
+    git commit -q -m 'harvest from oxidized $ts' >/dev/null 2>&1 \
+      && echo committed || echo commitfailed")"
+  case "$outcome" in
+    committed)  echo "  $dir: committed" ;;
+    unchanged)  echo "  $dir: unchanged - nothing to commit (the content did not move)" ;;
+    norepo)     echo "  $dir: NOT VERSIONED - the parent directory is not a git repo"
+                unversioned+=("$dir") ;;
+    nodir)      echo "  $dir: NOT VERSIONED - parent directory does not exist"
+                unversioned+=("$dir") ;;
+    addfailed)  echo "  $dir: NOT VERSIONED - git add refused (ignored path?)"
+                unversioned+=("$dir") ;;
+    *)          echo "  $dir: commit FAILED ($outcome)"
+                unversioned+=("$dir") ;;
+  esac
 done < <(destinations)
+
+if [ ${#unversioned[@]} -gt 0 ]; then
+  echo
+  echo "${#unversioned[@]} destination(s) are NOT VERSIONED:"
+  printf '    %s\n' "${unversioned[@]}"
+  echo "  Their startup configs are the only copy of what those devices boot"
+  echo "  with. The backup directories beside them are what accumulates when"
+  echo "  a versioned store is not receiving anything -- labs/lab has 29"
+  echo "  going back to August."
+  for d in "${unversioned[@]}"; do
+    echo "    ssh $CLAB \"cd '$(dirname "$d")' && git init && git add -A && git commit -m initial\""
+  done
+fi
 
 echo
 echo "Startup-configs updated. They take effect on the next destroy/deploy of"

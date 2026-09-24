@@ -9893,3 +9893,89 @@ of copies.
 `labs/r6` is the second destination and is probably not a repo at all, which
 produces the **same message with no status output** — the two sub-cases
 side by side in one run, indistinguishable by the line that reports them.
+
+## Three outcomes, one sentence — and a fourth cause I have not found
+
+### The commit reporting, fixed
+
+Measured on the clab host: `labs/lab` **is** a repo, `configs/` is **not**
+ignored, and `git status --short configs` is **empty** — the nine files are
+tracked and byte-identical to HEAD, so that commit is a **correct no-op**
+(the header's `! rN - from Oxidized HEAD <sha>` line does not move when the
+Oxidized SHA does not). `labs/r6` is **not a repo at all**.
+
+**Two genuinely different states, reported with the same sentence.** The
+census's missing-baseline exit code again: outcomes of different severity
+sharing a report, where one is the system working and the other is a gap in
+coverage.
+
+Split into outcomes that can be told apart, each reproduced against a real
+git repo:
+
+```
+labs/lab/configs: committed
+labs/r6/configs:  unchanged - nothing to commit (the content did not move)
+labs/r6/configs:  NOT VERSIONED - the parent directory is not a git repo
+```
+
+plus `commit FAILED (<reason>)` and `NOT VERSIONED - git add refused
+(ignored path?)`, which is the branch that *would* have fired had
+`check-ignore` found a rule. **Only `NOT VERSIONED` needs action**, and the
+run ends by naming those destinations with the exact `git init` line to
+paste.
+
+### The full diff: a fourth cause, and I do not know what it is
+
+Ruled out, each by measurement rather than by argument:
+
+| candidate | evidence |
+|---|---|
+| opt-in prompt defaulting to No | removed; the prompt is gone and the diff is shown |
+| `ssh` eating the tty `less` needs | `-n` on every non-piped call; ten checked by parsing |
+| the block itself | extracted verbatim, run against a stub `ssh`: prints correctly |
+| `less` missing / `$PAGER` / `$LESS=-F` | `/usr/bin/less`, both unset |
+| `less` misbehaving on a terminal | run under a **pty**: paged, showed r6's diff, waited for a key |
+
+That is five, and the section has failed four times. **I do not know the
+fourth cause, and I am not going to name a sixth candidate** — that is
+exactly the pattern-matching failure that cost an hour earlier tonight, when
+a shape that had been right four times was wrong on the fifth.
+
+**The discriminator is one word**, and it separates "the loop produced
+nothing" from "the pager ate it" definitively:
+
+```bash
+PAGER=cat ./oxidized-to-config.sh      # then answer N at the prompt
+```
+
+* diff appears → the loop is fine and the pager is the problem;
+* nothing appears → **the loop produced no bytes**, and the cause is in the
+  `ssh`/`diff`, not the pager — which would be surprising, because the
+  summary loop twenty lines earlier got a real diff for r6 from the same
+  command with only `2>&1` instead of `2>/dev/null`.
+
+**Removing the pager is still right and still not a substitute for finding
+this.** A section that has failed silently four times could fail a fifth
+after the change, and the change would have removed the evidence.
+
+### Should `~/labs/r6` be a repo, and what shape
+
+**Yes — and per-lab, not one repo at `~/labs`.**
+
+The tempting answer is one repo at `~/labs` covering every lab: one history,
+one place to look, and a future device in its own lab is covered without
+anybody doing anything. **`~/labs/lab` is already a repo**, so that shape
+needs its history moved up a level — a migration and a rewrite, against a
+store whose whole value is being the record.
+
+Per-lab is `git init` plus a first commit, consistent with what exists, and
+no migration. **Its failure mode is precisely what just happened**: somebody
+adds a lab and forgets, and the destination is unversioned while the run
+reports the same sentence as a healthy one.
+
+So the shape matters less than the coverage check, and the coverage check is
+what makes per-lab safe: **the map already knows every destination**, so the
+script now names every one that is not versioned, every run, with the
+command to fix it. That turns "per-lab repos" from a thing somebody must
+remember into a thing the tool reports — which is the same move as the
+drift check's *"checked 7 of 9"* and `--reconcile`'s three buckets.
