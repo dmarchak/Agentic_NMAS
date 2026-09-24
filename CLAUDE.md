@@ -2818,6 +2818,32 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   with the cheapest question that halves the space, not with the most likely
   explanation* — applies to a diagnosis that has now produced two confident
   wrong answers in a row.
+- **A refusal must state what it COMPARED, not what it thinks caused the
+  difference.** `skipped_drifted` said *"the device configuration changed
+  since you confirmed the diff"* — one explanation among several, and the
+  check establishes none of them. The capture can be byte-identical and the
+  confirmed value simply not be its hash: a client sending the wrong field, a
+  copied value carrying whitespace, a stale plan. Measured live — the
+  capture, the plan's `capture_hash` and the file on disk were all
+  `c29fa63582da8f57`, the guard refused, and the entry carried the **whole
+  config** and **neither** of the two sixteen-character strings it had just
+  compared. `fresh_hash != confirmed[device]` firing while
+  `sha256(fresh_capture)[:16]` equals the plan's hash is arithmetic: the
+  arriving confirmation was not that value. **Four rounds and three wrong
+  hypotheses, each of which printing the two operands would have ended.** The
+  `refused` entry a hundred lines above already carried `confirmed_hash` and
+  `current_hash`; the skip now matches it. Third false message in one
+  session, after *"a change nobody approved"* for a missing binary and *"Not
+  a git repo, or nothing to commit"* for two different states — and the
+  generalisation is the one worth keeping: **a guard knows the comparison it
+  made and does not know why the operands differ, so it may only report the
+  first.**
+- **A diagnostic that dumps the artefact but not the comparison is the
+  expensive shape.** The skip entry carried `fresh_capture` — an entire
+  device configuration, several kilobytes, in a JSON response — and omitted
+  the two short strings that were the actual question. Bulk is not evidence.
+  (The config in that field is also an unredacted secret surface on an API
+  response; noted, not yet addressed.)
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

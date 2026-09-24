@@ -155,3 +155,124 @@ class TestTheClientSendsWhatTheRouteReads:
 
         source = read_shipped("static/js/gen/partials__golden_repo.3.js")
         assert "command_hashes: hashes" in source
+
+
+class TestTheRefusalNamesWhatItCompared:
+    """**A refusal must state what it compared, not what it thinks caused the
+    difference.**
+
+    `skipped_drifted` said *"the device configuration changed since you
+    confirmed the diff"*. That is one explanation among several and the check
+    establishes none of them: the capture can be byte-identical and the
+    confirmed value simply not be its hash — a client sending the wrong field,
+    a copied value carrying whitespace, a stale plan.
+
+    Measured during a live diagnosis: the capture, the plan's `capture_hash`
+    and the file on disk were all `c29fa63582da8f57`, the guard refused, and
+    the entry carried the **whole config** and **neither** of the two
+    sixteen-character strings it had compared. Four rounds and three wrong
+    hypotheses, every one of which these two values would have settled.
+
+    Third message in one session describing a state that did not occur, after
+    *"a change nobody approved"* for a missing binary and *"Not a git repo, or
+    nothing to commit"* for two different states.
+    """
+
+    CAPTURE = "hostname r6\ninterface Loopback0\n ip address 10.0.0.1 255.255.255.0\nend\n"
+
+    def _skip_entry(self, confirmed_value):
+        import hashlib
+
+        from modules.nsot.deploy import plan_batch
+        from modules.nsot.render_artifact import build_artifact
+
+        artifact = build_artifact("r6", self.CAPTURE, "cisco_iosxe",
+                                  template_approved=True)
+        plan = plan_batch([artifact], {"r6": confirmed_value},
+                          {"r6": self.CAPTURE})
+        assert plan["skipped"], "expected a refusal"
+        return plan["skipped"][0], hashlib.sha256(
+            self.CAPTURE.encode("utf-8")).hexdigest()[:16]
+
+    def test_both_operands_are_reported(self):
+        entry, real = self._skip_entry("2c6d960d0990f2bf")
+        assert entry["confirmed_hash"] == "2c6d960d0990f2bf"
+        assert entry["current_hash"] == real
+
+    def test_both_operands_appear_in_the_reason_a_human_reads(self):
+        """The structured fields are for a client; the operator reads the
+        sentence, and it was the sentence that was false."""
+        entry, real = self._skip_entry("2c6d960d0990f2bf")
+        assert "2c6d960d0990f2bf" in entry["reason"]
+        assert real in entry["reason"]
+
+    def test_it_does_not_assert_a_cause_it_has_not_established(self):
+        entry, _real = self._skip_entry("2c6d960d0990f2bf")
+        assert "may have changed" in entry["reason"], \
+            "the device changing is offered as a possibility, not stated"
+        assert not entry["reason"].startswith("the device configuration changed")
+
+    def test_a_trailing_newline_alone_produces_it(self):
+        """The shape a copied value has. It is indistinguishable from a real
+        change in the old message, and obvious in the new one."""
+        import hashlib
+
+        real = hashlib.sha256(self.CAPTURE.encode("utf-8")).hexdigest()[:16]
+        entry, _ = self._skip_entry(real + "\n")
+        assert entry["confirmed_hash"] == real + "\n"
+        assert entry["current_hash"] == real
+
+    def test_the_matching_case_still_deploys(self):
+        """**The floor.** A guard that refused everything would satisfy every
+        assertion above."""
+        import hashlib
+
+        from modules.nsot.deploy import plan_batch
+        from modules.nsot.render_artifact import build_artifact
+
+        artifact = build_artifact("r6", self.CAPTURE, "cisco_iosxe",
+                                  template_approved=True)
+        real = hashlib.sha256(self.CAPTURE.encode("utf-8")).hexdigest()[:16]
+        plan = plan_batch([artifact], {"r6": real}, {"r6": self.CAPTURE})
+        assert plan["skipped"] == []
+        assert len(plan["to_deploy"]) == 1
+
+
+class TestOnlyOneConditionProducesThisOutcome:
+    """Asked directly: is `skipped_drifted` reused for a second condition, so
+    that its reason text is attached to the wrong one?
+
+    **No.** One producer. The command-fingerprint mismatch in `/deploy/apply`
+    produces `outcome: "refused"` with its own reason and `continue`s, so the
+    device never reaches `plan_batch` and cannot appear as drifted.
+    """
+
+    def test_exactly_one_site_produces_it(self):
+        import ast
+        import os
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sites = []
+        for rel in ("modules/nsot/deploy.py", "routes/deploy.py",
+                    "modules/pipeline.py"):
+            tree = ast.parse(open(os.path.join(root, rel), encoding="utf-8").read())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Name) and node.id == "SKIPPED_DRIFTED":
+                    sites.append(f"{rel}:{node.lineno}")
+                if (isinstance(node, ast.Constant)
+                        and node.value == "skipped_drifted"):
+                    sites.append(f"{rel}:{node.lineno} (literal)")
+        producers = [s for s in sites if "(literal)" not in s]
+        assert len(producers) == 2, (
+            f"expected the definition and one use, found {producers}")
+
+    def test_a_command_hash_mismatch_is_refused_not_drifted(self):
+        """So a stale `command_hash` can never surface wearing this name."""
+        import inspect
+
+        import routes.deploy as rd
+
+        source = inspect.getsource(rd.apply)
+        block = source[source.index("if now != expected:"):]
+        assert '"outcome": "refused"' in block[:400]
+        assert "SKIPPED_DRIFTED" not in block

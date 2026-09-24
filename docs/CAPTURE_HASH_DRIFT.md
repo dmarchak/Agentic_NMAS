@@ -181,3 +181,54 @@ one client builds it.
 Pinned rather than fixed, because changing what the wizard sends changes
 deploy behaviour and the guard is mid-diagnosis. The test asserts the gap and
 says what it should become.
+
+
+---
+
+## 9. Resolved: the guard was right and could not say so
+
+All three measured identical — `fresh_capture`, the plan's `capture_hash`, and
+the file on disk, all `c29fa63582da8f57` — and the guard still refused.
+
+That is **arithmetic, not a hypothesis**. `fresh_hash` is
+`sha256(fresh)[:16]`, and `fresh` is what the entry publishes as
+`fresh_capture`. If that hashes to `c29fa63582da8f57` and
+`fresh_hash != confirmed[device]` fired, then **`confirmed["r6"]` was not
+`c29fa63582da8f57`**. The value that arrived in the request was something
+else — a wrong field, a copied value carrying whitespace, a stale plan. A
+trailing newline alone reproduces it exactly.
+
+### The two questions asked directly
+
+1. **Does anything else produce `skipped_drifted`?** No — **one** producer,
+   `deploy.py:1222`. The outcome is not reused, so the reason text is attached
+   to the only condition that raises it.
+2. **Could a stale `command_hash` surface here?** No. The recompute branch in
+   `/deploy/apply` produces `outcome: "refused"` with its own reason and
+   `continue`s, so the device never reaches `plan_batch`. Since the report said
+   `skipped_drifted`, **the command fingerprint was accepted** —
+   `2c6d960d0990f2bf` was current, and the command hash is not the problem.
+
+### The defect, which is the reporting
+
+The entry carried `device`, `outcome`, `reason` and **`fresh_capture`** — an
+entire device configuration — and **neither operand**. A guard that refuses on
+a comparison and then does not say what it compared turned a one-line question
+into four rounds and three wrong hypotheses (the golden changed; the guard
+never matches; a stale command hash). Every one of them would have ended with
+two sixteen-character strings printed side by side.
+
+Fixed: `confirmed_hash` and `current_hash` are in the entry **and in the
+sentence**, and the reason states the comparison and offers the device having
+changed as a *possibility* rather than asserting it. The `refused` entry a
+hundred lines above already had this shape — which is the anchor: one branch
+of the same function got it right.
+
+```
+the capture you confirmed against is not the capture being deployed:
+confirmed '2c6d960d0990f2bf', read 'e4fa07ef244a9f97'. The device may have
+changed, or the confirmed value may not be this capture's hash — re-preview
+to see what it looks like now
+```
+
+`tests/test_deploy_plan_apply_seam.py`, fourteen tests, four negative controls.

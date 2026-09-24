@@ -1218,10 +1218,33 @@ def plan_batch(artifacts: list, confirmed: dict, fresh_captures: dict) -> dict:
 
         fresh_hash = hashlib.sha256(fresh.encode("utf-8")).hexdigest()[:16]
         if fresh_hash != confirmed[device]:
+            # BOTH OPERANDS, AND A REASON THAT STATES THE COMPARISON RATHER
+            # THAN A CAUSE IT DID NOT ESTABLISH.
+            #
+            # This said "the device configuration changed since you confirmed".
+            # That is one explanation for the mismatch and the check knows
+            # nothing about which one holds: the capture may be identical and
+            # the confirmed value simply not be its hash -- a client that sent
+            # the wrong field, a copied value carrying whitespace, a stale
+            # plan. Measured: a trailing newline on an otherwise correct hash
+            # produces this outcome, and the entry carried the WHOLE config
+            # and neither of the two sixteen-character strings it compared.
+            #
+            # Diagnosing one of these took four rounds and three wrong
+            # hypotheses, every one of which would have been settled by
+            # printing these two values. The `refused` entry a hundred lines
+            # up already carries `confirmed_hash` and `current_hash`; this is
+            # the same shape, arrived at late.
             plan["skipped"].append({
                 "device": device, "outcome": SKIPPED_DRIFTED,
-                "reason": ("the device configuration changed since you confirmed "
-                           "the diff — re-preview to see what it looks like now"),
+                "reason": ("the capture you confirmed against is not the "
+                           f"capture being deployed: confirmed "
+                           f"{confirmed[device]!r}, read {fresh_hash!r}. The "
+                           "device may have changed, or the confirmed value "
+                           "may not be this capture's hash — re-preview to "
+                           "see what it looks like now"),
+                "confirmed_hash": confirmed[device],
+                "current_hash": fresh_hash,
                 "fresh_capture": fresh})
             continue
 
