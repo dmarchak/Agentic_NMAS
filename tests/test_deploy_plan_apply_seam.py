@@ -380,3 +380,139 @@ class TestTheCommandFingerprintRefusalSaysWhatMoved:
         reason = (result.get("refused") or [])[0]["reason"]
         assert "Nothing was sent" in reason
         assert "what you confirm is what is sent" in reason.lower()
+
+
+dukpy = pytest.importorskip("dukpy")
+
+
+class TestTheSpecificReasonReachesTheSCREEN:
+    """The payload carrying it is not the question — *"computed, carried to
+    the browser, drawn nowhere"* has been the shape four times in this
+    project, so the renderer is executed against the real payload.
+
+    Refusals are built **outside** `run_batch()` and folded into the report
+    afterwards, which is exactly the join where a row can be carried and not
+    drawn.
+    """
+
+    CAPTURE = ("hostname r1\ninterface GigabitEthernet2\n"
+               " ip address 10.255.0.32 255.255.255.0\nend\n")
+
+    @pytest.fixture
+    def report(self, monkeypatch):
+        import app as nmas
+        import routes.deploy as rd
+        from modules.nsot.render_artifact import build_artifact
+
+        monkeypatch.setattr(rd, "_artifact_for", lambda l, h, c=None: (
+            (build_artifact(h, self.CAPTURE, "cisco_iosxe",
+                            template_approved=True),
+             self.CAPTURE, {"hostname": h, "ip": "203.0.113.1"}), ""))
+        nmas.app.config["TESTING"] = False
+        client = nmas.app.test_client()
+        device = client.post("/deploy/plan",
+                             json={"devices": ["r1"]}).get_json()["devices"][0]
+        return client.post("/deploy/apply", json={
+            "confirmations": {"r1": device["capture_hash"]},
+            "command_hashes": {"r1": "deadbeefdeadbeef"}}).get_json()
+
+    @staticmethod
+    def _render(report):
+        import json as _json
+
+        from tests.js_source import read_shipped
+
+        source = read_shipped(
+            "static/js/gen/partials__deploy_wizard.1.js")
+
+        def _lift(name):
+            start = source.index(f"function {name}(")
+            depth, i, seen = 0, source.index("{", start), False
+            while i < len(source):
+                if source[i] == "{":
+                    depth += 1
+                    seen = True
+                elif source[i] == "}":
+                    depth -= 1
+                    if seen and depth == 0:
+                        break
+                i += 1
+            return source[start:i + 1]
+
+        # `_dEsc` too: the renderer escapes every field through it, so a
+        # harness that lifts only the renderer tests a function that cannot
+        # run. The shipped escaper is also the thing that would silently
+        # mangle a message, so it belongs in the execution rather than stubbed.
+        fn = _lift("_dEsc") + "\n" + _lift("_renderDeployResult")
+        # A stub DOM: duktape has no document, and the renderer writes into one.
+        stub = """
+        var __html = '';
+        var __els = {};
+        function __el(id) { return {
+          set innerHTML(v) { __html += v; }, get innerHTML() { return __html; },
+          classList: { add: function () {} }, textContent: '' }; }
+        var document = { getElementById: function (id) {
+          if (!__els[id]) __els[id] = __el(id); return __els[id]; } };
+        function showToast() {}
+        var _OUTCOME_STYLE = {};
+        """
+        return dukpy.evaljs(
+            stub + fn + f"\n_renderDeployResult({_json.dumps(report)});\n__html;")
+
+    def test_the_reason_is_drawn(self, report):
+        html = self._render(report)
+        assert "the exact command list changed since you confirmed it" in html
+
+    def test_it_names_WHICH_SIDE_MOVED_on_screen(self, report):
+        """The point of the message design. The generic form makes the reader
+        check both; this leaves one place to look."""
+        html = self._render(report)
+        assert "captured config is unchanged" in html
+        assert "intent or the template" in html
+
+    def test_it_says_nothing_was_sent(self, report):
+        assert "Nothing was sent" in self._render(report)
+
+    def test_the_device_appears_in_the_table(self, report):
+        assert "r1" in self._render(report)
+
+
+class TestTheFooterCountMatchesTheRows:
+    """`report.total` is printed as *"N device(s) accounted for. Every device
+    in a batch appears here."* — a sentence claiming **completeness**.
+
+    Refusals are built outside `run_batch()`, which computed `total` from the
+    batch they never entered. Measured: one refusal rendered as **"0 device(s)
+    accounted for"** beside a row for that device. Not a stale number — a
+    false statement of coverage, in the one place this project's reports
+    promise it.
+    """
+
+    CAPTURE = TestTheSpecificReasonReachesTheSCREEN.CAPTURE
+
+    @pytest.fixture
+    def report(self, monkeypatch):
+        return TestTheSpecificReasonReachesTheSCREEN.report.__wrapped__(
+            TestTheSpecificReasonReachesTheSCREEN(), monkeypatch)
+
+    def test_total_equals_the_number_of_results(self, report):
+        assert report["total"] == len(report["results"])
+
+    def test_by_outcome_covers_every_result(self, report):
+        counted = sum(len(v) for v in report["by_outcome"].values())
+        assert counted == len(report["results"])
+
+    def test_the_refusal_is_in_by_outcome(self, report):
+        assert report["by_outcome"].get("refused") == ["r1"]
+
+    def test_both_merge_sites_use_one_helper(self):
+        """The restore path folded refusals the same way and had the same
+        disagreement. Two copies of a fold is how they come to differ."""
+        import inspect
+
+        import routes.deploy as rd
+
+        source = inspect.getsource(rd)
+        assert source.count('setdefault("results", []).extend(refused)') == 1, \
+            "a second hand-rolled merge has appeared"
+        assert source.count("_merge_refusals(report, refused)") == 2

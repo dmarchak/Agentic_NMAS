@@ -435,11 +435,36 @@ def apply():
                                                  authorise),
                        CircuitBreaker())
     if refused:
-        report.setdefault("results", []).extend(refused)
-        report["refused"] = refused
+        _merge_refusals(report, refused)
 
     report["golden"] = _commit_batch_golden(list_name, report)
     return jsonify({"ok": True, "list": list_name, **report})
+
+
+def _merge_refusals(report: dict, refused: list) -> None:
+    """Fold pre-batch refusals into the report, **and re-derive its totals**.
+
+    A device refused before `plan_batch()` never entered the batch, so
+    `run_batch()` could not count it. Extending `results` alone left `total`
+    at the batch's own figure while the table showed more rows — measured:
+    one refusal rendered as *"0 device(s) accounted for. Every device in a
+    batch appears here."* beside a row for that device.
+
+    **A count that contradicts the rows beneath it, in a sentence claiming
+    completeness**, is the exact shape this project treats as serious: not a
+    stale number, a false statement of coverage. `by_outcome` needs the same
+    treatment or the summary badge disagrees with the table too.
+    """
+    report.setdefault("results", []).extend(refused)
+    report["refused"] = refused
+    report["results"].sort(key=lambda r: r.get("device", ""))
+
+    by_outcome = {}
+    for result in report["results"]:
+        by_outcome.setdefault(result["outcome"], []).append(result["device"])
+    report["by_outcome"] = by_outcome
+    report["deployed"] = by_outcome.get("deployed", [])
+    report["total"] = len(report["results"])
 
 
 def run_targets(list_name: str, targets: list, data: dict,
@@ -505,8 +530,10 @@ def run_targets(list_name: str, targets: list, data: dict,
                                                  authorise, source_ref),
                        CircuitBreaker())
     if refused:
-        report.setdefault("results", []).extend(refused)
-        report["refused"] = refused
+        # Same helper as the deploy path: the restore path merged refusals the
+        # same way and had the same disagreement between its count and its
+        # rows. Two copies of a fold is how they come to differ.
+        _merge_refusals(report, refused)
     report["golden"] = _commit_batch_golden(list_name, report, label=label,
                                             source_ref=source_ref)
     return report

@@ -2927,6 +2927,26 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   reader check both; naming the one that moved leaves one place to look.
   Reported as `moved: capture | intent_or_template` alongside all four
   operands.
+- **A count merged in after the fact contradicted the rows beneath it.**
+  Refusals are built **outside** `run_batch()` and folded into the report, and
+  the fold extended `results` without re-deriving `total` or `by_outcome` —
+  so one refusal rendered as **"0 device(s) accounted for. Every device in a
+  batch appears here."** beside a row for that device. Not a stale number: a
+  **false statement of coverage**, in the one sentence this project's batch
+  reports use to promise it. `_merge_refusals()` re-derives all three, and the
+  restore path — which had folded them the same way and carried the same
+  disagreement — now goes through it, because two copies of a fold is how they
+  come to differ. A test pins that exactly one hand-rolled merge remains, and
+  it is inside the helper.
+- **"Does the specific message reach the UI" is answered by executing the
+  renderer, never by reading the payload.** *Computed, carried to the browser,
+  drawn nowhere* has been the shape four times here, and a refusal built
+  outside the batch and folded in afterwards is exactly the join where a row
+  is carried and not drawn. The shipped `_renderDeployResult` is run in
+  duktape against the real `/deploy/apply` payload — **and `_dEsc` is lifted
+  with it rather than stubbed**, because a harness that supplies its own
+  escaper tests a renderer whose every field passes through a function that
+  was not shipped.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
