@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Ask the NMAS whether Oxidized's copy of each device is the approved one.
+
+For the sanitiser (`oxidized-to-config.sh`) to call **before it writes a
+startup config**. A redeploy replays that file, so whatever Oxidized last
+polled is what the device boots with next — approved or not.
+
+    nmas-oxidized-freshness --url http://10.0.0.211:5000 --raw-dir /tmp/raw
+    nmas-oxidized-freshness --url ... --report          # the signal, no write
+
+## WHAT IT SENDS, AND WHY IT IS THE RAW CONFIG
+
+The **raw** config as Oxidized stores it, exactly as the caller read it —
+never the sanitiser's output. The sanitised file adds its own
+`! <host> - from Oxidized HEAD <sha>` header, re-injects `no shutdown` into
+every addressed interface and appends `crypto key generate rsa` for switches,
+so comparing it against a golden reports every sanitising rule as drift, for
+ever, on every device. The header is only the loudest of those.
+
+Sending the caller's own bytes also removes the poll race: the NMAS compares
+the copy that is about to be written, not one it re-fetched a second later.
+
+## EXIT CODES — THREE OUTCOMES, THREE CODES
+
+    0  nothing blocks: approved, authorised, or a poll race
+    1  at least one device is UNAPPROVED — a change nobody signed off
+    2  the comparison COULD NOT RUN
+
+2 is separate on purpose. "The fleet has drifted" and "I could not tell you
+whether it has" are the two most different answers this can give, and the
+census already made the mistake of sharing one code between them. A caller
+doing `|| exit` treats both as a stop, which is correct; a caller that wants
+to tell them apart can.
+
+**There is no --force and no --skip.** The way through is
+`POST /freshness/authorise`, per device, keyed on the fingerprint of what
+differs, recorded with who and why. A flag would cover the next divergence
+too, and a gate with a switch is one nobody turns back on.
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+_UA = "nmas-automation/1.0"
+
+EXIT_OK, EXIT_BLOCKED, EXIT_UNPROVEN = 0, 1, 2
+
+
+def _request(url: str, payload=None, timeout: int = 60):
+    """``(status, body)``. Raises only when there is no answer at all."""
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    headers = {"User-Agent": _UA}
+    if data:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers)
+    for name in ("CF-Access-Client-Id", "CF-Access-Client-Secret"):
+        value = os.environ.get(name.upper().replace("-", "_"))
+        if value:
+            req.add_header(name, value)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        try:
+            return exc.code, json.loads(body)
+        except ValueError:
+            return exc.code, {"ok": False, "error": body[:400] or f"HTTP {exc.code}"}
+
+
+def read_raw(raw_dir: str) -> dict:
+    """``{hostname: text}`` from ``<raw_dir>/<hostname>.cfg``.
+
+    An empty or unreadable file is **omitted**, not sent as an empty string:
+    the NMAS would then be comparing a golden against nothing and would have
+    to guess whether that means "no configuration" or "I could not read it".
+    Omitting it makes the device absent from the population, which the
+    reconciliation below turns into a refusal rather than a silent pass.
+    """
+    configs = {}
+    for entry in sorted(os.listdir(raw_dir)):
+        if not entry.endswith(".cfg"):
+            continue
+        path = os.path.join(raw_dir, entry)
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError as exc:
+            print(f"UNREADABLE {entry}: {exc}", file=sys.stderr)
+            continue
+        if text.strip():
+            configs[entry[:-4]] = text
+        else:
+            print(f"EMPTY {entry} — not sent", file=sys.stderr)
+    return configs
+
+
+def show(report: dict) -> None:
+    print(report.get("summary") or "")
+    for row in report.get("devices", []):
+        verdict = row.get("verdict", "?")
+        mark = {"match": "  ok", "poll_race": "RACE", "authorised": "AUTH",
+                "unapproved": "STOP", "inconclusive": "STOP"}.get(verdict, "????")
+        print(f"  {mark} {row.get('device', '?'):<6} {verdict}")
+        if row.get("reason"):
+            print(f"         {row['reason']}")
+        for line in row.get("only_right", [])[:12]:
+            print(f"         + {line}")
+        for line in row.get("only_left", [])[:12]:
+            print(f"         - {line}")
+        extra = len(row.get("only_right", [])) + len(row.get("only_left", [])) - 24
+        if extra > 0:
+            print(f"         ... and {extra} more differing line(s)")
+        if row.get("fingerprint"):
+            # Printed so the authorisation can name THIS divergence. An
+            # authorisation not tied to what differs would cover the next one.
+            print(f"         fingerprint {row['fingerprint'][:16]}")
+    for err in report.get("errors", []):
+        print(f"  NOTE {err}", file=sys.stderr)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--url", default=os.environ.get("NMAS_URL",
+                                                    "http://127.0.0.1:5000"))
+    ap.add_argument("--list", default="", help="device list (default: active)")
+    ap.add_argument("--raw-dir", default="",
+                    help="directory of <hostname>.cfg raw Oxidized configs")
+    ap.add_argument("--report", action="store_true",
+                    help="the signal: let the NMAS fetch from Oxidized itself")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--timeout", type=int, default=60)
+    args = ap.parse_args()
+
+    base = args.url.rstrip("/")
+    query = ("?list=" + urllib.parse.quote(args.list)) if args.list else ""
+
+    try:
+        if args.report:
+            status, body = _request(base + "/freshness/report" + query,
+                                    timeout=args.timeout)
+        else:
+            if not args.raw_dir:
+                print("REFUSED - --raw-dir or --report is required. Without "
+                      "configs there is nothing to compare, and an empty "
+                      "comparison passes vacuously.", file=sys.stderr)
+                return EXIT_UNPROVEN
+            configs = read_raw(args.raw_dir)
+            if not configs:
+                print(f"REFUSED - no readable configs in {args.raw_dir}. That "
+                      "is a fact about this answer, not about the fleet.",
+                      file=sys.stderr)
+                return EXIT_UNPROVEN
+            status, body = _request(base + "/freshness/gate" + query,
+                                    payload={"configs": configs},
+                                    timeout=args.timeout)
+    except Exception as exc:                   # noqa: BLE001
+        print(f"REFUSED - the NMAS could not be asked whether these configs "
+              f"are approved: {exc}", file=sys.stderr)
+        print("Not proceeding unchecked: writing a startup config is the last "
+              "moment before an unapproved state becomes what a device boots.",
+              file=sys.stderr)
+        return EXIT_UNPROVEN
+
+    if args.json:
+        print(json.dumps(body, indent=2, sort_keys=True))
+    else:
+        show(body)
+
+    if not body.get("ok"):
+        print(f"REFUSED - {body.get('error') or body.get('defect') or 'unknown'}",
+              file=sys.stderr)
+        return EXIT_UNPROVEN
+    if body.get("blocked"):
+        print(f"\nBLOCKED: {', '.join(body['blocked'])}", file=sys.stderr)
+        print("Either save a golden for what is on the device, or authorise "
+              "this exact divergence:", file=sys.stderr)
+        print(f"  curl -X POST {base}/freshness/authorise -H 'Content-Type: "
+              "application/json' \\", file=sys.stderr)
+        print("       -d '{\"device\":\"<host>\",\"fingerprint\":\"<from "
+              "above>\",\"reason\":\"...\"}'", file=sys.stderr)
+        return EXIT_BLOCKED
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

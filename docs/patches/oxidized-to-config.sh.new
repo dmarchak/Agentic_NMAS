@@ -69,6 +69,28 @@
 #   The sanitiser therefore re-injects "no shutdown" into any interface block
 #   that carries an address and does not explicitly say shutdown.
 #
+# THE FRESHNESS GATE - WHAT OXIDIZED HAS MAY NOT BE WHAT ANYBODY APPROVED
+#   Oxidized polls. A redeploy replays what it last polled, so a change
+#   somebody made on a device at 2am and never approved becomes what that
+#   device boots with - silently, and durably, from this script.
+#
+#   Before anything is copied, the NMAS is asked whether each raw config is
+#   equivalent to that device's golden. The finding is that the CONTENT
+#   DIFFERS; the timestamp only says which way. Oxidized newer = a change
+#   nobody approved. Golden newer = the approved state moved and Oxidized has
+#   not polled yet, which is a race and not a finding.
+#
+#   IT SENDS THE RAW CONFIG, NOT THE SANITISED ONE. The sanitised file is a
+#   derived artefact - this script's own header line, the re-injected
+#   "no shutdown", the appended "crypto key generate rsa" - so comparing it
+#   against a golden would report every rule below as drift, for ever, on
+#   every device.
+#
+#   If the NMAS cannot be asked, this STOPS, exactly as it does for the map.
+#   There is no --force: the way through is an authorisation per device, tied
+#   to the fingerprint of what differs and recorded with who and why. A flag
+#   would cover the next divergence too.
+#
 # ALWAYS review 'git diff configs/' before redeploying.
 # ---------------------------------------------------------------------------
 set -uo pipefail
@@ -83,13 +105,23 @@ CLAB="${CLAB:-dmarchak@10.0.0.210}"
 STAGE="/tmp/oxidized-staged"
 NMAS_URL="${NMAS_URL:-http://10.0.0.211:5000}"
 TARGETS="${TARGETS:-nmas-clab-targets}"
+FRESH="${FRESH:-nmas-oxidized-freshness}"
+# The RAW configs, kept so the gate compares the exact bytes this run read.
+# Re-reading them for the gate would be a second `git show` and a second
+# chance for Oxidized to have polled in between - the gate would then approve
+# a copy this script is not writing.
+RAW="$(mktemp -d)"
+trap 'rm -rf "$RAW"' EXIT
 
 DEPLOY=ask
 for a in "$@"; do
   case "$a" in
     --no-deploy) DEPLOY=no  ;;
     --yes|-y)    DEPLOY=yes ;;
-    --help|-h)   sed -n '2,73p' "$0"; exit 0 ;;
+    # COMPUTED FROM AN ANCHOR. It was `sed -n '2,73p'` and drifted three
+    # times, each time silently truncating the only documentation this
+    # script has. The anchor is the first line of code.
+    --help|-h)   head -n "$(( $(grep -n '^set -uo pipefail' "$0" | head -1 | cut -d: -f1) - 1 ))" "$0" | tail -n +2; exit 0 ;;
     *) echo "unknown option: $a"; exit 1 ;;
   esac
 done
@@ -248,6 +280,7 @@ for n in "${DEVICES[@]}"; do
     echo "SKIPPED - nothing stored for ${NODE[$n]}"
     fail=1; continue
   fi
+  printf '%s\n' "$raw" > "$RAW/${n}.cfg"
 
   {
     echo "!"
@@ -324,6 +357,39 @@ echo
 if ! "$TARGETS" --url "$NMAS_URL" --reconcile "$OUT"; then
   echo
   echo "PROBLEMS ABOVE - nothing will be copied."
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# THE FRESHNESS GATE - the last moment before an unapproved state becomes
+# what a device boots with.
+#
+# Run in BOTH modes. --no-deploy writes nothing, but "these configs carry a
+# change nobody approved" is the same fact either way, and a check that only
+# runs on the path that writes is a check nobody sees until it blocks them.
+#
+# Exit 2 (could not run) and exit 1 (something blocks) are handled the same
+# way here - stop - and are REPORTED differently, because "the fleet has
+# drifted" and "I could not tell you whether it has" are the two most
+# different answers this can give.
+# ---------------------------------------------------------------------------
+echo
+echo "=========================================================="
+echo " Is Oxidized's copy the approved one?"
+echo "=========================================================="
+"$FRESH" --url "$NMAS_URL" --raw-dir "$RAW"
+gate_rc=$?
+if [ $gate_rc -eq 2 ]; then
+  echo
+  echo "REFUSED - the approval check could not run. Nothing will be copied."
+  echo "Not proceeding unchecked: a comparison that did not happen is not a"
+  echo "comparison that passed."
+  exit 2
+elif [ $gate_rc -ne 0 ]; then
+  echo
+  echo "REFUSED - one or more devices carry a change nobody approved."
+  echo "Nothing will be copied. Either save a golden for what is on the"
+  echo "device, or authorise that exact divergence (the command is above)."
   exit 1
 fi
 

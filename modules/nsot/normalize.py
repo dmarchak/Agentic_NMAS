@@ -202,6 +202,42 @@ def strip_nmas_header(text: str) -> list:
     return _strip(text, NMAS_HEADER_PREFIXES, drop_blank=False)
 
 
+def strip_provenance_comments(text) -> list:
+    """Whole-line comments out. **A fifth job, and here is why it is its own.**
+
+    Three stores each stamp their own provenance into a config as a comment:
+    a golden opens with ``! Golden config — <host> (<ip>)``, Oxidized stores
+    its own metadata header, and the clab sanitiser writes
+    ``! <host> - from Oxidized HEAD <sha>``. None of them is configuration —
+    a device does nothing with a comment — and all three differ between
+    stores by construction.
+
+    **Measured, and the measurement is narrower than it first looked.**
+    :func:`strip_for_diff` already drops *NMAS's own* header, because that
+    exact prefix is in ``DIFF_PREFIXES``. It keeps every **other** comment
+    line, so Oxidized's metadata header and the sanitiser's provenance line
+    both survive it — and a golden compared against Oxidized's copy therefore
+    differs on Oxidized's first line for every device on every run. That is
+    the noise floor that silences a checker, and it is on the side nobody
+    thought to look at: the store this project does not write.
+
+    Not folded into ``strip_for_diff``: it feeds restore baselines and the
+    drift diff, where a captured config's comments are part of what was
+    captured, and removing them silently would change what a baseline claims.
+
+    **Anchored at column 0**, and a bare ``!`` is kept: it is a block
+    separator that section parsing reads, not provenance. A banner body line
+    beginning with ``!`` is indented, and the sanitiser drops banners outright
+    for an unrelated reason.
+    """
+    if isinstance(text, (list, tuple)):
+        lines = list(text)
+    else:
+        lines = (text or "").splitlines()
+    return [line for line in lines
+            if not (line.startswith("!") and line[1:].strip())]
+
+
 def strip_for_repo(text: str) -> list:
     """Filter a config for storage in the git repo."""
     return _strip(text, REPO_PREFIXES, drop_blank=False)

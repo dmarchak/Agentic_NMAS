@@ -1,0 +1,30 @@
+{# Is what Oxidized holds the state somebody approved?
+
+   A redeploy replays Oxidized's copy into a containerlab startup config, so
+   whatever it last polled is what the device boots with next. This panel is
+   the SIGNAL half of that check: a report, continuous and cheap. The GATE is
+   in the sanitiser, which refuses to write a config nobody approved.
+
+   Server-rendered placeholder, like every other card here: a script that never
+   runs leaves a visible "did not load" rather than whitespace. #}
+
+<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
+  <div class="card-body">
+    <div class="d-flex align-items-center mb-1">
+      <h6 class="text-primary mb-0 me-auto">Approved vs. what Oxidized holds</h6>
+      <span class="text-muted small me-2" id="freshnessStamp"></span>
+      <button class="btn btn-outline-secondary btn-sm"
+              onclick="loadFreshnessSignal()">Refresh</button>
+    </div>
+    <p class="text-muted small mb-3">
+      A redeploy replays Oxidized's copy into each device's startup config.
+      A device listed here would come back on a configuration nobody approved.
+      Read-only &mdash; the refusal lives in the sync, not on this page.
+    </p>
+    <div id="freshnessBody" class="text-muted small">
+      did not load &mdash; check the browser console
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/gen/partials__freshness_signal.1.js') }}"></script>

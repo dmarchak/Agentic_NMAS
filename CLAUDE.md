@@ -103,12 +103,15 @@ tracked in git.
   merge-only diff, transport, circuit breaker, batch orchestration
 - **[modules/nsot/convergence.py](modules/nsot/convergence.py)** — per-protocol
   settle windows
+- **[modules/nsot/freshness.py](modules/nsot/freshness.py)** — is Oxidized's
+  copy of a device the approved one; the gate, the signal, and the
+  authorisation path
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
   `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`,
-  `templates.py`, `deploy.py`
+  `templates.py`, `deploy.py`, `freshness.py`
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -849,6 +852,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
 | `test_deploy_batch.py` | drift skip, breaker, every device accounted for |
 | `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
+| `test_oxidized_freshness.py` | the raw config is the artefact; the gate can reach its own finding; an authorisation covers one divergence |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -2419,6 +2423,74 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   could not**: *"unchanged — the content did not move"* is a claim with a
   mechanism in it, while *"nothing to commit"* is a shrug, and a shrug is
   what you learn to distrust.
+- **A redeploy replays OXIDIZED's copy, so freshness is a gate and not a
+  report.** Whatever Oxidized last polled is what a containerlab device boots
+  with next, approved or not. The finding is that the **content differs**;
+  the timestamp only says which way — Oxidized newer is a change nobody
+  approved, golden newer is a poll race and self-corrects. *"Newer"* alone
+  fires constantly and means nothing, because Oxidized polls.
+  `roundtrip.configs_equivalent()` is the comparator, the same one a restore
+  baseline is measured with. **The gate is the sanitiser's pre-write check**
+  (`POST /freshness/gate`, exit 0/1/2 from `nmas-oxidized-freshness`) and the
+  **signal** is the same measurement read continuously — the gate discovers
+  divergence when somebody is already preparing a redeploy; the signal
+  discovers it while the person who caused it still remembers what they did.
+- **The gate compares the RAW Oxidized config, never the sanitiser's
+  output.** Both raw-Oxidized and a golden are *captured running configs* —
+  records of the device. The sanitised file is **derived**: its own
+  `! <host> - from Oxidized HEAD <sha>` header, a re-injected `no shutdown`
+  in every addressed interface, an appended `crypto key generate rsa`. A
+  gate pointed at it compares a transformation against its own input and
+  reports **every sanitiser rule as drift**, permanently, on every device —
+  so it would be switched off in a week. It also makes the answer
+  independent of the sanitiser: changing a sanitising rule cannot make the
+  gate fire.
+- **The noise floor arrived inside the artefact chosen to avoid it, on the
+  side nobody writes.** Measured twice, and the second correction is the
+  one that matters. `strip_for_diff` keeps `! text` (it drops only bare
+  `!`) — but NMAS's **own** `! Golden config — …` header is in
+  `DIFF_PREFIXES` and was handled years ago. What is not handled is
+  **Oxidized's** metadata header: the store this project does not write,
+  and therefore the one nobody ever built a prefix list for.
+  `normalize.strip_provenance_comments()` is a **fifth filter job**, not an
+  addition to `strip_for_diff`, which feeds restore baselines and the drift
+  diff where a capture's comments are part of what was captured.
+- **A refusal that is correct for the WRONG REASON is invisible to every
+  test that asserts the refusal.** The gate fetched Oxidized's timestamps
+  only on the signal path, so on the gate path every differing device came
+  back `inconclusive`: it could never say *"a change nobody approved"* and
+  could never tell one from a poll race — **it would have refused every
+  difference, benign races included, which is exactly how a gate gets
+  switched off.** The hazard the design doc named, reintroduced by the
+  implementation of the thing that warns about it. It blocked either way,
+  so nothing asserting a refusal could see it; what saw it was a **negative
+  control aimed at something else** — forcing an unknown timestamp to read
+  as a poll race broke the route test asserting `409`, which had no
+  business depending on a timestamp. Sibling of `failed_checks: []` beside
+  `failed_before_any_change`: there the reason was **absent**, here it was
+  **present and wrong**, which is worse because it sends the reader to fix
+  a timestamp.
+- **The way through a gate is per-divergence and recorded, never a switch.**
+  `freshness.authorise()` takes a person, a reason and the **fingerprint of
+  that one divergence** (list + device + the sorted differing lines), and
+  expires in 24h. A per-device flag would let the *next* divergence through
+  while the gate reported `authorised` — a wrong thing wearing a passing
+  result. There is no `--force` and no settings toggle; a test **parses**
+  the module to assert no such name exists. That test was itself a finding:
+  its first version was a substring search and matched the module's own
+  paragraph explaining why there is no switch — *the better the comment,
+  the more likely it quotes the code it explains*, for the sixth time.
+- **`poll_race` is not blocked, and is never silent.** The copy about to be
+  written predates an approved change rather than carrying an unapproved
+  one, and it self-corrects at the next poll. It is named, counted, and
+  says what it costs ("a startup config that predates the approved
+  change") — the difference between not blocking and not mentioning.
+- **Resolving a path must not create a list, on a READ path too.**
+  `freshness._authorisation_path()` is consulted for every device on the
+  comparison path; written with `get_list_data_dir()` it called
+  `os.makedirs()`, so *asking whether a divergence was authorised* brought
+  a list into existence. The known rule in the place it is easiest to
+  overlook — nothing about the call looks like a write.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

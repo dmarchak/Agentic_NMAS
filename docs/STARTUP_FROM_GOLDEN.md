@@ -1,9 +1,13 @@
 # Oxidized, goldens, and what a redeploy bakes in — corrected assessment
 
-**Not built.** The first version of this document proposed sourcing startup
-files from goldens instead of Oxidized. **That was wrong, and the sanitizer's
-own header says why** — recorded here rather than deleted, because the
-mistake is the useful part.
+**§3 and §4 are BUILT** (2026-09-24). The read client, the sanitiser's
+pre-write gate, the authorisation path and the Monitoring signal all ship;
+§8 below records what measuring them changed. §0–2 stand as written.
+
+**The migration in §0 was never built, and should not be.** The first version
+of this document proposed sourcing startup files from goldens instead of
+Oxidized. **That was wrong, and the sanitizer's own header says why** —
+recorded here rather than deleted, because the mistake is the useful part.
 
 ## 0. The correction
 
@@ -238,3 +242,111 @@ Less urgent now that the source is not moving, since the sanitizer already
 handles whatever it handles today. But it is the **same class** as the two
 compensations above — *a running config is not a startup config* — and if
 there is a third blind spot, that is where it is.
+
+
+---
+
+## 8. What was built, and the three things measuring it changed
+
+| part | where |
+|---|---|
+| read client | `OxidizedIntegration.fetch_config()`, `.node_times()` |
+| comparator | `modules/nsot/freshness.py` |
+| gate | `POST /freshness/gate`, called by `scripts/nmas-oxidized-freshness` from the sanitiser before it writes |
+| authorisation | `POST /freshness/authorise` — a person, a reason, one divergence |
+| signal | `GET /freshness/report` + `templates/partials/freshness_signal.html` |
+| pinned | `tests/test_oxidized_freshness.py` (45 tests, nine negative controls) |
+
+### 8.1 The artefact is the RAW config, and the noise floor is why
+
+The gate compares the **raw config as Oxidized stores it** against the
+golden, never the sanitiser's output.
+
+Both raw-Oxidized and golden are *captured running configs* — records of the
+device. The sanitised file is **derived**: it adds its own
+`! <host> - from Oxidized HEAD <sha>` header, re-injects `no shutdown` into
+every addressed interface, appends `crypto key generate rsa` for switches and
+drops some twenty-five classes of line. Comparing a transformation against its
+own input reports **every sanitiser rule as drift**, permanently, on every
+device. The header is only the loudest of them; the injected lines are
+ordinary configuration and would survive any normalisation.
+
+It also makes the gate independent of the sanitiser, so changing a sanitising
+rule cannot make the gate fire.
+
+### 8.2 The measurement corrected the noise-floor claim TWICE, and the second correction is the useful one
+
+**First claim:** *the header is free, because `strip_for_diff` drops comments.*
+Measured — it does not. It drops bare `!` and keeps `! text`.
+
+**Second claim, after measuring:** *so the golden's own
+`! Golden config — <host> (<ip>)` header fires.* Also wrong, and in the more
+interesting direction: that exact prefix **is** in `DIFF_PREFIXES`, so NMAS's
+own header was handled years ago.
+
+What is not handled is **Oxidized's** metadata header — the side this project
+does not write, and therefore the side nobody ever built a prefix list for.
+Without `normalize.strip_provenance_comments()` the gate fires on that one line
+for every device on every run: *the noise floor arriving inside the artefact
+chosen to avoid it.*
+
+`strip_provenance_comments()` is a **fifth filter job**, not an addition to
+`strip_for_diff`, which feeds restore baselines and the drift diff where a
+captured config's comments are part of what was captured.
+
+### 8.3 The gate could not reach its own finding, and a control aimed elsewhere found it
+
+The first version fetched Oxidized's timestamps **only on the signal path**.
+On the gate path there were none, so every device whose content differed came
+back `inconclusive`: the gate could never say *"a change nobody approved"*, and
+could never tell one from a poll race. **It would have refused every
+difference, benign races included — which is exactly how a gate gets switched
+off**, the hazard §4 was written to avoid, reintroduced by the implementation
+of the thing that warns about it.
+
+**No test asserting a refusal could see it**, because it refused either way.
+What saw it was a negative control aimed at something else: forcing an unknown
+timestamp to read as a poll race broke the route test asserting **409**, and
+that test had no business depending on a timestamp at all.
+
+The generalisation: **a refusal that is correct for the wrong reason is
+invisible to every test that asserts the refusal.** Its siblings are already
+recorded — `failed_checks: []` beside `failed_before_any_change` was the same
+family with the reason *absent*; here the reason was **present and wrong**,
+which is worse, because it sends the reader to fix a timestamp.
+
+The control that found it is the second time this session that a control fired
+on a test other than its target. Both times the surprise was the finding.
+
+### 8.4 Resolving an authorisation path must not create a list
+
+`_authorisation_path()` is read on the comparison path for every device.
+Written with `get_list_data_dir()` it called `os.makedirs()`, so **asking
+whether a divergence was authorised brought a list into existence**. Caught by
+the conftest guard, as a test error rather than a wrong answer.
+
+The known rule, in a new place: this was a **read** path, where the hazard is
+easiest to overlook precisely because nothing about the call looks like a
+write.
+
+### 8.5 What the gate deliberately does not block
+
+`poll_race` — content differs and the **golden** is newer — does not refuse.
+The copy about to be written predates an approved change rather than carrying
+an unapproved one, and it self-corrects at Oxidized's next poll. It is named,
+counted, and says what it costs ("a startup config that predates the approved
+change"), which is the difference between not blocking and not mentioning.
+
+### 8.6 The way through, and why it is not a switch
+
+`POST /freshness/authorise`: a **person** (not a service — writing an
+unapproved state into what a device boots with is the same act as approving a
+deploy), a reason, and the **fingerprint of that one divergence**. It expires
+in 24h.
+
+A per-device flag would let the *next* divergence through while the gate
+reported `authorised` — a wrong thing wearing a passing result. There is no
+`--force`, no settings toggle, and a test parses the module to assert no such
+name exists. That test was itself a finding: its first version was a substring
+search and matched the module's own paragraph explaining why there is no
+switch.
