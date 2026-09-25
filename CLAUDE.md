@@ -4108,7 +4108,7 @@ because it adjusted a previous count instead of counting.
 paragraph enumerated as 7.5-a…f. Two standalone items come **before Stage
 7**: **P.1** switch syslog (stopped 2026-09-09; a pipeline defect, not a
 screen) and **P.2** NetBox backup with a tested restore (A1). The service
-unit's hardening is **6.5**. **P.1 measured**: nothing stopped. Every device
+unit's hardening is **6.5**. **P.1 COMPLETE 2026-09-25**: a silenced s4 alerted alone, 1,118 s after its last heartbeat, between its second and third missed heartbeat as designed; nine devices heartbeating on per-device measured windows. **P.1 measured first**: nothing stopped. Every device
 has run `logging trap critical` since 8 Sep, and the pipeline delivers
 exactly what that level sends. It needs a trap-level decision and a
 per-device EEM heartbeat, not a repair. **Decided**: `notifications` in

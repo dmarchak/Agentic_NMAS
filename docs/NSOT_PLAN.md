@@ -1813,6 +1813,33 @@ template or fixture carries `event manager`. Putting it into intent means a
 parser + template + round-trip change and a deploy to every device, through
 the confirmed path.
 
+**P.1 COMPLETE 2026-09-25: acceptance passed end to end (operator).**
+- **The silenced device alerted, alone, at the right time.** s4's last
+  heartbeat was 21:21:22; its timer was removed at 21:22:27 (applet kept, `no
+  event timer watchdog time 300`); the **alert fired at 21:40:00**. The other
+  eight were silent throughout.
+- 1,118 s after the last heartbeat is past s4's second missed heartbeat
+  (≈2 × 400 s real) and before its third (≈3 × 388 s): **"alert after two
+  missed", measured.**
+- Its window (996 s) elapsed at 21:37:58, so detection took **122 s
+  beyond the window**. That fits Grafana's 1-minute evaluation plus NoData
+  handling, but it is **not measured**. The latency is window + about 2
+  min until someone shows otherwise.
+- s4's own syslog recorded the cause on the way out: `21:22:35
+  %HA_EM-4-FMPD_NO_EVENT: No event configured for applet NMAS-HEARTBEAT`.
+- Nine rules loaded in Grafana with per-device measured windows (750 × 5,
+  797, 799, 996, 1286). `nmas-heartbeat-check` reads current for all nine
+  and is a healthy job in `nmas-jobs`. s4's timer was restored at 22:04:32.
+- **What P.1 delivered:** the block authored as intent; bulk-applied to
+  seven devices in one commit (`7fd0ac0`); deployed to all ten; nine
+  heartbeating (r5 retired as out of scope); the collector proven; rules
+  generated from committed intent with each device's window measured from
+  its own clock; and an alert that fires when a device stops, and only
+  then.
+- **Built on the way:** bulk intent (P.1b), retire (C11), declared-unmapped,
+  job health (C14), the clab-sync fixes (C14/C15), and per-device windows
+  (C16).
+
 **P.1 DECIDED 2026-09-25**, and what is built so far:
 1. **Trap level `notifications`, through intent.**
 2. **Heartbeat:** EEM `event timer watchdog time 300` →
