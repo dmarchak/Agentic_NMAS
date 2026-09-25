@@ -1537,8 +1537,19 @@ def _build_config_context(hostname: str, ip: str, facts: dict,
 
     Stores structured extracted data plus the sanitised full running config.
     """
+    # NO SYNC TIMESTAMP HERE. It was `"ndm_sync": time.strftime(...)`, which
+    # made this field differ on EVERY sync by construction — so the
+    # modification record logged a change for every device, every sync, for
+    # ever, and `local_context_data`'s hash moved with it.
+    #
+    # Two reasons, and the second is the stronger. Noise: a log whose every
+    # entry reads "the sync ran" teaches the reader to skip it, which is the
+    # record's own "somebody turns it off" reached by count instead of bytes,
+    # and the next false `offline` goes past unread. And **NetBox already owns
+    # this fact** — every object carries `last_updated` — so this was a second
+    # copy of somebody else's field. Removing it drops a duplicate rather than
+    # losing information, which is the two-owners rule, not a noise fix.
     ctx: dict = {
-        "ndm_sync":       time.strftime("%Y-%m-%d %H:%M"),
         "mgmt_ip":        ip,
         "platform":       facts.get("platform", ""),
         "os_version":     facts.get("version", ""),
@@ -1588,7 +1599,6 @@ _NDM_TEMPLATE_CODE = """\
 ! Platform: {{ platform | default('unknown') }}  Version: {{ os_version | default('unknown') }}
 ! Serial  : {{ serial | default('N/A') }}
 ! Mgmt IP : {{ mgmt_ip | default('') }}
-! Synced  : {{ ndm_sync | default('') }}
 ! ============================================================
 {% if running_config is defined and running_config %}
 {{ running_config }}
@@ -1698,11 +1708,16 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
     if not existing:
         existing = _nb_first(session, base, "dcim/devices/", name=hostname, site_id=site_id)
 
+    # NO `Synced: <timestamp>`. Same reasoning as `ndm_sync` in
+    # _build_config_context: it made `comments` differ on every sync by
+    # construction, and NetBox's own `last_updated` already carries when the
+    # object was written. What remains changes when the platform, the version
+    # or the management address changes — which is a fact somebody would want
+    # to see change.
     comments = (
         f"Platform: {facts.get('platform') or 'unknown'}  |  "
         f"Version: {facts.get('version') or 'unknown'}  |  "
-        f"Mgmt IP: {ip}  |  "
-        f"Synced: {time.strftime('%Y-%m-%d %H:%M')}"
+        f"Mgmt IP: {ip}"
     )
 
     # Build config context (sanitised running config + structured facts + routing)

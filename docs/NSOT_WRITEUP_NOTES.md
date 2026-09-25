@@ -10182,3 +10182,109 @@ success case rather than the failure: `inconclusive` rather than `failed`,
 *"checked 7 of 9"* rather than a number that reads as complete, *"this is
 not the same as none being pending"* — and now **a success that says what it
 measured**, so it can be told apart from a shrug.
+
+
+## A rule is applied to things that have names
+
+The rule was written down, agreed, and enforced. It removed 140 lines. And
+the same violation, one expression wide, sat twenty lines away and survived
+it for months.
+
+**The rule:** *importing observed state into the source of truth is the wrong
+direction.* It is why `netbox_client._scan_device` was deleted — an SSH
+scanner that learned a device's configuration by asking the device, when the
+golden config was the right source. 140 lines, a docstring, a name. It was
+found, argued about, and removed, and the reasoning was recorded so it would
+not come back.
+
+**What survived it**, in the same file, in the argument list of the call the
+sync makes for every device:
+
+```python
+status="active" if (status_cache or {}).get(result["ip"], False) else "offline",
+```
+
+`status_cache` is the in-memory ping cache. That expression takes a liveness
+observation — whether one ICMP or TCP attempt answered within five seconds —
+and writes it into the source of truth as a standing claim. It is the rule's
+own example, in miniature, and nobody looked at it, including me, for as long
+as it has existed.
+
+### Why it escaped
+
+Not because it was hidden. It is on one line, in a file that has been read
+closely and edited repeatedly this month, in a payload every reviewer of the
+NetBox work has scrolled past.
+
+It escaped because **a rule gets applied to things that present themselves as
+subjects for a rule.** `_scan_device` had a name, a signature, a docstring and
+a line count. You can ask "should this function exist?" and the question has
+somewhere to land. `status=` inside a call is not a subject; it is a detail of
+a call whose subject is `_upsert_device`. Reviewing the call means asking
+whether the *device upsert* is right. The argument goes past as punctuation.
+
+The generalisation, which is what makes this worth its own entry: **the unit
+a rule is enforced against is the unit the codebase makes nameable.**
+Functions, modules, files and classes get audited because they can be listed.
+Expressions, arguments, dictionary literals and default values do not get
+listed, so they are never the thing an audit is *about* — they are only ever
+visible as part of something larger, and if that larger thing is fine, they
+inherit its verdict.
+
+This is the same shape as three failures already recorded here, and naming it
+ties them together:
+
+- a docstring that names the *ordering* as a source, because prose is not a
+  subject for a test
+- a rule living in one file's docstring and another file's omission, which
+  nothing would notice being broken
+- `next_ts`, a field written and read by nothing, because a key is not a unit
+  anybody audits
+
+### The method that finds the rest
+
+Not "read the file again". The defect is invisible to reading precisely
+because it is not what reading is organised around.
+
+**Parse for the unit the rule is about, not for the unit the language is
+organised into.** The rule here is about *fields written into NetBox*, so the
+subject is a **payload literal**, not a function. So: walk the AST, find every
+dict literal that looks like a NetBox payload, and for each key report how its
+value is produced — a name, a constant, or an inline expression — and whether
+that expression touches anything that smells of observation.
+
+That took about fifteen lines and, on its first run, found **four more fields
+carrying observed state**, two of which turned out to be a separate defect
+(`comments` and `local_context_data.ndm_sync` both embedded the sync's own
+timestamp, so both differed on every sync by construction).
+
+It also corrected the rule while applying it, which is the part I did not
+expect. The obvious discriminator — *observed versus intended* — does not
+work, because the NetBox import is **designed** to run from golden configs,
+and a golden config is an observation. What separates the acceptable cases
+from the defect is:
+
+> **does this field change without anybody deciding it?**
+
+`serial`, `model` and `os_version` change when the hardware or the image
+changes. A ping result changes on a five-second timer. A sync timestamp
+changes *because the sync ran*. Only the last two are the wrong direction, and
+the reformulated rule says so where the original did not.
+
+### What it cost, and what it nearly cost
+
+It cost one false statement in the source of truth: NetBox said s1 was offline
+while s1 was answering SSH, and nothing would ever have corrected it.
+
+It nearly cost more. The NetBox inventory source filters on `status=active` by
+default, so on a NetBox-sourced list the same transient would have removed the
+device from the inventory — absent, not skipped, not named — and the next sync
+iterates the inventory that no longer contains it. **Self-sealing.** That it
+was not firing is down to `default` being a local list, which is luck rather
+than design.
+
+And the thing that found it was the modification record, built the day before,
+on its first real run. `--compare` said *no object was created or destroyed*
+and that was true; the drift checker compares configs, not NetBox fields; the
+census compares identity, and an in-place status change alters neither an
+object's id nor its display. **Nothing else looks.**

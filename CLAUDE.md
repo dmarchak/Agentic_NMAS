@@ -3719,7 +3719,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   so the next false `offline` goes past unnoticed. Recorded, not applied — the
   honest fix is to drop the timestamps (NetBox's own `last_updated` already
   carries the sync time) rather than to exclude the fields from the record,
-  which would hide a real write.
+  which would hide a real write — **and would be the checker-exemption shape:
+  the log quietly stops covering the writes that happen most.**
+- **Both sync timestamps are gone** (`comments`' `Synced: <ts>` and
+  `local_context_data.ndm_sync`), and the **second** reason is the stronger:
+  NetBox already owns that fact — every object carries `last_updated` — so
+  they were a **second copy of somebody else's field**. That makes it the
+  two-owners rule rather than a noise fix, and dropping them removes a
+  duplicate rather than losing information. The config template NMAS installs
+  read `ndm_sync`, so **both ends moved together**: removing the key alone
+  would leave `! Synced  : ` rendering empty for ever, a label with nothing
+  behind it. What remains in `comments` changes when the platform, version or
+  management address changes — pinned by a floor, since emptying the field
+  would satisfy every no-timestamp assertion. The claim that matters is
+  end-to-end: **a repeat sync of an unchanged device now records nothing at
+  all**, not something small.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

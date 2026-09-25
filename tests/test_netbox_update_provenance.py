@@ -742,3 +742,60 @@ class TestStatusIsNotWrittenByTheSync:
         src = open("modules/inventory/source_config.py", encoding="utf-8").read()
         doc = src.split('"""')[1]
         assert '"status": "active"' not in doc
+
+
+class TestNoFieldChangesJustBecauseTheSyncRan:
+    """`comments` and `local_context_data.ndm_sync` both embedded the sync's
+    own timestamp, so both differed on EVERY sync by construction — an entry
+    per device per sync, for ever.
+
+    Two reasons for removing them and the second is the stronger. Noise, which
+    is the record's own "somebody turns it off" reached by count rather than
+    bytes. And **NetBox already owns this fact**: every object carries
+    `last_updated`, so these were a second copy of somebody else's field. It
+    is the two-owners rule, not a noise fix — dropping them removes a
+    duplicate rather than losing information.
+    """
+
+    def _code(self):
+        src = open("modules/netbox_client.py", encoding="utf-8").read()
+        return "\n".join(ln for ln in src.splitlines()
+                         if not ln.strip().startswith("#"))
+
+    def test_the_config_context_carries_no_sync_timestamp(self):
+        assert "ndm_sync" not in self._code()
+
+    def test_comments_carries_no_sync_timestamp(self):
+        assert "Synced:" not in self._code()
+
+    def test_the_template_no_longer_reads_a_field_nothing_sets(self):
+        """Removing the key alone would leave `! Synced  : ` rendering empty
+        for ever — a label with nothing behind it, which is worse than either
+        having the value or not having the line."""
+        assert "Synced  :" not in self._code()
+
+    def test_what_remains_still_changes_when_something_real_does(self):
+        """The floor. Emptying `comments` entirely would pass every assertion
+        above while throwing away a field that legitimately moves when the
+        platform, version or management address moves."""
+        code = self._code()
+        for kept in ("Platform: ", "Version: ", "Mgmt IP: "):
+            assert kept in code
+        for kept in ("mgmt_ip", "os_version", "serial", "model"):
+            assert kept in code
+
+    def test_a_repeat_sync_of_an_unchanged_device_records_nothing(self):
+        """END TO END, which is the claim that matters: with nothing about the
+        device changed, a second sync must produce no modification entry at
+        all — not a small one."""
+        from modules.netbox_client import _build_config_context
+
+        args = ("r2", "10.255.1.2", {"platform": "cisco_ios", "version": "17.6",
+                                     "serial": "ABC", "model": "C8000v"},
+                [], [], [], "hostname r2\n")
+        first = _build_config_context(*args)
+        second = _build_config_context(*args)
+        assert first == second
+
+        assert netbox_guard.changed_fields(
+            {"local_context_data": first}, {"local_context_data": second}) == {}
