@@ -3983,6 +3983,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   check can find an X that **is** there (a positive control). Same family as
   *a lookup that misses is a fact about the query*, stated for findings
   rather than code.
+- **A TOOL'S OUTPUT IS A CLAIM, and it needs the same scrutiny as the thing
+  it describes.** The C3 arc: the recorder was declared **verified FAILING**
+  (`1b9b4d3`), the register and plan were rewritten around a live defect,
+  and it was closed as a misreading (`bbf3d8e`). The record had held the
+  06:34:40Z entry the whole time, and `nmas-netbox-modified` printed it as
+  the last of 44 lines. The mechanism was never broken. What failed was the
+  operator's reading of the diagnostic's output, and that false positive was
+  trusted enough to declare a defect and cost a round of work. The lesson is
+  not "check twice". It is the rule about naming both operands, applied to
+  the **reader** rather than the writer: a guard reports the comparison it
+  made, and a reader of a report asserts what the report was shown able to
+  contain (T0, then the entry after T0), never what it did not visibly
+  say. The same day, the register itself was read at a head four commits
+  stale: *a stale read of a maintained file is indistinguishable from a stale
+  file.*
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

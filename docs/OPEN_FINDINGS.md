@@ -16,6 +16,14 @@ forgotten. Anything recorded as *"not applied"*, *"noted, not yet
 addressed"*, *"recorded as a gap"* or *"left open"* belongs here on the same
 day it is written.
 
+**A register is only current if the reader checks the head.** A stale read
+of a maintained file cannot be told apart from a stale file. On 2026-09-25 this
+register was read at `1b9b4d3` while the repository was four commits ahead,
+and three items already closed were raised again as open. That is the failure
+this file exists to prevent, arriving through the reader rather than the
+document. Before acting on an item, run `git log -1 -- docs/OPEN_FINDINGS.md`
+and compare it with the head you are reading.
+
 Status: **open** unless stated. Last reviewed 2026-09-25.
 
 > **No live thread.** C3 closed, and the positive control re-run on `bbf3d8e`

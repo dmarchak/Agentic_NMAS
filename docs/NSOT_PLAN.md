@@ -1642,7 +1642,8 @@ of an existing one.
   map is the checklist every later step is written against.
 - **Grafana `allow_embedding` + an Access policy for the embed path → 7.5 →
   7.9.** Named blockers, not measured ones; the iframe test comes first.
-- **P.1 and P.2 are scheduled ahead of Stage 7 by DECISION, not dependency.**
+- **P.1 and P.2 are scheduled ahead of Stage 7 by the operator's DECISION,
+  not by dependency.**
   Nothing in Stage 7 needs them. P.1 is a defect in a running pipeline, and
   every day it waits is a day of switch logs that do not exist. P.2 is what
   makes the Stage 7 work recoverable if it damages NetBox. It is the one
@@ -1748,7 +1749,12 @@ changes one consumer's credential without disturbing another's.
 
 ---
 
-### BEFORE STAGE 7 — two standalone items (scheduled 2026-09-25)
+### BEFORE STAGE 7 — two standalone items (the operator's decision, 2026-09-25)
+
+*Recorded with who made it, because a decision recorded without an owner
+reads as a scheduling fact, and the next reader cannot tell a choice from a
+constraint. Nothing in Stage 7 depends on these. The operator put them first:
+P.1, P.2, then 7.0.*
 
 **P.1 Switch syslog stopped around 2026-09-09.** The Loki card showed 0 lines
 during the demo. It is a pipeline defect, not a view, so it is carved out of
