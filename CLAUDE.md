@@ -3771,6 +3771,39 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   only the description or VRF differs, and that payload carries `status`.
   Fixed keyed on the exact shape, so an arbitrary dict with a `value` key is
   left alone, with a floor that a real enum change is still recorded.
+- **A RESTORE MUST NOT WALK PAST A CREATE, AND THE LOG CANNOT SEE ONE**
+  (§17). The status reset's dry run offered `r6  active → offline` for a
+  device that is up, reachable and onboarded an hour earlier. The mechanism is
+  one step from the obvious reading: **the modification log holds only
+  updates** — `_nb_post` calls `record_created`, `_nb_patch` calls
+  `record_modified`, asserted now rather than assumed — so **reaching the
+  earliest logged entry does not mean reaching the object's origin**. r6 was
+  POSTed `offline` because the ping worker had not yet seen a device that had
+  just booted, then PATCHed `active`; the single logged entry's `before` is
+  NMAS's own create-time write, not a prior state. *(The create path is
+  already fixed — the call site's `status=` argument is gone, so creates take
+  the `active` default; r6 predates it.)*
+- **The two records answer different questions, and using each for its own is
+  the fix.** The **modification log** answers *did NMAS write this value* —
+  authority to correct. The **created-object record** answers *did NMAS create
+  this object* — whether *"before NMAS"* names anything at all. The first
+  version used creation as authority and refused to undo NMAS's own write on
+  s1; this uses it as an **existence test, scoped to `reached_start`**, so a
+  **gap in the chain means a human's value and is restored however the object
+  came to exist**. That scoping is the whole difference, and both directions
+  are controlled: removing the stop reproduces the r6 row, applying it
+  regardless of `reached_start` makes s1 unfixable again. Tag **or** record,
+  since `_nb_post` alone injects the tag, so a tagged object was created by
+  NMAS even where a deleted list took its record.
+- **Naming both operands paid for itself twice in one evening.** The report
+  said *"NMAS wrote 'active' over 'offline'"*, so the wrong row was readable
+  at a glance by the operator **before anything was written**. The previous
+  version said `0 to correct, 1 skipped` — a count with no operands — and
+  would have been applied without anybody knowing. First `skipped_drifted`
+  reporting neither hash and costing three wrong hypotheses; now a restore
+  plan printing what it would replace and stopping a bad write. **The
+  difference is not detail: one makes a claim a reader can check, the other
+  asks to be trusted.**
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

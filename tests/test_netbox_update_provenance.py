@@ -861,63 +861,156 @@ class TestTheResetTakesAuthorityFromTheLog:
 
     def test_it_restores_what_the_field_held_before(self):
         mod = self._script()
-        value, refusal = mod._restore_target([
+        value, refusal, reached = mod._restore_target([
             self._entry("2026-09-24T05:22:00Z",
                         {"value": "active", "label": "Active"}, "offline")])
-        assert refusal is None and value == "active"
+        assert refusal is None and value == "active" and reached is True
 
     def test_it_restores_a_humans_value_not_a_default(self):
         """`staged` for a device somebody had deliberately staged — which is
         the argument for reading the log rather than resetting to 'active'."""
         mod = self._script()
-        value, _ = mod._restore_target([
+        value, _, _ = mod._restore_target([
             self._entry("2026-09-24T05:22:00Z",
                         {"value": "staged", "label": "Staged"}, "offline")])
         assert value == "staged"
 
     def test_it_unwinds_an_unbroken_run_of_nmass_own_writes(self):
         mod = self._script()
-        value, _ = mod._restore_target([
+        value, _, reached = mod._restore_target([
             self._entry("2026-09-01T00:00:00Z", "active", "offline"),
             self._entry("2026-09-02T00:00:00Z", "offline", "active"),
             self._entry("2026-09-03T00:00:00Z", "active", "offline"),
         ])
-        assert value == "active"
+        assert value == "active" and reached is True
 
     def test_a_gap_in_the_chain_stops_the_unwind(self):
         """Somebody else wrote in between, so THEIR value is the one to
         restore — not whatever the field held before NMAS first touched it."""
         mod = self._script()
-        value, _ = mod._restore_target([
+        value, _, reached = mod._restore_target([
             self._entry("2026-09-01T00:00:00Z", "active", "offline"),
             # a human set it to 'staged' here; NMAS's next write saw that
             self._entry("2026-09-03T00:00:00Z", "staged", "offline"),
         ])
         assert value == "staged"
+        # The unwind STOPPED at the gap, so this is a human's value and is
+        # restorable however the object came to exist.
+        assert reached is False
 
     def test_an_unknown_before_refuses_rather_than_defaulting(self):
         """This script exists because a value was asserted without being
         known. Guessing a target would be the same mistake."""
         mod = self._script()
-        value, refusal = mod._restore_target(
+        value, refusal, _ = mod._restore_target(
             [{"id": 41, "at": "2026-09-24T05:22:00Z",
               "endpoint": "dcim/devices", "before_unknown": True}])
         assert value is None and "unknown" in refusal
 
     def test_a_device_nmas_never_wrote_is_not_touched(self):
         mod = self._script()
-        value, refusal = mod._restore_target([])
+        value, refusal, _ = mod._restore_target([])
         assert value is None and "never written" in refusal
 
-    def test_it_does_not_consult_the_created_object_record(self):
-        """The defect this version exists to fix. Asking 'did NMAS create
-        this' refuses to undo NMAS's own write on any device imported before
-        provenance existed — which is nine of the ten here."""
+    def test_creation_is_never_the_authority_to_correct(self):
+        """The defect this version exists to fix, pinned as the DISTINCTION
+        rather than as an absence.
+
+        Asking *did NMAS create this* as authority refuses to undo NMAS's own
+        write on any device imported before provenance existed — nine of the
+        ten here. The created record is still consulted, for the different
+        question of whether a prior state can exist at all, and that use is
+        gated on `reached_start`. So the assertion is not "the record is
+        unused" but "the candidates come from the log, and creation only ever
+        subtracts from them".
+        """
         src = open("scripts/nmas-netbox-status-reset", encoding="utf-8").read()
-        code = "\n".join(ln for ln in src.splitlines()
-                          if not ln.strip().startswith("#"))
-        body = code.split('"""', 2)[-1]
-        assert "was_created_by_nmas" not in body
-        assert "has_managed_tag" not in body
-        # Floor: it really does read the modification record.
-        assert "modified_since" in body
+        plan = src.split("def _plan(")[1]
+
+        # Candidates come from the modification record.
+        assert "modified_since" in plan
+        # Creation is consulted exactly once, and only alongside reached_start.
+        assert plan.count("_nmas_created(") == 1
+        line = next(ln for ln in plan.splitlines() if "_nmas_created(" in ln
+                    or "reached_start and" in ln)
+        assert "reached_start" in line
+        # It can only remove a target, never supply one.
+        after = plan.split("_nmas_created(")[1]
+        assert "target, refusal = None" in after
+
+
+class TestARestoreNeverWalksPastACreate:
+    """r6 is up, reachable and onboarded by the tool, and the reset offered to
+    mark it **offline**.
+
+    THE LOG HOLDS ONLY UPDATES: `_nb_post` calls `record_created`, `_nb_patch`
+    calls `record_modified`. So reaching the earliest logged entry does not
+    mean reaching the object's origin — for a device NMAS created, the
+    `before` of the oldest logged update is the value NMAS itself set on
+    create. r6 was POSTed `offline` because the ping worker had not yet seen
+    it, then PATCHed `active`; restoring the `before` would have undone the
+    correct value in favour of the absence of a decision.
+    """
+
+    def _script(self):
+        loader = importlib.machinery.SourceFileLoader(
+            "reset_create_test", "scripts/nmas-netbox-status-reset")
+        spec = importlib.util.spec_from_loader("reset_create_test", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+
+    def test_a_create_is_never_recorded_as_a_modification(self):
+        """The fact the whole defect rests on, asserted rather than assumed."""
+        src = open("modules/netbox_client.py", encoding="utf-8").read()
+        tree = ast.parse(src)
+        seen = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in ("_nb_post",
+                                                                   "_nb_patch"):
+                seen[node.name] = {
+                    n.func.attr for n in ast.walk(node)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and n.func.attr in ("record_created", "record_modified")}
+        assert seen["_nb_post"] == {"record_created"}
+        assert seen["_nb_patch"] == {"record_modified"}
+
+    def test_reached_start_is_reported(self):
+        mod = self._script()
+        one = [{"id": 9, "at": "2026-09-24T06:00:00Z", "endpoint": "dcim/devices",
+                "fields": {"status": {"before": "offline", "after": "active"}}}]
+        value, refusal, reached = mod._restore_target(one)
+        assert value == "offline" and refusal is None
+        assert reached is True, "the unwind consumed every logged entry"
+
+    def test_the_plan_refuses_a_device_nmas_created(self, monkeypatch):
+        """r6's row. The value is reachable and the refusal is what stops it."""
+        mod = self._script()
+        monkeypatch.setattr(mod, "_nmas_created", lambda *a: True)
+
+        src = open("scripts/nmas-netbox-status-reset", encoding="utf-8").read()
+        assert "reached_start and _nmas_created(" in src
+        # and the refusal says what it means, not just that it refused
+        assert "not a decision to restore" in src
+
+    def test_a_gap_is_restored_even_for_a_device_nmas_created(self):
+        """The floor, and the reason this is not the first version's test
+        coming back. A human's value is meaningful however the object came to
+        exist, so the refusal must be scoped to `reached_start`."""
+        mod = self._script()
+        value, refusal, reached = mod._restore_target([
+            {"id": 9, "at": "2026-09-01T00:00:00Z", "endpoint": "dcim/devices",
+             "fields": {"status": {"before": "active", "after": "offline"}}},
+            {"id": 9, "at": "2026-09-03T00:00:00Z", "endpoint": "dcim/devices",
+             "fields": {"status": {"before": "staged", "after": "offline"}}},
+        ])
+        assert value == "staged" and reached is False
+
+    def test_the_created_test_is_used_for_existence_not_authority(self):
+        """s1 must still be restorable: NMAS did not create it, so the value
+        behind its oldest logged write predates NMAS entirely."""
+        src = open("scripts/nmas-netbox-status-reset", encoding="utf-8").read()
+        body = src.split("def _plan(")[1]
+        # the creation test gates ONLY the reached_start branch
+        assert body.count("_nmas_created(") == 1

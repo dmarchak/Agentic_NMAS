@@ -1252,3 +1252,81 @@ payload when only the description or VRF differs, and that payload carries
 comparison itself rather than in a field. Fixed, keyed on the exact shape so
 an arbitrary dict carrying a `value` key is left alone, with a floor that a
 real enum change is still recorded.
+
+
+## 17. A restore must not walk past a create — and the report is what caught it
+
+The dry run offered two rows:
+
+```
+s1   offline → active   (NMAS wrote 'offline' over 'active')    correct
+r6   active  → offline  (NMAS wrote 'active'  over 'offline')   WRONG
+```
+
+r6 is up, reachable, and was onboarded by the tool an hour earlier. Applying
+that would have taken a correct value and replaced it with the absence of a
+decision.
+
+### The mechanism, measured — and it is one step from the obvious reading
+
+It is **not** that the chain walk passes a create. It is that **the log holds
+only updates**: `_nb_post` calls `record_created`, `_nb_patch` calls
+`record_modified`, and nothing writes a create into the modification record.
+Asserted now rather than assumed.
+
+So r6's history is:
+
+1. **POST** at onboarding, `status` from the ping cache — and the ping worker
+   had not yet seen a device that had just booted, so `.get(ip, False)` missed
+   and it was **created `offline`**. *(That path is already fixed: the call
+   site's `status=` argument is gone, so creates now take the `active`
+   default. r6 predates it.)*
+2. **PATCH** at a later sync, once the cache had it: `offline → active`. **One
+   logged entry.**
+
+The unwind consumes that single entry and arrives at `before: offline` —
+which is not a prior state at all, but NMAS's own create-time write.
+**Reaching the earliest logged entry does not mean reaching the object's
+origin.**
+
+### The fix, and why it is not the first version's test returning
+
+`_restore_target()` now reports `reached_start` — whether the unwind consumed
+every logged entry — and the plan refuses when `reached_start` **and** NMAS
+created the object.
+
+The created-object record is consulted again, for **the question it actually
+answers**:
+
+| record | question | used for |
+|---|---|---|
+| modification log | did NMAS **write this value** | authority to correct |
+| created-object record | did NMAS **create this object** | whether *"before NMAS"* names anything |
+
+The first version used creation as *authority*, and so refused to undo NMAS's
+own write on s1. This uses it as an *existence* test, and only where the
+unwind ran out of log. **A gap in the chain means a human's value, which is
+meaningful however the object came to exist** — so a device NMAS created whose
+status a human later set is still restorable. That scoping is the whole
+difference, and both directions are controlled: removing the stop reproduces
+the r6 row, and applying it regardless of `reached_start` makes s1 unfixable
+again.
+
+Tag **or** record, because the tag is injected in `_nb_post` only — so a
+tagged object was created by NMAS even where a deleted list took its record.
+
+### What caught it
+
+The report named both operands: *"NMAS wrote 'active' over 'offline'"*. The
+wrong row was readable at a glance, by the operator, before anything was
+written.
+
+The previous version of this same report said `0 device(s) to correct, 1
+skipped` — a count with no operands — and it would have been applied without
+anybody knowing. **The naming-both-operands rule paid for itself twice in one
+evening**: first when `skipped_drifted` reported neither hash and cost three
+wrong hypotheses, and now when a restore plan printed what it was replacing
+and stopped a bad write before it happened.
+
+The difference between the two reports is not detail. It is that one makes a
+claim a reader can check and the other asks to be trusted.

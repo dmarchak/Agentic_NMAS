@@ -54,26 +54,39 @@ def _status_value(raw):
 
 
 def _restore_target(entries):
-    """The value `status` held before NMAS's unbroken run of writes.
+    """``(value, reason, reached_start)`` — what `status` held before NMAS.
 
     Walks backwards from the most recent write while each entry's `before`
     is the previous entry's `after` — an unbroken chain of NMAS's own writes —
     and stops where the chain breaks, because a gap means somebody else set
     the value in between and **theirs is the one to restore**.
 
-    Returns ``(value, None)`` or ``(None, reason)``. A write whose before-state
-    was unreadable refuses rather than falling back to a default: this script
-    exists because a value was asserted without being known.
+    ``reached_start`` says the unwind consumed **every logged entry**, and the
+    caller needs it because **THE LOG HOLDS ONLY UPDATES**: `_nb_post` calls
+    `record_created` and `_nb_patch` calls `record_modified`, so a create is
+    never in it. Reaching the earliest logged entry therefore does *not* mean
+    reaching the object's origin — for a device NMAS created, the `before` of
+    the oldest logged update is **the value NMAS itself set on create**.
+
+    Measured on r6: created while the ping worker had not yet seen it, so the
+    ping cache missed and it was POSTed `offline`; a later sync PATCHed it
+    `active`. One logged entry, `before: offline`. Restoring that would have
+    taken a device that is up, reachable and correct, and marked it offline —
+    *"restoring"* it to the absence of a decision.
+
+    A write whose before-state was unreadable refuses rather than falling back
+    to a default: this script exists because a value was asserted without
+    being known.
     """
     chain = [e for e in entries if "status" in (e.get("fields") or {})
              or e.get("before_unknown")]
     if not chain:
-        return None, "NMAS has never written this device's status"
+        return None, "NMAS has never written this device's status", False
 
     chain.sort(key=lambda e: e.get("at") or "")
     if chain[-1].get("before_unknown"):
         return None, ("NMAS's last status write did not record a before-state, "
-                      "so what it replaced is unknown")
+                      "so what it replaced is unknown"), False
 
     i = len(chain) - 1
     while i > 0:
@@ -88,8 +101,25 @@ def _restore_target(entries):
 
     value = _status_value(chain[i]["fields"]["status"].get("before"))
     if not value:
-        return None, "the recorded before-state is empty"
-    return value, None
+        return None, "the recorded before-state is empty", i == 0
+    return value, None, i == 0
+
+
+def _nmas_created(session, base, list_name, dev_id) -> bool:
+    """Did NMAS create this object — tagged **or** recorded.
+
+    The tag is injected in `_nb_post` only, so a tagged object was created by
+    NMAS even where the created-id record was lost with a deleted list. Either
+    is sufficient; this decides whether a prior state can exist, not whether
+    anything may be deleted.
+    """
+    from modules.netbox_client import _nb_get_by_id
+    from modules.netbox_guard import has_managed_tag, was_created_by_nmas
+
+    if was_created_by_nmas(list_name, ENDPOINT, dev_id):
+        return True
+    obj = _nb_get_by_id(session, base, ENDPOINT, dev_id)
+    return bool(obj) and has_managed_tag(obj)
 
 
 def _plan(session, base, list_name):
@@ -108,7 +138,30 @@ def _plan(session, base, list_name):
 
     rows = []
     for dev_id, entries in sorted(by_device.items()):
-        target, refusal = _restore_target(entries)
+        target, refusal, reached_start = _restore_target(entries)
+
+        # THE STOP CONDITION, and it uses the created-object record for the
+        # question that record actually answers.
+        #
+        # The log gives authority to CORRECT — "did NMAS write this value".
+        # It cannot say whether a prior state exists, because it holds no
+        # creates. So when the unwind has consumed every logged entry AND
+        # NMAS created the object, the value it arrived at is NMAS's own
+        # create-time write and there is nothing behind it. Refuse.
+        #
+        # This is not the first version's test returning. That asked "did
+        # NMAS create this object" as authority to correct, which was wrong
+        # and refused to undo NMAS's own write on s1. This asks whether
+        # "before NMAS" names anything at all — a different question of the
+        # same record. A gap in the chain means a human's value, which is
+        # meaningful however the object came to exist, so it is restored
+        # even for a device NMAS created.
+        if target is not None and reached_start and _nmas_created(
+                session, base, list_name, dev_id):
+            target, refusal = None, (
+                "NMAS created this device, and the oldest write NMAS recorded "
+                "is the one after its creation — so the value behind it is "
+                "NMAS's own, not a decision to restore")
         name = next((e.get("name") for e in reversed(entries) if e.get("name")),
                     f"id {dev_id}")
         last_wrote = _status_value(
