@@ -103,6 +103,17 @@ def main() -> int:
               "rather than 'none'.")
         return 0
 
+    h = got.get("health") or {}
+    if h.get("writes") or h.get("unreadable"):
+        print(f"⚠ THE RECORDER HAS FAILED since this process started: "
+              f"{h.get('writes', 0)} write(s) failed, "
+              f"{h.get('unreadable', 0)} refused because the existing record "
+              f"could not be read.")
+        print(f"  last error: {h.get('last_error')}")
+        print("  So the count below is a FLOOR, not a total. In-process only "
+              "— a restart clears it.")
+        print()
+
     print(f"{got['count']} modification(s) recorded"
           + (f", {got['unknown_before']} with an unreadable before-state"
              if got["unknown_before"] else ""))

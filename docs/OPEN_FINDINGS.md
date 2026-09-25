@@ -40,8 +40,9 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 
 | # | Finding | Kind | Where recorded |
 |---|---|---|---|
-| C1 | **`nmas-deploy` does not fetch.** It reported *"already at cfbe7fe"* while origin was ahead; only an explicit `git fetch` moved it. **Every "deployed" claim rests on this script**, so a stale deploy that reports success invalidates the verification it was part of. It should fetch, and should end by asserting local `HEAD` equals `origin/<branch>` with both SHAs printed. | build | this file — 2026-09-25, not previously recorded anywhere |
+| C1 | **`nmas-deploy`'s behaviour is UNCONFIRMED, and the second report of it was a misreading.** *"Already at `da4d479` while `32329bf` exists on origin"* is correct behaviour: `32329bf` is an **ancestor** of `da4d479`, so the tip already contains it. The first report (*"already at `cfbe7fe`"* while origin was ahead, moved only by an explicit fetch) is not explained by that and may be real. **Status: needs one measurement** — `git fetch && git rev-parse HEAD origin/main` before and after a run. Whatever it does, it should end by printing both SHAs, because *"already current"* is a claim with operands and it was reported as a shrug. | verify, then build | this file — 2026-09-25 |
 | C2 | **`routes/templatize.py`'s fleet report drops a device with an unreadable golden through a bare `continue`.** Fourth instance of *the artefact is not the population*; the other three are fixed. | build | CLAUDE.md, *"The inventory is the population for a RESTORE PREVIEW"* |
+| C4 | **A recorder failure is now counted and reported, but only in memory.** `health()` survives no restart, so a failure before the process that reports it is invisible. Acceptable while the alternative is writing a failure report into the file that just failed to be written; revisit if it recurs. | decide | [PHASE2_DHCP.md](PHASE2_DHCP.md) §21 |
 | C3 | **The record's positive half is unverified.** Device churn is measured to zero, and *"no entries"* is also what a recorder that has stopped produces. The discriminator: edit a device's `comments` in NetBox by hand, sync, and confirm the entry appears — `comments` is written by the sync unconditionally and is restored to its canonical value anyway, so the test is non-destructive. | verify | [PHASE2_DHCP.md](PHASE2_DHCP.md) §18 |
 
 ## D. Interface and input surfaces
@@ -66,12 +67,17 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
-**14 open**: 11 recorded only in prose (A1–D2), 4 in the plan without a stage
+**15 open**: 12 recorded only in prose (A1–D2), 4 in the plan without a stage
 (E1–E4, one of which is Stage 3.3's tail).
 
-By kind: **10 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
+By kind: **9 build**, **2 decide-then-build**, **2 decide**, **2 verify**.
 
-None of them blocks Stage 7. **A1 and C1 are the two whose absence makes other
-work untrustworthy** rather than merely incomplete — one because a mistake in
-NetBox has nothing to restore from, the other because every claim that
-something was deployed and verified depends on a script that was not fetching.
+None of them blocks Stage 7. **A1 is the one whose absence makes other work
+untrustworthy** rather than merely incomplete: a mistake in NetBox has nothing
+to restore from.
+
+C1 was the second such item until it was measured, and the correction is worth
+keeping: a finding recorded as a defect became the explanation for the next
+confusing output, and that output was correct behaviour. *A pattern that has
+been right four times is exactly the one to distrust on the fifth* — the
+register makes a finding easier to find, and easier to reach for.

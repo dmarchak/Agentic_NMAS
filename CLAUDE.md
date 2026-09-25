@@ -3890,6 +3890,38 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   found **one kind of mistake six times**, and could only find them by writing
   down what was actually sent. Device noise is now measured to zero: a
   ten-device sync produced **no device entries at all**.
+- **A RECORDER WHOSE SUCCESS CONDITION IS SILENCE MUST REPORT ITS OWN
+  FAILURES** (§21). `_write_json_atomic` logs at ERROR and returns `False`;
+  `record_modified` **ignored the return**, so a record that could not be
+  written reported nothing while `nmas-netbox-modified` printed
+  `0 modifications` — which is how *"the noise is gone"* and *"the recorder
+  stopped"* became indistinguishable. Failures are counted and printed
+  **beside every count**, with the count named a **floor, not a total**. In
+  memory, like `redact.health()`, for the same reason: *a record that cannot
+  be written cannot write down that it could not be written* — lost on
+  restart, stated rather than hidden.
+- **An unreadable modification record would have been ERASED by the next
+  write.** `_load_modified()` turns an unreadable file into `{}`, and
+  appending one entry to that and writing it back replaces the whole history:
+  **the settings-file erasure verbatim**, one store over. `absent` is fine and
+  still writes; `unreadable` now refuses, counts, and leaves the damaged file
+  alone. Absent and unreadable are different facts, for the third time in this
+  project.
+- **C1 was a misreading, and the shape is the finding.** *"`nmas-deploy` says
+  already at `da4d479` while `32329bf` exists on origin"* — measured,
+  `32329bf` is an **ancestor** of `da4d479`, so the tip contains it and the
+  tool was right. C1 had been recorded as a defect an hour earlier and the
+  next confusing output was attributed to it. **A register makes a finding
+  easier to find, and therefore easier to reach for** — *a pattern that has
+  been right four times is exactly the one to distrust on the fifth*, and a
+  written-down finding is a pattern with a citation. The first report remains
+  unexplained and needs one measurement, not a rewrite.
+- **Two opposite states produce "the field is canonical and there is no
+  entry"**: a sync ran and the recorder was silent, or **no sync ran and the
+  edit never saved**. NetBox's own `last_updated` separates them and nothing
+  else has to be believed. *Ask the cheapest question that halves the space,
+  not the most likely explanation* — which has been wrong three times running
+  here by the other route.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

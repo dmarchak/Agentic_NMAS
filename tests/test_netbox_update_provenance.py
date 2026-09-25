@@ -1263,3 +1263,66 @@ class TestTheConfigTemplateRoundTrips:
         body = src.split("def _ensure_config_template(")[1].split("\ndef ")[0]
         assert 'existing.get("template_code") != _NDM_TEMPLATE_CODE' in body
         assert ".strip()" not in body
+
+
+class TestTheRecorderCannotFailSilently:
+    """*"Zero device entries"* was read as the noise fix working, and it is
+    also exactly what a recorder that has stopped produces.
+
+    Silence being the success condition is the whole problem: a failure that
+    is only logged is a failure nobody reads, and the record cannot write
+    down that it could not be written. So failures are **counted in memory
+    and reported beside every count** — the `redact.health()` pattern, lost
+    on restart, which is stated rather than hidden.
+    """
+
+    def setup_method(self):
+        netbox_guard._FAILURES.update({"writes": 0, "unreadable": 0,
+                                       "last_error": ""})
+
+    def test_a_failed_write_is_counted_not_swallowed(self, record, monkeypatch):
+        monkeypatch.setattr(netbox_guard, "_write_json_atomic",
+                            lambda *a, **k: False)
+        netbox_guard.record_modified(
+            "default", "dcim/sites", 7, {"region": {"before": 1, "after": 2}})
+        assert netbox_guard.health()["writes"] == 1
+        assert netbox_guard.health()["last_error"]
+
+    def test_every_count_carries_the_health_beside_it(self, record):
+        got = netbox_guard.modified_since()
+        assert "health" in got, "a count with no failure figure is a floor "\
+                                "reported as a total"
+
+    def test_an_unreadable_record_is_never_overwritten(self, record):
+        """THE SETTINGS-FILE ERASURE, verbatim, one store over.
+
+        `_load_modified()` turns an unreadable file into `{}`; appending to
+        that and writing it back replaces the entire history with one entry.
+        A read on defaults is survivable; a WRITE on defaults destroyed the
+        settings file.
+        """
+        with open(netbox_guard._MODIFIED_FILE, "w", encoding="utf-8") as fh:
+            fh.write('{"default": {"dcim/sites": [{"id": 1}]}} TRUNCATED')
+        before = open(netbox_guard._MODIFIED_FILE, encoding="utf-8").read()
+
+        netbox_guard.record_modified(
+            "default", "dcim/sites", 7, {"region": {"before": 1, "after": 2}})
+
+        after = open(netbox_guard._MODIFIED_FILE, encoding="utf-8").read()
+        assert after == before, "the damaged record was overwritten"
+        assert netbox_guard.health()["unreadable"] == 1
+
+    def test_an_absent_record_is_still_written(self, record):
+        """The floor. Refusing on *absent* as well as unreadable would mean
+        the first modification on a fresh install is never recorded — absent
+        and unreadable are different facts."""
+        assert not os.path.exists(netbox_guard._MODIFIED_FILE)
+        netbox_guard.record_modified(
+            "default", "dcim/sites", 7, {"region": {"before": 1, "after": 2}})
+        assert netbox_guard.modified_since()["count"] == 1
+        assert netbox_guard.health()["unreadable"] == 0
+
+    def test_the_reader_says_so_in_words(self):
+        src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()
+        assert "THE RECORDER HAS FAILED" in src
+        assert "FLOOR, not a total" in src

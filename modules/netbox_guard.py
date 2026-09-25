@@ -437,6 +437,24 @@ def changed_fields(before_obj, payload: dict):
     return out
 
 
+#: Recording failures since this process started, reported rather than
+#: swallowed. In memory, like `redact.health()`, and for the same reason: a
+#: record that cannot be written cannot write down that it could not be
+#: written. Lost on restart, which is stated rather than hidden.
+_FAILURES: dict = {"writes": 0, "unreadable": 0, "last_error": ""}
+
+
+def health() -> dict:
+    """What this recorder has failed to do since the process started.
+
+    **Silence is the success condition here**, which is exactly what a
+    recorder that has stopped working also produces — so a failure that is
+    only logged is a failure nobody reads. Every caller that reports "N
+    modifications" reports this beside it.
+    """
+    return dict(_FAILURES)
+
+
 def record_modified(list_name: str, endpoint: str, obj_id: int, fields,
                     name: str = "", actor: str = "") -> None:
     """Record that NMAS modified *obj_id*. Does **not** claim it created it.
@@ -468,10 +486,30 @@ def record_modified(list_name: str, endpoint: str, obj_id: int, fields,
     else:
         entry["fields"] = fields
     with _file_lock:
-        data = _load_modified()
+        data, reason = read_modified()
+        if reason:
+            # ABSENT IS FINE; UNREADABLE IS NOT.
+            #
+            # `_load_modified()` turns an unreadable file into `{}`, and
+            # appending to that and writing it back would replace the whole
+            # history with one entry — the settings-file erasure verbatim: a
+            # partial read returned `{}` and the next write persisted it.
+            # Refuse, count it, and leave the damaged file alone.
+            _FAILURES["unreadable"] += 1
+            _FAILURES["last_error"] = reason
+            log.error("netbox_guard: NOT recording a modification — the "
+                      "existing record could not be read (%s). Nothing was "
+                      "overwritten.", reason)
+            return
         slug = list_slug(list_name) if list_name else "_unattributed"
         data.setdefault(slug, {}).setdefault(endpoint, []).append(entry)
-        _write_json_atomic(_MODIFIED_FILE, data)
+        if not _write_json_atomic(_MODIFIED_FILE, data):
+            # A WRITE THAT FAILED MUST NOT BE SILENT. The caller does not
+            # check, and an ERROR line in a log nobody is reading while the
+            # record reads "0 modifications" is how "the noise is gone" and
+            # "the recorder stopped" became indistinguishable.
+            _FAILURES["writes"] += 1
+            _FAILURES["last_error"] = f"could not write {_MODIFIED_FILE}"
 
 
 def _load_modified() -> tuple:
@@ -515,7 +553,7 @@ def modified_since(since: str = "", list_name: str = "") -> dict:
     if reason:
         return {"ok": False, "reason": reason, "count": 0,
                 "unknown_before": 0, "entries": [], "scope": "unknown",
-                "total_recorded": 0, "exists": True}
+                "total_recorded": 0, "exists": True, "health": health()}
 
     want = list_slug(list_name) if list_name else ""
     entries = []
@@ -549,6 +587,7 @@ def modified_since(since: str = "", list_name: str = "") -> dict:
         "scope": "since" if since else "all",
         "total_recorded": total,
         "exists": os.path.exists(_MODIFIED_FILE),
+        "health": health(),
     }
 
 

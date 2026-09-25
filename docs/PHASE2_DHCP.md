@@ -1531,3 +1531,82 @@ Three of the six are **two representations of the same fact** compared as if
 they were two facts. That is worth naming as the dominant shape: the record
 did not find six unrelated bugs, it found one kind of mistake six times, and
 it could only find them by writing down what was actually sent.
+
+
+## 21. The recorder cannot fail silently — and C1 was a misreading
+
+### C1 first, because it decides what any measurement is worth
+
+*"`nmas-deploy` reports already at `da4d479` while `32329bf` exists on
+origin"* — measured:
+
+```
+$ git merge-base --is-ancestor 32329bf da4d479  →  YES
+```
+
+`32329bf` is an **ancestor** of `da4d479`. The tip already contains it, so
+*"already at `da4d479`"* is **correct** and the host has every fix including
+the template round-trip. The deploy tool was right.
+
+The first report — *"already at `cfbe7fe`"* while origin was ahead, moved only
+by an explicit fetch — is not explained by that and may well be real. It needs
+one measurement rather than a rewrite: `git fetch && git rev-parse HEAD
+origin/main` either side of a run.
+
+**The shape is worth keeping.** C1 had been recorded as a finding an hour
+earlier, and the next confusing output was attributed to it — but that output
+was correct behaviour. *A pattern that has been right four times is exactly the
+one to distrust on the fifth.* A register makes a finding easier to find, and
+therefore easier to reach for.
+
+### The recorder: two defects in its own write path
+
+Whatever stopped the 06:34 entry, the recorder could not have told anybody, and
+that is fixed independently of the cause.
+
+**A failed write was swallowed.** `_write_json_atomic` catches `OSError`, logs
+at ERROR and returns `False`; `record_modified` **ignored the return**. So a
+record that could not be written reported nothing at all, while
+`nmas-netbox-modified` went on printing `0 modifications` — which is how *"the
+noise is gone"* and *"the recorder stopped"* became indistinguishable. Failures
+are counted now and printed **beside every count**, with the count named as a
+**floor, not a total**.
+
+In memory, like `redact.health()`, and for the same reason: *a record that
+cannot be written cannot write down that it could not be written.* Lost on a
+restart, which is stated rather than hidden.
+
+**And an unreadable record would have been erased.** `_load_modified()` turns
+an unreadable file into `{}`; appending one entry to that and writing it back
+replaces the entire history. **The settings-file erasure verbatim**, one store
+over — a partial read returned `{}` and the next write persisted it. `absent`
+is fine and still writes; `unreadable` now **refuses, counts, and leaves the
+damaged file alone**.
+
+### The one measurement that settles the 06:34 silence
+
+Two states produce *"comments read canonical, no entry"*, and they are
+opposite:
+
+1. a sync ran, overwrote the edit, and the record failed to say so
+2. **no sync ran after the edit** — in which case the edit never saved, and
+   there is correctly nothing to record
+
+NetBox's own `last_updated` on r1 separates them, and nothing else has to be
+believed:
+
+```bash
+curl -s -H "Authorization: Token $TOKEN" \
+  "$NETBOX/api/dcim/devices/?name=r1" | python3 -c \
+  "import json,sys; d=json.load(sys.stdin)['results'][0]; \
+   print(d['last_updated'], '|', d['comments'][:60])"
+```
+
+`last_updated` **after** the edit means a write happened and the recorder was
+silent — finding (1), and `health()` will now say whether it failed or simply
+saw nothing to record. `last_updated` **before** the edit means no write
+happened, the recorder was correct, and what failed was the edit.
+
+Ask the cheapest question that halves the space, rather than the most likely
+explanation. It has been wrong three times running in this project by the
+other route.
