@@ -69,6 +69,7 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 |---|---|---|---|
 | D1 | **`domain` is read by `_plan_args()` and no form sends it.** Recorded as *a gap under exemption* by `test_server_reads_nothing_the_form_cannot_send.py` rather than a clean pass — unlike `secret` and `source_kind`, there is no reason a person could not set it. | build | CLAUDE.md, *"the server may read nothing the form cannot send"* |
 | D2 | **Whether a never-reached device should bind to a template is undecided.** Binding on the manifest entry is what makes the approval gate notice its population changed; it also takes a platform's deploy path offline until phase 2 completes. A test pins current behaviour so a change is a decision rather than a discovery. | decide | CLAUDE.md, *"Onboarding revokes its platform's template approval at CREATE"* |
+| D3 | **The template editor's two confirmations do not say what happened.** (a) Saving shows *"Saved and committed <sha> — approval revoked"* **unconditionally**: the string is hard-coded, while the route returns `approval_revoked` and the `revoked` list, which the client ignores. A save that withdrew nothing would claim it withdrew something. (b) A withdrawn approval's badge draws `changes` in preference to `reason`, and a withdrawal always carries a `changes` entry, so the reason (*"REVOKED: '_common.j2' was edited, and this template imports it…"*) reaches the browser and is drawn nowhere. *Computed, carried, drawn nowhere*, and a confirmation that cannot distinguish its outcomes. Found while writing the P.1 step 3 runbook, 2026-09-25. | build | this file, 2026-09-25 |
 
 ## E. In the plan, but in no stage
 
@@ -85,13 +86,13 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
-**17 open** (counted from the rows, 2026-09-25): 13 recorded only in prose
-(A2–D2, with B4, C6, C7 and C8 added the same day), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
+**18 open** (counted from the rows, 2026-09-25): 14 recorded only in prose
+(A2–D3, with B4, C6, C7, C8 and D3 added the same day), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
 tail). The previous figure, 15, was **off by one**: it was produced by
 adjusting an earlier count rather than counting rows, and the rows then held
 16. A1 and C5 are now scheduled (P.2, 6.5), and C3 and C4 are closed.
 
-By kind: **12 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
+By kind: **13 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
 
 None of them blocks Stage 7 — the per-stage scope and the ordering
 constraints are in [NSOT_PLAN.md](NSOT_PLAN.md), *Scope of what remains*,

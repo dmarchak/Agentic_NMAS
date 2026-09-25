@@ -1893,8 +1893,23 @@ the confirmed path.
 
 **What remains, and whose it is:**
 1. **Operator:** pull, then install `deploy/rsyslog/10-network-devices.conf`
-   and restart rsyslog. Confirm an existing device's next line still
-   arrives.
+   and restart rsyslog. **It writes `/var/log/network/<source-ip>.log`**, the
+   same directory as before. The conf file's name is not a path, and on
+   2026-09-25 the name sent the operator to look in an empty
+   `/var/log/network-devices/`, which made a working install look broken.
+   **Positive control:** `logger -n 127.0.0.1 -P 514 test` must create
+   `/var/log/network/127.0.0.1.log` immediately. Delete it afterwards.
+   *DONE 2026-09-25 by the operator: 45 bytes, immediately; removed.*
+2. *(Step 2 DONE 2026-09-25: `syslog_host = 10.255.1.10`, the other four at
+   their defaults.)*
+
+   **Why P.1, in one listing** (the operator, 2026-09-25): every current
+   device log is 0 bytes. The last content per device: s1 7 Sep, s2 8 Sep,
+   s3 22 Sep, s4 7 Sep, r1 22 Sep, r2/r3/r4 15 Sep, and r5 has no file at
+   all. Nine devices effectively silent for weeks, which is exactly what
+   `logging trap critical` produces when nothing is critical, and nothing
+   distinguishes it from a collector that stopped. The heartbeat makes
+   silence a signal rather than the normal state.
 2. **Operator:** set `syslog_host` in `data/user_settings.json`. It is
    file-only for now, a recorded gap for 7.7.
 3. **Operator:** update the network's own `templates/_common.j2` to the
