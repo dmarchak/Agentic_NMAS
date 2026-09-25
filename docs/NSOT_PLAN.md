@@ -2391,6 +2391,12 @@ disk loss, because the ciphertext it opens has no copy either. **B6**: whether
 to image the VMs is a Proxmox-side decision, separate from P.2. P.2 reads
 nothing encrypted with `key.key` (checked: neither backup script references
 it), so the order between P.2 and B5 is one of priority, not dependency.
+**Decided 2026-09-25: B5 and B6 are one fix, done before P.2's steps.** The key
+is escrowed in the break-glass record and verified by decrypting real stored
+values (`nmas-breakglass verify --live`, built; docs/SECRETS.md). The image
+goes to a 150 G volume on `sda`'s empty thin pool, a separate physical disk
+from `vmdata`, and to nowhere else. The runbook is
+[VM_IMAGES.md](VM_IMAGES.md).
 
 **P.2 ACCEPTANCE** (written 2026-09-25; the section had a build record
 and no acceptance). Every item is observed, not inferred:
