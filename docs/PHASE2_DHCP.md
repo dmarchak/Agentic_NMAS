@@ -553,3 +553,128 @@ defect rather than removed it.
 
 Being wrong about the network is the one thing NetBox cannot be, because that
 is what NetBox is for.
+
+
+## 9. Phase 2 is closed, 2026-09-24
+
+**A device the tool never addressed.** That is the whole claim, and every word
+of it is measured:
+
+| | |
+|---|---|
+| the tool wrote no address | `build_plan()` drops `mgmt_ip`/`mgmt_mask` when `address_source: dhcp`; the bootstrap config says `ip address dhcp` |
+| the device fetched its own | DISCOVER + REQUEST from `aa:bb:cc:00:02:40`, both answered; `GigabitEthernet2 10.255.0.40 YES DHCP up/up` |
+| from a **reservation**, on a pool-less subnet | the first DHCP transaction that segment has ever carried |
+| the tool **found** it by asking Kea for the **lease** | `discover_dhcp_address()` reads `lease4-get-all`, never `reservation-get-all` |
+| then reached, captured, rotated, cleaned, recorded, promoted | phase 2's seven steps, promotion last, unchanged |
+| the **leased** address is what was recorded | manifest, `devices.csv`, NetBox and Kea all say `10.255.0.40` |
+| a disagreement refuses rather than picks | `discover_dhcp_address()` names both operands and returns no address |
+
+### The lease, never the reservation — and why that is the load-bearing line
+
+The reservation is what the address was **meant** to be. The lease is what the
+device **has**. They agreed here, so nothing distinguished them at runtime and
+the choice is invisible in the result — which is exactly why it had to be made
+before the probe rather than after it.
+
+A tool that reads the reservation is reading **its own intent back** and calling
+it a discovery. It would report an address for a device that never booted, for
+one that booted on a different interface, and for one whose reservation was
+edited after the lease was granted. **A lease is a fact; a reservation is
+intent** — the same distinction as a golden config against a render, and the
+same rule: never substitute one for the other because they usually agree.
+
+So a disagreement is a **refusal naming both**, not a preference. Picking either
+would put an address into the inventory that another store contradicts, which is
+the failure the reservation precondition exists to prevent, arriving one layer
+down where nothing was watching for it.
+
+### What phase 2 does not prove
+
+Reboot-safety. The probe node was destroyed, not rebooted, and a DHCP-addressed
+device's startup config is a separate question from its running one — `§11` of
+the runbook says so deliberately. Nor does it prove a **relay** path, which is
+phase 3: the NMAS shares the segment here and always will on `10.255.0.0/24`.
+Isolating those was the point of doing this on a throwaway.
+
+### The teardown, which is the part that is usually assumed
+
+- `nmas-netbox-census --compare` → **exit 0**: NetBox holds what it held before,
+  **by identity** — including through the VRF/site/region deletes that took
+  r3's addresses the previous time, which are the unmeasured edges in the
+  cascade map
+- `br-mgmt` holds `uplink`, `s3-mgmt`, `r6-mgmt` and no `dhcpa-mgmt`; docker
+  networks are `clab` and `clab-r6`
+- the temporary list is gone; `netbox_allow_writes` is back off
+- Kea: reservation removed, pools still **0**, `config-test` 0, reload
+  successful, `_reservation()` back to `not_reserved`
+- **r6 regression**: `r1` still learns `10.255.1.16` as extern 2, metric 20,
+  from `10.255.1.23`, six hours old. The probe touched nothing of r6's
+- `nmas-credential-overrides` flagged `10.255.0.40` **ORPHAN** the moment its
+  list stopped existing
+
+That last one is the survey's first real case and it is worth naming: the
+r6-era residue we cleaned by hand would now be **reported** rather than
+accumulate. A secret store with no expiry and no owner check does not need a
+reaper so much as it needs somebody able to answer *"which of these
+corresponds to a device that exists"* — and now something does, every run.
+
+
+## 10. The defect ledger, because it is the argument for the method
+
+**9 commits fixed things found by running the tool** (11 in the stage; two are
+probe authoring, before any node booted). Those 9 carry **15 distinct
+defects**. The suite was **green at every point**, 3,276 → 3,360 tests, and its
+assertions were exact.
+
+| # | defect | site | age |
+|---|---|---|---|
+| 1 | `command()` reported `ok: True` wrapped around Kea's own `result: 1` — a refused `config-reload` read as applied | `integrations/kea.py` | Phase 0, 4d |
+| 2 | the Gi1 management check matched one spelling, blind to the extended link format the MAC pin needs | `test_probe_topologies.py` | 1d |
+| 3 | the probe's management subnet collided with r6's running lab | `nmas-dhcp-a.clab.yml` | today |
+| 4 | the wizard had no address-source control and no MAC field: the server read fields no form sent | `partials__onboard_wizard` | today |
+| 5 | `bootstrap_artifact()` judged completeness by the static shape, so a DHCP device's **expected** absent address drew the legacy "no address recorded" refusal | `nsot/onboard.py` | today |
+| 6 | the pending row rendered `at —` for an address that is not knowable yet | `partials__onboard_pending` | today |
+| 7 | `verify_device()` read `mgmt_ip` from the manifest — empty by construction | `nsot/onboard.py` | 1d |
+| 8 | `run_phase_two()` kept its own local `mgmt_ip`, so six later steps used `""` | `nsot/onboard.py` | 1d |
+| 9 | `bind_credentials_step()` keyed the staged override on `""`; `resolve()` fell through to `profile:default` and the device refused it | `nsot/onboard.py` | today |
+| 10 | the failure never mentioned `credential_source`, which was the diagnostic that solved it | `nsot/onboard.py` | 1d |
+| 11 | the wizard's reveal ran on `change` only, so a remembered `dhcp` displayed the static fields — **second use only** | `partials__onboard_wizard` | today |
+| 12 | a torn-down device's address sat pre-filled in Management IP | `partials__onboard_wizard` | today |
+| 13 | abandon cleared `mgmt_ip`'s key and not `reserved_address`'s, so the credential outlived the device | `nsot/onboard.py` | today |
+| 14 | `nmas-credential-overrides` could not reach its own imports | `scripts/` | today |
+| 15 | NetBox recorded the leased address as a **/32** where the interface is a /24 | `netbox_client.py` | **5 months** |
+
+**9 of 15 were written today**, 4 yesterday, 1 four days ago, 1 five months
+ago. **None of the 15 was caught by the suite** — not one, at any point.
+
+### Why not one, stated precisely enough to be actionable
+
+Every one lives in a **seam**: between the form and the server (4, 11, 12),
+between a value and the store it is keyed in (9, 13), between the tool and a
+service (1, 15), between a function and the caller that no longer supplies what
+it reads (7, 8), between a check and the spelling it was pointed at (2), between
+a message and the state that actually occurred (5, 6, 10), between a script's
+entry point and its imports (14), and between the repository and a constraint
+that lives in a running daemon (3).
+
+**A test that constructs its own subject cannot notice that the caller does
+not.** That is now the dominant class in this project — this stage takes it to
+nine instances — and the mechanical responses are the ones that have worked:
+`test_server_reads_nothing_the_form_cannot_send.py` (one list, read by both
+ends), the entry-point sweep, `assert_dialect()` at a boundary, and executing
+the **shipped** renderer against the payload the **deployed** endpoint returns.
+
+### What the suite did do, which is not discovery
+
+It made every one of those 15 fixes **safe to make**. Three regressions I
+introduced while fixing them were caught immediately and by name — the
+forward/rollback consistency assertion, the duplicated stanza header, and a
+stub that had stopped matching its subject. One of my own two errors in the
+final commit was caught by the suite (`test_no_ip_literals`, on a **comment**);
+the other, a `NameError` from an inferred signature, was caught by running.
+
+So the honest division of labour, and it should be stated this way rather than
+as scepticism about tests: **running the tool is how defects are found; the
+suite is how they stay fixed.** A stage that only runs the suite discovers
+nothing, and a stage that only runs the tool goes backwards while it works.

@@ -3430,6 +3430,51 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   length cannot be known, and guessing it in the new code would have moved the
   defect rather than removed it — the fallback survives, with a floor asserting
   it does.
+- **A lease is a fact; a reservation is intent, and a tool that reads the
+  reservation is reading its own intent back and calling it a discovery.**
+  Phase 2 is closed (2026-09-24): a device the tool **never addressed** fetched
+  its own address from a Kea reservation on a **pool-less** subnet — the first
+  DHCP transaction that segment has ever carried — and was then **found** by
+  `discover_dhcp_address()` asking Kea for the **lease**, never the
+  reservation, before being reached, captured, rotated, cleaned, recorded and
+  promoted. Four stores agree on the address, and the **leased** one is what
+  was recorded. They agreed here, so the choice is invisible in the result,
+  which is exactly why it had to be made before the probe: reading the
+  reservation would report an address for a device that never booted, one that
+  booted on a different interface, and one whose reservation was edited after
+  the lease was granted. **A disagreement therefore refuses and names both
+  operands** rather than preferring either — picking one puts an address into
+  the inventory that another store contradicts, which is the failure the
+  reservation precondition exists to prevent arriving one layer down, where
+  nothing was watching. Same rule as a golden against a render: never
+  substitute, *because they usually agree*. What it does **not** prove is
+  reboot-safety (the node was destroyed, not rebooted) or a relay path (phase
+  3) — isolating those is why it ran on a throwaway.
+  [docs/PHASE2_DHCP.md](docs/PHASE2_DHCP.md) §9.
+- **Running the tool is how defects are found; the suite is how they stay
+  fixed.** Phase 2's ledger, because it is the argument for the method:
+  **9 commits fixed things found by running it, carrying 15 distinct defects,
+  and the suite caught none of the 15** — green throughout, 3,276 → 3,360
+  tests, every assertion exact. **9 of 15 were written that day**, 4 the day
+  before, 1 four days earlier, and 1 **five months** earlier (NetBox recording
+  a leased address as a `/32`). The reason is uniform and therefore
+  actionable: every one lives in a **seam** — between the form and the server,
+  between a value and the store it is keyed in, between the tool and a
+  service, between a function and the caller that no longer supplies what it
+  reads, between a check and the spelling it was pointed at, between a message
+  and the state that actually occurred, between a script's entry point and its
+  imports, and between the repository and a constraint that lives in a running
+  daemon. **A test that constructs its own subject cannot notice that the
+  caller does not** — nine instances now, the dominant class in this project.
+  The mechanical answers are the ones that have worked: one field list read by
+  both ends (`test_server_reads_nothing_the_form_cannot_send.py`), the
+  entry-point sweep, `assert_dialect()` at a boundary, and executing the
+  **shipped** renderer against the payload the **deployed** endpoint returns.
+  State the division of labour this way rather than as scepticism about tests:
+  the suite made all 15 fixes **safe**, catching three regressions by name
+  while they were made. A stage that only runs the suite discovers nothing,
+  and a stage that only runs the tool goes backwards while it works.
+  [docs/PHASE2_DHCP.md](docs/PHASE2_DHCP.md) §10.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

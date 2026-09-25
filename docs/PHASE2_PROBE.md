@@ -251,6 +251,30 @@ ssh <clab> 'cd ~/labs/dhcp-a && containerlab destroy -t nmas-dhcp-a.clab.yml --c
       20, from `10.255.1.23`
 - [ ] `10.255.0.0/24` still has **no pool**; remove the probe's reservation
 
+## Step 12 result — clean, 2026-09-24
+
+Every check above passed as written:
+
+```
+census --compare  exit 0   NetBox holds what it held before, BY IDENTITY --
+                           including through the VRF/site/region deletes that
+                           took r3's addresses the previous time
+r6 regression     extern 2, metric 20, from 10.255.1.23, six hours old
+br-mgmt           uplink, s3-mgmt, r6-mgmt   (no dhcpa-mgmt)
+docker networks   clab, clab-r6              (clab-dhcp-probe gone)
+list              deleted; data/lists holds only `default`
+Kea               reservation removed, pools still 0, config-test 0,
+                  reload successful, _reservation() -> not_reserved
+overrides         10.255.0.40 flagged ORPHAN the moment its list stopped
+                  existing -- the survey's first real case
+```
+
+The orphan flag is the part worth keeping: the r6-era residue that was cleaned
+by hand would now be **reported every run** rather than accumulate silently.
+
+The probe is closed. Its result and the stage's defect ledger are
+[PHASE2_DHCP.md](PHASE2_DHCP.md) §9–§10.
+
 ## If a step fails
 
 Stop and measure. Do not redeploy to "try it clean" — a second deploy destroys
