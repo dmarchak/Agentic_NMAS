@@ -1662,7 +1662,7 @@ process holds its modules in memory; updating files changes nothing until it
 restarts.
 
 ```bash
-ps -o lstart= -p "$(pgrep -f 'python.*app\.py' | head -1)"
+ps -o lstart= -p "$(systemctl show -p MainPID --value flask-app)"
 ```
 
 A start time **before** the deploy ends the investigation: the churn fixes,

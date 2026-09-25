@@ -863,6 +863,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_server_reads_nothing_the_form_cannot_send.py` | a field only curl can supply is a feature no operator has; both directions, named exemptions |
 | `test_syslog_block.py` | P.1: the captured device rendering round-trips on both platforms; only the exact heartbeat applet is claimed; whole-or-absent at the AUTHORING path, a true partial block recorded at extraction |
 | `test_heartbeat_rules.py` | one rule per device, NoData = Alerting, anchored hostname match, empty inventory and unusable interval refused |
+| `test_no_pattern_kill.py` | nothing written down stops a process by pattern; the tunnel helper closes the master it opened, and reports one that will not stop |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
@@ -3985,6 +3986,18 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   check can find an X that **is** there (a positive control). Same family as
   *a lookup that misses is a fact about the query*, stated for findings
   rather than code.
+- **STOP A PROCESS BY IDENTITY, NEVER BY PATTERN.** `pkill -f "<pattern>"`
+  killed the shell running it three times: a heredoc edit lost
+  (`NSOT_WRITEUP_NOTES.md`), a file copy lost, and a probe teardown stopped
+  half way (2026-09-25). A pattern naming a process is also text in whatever
+  command contains it, so a cleverer pattern is not the fix. Not matching is.
+  Tunnels go through `scripts/nmas-lab-tunnel` (an ssh control master closed
+  by its socket), a service through its unit's `MainPID`, and a background
+  job through the PID recorded at start. `tests/test_no_pattern_kill.py`
+  refuses `pkill`, `killall` and `pgrep -f` in `scripts/`, `deploy/` and doc
+  code blocks. It found §22's `pgrep -f 'python.*app\.py' | head -1`, which
+  had avoided matching itself only because the backslash in its own pattern
+  broke the match.
 - **A TOOL'S OUTPUT IS A CLAIM, and it needs the same scrutiny as the thing
   it describes.** The C3 arc: the recorder was declared **verified FAILING**
   (`1b9b4d3`), the register and plan were rewritten around a live defect,

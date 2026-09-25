@@ -287,8 +287,10 @@ DEFAULTS: dict = {
     #: logging at all, which is the coverage gap r6 was found in.
     "syslog_host": "",
     "syslog_trap_level": "notifications",
-    #: Puts the hostname in every line; the Grafana heartbeat rules key on it,
-    #: so a device is identified by name rather than by source address.
+    #: Puts the hostname in every line; the Grafana heartbeat rules key on it.
+    #: A Loopback0-sourced line otherwise carries only an address, and mapping
+    #: an address back to a NetBox name is a lookup that can go stale -- the
+    #: hostname in the line is the device asserting its own identity.
     "syslog_origin_id": "hostname",
     "syslog_source_interface": "Loopback0",
     #: The EEM watchdog interval. Alerting fires after two missed.

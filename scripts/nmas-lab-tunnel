@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Open and close SSH port-forwards to lab nodes BY IDENTITY, never by pattern.
+#
+#   nmas-lab-tunnel open  <name> <jump-host> <lport:dest:dport> [...]
+#   nmas-lab-tunnel close <name> <jump-host>
+#   nmas-lab-tunnel check <name> <jump-host>
+#
+# WHY THIS EXISTS. A tunnel was stopped with `pkill -f "<pattern>"` three
+# times in this project, and each time the pattern also appeared in the
+# command line of the shell running the pkill -- so the pkill killed its own
+# session. The first lost an edit inside a heredoc; the second lost a file
+# copy; the third stopped a probe teardown half way. A pattern that names a
+# process is also text in whatever command contains it. The fix is not a
+# cleverer pattern: it is not matching at all.
+#
+# `ssh -M -S <socket>` makes the tunnel a control master; `ssh -S <socket>
+# -O exit` asks THAT master to stop. The socket is the identity. Nothing here
+# can reach any other process, and nothing here can reach itself.
+set -euo pipefail
+
+usage() { sed -n '4,6p' "$0" >&2; exit 2; }
+[ $# -ge 3 ] || usage
+cmd=$1 name=$2 jump=$3; shift 3
+case "$name" in (*[!A-Za-z0-9_.-]*|"") echo "unusable name: $name" >&2; exit 2;; esac
+
+dir="${XDG_RUNTIME_DIR:-/tmp}/nmas-tunnels-$(id -u)"
+mkdir -p -m 0700 "$dir"
+sock="$dir/$name.sock"
+
+case "$cmd" in
+  open)
+    [ $# -ge 1 ] || usage
+    if [ -S "$sock" ] && ssh -S "$sock" -O check "$jump" 2>/dev/null; then
+      echo "already open: $name" >&2; exit 1
+    fi
+    fwd=(); for f in "$@"; do fwd+=(-L "$f"); done
+    ssh -f -N -M -S "$sock" -o BatchMode=yes -o ExitOnForwardFailure=yes \
+        "${fwd[@]}" "$jump"
+    echo "open: $name ($*)"
+    ;;
+  close)
+    if [ ! -S "$sock" ]; then echo "not open: $name" >&2; exit 1; fi
+    ssh -S "$sock" -O exit "$jump" 2>/dev/null || true
+    # The master removes its socket on exit. A socket still there means the
+    # master did not stop -- reported, never papered over by a pattern kill.
+    if [ -S "$sock" ]; then echo "STILL OPEN: $name ($sock)" >&2; exit 1; fi
+    echo "closed: $name"
+    ;;
+  check)
+    ssh -S "$sock" -O check "$jump" 2>&1
+    ;;
+  *) usage ;;
+esac

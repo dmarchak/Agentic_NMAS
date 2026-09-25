@@ -446,6 +446,9 @@ class PartialSyslogBlock(ValueError):
 #: satisfies with any value.
 SYSLOG_PARTS = {
     "trap": "the severity that leaves the device",
+    # The device asserting its own name. Without it a Loopback0-sourced line
+    # carries only an address, and the alert would key on an IP whose mapping
+    # back to a NetBox name can go stale.
     "origin_id": "puts the hostname in every line, which the alert keys on",
     "source_interface": "the address the lines come from",
     "hosts": "where they go",

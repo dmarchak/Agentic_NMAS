@@ -460,6 +460,14 @@ class BaseParser:
     #: device -- and `hostvars.syslog_block_problems()` refuses committing
     #: one. Captured from both platforms on 2026-09-25 (nmas-eem-probe run 2):
     #: vIOS-L2 and C8000v render every line identically.
+    #:
+    #: FIVE parts, and `origin-id hostname` is the one that looks optional.
+    #: A device sourcing from Loopback0 puts its loopback ADDRESS in the
+    #: line, so without origin-id the heartbeat alert would key on an IP, and
+    #: matching that back to a NetBox name is a lookup that can go stale (a
+    #: renumbered loopback, a second address). The hostname in the line is
+    #: the device asserting its own identity, which is the right owner of
+    #: that fact.
     SYSLOG_KEYS = {"trap": "trap", "origin-id": "origin_id",
                    "source-interface": "source_interface"}
     HEARTBEAT_APPLET = "NMAS-HEARTBEAT"

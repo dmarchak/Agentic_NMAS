@@ -937,3 +937,30 @@ A **fail** does not block Stage 4. It moves the key generation: either out of
 the startup file and into a post-boot step over the console, or ahead of the
 vty block so a stall costs nothing that matters. The point of measuring first
 is that either answer is cheap now and expensive after r6 is onboarded.
+
+
+## Reaching probe nodes, and stopping what you started
+
+Probe nodes live on the clab host's management network, which only the clab
+host can reach. Forward through it with **`scripts/nmas-lab-tunnel`**, and
+close with the same tool:
+
+```bash
+scripts/nmas-lab-tunnel open  eem dmarchak@10.0.0.210 22051:172.30.70.51:22 22011:172.30.70.11:22
+# ... netmiko / ssh to 127.0.0.1:22051 and :22011 ...
+scripts/nmas-lab-tunnel close eem dmarchak@10.0.0.210
+```
+
+**Never stop a tunnel, or anything else, by pattern.** A `pkill -f "<pattern>"`
+killed the shell running it three times in this project, because the pattern
+was also text in that shell's command line. The third time it stopped a probe
+teardown half way. The helper makes the tunnel an ssh control master and
+closes **that** master by its socket, so it cannot reach any other process or
+itself. For a service, use its unit's `MainPID`; for a background job, the
+PID you recorded when you started it. `tests/test_no_pattern_kill.py` refuses
+`pkill`, `killall` and `pgrep -f` anywhere in `scripts/`, `deploy/` or a doc
+code block.
+
+Measured 2026-09-25 on the NMAS VM through the clab host: open → the
+forwarded port answered; `check` → master running; `close` → the port went
+dead, and the shell that ran all three survived.
