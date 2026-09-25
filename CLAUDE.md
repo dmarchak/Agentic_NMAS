@@ -3123,6 +3123,38 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   prevent. containerlab's per-endpoint `mac:` pins it, and the reservation is
   written before the first boot. Same rule as the management interface:
   **chosen, never defaulted.**
+- **`ok: True` wrapped around `{"result": 1}` is a lie at the ENVELOPE
+  level.** `KeaIntegration.command()` returned success for any HTTP 200, so a
+  Control Agent answering *"service value must be a list"* came back as a
+  success with the failure nested inside — measured live on
+  `command("config-reload", service="dhcp4")`, which reported ok and had not
+  reloaded. Every caller that checks `result["ok"]` and stops there believed a
+  refused command ran. **Fifth instance of `success` meaning *no exception
+  reached the top***, after the background agent's 27 runs,
+  `bind_credentials_step`, `_sync_list_to_netbox_impl` and the sanitiser's
+  exit code. `ok` now means **Kea did the thing**, decided from Kea's own
+  per-service result rather than the transport's.
+  **And `result: 3` stays a success**: it means the command worked and
+  returned nothing, which is what `lease4-get-all` says on a server with no
+  leases. Treating it as a failure would print *"v4: unavailable"* for an
+  empty pool — the absent-versus-empty error, arriving on the monitoring card
+  via the fix for its neighbour. Both directions are pinned.
+- **A caller-facing footgun only a hand-written call can reach.** The Control
+  Agent requires `"service": ["dhcp4"]` and answers `result: 1` for a bare
+  string; the settings default is already a list, so every code path was
+  correct and the first hand-typed call was not. Coerced now — but the
+  general point is that *the defaults being right is why nobody found it*,
+  which is the same reason `load_saved_devices()`'s no-argument form survived
+  87 correct call sites.
+- **The app's only working path to apply a Kea config change is a restart, and
+  the reason is credentials rather than capability.** `systemctl reload` is not
+  applicable to the unit; `kea-shell … config-reload` answered **HTTP 403**,
+  which is informative — the agent is reachable and rejecting on *auth*, not
+  down — and `kea_username` / `kea_password` are unset. So the gap is a
+  missing credential, not a missing feature. Worth knowing that a **restart
+  re-reads leases from the lease file** rather than preserving them in memory:
+  harmless on subnets nothing holds, and not a thing to discover during a
+  change that matters.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

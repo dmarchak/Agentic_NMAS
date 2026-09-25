@@ -22,14 +22,45 @@ class KeaIntegration(IntegrationClient):
     secret_keys = ("kea_password",)
     plain_keys = ("kea_username", "kea_services", "kea_verify_tls")
 
+    #: Kea's own per-service result codes. **0 and 3 are both successes** — 3
+    #: means the command worked and returned nothing, which is what
+    #: `lease4-get-all` says on a server with no leases. Treating it as a
+    #: failure would report "v4: unavailable" for an empty pool, which is the
+    #: absent-versus-empty error on the monitoring card.
+    RESULT_SUCCESS = 0
+    RESULT_ERROR = 1
+    RESULT_UNSUPPORTED = 2
+    RESULT_EMPTY = 3
+    RESULT_CONFLICT = 4
+    OK_RESULTS = (RESULT_SUCCESS, RESULT_EMPTY)
+
     def command(self, command: str, service=None) -> dict:
-        """Send a Control Agent command. Never raises."""
+        """Send a Control Agent command. Never raises.
+
+        **`ok` means Kea did the thing**, not that an HTTP request completed.
+        This used to return `{"ok": True, "result": …}` for any 200 — so a
+        Control Agent answering `{"result": 1, "text": "service value must be
+        a list"}` came back as a success with the failure nested inside it.
+        That is `success` meaning *no exception reached the top* one more time,
+        and at the envelope level it is a lie: every caller that checks
+        `result["ok"]` and stops there believes a refused command ran.
+
+        Measured live: `command("config-reload", service="dhcp4")` returned
+        `ok: True` around `result: 1`, and the reload had not happened.
+
+        *service* is coerced to a list. The Control Agent requires one and
+        answers `result: 1` for a bare string — a caller-facing footgun, since
+        the settings default is already a list and only a hand-written call
+        hits it.
+        """
         if not self.is_configured():
             return {"ok": False, "error": "Not configured — set in Settings"}
         payload = {"command": command}
         services = service or get_setting("kea_services", ["dhcp4"])
+        if isinstance(services, str):
+            services = [services]
         if services:
-            payload["service"] = services
+            payload["service"] = list(services)
         try:
             s = self.session()
             user = get_setting("kea_username", "")
@@ -37,8 +68,9 @@ class KeaIntegration(IntegrationClient):
                 s.auth = (user, get_secret("kea_password"))
             r = s.post(self.url, json=payload, timeout=self.timeout)
             if r.status_code >= 400:
-                return {"ok": False, "error": f"HTTP {r.status_code}"}
-            return {"ok": True, "result": r.json()}
+                return {"ok": False, "error": f"HTTP {r.status_code}",
+                        "status": r.status_code}
+            body = r.json()
         except requests.exceptions.ConnectionError:
             return {"ok": False, "error": f"Could not connect to {self.url}"}
         except requests.exceptions.Timeout:
@@ -46,6 +78,22 @@ class KeaIntegration(IntegrationClient):
         except Exception as exc:              # noqa: BLE001
             log.warning("kea: %s failed: %s", command, exc)
             return {"ok": False, "error": str(exc)}
+
+        # KEA'S OWN VERDICT DECIDES `ok`, not the HTTP status.
+        refusals = []
+        for row in (body if isinstance(body, list) else [body]):
+            if not isinstance(row, dict):
+                continue
+            code = row.get("result")
+            if code is None or code in self.OK_RESULTS:
+                continue
+            where = f"{row.get('service')}: " if row.get("service") else ""
+            refusals.append(f"{where}{row.get('text') or 'no reason given'} "
+                            f"(result {code})")
+        if refusals:
+            return {"ok": False, "result": body,
+                    "error": f"Kea refused {command!r}: " + "; ".join(refusals)}
+        return {"ok": True, "result": body}
 
     def test_connection(self) -> dict:
         r = self.command("status-get")
@@ -212,7 +260,7 @@ class KeaIntegration(IntegrationClient):
         for row in rows:
             if not isinstance(row, dict):
                 return None
-            if row.get("result") not in (0, None):
+            if row.get("result") not in KeaIntegration.OK_RESULTS + (None,):
                 return None
             hosts = (row.get("arguments") or {}).get("hosts")
             if hosts is None:

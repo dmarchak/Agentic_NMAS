@@ -243,3 +243,93 @@ class TestTheReviewScreenMakesACheckableClaim:
         assert "address_claim" in summary
         assert "10.255.0.40" in summary["address_claim"]
         assert summary["address_source"] == "dhcp"
+
+
+class TestOkMeansKeaDidTheThing:
+    """`ok: True` around `{"result": 1}` is a lie at the envelope level.
+
+    Measured live: `command("config-reload", service="dhcp4")` returned
+    `ok: True` wrapping `result: 1, text: "service value must be a list"`, and
+    the reload had not happened. Every caller that checks `result["ok"]` and
+    stops there believed a refused command ran — `success` meaning *no
+    exception reached the top*, for the fifth time in this project after the
+    background agent's 27 runs, `bind_credentials_step`,
+    `_sync_list_to_netbox_impl` and the Oxidized sync's exit code.
+    """
+
+    @staticmethod
+    def _client(body, status=200, captured=None):
+        import types
+
+        client = KeaIntegration()
+        client.is_configured = lambda: True
+
+        class _Response:
+            status_code = status
+
+            @staticmethod
+            def json():
+                return body
+
+        def _post(url, json=None, timeout=None):
+            if captured is not None:
+                captured.update(json or {})
+            return _Response()
+
+        client.session = lambda: types.SimpleNamespace(post=_post, auth=None)
+        return client
+
+    def test_a_refused_command_is_not_ok(self):
+        out = self._client([{"result": 1,
+                             "text": "service value must be a list"}]).command("x")
+        assert out["ok"] is False
+        assert "service value must be a list" in out["error"]
+        assert "result 1" in out["error"]
+
+    def test_an_unsupported_command_is_not_ok(self):
+        """`reservation-get-all` without the host_cmds hook answers 2, and the
+        fallback to `config-get` depends on that being a failure."""
+        out = self._client([{"result": 2,
+                             "text": "unsupported command"}]).command("x")
+        assert out["ok"] is False
+
+    def test_success_is_still_ok(self):
+        """**The floor.** A client that refused everything would satisfy both
+        assertions above."""
+        assert self._client([{"result": 0, "arguments": {}}]).command("x")["ok"]
+
+    def test_EMPTY_is_a_success_not_a_failure(self):
+        """Kea answers `result: 3` for a command that worked and returned
+        nothing — `lease4-get-all` on a server with no leases. Treating it as
+        a failure would print "v4: unavailable" for an empty pool, which is
+        the absent-versus-empty error on the monitoring card."""
+        out = self._client([{"result": 3, "text": "no leases"}]).command("x")
+        assert out["ok"] is True
+
+    def test_the_service_is_coerced_to_a_list(self):
+        """The Control Agent requires a list and answers `result: 1` for a
+        bare string. The settings default is already a list, so only a
+        hand-written call hits it — which is exactly what happened."""
+        captured = {}
+        self._client([{"result": 0}], captured=captured).command(
+            "config-reload", service="dhcp4")
+        assert captured["service"] == ["dhcp4"]
+
+    def test_a_list_is_passed_through(self):
+        captured = {}
+        self._client([{"result": 0}], captured=captured).command(
+            "lease4-get-all", service=["dhcp4"])
+        assert captured["service"] == ["dhcp4"]
+
+    def test_the_monitoring_card_still_counts_an_empty_server(self):
+        """End to end on the regression the EMPTY rule protects."""
+        client = self._client([{"result": 3, "text": "no leases"}])
+        out = client.monitor()
+        assert out["ok"] is True
+        assert "unavailable" not in out["metrics"][0]["value"]
+
+    def test_a_refusal_reaches_the_monitoring_card_as_a_failure(self):
+        client = self._client([{"result": 1, "text": "broken"}])
+        out = client.monitor()
+        assert out["ok"] is False
+        assert "unavailable" in out["metrics"][0]["value"]

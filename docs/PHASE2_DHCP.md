@@ -435,3 +435,48 @@ sudo kea-shell --service dhcp4 config-reload
       returns `state: reserved, address: 10.255.0.40`. **This is the first
       time the reservation path has had anything to read on this deployment**,
       so a failure here is as likely to be the code as the config
+
+
+---
+
+## 7. What applying it taught, 2026-09-24
+
+`reservation_for("aa:bb:cc:00:02:40")` → **`reserved` / `10.255.0.40`.** The
+precondition path read a real reservation for the first time on this
+deployment.
+
+### It was applied by a RESTART, not a reload
+
+Both reload routes failed:
+
+| route | result |
+|---|---|
+| `systemctl reload kea-dhcp4` | *"Job type reload is not applicable"* |
+| `kea-shell --service dhcp4 config-reload` | **HTTP 403** |
+| `KeaIntegration.command("config-reload", service="dhcp4")` | `{"result": 1, "text": "service value must be a list"}` |
+
+The 403 is the useful one: **the Control Agent is reachable and rejecting on
+auth**, not down. `kea_username` / `kea_password` are unset, so the gap is a
+missing credential rather than a missing capability — worth stating that way,
+because *"the app cannot reload Kea"* invites someone to build a feature that
+already exists.
+
+**A restart re-reads leases from the lease file** rather than preserving them
+in memory. Harmless here — nothing holds a lease on those subnets that matters
+— and not a property to discover during a change that does.
+
+### The client bug, fixed
+
+Two faults in one call, and the second is the serious one:
+
+1. `service` must be a list; a bare string gets `result: 1`. The settings
+   default is already a list, so **every code path was correct and the first
+   hand-typed call was not.**
+2. `command()` returned `{"ok": True, …}` for any HTTP 200, so that refusal
+   came back as a **success with the failure nested inside it.** `ok` now
+   means Kea did the thing.
+
+`result: 3` remains a success — it is *"worked, nothing to return"*, which is
+`lease4-get-all` on an empty server. Making it a failure would have printed
+*"v4: unavailable"* for an empty pool, so the fix for one half would have
+introduced the absent-versus-empty error into the other. Both pinned.
