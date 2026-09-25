@@ -10288,3 +10288,126 @@ on its first real run. `--compare` said *no object was created or destroyed*
 and that was true; the drift checker compares configs, not NetBox fields; the
 census compares identity, and an in-place status change alters neither an
 object's id nor its display. **Nothing else looks.**
+
+
+## The s1 arc: six steps, each one only possible because of the last
+
+2026-09-24, one evening. It is the clearest demonstration of the method in
+this project, and worth setting out end to end because **no step in it could
+have happened on its own**.
+
+### 05:22 — a false statement enters the source of truth
+
+The NetBox sync set device status from `device_status_cache`, the in-memory
+ping cache. One ICMP-or-TCP attempt to s1 did not answer within the five
+seconds before the sync ran, so NetBox recorded **`status: offline`**.
+
+s1 was up. It answered SSH, and returned its running configuration on request.
+The claim was false when it was written, and nothing in the system would ever
+have corrected it — `status` was written only by a sync, and the next sync
+would have had to catch the same device answering.
+
+### Nothing that existed could see it
+
+Three checks could plausibly have been the one to notice, and each was
+**working correctly** while being structurally incapable of it:
+
+- `nmas-netbox-census --compare` says *no object was created or destroyed*,
+  and that was **true**. Its identity is `id:display`, and an in-place field
+  change alters neither.
+- the drift checker compares **device configurations** against golden. NetBox
+  fields are not in its population at all.
+- the census's tagged-object comparison tracks **membership**, not contents.
+
+This is the shape the project has hit repeatedly: not a check that failed, but
+a set of checks whose union had a hole in it that none of them was wrong to
+leave.
+
+### Hours earlier, the thing that could see it was built
+
+The modification record — `data/netbox_modified.json`, written by `_nb_patch`
+— exists because an update carries **no provenance**: the `nmas-managed` tag
+is injected on POST only, correctly, since the tag means *NMAS created this*
+and claiming a human's object would make it deletable. So NMAS could modify
+anything and leave nothing behind. That gap had been closed that afternoon,
+for the 2026-09-24 address incident, in which one IP object was moved between
+six devices for weeks with every provenance check passing.
+
+**On its first real run it caught s1**, in a field nobody had thought to
+check, on a device nobody had reason to suspect.
+
+### The writer was already forbidden by a rule nobody had applied to it
+
+`netbox_client._scan_device` — 140 lines of SSH scanner — had been **deleted**
+under *"importing observed state into the source of truth is the wrong
+direction"*. A ping result is observed state. The same violation, one
+expression wide, sat in the argument list of the call the sync makes for every
+device:
+
+```python
+status="active" if (status_cache or {}).get(result["ip"], False) else "offline",
+```
+
+It survived the rule because **a rule is applied to things that have names.**
+`_scan_device` had a signature, a docstring and a line count; you can ask
+*should this function exist?* and the question lands. An argument is not a
+subject — reviewing that call means asking whether the device upsert is right,
+and the argument goes past as punctuation.
+
+Finding the rest needed a different method: **parse for the unit the rule is
+about, not the unit the language is organised into.** Fifteen lines walking
+payload literals rather than functions found four more fields carrying
+observed state — and corrected the rule while applying it, because *observed
+versus intended* does not separate the cases (the import is **designed** to
+run from golden configs, and those are observations). What separates them is
+**does this field change without anybody deciding it?**
+
+### The correction needed a distinction that only the record made possible
+
+The first repair tool asked *did NMAS create this device* — and answered
+**no** for s1, whose cohort was imported five months before provenance existed.
+It refused to correct a value it had itself written, in a message asserting
+the status was *"somebody's decision"*.
+
+*Did NMAS create this object* and *did NMAS write this value* are different
+questions, and **the second had been unanswerable until that afternoon**. The
+reset takes its authority from the log now, which is also stronger than
+resetting to a default: it restores *what the field held before NMAS touched
+it* — `active` for s1, and `staged` for a device somebody had deliberately
+staged.
+
+Then the same created-object record came back for **the question it actually
+answers**. The log holds only updates, so reaching its earliest entry does not
+mean reaching an object's origin: r6 had been POSTed `offline` (the ping cache
+had not yet seen a device that had just booted) and PATCHed `active` later, so
+its one logged `before` was NMAS's own create-time write. Restoring it would
+have marked a healthy device offline. Creation is now the **existence** test —
+*does "before NMAS" name anything* — scoped to the case where the unwind ran
+out of log.
+
+### And the restore is in the log
+
+```
+06:07:55  s1  before 'offline' → after 'active'
+```
+
+The correction is recorded by the same mechanism that found the fault, which
+is the property that makes the record worth keeping rather than merely worth
+having built.
+
+### What the chain rests on
+
+Every step depended on the one before it. Remove any and the rest do not
+happen: no record, no detection; no detection, no sweep; no sweep, the rule
+stays unapplied; no rule applied, the writer keeps writing; no
+write-versus-create distinction, no safe correction.
+
+And the whole thing rests on something smaller than any of them. **The census
+was changed to say which claim it was making** — *no object was created or
+destroyed*, explicitly **not** *nothing changed* — with a modifications line
+beside it. Had it gone on printing an unqualified `PASS`, the record would
+have been written, s1's entry would have been in it, and nobody would have had
+any reason to look.
+
+A report that qualifies its own claim is not a courtesy to the reader. It is
+the thing that makes the next question askable.

@@ -1014,3 +1014,122 @@ class TestARestoreNeverWalksPastACreate:
         body = src.split("def _plan(")[1]
         # the creation test gates ONLY the reached_start branch
         assert body.count("_nmas_created(") == 1
+
+
+def _context(running_config):
+    """The stored config context, from the producer the sync uses."""
+    from modules.netbox_client import _build_config_context
+
+    return _build_config_context(
+        "r4", "10.255.1.4",
+        {"platform": "cisco_ios", "version": "17.6", "serial": "9ABCD",
+         "model": "C8000v"},
+        [], [], [], running_config)
+
+
+class TestASecondSyncOfAnUnchangedDeviceIsSilent:
+    """The claim the whole noise fix rests on, over the payload `_upsert_device`
+    ACTUALLY SENDS rather than one field at a time.
+
+    Four separate churn sources were removed — `comments`' timestamp,
+    `local_context_data.ndm_sync`, the enum-versus-reference asymmetry in
+    `_comparable`, and the `role`/`device_role` alias — and each was pinned
+    alone. None of them proves the claim an operator will check, which is
+    *"a second sync of a device that did not change writes nothing at all"*.
+
+    The first version of this test called `changed_fields()` on a hand-built
+    payload and so **bypassed the alias filter it was meant to exercise** —
+    testing a payload no code sends. It drives `_upsert_device` now, and
+    asserts what reaches `_nb_patch`.
+    """
+
+    def _existing(self):
+        """What a GET returns: references nested, enums as value+label, and
+        `role` present while `device_role` (NetBox 3.x's name) is not."""
+        return {
+            "id": 7,
+            "name": "r4",
+            "status": {"value": "active", "label": "Active"},
+            "serial": "9ABCD",
+            "comments": ("Platform: cisco_ios  |  Version: 17.6  |  "
+                         "Mgmt IP: 10.255.1.4"),
+            "device_type": {"id": 3, "model": "C8000v"},
+            "role": {"id": 2, "name": "Router"},
+            "platform": {"id": 5, "name": "IOS-XE"},
+            "config_template": {"id": 1},
+            # Built with the REAL producer. A hand-written stub is
+            # thinner than what the sync writes, which would make an
+            # unchanged device look changed and hide the thing under
+            # test.
+            "local_context_data": _context("hostname r4\n"),
+            "custom_fields": {"os_version": "17.6"},
+        }
+
+    def _sent(self, monkeypatch, facts=None, running="hostname r4\n"):
+        """Drive _upsert_device and return the dict that reached _nb_patch."""
+        from modules import netbox_client as nc
+
+        existing = self._existing()
+        captured = {}
+
+        monkeypatch.setattr(nc, "_nb_first", lambda *a, **k: existing)
+        monkeypatch.setattr(nc, "_ensure_device_type",
+                            lambda *a, **k: {"id": 3})
+        monkeypatch.setattr(nc, "_ensure_platform", lambda *a, **k: 5)
+        monkeypatch.setattr(nc, "_ensure_custom_field", lambda *a, **k: True)
+        monkeypatch.setattr(nc, "_sync_interfaces", lambda *a, **k: None,
+                            raising=False)
+
+        def fake_patch(session, base, path, payload):
+            captured.update(payload)
+            return {**existing, **payload}
+
+        monkeypatch.setattr(nc, "_nb_patch", fake_patch)
+
+        nc._upsert_device(
+            object(), "http://nb", hostname="r4", ip="10.255.1.4",
+            facts=facts or {"platform": "cisco_ios", "version": "17.6",
+                            "serial": "9ABCD", "model": "C8000v"},
+            interfaces=[], site_id=1, role_id=2, ipam_stats={},
+            running_config=running, config_template_id=1)
+        return existing, captured
+
+    def test_an_unchanged_device_records_nothing(self, monkeypatch):
+        existing, sent = self._sent(monkeypatch)
+        assert sent, "the spy captured no PATCH at all"
+        assert netbox_guard.changed_fields(existing, sent) == {}
+
+    def test_the_alias_the_server_does_not_use_is_not_sent(self, monkeypatch):
+        """`role` and `device_role` are one field under two names. The server
+        echoes only its own, so sending both logs `<unknown> → N` for every
+        device on every sync — the shape of a failed read, not a no-op."""
+        _, sent = self._sent(monkeypatch)
+        assert "role" in sent
+        assert "device_role" not in sent
+
+    def test_a_real_change_is_still_recorded(self, monkeypatch):
+        """THE POSITIVE CONTROL, and it is the load-bearing half.
+
+        After removing four sources of noise, *silence* is also exactly what a
+        recorder that has stopped working produces. A verification that only
+        checks for no entries cannot tell those apart — the vacuous pass,
+        inside the check built to confirm the fix for noise.
+        """
+        existing, sent = self._sent(
+            monkeypatch, facts={"platform": "cisco_ios", "version": "17.6",
+                                "serial": "ZZZZZ", "model": "C8000v"})
+        got = netbox_guard.changed_fields(existing, sent)
+        assert got["serial"] == {"before": "9ABCD", "after": "ZZZZZ"}
+        # `local_context_data` carries the serial too, so it moves as well —
+        # truthfully. Asserting `serial` alone would have been a stricter
+        # claim than the system makes, and the failure was the test's.
+        assert set(got) == {"serial", "local_context_data"}
+
+    def test_a_config_change_is_still_recorded(self, monkeypatch):
+        """`local_context_data` carries the running config, so a device whose
+        config genuinely moved still logs — summarised, but present. Predicted
+        here so it is not read as the noise fix having failed."""
+        existing, sent = self._sent(
+            monkeypatch, running="hostname r4\nntp server 10.255.0.1\n")
+        assert set(netbox_guard.changed_fields(existing, sent)) == {
+            "local_context_data"}

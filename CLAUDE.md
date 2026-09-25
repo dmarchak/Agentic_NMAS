@@ -3804,6 +3804,44 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   plan printing what it would replace and stopping a bad write. **The
   difference is not detail: one makes a claim a reader can check, the other
   asks to be trusted.**
+- **A FOURTH CHURN SOURCE, FOUND BY THE VERIFICATION RATHER THAN BY THE NEXT
+  SYNC** (§18). `role` and `device_role` are **one field under two names**
+  (NetBox 3.x vs 4.x) and the payload sent both so either server accepts it —
+  so a server echoes only its own and the other is absent from the response,
+  recorded as `before: <unknown>`. An entry for every device on every sync,
+  and the worst-looking of the four, because **`<unknown>` is the shape of a
+  failed read rather than of a no-op**. Updates now send only the alias the
+  server uses; creates still send both, where compatibility matters and
+  nothing is logged anyway. **The test that found it first bypassed the filter
+  it existed to exercise** — `changed_fields()` on a hand-built payload, i.e.
+  a payload no code sends — and its fixture was thinner than what the sync
+  writes, so an unchanged device looked changed. It drives `_upsert_device`
+  now and builds the stored context with the real producer.
+- **"No entries" is exactly what a broken recorder produces**, so it cannot be
+  the check. Four sources of noise removed means **silence is the expected
+  result**, which is indistinguishable from a recorder that has stopped — the
+  vacuous pass, inside the check built to confirm the fix for noise. The
+  verification is therefore two-sided: the entry count must not move across a
+  sync, **and** a deliberately changed field must appear. Predicted in advance
+  so it is not misread: `local_context_data` carries the running config, so
+  r1–r5's regenerated self-signed certificates still log — a real change being
+  reported, not the fix having failed.
+- **THE s1 ARC — six steps, each only possible because of the last**
+  ([docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md), *"The s1 arc"*).
+  A ping cache wrote `offline` for a device that was up → **nothing existing
+  could see it** (`--compare` checks identity, drift checks configs, the
+  census checks membership — each correct and each structurally incapable) →
+  a modification record built **hours earlier** caught it on its first real
+  run → the writer was removed under a rule the project already had and had
+  never applied to it, because it was an **expression rather than a
+  function** → the value was restored using a *did NMAS write this* versus
+  *did NMAS create this* distinction that **only existed because the record
+  did** → and the restore is itself in the log. Remove any step and the rest
+  do not happen. **And the whole chain rests on the census being changed to
+  say which claim it was making** — had it gone on printing an unqualified
+  `PASS`, the entry would have been written and nobody would have had reason
+  to look. *A report that qualifies its own claim is not a courtesy to the
+  reader; it is what makes the next question askable.*
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

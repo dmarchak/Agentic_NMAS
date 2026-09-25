@@ -1774,6 +1774,24 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                             "role", "device_role", "platform",
                             "local_context_data", "config_template",
                             "custom_fields")}
+
+        # `role` and `device_role` are ONE field under two names — NetBox 3.x
+        # called it `device_role`, 4.x calls it `role` — and the payload sends
+        # both so either server accepts it. A server echoes only its own, so
+        # the other is ABSENT from the response, which the modification record
+        # correctly reports as `before: <unknown>`.
+        #
+        # The result was an entry for every device on every sync, for ever,
+        # reading `device_role: <unknown> → 2` — the fourth churn source, and
+        # the worst-looking of them, because `<unknown>` is the shape of a
+        # failed read rather than of a no-op.
+        #
+        # So on an UPDATE, send only the alias this server actually uses.
+        # Creates still send both: that is where compatibility matters, and a
+        # create is not in the modification record anyway.
+        for alias, other in (("device_role", "role"), ("role", "device_role")):
+            if alias in update and alias not in existing and other in existing:
+                update.pop(alias)
         try:
             device = _nb_patch(session, base, f"dcim/devices/{existing['id']}/", update)
         except RuntimeError:

@@ -1330,3 +1330,65 @@ and stopped a bad write before it happened.
 
 The difference between the two reports is not detail. It is that one makes a
 claim a reader can check and the other asks to be trusted.
+
+
+## 18. Verifying the noise fix — and why "no entries" cannot be the check
+
+s1 is restored: `06:07:55  s1  before 'offline' → after 'active'`, all ten
+active, a re-run reports nothing to restore and r6 skipped with its reason.
+**The correction is itself in the log**, which is the property that makes the
+record worth having.
+
+### A fourth churn source, found by the verification rather than by the sync
+
+The claim to verify was *"an unchanged device now produces no entry at all"*.
+Written as a test over the payload `_upsert_device` **actually sends**, it
+failed immediately:
+
+```
+device_role: {'before': '<unknown>', 'after': 2}
+```
+
+`role` and `device_role` are **one field under two names** — NetBox 3.x called
+it `device_role`, 4.x calls it `role` — and the payload sends both so either
+server accepts it. A server echoes only its own, so the other is **absent from
+the response**, which the record correctly reports as `before: <unknown>`.
+
+An entry for every device on every sync, for ever, and the worst-looking of
+the four: `<unknown>` is the shape of a **failed read**, not of a no-op. On an
+update the sync now sends only the alias the server uses; creates still send
+both, where compatibility matters and nothing is logged anyway.
+
+**The first version of that test bypassed the filter it existed to
+exercise** — it called `changed_fields()` on a hand-built payload, testing a
+payload no code sends. It drives `_upsert_device` now and asserts what reaches
+`_nb_patch`. And its fixture was wrong too: a hand-written
+`local_context_data` is thinner than what the sync writes, so an unchanged
+device looked changed. It is built with the real producer.
+
+### "No entries" is exactly what a broken recorder produces
+
+Four sources of noise removed, and **silence is now the expected result** —
+which is also precisely what a recorder that has stopped working looks like. A
+verification that only checks for an absence of entries cannot tell those
+apart. *The vacuous pass, inside the check built to confirm the fix for
+noise.*
+
+So the verification has two halves, and the second is load-bearing:
+
+```bash
+# 1. the noise is gone
+python3 scripts/nmas-netbox-modified        # note the entry count
+#    run a sync
+python3 scripts/nmas-netbox-modified        # the count must not have moved
+
+# 2. THE RECORDER STILL WORKS — change something real first
+#    e.g. edit a device's description in NetBox, then sync
+python3 scripts/nmas-netbox-modified        # that change MUST appear
+```
+
+**Predicted in advance so it is not misread**: `local_context_data` carries
+the sanitised running config, so a device whose config genuinely moved still
+logs — summarised to size and hash. On r1–r5 that includes the regenerated
+self-signed certificates already documented as a standing difference. That is
+a real change being reported, not the fix having failed.
