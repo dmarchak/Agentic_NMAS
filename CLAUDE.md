@@ -2667,6 +2667,18 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   shared commit means reverting one device's rollback reverts the other's
   change. The deploy boundary and the commit boundary have to be the same
   boundary.
+  **Corrected 2026-09-25, measured from the code: the rule is right for
+  COUPLED changes and its stated reasons are wrong for independent ones.**
+  "Revert intent" reads and writes only `host_vars/<hostname>.yml` at the
+  commit (`committed_at(repo, hostname, sha)`) and commits that device alone.
+  `record_rolled_back()` is keyed by hostname. So a commit touching six
+  devices' files can be reverted for one of them without touching the other
+  five. And a batch confirm is **per device** (`confirmations` and
+  `command_hashes` are both keyed by device), so a device whose program moved
+  is refused alone and the rest proceed. What the rule really protects is
+  the branch site's shape: two halves of ONE logical change, where deploying
+  either half alone is harmful. The P.1 syslog block is the same change made
+  independently on each device, and one commit naming them is correct.
 - **`load_saved_devices()`'s no-argument default read a pre-lists constant,
   and the survey moved the fix.** `DEVICES_FILE` is `data/Devices.csv`, kept
   *"for backwards compatibility"* and written by nothing since lists existed,

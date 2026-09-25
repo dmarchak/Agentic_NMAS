@@ -2051,6 +2051,65 @@ the confirmed path.
 5. The P.1 acceptance: heartbeats from all ten devices in Loki, and one
    deliberately silenced device alerting.
 
+**P.1b BULK INTENT: one structured change to N devices' intent, as one
+commit (scoped 2026-09-25, not built).** Batch *deploy* exists: `/deploy/plan`
+takes `devices`, and `plan_batch`/`run_batch` account for every device. Batch
+*intent* does not. So the same edit is typed into N host_vars files, as N
+commits, with nothing but a render diff that "looks wrong on one device" to
+catch a divergence. That is N chances to paste it differently.
+
+*The operation* is a list of **compare-and-set steps over schema paths**,
+never text: `(path, expected_before, after)`. It reuses the path walk that
+"Revert intent" already uses (`hostvars._walk` / `_set_path`: named list
+items keyed by name). For the P.1 move:
+
+| path | expected before | after |
+|---|---|---|
+| `logging.settings` | `[trap critical, origin-id hostname, source-interface Loopback0]` | `[]` |
+| `logging.hosts` | `[10.255.1.10]` | `[]` |
+| `logging.syslog` | *absent* | the block |
+
+A key the operation does not name is not touched, so `console` on the
+switches and its absence on r2 are simply irrelevant. That is what "does not
+apply" means structurally: a path the change is about, holding something
+other than what the change expects.
+
+*Refused, per device, with both operands named, never applied around:*
+- **Before-state mismatch.** The interesting case. If s1's `settings` has
+  drifted from the others', the same edit applied blindly makes s1
+  different in a way nobody notices. It is refused with
+  `logging.settings: expected [...], s1 has [...]`, and the operator decides.
+- **An after-state a gate refuses**: `syslog_block_problems`, unknown
+  interface keys, `assert_printable`, `assert_no_secret_values`, and **the
+  render failing** against the device's bound template.
+- **A path the schema does not know.** A typo in the operation is refused
+  before any device is read.
+- **A file that would be reformatted.** The write goes through `to_yaml`, so
+  a hand-edited file carrying comments or its own layout would lose them
+  silently. Refused if `to_yaml(from_yaml(current)) != current`, and named.
+- **Stale or pending** devices, as everywhere else.
+
+*Preview, then one-shot apply* (the Phase 0 token shape):
+- The preview shows, per device, the intent diff and the **render delta**
+  (lines the intended config gains and loses). It **groups devices whose
+  render delta is identical**. The P.1 move should produce one group; a
+  second group is a divergence made structural rather than spotted.
+- Apply takes a hash over `(device, the file's blob at preview, the
+  resulting text)` for every accepted device, and re-checks it. A file that
+  moved since the preview refuses the whole apply, because the preview is
+  what was confirmed.
+- **One commit**, `host_vars: <operation> (N devices)`, with
+  `Devices:` and `Operation:` trailers, and `Refused:` naming the rest.
+  Per-device revert still works (see the CLAUDE.md correction beside "one
+  device → one intent commit").
+
+*Acceptance:*
+- The P.1 move applied to s1, s2, r1, r3, r4, r5 and s3 as one commit, one
+  render-delta group.
+- r6 (logging empty) refused by the same operation with its before-state
+  named. It gets the block through the editor.
+- A planted drift on one device refused, with the rest still committable.
+
 **P.2 NetBox backup and a tested restore path (closes the core of A1).**
 Sized on the host, 2026-09-25. NetBox is `netbox-docker` under
 `~/netbox-docker`, image `netboxcommunity/netbox:v4.6-5.0.2`,
