@@ -83,6 +83,35 @@ class TestTheHostMatchIsAnchored:
         assert not pat.search(LINE.format(h="swxa"))
 
 
+class TestTheRuleKeysOnTheDevicesOwnName:
+    """Measured 2026-09-25: rsyslog resolved every source address to a name
+    except r6's, so the HOSTNAME field differs by device while the device's
+    own origin-id field does not. The rule must key on the latter, and the
+    two lines below are the real shapes."""
+
+    R2 = ("Sep 25 19:58:40 r2 63: r2: *Sep 25 19:58:39.504: "
+          "%HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT")
+    R6 = ("Sep 25 19:59:12 10.255.1.16 377: r6: *Sep 25 19:59:12.101: "
+          "%HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT")
+
+    def test_both_real_shapes_match_their_own_device(self):
+        assert re.search(H.host_pattern("r2"), self.R2)
+        assert re.search(H.host_pattern("r6"), self.R6)
+
+    def test_the_rsyslog_hostname_field_alone_never_matches(self):
+        """A line whose rsyslog field says r6 and whose origin-id says
+        something else is NOT r6's heartbeat: the match is the device
+        asserting its own name, not rsyslog's reverse lookup."""
+        forged = self.R2.replace("19:58:40 r2 63: r2:", "19:58:40 r6 63: r2:")
+        assert not re.search(H.host_pattern("r6"), forged)
+        assert re.search(H.host_pattern("r2"), forged)
+
+    def test_without_origin_id_there_is_no_match_so_it_alerts(self):
+        """The block's fifth part is what makes the device findable."""
+        bare = "Sep 25 19:59:12 10.255.1.16 377: *Sep 25: %HA_EM-5-LOG: NMAS-HEARTBEAT"
+        assert not re.search(H.host_pattern("r6"), bare)
+
+
 class TestRefusals:
     def test_an_empty_inventory_is_refused_not_written(self):
         with pytest.raises(ValueError, match="empty"):

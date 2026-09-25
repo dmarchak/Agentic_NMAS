@@ -2050,7 +2050,18 @@ the confirmed path.
      the device cannot reach the collector by design. It leaves the Default
      list; console and containerlab access remain.
    - One deliberately silenced device alerting.
-   - **Status 2026-09-25:** eight of nine deployed (s4 and r2 alone, then
+   - **STEP 4 COMPLETE 2026-09-25 (operator): nine of nine managed
+     devices heartbeating**, counted from Loki over 20 minutes on each
+     device's own origin-id: r1 4, r2 4, r3 4, r4 4, s1 4, s2 4, s4 3
+     (the slow clock), s3 1 and r6 1 (both deployed minutes before).
+     Deployed: s4 and r2 alone; s1, s2, r1, r3, r4 and r5 as one batch
+     (golden `01d45b7`, six tags); s3 alone (`77a19c1`); r6 (`96b4352`).
+     Intent for seven came from ONE bulk-intent commit (`7fd0ac0`) with the
+     operation in its trailer. r5 is absent, correctly: no route to the
+     collector, and it is being retired.
+     r6's first heartbeat showed rsyslog naming it by address (C13). The
+     rules key on origin-id and are pinned against both line shapes.
+   - **Status 2026-09-25 (earlier):** eight of nine deployed (s4 and r2 alone, then
      s1, s2, r1, r3, r4 and r5 as batch golden `01d45b7`); seven
      heartbeating; s3 and r6 remain. **Leaving r5 is not the delete
      button**: that leaves r5 bound, mapped, alerting and half-present

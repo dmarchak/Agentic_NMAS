@@ -66,6 +66,7 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 | C9 | **The vIOS clock runs at about 75% speed, and reads ~16 hours behind.** Measured on s4, 2026-09-25: 300.0 s of device time is 391–404 s of real time over five intervals. So **every timestamp a switch writes is wrong**: in its syslog lines, its `show logging`, and its captured configs' `Last configuration change`. NTP is configured (`ntp server 10.255.1.10`) and is plainly not keeping s4's clock. Whether NMAS's host serves NTP, and whether any slewing could correct a 25% rate error, is not measured. The heartbeat is safe because its window is per platform; **anything that compares a switch's own timestamps with wall time is not.** | decide, then build | NSOT_PLAN.md P.1 (step 4, s4) |
 | C10 | **A batch deploy's circuit breaker counts VERIFY failures and not PUSH failures.** `run_batch()` records a failure towards the breaker only when `outcome == failed and stage == "verify"` (`deploy.py`). A push rejected on every device, such as a command an image does not accept, is therefore attempted and rolled back on **every** device in the batch, never stopped. The breaker's own docstring says repeated failures mean "something systemic… and continuing turns one mistake into nine", and a platform-wide push rejection is the most systemic failure there is. Named while answering whether the P.1 six could be one batch (2026-09-25). The risk there is low, because s4 and r2 had proven both platforms first. | build | this file, 2026-09-25 |
 | C12 | **P.1 is add-only: the deploy path can put the heartbeat applet on a device and cannot take it off.** Merge-only never negates. Reverting intent and deploying would send `logging trap critical`, and the applet would appear as a removal warning while nothing is sent: the `passive-interface` limit again. The rollback path does generate `no event manager applet NMAS-HEARTBEAT`, but only to undo a failed push. Removing the block from a device on purpose, as for r5 leaving management, is a hand change or Mode B (not built). | decide | NSOT_PLAN.md P.1 (r5) |
+| C13 | **Syslog lines name a device only if the NMAS host's hand-kept `/etc/hosts` knows it.** Measured 2026-09-25: `/etc/hosts` (last modified 2026-09-07) lists r1–r5 and s1–s4 and not r6, so rsyslog's reverse lookup writes `10.255.1.16` in the hostname field of r6's lines where every other device gets its name. The heartbeat rules are **unaffected by design and pinned**: they key on the device's own `origin-id` field (`\s<host>:\s`), never rsyslog's. Anything keyed on the rsyslog field, such as a Grafana panel or a Loki label, would treat r6 differently, silently. The same shape as `ROUTERS="r1 r2 r3 r4 r5"`: a list complete when written and wrong for every device since. Fix by not depending on it, or have onboarding own the entry. | decide | NSOT_PLAN.md P.1 (r6's first heartbeat) |
 
 ## D. Interface and input surfaces
 
@@ -89,13 +90,13 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
-**21 open** (counted from the rows, 2026-09-25): 17 recorded only in prose
-(A2–D2, with A4, B4, C6–C10 and C12 added the same day; D3 and C11 added and fixed), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
+**22 open** (counted from the rows, 2026-09-25): 18 recorded only in prose
+(A2–D2, with A4, B4, C6–C10, C12 and C13 added the same day; D3 and C11 added and fixed), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
 tail). The previous figure, 15, was **off by one**: it was produced by
 adjusting an earlier count rather than counting rows, and the rows then held
 16. A1 and C5 are now scheduled (P.2, 6.5), and C3 and C4 are closed.
 
-By kind: **14 build**, **3 decide-then-build**, **2 decide**, **2 verify**.
+By kind: **14 build**, **3 decide-then-build**, **3 decide**, **2 verify**.
 
 None of them blocks Stage 7 — the per-stage scope and the ordering
 constraints are in [NSOT_PLAN.md](NSOT_PLAN.md), *Scope of what remains*,
