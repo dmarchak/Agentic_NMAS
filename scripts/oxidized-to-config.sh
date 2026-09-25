@@ -125,6 +125,9 @@ SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 HERE="$(dirname "$SELF")"
 TARGETS="${TARGETS:-$HERE/nmas-clab-targets}"
 FRESH="${FRESH:-$HERE/nmas-oxidized-freshness}"
+# The committer's identity, on EVERY commit this job makes (see the commit
+# step): used by the reconcile below as well as the per-lab commit.
+GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)
 for helper in "$TARGETS" "$FRESH"; do
   if [ ! -x "$helper" ]; then
     echo "REFUSED - helper not found or not executable: $helper"
@@ -285,6 +288,27 @@ awk -v kind="$1" '
 }
 
 # Every distinct destination in the map, once.
+# >>> render_device
+# One renderer, used for this run's output AND to reproduce what an earlier
+# run wrote for the Oxidized version named in a file's own header (C15).
+render_device() {   # render_device <name> <router|switch> <ref-label> <sha> <raw>
+  local n="$1" kind="$2" label="$3" sha="$4" raw="$5"
+  echo "!"
+  echo "! ${n} - from Oxidized ${label} ${sha}"
+  echo "!"
+  # only add the header line if the harvested config does not already have it
+  if [ "$kind" = switch ] && ! grep -q '^no logging console$' <<<"$raw"; then
+    printf 'no logging console\n!\n'
+  fi
+  sanitise "$kind" <<<"$raw"
+  # the RSA key is not in running-config; re-issue so SSH works on a fresh boot
+  if [ "$kind" = switch ]; then
+    printf '!\nip domain-name rcn.lab\ncrypto key generate rsa modulus 2048\nip ssh version 2\n'
+  fi
+  printf '!\nend\n'
+}
+# <<< render_device
+
 destinations() {
   local n
   for n in "${DEVICES[@]}"; do echo "${CFGDIR[$n]}"; done | sort -u
@@ -309,21 +333,7 @@ for n in "${DEVICES[@]}"; do
   fi
   printf '%s\n' "$raw" > "$RAW/${n}.cfg"
 
-  {
-    echo "!"
-    echo "! ${n} - from Oxidized ${REF} ${SRC_SHA}"
-    echo "!"
-    # only add the header line if the harvested config does not already have it
-    if [ "$kind" = switch ] && ! grep -q '^no logging console$' <<<"$raw"; then
-      printf 'no logging console\n!\n'
-    fi
-    sanitise "$kind" <<<"$raw"
-    # the RSA key is not in running-config; re-issue so SSH works on a fresh boot
-    if [ "$kind" = switch ]; then
-      printf '!\nip domain-name rcn.lab\ncrypto key generate rsa modulus 2048\nip ssh version 2\n'
-    fi
-    printf '!\nend\n'
-  } > "$OUT/${n}.cfg"
+  render_device "$n" "$kind" "$REF" "$SRC_SHA" "$raw" > "$OUT/${n}.cfg"
 
   lines=$(wc -l < "$OUT/${n}.cfg")
   ends=$(grep -c '^end$'  "$OUT/${n}.cfg")
@@ -477,6 +487,68 @@ fi
 ssh -n "$CLAB" "rm -rf $STAGE && mkdir -p $STAGE" || exit 1
 rsync -a "$OUT"/ "${CLAB}:${STAGE}/" || exit 1
 
+# >>> reconcile
+# EVERY MANAGED FILE, EVERY RUN -- before the early exit and before any copy.
+#
+# C15, measured 2026-09-25: the 20:17 run wrote labs/r6/configs/r6.cfg and
+# its commit failed; the 20:30 run found nothing to copy and exited 0 at
+# "Nothing to do" BEFORE the commit step. The write was stranded: staged,
+# unversioned, invisible to every later run -- and the run reported success.
+#
+# A dirty tracked (or untracked) file is committed only when it is PROVABLY
+# this job's own output: byte-identical to what `render_device` produces for
+# the Oxidized version the file's own header names. The sanitiser is
+# deterministic, so that is reproducible, not a judgement. Anything else is
+# REFUSED for that device: neither committed (which would record a hand
+# edit as a harvest) nor overwritten (which would destroy it), named, and
+# the run exits 3 -- a refusal that exited 0 would reproduce the defect.
+declare -A REFUSED_DIRTY=()
+reconcile() {
+  local n kind dest rel st hdr label sha raw out
+  for n in "${DEVICES[@]}"; do
+    dest="${CFGDIR[$n]}/${n}.cfg"
+    rel="$(basename "${CFGDIR[$n]}")/${n}.cfg"
+    st="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') 2>/dev/null && git rev-parse --git-dir >/dev/null 2>&1 && git status --porcelain -- '$rel'" 2>/dev/null)"
+    [ -n "$st" ] || continue
+    hdr="$(ssh -n "$CLAB" "sed -n 2p '$dest'" 2>/dev/null)"
+    label=""; sha=""
+    case "$hdr" in
+      "! ${n} - from Oxidized "*) read -r label sha <<<"${hdr#"! ${n} - from Oxidized "}" ;;
+    esac
+    kind="$(kind_for "${PLATFORM[$n]}")" || kind=""
+    raw=""
+    if [ -n "$sha" ] && [ -n "$kind" ]; then
+      raw="$("${GIT[@]}" show "${sha}:${NODE[$n]}" 2>/dev/null)"
+    fi
+    if [ -n "$raw" ] && ssh -n "$CLAB" "cat '$dest'" \
+         | cmp -s - <(render_device "$n" "$kind" "$label" "$sha" "$raw"); then
+      if out="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') && git add -- '$rel' && git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $sha (recorded late: an earlier run wrote it and its commit failed)' -- '$rel'" 2>&1)"; then
+        printf '  %-4s RECORDED LATE - its uncommitted file was this job'"'"'s own output for Oxidized %s\n' "$n" "$sha"
+      else
+        REFUSED_DIRTY[$n]="its own uncommitted output could not be committed - git said: ${out%%$'\n'*}"
+      fi
+    elif [ -z "$sha" ]; then
+      REFUSED_DIRTY[$n]="uncommitted changes, and the file does not name the Oxidized version it came from: not this job's write"
+    else
+      REFUSED_DIRTY[$n]="uncommitted changes this job did not produce (the file says Oxidized $sha; sanitising $sha gives different content)"
+    fi
+  done
+}
+# <<< reconcile
+
+reconcile
+if [ ${#REFUSED_DIRTY[@]} -gt 0 ]; then
+  echo
+  echo "REFUSED - left exactly as found, neither committed nor overwritten:"
+  for n in "${!REFUSED_DIRTY[@]}"; do
+    printf '  %-4s %s\n       %s\n' "$n" "${CFGDIR[$n]}/${n}.cfg" "${REFUSED_DIRTY[$n]}"
+  done
+  echo "  Commit or discard each by hand. This job will not guess which you meant."
+  keep=()
+  for n in "${DEVICES[@]}"; do [ -n "${REFUSED_DIRTY[$n]:-}" ] || keep+=("$n"); done
+  DEVICES=("${keep[@]}")
+fi
+
 changed=0
 newfiles=0
 echo
@@ -497,8 +569,11 @@ done
 
 if [ $((changed + newfiles)) -eq 0 ]; then
   echo
-  echo "Nothing to do - the clab VM already matches Oxidized."
+  echo "Nothing to copy - the clab VM already matches Oxidized."
   ssh -n "$CLAB" "rm -rf $STAGE"
+  # The exit that stranded r6 (C15) said "Nothing to do" and returned 0. A
+  # refusal above is something to do, and job health must see it.
+  [ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3
   exit 0
 fi
 
@@ -661,16 +736,23 @@ ssh -n "$CLAB" "rm -rf $STAGE"
 # travels with it: setting it at init covers only repos this script created,
 # and relying on the repo's config fails on exactly the repos somebody set
 # up by hand. `.invalid` (RFC 2606) because it names a service, not a mailbox.
-GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)
 unversioned=()
 failed=()
 while read -r dir; do
   [ -n "$dir" ] || continue
+  # ONLY THIS JOB'S FILES, by path. `git add -A configs` would sweep a
+  # refused hand edit sitting in the same directory into a harvest commit,
+  # and `git commit` with no pathspec would commit anything else staged.
+  files=""
+  for n in "${DEVICES[@]}"; do
+    [ "${CFGDIR[$n]}" = "$dir" ] && files="$files '$(basename "$dir")/${n}.cfg'"
+  done
+  [ -n "$files" ] || continue
   outcome="$(ssh -n "$CLAB" "cd \$(dirname '$dir') 2>/dev/null || { echo nodir; exit 0; }; \
     git rev-parse --git-dir >/dev/null 2>&1 || { echo norepo; exit 0; }; \
-    err=\$(git add -A \$(basename '$dir') 2>&1) || { printf 'addfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"; exit 0; }; \
-    git diff --cached --quiet && { echo unchanged; exit 0; }; \
-    err=\$(git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $ts' 2>&1) \
+    err=\$(git add --$files 2>&1) || { printf 'addfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"; exit 0; }; \
+    git diff --cached --quiet --$files && { echo unchanged; exit 0; }; \
+    err=\$(git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $ts' --$files 2>&1) \
       && echo committed \
       || printf 'commitfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"")"
   kind="${outcome%% *}"
@@ -733,3 +815,4 @@ echo "each affected lab."
 # Exit 3 when a destination did not commit, so a timer running this reports
 # the failure rather than succeeding around it.
 [ ${#failed[@]} -eq 0 ] || exit 3
+[ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3
