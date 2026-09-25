@@ -26,6 +26,7 @@ not, and that cascade also ran automatically when a device list was deleted.
 Against a hand-curated NetBox that is unrecoverable data loss.
 """
 
+import datetime
 import json
 import logging
 import os
@@ -40,6 +41,32 @@ MANAGED_TAG = "nmas-managed"
 MANAGED_TAG_SLUG = "nmas-managed"
 
 _CREATED_IDS_FILE = os.path.join(DATA_DIR, "netbox_created_ids.json")
+
+#: What NMAS has MODIFIED, which is a different claim from what it created.
+#:
+#: Deliberately a **separate file**, keyed the same way. The created-id record
+#: means *"NMAS created this"* and is one half of removal's `tagged AND
+#: recorded` test -- so putting an update in it would make a human's object
+#: deletable by NMAS, which is exactly the ownership claim an update must not
+#: make. Two files means *"what has NMAS touched here"* is answerable without
+#: being confusable with *"what may NMAS remove"*.
+#:
+#: This exists because the 2026-09-24 address incident was a PATCH:
+#: ``_ensure_ip_address()`` moved one object between six devices, the object
+#: never disappeared, and so the tag, the created-id record and the census
+#: -- every defence there was -- had nothing to report. Weeks of silence.
+_MODIFIED_FILE = os.path.join(DATA_DIR, "netbox_modified.json")
+
+#: A before-value that could not be read. **Not** ``None`` and not absent: a
+#: field NetBox did not return and a field that was genuinely null are
+#: different facts, and the second is a real before-value.
+UNKNOWN_BEFORE = "<unknown>"
+
+#: Longest before/after value recorded. A config-template body or a long
+#: description would otherwise put kilobytes into an audit record -- and
+#: *bulk is not evidence*, which the `skipped_drifted` entry proved by
+#: carrying a whole device config and neither of the two hashes it compared.
+_MAX_VALUE_CHARS = 200
 _file_lock = threading.Lock()
 
 # Per-thread dry-run state: sync runs on a background thread, so this must not
@@ -216,12 +243,201 @@ def _load_created() -> dict:
 
 
 def _save_created(data: dict) -> None:
+    _write_json_atomic(_CREATED_IDS_FILE, data)
+
+
+def _write_json_atomic(path: str, data: dict) -> bool:
+    """Write *data* to *path* via a temp file and :func:`os.replace`.
+
+    Never ``open(path, "w")``. Truncate-in-place leaves a window in which the
+    file is a fragment, and a fragment of either of these records reads as
+    **empty** -- which for the created-id record means Remove can no longer
+    find objects it created (they become *tagged and unrecorded*, the one
+    combination it cannot act on) and for the modified record means *"NMAS
+    changed nothing"*. That is how `user_settings.json` erased itself: a
+    partial read returned ``{}``, the next write persisted it.
+    """
     try:
-        os.makedirs(os.path.dirname(_CREATED_IDS_FILE), exist_ok=True)
-        with open(_CREATED_IDS_FILE, "w", encoding="utf-8") as fh:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
+        os.replace(tmp, path)
+        return True
     except OSError as exc:
-        log.error("netbox_guard: could not persist created-id record: %s", exc)
+        log.error("netbox_guard: could not persist %s: %s",
+                  os.path.basename(path), exc)
+        return False
+
+
+def _comparable(value):
+    """NetBox's nested form reduced to what a payload would carry.
+
+    A PATCH sends ``{"region": 5}``; a GET returns
+    ``{"region": {"id": 5, "name": "...", "url": "..."}}``. Comparing those
+    raw makes **every** field look changed, so the log would record a
+    modification on every no-op sync and stop meaning anything.
+    """
+    if isinstance(value, dict):
+        return value["id"] if "id" in value else {
+            k: _comparable(v) for k, v in sorted(value.items())}
+    if isinstance(value, (list, tuple)):
+        return [_comparable(v) for v in value]
+    return value
+
+
+def _short(value):
+    """Cap a recorded value, marking it rather than silently truncating."""
+    if isinstance(value, str) and len(value) > _MAX_VALUE_CHARS:
+        return value[:_MAX_VALUE_CHARS] + f"…(+{len(value) - _MAX_VALUE_CHARS} chars)"
+    return value
+
+
+def changed_fields(before_obj, payload: dict):
+    """What this payload actually changes: ``{field: {before, after}}``.
+
+    ``None`` when *before_obj* is ``None`` -- the object could not be read, so
+    what changed is **unknown**, which is not the same as nothing having
+    changed. ``{}`` means the payload sets every field to the value it already
+    holds, and that is genuinely not a modification.
+
+    **The before is the whole point.** *"NMAS set assigned_object_id to 60"* is
+    a fact; *"NMAS moved it from 44 to 60"* is the finding.
+    """
+    if before_obj is None:
+        return None
+    out = {}
+    for field, after in (payload or {}).items():
+        before = (_comparable(before_obj[field]) if field in before_obj
+                  else UNKNOWN_BEFORE)
+        now = _comparable(after)
+        if before == now:
+            continue
+        out[field] = {"before": _short(before), "after": _short(now)}
+    return out
+
+
+def record_modified(list_name: str, endpoint: str, obj_id: int, fields,
+                    name: str = "", actor: str = "") -> None:
+    """Record that NMAS modified *obj_id*. Does **not** claim it created it.
+
+    *fields* is :func:`changed_fields`' answer: a mapping (recorded), ``{}``
+    (nothing changed -- recorded nowhere, because the object's content did not
+    move) or ``None`` (the before-state was unreadable, recorded **as
+    unknown** so the count cannot quietly omit it).
+    """
+    if obj_id is None or obj_id < 0:
+        return
+    if fields == {}:
+        return
+    endpoint = endpoint.strip("/")
+    entry = {
+        "id": obj_id,
+        "name": name,
+        "at": datetime.datetime.now(
+            datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # An actor nothing set is named rather than blank: an empty string
+        # reads as "nobody", and the truth is "this write carried no
+        # identity" -- the same distinction as inconclusive against failed.
+        "actor": actor or get_current_actor() or "unattributed",
+    }
+    if fields is None:
+        entry["before_unknown"] = True
+        entry["note"] = ("the object could not be read before the write, so "
+                         "what changed is unknown")
+    else:
+        entry["fields"] = fields
+    with _file_lock:
+        data = _load_modified()
+        slug = list_slug(list_name) if list_name else "_unattributed"
+        data.setdefault(slug, {}).setdefault(endpoint, []).append(entry)
+        _write_json_atomic(_MODIFIED_FILE, data)
+
+
+def _load_modified() -> tuple:
+    """The modified record, or ``{}``. See :func:`read_modified` for the
+    version that can say *unreadable*."""
+    data, _ = read_modified()
+    return data or {}
+
+
+def read_modified() -> tuple:
+    """``(data, None)`` or ``(None, reason)``.
+
+    **Absent and unreadable are different facts.** No file means nothing has
+    ever been recorded -- an honest zero. An unreadable file means the count
+    is unknown, and a reader told *"0 modified"* in that case has been given
+    the most reassuring of the possible answers.
+    """
+    if not os.path.exists(_MODIFIED_FILE):
+        return {}, None
+    try:
+        with open(_MODIFIED_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as exc:
+        return None, f"{_MODIFIED_FILE} is not readable JSON: {exc}"
+    except OSError as exc:
+        return None, f"{_MODIFIED_FILE} could not be read: {exc}"
+    if not isinstance(data, dict):
+        return None, f"{_MODIFIED_FILE} is not a modification record"
+    return data, None
+
+
+def modified_since(since: str = "", list_name: str = "") -> dict:
+    """Summarise recorded modifications, optionally after an ISO timestamp.
+
+    ``scope`` says which question was answered: ``since`` when *since* was
+    supplied, ``all`` when it was not -- because a baseline with no
+    ``taken_at`` cannot scope the answer, and reporting an unscoped count as
+    though it were scoped would attribute old modifications to this run.
+    """
+    data, reason = read_modified()
+    if reason:
+        return {"ok": False, "reason": reason, "count": 0,
+                "unknown_before": 0, "entries": [], "scope": "unknown",
+                "total_recorded": 0, "exists": True}
+
+    want = list_slug(list_name) if list_name else ""
+    entries = []
+    for slug, endpoints in data.items():
+        if want and slug != want:
+            continue
+        for endpoint, rows in (endpoints or {}).items():
+            for row in rows:
+                if since and (row.get("at") or "") <= since:
+                    continue
+                entries.append({**row, "endpoint": endpoint, "list": slug})
+
+    entries.sort(key=lambda e: e.get("at") or "")
+
+    # `total_recorded` and `exists` are what stop a zero reading as assurance.
+    # "0 modified since the baseline" out of 40 recorded proves the mechanism
+    # runs and found nothing in this window. The same zero with NO RECORD AT
+    # ALL is the mechanism never having written anything -- which on an
+    # install that has run imports means it is not reaching the file, and a
+    # bare "0 modified" would be the most reassuring reading of a broken
+    # recorder. Same shape as "checked 7 of 9" against a number that reads
+    # as complete.
+    total = sum(len(rows) for endpoints in data.values()
+                for rows in (endpoints or {}).values())
+    return {
+        "ok": True,
+        "reason": "",
+        "count": len(entries),
+        "unknown_before": sum(1 for e in entries if e.get("before_unknown")),
+        "entries": entries,
+        "scope": "since" if since else "all",
+        "total_recorded": total,
+        "exists": os.path.exists(_MODIFIED_FILE),
+    }
+
+
+def get_modified(list_name: str, endpoint: str = "") -> dict:
+    """Recorded modifications for *list_name*, optionally one endpoint."""
+    data = _load_modified().get(list_slug(list_name), {})
+    if endpoint:
+        return {endpoint.strip("/"): data.get(endpoint.strip("/"), [])}
+    return data
 
 
 def record_created(list_name: str, endpoint: str, obj_id: int, name: str = "") -> None:
@@ -292,23 +508,39 @@ def has_managed_tag(obj: dict) -> bool:
 # because sync runs on a background thread.
 
 class for_list:
-    """Attribute writes made inside this block to *list_name*."""
+    """Attribute writes made inside this block to *list_name*.
 
-    def __init__(self, list_name: str):
+    *actor* is optional and only ever **adds** attribution: a block that does
+    not name one leaves modifications recorded as ``unattributed``, which is
+    what they were. It cannot loosen anything, so its absence is safe -- the
+    rule about a default fallback being how a caller bypasses a resolver
+    applies to an argument whose absence *weakens a check*.
+    """
+
+    def __init__(self, list_name: str, actor: str = ""):
         self.list_name = list_name
+        self.actor = actor
 
     def __enter__(self):
         self._previous = getattr(_local, "list_name", None)
+        self._previous_actor = getattr(_local, "actor", None)
         _local.list_name = self.list_name
+        if self.actor:
+            _local.actor = self.actor
         return self
 
     def __exit__(self, *exc):
         _local.list_name = self._previous
+        _local.actor = self._previous_actor
         return False
 
 
 def get_current_list() -> str:
     return getattr(_local, "list_name", None) or ""
+
+
+def get_current_actor() -> str:
+    return getattr(_local, "actor", None) or ""
 
 
 #: Endpoints that accept a ``tags`` field and should carry ``nmas-managed``.

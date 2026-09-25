@@ -45,6 +45,14 @@ import sys
 #: will otherwise assume the teardown failed.
 EXIT_PASS, EXIT_DIFFERS, EXIT_UNPROVEN = 0, 1, 2
 
+#: What the modification record could say. Four, not two: `none` and
+#: `no-record` both count zero and mean opposite things, and `unknown` is
+#: weaker than `none` rather than equal to it. The headline is chosen from
+#: these -- never by matching the printed sentence, which is how a check
+#: comes to depend on its own prose.
+MODS_NONE, MODS_SOME, MODS_UNKNOWN, MODS_NO_RECORD = (
+    "none", "some", "unknown", "no-record")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
@@ -135,6 +143,56 @@ def _print(census: dict) -> None:
           "'unchanged':")
     for what, why in census.get("not_counted", {}).items():
         print(f"  {what:28s} {why}")
+
+
+def _modification_report(since: str = "") -> list:
+    """``(status, lines)`` stating what NMAS has MODIFIED.
+
+    The census compares objects by identity, and an update changes neither the
+    id nor the display -- measured: an address moved between interfaces reads
+    `41:10.0.0.15/24` on both sides and `compare()` returns nothing. So a
+    census PASS has never meant *"nothing changed"*; it has meant *"no object
+    was created or destroyed"*, and the difference is exactly the class that
+    caused the 2026-09-24 incident. This says which claim is being made.
+    """
+    from modules.netbox_guard import modified_since
+
+    got = modified_since(since=since)
+    if not got["ok"]:
+        return MODS_UNKNOWN, [
+            "modifications: UNKNOWN — the record could not be read: "
+            + got["reason"],
+            "  So this census cannot say whether NMAS changed anything "
+            "in place. That is weaker than 'none', not equal to it."]
+
+    if not got["exists"]:
+        return MODS_NO_RECORD, [
+            "modifications: NO RECORD EXISTS — nothing has ever been "
+            "written to data/netbox_modified.json.",
+            "  On an install that has run an import, that means the "
+            "recorder is not reaching the file, so read this as "
+            "'unknown', not as 'none'."]
+
+    scope = ("since this baseline" if got["scope"] == "since"
+             else "all time — the baseline carries no taken_at, so this "
+                  "could not be scoped to the run")
+    lines = [f"modifications: {got['count']} object(s) modified by NMAS "
+             f"({scope}), out of {got['total_recorded']} recorded in total"]
+    if got["unknown_before"]:
+        lines.append(f"  {got['unknown_before']} of them could not be read "
+                     "before the write, so WHAT changed is unknown")
+    for e in got["entries"][:12]:
+        fields = e.get("fields") or {}
+        if e.get("before_unknown"):
+            detail = "before-state unreadable"
+        else:
+            detail = ", ".join(
+                f"{k}: {v['before']} → {v['after']}" for k, v in fields.items())
+        lines.append(f"  {e['at']}  {e['endpoint']}/{e['id']} "
+                     f"{e.get('name') or ''}  [{e.get('actor')}]  {detail}")
+    if got["count"] > 12:
+        lines.append(f"  … and {got['count'] - 12} more")
+    return (MODS_SOME if got["count"] else MODS_NONE), lines
 
 
 def read_baseline(path: str):
@@ -240,10 +298,32 @@ def main() -> int:
         _print(census)
         print()
         print(f"baseline taken: {before.get('taken_at') or 'unrecorded'}")
+        mod_status, mod_lines = _modification_report(
+            since=before.get("taken_at") or "")
+        for line in mod_lines:
+            print(line)
+        print()
+
         if not findings:
-            print(f"PASS — every counted type holds exactly the objects it "
+            # WHICH CLAIM. "PASS" used to be read as "nothing changed" and has
+            # only ever meant "nothing was created or destroyed" -- so it is
+            # stated, and qualified in the headline when modifications exist,
+            # because a reader skimming for the word PASS will not read the
+            # paragraph under it.
+            head = {
+                MODS_SOME:      "PASS (with modifications — read them above)",
+                MODS_UNKNOWN:   "PASS (modifications UNKNOWN — read above)",
+                MODS_NO_RECORD: "PASS (modifications UNKNOWN — read above)",
+                MODS_NONE:      "PASS",
+            }[mod_status]
+            print(f"{head} — every counted type holds exactly the objects it "
                   f"held in {os.path.basename(args.compare)}.")
             print("Identity, not counts: the same objects, not the same number.")
+            print("THE CLAIM THIS MAKES: no object was created or destroyed. "
+                  "It does NOT say nothing changed — an in-place update "
+                  "changes neither an object's id nor its display, so this "
+                  "comparison cannot see one. That is what the "
+                  "modifications line above is for.")
             return EXIT_PASS
         print(f"{len(findings)} difference(s):")
         for f in findings:
@@ -251,6 +331,9 @@ def main() -> int:
         return EXIT_DIFFERS
 
     _print(census)
+    print()
+    for line in _modification_report()[1]:
+        print(line)
     if args.out:
         from modules.config import open_secure
 

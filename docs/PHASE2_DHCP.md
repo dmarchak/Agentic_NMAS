@@ -763,14 +763,114 @@ onboard refuse once.
 So: leave it on, and **close the gap instead of keeping a setting off that has
 to be on.** The shape is the same finding as the cascade, one field over:
 *provenance protects an OBJECT; a cascade travels a RELATIONSHIP* — and an
-**update travels neither.** Plan items, both cheap:
+**update travels neither.**
 
-- the census records the **assignment** for an assignable object, not only its
-  identity, so a moved address is a finding rather than a silence
-- `_nb_patch` records what it changed — object, fields, before-values — into
-  an update log beside the created-id record. Not to make it reversible
-  (deciding whether a field should go back is an operator's call) but so that
-  *"NMAS modified this"* is answerable at all. Today it is not.
+## 12. The modification record — built
 
-That second item is what would have turned the address incident from **weeks
-invisible** into a line somebody could read.
+`data/netbox_modified.json`, written by `_nb_patch`, read by the census.
+
+### Where it lives: a second file, and that is the whole point
+
+Not the created-id record. That record means *"NMAS created this"* and is one
+half of removal's `tagged AND recorded` test — so putting an update in it
+would mark a human's object as NMAS's own and **make it deletable**, which is
+precisely the ownership claim an update must not make. Two files means *"what
+has NMAS touched here"* is answerable without being confusable with *"what may
+NMAS remove"*. Pinned: after recording a modification,
+`was_created_by_nmas()` is still false and `get_created()` is still empty.
+
+`forget_created()` — what deleting a list does — leaves the modification
+history intact. Otherwise the trail would be erasable by the routine action
+that follows every probe.
+
+### What it stores, and why the BEFORE is the load-bearing half
+
+`{endpoint, id, name, fields: {field: {before, after}}, actor, at}`.
+
+*"NMAS set `assigned_object_id` to 60"* is a fact. *"NMAS moved it from 44 to
+60"* is the finding — so the before-state is **read by `_nb_patch` itself**,
+immediately before the write. Not passed in by the caller: an optional
+`before=` is how a caller bypasses a guard by omission, and there are eleven
+PATCH call sites.
+
+Three states rather than two, throughout:
+
+| situation | recorded |
+|---|---|
+| a field's value changed | `{before, after}` |
+| every field already held that value | **nothing** — the object's content did not move |
+| the object could not be read first | `before_unknown: true`, counted separately |
+| a field NetBox did not return | `before: "<unknown>"`, distinct from a genuine `null` |
+
+Values are capped at 200 characters **with a marker**, because *bulk is not
+evidence* — the `skipped_drifted` entry carried a whole device config and
+neither of the two hashes it had compared.
+
+NetBox's nested form is normalised before comparing: a GET returns
+`{"region": {"id": 5, …}}` and a PATCH sends `5`. Without that, every field of
+every PATCH looks changed, the log records a modification on every no-op sync,
+and it stops meaning anything — which is how a checker gets switched off.
+
+### What reads it: the census, and PASS now states its claim
+
+A record nothing reads is the `next_ts` shape, so this is the part that
+matters. `--compare` prints a modifications line and **says which claim it is
+making**:
+
+> THE CLAIM THIS MAKES: no object was created or destroyed. It does NOT say
+> nothing changed — an in-place update changes neither an object's id nor its
+> display, so this comparison cannot see one.
+
+The headline is qualified — `PASS (with modifications — read them above)` —
+because a reader skimming for the word PASS will not read the paragraph under
+it. **Exit codes are unchanged**: a modification is not *"objects left
+behind"*, and collapsing them would repeat the error the three codes exist to
+avoid.
+
+**Four states, not two**, because a zero must not pose as an assurance:
+
+| status | means |
+|---|---|
+| `none` | 0 since the baseline, *out of N recorded in total* — the denominator is what proves the recorder runs |
+| `some` | N modified, each listed with its before → after |
+| `unknown` | the record could not be read — *"weaker than 'none', not equal to it"* |
+| `no-record` | the file has never been written; on an install that has run an import, **the recorder is not reaching it** |
+
+The headline is selected from that status and **never by matching the printed
+sentence** — the first version did, which is the *pattern that can appear in
+English* error committed inside the fix for it, and it also read `unknown` as
+*"modifications exist"*.
+
+Scoping is honest too: a baseline with no `taken_at` cannot scope the count,
+so the line says **"all time — could not be scoped to the run"** rather than
+attributing old modifications to this teardown.
+
+### `_ensure_site()`: a behaviour nobody chose
+
+It re-parented any site whose slug matched, with the comment *"re-parent to
+the right region if someone moved it"* — so a site a human had deliberately
+placed was silently moved back on the next sync. Inconsistent in the direction
+that matters: **removal refuses to touch an object NMAS did not create**, so
+the tool would decline to delete your site while happily moving it.
+
+It now re-parents only its own, and **reports** when it declines — collected
+into the sync summary's `notes`, not only logged, because a refusal nobody
+reads is the same as no refusal. Adoption is unchanged: a matching site is
+still used rather than duplicated. What changed is that it is no longer edited
+silently.
+
+Ownership here is **tagged OR recorded**, deliberately *not* removal's `tagged
+AND recorded`. The actions differ in blast radius — deleting a human's object
+is unrecoverable, so removal takes the conservative conjunction, while
+declining to re-parent NMAS's own site costs a warning. The tag is applied by
+`_nb_post` only, so a tagged site *was* created by NMAS even if the created-id
+record has since been lost, which is what happens when a list is deleted and
+re-created.
+
+### Also fixed on the way
+
+Both provenance records are now written **temp-then-`os.replace`**. They were
+`open(path, "w")` — truncate in place, the shape that erased
+`user_settings.json`. A fragment of either reads as **empty**, and for the
+created-id record that means Remove can no longer find objects it created:
+they become *tagged and unrecorded*, the one combination it cannot act on.

@@ -317,12 +317,36 @@ def _nb_patch(session: requests.Session, base: str, path: str, payload: dict) ->
         return {**payload, "id": obj_id, "_dry_run": True}
 
     _guard.assert_writes_allowed(f"PATCH {endpoint}")
+
+    # READ THE BEFORE-STATE FIRST, here rather than from the caller.
+    #
+    # An update is the one write NMAS makes that carries no provenance: the
+    # `nmas-managed` tag is injected in _nb_post only -- correctly, since the
+    # tag means "NMAS created this" and claiming a human's object would make
+    # it deletable -- and nothing was recorded either, so for weeks
+    # `_ensure_ip_address()` moved one address object between six devices
+    # with the tag, the created-id record and the census all silent, because
+    # the object never disappeared.
+    #
+    # Fetched here and not passed in: an optional `before=` argument is how a
+    # caller bypasses this by omission, and eleven call sites are eleven
+    # chances to forget. An unreadable object records `before_unknown` rather
+    # than nothing, because "what changed is unknown" and "nothing changed"
+    # must not share an answer.
+    before = _nb_get_by_id(session, base, endpoint, obj_id) if obj_id else None
+
     r = session.patch(f"{base}/api/{path.lstrip('/')}", json=payload, timeout=20)
     if not r.ok:
         raise RuntimeError(
             f"PATCH {path} failed ({r.status_code}): {r.text[:300]}"
         )
-    return r.json()
+    obj = r.json()
+    _guard.record_modified(
+        _guard.get_current_list(), endpoint, obj_id,
+        _guard.changed_fields(before, payload),
+        name=_object_label(before or obj) or _object_label(payload),
+    )
+    return obj
 
 
 def _ensure_region(session, base: str, name: str) -> dict:
@@ -338,16 +362,53 @@ def _ensure_region(session, base: str, name: str) -> dict:
     })
 
 
-def _ensure_site(session, base: str, name: str, region_id: int) -> dict:
-    """Get-or-create a NetBox site under the given region (same name as region)."""
+def _ensure_site(session, base: str, name: str, region_id: int,
+                 notes: list = None) -> dict:
+    """Get-or-create a NetBox site under the given region (same name as region).
+
+    **It re-parents only a site NMAS created.** The previous version moved any
+    site whose slug matched, with the comment *"re-parent to the right region
+    if someone moved it"* -- so a site a human had deliberately placed was
+    silently moved back on the next sync. That is a behaviour nobody chose,
+    and it is inconsistent in the direction that matters: removal **refuses**
+    to touch an object NMAS did not create, so the tool would decline to
+    delete your site while happily moving it.
+
+    Ownership is *tagged OR recorded*, which is deliberately **not** removal's
+    *tagged AND recorded*. The two actions differ in blast radius: deleting a
+    human's object is unrecoverable, so removal takes the conservative
+    conjunction, while declining to re-parent NMAS's own site costs a warning.
+    The tag is only ever applied by ``_nb_post``, so a tagged site *was*
+    created by NMAS even if the created-id record has since been lost -- which
+    happens when a list is deleted and re-created.
+
+    Adoption is unchanged: a site with a matching slug is still used rather
+    than duplicated. What changed is that NMAS no longer edits it silently.
+    """
+    from modules import netbox_guard as _guard
+
     slug = _slug(name)
     existing = _nb_first(session, base, "dcim/sites/", slug=slug)
     if existing:
-        # Re-parent to the right region if someone moved it.
         current_region = (existing.get("region") or {}).get("id")
         if current_region != region_id:
-            _nb_patch(session, base, f"dcim/sites/{existing['id']}/", {"region": region_id})
-            existing["region"] = {"id": region_id}
+            ours = (_guard.has_managed_tag(existing)
+                    or _guard.was_created_by_nmas(
+                        _guard.get_current_list(), "dcim/sites", existing["id"]))
+            if ours:
+                _nb_patch(session, base, f"dcim/sites/{existing['id']}/",
+                          {"region": region_id})
+                existing["region"] = {"id": region_id}
+            else:
+                note = (
+                    f"site '{existing.get('name') or slug}' is in a different "
+                    f"region and NMAS did not create it, so it was left where "
+                    f"it is. Devices for this list will be added to it. Move "
+                    f"it in NetBox if that is wrong."
+                )
+                log.warning("netbox: %s", note)
+                if notes is not None:
+                    notes.append(note)
         return existing
     return _nb_post(session, base, "dcim/sites/", {
         "name":   name,
@@ -2592,13 +2653,19 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
 
     log.info("netbox: starting sync for list '%s' (%d device(s))", list_name, len(devices))
 
+    # Declined edits to objects NMAS does not own. Collected rather than only
+    # logged: a refusal nobody reads is the same as no refusal, and the
+    # caller renders this.
+    provisioning_notes: list = []
+
     # Build/refresh the region and site up-front. Device roles are resolved
     # per-device below (router/switch/firewall, matching the app's own
     # device-list role field) rather than one shared generic role for
     # everything — role_id_cache avoids re-resolving the same role per device.
     try:
         region = _ensure_region(session, base, list_name)
-        site   = _ensure_site(session, base, list_name, region["id"])
+        site   = _ensure_site(session, base, list_name, region["id"],
+                              notes=provisioning_notes)
     except Exception as exc:
         log.exception("netbox: failed to provision region/site for '%s'", list_name)
         return {"ok": False, "error": f"Failed to set up NetBox region/site: {exc}"}
@@ -2747,6 +2814,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
             "cables":     ipam_stats.get("cables_synced", 0),
             "tunnels":    ipam_stats.get("tunnels_synced", 0),
         },
+        "notes":      provisioning_notes,
         "timestamp":  time.strftime("%Y-%m-%d %H:%M:%S"),
         "netbox_url": f"{base}/dcim/sites/{site['id']}/",
         "ipam_url":   f"{base}/ipam/prefixes/",

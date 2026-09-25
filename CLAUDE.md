@@ -832,6 +832,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_write_gate.py` | write gate, dry run, provenance-based removal |
 | `test_netbox_authz.py` | one-shot tokens, plan hashing, stale-plan abort |
 | `test_netbox_preview_fidelity.py` | preview counts == executed counts; tag scope |
+| `test_netbox_update_provenance.py` | an update records its BEFORE, confers no ownership, and a zero cannot pose as an assurance |
 | `test_netbox_inventory.py` | NetBox-sourced lists: shape fidelity, skips, stale devices |
 | `test_device_lookup.py` | exact-name → IPAM resolution; never a fuzzy first hit |
 | `test_render_context.py` | render context, interface IPs, template rendering |
@@ -3505,10 +3506,72 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   control that is necessarily open whenever the dangerous path runs is not a
   defence against that path, so turning it off at teardown covers the
   uncovered class not at all. *Provenance protects an OBJECT; a cascade
-  travels a RELATIONSHIP* — and **an update travels neither.** Plan: the
-  census records an assignable object's **assignment**, and `_nb_patch`
-  records what it changed, so *"NMAS modified this"* is answerable. Today it
-  is not.
+  travels a RELATIONSHIP* — and **an update travels neither.**
+- **`data/netbox_modified.json`: what NMAS MODIFIED, which is a different
+  claim from what it created** (§12). A **second file**, keyed the same way,
+  and that is the whole point — the created-id record is one half of
+  removal's `tagged AND recorded`, so putting an update in it would mark a
+  human's object as NMAS's own and **make it deletable**, the one ownership
+  claim an update must not make. Pinned: after a modification is recorded,
+  `was_created_by_nmas()` is still false, and `forget_created()` (what
+  deleting a list does) leaves the history intact.
+  **The BEFORE is the load-bearing half** — *"NMAS set it to 60"* is a fact,
+  *"NMAS moved it from 44 to 60"* is the finding — so `_nb_patch` reads the
+  object **itself**, immediately before the write, never from a caller: an
+  optional `before=` is how a caller bypasses a guard by omission, and there
+  are eleven PATCH sites. Three states, not two: a changed field records
+  `{before, after}`, a payload setting values the object already holds
+  records **nothing** (its content did not move), and an unreadable object
+  records `before_unknown` — counted separately, because *"what changed is
+  unknown"* and *"nothing changed"* must not share an answer. A field NetBox
+  did not return is `<unknown>`, distinct from a genuine `null`. Values are
+  capped **with a marker**, since *bulk is not evidence*. NetBox's nested
+  form is normalised before comparing (`{"region": {"id": 5}}` against a
+  payload's `5`), or every field of every PATCH looks changed and the log
+  records a modification on every no-op sync — which is how a checker gets
+  switched off.
+- **A census PASS now states WHICH CLAIM it makes.** It has always meant *"no
+  object was created or destroyed"* and was read as *"nothing changed"*, and
+  those differ by exactly the class that caused the incident — measured: an
+  address moved between interfaces reads `41:10.0.0.15/24` on both sides and
+  `compare()` returns nothing. The headline is qualified (`PASS (with
+  modifications — read them above)`) because a reader skimming for PASS will
+  not read the paragraph under it; **exit codes are unchanged**, because a
+  modification is not *"objects left behind"* and collapsing them repeats the
+  error the three codes exist to avoid. **Four statuses, not two**, so a zero
+  cannot pose as an assurance: `none` carries its **denominator** (*0 since
+  the baseline, out of N recorded in total* — the total is what proves the
+  recorder runs), `some`, `unknown` (*"weaker than 'none', not equal to it"*),
+  and **`no-record`** (the file has never been written — on an install that
+  has run an import, the recorder is not reaching it). The headline is chosen
+  from that status and **never by matching the printed sentence**: the first
+  version did, which is the *pattern that can appear in English* error
+  committed inside the fix for it, and it read `unknown` as *"modifications
+  exist"*. A baseline with no `taken_at` says **"all time — could not be
+  scoped to the run"** rather than attributing old modifications to this
+  teardown.
+- **`_ensure_site()` re-parented any slug-matching site, and that was a
+  behaviour nobody chose.** The comment said *"re-parent to the right region
+  if someone moved it"* — so a site a human had deliberately placed was
+  silently moved back on the next sync, which is the tool being inconsistent
+  about ownership in the direction that matters: **removal refuses to touch
+  an object NMAS did not create**, so it would decline to delete your site
+  while happily moving it. It now re-parents only its own and **reports** when
+  it declines, collected into the sync summary's `notes` rather than only
+  logged, because a refusal nobody reads is the same as no refusal. Adoption
+  is unchanged — a matching site is still used rather than duplicated; what
+  changed is that it is no longer edited silently. Ownership is **tagged OR
+  recorded**, deliberately not removal's **AND**: the actions differ in blast
+  radius, deleting a human's object being unrecoverable while declining to
+  re-parent NMAS's own costs a warning, and the tag is applied by `_nb_post`
+  only, so a tagged site *was* created by NMAS even after its created-id
+  record was lost with a deleted list.
+- **Both provenance records are written temp-then-`os.replace`.** They were
+  `open(path, "w")` — truncate in place, the shape that erased
+  `user_settings.json` — and a fragment of either reads as **empty**: for the
+  created-id record that means Remove can no longer find objects it created,
+  which makes them *tagged and unrecorded*, the one combination it cannot act
+  on.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
