@@ -3972,6 +3972,16 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   prints a count with its denominator, reporting `UNPROVEN` when there is
   no log. **Name a channel only after reading something from it.**
   [docs/OPEN_FINDINGS.md](docs/OPEN_FINDINGS.md) C5.
+- **A FINDING THAT SOMETHING IS ABSENT IS ONLY VALID IF THE THING THAT
+  WOULD HOLD IT WAS THE THING CHECKED.** Twice on 2026-09-25. *"The recorder
+  missed the write"*: the record held the entry, and the reading of it was
+  never shown able to see one. *"There is no service unit"*: a process
+  listing was checked, and systemd, which holds units, was not. Each absence
+  was real in what was looked at and false about what was claimed. Before
+  writing "X is not there", name the store that would hold X, and show the
+  check can find an X that **is** there (a positive control). Same family as
+  *a lookup that misses is a fact about the query*, stated for findings
+  rather than code.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
@@ -3984,7 +3994,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **13 open at 2026-09-25**, counted from the rows: 9 recorded only in
+present when each was recorded. **14 open at 2026-09-25**, counted from the rows: 10 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
@@ -3994,7 +4004,10 @@ because it adjusted a previous count instead of counting.
 paragraph enumerated as 7.5-a…f. Two standalone items come **before Stage
 7**: **P.1** switch syslog (stopped 2026-09-09; a pipeline defect, not a
 screen) and **P.2** NetBox backup with a tested restore (A1). The service
-unit's hardening is **6.5**. An item leaves by being fixed,
+unit's hardening is **6.5**. **P.1 measured**: nothing stopped. Every device
+has run `logging trap critical` since 8 Sep, and the pipeline delivers
+exactly what that level sends. It needs a trap-level decision and a
+per-device EEM heartbeat, not a repair. An item leaves by being fixed,
 scheduled or closed with a reason — never by being forgotten, and anything
 recorded as *"not applied"*, *"noted, not yet addressed"* or *"left open"*
 belongs there the same day it is written.

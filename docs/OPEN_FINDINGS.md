@@ -43,6 +43,7 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 | B1 | **`skipped_drifted` returns a whole device configuration in an API response.** Unredacted, on a JSON route. The diagnostic value was already removed (it now carries both hashes); the config remains. | build | CLAUDE.md, *"A diagnostic that dumps the artefact but not the comparison"* |
 | B2 | **A credential rotation leaves no durable record.** `persist()` is reached only from two scripts, and nothing writes an audit file, a run log or anything in `data/`. Whether the Oxidized stages have been failing since the 2026-09-23 settings erasure **is not knowable from the repository**. | build | CLAUDE.md, *"`oxidized_reload` is stage 2"* |
 | B3 | **Orphaned credential overrides are reported and never removed.** `nmas-credential-overrides` names them deliberately — an override may be a break-glass credential — but nothing closes the loop, so the store grows. The `''` key from before the DHCP key fix is still there unless cleared by hand. | decide, then build | CLAUDE.md, *"`credential_profiles.json` is a secret store with no expiry"* |
+| B4 | **NetBox's secrets are world-readable on the host.** `~/netbox-docker/env/netbox.env` and `postgres.env` are mode **0664** (measured 2026-09-25): `SECRET_KEY`, `API_TOKEN_PEPPER_1` and the database password are readable by every account on the host. The same shape as `data/` before `open_secure` (CLAUDE.md, *"Modes are set at CREATION"*), in a store NMAS does not create. `0600` owned by `dmarchak` is right, because compose reads them as that user. The P.2 backup copies these files, so it must not copy the mode. | build | this file, 2026-09-25 |
 
 ## C. Tooling that reports wrongly
 
@@ -73,13 +74,13 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
-**13 open** (counted from the rows, 2026-09-25): 9 recorded only in prose
-(A2–D2), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
+**14 open** (counted from the rows, 2026-09-25): 10 recorded only in prose
+(A2–D2, with B4 added the same day), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
 tail). The previous figure, 15, was **off by one**: it was produced by
 adjusting an earlier count rather than counting rows, and the rows then held
 16. A1 and C5 are now scheduled (P.2, 6.5), and C3 and C4 are closed.
 
-By kind: **8 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
+By kind: **9 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
 
 None of them blocks Stage 7 — the per-stage scope and the ordering
 constraints are in [NSOT_PLAN.md](NSOT_PLAN.md), *Scope of what remains*,

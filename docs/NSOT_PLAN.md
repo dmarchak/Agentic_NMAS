@@ -1762,6 +1762,51 @@ that change goes through intent (7.5-f), not a hand edit. And the loss gets a
 signal: a switch that stops logging must show up somewhere other than a
 count of 0, or the next outage is found the way this one was.
 
+**P.1 — MEASURED 2026-09-25: nothing stopped. The pipeline is working, and
+the devices are configured to say almost nothing.** Each hop was checked
+against the store that would hold its evidence:
+
+| Hop | Evidence | Result |
+|---|---|---|
+| Device generates | `show logging` buffer, per severity, since the 22 Sep boot | s1/s2/s4: **zero** messages at severity 0-2. s3: one. r1: two, both before its logging-host session started |
+| Device sends | `Logging to 10.255.1.10 … N message lines logged` | s1/s2/s4/r1: **0**. s3: **1** |
+| rsyslog files | `/var/log/network/<src>.log` (filter: source starts `10.255.1.`) | s3's one line present (`Sep 22 23:44:05`) |
+| Alloy reads | runs as `alloy`, groups include `adm`; files are `0640 syslog:adm` | readable. **Permission hypothesis refuted** |
+| logrotate | `postrotate` restarts `alloy` | inode tracking is reset each rotation. **Refuted as today's cause** |
+| Loki holds | `count_over_time` per `filename`, daily since 1 Sep | matches the files exactly; s3's line is there on 22 Sep |
+
+**Why it looks like "stopped around 9 Sep":** syslog was first configured on
+**7 Sep**, and every device has been at **`logging trap critical`** since
+**8 Sep 01:33** (Oxidized history; s1 briefly ran `debugging`). Critical passes
+severity 0-2 only. Link up/down (3/5), OSPF adjacency (5), config change (5)
+and login events never leave the device. So the Loki card read 0 during the
+demo **correctly for the configured level**. The positive control is in the
+data: s3 generated one severity-2 line, sent it (counter 1), and Loki holds
+it.
+
+**Therefore P.1 is a trap-level decision plus a heartbeat, not a repair.** It
+also finds two coverage gaps:
+- **r6 has no logging configuration at all.** Onboarding never gives a device
+  syslog, so every device added after the reference nine is silent by
+  construction.
+- **The rsyslog filter files only sources in `10.255.1.`.** A device logging
+  from any other address (r6's management `10.255.0.32`, if it has no
+  `source-interface Loopback0`) lands in `/var/log/syslog`, and Alloy never
+  sees it.
+
+**Freshness needs a source of expected non-silence.** At `critical`, silence
+is the normal state, so "no switch lines for N minutes = failure" would fire
+permanently. At `notifications` it would still fire on any quiet hour. The
+signal only means something if every device emits on a clock. The proposal:
+an **EEM timer applet** per device (`event timer watchdog time 300` →
+`action syslog priority critical msg "NMAS-HEARTBEAT"`). It emits *at* the
+trap level, so it exercises every hop from the device to Loki, whatever level
+is chosen. The failure signal is then **no heartbeat from device X in Loki
+for 2 intervals**, per device, named. **EEM is not modelled**: no parser,
+template or fixture carries `event manager`. Putting it into intent means a
+parser + template + round-trip change and a deploy to every device, through
+the confirmed path.
+
 **P.2 NetBox backup and a tested restore path (closes the core of A1).**
 Sized on the host, 2026-09-25. NetBox is `netbox-docker` under
 `~/netbox-docker`, image `netboxcommunity/netbox:v4.6-5.0.2`,
@@ -1797,6 +1842,25 @@ P.2, not later:**
    safety.** The age of the last successful dump is surfaced, and a missing
    or old one is a named state. A timer that stopped is a backup that does
    not exist.
+
+**Proposal (2026-09-25):** `pg_dump -Fc` **hourly** (retain ~24), promoted
+to **daily** (retain ~14). Each backup is one directory: the dump, a media
+tar, `env/` + `configuration/`, and a manifest (image tag, postgres major,
+NetBox `VERSION`, per-table row counts taken on the **same snapshot** as the
+dump via `pg_export_snapshot()` + `pg_dump --snapshot`, and sha256 of each
+file).
+- **On the host** (`0700`, plaintext): the restore-test source.
+  `env/netbox.env` already sits on this host in the clear, so this adds no
+  new exposure there.
+- **Proxmox storage, outside the NMAS VM:** the same set,
+  **gpg-encrypted to a public key**. The VM holds only the public key and
+  cannot decrypt its own backups. A compromise of the VM cannot read what it
+  has shipped.
+- **Off the box:** the encrypted set again. The private key is kept off
+  both the VM and the Proxmox host.
+- **Not GitHub:** the env secrets have to travel with the dump for a restore
+  to work.
+- `age` is not installed; `gpg` is, and does the job.
 
 What P.2 does **not** give: point-in-time recovery. A nightly dump loses up
 to a day of **human** NetBox edits. NMAS's own writes in that window are
