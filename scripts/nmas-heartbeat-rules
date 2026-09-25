@@ -4,8 +4,9 @@
 NSOT_PLAN.md **P.1**. Every device carries an EEM applet that emits
 ``NMAS-HEARTBEAT`` at the trap level every ``syslog_heartbeat_seconds``
 (default 300). This writes **one Grafana alert rule per NetBox device**: no
-heartbeat from that device in Loki for two intervals (plus a minute of slack)
-fires. **NoData is Alerting**, because a device that has gone silent produces
+heartbeat from that device in Loki for 2.5 intervals fires: quiet on ONE missed
+heartbeat, firing on TWO, for arrival jitter below half an interval (measured:
+91 s on s4, see WINDOW_MULTIPLIER). **NoData is Alerting**, because a device that has gone silent produces
 no series at all, and a rule that treated "no data" as "fine" would be green
 for exactly the failure it exists to catch.
 
@@ -54,9 +55,29 @@ def host_pattern(hostname: str) -> str:
     return r"\s" + re.escape(hostname) + r":\s"
 
 
+#: The window, as a multiple of the heartbeat interval I. DERIVED, not picked.
+#:
+#: The rule must stay quiet when ONE heartbeat is missed (a gap of up to
+#: 2I + J, where J is arrival jitter) and fire when TWO are (a gap of at
+#: least 3I - J). Any window strictly between those works; the midpoint,
+#: 2.5 I, is correct for every J below I/2.
+#:
+#: MEASURED, 2026-09-25, s4: the device clock put two heartbeats exactly 300 s
+#: apart (02:02:37.298, 02:07:37.311) and they ARRIVED 391 s apart (18:15:12,
+#: 18:21:43): J = 91 s, inside the I/2 = 150 s this multiplier tolerates. The
+#: first version used 2I + 60 = 660 s, below 2I + J = 691 s, so ONE missed
+#: heartbeat plus the jitter already measured would have alerted, contrary to
+#: the decision ("alert after 2 missed"). One device, one interval: the
+#: fleet-wide spread is re-measured at P.1's acceptance.
+WINDOW_MULTIPLIER = 2.5
+MAX_TOLERATED_JITTER_FRACTION = 0.5
+MEASURED_JITTER_SECONDS = 91
+
+
 def window_seconds(heartbeat: int) -> int:
-    """Two missed intervals, plus a minute of slack for delivery and ingest."""
-    return 2 * int(heartbeat) + 60
+    """2.5 intervals: quiet on one missed heartbeat, firing on two, for any
+    arrival jitter below half an interval (see WINDOW_MULTIPLIER)."""
+    return int(WINDOW_MULTIPLIER * int(heartbeat))
 
 
 def rule_for(hostname: str, datasource_uid: str, heartbeat: int) -> dict:

@@ -1982,10 +1982,37 @@ the confirmed path.
      `grep NMAS-HEARTBEAT /var/log/network/<loopback-ip>.log` has a line,
      and Loki `{job="network_syslog"} |= "NMAS-HEARTBEAT" |~ "\s<host>:\s"`
      returns it. That is the same anchored match the Grafana rule uses.
+
+   **s4 DONE 2026-09-25 (operator), every check:**
+   - `Trap logging: level notifications`.
+   - The applet is on the device and in the captured golden, byte-identical
+     including the leading space. Golden commit `b222441`, tagged
+     `golden/s4/20260925T180857Z`.
+   - Two `%HA_EM-5-LOG` heartbeat lines in `10.255.1.24.log`, and Loki
+     returned both through the rule's own anchored query. The deploy's own
+     `%GRUB-5-` messages arrived too, and severity 5 is proof by itself that
+     `notifications` took effect.
+   - Device clock 02:02:37.298 → 02:07:37.311, exactly 300 s: the watchdog
+     re-arms, it does not fire once.
+   - **Arrivals 18:15:12 → 18:21:43, 391 s apart: 91 s of jitter between
+     the device's timer and the collector.** That measurement changed the
+     alert window from 2I + 60 = 660 s (which one missed heartbeat plus 91 s
+     would already exceed) to 2.5I = 750 s. That is quiet on one miss and
+     firing on two, for any jitter below I/2
+     (`nmas-heartbeat-rules`, `WINDOW_MULTIPLIER`).
+   - The device clock reads 02:02 while the wall clock read 18:15, so **the
+     device's own timestamps cannot be used for arrival**. What the rule
+     counts is Loki's timestamp.
 5. **Operator:** generate the rules with the Loki datasource UID, install
    them into `/etc/grafana/provisioning/alerting/`, and reload Grafana.
-6. **Acceptance:** heartbeats from all ten devices in Loki, and one
-   deliberately silenced device alerting.
+6. **Acceptance:**
+   - Heartbeats from all ten devices in Loki.
+   - One deliberately silenced device alerting.
+   - **The fleet's arrival spread re-measured:** over at least an hour of
+     heartbeats, the largest deviation of any device's inter-arrival gap
+     from 300 s. It must stay below 150 s (I/2), or the 2.5I window no
+     longer separates one missed heartbeat from two. The 91 s behind the
+     window is one device over one interval.
 
 **Remaining P.1 build, in order (as first written):**
 1. The logging block into the parser, the templates and host_vars (a new

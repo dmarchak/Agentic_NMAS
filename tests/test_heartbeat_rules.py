@@ -41,10 +41,24 @@ class TestOneRulePerDevice:
             assert rule["noDataState"] == "Alerting"
             assert rule["execErrState"] == "Alerting"
 
-    def test_two_missed_intervals_plus_slack(self):
+    def test_the_window_is_2_5_intervals(self):
         rule = H.build(["r1"], "loki-uid", 300)["groups"][0]["rules"][0]
-        assert rule["data"][0]["relativeTimeRange"]["from"] == 660
-        assert "[660s]" in rule["data"][0]["model"]["expr"]
+        assert rule["data"][0]["relativeTimeRange"]["from"] == 750
+        assert "[750s]" in rule["data"][0]["model"]["expr"]
+
+    @pytest.mark.parametrize("interval", [60, 300, 600])
+    def test_one_missed_is_quiet_and_two_missed_fire_at_measured_jitter(
+            self, interval):
+        """The property, not the constant. With the jitter measured on s4
+        (91 s, scaled to the interval's tolerance), a gap of one missed
+        heartbeat stays inside the window and a gap of two falls outside."""
+        w = H.window_seconds(interval)
+        jitter = min(H.MEASURED_JITTER_SECONDS,
+                     interval * H.MAX_TOLERATED_JITTER_FRACTION - 1)
+        one_missed_worst = 2 * interval + jitter
+        two_missed_best = 3 * interval - jitter
+        assert one_missed_worst < w < two_missed_best, (interval, w)
+
 
     def test_the_query_names_the_datasource_and_the_marker(self):
         rule = H.build(["r1"], "loki-uid", 300)["groups"][0]["rules"][0]
