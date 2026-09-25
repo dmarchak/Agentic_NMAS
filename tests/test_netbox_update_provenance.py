@@ -1326,3 +1326,28 @@ class TestTheRecorderCannotFailSilently:
         src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()
         assert "THE RECORDER HAS FAILED" in src
         assert "FLOOR, not a total" in src
+
+
+class TestHealthNamesWhoseProcessItIs:
+    """`health()` counts in memory and the recorder runs inside the Flask
+    app, so a zero printed by this CLI says nothing about what the app
+    experienced.
+
+    Printing it bare would be the reassuring-zero failure one level up: the
+    check built to stop *silence* meaning two things, itself silent about
+    whose silence it reports. The cross-process channel is the app log.
+    """
+
+    def test_the_reader_says_health_is_this_process_only(self):
+        src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()
+        assert "THIS process only" in src
+        assert "journalctl" in src
+
+    def test_a_failure_is_logged_as_well_as_counted(self):
+        """The counter is in memory; the log is what crosses processes. Both,
+        or the app's failures are invisible to anything but the app."""
+        src = open("modules/netbox_guard.py", encoding="utf-8").read()
+        body = src.split("def record_modified(")[1].split("\ndef ")[0]
+        assert "log.error(" in body
+        writer = src.split("def _write_json_atomic(")[1].split("\ndef ")[0]
+        assert "log.error(" in writer

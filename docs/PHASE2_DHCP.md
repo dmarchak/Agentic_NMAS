@@ -1610,3 +1610,83 @@ happened, the recorder was correct, and what failed was the edit.
 Ask the cheapest question that halves the space, rather than the most likely
 explanation. It has been wrong three times running in this project by the
 other route.
+
+
+## 22. The comparison is not eating it — measured, and the fix could not have said so
+
+`last_updated 2026-09-25T06:34:39Z`, 49 seconds after the patch, comments back
+to canonical. A write happened and the recorder said nothing.
+
+### The trailing-whitespace hypothesis is refuted at the code level
+
+It was the right hypothesis to raise — *a fix for noise that suppresses signal*
+would be the worst of the six, and three of the six **are** normalisations. So
+it was tested rather than argued:
+
+```
+changed_fields({"comments": canon + " TEST"}, {"comments": canon})
+  -> {'comments': {'before': '… 10.255.1.11 TEST', 'after': '… 10.255.1.11'}}
+```
+
+`_comparable` strips nothing from a string, `comments` is not in
+`UNORDERED_LIST_FIELDS`, and `record_value` returns both verbatim. Then driven
+through the **whole** path — `_upsert_device` → `_nb_patch` → the record, with
+the patched comments as the stored value and a spy session:
+
+```
+comments sent  : 'Platform: IOS  |  Version: 17.6  |  Mgmt IP: 10.255.1.11'
+entries recorded: 1   dcim/devices/6  ['comments', 'local_context_data']
+```
+
+**The repository's code records it.** So the deployed behaviour and the
+repository's behaviour differ, and the remaining causes are all about *which
+code ran and whether it could write*, not about what it compared.
+
+### The gap in the fix, which is mine
+
+`health()` counts **in memory**, and the recorder runs **inside the Flask
+app** — while `nmas-netbox-modified` is a different process. So the health
+line the CLI prints is about the CLI, and would have read `0 writes failed`
+however badly the app was failing.
+
+*The reassuring zero, one level up*: the check built to stop **silence**
+meaning two things was itself silent about whose silence it reported. It now
+says so in its own output and names the channel that does cross processes —
+the app log, which both `_write_json_atomic` and `record_modified` write at
+ERROR.
+
+### The three discriminators, in order, cheapest first
+
+**1. Is the app running the deployed code at all?** A long-running Flask
+process holds its modules in memory; updating files changes nothing until it
+restarts.
+
+```bash
+ps -o lstart= -p "$(pgrep -f 'python.*app\.py' | head -1)"
+```
+
+A start time **before** the deploy ends the investigation: the churn fixes,
+the comparison and the recorder were all the old ones, and nothing measured
+since applies to the code in the repository.
+
+**2. Did the write fail?** This is the one `health()` was for, and the log is
+where it crosses:
+
+```bash
+journalctl -u nmas --since today | grep netbox_guard
+```
+
+`could not persist` means the file write failed — permissions are the
+candidate, since `--sanitise` and `--apply` were run from a shell and
+`_write_json_atomic` creates `0600` owned by whoever runs it. `NOT recording
+a modification` means the existing record was unreadable, which after
+`67e3c58` refuses rather than erasing.
+
+**3. Only then, the comparison.** With both above clean, patch `comments`
+again and sync with the fixed recorder deployed. Silence at that point, on
+code proven to record the same change in the harness, would mean the deployed
+path differs from the tested one — and the next question is which.
+
+The ordering matters because the expensive hypothesis is third. Two rounds
+have now gone to *a pattern that has been right before*, and both times the
+cheap question was available from the first report.

@@ -3922,6 +3922,31 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   else has to be believed. *Ask the cheapest question that halves the space,
   not the most likely explanation* — which has been wrong three times running
   here by the other route.
+- **THE COMPARISON WAS NOT EATING IT, measured** (§22). *A fix for noise that
+  suppresses signal* was the right hypothesis to raise — three of the six
+  churn fixes **are** normalisations — so it was tested rather than argued:
+  `changed_fields()` records `"… 10.255.1.11 TEST"` → `"… 10.255.1.11"`
+  correctly, `_comparable` strips nothing from a string, and driving the
+  **whole** path (`_upsert_device` → `_nb_patch` → the record) with a spy
+  session produces the entry. **The repository's code records it**, so the
+  remaining causes are about *which code ran and whether it could write*, not
+  about what it compared.
+- **`health()` counts in memory and the recorder runs inside the app**, while
+  `nmas-netbox-modified` is a different process — so the health line the CLI
+  printed was about the CLI and would read `0 writes failed` however badly the
+  app was failing. *The reassuring zero, one level up*: the check built to stop
+  **silence** meaning two things was itself silent about whose silence it
+  reported. It now says so in its own output and names the channel that does
+  cross processes — the app log, at ERROR from both `_write_json_atomic` and
+  `record_modified`.
+- **Three discriminators, cheapest first, and the expensive one is third.**
+  (1) *Is the app running the deployed code?* — a long-running Flask process
+  holds its modules, so `ps -o lstart=` against the deploy time can end the
+  investigation outright. (2) *Did the write fail?* — `journalctl … | grep
+  netbox_guard`, since `--sanitise` and `--apply` run from a shell create
+  `0600` owned by whoever ran them. (3) *Only then, the comparison.* Two
+  rounds have now gone to *a pattern that has been right before*, and both
+  times the cheap question was available from the first report.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

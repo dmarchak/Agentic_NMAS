@@ -104,6 +104,21 @@ def main() -> int:
         return 0
 
     h = got.get("health") or {}
+    # HEALTH IS PER-PROCESS, AND THE RECORDER RUNS IN THE APP.
+    #
+    # `health()` counts in memory, and this script is a different process
+    # from the Flask app that does the recording — so a zero here says
+    # nothing whatever about what the app experienced. Printing it without
+    # that sentence would be the reassuring-zero failure one level up: the
+    # very check built to stop "silence" meaning two things, itself silent
+    # about whose silence it is reporting.
+    #
+    # The cross-process channel is the app log, which `_write_json_atomic`
+    # and `record_modified` write at ERROR.
+    print("health below is THIS process only — the recorder runs inside the "
+          "app, so its failures are in the app log:")
+    print("    journalctl -u nmas --since today | grep netbox_guard")
+    print()
     if h.get("writes") or h.get("unreadable"):
         print(f"⚠ THE RECORDER HAS FAILED since this process started: "
               f"{h.get('writes', 0)} write(s) failed, "
