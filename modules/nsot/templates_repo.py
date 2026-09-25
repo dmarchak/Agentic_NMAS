@@ -255,3 +255,161 @@ def render_with_template(repo: str, host_vars: dict, rel_path: str,
     name = os.path.basename(rel_path)
     return roundtrip.render(host_vars, platform_dir, secret_lookup,
                             template_root=root, template_name=name)
+
+
+# ---------------------------------------------------------------------------
+# Seed status: has the SHIPPED template moved since this network's copy?
+# ---------------------------------------------------------------------------
+
+#: The four answers (OPEN_FINDINGS C6). **"edited" is not a defect**: a
+#: network may change a template deliberately, and a tool that reports that
+#: as a problem gets ignored. The one that asks for attention is "stale" --
+#: the shipped template changed and this network's copy did not -- and
+#: "edited_and_stale", where both moved and a person has to merge.
+SEED_STATES = ("current", "stale", "edited", "edited_and_stale")
+
+#: When history cannot answer. Named, never folded into one of the four.
+SEED_UNCLASSIFIED = ("absent", "no_shipped_history", "no_common_base",
+                     "not_classified")
+
+
+def _git_ro(cwd: str, *args) -> tuple:
+    """Read-only git, deliberately NOT `repo.git()`: that tops up
+    `.gitignore` on every call, which is right for a config repo and wrong
+    for the application checkout this also reads."""
+    import subprocess
+
+    try:
+        p = subprocess.run(["git", "-C", cwd, *args], capture_output=True,
+                           text=True, timeout=30)
+        return p.returncode, p.stdout.strip(), p.stderr.strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 1, "", str(exc)
+
+
+def _blob_of_file(path: str) -> str:
+    """The git blob id of *path*'s raw bytes.
+
+    ABSOLUTE, and with no filters. Measured live: `git -C <dir> hash-object
+    <relative path>` resolves the path from inside <dir>, doubles it, fails,
+    and returns "" -- so every file compared unequal and the whole library
+    read `edited_and_stale` while two files were byte-identical to shipped.
+    The tests passed, because they only ever passed absolute paths.
+    `--no-filters` keeps a repository's `.gitattributes` from changing what
+    is hashed."""
+    path = os.path.abspath(path)
+    if not os.path.isfile(path):
+        return ""
+    rc, out, _ = _git_ro(os.path.dirname(path), "hash-object", "--no-filters",
+                         path)
+    return out if rc == 0 else ""
+
+
+def _history(cwd: str, rel: str) -> list:
+    """``[(commit, iso date, blob)]`` for *rel*, newest first; commits where
+    the path did not exist are skipped."""
+    rc, out, _ = _git_ro(cwd, "log", "--format=%H %cI", "--", rel)
+    if rc != 0:
+        return []
+    rows = []
+    for line in out.splitlines():
+        commit, _, date = line.partition(" ")
+        rc, blob, _ = _git_ro(cwd, "rev-parse", "--verify", "-q",
+                              f"{commit}:{rel}")
+        if rc == 0 and blob:
+            rows.append((commit, date, blob))
+    return rows
+
+
+def _shipped_files(builtin_root: str) -> list:
+    out = []
+    for base, _dirs, files in os.walk(builtin_root):
+        for name in files:
+            if name.endswith(".j2"):
+                out.append(os.path.relpath(os.path.join(base, name),
+                                           builtin_root).replace(os.sep, "/"))
+    return sorted(out)
+
+
+def seed_status(repo: str, builtin_root: str = "") -> dict:
+    """Classify every seeded template in *repo* against the shipped one.
+
+    **Read-only, and needs no record that does not already exist.** Git holds
+    both histories: the application's (every shipped version of each file)
+    and the network's (every version its copy has been). For each file:
+
+    * ``current`` -- the network copy IS today's shipped file;
+    * ``stale`` -- it is an OLDER shipped version, unedited: the shipped fix
+      has not reached this network;
+    * ``edited`` -- it matches no shipped version, and the shipped file has
+      not moved since the version it was last in step with. Deliberate local
+      change; nothing to do;
+    * ``edited_and_stale`` -- edited here AND the shipped file moved since:
+      a merge a person has to make.
+
+    Where history cannot answer, the file is ``unclassified`` with the
+    reason, never guessed into one of the four.
+    """
+    builtin_root = builtin_root or BUILTIN_ROOT
+    rc, app_root, err = _git_ro(builtin_root, "rev-parse", "--show-toplevel")
+    report = {"ok": True, "reason": "", "files": [], "unclassified": []}
+    if rc != 0:
+        report.update(ok=False, reason=(
+            "the application is not a git checkout, so no shipped version "
+            f"but today's is known: {err or 'no repository'}"))
+    tdir = templates_dir(repo)
+
+    for rel in _shipped_files(builtin_root):
+        shipped_path = os.path.join(builtin_root, rel)
+        net_path = os.path.join(tdir, rel)
+        entry = {"path": rel}
+        if not os.path.exists(net_path):
+            report["unclassified"].append({**entry, "state": "absent",
+                "reason": "not seeded into this network yet; the Templates "
+                          "tab seeds missing files when it loads"})
+            continue
+        shipped_now = _blob_of_file(shipped_path)
+        mine = _blob_of_file(net_path)
+        if mine and mine == shipped_now:
+            report["files"].append({**entry, "state": "current"})
+            continue
+        if not report["ok"]:
+            report["unclassified"].append({**entry,
+                "state": "no_shipped_history", "reason": report["reason"]})
+            continue
+        app_rel = os.path.relpath(shipped_path, app_root).replace(os.sep, "/")
+        shipped = {}
+        for commit, date, blob in _history(app_root, app_rel):
+            shipped.setdefault(blob, (commit, date))   # newest commit wins
+        if mine in shipped:
+            commit, date = shipped[mine]
+            report["files"].append({**entry, "state": "stale",
+                "detail": f"this network has the shipped version of "
+                          f"{commit[:8]} ({date}); the shipped file has "
+                          "changed since and the change has not reached it"})
+            continue
+        base = next(((c, d, b) for c, d, b in
+                     _history(repo, f"templates/{rel}") if b in shipped), None)
+        if base is None:
+            report["unclassified"].append({**entry, "state": "no_common_base",
+                "reason": "no version of this network's copy ever equalled a "
+                          "shipped version, so whether the shipped file moved "
+                          "since cannot be said"})
+            continue
+        s_commit, s_date = shipped[base[2]]
+        if base[2] == shipped_now:
+            report["files"].append({**entry, "state": "edited",
+                "detail": f"changed here (last in step with shipped "
+                          f"{s_commit[:8]}); the shipped file has not moved "
+                          "since -- a deliberate local change, nothing to do"})
+        else:
+            report["files"].append({**entry, "state": "edited_and_stale",
+                "detail": f"changed here since it matched shipped "
+                          f"{s_commit[:8]} ({s_date}), AND the shipped file "
+                          "has changed since then -- a person has to merge"})
+
+    report["unclassified"].append({
+        "path": BINDINGS_FILE, "state": "not_classified",
+        "reason": "seeded from a code constant (DEFAULT_BINDINGS), not a "
+                  "file, and bindings are per-network by design"})
+    return report

@@ -623,6 +623,29 @@ _CUSTOM_FIELDS: dict = {
 }
 _custom_fields_ensured: set = set()   # process-lifetime cache — avoid re-checking every sync
 
+# DEFINITION WRITES THAT FAILED, per sync thread (OPEN_FINDINGS C6 item 2).
+# `_ensure_custom_field` used to log a failed create at DEBUG and return
+# False, so callers quietly skipped the field: a write that failed with
+# nothing anywhere saying so -- the class the modification record exists
+# for, on a path it does not cover. Now WARNING, and collected so the sync
+# summary's `notes` names it. Thread-local, because two lists can sync at
+# once on two threads.
+_ensure_failures = threading.local()
+
+
+def _ensure_failed(what: str, exc) -> None:
+    msg = f"{what} could not be written: {exc}"
+    log.warning("netbox: %s", msg)
+    if not hasattr(_ensure_failures, "items"):
+        _ensure_failures.items = []
+    _ensure_failures.items.append(msg)
+
+
+def _drain_ensure_failures() -> list:
+    items = list(getattr(_ensure_failures, "items", None) or [])
+    _ensure_failures.items = []
+    return items
+
 
 def _ensure_custom_field(session, base: str, name: str) -> bool:
     """Get-or-create one of the app's known custom field definitions.
@@ -656,7 +679,7 @@ def _ensure_custom_field(session, base: str, name: str) -> bool:
         _custom_fields_ensured.add(name)
         return True
     except Exception as exc:
-        log.debug("netbox: could not ensure custom field '%s': %s", name, exc)
+        _ensure_failed(f"custom field '{name}'", exc)
         return False
 
 
@@ -1832,7 +1855,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                                   _PROTOCOL_TAG_COLORS.get(proto, "9e9e9e"))
                 tag_ids.append(tag["id"])
             except Exception as exc:
-                log.debug("netbox: tag %s failed: %s", proto, exc)
+                _ensure_failed(f"tag '{proto}'", exc)
         if tag_ids:
             try:
                 current_tags = [t["id"] for t in (device.get("tags") or [])]
@@ -2117,7 +2140,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             sr_tag = _ensure_tag(session, base, "static-route", "static-route", "607d8b")
             sr_tag_id = sr_tag["id"]
         except Exception as exc:
-            log.debug("netbox: static-route tag failed: %s", exc)
+            _ensure_failed("tag 'static-route'", exc)
 
         for route in static_routes:
             try:
@@ -2743,6 +2766,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
     # logged: a refusal nobody reads is the same as no refusal, and the
     # caller renders this.
     provisioning_notes: list = []
+    _drain_ensure_failures()     # this sync's failures only
 
     # Build/refresh the region and site up-front. Device roles are resolved
     # per-device below (router/switch/firewall, matching the app's own
@@ -2899,7 +2923,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
             "cables":     ipam_stats.get("cables_synced", 0),
             "tunnels":    ipam_stats.get("tunnels_synced", 0),
         },
-        "notes":      provisioning_notes,
+        "notes":      provisioning_notes + _drain_ensure_failures(),
         "timestamp":  time.strftime("%Y-%m-%d %H:%M:%S"),
         "netbox_url": f"{base}/dcim/sites/{site['id']}/",
         "ipam_url":   f"{base}/ipam/prefixes/",
@@ -3633,3 +3657,78 @@ def netbox_get_vpn_tunnels(device_name: str = "") -> dict:
         return {"ok": True, "tunnels": results}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Seeded definitions: does NetBox still hold what the code defines?
+# ---------------------------------------------------------------------------
+
+def _seeded_tag_specs() -> dict:
+    """Every tag whose attributes are CODE constants, by slug."""
+    from modules.netbox_guard import MANAGED_TAG, MANAGED_TAG_SLUG
+    specs = {MANAGED_TAG_SLUG: {"name": MANAGED_TAG, "color": "00bcd4"},
+             "static-route": {"name": "static-route", "color": "607d8b"}}
+    for proto, color in _PROTOCOL_TAG_COLORS.items():
+        specs[proto] = {"name": proto.upper(), "color": color}
+    return specs
+
+
+def _field_value(obj: dict, key: str):
+    v = obj.get(key)
+    if isinstance(v, dict) and "value" in v:       # NetBox enums
+        return v["value"]
+    if isinstance(v, list):
+        return sorted(str(x) for x in v)
+    return v
+
+
+def seeded_spec_status(session=None, base: str = "") -> dict:
+    """Compare every NetBox object NMAS creates from a code-defined spec with
+    what NetBox holds now (OPEN_FINDINGS C6 item 2).
+
+    These are create-only: `_ensure_*` makes them once and never updates them,
+    so a changed spec never reaches a NetBox that already has the object.
+
+    Per object: ``current``, ``absent`` (created on the next sync that needs
+    it), ``differs`` (each field with BOTH operands), or ``unreadable``.
+    ``differs`` does not say who moved: the code may have changed since the
+    object was created, or somebody edited it in NetBox, and NetBox keeps no
+    history to tell which (OPEN_FINDINGS A1). Read-only.
+    """
+    if session is None:
+        ok, err, session, base = _nb_ready()
+        if not ok:
+            return {"ok": False, "reason": f"NetBox is not reachable: {err}",
+                    "objects": []}
+    objects = []
+
+    def compare(kind, ident, path, query, spec, keys):
+        try:
+            found = _nb_first(session, base, path, **query)
+        except Exception as exc:                     # noqa: BLE001
+            objects.append({"kind": kind, "name": ident, "state": "unreadable",
+                            "reason": str(exc)})
+            return
+        if not found:
+            objects.append({"kind": kind, "name": ident, "state": "absent"})
+            return
+        diffs = []
+        for key in keys:
+            want = spec.get(key)
+            want = sorted(want) if isinstance(want, list) else want
+            have = _field_value(found, key)
+            if key == "color":
+                want, have = str(want).lower(), str(have or "").lower()
+            if want != have:
+                diffs.append({"field": key, "code": want, "netbox": have})
+        objects.append({"kind": kind, "name": ident,
+                        "state": "differs" if diffs else "current",
+                        "fields": diffs})
+
+    for name, spec in _CUSTOM_FIELDS.items():
+        compare("custom field", name, "extras/custom-fields/", {"name": name},
+                spec, ("label", "type", "object_types", "description"))
+    for slug, spec in _seeded_tag_specs().items():
+        compare("tag", slug, "extras/tags/", {"slug": slug}, spec,
+                ("name", "color"))
+    return {"ok": True, "reason": "", "objects": objects}

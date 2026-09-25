@@ -658,7 +658,9 @@ class TestEnsureSiteDoesNotEditWhatItDoesNotOwn:
 
     def test_the_sync_surfaces_the_notes(self):
         src = open("modules/netbox_client.py", encoding="utf-8").read()
-        assert '"notes":      provisioning_notes,' in src
+        # Both channels reach the summary: _ensure_site's declined edits, and
+        # (C6 item 2) definition writes that failed.
+        assert '"notes":      provisioning_notes + _drain_ensure_failures(),' in src
         assert "notes=provisioning_notes" in src
 
 

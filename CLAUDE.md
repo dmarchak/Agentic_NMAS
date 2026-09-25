@@ -864,6 +864,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_syslog_block.py` | P.1: the captured device rendering round-trips on both platforms; only the exact heartbeat applet is claimed; whole-or-absent at the AUTHORING path, a true partial block recorded at extraction |
 | `test_heartbeat_rules.py` | one rule per device, NoData = Alerting, anchored hostname match, empty inventory and unusable interval refused |
 | `test_no_pattern_kill.py` | nothing written down stops a process by pattern; the tunnel helper closes the master it opened, and reports one that will not stop |
+| `test_seed_status.py` | C6: current / stale / edited / edited_and_stale from two git histories; edited is not a defect; a RELATIVE path classifies the same (the live run that got it wrong) |
+| `test_netbox_seeded_specs.py` | code-defined NetBox specs against NetBox with both operands; a failed definition write warns and reaches the sync's notes |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
@@ -3986,6 +3988,15 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   check can find an X that **is** there (a positive control). Same family as
   *a lookup that misses is a fact about the query*, stated for findings
   rather than code.
+- **A seed that never overwrites needs something that COMPARES, or its
+  copies go stale silently** (OPEN_FINDINGS C6). `nmas-seed-status` classifies
+  every list's templates as current / stale / edited / edited_and_stale from
+  the two git histories, and **"edited" is never a defect**: a tool that
+  reports a deliberate change as a problem gets ignored. It also compares
+  NMAS's code-defined NetBox specs with NetBox. Its first live run classified
+  every file wrongly while its tests passed. The tests used absolute paths
+  and the deployment passed a relative one, which `git -C` then doubled. A
+  fixture that could not exhibit the case, again.
 - **STOP A PROCESS BY IDENTITY, NEVER BY PATTERN.** `pkill -f "<pattern>"`
   killed the shell running it three times: a heredoc edit lost
   (`NSOT_WRITEUP_NOTES.md`), a file copy lost, and a probe teardown stopped
@@ -4025,7 +4036,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **15 open at 2026-09-25**, counted from the rows: 11 recorded only in
+present when each was recorded. **17 open at 2026-09-25**, counted from the rows: 13 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

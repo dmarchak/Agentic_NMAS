@@ -1901,7 +1901,10 @@ the confirmed path.
    shipped version, in the Templates editor. **Seeding never overwrites, so
    the shipped change reaches no existing network by itself**
    (OPEN_FINDINGS C6). That edit revokes both approvals, and re-approving is
-   a person's act.
+   a person's act. **Check it:** `scripts/nmas-seed-status --list Default
+   --no-netbox` reads `_common.j2` **stale** (at `4771a4c`) before the edit,
+   and must read **current** after it. Anything else, such as `edited`,
+   means the pasted text is not byte-identical to the shipped file.
 4. **Per device, one at a time:** complete the block in committed intent
    (trap `notifications`, heartbeat 300; r6 needs the whole block), then plan
    and confirm through the deploy path. Confirm needs a person.

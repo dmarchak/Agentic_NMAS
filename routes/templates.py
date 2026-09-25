@@ -501,3 +501,30 @@ def validate(rel_path):
     result = approval.validate_template(repo, rel_path, devices)
     result.pop("host_vars_by_device", None)     # internal; large
     return jsonify(result)
+
+
+@bp.route("/seed_status", methods=["GET"])
+def seed_status():
+    """Is this network running a stale seed of any shipped template?
+
+    OPEN_FINDINGS C6. Four states -- current, stale, edited,
+    edited_and_stale -- and ``edited`` is a deliberate local change, not a
+    defect. The list is looked up in the registry rather than through
+    ``get_list_data_dir()``, which creates a directory: a READ must not be
+    able to bring a list into existence from a typo.
+    """
+    from modules.config import LISTS_DIR, get_current_list_name
+    from modules.device import get_device_lists
+    from modules.nsot import templates_repo
+
+    name = (request.args.get("list_name") or "").strip() or \
+        get_current_list_name()
+    match = next((l for l in get_device_lists() if l["name"] == name), None)
+    if match is None:
+        return jsonify({"ok": False, "error": f"no device list named {name!r}"}), 404
+    repo = os.path.join(LISTS_DIR, match["filename"], "config_repo")
+    report = templates_repo.seed_status(repo)
+    report["list_name"] = name
+    report["needs_attention"] = [e["path"] for e in report["files"]
+                                 if e["state"] in ("stale", "edited_and_stale")]
+    return jsonify(report)

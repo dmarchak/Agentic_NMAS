@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Which device lists are running a stale seed of a shipped template?
+
+OPEN_FINDINGS C6. Every list's `config_repo/templates/` is a COPY seeded once
+from `modules/nsot/templates/`, and seeding never overwrites -- so a shipped
+template fix reaches no list that already has the file. This reads both git
+histories and says, per list and per file:
+
+    current            the network copy is today's shipped file
+    stale              it is an OLDER shipped version: the fix has not reached it
+    edited             changed here on purpose; the shipped file has not moved
+    edited_and_stale   changed here AND the shipped file moved: a person merges
+
+**"edited" is not a defect** and never changes the exit code.
+
+    nmas-seed-status                 # every list, then NetBox
+    nmas-seed-status --list Default
+    nmas-seed-status --no-netbox
+
+NetBox half: every object NMAS creates from a CODE-defined spec (the
+`os_version` custom field, the seeded tags) against what NetBox holds --
+current, absent, differs (both operands), or unreadable. "differs" cannot say
+who moved: NetBox keeps no history (OPEN_FINDINGS A1).
+
+Exit 0 nothing needs a person, 1 something is stale or needs a merge,
+2 history could not answer for some file (named, never guessed).
+Read-only; it never overwrites a template.
+"""
+
+import argparse
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--list", dest="list_name", default="")
+    ap.add_argument("--no-netbox", action="store_true")
+    args = ap.parse_args()
+
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists
+    from modules.nsot import templates_repo
+
+    lists = [l for l in get_device_lists()
+             if not args.list_name or l["name"] == args.list_name]
+    if not lists:
+        print(f"UNPROVEN: no device list {'named ' + repr(args.list_name) if args.list_name else 'found'}")
+        return 2
+    code = 0
+    for entry in lists:
+        repo = os.path.join(LISTS_DIR, entry["filename"], "config_repo")
+        print(f"== {entry['name']}")
+        if not os.path.isdir(os.path.join(repo, "templates")):
+            print("   no template library (never seeded)")
+            continue
+        report = templates_repo.seed_status(repo)
+        for f in report["files"]:
+            print(f"   {f['state']:<17} {f['path']}"
+                  + (f"  -- {f['detail']}" if f.get("detail") else ""))
+            if f["state"] in ("stale", "edited_and_stale"):
+                code = max(code, 1)
+        for u in report["unclassified"]:
+            print(f"   {u['state']:<17} {u['path']}  -- {u['reason']}")
+            if u["state"] in ("no_shipped_history", "no_common_base"):
+                code = 2 if code == 0 else code
+    if not args.no_netbox:
+        from modules.netbox_client import seeded_spec_status
+        print("== NetBox definitions")
+        r = seeded_spec_status()
+        if not r["ok"]:
+            print(f"   UNPROVEN: {r['reason']}")
+            return 2 if code == 0 else code
+        for o in r["objects"]:
+            extra = "; ".join(f"{d['field']}: code {d['code']!r}, NetBox "
+                              f"{d['netbox']!r}" for d in o.get("fields") or [])
+            print(f"   {o['state']:<11} {o['kind']} {o['name']}"
+                  + (f"  -- {extra}" if extra else "")
+                  + (f"  -- {o['reason']}" if o.get("reason") else ""))
+            if o["state"] == "differs":
+                code = max(code, 1)
+            elif o["state"] == "unreadable" and code == 0:
+                code = 2
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
