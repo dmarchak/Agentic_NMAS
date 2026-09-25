@@ -225,3 +225,206 @@ class TestTheRepairScriptSpecifically:
         called = {n.func.id for n in ast.walk(main)
                   if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
         assert "_remove_excluded" in called
+
+
+# ---------------------------------------------------------------------------
+# Does it start at all when run the way the docs say to run it?
+# ---------------------------------------------------------------------------
+
+def _has_path_bootstrap(source: str) -> bool:
+    """Does it put the repo root on `sys.path`? **Parsed, not matched.**
+
+    There are two spellings in this repository and they are the same thing:
+
+        ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, ROOT)                       # nine scripts
+
+        sys.path.insert(0, os.path.dirname(os.path.dirname(...)))   # five
+
+    The first version of this check was the literal string
+    `"sys.path.insert(0, ROOT)"` and reported the other five as broken — **a
+    check matching one spelling of a construct**, which is the Gi1 link check
+    blind to the extended format, one file over. Any `sys.path.insert` or
+    `sys.path.append` counts; how the path is computed is not this check's
+    business.
+
+    A script importing `modules` without one works only with `PYTHONPATH`
+    set — which is to say it works for whoever wrote it and for nobody
+    following the documentation.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute):
+            continue
+        if func.attr not in ("insert", "append"):
+            continue
+        target = func.value
+        if (isinstance(target, ast.Attribute) and target.attr == "path"
+                and getattr(target.value, "id", "") == "sys"):
+            return True
+    return False
+
+
+def _scripts():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    directory = os.path.join(root, "scripts")
+    return [os.path.join(directory, n) for n in sorted(os.listdir(directory))
+            if n.startswith("nmas-") and os.path.isfile(os.path.join(directory, n))]
+
+
+def _imports_modules(source: str) -> bool:
+    """Does it import from the `modules` package **anywhere**, including
+    inside a function — which is where this project puts them."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "modules":
+            return True
+        if isinstance(node, ast.Import):
+            if any(a.name.split(".")[0] == "modules" for a in node.names):
+                return True
+    return False
+
+
+def test_the_bootstrap_scan_finds_something():
+    """**The floor.** Both assertions below are set differences."""
+    users = [p for p in _scripts()
+             if _imports_modules(open(p, encoding="utf-8").read())]
+    assert len(users) >= 10, (
+        f"only {len(users)} scripts import `modules` — the scan is reading "
+        "almost nothing")
+
+
+def test_every_script_that_imports_modules_puts_the_root_on_sys_path():
+    """The property that matters: *does this start when run the way the docs
+    say to run it.*"""
+    offenders = []
+    for path in _scripts():
+        source = open(path, encoding="utf-8").read()
+        if _imports_modules(source) and not _has_path_bootstrap(source):
+            offenders.append(os.path.basename(path))
+    assert not offenders, (
+        "these import `modules` and do not put the repo root on sys.path, so "
+        f"they run only with PYTHONPATH set: {offenders}")
+
+
+def test_a_script_that_imports_nothing_needs_no_bootstrap():
+    """**The floor on the other side.** Requiring it everywhere would add two
+    dead lines to `nmas-clab-targets`, which is deliberately dependency-free
+    so the clab host can run it."""
+    bare = [os.path.basename(p) for p in _scripts()
+            if not _imports_modules(open(p, encoding="utf-8").read())]
+    assert bare, "every script imports modules — this check proves nothing"
+
+
+class TestHelpIsNotTheImportCheck:
+    """**The proposed runnable check would not have caught it, measured.**
+
+    `python3 scripts/<name> --help` passed on the broken script: argparse
+    prints and exits **before** any function body runs, and this project
+    imports `modules` *inside* functions to keep startup cheap. So `--help`
+    proves the file parses and argparse is wired — and says nothing about
+    whether the imports resolve.
+
+    Worth pinning rather than dropping: `--help` catches other things, and the
+    danger is somebody later reading it as the import check. Third time this
+    session that a check could not exhibit the case it was written for.
+    """
+
+    def test_help_passes_on_a_script_with_no_bootstrap(self, tmp_path):
+        import subprocess
+        import sys
+
+        script = tmp_path / "nmas-fake"
+        script.write_text(
+            "import argparse\n"
+            "def main():\n"
+            "    argparse.ArgumentParser().parse_args()\n"
+            "    from modules import credentials\n"
+            "    return 0\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n", encoding="utf-8")
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        done = subprocess.run([sys.executable, str(script), "--help"],
+                              capture_output=True, text=True, env=env,
+                              cwd=str(tmp_path), timeout=30)
+        assert done.returncode == 0
+        assert "ModuleNotFoundError" not in done.stderr, (
+            "--help reached the import after all — then it IS the check, and "
+            "the static rule above can be reconsidered")
+
+    def test_and_actually_running_it_does_catch_it(self, tmp_path):
+        """The same script, invoked so the function body runs."""
+        import subprocess
+        import sys
+
+        script = tmp_path / "nmas-fake"
+        script.write_text(
+            "def main():\n"
+            "    from modules import credentials\n"
+            "    return 0\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n", encoding="utf-8")
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        done = subprocess.run([sys.executable, str(script)],
+                              capture_output=True, text=True, env=env,
+                              cwd=str(tmp_path), timeout=30)
+        assert "ModuleNotFoundError" in done.stderr
+
+
+def test_every_script_starts_when_run_bare():
+    """Runnable, and kept for what it *does* catch: a syntax error, a broken
+    argparse, a module-level statement that raises. Not the import check —
+    see `TestHelpIsNotTheImportCheck`."""
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    broken = []
+    for path in _scripts():
+        try:
+            done = subprocess.run([sys.executable, path, "--help"],
+                                  capture_output=True, text=True, env=env,
+                                  cwd=root, timeout=60)
+        except subprocess.TimeoutExpired:
+            broken.append(f"{os.path.basename(path)}: timed out on --help")
+            continue
+        if "Traceback" in done.stderr:
+            first = next((l for l in done.stderr.splitlines() if "Error" in l),
+                         done.stderr.splitlines()[-1] if done.stderr else "?")
+            broken.append(f"{os.path.basename(path)}: {first.strip()}")
+    assert not broken, "scripts that do not start: " + "; ".join(broken)
+
+
+def test_the_bootstrap_check_accepts_BOTH_spellings():
+    """The repository has two forms of one construct. A check that recognises
+    one reports the other five scripts as broken — which the first version of
+    this check did."""
+    named = ("import os, sys\n"
+             "ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))\n"
+             "sys.path.insert(0, ROOT)\n")
+    inline = ("import os, sys\n"
+              "sys.path.insert(0, os.path.dirname(os.path.dirname("
+              "os.path.abspath(__file__))))\n")
+    assert _has_path_bootstrap(named)
+    assert _has_path_bootstrap(inline)
+
+
+def test_the_bootstrap_check_can_say_no():
+    """**The floor.** A recogniser that accepted everything would make the
+    rule above unfalsifiable."""
+    assert not _has_path_bootstrap("import os, sys\nprint(sys.path)\n")
+    assert not _has_path_bootstrap("from modules import credentials\n")

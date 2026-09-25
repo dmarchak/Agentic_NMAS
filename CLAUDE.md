@@ -3374,6 +3374,41 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   And zero claims across every list is **UNPROVEN**, not *all orphans*: the
   inventories being unreadable would otherwise report the worst possible answer
   with confidence.
+- **A script whose entry point cannot reach its own IMPORTS.**
+  `nmas-credential-overrides` omitted the two lines fourteen other scripts
+  carry, so it ran only with `PYTHONPATH` set — *which is to say it had never
+  been run the way a person runs one*. Same family as `_remove_excluded`
+  stranded below the `__main__` guard, and **the entry-point sweep built for
+  that could not see it**: it parses for definitions the entry point cannot
+  reach, and this is imports the entry point cannot reach.
+  The rule is now *a script importing `modules` must put the repo root on
+  `sys.path`*, with a floor on how many such scripts exist and a counterpart
+  asserting that a dependency-free script (`nmas-clab-targets`, deliberately
+  standalone so the clab host can run it) needs none.
+- **`--help` is NOT the import check, measured — and the proposed runnable
+  check would have passed on the broken script.** argparse prints and exits
+  **before any function body runs**, and this project imports `modules`
+  *inside* functions to keep startup cheap. So `--help` proves the file parses
+  and argparse is wired, and says nothing about whether the imports resolve.
+  Kept for what it does catch — a syntax error, a broken argparse, a
+  module-level statement that raises — and **pinned as insufficient**, with a
+  test that runs a bootstrap-less script both ways and shows `--help` passing
+  where a real invocation fails. The danger is somebody later reading it as
+  the import check. Third time this session a check could not exhibit the case
+  it was written for.
+- **Running it the real way found the next defect immediately.** With the
+  import fixed, `nmas-credential-overrides` crashed on
+  `get_device_lists()`, which returns `list[dict]` and not a mapping — the
+  **sixth inferred-signature defect**, and mine. The script then ran and its
+  own floor fired correctly: zero devices in this checkout's inventories, so
+  it refused with **UNPROVEN** rather than reporting every override as an
+  orphan.
+- **My own bootstrap check matched one spelling of the construct.** The
+  repository has two — `sys.path.insert(0, ROOT)` and the inline
+  `sys.path.insert(0, os.path.dirname(...))` — and the literal-string version
+  reported the five inline scripts as broken. Parsed now: any `sys.path.insert`
+  or `.append`, however the path is computed. **The Gi1 link check blind to the
+  extended format, one file over and two hours later.**
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
