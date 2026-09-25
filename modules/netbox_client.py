@@ -1585,7 +1585,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                    protocol_tags: Optional[list] = None,
                    routing_context: Optional[dict] = None,
                    list_vrf_id: Optional[int] = None,
-                   status: str = "active") -> dict:
+                   status: str = "active",
+                   mgmt_prefix_len: int = 0) -> dict:
     """Create or update a device in NetBox with full DCIM + IPAM data.
 
     Syncs: device record, platform, interfaces (with MAC/MTU/speed/state),
@@ -2036,7 +2037,22 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             #    address so the device always has a reachable primary IP.
             if not mgmt_ip_id:
                 first_iface_id = next(iter(nb_iface_map.values()), None)
-                mgmt_cidr = f"{ip}/32"
+                # THE PREFIX THE DEVICE ACTUALLY HAS, when the caller knows it.
+                #
+                # A host route is the honest answer when the length is unknown
+                # -- a golden with no addresses tells us nothing about the
+                # subnet -- but for a DHCP device the LEASE knows, and
+                # onboarding now carries it here. Recording a host route for an
+                # interface that is really on a /24 is NetBox being wrong about
+                # the network, which is the one thing NetBox is for.
+                #
+                # 0 or absent keeps the /32 last resort: not knowing and
+                # guessing are different, and only one of them is honest.
+                try:
+                    prefix = int(mgmt_prefix_len or 0)
+                except (TypeError, ValueError):
+                    prefix = 0
+                mgmt_cidr = f"{ip}/{prefix if 0 < prefix <= 32 else 32}"
                 if not first_iface_id:
                     # `_ensure_ip_address` now refuses an unscoped lookup, so
                     # say WHY rather than letting the refusal reach the debug
@@ -2503,6 +2519,12 @@ def _scan_device_from_golden(dev: dict) -> dict:
              hostname, ip, len(interfaces), len(static_routes), protocol_tags)
     return {
         "ip":              ip,
+        # CARRIED THROUGH FROM THE CALLER, not parsed. A golden that says
+        # `ip address dhcp` cannot tell anyone the subnet -- onboarding asked
+        # Kea's lease and put it on the device dict, and this is the only path
+        # from there to the NetBox record. Absent means unknown, and NetBox
+        # keeps its host-route last resort.
+        "mgmt_prefix_len": dev.get("prefix_len") or 0,
         "hostname":        hostname,
         "app_role":        app_role,
         "facts":           facts,
@@ -2664,6 +2686,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
                 protocol_tags=result.get("protocol_tags", []),
                 routing_context=result.get("routing_context", {}),
                 list_vrf_id=list_vrf_id,
+                mgmt_prefix_len=result.get("mgmt_prefix_len") or 0,
             )
             if outcome["action"] == "created":
                 created += 1

@@ -308,7 +308,8 @@ class KeaIntegration(IntegrationClient):
         wanted = (mac or "").strip().lower().replace("-", ":")
         if not wanted:
             return {"state": self.UNKNOWN, "address": "", "hostname": "",
-                    "source": "", "error": "no MAC address given"}
+                    "prefix_length": 0, "source": "",
+                    "error": "no MAC address given"}
 
         probe = self.command("lease4-get-by-hw-address",
                              service=["dhcp4"])
@@ -330,11 +331,56 @@ class KeaIntegration(IntegrationClient):
 
         for lease in self._active_leases({"arguments": {"leases": leases}}):
             if (lease.get("hw-address") or "").strip().lower() == wanted:
+                # THE PREFIX LENGTH TOO, because a lease belongs to a subnet
+                # and an address without one is a claim about the network.
+                # NetBox recorded a leased address as a HOST ROUTE for an
+                # interface that is really on a /24 -- the mask is not in the
+                # manifest for a DHCP device (correctly: it is not known at
+                # plan time), so the record defaulted. A host route where a
+                # subnet lives is NetBox being wrong about the network, which
+                # is what NetBox is for. Unknown stays 0 rather than guessing.
+                prefix = self._prefix_for_subnet(lease.get("subnet-id"))
                 return {"state": "found", "address": lease.get("ip-address", ""),
                         "hostname": lease.get("hostname", ""),
+                        "prefix_length": prefix,
+                        "subnet_id": lease.get("subnet-id"),
                         "source": source, "error": ""}
         return {"state": "none", "address": "", "hostname": "",
+                "prefix_length": 0, "subnet_id": None,
                 "source": source, "error": ""}
+
+    def _prefix_for_subnet(self, subnet_id) -> int:
+        """The prefix length of the subnet a lease belongs to, or ``0``.
+
+        A lease carries `subnet-id`, not a prefix, so the server's own
+        configuration is the only place the CIDR lives. **Zero means unknown**
+        and is never 32: guessing a host route for an address that is really on
+        a /24 is the defect this exists to fix, and guessing it here would move
+        the guess rather than remove it.
+        """
+        if subnet_id is None:
+            return 0
+        config = self.command("config-get")
+        if not config.get("ok"):
+            return 0
+        rows = config["result"]
+        rows = rows if isinstance(rows, list) else [rows]
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            dhcp4 = (row.get("arguments") or {}).get("Dhcp4")
+            if not isinstance(dhcp4, dict):
+                continue
+            for subnet in dhcp4.get("subnet4") or []:
+                if subnet.get("id") != subnet_id:
+                    continue
+                cidr = str(subnet.get("subnet") or "")
+                if "/" in cidr:
+                    try:
+                        return int(cidr.rsplit("/", 1)[1])
+                    except ValueError:
+                        return 0
+        return 0
 
     @staticmethod
     def _leases_from(result) -> list:

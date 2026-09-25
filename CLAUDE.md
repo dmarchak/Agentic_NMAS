@@ -3409,6 +3409,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   reported the five inline scripts as broken. Parsed now: any `sys.path.insert`
   or `.append`, however the path is computed. **The Gi1 link check blind to the
   extended format, one file over and two hours later.**
+- **PHASE 2 IS PROVEN** (2026-09-24, [docs/PHASE2_DHCP.md](docs/PHASE2_DHCP.md)
+  §8). A device the tool never addressed fetched its own address from a Kea
+  reservation, was **found at that address by the tool asking Kea for the
+  lease**, then reached, captured, rotated, cleaned, recorded and promoted —
+  with **no relay in the path**, which is the variable phase 2 exists to
+  isolate from phase 3. Four stores agree on `10.255.0.40`: the manifest
+  (discovered, matching `reserved_address`), the CSV (with the rotated
+  credential), Kea's lease, and NetBox.
+- **An address without a prefix is a claim about the NETWORK, and NetBox
+  recorded a host route where a /24 lives.** The mask is not in the manifest
+  for a DHCP device — correctly, it is not known at plan time — so the record
+  fell through to `_upsert_device`'s last resort, which exists for a golden
+  that genuinely has no addresses. **The lease knows**: it carries a
+  `subnet-id`, and the server's own configuration has the CIDR. Threaded from
+  `lease_for()` through `discover_dhcp_address()`, the manifest and the device
+  dict to the NetBox record. *Being wrong about the network is the one thing
+  NetBox cannot be, because that is what NetBox is for.*
+  **Unknown stays 0, never 32.** A host route is the honest answer when the
+  length cannot be known, and guessing it in the new code would have moved the
+  defect rather than removed it — the fallback survives, with a floor asserting
+  it does.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

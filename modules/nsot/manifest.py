@@ -117,7 +117,8 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
                   netbox_id=None, platform: str = "", golden: str = "",
                   pending: bool = False, clab_lab: str = "",
                   address_source: str = "", mgmt_mac: str = "",
-                  reserved_address: str = "") -> dict:
+                  reserved_address: str = "",
+                  mgmt_prefix_len: int = 0) -> dict:
     """Record or update a device. Returns its manifest entry.
 
     *pending* marks a device **onboarded but never reached**: it stamps
@@ -159,7 +160,12 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
         # refresh that does not know does not erase what onboarding recorded.
         for key, value in (("address_source", address_source),
                            ("mgmt_mac", mgmt_mac),
-                           ("reserved_address", reserved_address)):
+                           ("reserved_address", reserved_address),
+                           # The subnet the leased address is on. Absent means
+                           # unknown; NetBox then keeps its /32 last resort,
+                           # which is honest about not knowing rather than
+                           # wrong about the network.
+                           ("mgmt_prefix_len", mgmt_prefix_len)):
             if value:
                 entry[key] = value
         entry.setdefault("pending_rename", None)

@@ -1105,3 +1105,116 @@ class TestTheOverrideSurveyCanRun:
             "it must at least say what removes one"
         assert "credentials.clear_device_override(row" not in source
         assert "does not delete" in source
+
+
+class TestTheLeaseCarriesItsSubnet:
+    """NetBox recorded the leased address as a **host route** for an interface
+    that is really on a /24.
+
+    The mask is not in the manifest for a DHCP device — correctly, it is not
+    known at plan time — so the NetBox record fell through to its last resort.
+    **A host route where a subnet lives is NetBox being wrong about the
+    network, which is the one thing NetBox is for.** The lease knows: it carries
+    a `subnet-id`, and the server's own configuration has the CIDR.
+    """
+
+    @staticmethod
+    def _kea(subnet_id=255, cidr="10.255.0.0/24", configurable=True):
+        client = KeaIntegration()
+        lease = [{"result": 0, "arguments": {"leases": [
+            {"ip-address": "10.255.0.40", "hw-address": "aa:bb:cc:00:02:40",
+             "state": 0, "expire": 9e9, "subnet-id": subnet_id}]}}]
+        config = [{"result": 0, "arguments": {"Dhcp4": {"subnet4": [
+            {"id": 255, "subnet": cidr}]}}}]
+
+        def _command(command, service=None):
+            if "by-hw" in command:
+                return {"ok": False, "error": "unsupported command"}
+            if command == "config-get":
+                if not configurable:
+                    return {"ok": False, "error": "Could not connect"}
+                return {"ok": True, "result": config}
+            return {"ok": True, "result": lease}
+
+        client.command = _command
+        return client
+
+    def test_the_prefix_length_comes_back_with_the_lease(self):
+        out = self._kea().lease_for("aa:bb:cc:00:02:40")
+        assert out["address"] == "10.255.0.40"
+        assert out["prefix_length"] == 24
+
+    def test_an_unknown_subnet_is_ZERO_not_thirty_two(self):
+        """**Not knowing and guessing are different, and only one is honest.**
+        Guessing 32 here would move the defect rather than remove it."""
+        assert self._kea(subnet_id=999).lease_for(
+            "aa:bb:cc:00:02:40")["prefix_length"] == 0
+
+    def test_an_unreadable_config_is_also_zero(self):
+        assert self._kea(configurable=False).lease_for(
+            "aa:bb:cc:00:02:40")["prefix_length"] == 0
+
+    def test_the_discovery_carries_it(self):
+        from modules.nsot.onboard import discover_dhcp_address
+
+        out = discover_dhcp_address("aa:bb:cc:00:02:40", "10.255.0.40",
+                                    kea=self._kea())
+        assert out["ok"] is True
+        assert out["prefix_length"] == 24
+
+    def test_verification_reports_it_and_says_so(self):
+        """The note names the subnet, because "discovered from a lease" and
+        "discovered from a lease, on a /24" are different amounts of knowing."""
+        import os
+        import tempfile
+
+        from modules.nsot import manifest as _m, repo as _repo
+        from modules.nsot.onboard import verify_device
+        from modules.nsot.repo import GoldenItem, adopt_identity
+        import modules.config as cfg
+
+        tmp = tempfile.mkdtemp()
+        original = cfg.LISTS_DIR
+        cfg.LISTS_DIR = tmp
+        try:
+            repo = os.path.join(tmp, "probe", "config_repo")
+            os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+            _repo.init_repo(repo)
+            identity = adopt_identity(repo, GoldenItem("bp-dhcp-a", "", ""))
+            _m.upsert_device(repo, identity, "bp-dhcp-a", platform="cisco_iosxe",
+                             pending=True, address_source="dhcp",
+                             mgmt_mac="aa:bb:cc:00:02:40",
+                             reserved_address="10.255.0.40")
+            out = verify_device(repo, "bp-dhcp-a", "probe",
+                                online=lambda ip: True,
+                                reach=lambda *a, **k: "bp-dhcp-a#",
+                                interface="GigabitEthernet2", kea=self._kea())
+            assert out["answered"] is True, out
+            assert out["prefix_length"] == 24
+            assert "/24" in out["address_note"]
+        finally:
+            cfg.LISTS_DIR = original
+
+    def test_netbox_uses_it_rather_than_a_host_route(self):
+        """The last hop. A prefix the caller knows must reach the record."""
+        import inspect
+
+        from modules import netbox_client
+
+        source = inspect.getsource(netbox_client._upsert_device)
+        assert "mgmt_prefix_len" in source
+        assert 'f"{ip}/32"' not in source, \
+            "the host route is hardcoded again"
+        assert "prefix if 0 < prefix <= 32 else 32" in source
+
+    def test_netbox_keeps_the_host_route_when_the_prefix_is_unknown(self):
+        """**The floor.** A golden with no addresses tells nobody the subnet,
+        and a host route is the honest answer there — so the fallback must
+        survive."""
+        import inspect
+
+        from modules import netbox_client
+
+        source = inspect.getsource(netbox_client._upsert_device)
+        assert "else 32" in source
+        assert "honest about not knowing" in source or "honest" in source

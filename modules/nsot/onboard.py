@@ -1147,6 +1147,11 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
     # from `verify_device`'s result rather than from the manifest -- the
     # manifest had none to give.
     device = {"hostname": hostname, "ip": mgmt_ip,
+              # The subnet the address is really on, when it is known. For a
+              # DHCP device the lease carries it and the manifest recorded it
+              # at verification; absent, NetBox keeps its host-route last
+              # resort, which is honest about not knowing.
+              "prefix_len": (entry or {}).get("mgmt_prefix_len") or 0,
               "platform": (entry or {}).get("platform", ""), "role": "router"}
     result = sync(list_name, [device]) or {}
 
@@ -1827,7 +1832,8 @@ def discover_dhcp_address(mac: str, reserved: str = "", kea=None) -> dict:
                  "error": f"{type(exc).__name__}: {exc}"}
 
     if lease["state"] == "unknown":
-        return {"ok": False, "address": "", "source": "", "reserved": reserved,
+        return {"ok": False, "address": "", "source": "", "prefix_length": 0,
+                "reserved": reserved,
                 "disagreement": False, "reason": (
                     f"Kea could not be asked which address {mac} holds"
                     + (f" ({lease['error']})" if lease.get("error") else "")
@@ -1835,7 +1841,8 @@ def discover_dhcp_address(mac: str, reserved: str = "", kea=None) -> dict:
                       "what the address was meant to be, not what the device "
                       "has.")}
     if lease["state"] != "found":
-        return {"ok": False, "address": "", "source": "", "reserved": reserved,
+        return {"ok": False, "address": "", "source": "", "prefix_length": 0,
+                "reserved": reserved,
                 "disagreement": False, "reason": (
                     f"Kea holds no active lease for {mac}. The device has not "
                     "asked yet, or is not on the segment Kea answers on — "
@@ -1844,6 +1851,7 @@ def discover_dhcp_address(mac: str, reserved: str = "", kea=None) -> dict:
 
     if reserved and lease["address"] != reserved:
         return {"ok": False, "address": lease["address"], "source": "lease",
+                "prefix_length": lease.get("prefix_length") or 0,
                 "reserved": reserved, "disagreement": True, "reason": (
                     f"the lease and the reservation disagree: Kea has {mac} on "
                     f"{lease['address']} and the reservation says {reserved}. "
@@ -1852,6 +1860,10 @@ def discover_dhcp_address(mac: str, reserved: str = "", kea=None) -> dict:
                     "stores disagree about the same device.")}
 
     return {"ok": True, "address": lease["address"], "source": "lease",
+            # The subnet the lease belongs to. NetBox described the interface
+            # as a /32 without it, which is a claim about the network rather
+            # than about the address.
+            "prefix_length": lease.get("prefix_length") or 0,
             "reserved": reserved, "disagreement": False, "reason": ""}
 
 
@@ -1890,6 +1902,7 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
     # the address was meant to be and the lease is what the device has. A
     # disagreement refuses and names both rather than picking one.
     dhcp_note = ""
+    dhcp_prefix = 0
     if not mgmt_ip and (entry or {}).get("address_source") == "dhcp":
         found = discover_dhcp_address((entry or {}).get("mgmt_mac", ""),
                                       (entry or {}).get("reserved_address", ""),
@@ -1899,8 +1912,10 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
                     "recovery": {"available": False},
                     "error": found["reason"]}
         mgmt_ip = found["address"]
+        dhcp_prefix = found.get("prefix_length") or 0
         dhcp_note = (f"address discovered from Kea's lease for "
-                     f"{(entry or {}).get('mgmt_mac', '')}")
+                     f"{(entry or {}).get('mgmt_mac', '')}"
+                     + (f", on a /{dhcp_prefix}" if dhcp_prefix else ""))
 
     # RESOLVE THE CREDENTIAL THE TOOL ALREADY HOLDS.
     #
@@ -1969,6 +1984,9 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
         # it, so "the address it verified" is a discovered fact and reporting
         # it as though it had been configured would hide which store to trust.
         "address_note": dhcp_note,
+        # 0 means unknown, never 32. A host route for an address that is
+        # really on a /24 is NetBox being wrong about the network.
+        "prefix_length": dhcp_prefix,
         # WHICH credential was tried, never the value. "device-override"
         # means the one onboarding staged; "none" means the tool had none
         # and connected with an empty password, which is the failure this
@@ -2323,6 +2341,7 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     # `verify_device` is the one place that resolves it, so this is adoption
     # rather than a second derivation.
     mgmt_ip = seen.get("mgmt_ip") or mgmt_ip
+    mgmt_prefix = seen.get("prefix_length") or 0
     result["mgmt_ip"] = mgmt_ip
     if seen.get("address_note"):
         result["address_note"] = seen["address_note"]
@@ -2334,7 +2353,8 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
 
             identity = _mm.find_by_name(repo, hostname)[0]
             if identity:
-                _mm.upsert_device(repo, identity, hostname, mgmt_ip=mgmt_ip)
+                _mm.upsert_device(repo, identity, hostname, mgmt_ip=mgmt_ip,
+                                  mgmt_prefix_len=mgmt_prefix)
         except Exception as exc:               # noqa: BLE001
             log.warning("onboard: could not record %s's leased address: %s",
                         hostname, exc)

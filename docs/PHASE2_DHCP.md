@@ -524,3 +524,32 @@ and names both. The reservation is what the address was *meant* to be; the
 lease is what the device *has*. Picking one would put an address into the
 inventory that another store contradicts — the failure the reservation
 precondition exists to prevent, arriving one layer down.
+
+
+### The one finding in the census, and it is fixed
+
+NetBox recorded the leased address as a **host route** for an interface that is
+really on a /24. The mask is not in the manifest for a DHCP device — correctly,
+it is not known at plan time — so `_upsert_device`'s last resort applied, which
+exists for a golden that genuinely has no addresses (and a DHCP golden says
+`ip address dhcp`, so it has none).
+
+**The lease knows.** It carries a `subnet-id`, and the server's own
+configuration has the CIDR. Threaded:
+
+```
+KeaIntegration.lease_for()        -> prefix_length, from subnet-id via config-get
+discover_dhcp_address()           -> carries it
+verify_device()                   -> reports it, and names it in address_note
+manifest                          -> mgmt_prefix_len
+create_netbox_record()            -> prefix_len on the device dict
+_upsert_device()                  -> f"{ip}/{prefix or 32}"
+```
+
+**Unknown stays 0, never 32**, and the host-route fallback survives with a test
+asserting it: a golden with no addresses tells nobody the subnet, and a host
+route is the honest answer there. Guessing in the new code would have moved the
+defect rather than removed it.
+
+Being wrong about the network is the one thing NetBox cannot be, because that
+is what NetBox is for.
