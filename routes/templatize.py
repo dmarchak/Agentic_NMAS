@@ -359,6 +359,15 @@ def preview_committed_edit(hostname):
                       "than at the device. Omitting a key is fine and needs "
                       "no action; misspelling one does.")}), 400
 
+    # 2c. THE SYSLOG BLOCK IS WHOLE OR ABSENT (NSOT_PLAN P.1). Refused here,
+    #     with the line, rather than at the commit -- same reason as 2b.
+    problems = hostvars.syslog_block_problems(parsed)
+    if problems:
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.strip().startswith("syslog:")), 1)
+        return jsonify({"ok": False, "stage": "schema", "line": line,
+                        "column": 1, "error": "; ".join(problems)}), 400
+
     # 3. The secret guards, BEFORE anything is rendered or written. Same two
     #    checks `write_committed_text()` applies, run here so the editor
     #    refuses rather than the commit.

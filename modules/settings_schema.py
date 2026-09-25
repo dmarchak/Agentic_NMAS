@@ -279,6 +279,21 @@ DEFAULTS: dict = {
     #: describe the emulator.
     "netbox_excluded_vrfs": ["clab-mgmt"],
 
+    # ── The syslog block every onboarded device is given (NSOT_PLAN P.1) ────
+    #: Where device syslog goes. EMPTY by default and a refusal while empty:
+    #: onboarding gives every device the block, and a block with no host is
+    #: silence nobody receives. The third deliberate exception to "a new
+    #: default reproduces prior behaviour" -- prior onboarding gave no
+    #: logging at all, which is the coverage gap r6 was found in.
+    "syslog_host": "",
+    "syslog_trap_level": "notifications",
+    #: Puts the hostname in every line; the Grafana heartbeat rules key on it,
+    #: so a device is identified by name rather than by source address.
+    "syslog_origin_id": "hostname",
+    "syslog_source_interface": "Loopback0",
+    #: The EEM watchdog interval. Alerting fires after two missed.
+    "syslog_heartbeat_seconds": 300,
+
     # ── Config persistence (Oxidized → containerlab startup files) ──────────
     # The pipeline lives outside this repo; see docs/ARCHITECTURE.md. These are
     # settings rather than constants because they are deployment facts, and
@@ -459,6 +474,7 @@ GUARD_GATING_EMPTY_DEFAULTS = (
     # property. The deprecated key is NOT listed: it gates nothing now, and a
     # list that keeps ghosts stops meaning what it says.
     "oxidized_url",       # oxidized_client() -> reload_oxidized, confirm_fetch
+    "syslog_host",        # onboard.syslog_baseline -> build_plan's refusal
 )
 
 #: The refusal these guards write, as a **shape** rather than a list.
@@ -625,6 +641,13 @@ SCHEMA: dict = {
         "require_person_for_publish_remote": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
         "netbox_excluded_vrfs": {"type": "array", "items": _STR},
+        "syslog_host": _STR,
+        "syslog_trap_level": {"enum": ["emergencies", "alerts", "critical",
+                                       "errors", "warnings", "notifications",
+                                       "informational", "debugging"]},
+        "syslog_origin_id": _STR,
+        "syslog_source_interface": _STR,
+        "syslog_heartbeat_seconds": {"type": "integer", "minimum": 60},
 
         "oxidized_rest_url": _STR,
         "oxidized_router_db": _STR,

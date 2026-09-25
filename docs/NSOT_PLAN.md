@@ -1860,7 +1860,57 @@ the confirmed path.
   substring `healthy`, which `unhealthy` contains. Caught because the first
   measurement found neither node up. The check is now an exact comparison.
 
-**Remaining P.1 build, in order:**
+**BUILT 2026-09-25 (P.1 code, all mocked or offline; nothing deployed):**
+- **The block is modelled.** The parser puts trap, origin-id,
+  source-interface, hosts and the exact `NMAS-HEARTBEAT` applet into
+  `logging.syslog`. Any other applet, or a near-miss body, stays
+  `unmodeled`. The template renders the block together.
+  - **Round-trips at 100%** on r1 (C8000v) and s1 (vIOS-L2) with the lines
+    **captured from the devices themselves**. Probe run 2 captured
+    `show running-config` on both platforms, and every line renders
+    identically.
+  - The fleet round-trip is unchanged, and each pre-P.1 device parses to a
+    **partial** block (no heartbeat).
+- **Whole-or-absent is enforced where intent is AUTHORED**: the editor gate
+  (`routes/templatize.py` step 2c) and `write_committed_text()`, both
+  through `hostvars.syslog_block_problems()`.
+  - **Not** at `write_committed()`. That path takes extracted intent, and
+    refusing a pre-P.1 device's true, partial block blocked Extract → Commit
+    for the whole fleet when it was tried. Both directions are pinned.
+- **Onboarding's baseline:** `build_plan()` merges the block from five
+  `syslog_*` settings, and refuses by name while `syslog_host` is empty (the
+  third deliberate exception to the defaults rule). The block reaches the
+  committed intent (tested through `commit_step`).
+- **`scripts/nmas-heartbeat-rules`:** one Grafana rule per NetBox device,
+  NoData = Alerting, window = 2 intervals + 60 s, hostname match anchored
+  (`\s<host>:\s`, a LogQL backtick string), `--check` for staleness.
+  - Run against live NetBox from `/tmp`: 10 rules, r1–r6 and s1–s4.
+  - **That run found a defect.** The live checkout lacked the setting, the
+    interval read as 0, and the generator wrote ten rules with a **60 s**
+    window, every device alerting every minute from a file that looked
+    right. An interval below 60 is now refused.
+- Controls shown failing for every refusal above.
+
+**What remains, and whose it is:**
+1. **Operator:** pull, then install `deploy/rsyslog/10-network-devices.conf`
+   and restart rsyslog. Confirm an existing device's next line still
+   arrives.
+2. **Operator:** set `syslog_host` in `data/user_settings.json`. It is
+   file-only for now, a recorded gap for 7.7.
+3. **Operator:** update the network's own `templates/_common.j2` to the
+   shipped version, in the Templates editor. **Seeding never overwrites, so
+   the shipped change reaches no existing network by itself**
+   (OPEN_FINDINGS C6). That edit revokes both approvals, and re-approving is
+   a person's act.
+4. **Per device, one at a time:** complete the block in committed intent
+   (trap `notifications`, heartbeat 300; r6 needs the whole block), then plan
+   and confirm through the deploy path. Confirm needs a person.
+5. **Operator:** generate the rules with the Loki datasource UID, install
+   them into `/etc/grafana/provisioning/alerting/`, and reload Grafana.
+6. **Acceptance:** heartbeats from all ten devices in Loki, and one
+   deliberately silenced device alerting.
+
+**Remaining P.1 build, in order (as first written):**
 1. The logging block into the parser, the templates and host_vars (a new
    modelled construct: EEM applet + logging settings), with a round-trip
    against the fleet fixtures.

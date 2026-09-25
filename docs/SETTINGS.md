@@ -90,12 +90,19 @@ Each with a reason. These are settable by editing
 | `clab_host`, `clab_configs_dir`, `clab_sync_script`, `clab_launch_patch` | Containerlab paths on the lab host, used by the redeploy tooling. They describe a machine, not a preference. |
 | `yang_push_script` | Path to the telemetry helper; same. |
 | `netbox_excluded_vrfs` | VRFs whose **addresses** the NetBox import does not model, default `["clab-mgmt"]`. It describes the emulator, not a preference — every containerlab node answers on the same internal management address, and NetBox enforces global uniqueness, so importing them is not representable rather than merely untidy (measured: one created, four refused with *"Duplicate IP address found in global table"*). A setting rather than a constant because another lab will name its management VRF something else. Belongs in a future "lab host" section with the `clab_*` group rather than as a field of its own. |
+| `syslog_host`, `syslog_trap_level`, `syslog_origin_id`, `syslog_source_interface`, `syslog_heartbeat_seconds` | The syslog block onboarding gives every device (NSOT_PLAN P.1): collector address, trap level (default `notifications`), `logging origin-id` (default `hostname`, which the Grafana heartbeat rules key on), source interface (default `Loopback0`) and the EEM heartbeat interval (default 300 s, minimum 60). **`syslog_host` defaults to empty, and onboarding refuses while it is empty**, because a block with no host is silence nobody receives. **This is a gap, not a decision**: it belongs with the other network-wide defaults in 7.7's settings split. |
 
 **Two of these are honest gaps rather than decisions**, and are recorded as
 such so they are not mistaken for settled: `kea_services` should be in the Kea
 card, and the `clab_*` group would be better as a small "lab host" section
 than as four keys nobody can find — `netbox_excluded_vrfs` belongs in that
 same section when it exists.
+
+**`syslog_host` is the third deliberate exception to that rule.** Before
+P.1, onboarding gave a device no logging at all, which is how r6 came to have
+none. Reproducing that by default would reproduce the gap. So an unset host
+is a named refusal at plan time ("syslog_host is not configured"), recorded in
+`GUARD_GATING_EMPTY_DEFAULTS`, and never a device onboarded silent.
 
 **`netbox_excluded_vrfs` is the second deliberate exception to "every new
 default reproduces the behaviour that predates the setting"**, after

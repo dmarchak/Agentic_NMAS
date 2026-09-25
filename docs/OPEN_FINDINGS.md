@@ -59,6 +59,7 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 |---|---|---|---|
 | C1 | **`nmas-deploy`'s behaviour is UNCONFIRMED, and the second report of it was a misreading.** *"Already at `da4d479` while `32329bf` exists on origin"* is correct behaviour: `32329bf` is an **ancestor** of `da4d479`, so the tip already contains it. The first report (*"already at `cfbe7fe`"* while origin was ahead, moved only by an explicit fetch) is not explained by that and may be real. **Status: needs one measurement** — `git fetch && git rev-parse HEAD origin/main` before and after a run. Whatever it does, it should end by printing both SHAs, because *"already current"* is a claim with operands and it was reported as a shrug. | verify, then build | this file — 2026-09-25 |
 | C2 | **`routes/templatize.py`'s fleet report drops a device with an unreadable golden through a bare `continue`.** Fourth instance of *the artefact is not the population*; the other three are fixed. | build | CLAUDE.md, *"The inventory is the population for a RESTORE PREVIEW"* |
+| C6 | **A fix to a shipped template reaches no existing network.** `config_repo/templates/` is a per-network COPY seeded once from `modules/nsot/templates/`, and `seed_templates()` never overwrites (correctly: it must not clobber a network's own edits). So P.1's `_common.j2` change, and every future template fix, lands in the repository and in no network that already exists, and nothing reports the difference. Coverage inherited, not designed, once more: the library a network has is the one current when it was seeded. Wanted: a per-network "shipped template differs from yours" signal that shows the diff, and never an automatic overwrite. | build | this file, 2026-09-25 (P.1) |
 
 ## D. Interface and input surfaces
 
@@ -82,13 +83,13 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
-**14 open** (counted from the rows, 2026-09-25): 10 recorded only in prose
-(A2–D2, with B4 added the same day), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
+**15 open** (counted from the rows, 2026-09-25): 11 recorded only in prose
+(A2–D2, with B4 and C6 added the same day), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
 tail). The previous figure, 15, was **off by one**: it was produced by
 adjusting an earlier count rather than counting rows, and the rows then held
 16. A1 and C5 are now scheduled (P.2, 6.5), and C3 and C4 are closed.
 
-By kind: **9 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
+By kind: **10 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
 
 None of them blocks Stage 7 — the per-stage scope and the ordering
 constraints are in [NSOT_PLAN.md](NSOT_PLAN.md), *Scope of what remains*,

@@ -105,6 +105,7 @@ class BaseParser:
             (re.compile(r"^enable password\s+(.*)$"),        self._h_enable_secret),
             (re.compile(r"^snmp-server\s+(.*)$"),            self._h_snmp),
             (re.compile(r"^logging\s+(.*)$"),                self._h_logging),
+            (re.compile(r"^event manager applet\s+(\S+)\s*$"), self._h_eem_applet),
             (re.compile(r"^ntp server\s+(.*)$"),             self._h_ntp),
             (re.compile(r"^ip route\s+(.*)$"),               self._h_static_route),
             (re.compile(r"^ipv6 route\s+(.*)$"),             self._h_static_route_v6),
@@ -279,6 +280,7 @@ class BaseParser:
         out["routing"].setdefault("bgp", None)
         out["logging"].setdefault("settings", [])
         out["logging"].setdefault("hosts", [])
+        out["logging"].setdefault("syslog", None)
         out["snmp"].setdefault("communities", [])
         out["snmp"].setdefault("settings", [])
         out["snmp"].setdefault("hosts", [])
@@ -451,13 +453,55 @@ class BaseParser:
         out["snmp"].setdefault("settings", []).append(
             ifnames.canonicalise_line(rest))
 
+    #: The syslog block (NSOT_PLAN P.1): trap level, origin-id, source
+    #: interface, hosts and the heartbeat applet are ONE unit of intent, so a
+    #: device cannot carry some of it and not the rest. The parser records
+    #: whatever the device holds -- a partial block is a fact about the
+    #: device -- and `hostvars.syslog_block_problems()` refuses committing
+    #: one. Captured from both platforms on 2026-09-25 (nmas-eem-probe run 2):
+    #: vIOS-L2 and C8000v render every line identically.
+    SYSLOG_KEYS = {"trap": "trap", "origin-id": "origin_id",
+                   "source-interface": "source_interface"}
+    HEARTBEAT_APPLET = "NMAS-HEARTBEAT"
+    HEARTBEAT_ACTION = ('action 1.0 syslog priority notifications msg '
+                        '"NMAS-HEARTBEAT"')
+
+    @staticmethod
+    def _syslog(out) -> dict:
+        s = out["logging"].get("syslog")
+        if s is None:
+            s = out["logging"]["syslog"] = {
+                "trap": "", "origin_id": "", "source_interface": "",
+                "hosts": [], "heartbeat": 0}
+        return s
+
     def _h_logging(self, block, out, m):
         rest = ifnames.canonicalise_line(m.group(1).strip())
-        host = re.match(r"host\s+(\S+)$", rest)
+        word, _, value = rest.partition(" ")
+        if word in self.SYSLOG_KEYS and value.strip():
+            self._syslog(out)[self.SYSLOG_KEYS[word]] = value.strip()
+            return
+        host = re.match(r"host\s+(\S+(?:\s+vrf\s+\S+)?)$", rest)
         if host:
-            out["logging"].setdefault("hosts", []).append(host.group(1))
+            self._syslog(out)["hosts"].append(host.group(1))
             return
         out["logging"].setdefault("settings", []).append(rest)
+
+    def _h_eem_applet(self, block, out, m):
+        """Only the heartbeat applet, and only in exactly its own shape.
+
+        Any other applet, or this one with any other body, is left to
+        `unmodeled` -- EEM in general is not modelled, and claiming a
+        near-miss would render something the device does not hold."""
+        if m.group(1) != self.HEARTBEAT_APPLET:
+            return False
+        body = [c.strip() for c in block.children]
+        if len(body) != 2 or body[1] != self.HEARTBEAT_ACTION:
+            return False
+        timer = re.fullmatch(r"event timer watchdog time (\d+)", body[0])
+        if not timer:
+            return False
+        self._syslog(out)["heartbeat"] = int(timer.group(1))
 
     def _h_ntp(self, block, out, m):
         out["ntp_servers"].append(m.group(1).strip())

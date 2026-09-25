@@ -437,8 +437,73 @@ def intent_gap_note(repo: str, hostname: str) -> dict:
                        "review, Commit) and the next edit becomes a diff.")}
 
 
+class PartialSyslogBlock(ValueError):
+    """Committed intent carrying some of the syslog block and not the rest."""
+
+
+#: The parts of the syslog block (NSOT_PLAN P.1), each with what it is for,
+#: because a refusal that names a field without its purpose is one a reader
+#: satisfies with any value.
+SYSLOG_PARTS = {
+    "trap": "the severity that leaves the device",
+    "origin_id": "puts the hostname in every line, which the alert keys on",
+    "source_interface": "the address the lines come from",
+    "hosts": "where they go",
+    "heartbeat": "the EEM interval that makes silence detectable",
+}
+
+#: Lines in `logging.settings` / `logging.hosts` that the block owns.
+_SYSLOG_OWNED = {"trap": "trap ", "origin_id": "origin-id ",
+                 "source_interface": "source-interface "}
+
+
+def syslog_block_problems(host_vars: dict) -> list:
+    """Why this intent's syslog block may not be committed; ``[]`` if it may.
+
+    **One block, whole or absent.** Heartbeat, trap level, origin-id, source
+    interface and hosts are one unit: a heartbeat with no host is silence
+    nobody receives, and a host with no heartbeat is the pre-P.1 state in
+    which "no lines" could not be told from "nothing happening". Absent is
+    fine -- intent that predates P.1 is untouched -- and a partial block is
+    refused with each missing part named.
+
+    Also refused: the same fact in two places. A trap level in both
+    ``logging.settings`` and the block renders twice, the device keeps the
+    last, and the reader cannot tell which one is meant.
+    """
+    logging_ = (host_vars or {}).get("logging") or {}
+    block = logging_.get("syslog")
+    if not block:
+        return []
+    problems = []
+    for part, purpose in SYSLOG_PARTS.items():
+        value = block.get(part)
+        missing = (not value) if part != "heartbeat" else not (
+            isinstance(value, int) and value > 0)
+        if missing:
+            problems.append(f"syslog block has no {part} ({purpose})")
+    for part, prefix in _SYSLOG_OWNED.items():
+        if any(str(s).startswith(prefix) for s in logging_.get("settings") or []):
+            problems.append(f"{part} is set in logging.settings as well as in "
+                            "the syslog block -- one owner per fact")
+    if logging_.get("hosts"):
+        problems.append("logging.hosts is set as well as syslog.hosts -- one "
+                        "owner per fact")
+    return problems
+
+
 def write_committed(repo: str, host_vars: dict) -> str:
-    """Write committed intent. Refuses anything carrying a resolved secret."""
+    """Write committed intent. Refuses anything carrying a resolved secret.
+
+    **Does not judge the syslog block**, deliberately. This path takes
+    EXTRACTED intent -- a device parsed as it is -- and a pre-P.1 device
+    genuinely holds a partial block; refusing it would refuse to record a
+    true fact, and blocked Extract -> Commit for every device in the fleet
+    when it was tried. Whole-or-absent is a rule about AUTHORED intent, so it
+    is enforced where intent is authored: `write_committed_text()` and the
+    editor's gate. Onboarding's block is complete by construction
+    (`onboard.syslog_baseline()` runs the same check before building one).
+    """
     hostname = host_vars.get("hostname") or "unknown"
     text = to_yaml(host_vars)
     assert_no_secret_values(text, hostname)
@@ -466,6 +531,9 @@ def write_committed_text(repo: str, hostname: str, text: str) -> str:
         raise ValueError(
             f"hostname in the document ({parsed.get('hostname')!r}) does not "
             f"match {hostname!r} — a host_vars file names its own device")
+    problems = syslog_block_problems(parsed)
+    if problems:
+        raise PartialSyslogBlock(f"{hostname}: " + "; ".join(problems))
     assert_no_secret_values(text, hostname)
     path = committed_path(repo, hostname)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:

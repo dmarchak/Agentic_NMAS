@@ -17,10 +17,22 @@ two-stores-disagreeing shape with a clock attached.
 
 import pytest
 
+
 from modules.integrations.kea import KeaIntegration
 from modules.nsot.bootstrap_config import (ManagementAddressRequired,
                                            manager_interface_lines)
 from modules.nsot.onboard import OnboardPlan, build_plan
+
+
+@pytest.fixture(autouse=True)
+def _syslog_host(monkeypatch):
+    """P.1: onboarding gives every device the syslog block and refuses while
+    `syslog_host` is unset. Only that key is supplied; every other setting is
+    read exactly as before."""
+    import modules.settings_schema as ss
+    real = ss.get_setting
+    monkeypatch.setattr(ss, "get_setting", lambda k, *a, **kw: (
+        "192.0.2.10" if k == "syslog_host" else real(k, *a, **kw)))
 
 
 def _kea(entries, reachable=True, hook=False):

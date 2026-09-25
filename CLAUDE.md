@@ -861,6 +861,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_authoring_schema.py` | omitting an interface key is fine and misspelling one is refused; filling changes no output |
 | `test_onboard_dhcp_source.py` | dhcp is a source not an absence; the reservation refuses at plan time; the review claim is checkable |
 | `test_server_reads_nothing_the_form_cannot_send.py` | a field only curl can supply is a feature no operator has; both directions, named exemptions |
+| `test_syslog_block.py` | P.1: the captured device rendering round-trips on both platforms; only the exact heartbeat applet is claimed; whole-or-absent at the AUTHORING path, a true partial block recorded at extraction |
+| `test_heartbeat_rules.py` | one rule per device, NoData = Alerting, anchored hostname match, empty inventory and unusable interval refused |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
@@ -4010,7 +4012,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **14 open at 2026-09-25**, counted from the rows: 10 recorded only in
+present when each was recorded. **15 open at 2026-09-25**, counted from the rows: 11 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

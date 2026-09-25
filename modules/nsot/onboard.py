@@ -152,6 +152,12 @@ class OnboardPlan:
     #: Found by reading the refusals this step's own change produced.
     render_error: str = ""
 
+    #: Why the syslog block (NSOT_PLAN P.1) could not be built. Onboarding
+    #: gives every device the whole block as part of its baseline intent, so a
+    #: device that would arrive without it is refused rather than onboarded
+    #: silent -- which is how r6 came to have no logging at all.
+    syslog_error: str = ""
+
     #: Set when the stores could not be consulted. **Not** the same as "no
     #: collision": a check that could not run has not passed.
     unchecked: tuple = field(default_factory=tuple)
@@ -251,6 +257,10 @@ class OnboardPlan:
         if self.render_error:
             reasons.append("the bootstrap config could not be rendered: "
                            + self.render_error)
+
+        if self.syslog_error:
+            reasons.append("the syslog block cannot be built: "
+                           + self.syslog_error)
 
         if self.unsendable:
             reasons.append(
@@ -569,6 +579,21 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         manager_mask=("dhcp" if address_source == "dhcp" else mgmt_mask),
         manager_gateway=manager_gateway)
 
+    # THE SYSLOG BLOCK IS PART OF THE BASELINE (NSOT_PLAN P.1). Merged into
+    # the initial intent, never over an author's own block: a caller that
+    # supplied one has decided, and the commit's whole-or-absent rule still
+    # judges it.
+    host_vars = dict(host_vars or {})
+    syslog_block, syslog_error = syslog_baseline()
+    logging_ = dict(host_vars.get("logging") or {})
+    if not logging_.get("syslog") and syslog_block:
+        logging_.setdefault("settings", [])
+        logging_.setdefault("hosts", [])
+        logging_["syslog"] = syslog_block
+        host_vars["logging"] = logging_
+    elif logging_.get("syslog"):
+        syslog_error = ""
+
     return OnboardPlan(
         unmet_preconditions=tuple(unmet_preconditions(netbox_plan)),
         hostname=hostname, platform=platform, list_name=list_name,
@@ -581,12 +606,43 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         manager_interface=manager_interface, manager_gateway=manager_gateway,
         domain=domain,
         bootstrap_config=config, cred_source=cred_source,
-        netbox_plan=tuple(netbox_plan), host_vars=dict(host_vars or {}),
+        netbox_plan=tuple(netbox_plan), host_vars=host_vars,
+        syslog_error=syslog_error,
         template=template, template_approved=approved,
         name_taken_in_manifest=in_manifest, name_taken_in_netbox=in_netbox,
         unsendable=tuple(unsendable), unchecked=tuple(unchecked),
         render_error=render_error,
     )
+
+
+def syslog_baseline() -> tuple:
+    """``(block, error)``: the syslog block every onboarded device is given.
+
+    From settings, read through `settings_schema.get_setting` so an unset key
+    is its default rather than nothing. The block is whole or not at all --
+    `hostvars.syslog_block_problems()` is the arbiter, so this cannot build a
+    block the commit would then refuse.
+    """
+    from modules.nsot import hostvars
+    from modules.settings_schema import get_setting
+
+    host = (get_setting("syslog_host") or "").strip()
+    if not host:
+        return None, ("syslog_host is not configured -- every onboarded "
+                      "device is given the syslog block, and a block with no "
+                      "host is silence nobody receives")
+    block = {
+        "trap": get_setting("syslog_trap_level"),
+        "origin_id": get_setting("syslog_origin_id"),
+        "source_interface": get_setting("syslog_source_interface"),
+        "hosts": [host],
+        "heartbeat": int(get_setting("syslog_heartbeat_seconds") or 0),
+    }
+    problems = hostvars.syslog_block_problems(
+        {"logging": {"syslog": block}})
+    if problems:
+        return None, "; ".join(problems)
+    return block, ""
 
 
 def unmet_preconditions(netbox_plan=()) -> list:

@@ -189,6 +189,15 @@ interface {{ i.name }}
 {% endfor %}
 {%- for h in (v.logging or {}).get('hosts', []) %}logging host {{ h }}
 {% endfor %}
+{%- set sl = (v.logging or {}).get('syslog') %}
+{%- if sl %}{% if sl.trap %}logging trap {{ sl.trap }}
+{% endif %}{% if sl.origin_id %}logging origin-id {{ sl.origin_id }}
+{% endif %}{% if sl.source_interface %}logging source-interface {{ sl.source_interface }}
+{% endif %}{% for h in sl.hosts %}logging host {{ h }}
+{% endfor %}{% if sl.heartbeat %}event manager applet NMAS-HEARTBEAT
+ event timer watchdog time {{ sl.heartbeat }}
+ action 1.0 syslog priority notifications msg "NMAS-HEARTBEAT"
+{% endif %}{% endif %}
 {%- for c in (v.snmp or {}).get('communities', []) %}snmp-server community {{ secret(c.ref) }} {{ c.access }}
 {% endfor %}
 {%- for s in (v.snmp or {}).get('settings', []) %}{{ ('snmp-server ' ~ s if not s.startswith('snmp ') else s) | resolve_secrets }}

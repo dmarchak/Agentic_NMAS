@@ -15,8 +15,13 @@ name: nmas-eem-probe
 #                   listening: the counter is the device's own record of
 #                   having sent.
 #
-# Watchdog is 60 s here to see several firings in minutes; production is
-# 300 s. Same mechanism, different constant.
+#   3. RENDERING  - `show running-config` for the production block exactly
+#                   (300 s watchdog, trap notifications, origin-id hostname,
+#                   source-interface Loopback0, host): the form the parser and
+#                   the round-trip must match, captured rather than guessed.
+#
+# Run 1 (2026-09-25) used a 60 s watchdog to see firings in minutes and proved
+# 1 and 2 on both platforms. Run 2 carries the production block for 3.
 #
 # Own lab name, own network (172.30.70.0/24, free on the clab host when
 # checked with `docker network inspect`), destroyed after with --cleanup.

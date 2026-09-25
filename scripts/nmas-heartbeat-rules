@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Generate Grafana alert rules for the syslog heartbeat, from the NetBox inventory.
+
+NSOT_PLAN.md **P.1**. Every device carries an EEM applet that emits
+``NMAS-HEARTBEAT`` at the trap level every ``syslog_heartbeat_seconds``
+(default 300). This writes **one Grafana alert rule per NetBox device**: no
+heartbeat from that device in Loki for two intervals (plus a minute of slack)
+fires. **NoData is Alerting**, because a device that has gone silent produces
+no series at all, and a rule that treated "no data" as "fine" would be green
+for exactly the failure it exists to catch.
+
+**Keyed on the hostname, not the file name.** Every line carries the hostname
+(``logging origin-id hostname``, measured on s3's line: ``s3 39: s3: ...``),
+while rsyslog files by *source address* -- and a device sourcing from
+Loopback0 is filed under an address that is not NetBox's primary IP. The
+match is anchored (``\\s<host>:\\s``) so ``r1`` never matches ``r10``, and
+written as a LogQL backtick string: in a double-quoted one ``\\s`` is an
+invalid escape.
+
+**Provisioned from the repository.** The output is
+``deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml``; Grafana reads it
+from ``/etc/grafana/provisioning/alerting/``. NMAS shows Grafana's alert state
+(7.5) and does not run the check.
+
+    nmas-heartbeat-rules --datasource-uid <loki-uid>          # write the file
+    nmas-heartbeat-rules --datasource-uid <loki-uid> --check  # 0 current, 1 stale, 2 unproven
+
+**An empty inventory is refused, never written.** A rule file with no rules
+alerts on nothing, and reads exactly like a fleet that is all heartbeating.
+"""
+
+import argparse
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+EXIT_OK, EXIT_STALE, EXIT_UNPROVEN = 0, 1, 2
+
+OUT = os.path.join(ROOT, "deploy", "grafana", "provisioning", "alerting",
+                   "nmas-heartbeat.yaml")
+GROUP = "nmas-heartbeat"
+FOLDER = "NMAS"
+JOB = "network_syslog"
+MARKER = "NMAS-HEARTBEAT"
+_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
+
+
+def host_pattern(hostname: str) -> str:
+    """The RE2 fragment matching this device's hostname field, anchored so a
+    prefix of another name never matches (``r1`` against ``r10``)."""
+    return r"\s" + re.escape(hostname) + r":\s"
+
+
+def window_seconds(heartbeat: int) -> int:
+    """Two missed intervals, plus a minute of slack for delivery and ingest."""
+    return 2 * int(heartbeat) + 60
+
+
+def rule_for(hostname: str, datasource_uid: str, heartbeat: int) -> dict:
+    if not _NAME.match(hostname):
+        raise ValueError(f"{hostname!r} is not a usable device name")
+    window = window_seconds(heartbeat)
+    expr = (f'sum(count_over_time({{job="{JOB}"}} |= "{MARKER}" '
+            f'|~ `{host_pattern(hostname)}` [{window}s]))')
+    return {
+        "uid": ("nmas-hb-" + re.sub(r"[^A-Za-z0-9_-]", "-", hostname))[:40],
+        "title": f"NMAS heartbeat missing: {hostname}",
+        "condition": "C",
+        "data": [
+            {"refId": "A", "datasourceUid": datasource_uid,
+             "relativeTimeRange": {"from": window, "to": 0},
+             "model": {"refId": "A", "expr": expr, "queryType": "instant"}},
+            {"refId": "B", "datasourceUid": "__expr__",
+             "model": {"refId": "B", "type": "reduce", "expression": "A",
+                       "reducer": "last"}},
+            {"refId": "C", "datasourceUid": "__expr__",
+             "model": {"refId": "C", "type": "threshold", "expression": "B",
+                       "conditions": [{"evaluator": {"type": "lt",
+                                                     "params": [1]}}]}},
+        ],
+        # A silent device yields NO series: that is the failure, not "fine".
+        "noDataState": "Alerting",
+        "execErrState": "Alerting",
+        "for": "0s",
+        "labels": {"nmas": "heartbeat", "device": hostname},
+        "annotations": {
+            "summary": f"No syslog heartbeat from {hostname} for "
+                       f"{window // 60} min",
+            "description": (
+                f"{hostname} emits {MARKER} every {heartbeat}s (EEM). None "
+                f"has reached Loki in {window}s: the device, its logging "
+                "block, the path to rsyslog, rsyslog, Alloy or Loki has "
+                "stopped. The heartbeat cannot say which; it says that one "
+                "of them has."),
+        },
+    }
+
+
+def build(hostnames, datasource_uid: str, heartbeat: int) -> dict:
+    names = sorted(set(hostnames))
+    if not names:
+        raise ValueError("the inventory is empty -- a rule file with no rules "
+                         "alerts on nothing and reads like a healthy fleet")
+    if not datasource_uid:
+        raise ValueError("no Loki datasource UID")
+    # MEASURED: run against a checkout without the setting, get_setting()
+    # returned None, int() made it 0, and ten rules came out with a 60 s
+    # window -- every device alerting every minute, from a file that looked
+    # generated correctly. An interval below the schema's floor is refused.
+    if not isinstance(heartbeat, int) or heartbeat < 60:
+        raise ValueError(f"heartbeat interval {heartbeat!r} is not usable "
+                         "(syslog_heartbeat_seconds, minimum 60) -- a window "
+                         "built from it would alert on every device")
+    return {"apiVersion": 1, "groups": [{
+        "orgId": 1, "name": GROUP, "folder": FOLDER, "interval": "1m",
+        "rules": [rule_for(n, datasource_uid, heartbeat) for n in names]}]}
+
+
+def render(doc: dict) -> str:
+    import yaml
+    head = ("# GENERATED by scripts/nmas-heartbeat-rules from the NetBox "
+            "inventory. Do not edit;\n# regenerate. One rule per device; "
+            "NoData = Alerting (NSOT_PLAN.md P.1).\n")
+    return head + yaml.safe_dump(doc, sort_keys=False, width=100)
+
+
+def devices_in(doc: dict) -> set:
+    return {r["labels"]["device"] for g in doc.get("groups", [])
+            for r in g.get("rules", [])}
+
+
+def netbox_hostnames() -> list:
+    from modules.netbox_client import _nb_get, _nb_ready
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        raise RuntimeError(f"NetBox is not reachable: {err}")
+    return [d["name"] for d in _nb_get(session, base, "dcim/devices/")
+            if d.get("name")]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--datasource-uid",
+                    default=os.environ.get("NMAS_GRAFANA_LOKI_UID", ""))
+    ap.add_argument("--check", action="store_true",
+                    help="compare the committed file with the inventory")
+    ap.add_argument("--out", default=OUT)
+    args = ap.parse_args()
+    if not args.datasource_uid:
+        print("UNPROVEN: no --datasource-uid (Grafana > Connections > Loki > "
+              "the UID in the URL)")
+        return EXIT_UNPROVEN
+    from modules.settings_schema import get_setting
+    heartbeat = int(get_setting("syslog_heartbeat_seconds") or 0)
+    try:
+        doc = build(netbox_hostnames(), args.datasource_uid, heartbeat)
+    except (RuntimeError, ValueError) as exc:
+        print(f"UNPROVEN: {exc}")
+        return EXIT_UNPROVEN
+    text = render(doc)
+    if args.check:
+        try:
+            with open(args.out, encoding="utf-8") as fh:
+                current = fh.read()
+        except FileNotFoundError:
+            print(f"STALE: {args.out} does not exist")
+            return EXIT_STALE
+        if current == text:
+            print(f"current: {len(devices_in(doc))} device(s)")
+            return EXIT_OK
+        import yaml
+        have = devices_in(yaml.safe_load(current) or {})
+        want = devices_in(doc)
+        print("STALE: " + "; ".join(filter(None, [
+            f"missing {sorted(want - have)}" if want - have else "",
+            f"no longer in NetBox {sorted(have - want)}" if have - want else "",
+            "same devices, different rule content" if want == have else ""])))
+        return EXIT_STALE
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    print(f"wrote {len(devices_in(doc))} rule(s) to {args.out}")
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

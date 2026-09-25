@@ -21,6 +21,8 @@ import os
 
 import pytest
 
+from modules.settings_schema import DEFAULTS as _SCHEMA_DEFAULTS
+
 
 @pytest.fixture
 def lab(tmp_path, monkeypatch):
@@ -37,7 +39,10 @@ def lab(tmp_path, monkeypatch):
                         lambda: "probe")
     monkeypatch.setattr("modules.settings_schema.get_setting",
                         lambda k, d=None: {"nsot_git_author_name": "NMAS",
-                                           "nsot_git_author_email": "n@l"}.get(k, d))
+                                           "nsot_git_author_email": "n@l",
+                                           # P.1: onboarding gives every device the syslog block.
+                                           "syslog_host": "192.0.2.10"}.get(
+                                               k, _SCHEMA_DEFAULTS.get(k, d)))
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda c: None)
     _repo.init_repo(repo_dir)
 
@@ -480,3 +485,53 @@ class TestTemplateStateIsAnAdvisoryNotARefusal:
             assert "template" not in attrs, (
                 f"{name} reads plan.template — the gate may belong after all")
             assert "template_approved" not in attrs, name
+
+
+class TestOnboardingGivesEveryDeviceTheSyslogBlock:
+    """NSOT_PLAN P.1: the block is part of the baseline intent, so a device
+    cannot be onboarded silent -- which is how r6 came to have no logging."""
+
+    def test_the_plan_carries_the_whole_block(self, lab):
+        from modules.nsot import hostvars
+
+        plan = _plan()
+        block = plan.host_vars["logging"]["syslog"]
+        assert block == {"trap": "notifications", "origin_id": "hostname",
+                         "source_interface": "Loopback0",
+                         "hosts": ["192.0.2.10"], "heartbeat": 300}
+        assert hostvars.syslog_block_problems(plan.host_vars) == []
+
+    def test_no_syslog_host_is_a_named_refusal(self, lab, monkeypatch):
+        import modules.settings_schema as ss
+
+        real = ss.get_setting
+        monkeypatch.setattr(ss, "get_setting", lambda k, *a, **kw: (
+            "" if k == "syslog_host" else real(k, *a, **kw)))
+        plan = _plan()
+        assert not plan.onboardable
+        assert any("syslog_host is not configured" in r
+                   for r in plan.blocking_reasons), plan.blocking_reasons
+        assert "syslog" not in (plan.host_vars.get("logging") or {})
+
+    def test_an_authors_own_block_is_never_overwritten(self, lab):
+        own = {"trap": "informational", "origin_id": "hostname",
+               "source_interface": "Loopback1", "hosts": ["192.0.2.99"],
+               "heartbeat": 600}
+        plan = _plan(host_vars={"logging": {"syslog": own}})
+        assert plan.host_vars["logging"]["syslog"] == own
+        assert plan.onboardable, plan.blocking_reasons
+
+    def test_the_block_reaches_the_committed_intent(self, lab):
+        """Carried, not only computed: the commit writes what the plan holds."""
+        import os
+
+        from modules.config import get_list_data_dir
+        from modules.nsot import hostvars
+        from modules.nsot.onboard import commit_step
+
+        plan = _plan()
+        commit_step(plan, actor="t@example.com")
+        repo = os.path.join(get_list_data_dir("probe"), "config_repo")
+        committed = hostvars.read_committed(repo, "r6")
+        assert committed["logging"]["syslog"]["heartbeat"] == 300
+        assert committed["logging"]["syslog"]["hosts"] == ["192.0.2.10"]

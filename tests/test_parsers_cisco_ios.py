@@ -86,7 +86,18 @@ class TestSharedParsing:
         assert "passive-interface Loopback0" in rip["settings"]
 
     def test_logging_and_ntp(self, s1):
-        assert s1["logging"]["hosts"] == ["10.255.1.10"]
+        # The syslog block (P.1): host, trap, origin-id and source-interface
+        # are one unit of intent, parsed together. s1 predates the heartbeat,
+        # so the block is recorded as it is -- partial -- rather than
+        # completed by the parser.
+        sl = s1["logging"]["syslog"]
+        assert sl["hosts"] == ["10.255.1.10"]
+        assert (sl["trap"], sl["origin_id"], sl["source_interface"]) == (
+            "critical", "hostname", "Loopback0")
+        assert sl["heartbeat"] == 0
+        assert s1["logging"]["hosts"] == []
+        assert not any(x.startswith(("trap ", "origin-id ", "source-interface "))
+                       for x in s1["logging"]["settings"])
         assert s1["ntp_servers"] == ["10.255.1.10"]
 
     def test_static_route_with_vrf(self, r1):
