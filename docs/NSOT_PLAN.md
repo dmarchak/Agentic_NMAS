@@ -2041,8 +2041,21 @@ the confirmed path.
 5. **Operator:** generate the rules with the Loki datasource UID, install
    them into `/etc/grafana/provisioning/alerting/`, and reload Grafana.
 6. **Acceptance:**
-   - Heartbeats from all ten devices in Loki.
+   - Heartbeats from all **nine** devices in Loki. **r5 is out of scope,
+     the operator's decision, 2026-09-25.** r5 is the eBGP PE in AS 65002,
+     an ISP device outside the administrative boundary. It has no route to
+     `10.255.1.10`, which is reachable only inside AS 65001, and has
+     delivered nothing since logging started on 2026-09-22. The block
+     deployed correctly (the applet is on the device and in `golden/r5.cfg`);
+     the device cannot reach the collector by design. It leaves the Default
+     list; console and containerlab access remain.
    - One deliberately silenced device alerting.
+   - **Status 2026-09-25:** eight of nine deployed (s4 and r2 alone, then
+     s1, s2, r1, r3, r4 and r5 as batch golden `01d45b7`); seven
+     heartbeating; s3 and r6 remain. **Leaving r5 is not the delete
+     button**: that leaves r5 bound, mapped, alerting and half-present
+     (OPEN_FINDINGS C11), and destroys the only copy of its credential. The
+     sequence is in the r5 notes below.
    - **Every device's REAL interval measured:** over at least an hour of
      heartbeats, the shortest and longest inter-arrival gap per device. For
      its dialect's window W, **2 × longest < W < 3 × shortest**, or the
