@@ -2324,6 +2324,27 @@ The first live restore **failed correctly**: the count query reached
 Decided: the off-box copy is dailies only, via rclone, ~14 days, gpg. There
 is no git copy. The units are system units, with no linger.
 
+**P.2 ACCEPTANCE** (written 2026-09-25; the section had a build record
+and no acceptance). Every item is observed, not inferred:
+1. **The installed timer backs up on its own.** `nmas-jobs` shows
+   `nmas-netbox-backup` ok, with a last success under an hour old, twice in
+   a row.
+2. **The installed restore test passes.** `nmas-netbox-restore-test` ok,
+   and `nmas-netbox-backup --status` reads `restore test: PASS`.
+3. **The Proxmox copy is write-only from the VM.** A `.tar.gpg` lands in
+   `/srv/nmas-netbox/hourly/`, and from the VM a read or delete over the
+   push key is refused (`rrsync -wo`).
+4. **The off-box copy decrypts only where the key lives.** A daily in B2,
+   fetched to the key-holder's machine, `gpg -d | tar -tf` lists
+   `netbox.pgdump`, `manifest.json` and `config/env/netbox.env`. On the VM
+   the same file is refused (`No secret key`).
+5. **A failed destination is visible, not silent** (the C14 rule): with
+   the Proxmox target deliberately broken, the unit fails and `nmas-jobs`
+   names the cause (`SHIP TO PROXMOX FAILED: …`). Then restore it.
+6. **`--status` exits 0** with every configured destination fresh.
+7. **The vzdump question answered** from `/etc/pve/jobs.cfg`: is the NMAS
+   VM itself in a scheduled backup?
+
 **Proposal (2026-09-25):** `pg_dump -Fc` **hourly** (retain ~24), promoted
 to **daily** (retain ~14). Each backup is one directory: the dump, a media
 tar, `env/` + `configuration/`, and a manifest (image tag, postgres major,
