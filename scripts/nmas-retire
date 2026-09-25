@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Retire a device from NMAS management -- the whole exit, not a CSV delete.
+
+OPEN_FINDINGS C11. See modules/nsot/retire.py for what it does, in order, and
+what it deliberately does NOT do (it prints both, every time).
+
+    nmas-retire --list Default --device r5 --reason "ISP PE, outside our boundary"
+    #   -> every step (done / to do), what it will NOT do, advisories, a HASH
+
+    nmas-retire ... --apply <HASH> --actor you@example.com --breakglass <file>
+    #   the passphrase is read from the terminal, never from an argument
+
+It refuses to delete the CSV row unless the break-glass record holds this
+device's CURRENT credential: that row is the only stored copy. Exit 0 done /
+planned, 1 refused, 2 could not run. A partial run is finished by running
+it again; every step already done is skipped.
+"""
+
+import argparse
+import getpass
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def _print_plan(p: dict) -> None:
+    print(f"retire {p['hostname']} from {p['list_name']}: {p['reason']}")
+    for s in p["steps"]:
+        print(f"  [{'done' if s['done'] else 'todo'}] {s['what']}")
+    print("\nNOT doing (each is correct, and named so it is not mistaken "
+          "for an omission):")
+    for n in p["not_doing"]:
+        print(f"  - {n}")
+    for a in p["advisories"]:
+        print(f"\nADVISORY: {a}")
+    for r in p["refusals"]:
+        print(f"\nREFUSED: {r}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--list", dest="list_name", required=True)
+    ap.add_argument("--device", required=True)
+    ap.add_argument("--reason", required=True)
+    ap.add_argument("--apply", default="", help="the plan hash to carry out")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--breakglass", default="",
+                    help="the break-glass record holding this device")
+    args = ap.parse_args()
+
+    from modules.nsot import retire
+
+    p = retire.plan(args.list_name, args.device, args.reason)
+    _print_plan(p)
+    if not args.apply:
+        if not p["ok"]:
+            return 1
+        print(f"\nplan hash: {p['hash']}   (apply with --apply {p['hash']} "
+              "--actor <you> --breakglass <file>)")
+        return 0
+
+    payload = None
+    if args.breakglass:
+        import modules.breakglass as bg
+        try:
+            payload = bg.read_record(args.breakglass,
+                                     getpass.getpass("break-glass passphrase: "))
+        except (bg.BreakglassError, OSError) as exc:
+            print(f"\nREFUSED: the break-glass record could not be opened: {exc}")
+            return 1
+    result = retire.apply(args.list_name, args.device, reason=args.reason,
+                          actor=args.actor, confirmed_hash=args.apply,
+                          breakglass=payload)
+    if not result.get("ok"):
+        print(f"\nREFUSED: {result.get('error')}")
+        for step in result.get("remaining", []):
+            print(f"  still to do: {step}")
+        return 1
+    print(f"\nRETIRED {args.device}: done {', '.join(result['done']) or 'nothing (already retired)'}"
+          + (f"; commit {result['commit'][:8]}" if result.get("commit") else ""))
+    for r in result.get("re_approve", []):
+        print(f"  NEXT: {r}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -2133,8 +2133,11 @@ def sync_targets(list_name: str) -> dict:
             incomplete.append(name)
         rows.append(row)
 
+    from modules.settings_schema import get_setting
+    declared = (get_setting("clab_declared_unmapped") or {}).get(list_name) or {}
     return {"ok": True, "list": list_name, "targets": sorted(
-        rows, key=lambda r: r["hostname"]), "incomplete": sorted(incomplete)}
+        rows, key=lambda r: r["hostname"]), "incomplete": sorted(incomplete),
+        "declared_unmapped": declared}
 
 
 def run_sync(script: str = "") -> dict:

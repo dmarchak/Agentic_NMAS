@@ -358,7 +358,8 @@ def golden_path_for(repo: str, entry: dict) -> str:
     return os.path.join(repo, entry.get("golden", ""))
 
 
-def references(repo: str, identity: str, list_name: str = "") -> list:
+def references(repo: str, identity: str, list_name: str = "",
+               against: str = "HEAD") -> list:
     """Everything that still names this device, with how to clear each.
 
     **Checked, not assumed.** Each entry is
@@ -390,9 +391,18 @@ def references(repo: str, identity: str, list_name: str = "") -> list:
             try:
                 from modules.nsot import repo as _repo
 
-                rc, _out, _err = _repo.git(
-                    repo, "cat-file", "-e",
-                    "HEAD:" + rel.replace(os.sep, "/"))
+                # `against="index"` is for a caller that has STAGED the
+                # removal and commits it together with the release (retire):
+                # the file is gone from the index and still at HEAD, and the
+                # release and the removal are one commit.
+                if against == "index":
+                    rc, _out, _err = _repo.git(
+                        repo, "ls-files", "--error-unmatch", "--",
+                        rel.replace(os.sep, "/"))
+                else:
+                    rc, _out, _err = _repo.git(
+                        repo, "cat-file", "-e",
+                        "HEAD:" + rel.replace(os.sep, "/"))
                 at_head = rc == 0
             except Exception:                  # noqa: BLE001
                 # A check that could not run has not passed.
@@ -439,7 +449,8 @@ def references(repo: str, identity: str, list_name: str = "") -> list:
 
 
 def release(repo: str, identity: str, list_name: str = "",
-            actor: str = "") -> dict:
+            actor: str = "", against: str = "HEAD",
+            retained: tuple = ()) -> dict:
     """Give a device name back. **Refuses while anything still names it.**
 
     A name that can be taken and never given back means one typo permanently
@@ -464,7 +475,15 @@ def release(repo: str, identity: str, list_name: str = "",
         return {"ok": False, "error": f"no device with identity '{identity}'",
                 "references": []}
 
-    blocking = references(repo, identity, list_name)
+    # *retained* names reference KINDS the caller deliberately keeps and
+    # states it keeps -- retire keeps NetBox, because NetBox records what
+    # exists, not what NMAS manages. Only "netbox" may be retained: an
+    # intent file, a golden or a credential left behind is a half-retirement.
+    if set(retained) - {"netbox"}:
+        return {"ok": False, "released": "", "references": [],
+                "error": f"only 'netbox' may be retained, not {sorted(set(retained) - {'netbox'})}"}
+    blocking = [r for r in references(repo, identity, list_name, against=against)
+                if r["kind"] not in retained]
     if blocking:
         return {"ok": False, "released": "", "references": blocking,
                 "error": ("%s still referenced by %d artefact(s): %s"

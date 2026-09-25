@@ -2056,28 +2056,23 @@ the confirmed path.
      button**: that leaves r5 bound, mapped, alerting and half-present
      (OPEN_FINDINGS C11), and destroys the only copy of its credential.
 
-   **r5's exit, in order** (proposed 2026-09-25; items marked *decide* are
-   the operator's):
-   1. `scripts/nmas-breakglass export --list Default --out <file>`, then
-      `verify`. The CSV row holds the only copy NMAS has of r5's rotated
-      credential.
-   2. **Take the block off by hand** over SSH: `no event manager applet
-      NMAS-HEARTBEAT` and `logging trap critical`. The deploy path cannot
-      remove it (C12), and a hand change on the day a device leaves
-      management creates no drift NMAS will ever see.
-   3. Save r5's golden, so the repository's last record is what the device
-      holds. Then run one clab sync **while r5 is still mapped**, so the
-      frozen `r5.cfg` is the clean one and a redeploy does not put the
-      applet back.
-   4. **Retire, not delete** (C11): the files removed in one commit (history
-      kept in git), the identity released, then the CSV row. Releasing the
-      identity changes `cisco_iosxe/base.j2`'s bound set, which withdraws its
-      approval, so re-approve against r1–r4 and r6.
-   5. *decide* NetBox device 9: r5 is real, so keeping it is defensible.
-      Either way the heartbeat rules must not take their population from
-      NetBox alone (C11 (3)).
-   6. *decide* the sanitiser: `r5.cfg` becomes a declared, deliberately
-      unmapped file (not built).
+   **r5's exit** (decided 2026-09-25: retire, not delete; NetBox device 9
+   KEPT, since NetBox records what exists; heartbeat rules follow committed
+   intent):
+   1. Take the heartbeat block off by hand (C12), then save r5's golden.
+      `nmas-retire`'s plan flags the applet until then.
+   2. One clab sync **while r5 is still mapped**, so the frozen `r5.cfg`
+      is the clean one.
+   3. `scripts/nmas-breakglass export --list Default --out <file>` and
+      `verify`.
+   4. `scripts/nmas-retire --list Default --device r5 --reason "..."`, read
+      its steps and its NOT-doing list, then `--apply <hash> --actor <you>
+      --breakglass <file>`.
+      **Live plan, 2026-09-25:** declare `labs/lab/configs/r5.cfg`; one
+      commit removing `host_vars/r5.yml` and `golden/r5.cfg` and releasing
+      its identity; withdraw `cisco_iosxe/base.j2` (re-approve against r1,
+      r2, r3, r4, r6); then the row.
+   5. Re-approve `cisco_iosxe/base.j2`.
    - **Every device's REAL interval measured:** over at least an hour of
      heartbeats, the shortest and longest inter-arrival gap per device. For
      its dialect's window W, **2 × longest < W < 3 × shortest**, or the

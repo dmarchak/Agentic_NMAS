@@ -65,8 +65,11 @@ class StrayLookupFailed(Exception):
     """The remote listing did not happen. **Not the same as no litter.**"""
 
 
-def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
-    """``[(hostname, configs_dir, lab)]``. Raises on anything else."""
+def fetch(url: str, list_name: str = "", timeout: int = 15,
+          declared: dict = None) -> list:
+    """``[(hostname, configs_dir, lab, host, platform, oxidized_node)]``.
+    Raises on anything else. *declared*, if given, is filled with the list's
+    DECLARED-UNMAPPED entries ``{hostname: "reason (by, at)"}``."""
     endpoint = url.rstrip("/") + "/clab/sync_targets"
     if list_name:
         endpoint += "?list=" + urllib.parse.quote(list_name)
@@ -82,6 +85,11 @@ def fetch(url: str, list_name: str = "", timeout: int = 15) -> list:
     for line in body.splitlines():
         if line.startswith("# INCOMPLETE"):
             problems.append(line[2:])
+            continue
+        if line.startswith("# DECLARED-UNMAPPED\t"):
+            _tag, host, _lab, why = (line.split("\t") + ["", "", ""])[:4]
+            if declared is not None and host:
+                declared[host] = why
             continue
         if not line.strip():
             continue
@@ -167,7 +175,8 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
-        rows = fetch(args.url, args.list)
+        declared = {}
+        rows = fetch(args.url, args.list, declared=declared)
     except (urllib.error.URLError, OSError, ValueError) as exc:
         print(f"REFUSED — the NMAS could not be asked where configs belong: "
               f"{exc}", file=sys.stderr)
@@ -205,7 +214,8 @@ def main() -> int:
         return EXIT_NOT_FOUND
 
     if args.reconcile:
-        return _reconcile(args.reconcile, rows, strict=args.strict)
+        return _reconcile(args.reconcile, rows, strict=args.strict,
+                          declared=declared)
 
     if args.group:
         # ONE LINE PER DESTINATION, so the caller's unit of work can be a
@@ -221,7 +231,9 @@ def main() -> int:
         return EXIT_OK
 
     if args.device:
-        for host, cfg, lab in rows:
+        # Six columns since the platform and Oxidized node were added; this
+        # unpacked three, so `--device` raised on the first row.
+        for host, cfg, lab, *_rest in rows:
             if host == args.device:
                 print(f"{host}\t{cfg}\t{lab}")
                 return EXIT_OK
@@ -233,7 +245,8 @@ def main() -> int:
     return EXIT_OK
 
 
-def _reconcile(directory: str, rows: list, strict: bool = False) -> int:
+def _reconcile(directory: str, rows: list, strict: bool = False,
+               declared: dict = None) -> int:
     """Account for every device in the map AND every file in *directory*.
 
     **The population question, asked in both directions.** The sanitizer's
@@ -264,9 +277,17 @@ def _reconcile(directory: str, rows: list, strict: bool = False) -> int:
     files = {n[:-4] for n in os.listdir(here) if n.endswith(".cfg")}
     mapped = {r[0] for r in rows}
 
+    declared = declared or {}
     produced = sorted(mapped & files)
     no_file = sorted(mapped - files)
-    unmapped = sorted(files - mapped)
+    # A DECLARED file is a decision (a retired device's frozen startup
+    # config), not a gap: reported with its reason, never as unmapped, so the
+    # unmapped line keeps meaning "nobody accounted for this".
+    declared_here = sorted((files - mapped) & set(declared))
+    unmapped = sorted(files - mapped - set(declared))
+    # A declaration for a device that is MAPPED says "deliberately unmapped"
+    # about something that is not: the declaration is stale and wrong.
+    conflict = sorted(mapped & set(declared))
 
     print(f"map: {len(mapped)} device(s)   {here}: {len(files)} file(s)")
     print(f"  produced : {len(produced)}")
@@ -274,6 +295,14 @@ def _reconcile(directory: str, rows: list, strict: bool = False) -> int:
         print(f"  NO FILE  : {len(no_file)} — {' '.join(no_file)}")
         print("             the sanitizer produced nothing for these, so "
               "they will not be updated and nothing else reports it")
+    if declared_here:
+        print(f"  declared : {len(declared_here)} — deliberately unmapped:")
+        for host in declared_here:
+            print(f"             {host}: {declared[host]}")
+    if conflict:
+        print(f"  CONFLICT : {' '.join(conflict)} declared unmapped AND "
+              "mapped -- remove the declaration or the mapping",
+              file=sys.stderr)
     if unmapped:
         print(f"  unmapped : {len(unmapped)} — {' '.join(unmapped)}")
         print("             a file the NMAS does not account for; not "
@@ -297,7 +326,7 @@ def _reconcile(directory: str, rows: list, strict: bool = False) -> int:
     # it -- r6's state for two days. The second is a fact worth knowing and
     # not a reason to stop a sync, and conflating them is how a caller
     # learns to drop the `|| exit`.
-    if no_file:
+    if no_file or conflict:
         return EXIT_MISSING_OUTPUT
     if unmapped and strict:
         return EXIT_MISSING_OUTPUT

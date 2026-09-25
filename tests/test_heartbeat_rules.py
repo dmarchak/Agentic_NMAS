@@ -108,3 +108,58 @@ def test_the_rendered_file_parses_back_to_the_same_rules():
     text = H.render(doc)
     assert text.startswith("# GENERATED")
     assert yaml.safe_load(text) == doc
+
+
+class TestThePopulationIsWhoIsToldToHeartbeat:
+    """The operator's decision, 2026-09-25: a rule per device whose committed
+    intent carries a complete syslog block. NetBox devices without one are
+    NAMED as not expected to heartbeat (r5: real, kept in NetBox, retired
+    from NMAS) rather than given a rule that alerts for ever."""
+
+    BLOCK = {"trap": "notifications", "origin_id": "hostname",
+             "source_interface": "Loopback0", "hosts": ["192.0.2.10"],
+             "heartbeat": 300}
+
+    def _world(self, tmp_path, monkeypatch, docs, platforms, netbox):
+        import json
+        import yaml
+        repo = tmp_path / "lab" / "config_repo"
+        (repo / "host_vars").mkdir(parents=True)
+        (repo / ".nsot").mkdir()
+        for name, doc in docs.items():
+            (repo / "host_vars" / f"{name}.yml").write_text(
+                yaml.safe_dump({"hostname": name, **doc}))
+        (repo / ".nsot" / "manifest.json").write_text(json.dumps({
+            "devices": {f"uid:{n}": {"name": n, "platform": p}
+                        for n, p in platforms.items()}}))
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.device.get_device_lists",
+                            lambda: [{"name": "Lab", "filename": "lab"}])
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (True, "", None, "b"))
+        monkeypatch.setattr("modules.netbox_client._nb_get",
+                            lambda s, b, p: [{"name": n} for n in netbox])
+
+    def test_rules_follow_the_block_and_the_rest_are_named(
+            self, tmp_path, monkeypatch):
+        self._world(
+            tmp_path, monkeypatch,
+            docs={"s4": {"logging": {"syslog": self.BLOCK}},
+                  "r2": {"logging": {"syslog": self.BLOCK}},
+                  "s3": {"logging": {"settings": ["trap critical"],
+                                     "hosts": ["192.0.2.10"]}}},
+            platforms={"s4": "cisco_ios", "r2": "cisco_iosxe",
+                       "s3": "cisco_ios"},
+            netbox=["s4", "r2", "s3", "r5"])
+        expected, not_expected = H.expected_devices()
+        assert expected == {"s4": "cisco_ios", "r2": "cisco_iosxe"}
+        assert not_expected == ["r5", "s3"]
+
+    def test_a_partial_block_is_not_told_to_heartbeat(self, tmp_path,
+                                                      monkeypatch):
+        partial = {**self.BLOCK, "heartbeat": 0}
+        self._world(tmp_path, monkeypatch,
+                    docs={"s1": {"logging": {"syslog": partial}}},
+                    platforms={"s1": "cisco_ios"}, netbox=["s1"])
+        expected, not_expected = H.expected_devices()
+        assert expected == {} and not_expected == ["s1"]

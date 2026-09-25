@@ -737,3 +737,80 @@ class TestGroupingIsByDestination:
         assert len(lines) == 2, f"expected one line per destination: {lines}"
         assert lines[0] == "labs/lab/configs\tuser@clab\tr1 s1"
         assert lines[1] == "labs/r6/configs\tuser@clab\tr6"
+
+
+class TestADeclaredFileIsADecisionNotAGap:
+    """A retired device's frozen startup config is DECLARED unmapped, with
+    who and why, so `--reconcile` reports it as a decision instead of as
+    unmapped for ever (which teaches people to ignore that line)."""
+
+    @pytest.fixture(scope="class")
+    def helper(self):
+        import importlib.util
+        import os as _os
+        from importlib.machinery import SourceFileLoader
+
+        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        spec = importlib.util.spec_from_file_location(
+            "clabt4", path, loader=SourceFileLoader("clabt4", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    ROWS = [("r1", "labs/lab/configs", "default", "u@c", "cisco_iosxe", "r1")]
+
+    def test_declared_is_reported_with_its_reason_and_not_as_unmapped(
+            self, helper, tmp_path, capsys):
+        for name in ("r1.cfg", "r5.cfg", "ghost.cfg"):
+            (tmp_path / name).write_text("x")
+        code = helper._reconcile(str(tmp_path), self.ROWS, declared={
+            "r5": "ISP PE, retired from NMAS (op, 2026-09-25)"})
+        out = capsys.readouterr().out
+        assert code == helper.EXIT_OK
+        assert "declared : 1" in out and "r5: ISP PE" in out
+        assert "unmapped : 1 — ghost" in out, "undeclared still named"
+
+    def test_strict_does_not_block_on_a_declared_file(self, helper, tmp_path):
+        for name in ("r1.cfg", "r5.cfg"):
+            (tmp_path / name).write_text("x")
+        assert helper._reconcile(str(tmp_path), self.ROWS, strict=True,
+                                 declared={"r5": "retired"}) == helper.EXIT_OK
+
+    def test_a_declaration_on_a_mapped_device_is_a_conflict(
+            self, helper, tmp_path, capsys):
+        (tmp_path / "r1.cfg").write_text("x")
+        code = helper._reconcile(str(tmp_path), self.ROWS,
+                                 declared={"r1": "retired"})
+        assert code == helper.EXIT_MISSING_OUTPUT
+        assert "CONFLICT" in capsys.readouterr().err
+
+    def test_fetch_collects_declarations(self, helper):
+        class _R:
+            def read(self):
+                return (b"r1\tlabs/lab/configs\tdefault\tu@c\tcisco_iosxe\tr1\n"
+                        b"# DECLARED-UNMAPPED\tr5\tdefault\tISP PE (op, today)\n")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        import urllib.request
+        orig, declared = urllib.request.urlopen, {}
+        try:
+            urllib.request.urlopen = lambda *a, **k: _R()
+            rows = helper.fetch("http://nmas", declared=declared)
+        finally:
+            urllib.request.urlopen = orig
+        assert [r[0] for r in rows] == ["r1"]
+        assert declared == {"r5": "ISP PE (op, today)"}
+
+    def test_device_mode_reads_six_column_rows(self, helper, monkeypatch,
+                                               capsys):
+        """`--device` unpacked three columns from six-column rows and raised
+        on the first one."""
+        monkeypatch.setattr(helper, "fetch", lambda *a, **k: list(self.ROWS))
+        monkeypatch.setattr("sys.argv", ["x", "--url", "u", "--device", "r1"])
+        assert helper.main() == helper.EXIT_OK
+        assert "r1\tlabs/lab/configs\tdefault" in capsys.readouterr().out

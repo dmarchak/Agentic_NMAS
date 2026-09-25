@@ -868,6 +868,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_seeded_specs.py` | code-defined NetBox specs against NetBox with both operands; a failed definition write warns and reaches the sync's notes |
 | `test_template_library_renders.py` | the shared `_common.j2` is listed with what editing it revokes; a withdrawal's reason is drawn; the save message says what happened |
 | `test_bulk_intent.py` | P.1b: before-state compare-and-set per device with both operands; every refusal reason at once; the group count is the headline; one-shot hash; one commit; one device reverts alone from it |
+| `test_retire.py` | the whole exit in one commit, history kept; the break-glass record must hold the CURRENT credential; what it will NOT do is stated; resumable; a failed commit restores the tree |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
@@ -4027,6 +4028,15 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   been wrong for a slow clock. One 750 s window would have alerted on a
   single missed s4 heartbeat. Windows are now per dialect, from measured
   real intervals, and an unmeasured dialect is refused.
+- **A device leaves management through `nmas-retire`, never the Delete
+  button** (C11). Delete removes the CSV row and nothing else, and measured
+  on r5 that left it bound to its template, in the sync map with a false
+  INCOMPLETE reason, heartbeat-alerting, and with its only stored credential
+  destroyed. Retire does the whole exit and **states what it does not do**
+  (NetBox kept, Oxidized polling, startup frozen and declared unmapped),
+  because each of those is correct and reads as an omission unless it is
+  named. The credential check is a **refusal, not a step**: a sequence whose
+  first step can be skipped will be skipped.
 - **STOP A PROCESS BY IDENTITY, NEVER BY PATTERN.** `pkill -f "<pattern>"`
   killed the shell running it three times: a heredoc edit lost
   (`NSOT_WRITEUP_NOTES.md`), a file copy lost, and a probe teardown stopped
@@ -4066,7 +4076,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **22 open at 2026-09-25**, counted from the rows: 18 recorded only in
+present when each was recorded. **21 open at 2026-09-25**, counted from the rows: 17 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

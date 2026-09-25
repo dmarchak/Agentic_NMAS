@@ -285,6 +285,13 @@ DEFAULTS: dict = {
     #: silence nobody receives. The third deliberate exception to "a new
     #: default reproduces prior behaviour" -- prior onboarding gave no
     #: logging at all, which is the coverage gap r6 was found in.
+    #: Startup-config files that are DELIBERATELY unmapped, per list:
+    #: ``{list: {hostname: {"lab", "reason", "by", "at"}}}``. Written by
+    #: retire (`modules/nsot/retire.py`) and read by the clab sync map, so
+    #: `nmas-clab-targets --reconcile` reports a retired device's frozen file
+    #: as DECLARED, with its reason, instead of as unmapped for ever. A
+    #: declaration for a device that is mapped again is a conflict, reported.
+    "clab_declared_unmapped": {},
     "syslog_host": "",
     "syslog_trap_level": "notifications",
     #: Puts the hostname in every line; the Grafana heartbeat rules key on it.
@@ -643,6 +650,7 @@ SCHEMA: dict = {
         "require_person_for_publish_remote": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
         "netbox_excluded_vrfs": {"type": "array", "items": _STR},
+        "clab_declared_unmapped": {"type": "object"},
         "syslog_host": _STR,
         "syslog_trap_level": {"enum": ["emergencies", "alerts", "critical",
                                        "errors", "warnings", "notifications",

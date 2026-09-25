@@ -58,6 +58,11 @@ def sync_targets():
              f"\t{r['platform']}\t{r['oxidized_node']}"
              for r in result["targets"] if not r.get("error")]
     body = "\n".join(lines) + ("\n" if lines else "")
+    # Deliberately unmapped files (retired devices), with who and why, so the
+    # reconcile can tell a decision from a gap.
+    for host, d in sorted((result.get("declared_unmapped") or {}).items()):
+        body += (f"# DECLARED-UNMAPPED\t{host}\t{d.get('lab', '')}\t"
+                 f"{d.get('reason', '')} ({d.get('by', '')}, {d.get('at', '')})\n")
     if result["incomplete"]:
         # On stdout it would be parsed as a device. It goes in a header, so
         # a caller that ignores headers loses nothing it could have used.

@@ -174,41 +174,54 @@ def devices_in(doc: dict) -> set:
             for r in g.get("rules", [])}
 
 
-def netbox_devices() -> dict:
-    """``{hostname: dialect}``: the POPULATION from NetBox, the DIALECT from
-    the NSoT manifests.
+def expected_devices() -> tuple:
+    """``({hostname: dialect}, not_expected)``: WHO IS TOLD TO HEARTBEAT.
 
-    Not NetBox's platform: measured 2026-09-25, NetBox records all ten
-    devices as `ios`, the C8000v routers included (OPEN_FINDINGS A4), and a
-    window keyed on that would give every router the vIOS clock's window.
-    A device no manifest names, or two manifests disagree about, is refused
-    by name -- a default dialect is the slug lookup that silently opens.
+    The population is every device whose COMMITTED intent carries a complete
+    syslog block -- a device with the block is one that has been told to
+    heartbeat, so a rule follows the configuration rather than the inventory
+    (the operator's decision, 2026-09-25). It was NetBox's device list, which
+    keeps r5 (an ISP device, retired from NMAS, kept in NetBox because it
+    exists) and would have alerted on it for ever.
+
+    *not_expected* names every NetBox device without the block, stated
+    rather than silently omitted. The dialect comes from the manifest, never
+    NetBox (A4); a device with the block and no single dialect is refused.
     """
     from modules.config import LISTS_DIR
     from modules.device import get_device_lists
     from modules.netbox_client import _nb_get, _nb_ready
-    from modules.nsot import manifest
+    from modules.nsot import hostvars, manifest
 
-    ok, err, session, base = _nb_ready()
-    if not ok:
-        raise RuntimeError(f"NetBox is not reachable: {err}")
-    names = [d["name"] for d in _nb_get(session, base, "dcim/devices/")
-             if d.get("name")]
-    dialects: dict = {}
+    expected, dialects, refused = {}, {}, []
     for entry in get_device_lists():
         repo = os.path.join(LISTS_DIR, entry["filename"], "config_repo")
         for dev in (manifest.load(repo).get("devices") or {}).values():
             dialects.setdefault(dev.get("name"), set()).add(dev.get("platform"))
-    out, refused = {}, []
-    for n in names:
-        found = dialects.get(n) or set()
+        for host in hostvars.list_committed(repo):
+            name = host if isinstance(host, str) else host.get("hostname", "")
+            doc = hostvars.read_committed(repo, name) or {}
+            block = (doc.get("logging") or {}).get("syslog")
+            if block and not hostvars.syslog_block_problems(doc):
+                expected[name] = None
+    for name in expected:
+        found = dialects.get(name) or set()
         if len(found) != 1 or not next(iter(found)):
-            refused.append(f"{n} ({'no manifest names it' if not found else 'manifests disagree: ' + ', '.join(sorted(map(str, found)))})")
+            refused.append(f"{name} ({'no manifest names it' if not found else 'manifests disagree'})")
         else:
-            out[n] = next(iter(found))
+            expected[name] = next(iter(found))
     if refused:
         raise ValueError("no dialect for " + "; ".join(refused))
-    return out
+
+    not_expected = []
+    ok, err, session, base = _nb_ready()
+    if ok:
+        in_netbox = {d["name"] for d in _nb_get(session, base, "dcim/devices/")
+                     if d.get("name")}
+        not_expected = sorted(in_netbox - set(expected))
+    else:
+        not_expected = [f"(NetBox could not be asked: {err})"]
+    return expected, not_expected
 
 
 def main() -> int:
@@ -227,11 +240,15 @@ def main() -> int:
     from modules.settings_schema import get_setting
     heartbeat = int(get_setting("syslog_heartbeat_seconds") or 0)
     try:
-        doc = build(netbox_devices(), args.datasource_uid, heartbeat)
+        devices, not_expected = expected_devices()
+        doc = build(devices, args.datasource_uid, heartbeat)
     except (RuntimeError, ValueError) as exc:
         print(f"UNPROVEN: {exc}")
         return EXIT_UNPROVEN
     text = render(doc)
+    for name in not_expected:
+        print(f"not expected to heartbeat: {name} -- no complete syslog "
+              "block in its committed intent")
     if args.check:
         try:
             with open(args.out, encoding="utf-8") as fh:
