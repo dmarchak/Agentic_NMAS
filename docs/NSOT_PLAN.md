@@ -2040,7 +2040,20 @@ the confirmed path.
      counts is Loki's timestamp.
 5. **Operator:** generate the rules with the Loki datasource UID, install
    them into `/etc/grafana/provisioning/alerting/`, and reload Grafana.
-   **Step 5 is BLOCKED on per-device windows (C16).** The acceptance
+   **Per-device windows BUILT 2026-09-25; step 5 is unblocked.** Live
+   generation from Loki gave nine measured windows (r1–r4 and r6 750 s, s1
+   797, s2 799, s3 1286, s4 996) and `--check` read current for all nine.
+   To install:
+   ```
+   scripts/nmas-heartbeat-rules --datasource-uid <loki-uid> --loki-url http://127.0.0.1:3100
+   sudo install -m 0644 deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml /etc/grafana/provisioning/alerting/
+   sudo install -m 0644 deploy/systemd/nmas-heartbeat-check.* /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now nmas-heartbeat-check.timer
+   ```
+   Then reload Grafana's provisioning.
+
+   **The original design, kept as the specification (it was blocked on
+   C16):** The acceptance
    measurement (step 6) was run early, and it failed three of four switches
    against the per-platform window. The design, to be built before any rule
    is installed:

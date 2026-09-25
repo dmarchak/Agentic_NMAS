@@ -39,6 +39,8 @@ JOBS = (
      "what": "NetBox dump + config, hourly (NSOT_PLAN P.2)"},
     {"unit": "nmas-netbox-restore-test", "max_age_minutes": 50 * 60,
      "what": "NetBox restore into a scratch postgres, daily (P.2)"},
+    {"unit": "nmas-heartbeat-check", "max_age_minutes": 180,
+     "what": "each device's heartbeat window still fits its measured rate, hourly (C16)"},
 )
 
 JOURNAL_DAYS = 14

@@ -862,7 +862,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_dhcp_source.py` | dhcp is a source not an absence; the reservation refuses at plan time; the review claim is checkable |
 | `test_server_reads_nothing_the_form_cannot_send.py` | a field only curl can supply is a feature no operator has; both directions, named exemptions |
 | `test_syslog_block.py` | P.1: the captured device rendering round-trips on both platforms; only the exact heartbeat applet is claimed; whole-or-absent at the AUTHORING path, a true partial block recorded at extraction |
-| `test_heartbeat_rules.py` | one rule per device, NoData = Alerting, anchored hostname match, empty inventory and unusable interval refused |
+| `test_heartbeat_rules.py` | per-DEVICE windows from measured arrivals: quiet on one miss, firing on two, for each measured device; provisional and inseparable named in the rule's own label; `--check` names a moved rate; the anchored origin-id match |
 | `test_no_pattern_kill.py` | nothing written down stops a process by pattern; the tunnel helper closes the master it opened, and reports one that will not stop |
 | `test_seed_status.py` | C6: current / stale / edited / edited_and_stale from two git histories; edited is not a defect; a RELATIVE path classifies the same (the live run that got it wrong) |
 | `test_netbox_seeded_specs.py` | code-defined NetBox specs against NetBox with both operands; a failed definition write warns and reaches the sync's notes |
@@ -4030,6 +4030,15 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   been wrong for a slow clock. One 750 s window would have alerted on a
   single missed s4 heartbeat. Windows are now per dialect, from measured
   real intervals, and an unmeasured dialect is refused.
+- **A rate measured on one device is a fact about that device.** "vIOS runs
+  at 75%" was s4, generalised to a platform. Measured over the fleet, the
+  four switches run at 0.94, 0.94, 0.75 and 0.55–0.61 (s3 varies), and the
+  per-platform window failed three of four, in both directions. The
+  heartbeat window is now measured **per device**. A device with no
+  measurement gets a window labelled **provisional** in the rule itself,
+  and a moved rate is a named state (`STALE RATE`) from an hourly check
+  that `job_health` watches. The same shape as the 60 s slack it replaced,
+  caught within an hour this time rather than a day.
 - **A job that fails into a journal nobody reads has not been reported**
   (C14). `clab-sync` refused correctly 72 times in a row, because its
   helper was on the login PATH and not systemd's, while r6's startup config

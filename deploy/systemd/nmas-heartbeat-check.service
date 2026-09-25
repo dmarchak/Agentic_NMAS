@@ -1,0 +1,16 @@
+# OPEN_FINDINGS C16: re-measure each device's heartbeat rate and compare with
+# the installed windows. A moved rate fails this unit, and job_health shows it.
+#   sudo install -m 0644 deploy/systemd/nmas-heartbeat-check.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now nmas-heartbeat-check.timer
+[Unit]
+Description=NMAS: heartbeat windows still fit each device's measured clock rate
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=dmarchak
+Group=dmarchak
+Environment=NMAS_LOKI_URL=http://127.0.0.1:3100
+ExecStart=/home/dmarchak/python/Agentic_NMAS/scripts/nmas-heartbeat-rules --check
+TimeoutStartSec=10min
