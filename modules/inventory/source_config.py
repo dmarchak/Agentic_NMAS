@@ -9,13 +9,18 @@ work has. Local lists therefore behave exactly as before, with no migration.
 ```json
 {
   "source": "netbox",
-  "filters": {"site": "lab", "role": "router", "tag": "", "status": "active"},
+  "filters": {"site": "lab", "role": "router", "tag": "", "status": ""},
   "credential_list": "Lab Devices",
   "refresh_interval": 300,
   "device_order": ["R1", "R2", "S1"],
   "schema_version": 1
 }
 ```
+
+``status`` is **empty by default** — see ``DEFAULT_CONFIG``. An operator may
+set it, but nothing assumes it: NMAS no longer writes a device's status, so
+filtering on one selects for whatever it happened to be when the device was
+created.
 """
 
 import json
@@ -37,7 +42,24 @@ _lock = threading.Lock()
 
 DEFAULT_CONFIG = {
     "source":           SOURCE_LOCAL,
-    "filters":          {"site": "", "role": "", "tag": "", "status": "active"},
+    # NO STATUS FILTER BY DEFAULT.
+    #
+    # It was `"active"`, which was the other half of a self-sealing loop: the
+    # sync wrote `offline` from a ping result, the refresh queried
+    # `?status=active`, the device was not returned — absent, not skipped,
+    # not named — and the next sync iterated the inventory that no longer
+    # contained it, so nothing could ever set it back.
+    #
+    # Dropping the status write closes the loop, and leaving this filter would
+    # replace it with something quieter and permanent: with status frozen at
+    # whatever it was when the device was created, a device that happened to
+    # be unreachable during its first sync is invisible for ever. **If status
+    # no longer tracks liveness, filtering on it selects for an accident of
+    # onboarding.**
+    #
+    # An operator who genuinely wants only active devices can still set it;
+    # what changed is that nothing assumes it.
+    "filters":          {"site": "", "role": "", "tag": "", "status": ""},
     # Amendment 2: credentials are inherited from ONE designated local list,
     # never by scanning every list. Empty means "profiles only".
     "credential_list":  "",

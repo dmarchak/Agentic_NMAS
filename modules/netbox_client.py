@@ -1716,6 +1716,9 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         "name":               hostname,
         "device_type":        dev_type["id"],
         "site":               site_id,
+        # CREATE ONLY — see the update allowlist below, which omits it. The
+        # default is `active`: onboarding reached the device before this
+        # record existed, so it is a lifecycle claim that has been earned.
         "status":             status,
         "serial":             serial,
         "comments":           comments,
@@ -1731,8 +1734,28 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         payload["custom_fields"] = {"os_version": facts["version"]}
 
     if existing:
+        # `status` IS DELIBERATELY ABSENT FROM THIS ALLOWLIST.
+        #
+        # It used to be set from `status_cache` — the in-memory ping cache —
+        # so a single ICMP/TCP attempt that did not answer within five
+        # seconds of the sync wrote `offline` into the source of truth as a
+        # standing claim. Measured 2026-09-24: NetBox called s1 offline while
+        # s1 was answering SSH, and nothing would ever have corrected it.
+        #
+        # The rule that forbids this already existed, and this escaped it:
+        # `_scan_device` was DELETED because *importing observed state into
+        # the source of truth is the wrong direction*. A ping result is
+        # observed state. A 140-line SSH scanner was removed under that rule
+        # while three words on a call site doing the same thing survived —
+        # because a rule gets applied to things that have names.
+        #
+        # A device's status is now whatever a human set, and on create it is
+        # `active`, which after this change means *NMAS onboarded this
+        # device* rather than *it answered a ping*. Liveness lives in the
+        # app's own online/offline badge, which is live when it is read and
+        # which nobody mistakes for a stored fact.
         update = {k: v for k, v in payload.items()
-                  if k in ("name", "serial", "comments", "device_type", "status",
+                  if k in ("name", "serial", "comments", "device_type",
                             "role", "device_role", "platform",
                             "local_context_data", "config_template",
                             "custom_fields")}
@@ -2743,7 +2766,6 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
                 interfaces=result.get("interfaces", []),
                 site_id=site["id"],
                 role_id=_role_id_for(result.get("app_role", "router")),
-                status="active" if (status_cache or {}).get(result["ip"], False) else "offline",
                 ipam_stats=ipam_stats,
                 vlans=result.get("vlans", []),
                 vrfs=result.get("vrfs", []),

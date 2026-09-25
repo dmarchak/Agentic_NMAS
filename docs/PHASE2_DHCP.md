@@ -1092,3 +1092,89 @@ nobody had reason to suspect.
 
 That is the argument for the record existing, made by the record rather than
 about it.
+
+
+## 15. Applied: the sync no longer writes status, and the sweep that followed
+
+### The change
+
+- **`status` is gone from the PATCH allowlist** in `_upsert_device`, and the
+  inline `"active" if (status_cache or {}).get(...) else "offline"` is gone
+  from the call site — the expression, not just its effect.
+- **Create still sets `active`**, the parameter default. After this change the
+  field means *NMAS onboarded this device*, not *it answered a ping*, and
+  onboarding reached the device before the record existed, so the claim is
+  earned.
+- **`status_cache` keeps its legitimate use**: deciding which devices get a
+  live SSH session for neighbour discovery. Not opening a session to a device
+  that is down is a correct use of liveness, and removing it too would be the
+  fix overshooting into a different defect. A control pins it.
+
+### Correcting what is already wrong
+
+Dropping the write leaves every wrong value in place **for ever**, because
+nothing will write the field again. `scripts/nmas-netbox-status-reset` corrects
+them once — dry run by default, `--apply` to write:
+
+- target is `active`, for the reason above
+- **provenance governs**, exactly as removal does: only devices NMAS created
+  (tagged **or** recorded). A device a human curated, or deliberately set to
+  `planned` / `staged` / `decommissioning`, is **reported and left alone**
+- it goes through `_nb_patch`, so it is gated on `netbox_allow_writes` and
+  **recorded in the modification log** like any other write
+
+### The source filter
+
+`DEFAULT_CONFIG["filters"]["status"]` was `"active"` and is now `""`.
+
+Closing the status write alone would have replaced a loud loop with a quiet
+permanent one: with status frozen at whatever it was when the device was
+created, a device that happened to be unreachable during its first sync is
+**invisible for ever**. *If status no longer tracks liveness, filtering on it
+selects for an accident of onboarding.* An operator who wants only active
+devices can still set it; what changed is that nothing assumes it.
+
+The docstring example was changed too — it showed `"status": "active"` and
+would now read as the default, which is the `manifest.py` slug example again:
+confident prose beside correct code.
+
+### The sweep: what else writes an observation from an expression
+
+Asked because a rule gets applied to things that **have names** — a 140-line
+SSH scanner was deleted under *"importing observed state into the source of
+truth is the wrong direction"* while three words on a call site doing the same
+thing survived it.
+
+Parsed every NetBox payload literal in `netbox_client.py` and classified each
+field by how its value is produced. **Four more writes carry observed state**,
+and the useful part is that the obvious discriminator is wrong.
+
+*Observed versus intended* does not separate them: the NetBox import is
+**designed** to run from golden configs, which are observations too — but
+**approved** ones. The line that actually matters is:
+
+> **does this field change without anybody deciding it?**
+
+| field | source | verdict |
+|---|---|---|
+| `status` | ping cache, 5s loop | **fixed** — changed on a timer, decided by nobody |
+| `comments` | `facts` + `Synced: <timestamp>` | **churns every sync by construction** |
+| `local_context_data.ndm_sync` | `time.strftime(...)` | **churns every sync by construction** |
+| `serial`, `custom_fields.os_version`, `local_context_data.{platform,os_version,model}` | `facts` | fine — change when the hardware or image changes, which is a fact worth recording |
+
+### The churn is the record's own "somebody turns it off"
+
+`comments` and `ndm_sync` both embed the time the sync ran, so **they differ on
+every sync by construction** — which means the modification record logs a
+change for **every device, every sync, for ever**, and `ndm_sync` sits *inside*
+`local_context_data`, so that field's hash differs every sync too.
+
+That is the same end the 113 KB would have reached, by a different road: not
+volume of bytes but volume of meaningless entries. A log in which every entry
+is *"the sync ran"* teaches the reader to skip it, and the next s1 goes past
+unnoticed.
+
+**Not applied** — it changes what NetBox stores. The options are to drop the
+timestamp from both (the sync time is already in NetBox's own `last_updated`),
+or to exclude a named set of churn fields from the record. The first is
+honest and the second hides a real write, so the first is the recommendation.

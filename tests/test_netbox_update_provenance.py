@@ -674,3 +674,71 @@ class TestNeitherRecordIsTruncatedInPlace:
         assert not os.path.exists(netbox_guard._MODIFIED_FILE + ".tmp")
         with open(netbox_guard._MODIFIED_FILE, encoding="utf-8") as fh:
             json.load(fh)
+
+
+# ---------------------------------------------------------------------------
+# 8. A ping result is observed state and must not reach the source of truth
+
+
+class TestStatusIsNotWrittenByTheSync:
+    """The rule already existed and this escaped it.
+
+    `_scan_device` was deleted because *importing observed state into the
+    source of truth is the wrong direction*. A ping result is observed state.
+    A 140-line SSH scanner went under that rule while three words on a call
+    site doing the same thing survived — because a rule gets applied to things
+    that have names.
+    """
+
+    def test_status_is_not_in_the_update_allowlist(self):
+        src = open("modules/netbox_client.py", encoding="utf-8").read()
+        body = src.split("update = {k: v for k, v in payload.items()")[1]
+        allowlist = body.split("}")[0]
+        assert '"status"' not in allowlist, allowlist
+        # Floor: the allowlist is still a real allowlist, not emptied.
+        for kept in ("name", "serial", "comments", "local_context_data"):
+            assert f'"{kept}"' in allowlist
+
+    def test_the_sync_no_longer_derives_status_from_the_ping_cache(self):
+        src = open("modules/netbox_client.py", encoding="utf-8").read()
+        code = "\n".join(ln for ln in src.splitlines()
+                         if not ln.strip().startswith("#"))
+        assert '"active" if (status_cache' not in code
+        assert "else \"offline\"" not in code
+
+    def test_the_ping_cache_still_gates_live_sessions(self):
+        """The positive anchor. `status_cache` has a legitimate use — not
+        opening an SSH session to a device that is down — and removing that
+        too would be the fix overshooting into a different defect."""
+        src = open("modules/netbox_client.py", encoding="utf-8").read()
+        code = "\n".join(ln for ln in src.splitlines()
+                         if not ln.strip().startswith("#"))
+        assert "(status_cache or {}).get(r[\"ip\"], False)" in code
+
+    def test_a_created_device_is_still_active(self):
+        """Create keeps it: onboarding reached the device before the record
+        existed, so `active` is a lifecycle claim that has been earned."""
+        import inspect
+        from modules import netbox_client
+
+        sig = inspect.signature(netbox_client._upsert_device)
+        assert sig.parameters["status"].default == "active"
+
+    def test_the_source_filter_no_longer_defaults_to_active(self):
+        """The other half of the self-sealing loop. With status frozen at
+        whatever it was at creation, filtering on it selects for an accident
+        of onboarding."""
+        from modules.inventory.source_config import DEFAULT_CONFIG
+
+        assert DEFAULT_CONFIG["filters"]["status"] == ""
+        # Floor: the other filters still exist, so this did not pass by the
+        # filters dict having been emptied.
+        assert set(DEFAULT_CONFIG["filters"]) == {"site", "role", "tag", "status"}
+
+    def test_the_docstring_example_does_not_read_as_the_default(self):
+        """A docstring example that contradicts DEFAULT_CONFIG is the
+        manifest.py slug example again — confident prose beside correct code.
+        """
+        src = open("modules/inventory/source_config.py", encoding="utf-8").read()
+        doc = src.split('"""')[1]
+        assert '"status": "active"' not in doc

@@ -3677,6 +3677,49 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   looks.** A false statement sat in the source of truth and the only thing
   that could see it was the record built the day before — in a field nobody
   had thought to check, about a device nobody had reason to suspect.
+- **A RULE IS APPLIED TO THINGS THAT HAVE NAMES, AND THE SAME VIOLATION IN AN
+  EXPRESSION GOES UNEXAMINED** (§15). `_scan_device` — 140 lines — was deleted
+  under *"importing observed state into the source of truth is the wrong
+  direction"*, while `status="active" if (status_cache or {}).get(...) else
+  "offline"` on a call site did the same thing and survived, because nothing
+  about three words in an argument list presents itself as a subject for a
+  rule. Now fixed: **`status` is out of the PATCH allowlist and the expression
+  is deleted**; **create still sets `active`**, which after the change means
+  *NMAS onboarded this device* rather than *it answered a ping*, and is earned
+  because onboarding reached the device first. `status_cache` **keeps** its
+  legitimate use — not opening an SSH session to a device that is down — with
+  a control pinning that the fix did not overshoot into removing it.
+- **Fixing a writer leaves every wrong value in place for ever** when nothing
+  will write the field again. `scripts/nmas-netbox-status-reset` corrects them
+  once, dry-run first, and **provenance governs exactly as removal does**: only
+  devices NMAS created, with a human's `planned`/`staged`/`decommissioning`
+  reported and left alone. It goes through `_nb_patch`, so it is gated and
+  recorded like any other write.
+- **Closing a loud loop can leave a quiet permanent one.** The NetBox source
+  filter defaulted to `{"status": "active"}`; with status no longer tracking
+  liveness it is frozen at whatever it was when the device was created, so a
+  device unreachable during its first sync would be **invisible for ever** —
+  *if status no longer tracks liveness, filtering on it selects for an accident
+  of onboarding*. Default is now no status filter; an operator may still set
+  one, and nothing assumes it.
+- **The sweep's discriminator is not "observed versus intended".** The NetBox
+  import is *designed* to run from golden configs, which are observations too —
+  **approved** ones. The line that separates them is **does this field change
+  without anybody deciding it?** `serial`, `os_version` and `model` change when
+  the hardware or image changes, which is worth recording; a ping result
+  changes on a five-second timer; and `comments` and
+  `local_context_data.ndm_sync` both embed the sync's own timestamp, so they
+  **differ on every sync by construction**.
+- **That churn is the modification record's own "somebody turns it off".** Two
+  fields differing every sync means an entry for **every device, every sync,
+  for ever** — and `ndm_sync` sits *inside* `local_context_data`, so that
+  field's hash moves every sync too. Same end the 113 KB would have reached by
+  a different road: not volume of bytes but volume of meaningless entries, and
+  a log whose every entry reads *"the sync ran"* teaches the reader to skip it,
+  so the next false `offline` goes past unnoticed. Recorded, not applied — the
+  honest fix is to drop the timestamps (NetBox's own `last_updated` already
+  carries the sync time) rather than to exclude the fields from the record,
+  which would hide a real write.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
