@@ -3225,6 +3225,33 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   nowhere, for the fifth time. `TestTheReviewStatesWhatKeaSaid` executes the
   shipped `onboardReviewHtml` against a DHCP plan, and carries a floor that the
   static branch is not captured by it.
+- **COMPLETENESS IS JUDGED PER SOURCE, and judging it against one shape named
+  the wrong cause AND the wrong remedy.** `bootstrap_artifact()` checked
+  `params["address"]` alone, so a DHCP device — which has no address and no
+  mask **by construction**, and whose complete committed set is `source` +
+  `interface` + `mac` + `domain` — failed a presence test written against the
+  static shape and fell through to the only explanation the check knew:
+  *"Devices onboarded before these were recorded are in this state; abandon and
+  re-create."* Reported on a device created two minutes ago, on current code.
+  **Sixth message in one session describing a state that did not occur, and the
+  most expensive of them**: the remedy it named would have destroyed a
+  correctly-created device and produced the identical result the second time.
+  A message is not just a report — *it is an instruction*, and a wrong one
+  costs more than silence.
+  The legacy message **survives and now only fires when it is true**: a
+  document with no `source` key predates the field, so `address` present means
+  static and complete, and `address` absent is the genuine legacy state. Both
+  are pinned, and a pre-`source` static device still re-renders.
+- **An empty field is honest and useless when the reader cannot tell "none"
+  from "not yet".** The pending banner read *"bp-dhcp-a at — pending just
+  now"*. For a DHCP device an absent address is the **normal** state until it
+  boots, so the row now says what is expected and from where — *"awaiting DHCP
+  (Kea reservation → 10.255.0.40)"* — and a static device with no address says
+  **"no address recorded"** rather than rendering a blank. The manifest carries
+  the reservation because it cannot ask Kea, so the row states what was
+  *reserved* rather than claiming an address the device does not have yet.
+  Same distinction as `inconclusive` against `failed`, and as *"checked 7 of
+  9"* against a number that reads as complete.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

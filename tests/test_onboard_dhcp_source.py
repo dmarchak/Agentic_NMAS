@@ -333,3 +333,196 @@ class TestOkMeansKeaDidTheThing:
         out = client.monitor()
         assert out["ok"] is False
         assert "unavailable" in out["metrics"][0]["value"]
+
+
+class TestADhcpDeviceHasCompleteBootstrapParameters:
+    """A device created two minutes ago reported as a legacy one, with the
+    remedy *"abandon and re-create"*.
+
+    `bootstrap_artifact()` checked `params["address"]` alone. A DHCP device has
+    **no address and no mask by construction**, so its complete set —
+    `source`, `interface`, `mac`, `domain` — failed a presence test written
+    against the static shape, and fell through to the one explanation the check
+    knew. **Sixth message in one session describing a state that did not
+    occur, and the most expensive**: the remedy would have destroyed a correct
+    device and produced the identical result the second time.
+
+    Completeness is judged **per source** now.
+    """
+
+    @staticmethod
+    def _repo(tmp_path, monkeypatch, bootstrap):
+        import os
+
+        from modules.nsot import hostvars, repo as _repo
+
+        list_dir = tmp_path / "probe"
+        repo = str(list_dir / "config_repo")
+        os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda _n: str(list_dir))
+        monkeypatch.setattr("modules.secrets_store.KEY_FILE",
+                            str(tmp_path / "key.key"))
+        _repo.init_repo(repo)
+        hostvars.write_committed(repo, {"hostname": "bp-dhcp-a",
+                                        "bootstrap": bootstrap})
+        from modules.nsot.onboard import stage_bootstrap_credential
+
+        stage_bootstrap_credential(repo, "bp-dhcp-a", "Secret123")
+        return repo
+
+    DHCP = {"source": "dhcp", "interface": "GigabitEthernet2",
+            "mac": "aa:bb:cc:00:02:40", "domain": "rcn.lab",
+            "platform": "cisco_iosxe", "address": "", "mask": ""}
+
+    def test_a_dhcp_device_re_renders(self, tmp_path, monkeypatch):
+        from modules.nsot.onboard import bootstrap_artifact
+
+        repo = self._repo(tmp_path, monkeypatch, self.DHCP)
+        out = bootstrap_artifact(repo, "bp-dhcp-a")
+        assert out["ok"] is True, out["reason"]
+        assert " ip address dhcp" in out["config"]
+
+    def test_it_does_not_report_the_legacy_state(self, tmp_path, monkeypatch):
+        """The message whose remedy destroys a correct device."""
+        from modules.nsot.onboard import bootstrap_artifact
+
+        repo = self._repo(tmp_path, monkeypatch, self.DHCP)
+        out = bootstrap_artifact(repo, "bp-dhcp-a")
+        assert "abandon and re-create" not in (out["reason"] or "")
+
+    def test_a_dhcp_device_with_no_interface_is_refused_for_THAT_reason(
+            self, tmp_path, monkeypatch):
+        """The interface is chosen and never defaulted, so its absence is a
+        real refusal — and it must name itself rather than the legacy state."""
+        from modules.nsot.onboard import bootstrap_artifact
+
+        repo = self._repo(tmp_path, monkeypatch,
+                          {**self.DHCP, "interface": ""})
+        out = bootstrap_artifact(repo, "bp-dhcp-a")
+        assert out["ok"] is False
+        assert "no committed interface" in out["reason"]
+        assert "abandon and re-create" not in out["reason"]
+
+    def test_the_genuine_legacy_state_still_says_so(self, tmp_path, monkeypatch):
+        """**The floor.** The message is correct for the state it was written
+        for — no source key and no address — and must survive."""
+        from modules.nsot.onboard import bootstrap_artifact
+
+        repo = self._repo(tmp_path, monkeypatch,
+                          {"platform": "cisco_iosxe", "domain": "rcn.lab"})
+        out = bootstrap_artifact(repo, "bp-dhcp-a")
+        assert out["ok"] is False
+        assert "abandon and re-create" in out["reason"]
+
+    def test_a_pre_source_static_device_still_re_renders(self, tmp_path,
+                                                        monkeypatch):
+        """A document written before `source` existed: an address present means
+        static, and it must not start failing."""
+        from modules.nsot.onboard import bootstrap_artifact
+
+        repo = self._repo(tmp_path, monkeypatch,
+                          {"address": "203.0.113.32", "mask": "255.255.255.0",
+                           "interface": "GigabitEthernet2", "gateway": "",
+                           "domain": "rcn.lab", "platform": "cisco_iosxe"})
+        out = bootstrap_artifact(repo, "bp-dhcp-a")
+        assert out["ok"] is True, out["reason"]
+        assert " ip address 203.0.113.32 255.255.255.0" in out["config"]
+
+
+class TestThePendingRowSaysWhatIsExpected:
+    """*"bp-dhcp-a at — pending just now"* is honest and useless: a reader
+    cannot tell a device with no address from one whose address is simply not
+    known **yet**, and for a DHCP device the second is the normal state until
+    it boots."""
+
+    @staticmethod
+    def _row_html(row):
+        import json as _json
+
+        import dukpy as _dukpy
+
+        from tests.js_source import read_shipped
+
+        source = read_shipped(
+            "static/js/gen/partials__onboard_pending.1.js")
+        start = source.index("function pendingBannerHtml")
+        depth, i, seen = 0, source.index("{", start), False
+        while i < len(source):
+            if source[i] == "{":
+                depth += 1
+                seen = True
+            elif source[i] == "}":
+                depth -= 1
+                if seen and depth == 0:
+                    break
+            i += 1
+        fn = source[start:i + 1]
+        stub = """
+        var document = { createElement: function () { return {
+          set textContent(v) { this._t = v == null ? '' : String(v); },
+          get innerHTML() { return this._t.replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;').replace(/>/g,'&gt;'); } }; } };
+        """
+        # `pending`, not `devices` — the key the banner reads. Getting it
+        # wrong renders the empty string, which is what a passing test
+        # against no rows would also do.
+        payload = {"ok": True, "list": "probe", "pending": [row]}
+        return _dukpy.evaljs(
+            stub + _lift_pending(source) + fn
+            + f"\npendingBannerHtml({_json.dumps(payload)});")
+
+    def test_a_dhcp_row_names_the_reservation(self):
+        html = self._row_html({
+            "name": "bp-dhcp-a", "mgmt_ip": "", "address_source": "dhcp",
+            "mgmt_mac": "aa:bb:cc:00:02:40",
+            "reserved_address": "10.255.0.40",
+            "state": "in_flight", "age_seconds": 30})
+        assert "awaiting DHCP" in html
+        assert "10.255.0.40" in html
+
+    def test_a_dhcp_row_without_a_recorded_reservation_says_so(self):
+        html = self._row_html({
+            "name": "bp-dhcp-a", "mgmt_ip": "", "address_source": "dhcp",
+            "mgmt_mac": "aa:bb:cc:00:02:40", "reserved_address": "",
+            "state": "in_flight", "age_seconds": 30})
+        assert "awaiting DHCP" in html
+        assert "aa:bb:cc:00:02:40" in html
+
+    def test_a_static_row_still_shows_its_address(self):
+        """**The floor.** The DHCP branch must not capture the static case."""
+        html = self._row_html({
+            "name": "bp-onboard-c", "mgmt_ip": "203.0.113.31",
+            "address_source": "static", "state": "in_flight",
+            "age_seconds": 30})
+        assert "203.0.113.31" in html
+        assert "awaiting DHCP" not in html
+
+    def test_a_static_row_with_no_address_says_that_rather_than_nothing(self):
+        html = self._row_html({
+            "name": "x", "mgmt_ip": "", "address_source": "static",
+            "state": "in_flight", "age_seconds": 30})
+        assert "no address recorded" in html
+
+
+def _lift_pending(source):
+    """`pendingAgeText` and `esc`, which the banner calls."""
+    out = []
+    for name in ("pendingAgeText",):   # `esc` is defined inside the banner
+        try:
+            start = source.index(f"function {name}(")
+        except ValueError:
+            continue
+        depth, i, seen = 0, source.index("{", start), False
+        while i < len(source):
+            if source[i] == "{":
+                depth += 1
+                seen = True
+            elif source[i] == "}":
+                depth -= 1
+                if seen and depth == 0:
+                    break
+            i += 1
+        out.append(source[start:i + 1])
+    return "\n".join(out) + "\n"

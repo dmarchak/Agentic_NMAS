@@ -437,6 +437,14 @@ class TestTheREALStepsSatisfyTheContract:
             manager_gateway = ""
             domain = "rcn.lab"
             platform = "cisco_iosxe"
+            # What makes the committed set COMPLETE, recorded with it. Judging
+            # completeness against the static shape reported a DHCP device as
+            # one "onboarded before these were recorded", whose remedy is to
+            # abandon and re-create -- so the stand-in carries the source too,
+            # per the note above.
+            address_source = "static"
+            mgmt_mac = ""
+            reservation_address = ""
             host_vars = {"hostname": "bp-onboard-c"}
             bootstrap_config = "hostname bp-onboard-c\n!\nend\n"
             onboardable = True

@@ -49,7 +49,16 @@ function pendingBannerHtml(data) {
        gate never was. */
     const abandon = ` <button class="btn btn-sm btn-outline-danger py-0 px-1"
             onclick="onboardAbandon('${esc(r.name)}', '${esc(data.list)}')">Abandon</button>`;
-    return `<li><code>${esc(r.name)}</code> at <code>${esc(r.mgmt_ip)}</code>
+    /* AN EMPTY ADDRESS IS HONEST AND USELESS. A reader cannot tell a device
+       with no address from one whose address is simply not known YET, and for
+       a DHCP device the second is the normal state until it boots. So the row
+       says what is expected and from where, rather than leaving a blank. */
+    const where = r.address_source === 'dhcp'
+      ? (r.reserved_address
+          ? `awaiting DHCP (Kea reservation \u2192 ${esc(r.reserved_address)})`
+          : `awaiting DHCP (reservation for ${esc(r.mgmt_mac || 'an unrecorded MAC')})`)
+      : (r.mgmt_ip ? `<code>${esc(r.mgmt_ip)}</code>` : 'no address recorded');
+    return `<li><code>${esc(r.name)}</code> at ${where}
       — pending ${esc(age)}${flag}
       <button class="btn btn-sm btn-outline-secondary py-0 px-1"
         onclick="onboardBootstrap('${esc(r.name)}', '${esc(data.list)}')"

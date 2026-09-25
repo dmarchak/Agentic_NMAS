@@ -1210,7 +1210,10 @@ def commit_step(plan, *, actor: str) -> str:
     # `promote_device()` is the exit, and it existed before this flag did.
     manifest.upsert_device(repo, identity, plan.hostname,
                            mgmt_ip=plan.mgmt_ip, platform=plan.platform,
-                           pending=True)
+                           pending=True,
+                           address_source=plan.address_source,
+                           mgmt_mac=plan.mgmt_mac,
+                           reserved_address=plan.reservation_address)
     # THE BOOTSTRAP PARAMETERS ARE COMMITTED AS INTENT.
     #
     # Phase 1's entire product is a config the operator boots the node with,
@@ -1239,6 +1242,15 @@ def commit_step(plan, *, actor: str) -> str:
         "gateway":   plan.manager_gateway,
         "domain":    plan.domain,
         "platform":  plan.platform,
+        # WHAT MAKES THE SET COMPLETE, recorded with it. A DHCP device has no
+        # address and no mask by construction, so completeness cannot be
+        # judged against the static shape -- `bootstrap_artifact()` read
+        # `address` alone and reported a device created two minutes ago as one
+        # "onboarded before these were recorded", whose remedy is to abandon
+        # and re-create. That would have destroyed a correct device and
+        # produced the identical result the second time.
+        "source":    plan.address_source,
+        "mac":       plan.mgmt_mac,
     }
     hostvars.write_committed(repo, dict(plan.host_vars or {},
                                         hostname=plan.hostname,
@@ -1894,7 +1906,29 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
 
     committed = hostvars.read_committed(repo, hostname) or {}
     params = committed.get("bootstrap") or {}
-    if not params.get("address"):
+
+    # COMPLETENESS IS JUDGED PER SOURCE. A DHCP device's committed set is
+    # source + interface + mac + domain, and it is complete without an
+    # address; checking `address` alone made that state indistinguishable from
+    # a device onboarded before any of these were recorded, and reported it
+    # with the one explanation the check knew — *abandon and re-create* —
+    # which would have destroyed a correct device and produced the identical
+    # result the second time.
+    #
+    # A document with NO source key predates the field: `address` present then
+    # means static and is complete, and `address` absent is the genuine legacy
+    # state the message below was written for. So the legacy message survives,
+    # and now only fires when it is true.
+    source = (params.get("source") or ("static" if params.get("address")
+                                       else "")).strip()
+    if source == "dhcp":
+        if not params.get("interface"):
+            return {"ok": False, "config": "", "reason": (
+                f"'{hostname}' is a DHCP device with no committed interface. "
+                "The address comes from Kea, but the interface it lands on is "
+                "chosen and never defaulted, so the config cannot be "
+                "re-derived without it.")}
+    elif not params.get("address"):
         return {"ok": False, "config": "", "reason": (
             f"'{hostname}' has no committed bootstrap parameters, so the "
             f"config cannot be re-derived. Devices onboarded before these "
@@ -1907,8 +1941,12 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
             params.get("platform", ""), hostname=hostname, username="admin",
             secret=staged, domain=params.get("domain", "rcn.lab"),
             manager_interface=params.get("interface", ""),
-            manager_address=params.get("address", ""),
-            manager_mask=params.get("mask", ""),
+            # The same explicit sentinel the plan uses, so a re-render is
+            # byte-identical to what the node booted.
+            manager_address=("dhcp" if source == "dhcp"
+                             else params.get("address", "")),
+            manager_mask=("dhcp" if source == "dhcp"
+                          else params.get("mask", "")),
             manager_gateway=params.get("gateway", ""))
     except Exception as exc:                   # noqa: BLE001
         log.error("onboard: could not re-render bootstrap for %r: %s",

@@ -115,7 +115,9 @@ PENDING_STALE_SECONDS = 7 * 24 * 3600
 
 def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
                   netbox_id=None, platform: str = "", golden: str = "",
-                  pending: bool = False, clab_lab: str = "") -> dict:
+                  pending: bool = False, clab_lab: str = "",
+                  address_source: str = "", mgmt_mac: str = "",
+                  reserved_address: str = "") -> dict:
     """Record or update a device. Returns its manifest entry.
 
     *pending* marks a device **onboarded but never reached**: it stamps
@@ -153,6 +155,13 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
         # so a timestamp touched on every call would produce a one-line diff on
         # every refresh and make the migration non-idempotent. Freshness is
         # runtime state and lives in the (gitignored) inventory cache.
+        # WHERE THE ADDRESS COMES FROM. Written only when given, so a
+        # refresh that does not know does not erase what onboarding recorded.
+        for key, value in (("address_source", address_source),
+                           ("mgmt_mac", mgmt_mac),
+                           ("reserved_address", reserved_address)):
+            if value:
+                entry[key] = value
         entry.setdefault("pending_rename", None)
         if pending and not entry.get("onboarded_at"):
             entry["onboarded_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
@@ -528,8 +537,17 @@ def pending_devices(repo: str) -> list:
             state = "overdue"
         else:
             state = "in_flight"
+        # WHERE THE ADDRESS COMES FROM, and what is expected if it has not
+        # arrived. An empty `mgmt_ip` is honest and useless: a reader cannot
+        # tell a device with no address from one whose address is simply not
+        # known YET, and for a DHCP device the second is the normal state
+        # until it boots. The manifest carries no reservation, so the row
+        # says what was RESERVED rather than claiming an address.
         out.append({"identity": identity, "name": entry.get("name", ""),
                     "mgmt_ip": entry.get("mgmt_ip", ""),
+                    "address_source": entry.get("address_source", "static"),
+                    "mgmt_mac": entry.get("mgmt_mac", ""),
+                    "reserved_address": entry.get("reserved_address", ""),
                     "onboarded_at": entry["onboarded_at"],
                     "age_seconds": age, "state": state})
     return sorted(out, key=lambda r: -r["age_seconds"])
