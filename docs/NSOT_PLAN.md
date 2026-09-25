@@ -2331,7 +2331,7 @@ does not):
 |---|---|---|
 | NetBox (DB, media, env) | none | hourly on the VM, Proxmox, daily off-box (B2) |
 | `config_repo` (goldens, intent, templates) | GitHub `rcn-nsot-config` via the post-commit push, **one commit behind** (r5's retire, C18) | unchanged |
-| `data/key.key` | **none found** (B5) | **none** |
+| `data/key.key` | **none: single copy, confirmed** (no vzdump job exists, B5) | **none** |
 | `credential_profiles.json`, `devices.csv` | device credentials only, in the break-glass record on the laptop | unchanged |
 | `user_settings.json` | `.bak-*` copies on the same disk | unchanged |
 | the rest of `data/` (drift, approvals, AI history) | none | none |
@@ -2359,6 +2359,15 @@ list, or `all 1` with an `exclude`, or a `pool`), a `storage`, a `mode`
   was.
 - The clab host is a separate machine (`10.0.0.210`); the same question
   applies to it separately.
+
+**ANSWERED 2026-09-25 (operator): the third case, for both VMs.**
+`/etc/pve/jobs.cfg` does not exist, so nothing images the NMAS VM or the clab
+host. Every "none" row above is a single copy. Two consequences are recorded
+in the register. **B5**: a copy of `key.key` alone restores nothing after a
+disk loss, because the ciphertext it opens has no copy either. **B6**: whether
+to image the VMs is a Proxmox-side decision, separate from P.2. P.2 reads
+nothing encrypted with `key.key` (checked: neither backup script references
+it), so the order between P.2 and B5 is one of priority, not dependency.
 
 **P.2 ACCEPTANCE** (written 2026-09-25; the section had a build record
 and no acceptance). Every item is observed, not inferred:
