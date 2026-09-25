@@ -277,3 +277,161 @@ after it has already booted without it.
       the first boot
 - [ ] after the run, `10.255.0.0/24` still has **no pool** — the posture is
       the point, not an accident of the probe
+
+
+---
+
+## 6. The Kea edit, exactly
+
+Checks came back favourable: `interfaces-config` is `{"interfaces":
+["enp6s19"]}` — already the `br-mgmt`-facing NIC, carrying `10.255.0.10/24` —
+and `authoritative` is absent, so it defaults to **false** and an unreserved
+client gets silence rather than a DHCPNAK. **The subnet block is the only
+change.**
+
+### 6.1 The MAC/address pair, written in both places at once
+
+A MAC that differs between the topology and the reservation is a node that
+boots and gets silence — and that failure **looks exactly like a Kea
+problem**, which is the expensive way to spend an evening. So the pair is
+chosen once and both files are written from the same variable:
+
+```bash
+MAC=aa:bb:cc:00:02:40      # locally administered; last octet mirrors the address
+IP=10.255.0.40
+echo "pair: $MAC -> $IP"   # paste this line into the runbook
+```
+
+The last octet of the MAC mirrors the host part of the address on purpose.
+It buys nothing mechanically and makes a mismatch visible at a glance, which
+is the only moment anyone will be looking.
+
+### 6.2 ⚠ Pinning the MAC may not reach the client — verify, do not assume
+
+**I cannot confirm from here that a containerlab-pinned veth MAC becomes the
+MAC the IOS-XE DHCP client presents.** vrnetlab runs a VM behind the
+container, and the address on `GigabitEthernet2` inside the VM may be assigned
+by vrnetlab independently of the container's `eth2`. Treat the pin as
+*probable, unverified*:
+
+```yaml
+# bp-dhcp-a.clab.yml — extended link format (containerlab 0.54+; check
+# `containerlab version` first, the brief format has no per-endpoint mac)
+links:
+  - type: veth
+    endpoints:
+      - node: bp-dhcp-a
+        interface: eth2
+        mac: aa:bb:cc:00:02:40
+      - node: br-mgmt
+        interface: bpdhcpa-mgmt
+```
+
+**Verify before concluding anything about Kea**, on the booted node's console:
+
+```
+show interface GigabitEthernet2 | include bia
+```
+
+* matches the pin → the reservation is keyed correctly, proceed;
+* **does not match** → the pin did not reach the VM. Read the real MAC, write
+  *that* into the reservation, reload, and reboot the node. The first boot is
+  then unaddressed — which is acceptable **because this is a throwaway** and
+  is exactly why the subject is a throwaway. It would not be acceptable in
+  production, and if the pin does not work that is a finding for the
+  production story, not a detail of this probe.
+
+### 6.3 The subnet block
+
+Append to `subnet4` in `/etc/kea/kea-dhcp4.conf`. **Append, and give it an
+explicit `id`** — see 6.5.
+
+```json
+{
+  "id": 255,
+  "subnet": "10.255.0.0/24",
+  "interface": "enp6s19",
+  "reservations-out-of-pool": true,
+  "reservations": [
+    {
+      "hw-address": "aa:bb:cc:00:02:40",
+      "ip-address": "10.255.0.40",
+      "hostname": "bp-dhcp-a"
+    }
+  ]
+}
+```
+
+No `pools` key — that is the posture, not an omission. `"interface"` pins
+subnet selection to the segment rather than leaning on address matching alone,
+which matters on a multi-homed host.
+
+### 6.4 `config-test`, and telling a pass from a silent pass
+
+Use the **offline** checker. It does not touch the running daemon, which is
+the right property for a pre-flight:
+
+```bash
+sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf; echo "exit=$?"
+```
+
+Success is quiet — a short "syntax check OK"-style line at most — so **read
+the exit code, not the output**. `exit=0` is the pass.
+
+**Prove the checker can fail before trusting its pass.** A quiet tool and a
+tool that did not run look identical, which is this project's most-repeated
+lesson:
+
+```bash
+cp /etc/kea/kea-dhcp4.conf /tmp/kea-broken.conf
+printf '%s' 'x' >> /tmp/kea-broken.conf          # deliberately invalid JSON
+sudo kea-dhcp4 -t /tmp/kea-broken.conf; echo "exit=$? (expect non-zero)"
+rm /tmp/kea-broken.conf
+```
+
+If the broken file also reports `exit=0`, stop — the checker is not checking,
+and a pass on the real file means nothing.
+
+### 6.5 Does a never-served subnet need more than `config-reload`? **No — with one caveat.**
+
+`config-reload` re-reads the file the daemon was started with and reconfigures
+in place; a new `subnet4` entry is picked up without a restart. `interfaces-config`
+is unchanged here, so no socket needs re-opening — that is the case that would
+have needed more, and it does not apply.
+
+**The caveat is subnet IDs, and it is the one that can do damage.** Kea keys
+leases by subnet id. If the existing two subnets have **no explicit `id`**,
+Kea auto-assigns them by position — so inserting a subnet *before* them would
+renumber them and orphan their leases. Two rules, both cheap:
+
+```bash
+# What ids exist today
+sudo kea-shell --service dhcp4 config-get 2>/dev/null \
+  | python3 -c 'import json,sys; \
+      print([(s.get("id"), s["subnet"]) for s in \
+             json.load(sys.stdin)[0]["arguments"]["Dhcp4"]["subnet4"]])'
+```
+
+* **append** the new entry at the end of the array, never insert;
+* give it an **explicit** `id` well clear of the existing ones (`255`).
+
+Use `config-reload` rather than the Control Agent's `config-set`: `config-set`
+applies a configuration **without writing the file**, so the next restart
+would silently lose the subnet — a change that works until the daemon
+restarts and then does not, with nothing having said so.
+
+```bash
+sudo kea-shell --service dhcp4 config-reload
+```
+
+### 6.6 After the reload, before booting anything
+
+- [ ] the new subnet is present **and the two existing ones are unchanged**,
+      ids included — re-run the `config-get` above and compare
+- [ ] `10.255.0.0/24` has **no** `pools` key
+- [ ] `sudo kea-shell --service dhcp4 status-get` still reports the daemon up
+- [ ] from the NMAS: `nmas` reports Kea green on the Monitoring panel
+- [ ] the tool agrees — `KeaIntegration().reservation_for("aa:bb:cc:00:02:40")`
+      returns `state: reserved, address: 10.255.0.40`. **This is the first
+      time the reservation path has had anything to read on this deployment**,
+      so a failure here is as likely to be the code as the config
