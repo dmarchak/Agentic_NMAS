@@ -2040,6 +2040,33 @@ the confirmed path.
      counts is Loki's timestamp.
 5. **Operator:** generate the rules with the Loki datasource UID, install
    them into `/etc/grafana/provisioning/alerting/`, and reload Grafana.
+   **Step 5 is BLOCKED on per-device windows (C16).** The acceptance
+   measurement (step 6) was run early, and it failed three of four switches
+   against the per-platform window. The design, to be built before any rule
+   is installed:
+   - **The measurement comes from Loki**, through the same anchored query
+     the rule uses. It takes the device's last N hours of arrivals and their
+     consecutive gaps, excluding gaps over 1.8 × the median, so a real miss
+     in the history does not widen the window that should catch the next
+     one.
+   - **Window = the midpoint of the device's own separable band,
+     (2 × longest + 3 × shortest) / 2**, so it is quiet on one miss and
+     fires on two. If the band is empty (2 × longest ≥ 3 × shortest), the
+     device is reported **`inseparable`**, with its numbers, never given a
+     window that merely looks correct.
+   - **A device with too few arrivals** (fewer than 6 gaps; a new device,
+     or a slow clock early on) gets a **provisional** window: 2.5 × the
+     interval divided by the slowest rate measured anywhere in the fleet
+     (s3's 0.55 gives ~1,364 s). It alerts on a dead device within ~23
+     minutes, and the rule carries `window_basis: provisional` as a label
+     and in its annotation. The generator lists every provisional device;
+     it is never silently omitted.
+   - **Rates move** (s3 varies by 10%), so `--check` re-measures and flags a
+     device whose current band no longer contains its installed window.
+     Declared in `job_health` as a job, so the check itself cannot stop
+     quietly.
+   - `HEARTBEAT_RATE` (per dialect) retires.
+
 6. **Acceptance:**
    - Heartbeats from all **nine** devices in Loki. **r5 is out of scope,
      the operator's decision, 2026-09-25.** r5 is the eBGP PE in AS 65002,
