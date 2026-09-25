@@ -74,6 +74,12 @@ sudo systemctl enable --now nmas
 sudo journalctl -u nmas -f
 ```
 
+> **The current deployment host does not use this unit** (measured
+> 2026-09-25: `python3 app.py` under PPID 1, no `nmas` unit), so
+> `journalctl -u nmas` there prints `-- No entries --` whatever happened.
+> Its log is `logs/device_manager.log`. See
+> [OPEN_FINDINGS.md](OPEN_FINDINGS.md) C5.
+
 `NMAS_HEADLESS=1` is what stops the app trying to open a browser at startup.
 
 ## Binding and exposure

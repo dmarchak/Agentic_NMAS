@@ -3942,11 +3942,29 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 - **Three discriminators, cheapest first, and the expensive one is third.**
   (1) *Is the app running the deployed code?* — a long-running Flask process
   holds its modules, so `ps -o lstart=` against the deploy time can end the
-  investigation outright. (2) *Did the write fail?* — `journalctl … | grep
-  netbox_guard`, since `--sanitise` and `--apply` run from a shell create
+  investigation outright. (2) *Did the write fail?* — the app log,
+  `logs/device_manager.log` (**not** `journalctl -u nmas`; see below), since `--sanitise` and `--apply` run from a shell create
   `0600` owned by whoever ran them. (3) *Only then, the comparison.* Two
   rounds have now gone to *a pattern that has been right before*, and both
   times the cheap question was available from the first report.
+- **THE RECORDER DID NOT MISS IT; THE POSITIVE CONTROL PASSED AND WAS READ
+  AS FAILING** (§23). `data/netbox_modified.json` held `r1 comments … TEST →
+  …` at `06:34:40Z`, with the file's mtime 0.18 s after NetBox's
+  `last_updated`, listed by the reader as the last of 44 entries. C3 is
+  closed, and the syncs that recorded nothing since then count as evidence
+  again. How it was misread is undetermined. **The cheapest discriminator
+  was not on the list**: `ls -l` on the record beside NetBox's timestamp,
+  cheaper than all three.
+- **`journalctl -u nmas` is empty BY CONSTRUCTION on the deployment host.**
+  No `nmas` unit exists; the app is `python3 app.py` under PPID 1, not the
+  systemd unit [docs/DEPLOY_LINUX.md](docs/DEPLOY_LINUX.md) describes. So
+  the channel named as *the one that crosses processes* printed `-- No
+  entries --`, which is what "no failures" looks like, and a test asserting
+  `"journalctl" in src` pinned it as correct. The app's root handler writes
+  `logs/device_manager.log`; `nmas-netbox-modified` now **reads** it and
+  prints a count with its denominator, reporting `UNPROVEN` when there is
+  no log. **Name a channel only after reading something from it.**
+  [docs/OPEN_FINDINGS.md](docs/OPEN_FINDINGS.md) C5.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
@@ -3959,7 +3977,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **14 open at 2026-09-25**: 11 recorded only in
+present when each was recorded. **15 open at 2026-09-25** (C3 closed as a misreading, C5 added): 12 recorded only in
 prose, 4 in the plan without a stage. An item leaves by being fixed,
 scheduled or closed with a reason — never by being forgotten, and anything
 recorded as *"not applied"*, *"noted, not yet addressed"* or *"left open"*

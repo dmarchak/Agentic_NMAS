@@ -1673,8 +1673,12 @@ since applies to the code in the repository.
 where it crosses:
 
 ```bash
-journalctl -u nmas --since today | grep netbox_guard
+journalctl -u nmas --since today | grep netbox_guard   # WRONG — see §23
 ```
+
+*(Corrected in §23: the host has no `nmas` unit, so this prints `-- No
+entries --` whatever happened. The log is `logs/device_manager.log`, and
+`nmas-netbox-modified` now reads it.)*
 
 `could not persist` means the file write failed — permissions are the
 candidate, since `--sanitise` and `--apply` were run from a shell and
@@ -1690,3 +1694,75 @@ path differs from the tested one — and the next question is which.
 The ordering matters because the expensive hypothesis is third. Two rounds
 have now gone to *a pattern that has been right before*, and both times the
 cheap question was available from the first report.
+
+
+## 23. The recorder did not miss it — the positive control passed and was read as failing
+
+Measured on the NMAS host, 2026-09-25 ~15:50Z, read-only.
+
+**Discriminator 1 could not answer as written.** The running process started
+at 15:47:14 — the second the `1b9b4d3` pull landed — so it describes the
+current deploy, not the process that synced at 06:34:39. The reflog puts
+`da4d479` at 06:33:37, after the churn fixes (`32329bf`, 06:28:44). That
+answers "which code", but it was not the question that settled this.
+
+**The record had the entry all along.**
+
+```
+-rw------- dmarchak  data/netbox_modified.json   mtime 2026-09-25 06:34:40.147905771Z
+NetBox last_updated (r1)                                 2026-09-25 06:34:39.968953Z
+
+default  dcim/devices  id 5 r1  at 2026-09-25T06:34:40Z
+    comments: Platform: IOS  |  Version: 17.6  |  Mgmt IP: 10.255.1.11 TEST
+           → Platform: IOS  |  Version: 17.6  |  Mgmt IP: 10.255.1.11
+```
+
+Written 0.18 s after NetBox's own timestamp, both operands exactly as
+patched, and listed by `nmas-netbox-modified` as the **last of 44 entries**.
+The file has not been written since, and the owner and mode are the app's own
+(`dmarchak`, `0600`), so the permissions hypothesis is closed too. **C3 is
+closed**, and the retraction it made is withdrawn with it. The silent syncs
+after 06:34 are **evidence again**, because this sync is the control showing
+the recorder in that code writes.
+
+**How it was read as silence is not determined.** It is the newest entry and
+prints last, so a view of the head of the output would miss it. That is a
+**candidate**, not a finding: nothing now shows how the earlier reading was
+taken.
+
+### The channel named for failures did not exist
+
+`journalctl -u nmas` prints `-- No entries --` on the host. There is **no
+`nmas` unit**: the app is `python3 app.py` with PPID 1, and
+[DEPLOY_LINUX.md](DEPLOY_LINUX.md)'s systemd unit is not what is deployed.
+So the channel §22 and the CLI named as *the one that crosses processes* was
+empty by construction, and **empty is the shape of "no failures"**. It is the
+reassuring zero again, one level further out. The test pinning the CLI
+asserted `"journalctl" in src`, **which pinned the dead channel as correct**.
+
+The real channel is `logs/device_manager.log`: `app.py` attaches a rotating
+handler at the **root** logger, so `modules.netbox_guard` reaches it. The CLI
+now **reads** it rather than naming a command:
+
+```
+0 recorder ERROR line(s) in the app log (549266 line(s) read from 11 file(s),
+newest written 2026-09-25T15:51:11Z)
+```
+
+A missing log is `UNPROVEN`, never zero. The count carries its denominator
+and the newest write, so a log that has stopped being written shows up next
+to the zero. Controls, each shown failing: putting the `journalctl` line
+back, making a missing log report zero, and counting every ERROR rather than
+the recorder's.
+
+The mismatch between the documented unit and the actual process is
+[OPEN_FINDINGS.md](OPEN_FINDINGS.md) **C5**.
+
+### What the positive control was worth
+
+This is the two-sided verification §18 asked for, and it worked: the patched
+field **did** appear. The failure was downstream of the measurement, between
+the record and the reader. That is the §22 lesson in its own words: *the
+cheapest question that halves the space* here was `ls -l` on the record
+against NetBox's `last_updated`. One command, and the record already had
+the entry.

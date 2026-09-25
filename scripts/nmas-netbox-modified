@@ -53,6 +53,45 @@ def _report(entries: list) -> None:
         print(f"      {detail}")
 
 
+APP_LOG = os.path.join("logs", "device_manager.log")
+GUARD_LOGGER = " modules.netbox_guard: "
+
+
+def _app_log_summary(root: str) -> str:
+    """Count the recorder's ERROR lines in the app log, with a denominator.
+
+    Zero failures is only a finding if lines were read: a missing log (the
+    app runs with debug on, or from elsewhere) is UNPROVEN, never clean —
+    and the line count and newest write are printed so a log that stopped
+    being written is visible beside the zero.
+    """
+    base = os.path.join(root, APP_LOG)
+    files = [p for p in [base] + [f"{base}.{i}" for i in range(1, 11)]
+             if os.path.isfile(p)]
+    if not files:
+        return (f"UNPROVEN — no app log at {base}; that is not the same as "
+                "no failures")
+    lines = errors = 0
+    last_error = ""
+    for path in files:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    lines += 1
+                    if GUARD_LOGGER in line and " ERROR " in line:
+                        errors += 1
+                        last_error = last_error or line.strip()[:200]
+        except OSError as exc:
+            return f"UNPROVEN — could not read {path}: {exc}"
+    from datetime import datetime, timezone
+    newest = datetime.fromtimestamp(os.path.getmtime(base) if os.path.isfile(
+        base) else 0, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    head = (f"{errors} recorder ERROR line(s) in the app log "
+            f"({lines} line(s) read from {len(files)} file(s), "
+            f"newest written {newest})")
+    return head + (f"\n    most recent: {last_error}" if errors else "")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -114,10 +153,14 @@ def main() -> int:
     # about whose silence it is reporting.
     #
     # The cross-process channel is the app log, which `_write_json_atomic`
-    # and `record_modified` write at ERROR.
+    # and `record_modified` write at ERROR — and it is READ here, not named.
+    # This line used to print `journalctl -u nmas … | grep netbox_guard`,
+    # and the deployment host has no `nmas` unit: journalctl answers
+    # "-- No entries --", which is exactly what "no failures" looks like.
+    # The file below is what app.py's root handler actually writes.
     print("health below is THIS process only — the recorder runs inside the "
           "app, so its failures are in the app log:")
-    print("    journalctl -u nmas --since today | grep netbox_guard")
+    print("    " + _app_log_summary(ROOT))
     print()
     if h.get("writes") or h.get("unreadable"):
         print(f"⚠ THE RECORDER HAS FAILED since this process started: "

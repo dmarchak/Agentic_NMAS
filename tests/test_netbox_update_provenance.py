@@ -54,6 +54,15 @@ def _census():
     return mod
 
 
+def _modified_cli():
+    loader = importlib.machinery.SourceFileLoader(
+        "modified_cli_under_test", "scripts/nmas-netbox-modified")
+    spec = importlib.util.spec_from_loader("modified_cli_under_test", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
 # ---------------------------------------------------------------------------
 # 1. The before is the point
 
@@ -1341,7 +1350,48 @@ class TestHealthNamesWhoseProcessItIs:
     def test_the_reader_says_health_is_this_process_only(self):
         src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()
         assert "THIS process only" in src
-        assert "journalctl" in src
+
+    # The channel was NAMED as `journalctl -u nmas`, and the deployment host
+    # has no such unit: journalctl answers "-- No entries --", which reads as
+    # no failures. The test above used to assert "journalctl" in the source,
+    # pinning the dead channel as correct. The reader now READS the log.
+
+    def test_the_named_channel_is_not_a_systemd_unit(self):
+        src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()
+        printed = [l for l in src.splitlines()
+                   if l.strip().startswith("print(")]
+        assert printed, "floor: the reader prints something"
+        assert not any("journalctl" in l for l in printed)
+
+    def test_the_log_read_is_the_file_app_py_writes(self):
+        mod = _modified_cli()
+        app_src = open("app.py", encoding="utf-8").read()
+        assert "'device_manager.log'" in app_src
+        assert mod.APP_LOG == os.path.join("logs", "device_manager.log")
+
+    def test_a_missing_log_is_unproven_not_clean(self, tmp_path):
+        out = _modified_cli()._app_log_summary(str(tmp_path))
+        assert out.startswith("UNPROVEN")
+
+    def test_a_recorder_error_is_counted_and_others_are_not(self, tmp_path):
+        (tmp_path / "logs").mkdir()
+        (tmp_path / "logs" / "device_manager.log").write_text(
+            "2026-09-25 06:34:40,1 INFO werkzeug: GET /\n"
+            "2026-09-25 06:34:40,2 ERROR modules.netbox_client: unrelated\n"
+            "2026-09-25 06:34:40,3 ERROR modules.netbox_guard: could not "
+            "persist data/netbox_modified.json\n")
+        out = _modified_cli()._app_log_summary(str(tmp_path))
+        assert out.startswith("1 recorder ERROR line(s)")
+        assert "3 line(s) read from 1 file(s)" in out
+        assert "could not persist" in out
+
+    def test_a_clean_log_reports_zero_with_its_denominator(self, tmp_path):
+        (tmp_path / "logs").mkdir()
+        (tmp_path / "logs" / "device_manager.log").write_text(
+            "2026-09-25 06:34:40,1 INFO werkzeug: GET /\n")
+        out = _modified_cli()._app_log_summary(str(tmp_path))
+        assert out.startswith("0 recorder ERROR line(s)")
+        assert "1 line(s) read" in out
 
     def test_a_failure_is_logged_as_well_as_counted(self):
         """The counter is in memory; the log is what crosses processes. Both,
