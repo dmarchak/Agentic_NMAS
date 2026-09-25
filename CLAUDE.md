@@ -3632,6 +3632,51 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   command as the remedy for a loose mode. *A named remedy that runs, reports
   success and changes nothing* is one step worse than advice that is merely
   incomplete.
+- **NETBOX SAYS s1 IS OFFLINE AND IT IS NOT, AND ONLY THE MODIFICATION RECORD
+  COULD SEE IT** (§14, 2026-09-24 — the record's first live run). Measured by
+  driving the real call site: `status="active" if (status_cache or
+  {}).get(result["ip"], False) else "offline"`, where `status_cache` is the
+  **in-memory ping cache** written by `connection.ping_worker` every 5s from
+  `is_device_online()` — ICMP via ping3, falling back to TCP:22. So NetBox's
+  `status` is *whether one probe answered within five seconds of the sync*,
+  recorded as a standing claim. s1 answered SSH minutes later; s2–s4 stayed
+  active in the same sync, which **rules the structural causes out** and
+  leaves a genuine transient.
+  **`.get(ip, False)` cannot tell "probed and failed" from "never probed"** —
+  *a lookup that misses is a fact about the query, not about the system* —
+  and the shared answer is the assertive one. Three ordinary ways to be
+  never-probed: the worker pings **the active list only**, a NetBox-sourced
+  list has no CSV so `os.path.exists(fn)` is false and **nothing in it is
+  ever pinged**, and the first cycle has not finished at startup.
+- **The status write is a SELF-SEALING loop on a NetBox-sourced list.** The
+  default source filter is `{"status": "active"}`, passed straight into the
+  device query — so one failed ping writes `offline`, the next refresh does
+  not return the device (**absent, not skipped, not named**), everything
+  keyed on the inventory stops covering it, and the next sync iterates the
+  inventory that no longer contains it, so **nothing can ever set it back**.
+  The state that removes a device is the state only that device being present
+  could correct. Not firing today only because `default` has no
+  `source.json` and is therefore `local` — **luck, not design**; it arms the
+  moment a list is switched to `netbox`, which is Phase 1's whole point.
+- **The fix is to stop writing it, and the project's own rule is the
+  argument.** Not *"NetBox is not a monitoring system"*, true though that is:
+  **`_scan_device` was deleted because *importing observed state into the
+  source of truth is the wrong direction*** — and a ping result **is**
+  observed state. That rule removed 140 lines of SSH scanner, and this field
+  survived it by being three words on a call site rather than a function with
+  a name. Precisely: **create** may set `status: active` (a lifecycle claim,
+  earned because onboarding reached the device), **update** drops `status`
+  from the PATCH allowlist entirely. Liveness already has an honest home —
+  the app's own badge, live when read, which nobody mistakes for a stored
+  fact. *Recorded, not applied: it changes what the tool asserts about the
+  network.*
+- **What the modification record bought, on day one.** `--compare` said *no
+  object was created or destroyed* and **that was true**; the drift checker
+  compares device configs, not NetBox fields; the census compares identity,
+  and an in-place status change alters neither id nor display. **Nothing else
+  looks.** A false statement sat in the source of truth and the only thing
+  that could see it was the record built the day before — in a field nobody
+  had thought to check, about a device nobody had reason to suspect.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

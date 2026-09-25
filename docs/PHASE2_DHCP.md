@@ -965,3 +965,130 @@ found `netbox_created_ids.json` at `0664` on the dev checkout, from before
 python3 scripts/nmas-netbox-modified --sanitise   # then:
 python3 scripts/nmas-check-secret-storage         # must report no secret-shaped content
 ```
+
+
+## 14. The record's first real finding: NetBox says s1 is offline, and it is not
+
+Found by the modification record on its **first live run**, 2026-09-24.
+`dcim/devices` for s1: `status: active → offline`, while s2, s3 and s4 stayed
+active in the same sync. Measured afterwards on the device itself: s1 answers
+SSH and returns its running config. **The source of truth holds a false
+statement about a device that is up.**
+
+### 1. What the sync sets `status` from — measured
+
+`_sync_list_to_netbox_impl`, at the `_upsert_device` call:
+
+```python
+status="active" if (status_cache or {}).get(result["ip"], False) else "offline"
+```
+
+`status_cache` is `app.device_status_cache`: an **in-memory dict** written by
+`connection.ping_worker`, a background thread that every **5 seconds** calls
+`is_device_online(ip)` — ICMP via `ping3`, falling back to a TCP connect to
+port 22. So it is a **live reachability probe**, not derived from anything
+else, and what lands in NetBox is *whether one ICMP or TCP attempt succeeded
+within 5 seconds of the sync*.
+
+Driven through the real function, the status that reaches the wire:
+
+| cache state | status written |
+|---|---|
+| pinged, answered | `active` |
+| pinged, did not answer | `offline` |
+| **never pinged (key absent)** | **`offline`** |
+| **cache empty or absent** | **`offline`** |
+
+The bottom two rows are the defect this project has already named: *a lookup
+that misses is a fact about the query, not about the system.* `.get(ip,
+False)` cannot tell **"probed and failed"** from **"never probed"**, so the
+two states most different in meaning share an answer — and the answer is the
+assertive one.
+
+Three ways to be never-probed, none of them exotic:
+
+- the ping worker reads `_get_current_devices_file()` — **the active list
+  only**. Syncing any other list marks every device in it offline.
+- a NetBox-sourced list has no CSV, so `os.path.exists(fn)` is false, `devices`
+  stays `[]`, and **nothing in that list is ever pinged**.
+- the first cycle has not completed yet; a sync in that window marks
+  everything offline.
+
+None of those explain s1, and that is useful: **s2–s4 staying active rules the
+structural causes out** and leaves a genuine transient — one ICMP/TCP attempt
+that did not answer at 05:22.
+
+### 2. What reads it — and the answer is worse than "a human might"
+
+`modules/inventory/source_config.py`, the default filter for a **NetBox-sourced
+list**:
+
+```python
+"filters": {"site": "", "role": "", "tag": "", "status": "active"},
+```
+
+passed straight into the device query. So on a NetBox-sourced list:
+
+1. one failed ping writes `status: offline`
+2. the next inventory refresh queries `dcim/devices/?status=active`
+3. **s1 is not returned — absent, not skipped, not named**
+4. everything keyed on the inventory stops covering it: polling, backups,
+   drift, the pool, bulk ops, deploy targets
+5. and the next sync iterates **the inventory**, which no longer contains s1,
+   so nothing ever sets it back
+
+**Self-sealing.** The state that removes a device is the state only that device
+being present could correct. It is the *"absent, not an error, not a skip"*
+shape with a feedback loop attached.
+
+**It is not firing today**, and the reason is luck rather than design: `default`
+has no `source.json`, so it is `local` and the inventory comes from the CSV.
+The loop arms the moment a list is switched to `netbox` — which is the whole
+point of Phase 1.
+
+Outside NMAS, anything the operator has pointed at NetBox — a Grafana panel, an
+Ansible inventory, netbox-agent — reads the same field. That is beyond what can
+be measured from here, and worth checking against whatever else consumes it.
+
+### The recommendation: stop writing it, and the project's own rule says why
+
+Not *"NetBox isn't a monitoring system"*, though it is not. The stronger
+argument is already written down here, as the reason
+`netbox_client._scan_device` was **deleted**:
+
+> importing observed state into the source of truth is the wrong direction
+
+A ping result **is** observed state. That rule removed 140 lines of SSH
+scanner, and this one field survived it by being three words on a call site
+rather than a function with a name.
+
+Precisely:
+
+- **create** may set `status: active` — a claim about lifecycle, and onboarding
+  has reached the device before the record exists, so it is earned
+- **update** must drop `status` from the PATCH allowlist entirely, leaving
+  whatever a human set
+
+Liveness already has an honest home: the app's own online/offline badge, driven
+by the same cache, live at the moment it is read, and which nobody mistakes for
+a stored fact. The middle option — write only on a confirmed transition, with
+`inconclusive` distinct from `offline` — is defensible and still writes a
+liveness fact into a store whose other fields describe intent.
+
+**Not applied here.** It changes what the tool asserts about the network and is
+the operator's decision.
+
+### 3. What the record bought, on day one
+
+`--compare` said *no object was created or destroyed*, and **that was true**.
+The drift checker compares device configs, not NetBox fields. The census
+compares identity, and an in-place status change alters neither an object's id
+nor its display. Nothing else looks.
+
+So a false statement sat in the source of truth, and **the only thing in the
+system that could see it was the record built the day before** — which found it
+on its first real run, in a field nobody had thought to check, about a device
+nobody had reason to suspect.
+
+That is the argument for the record existing, made by the record rather than
+about it.
