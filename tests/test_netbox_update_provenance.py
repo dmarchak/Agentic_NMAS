@@ -265,6 +265,21 @@ class TestSanitisingWhatIsAlreadyOnDisk:
         assert "sekrit99" not in open(netbox_guard._MODIFIED_FILE,
                                       encoding="utf-8").read()
 
+    def test_it_tightens_the_mode_even_with_nothing_to_rewrite(self, record):
+        """The checker names --sanitise as the remedy for a loose mode, so
+        --sanitise has to BE one. Measured before the fix: 0664 in, 0664 out,
+        reporting success -- a named remedy that runs and changes nothing,
+        one step worse than advice that is merely incomplete."""
+        netbox_guard.record_modified(
+            "default", "dcim/sites", 7, {"region": {"before": 1, "after": 2}})
+        os.chmod(netbox_guard._MODIFIED_FILE, 0o664)
+
+        got = netbox_guard.sanitise_modified()
+        assert got["rewritten"] == 0
+        assert got["mode"] == "0o600"
+        assert stat.S_IMODE(
+            os.stat(netbox_guard._MODIFIED_FILE).st_mode) == 0o600
+
     def test_it_is_idempotent(self, record):
         self._oversized(record)
         netbox_guard.sanitise_modified()

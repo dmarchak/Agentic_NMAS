@@ -3626,7 +3626,12 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   records are created `0600`, and a loose mode **self-heals on the next
   write**, because `os.replace` swaps in the temp file's inode (measured; the
   checker found `netbox_created_ids.json` at `0664` from before `open_secure`
-  was applied).
+  was applied). **`--sanitise` therefore always writes, even with nothing to
+  rewrite** — measured, the first version returned early on `rewritten == 0`
+  and left a loose mode exactly as it found it, while the checker names that
+  command as the remedy for a loose mode. *A named remedy that runs, reports
+  success and changes nothing* is one step worse than advice that is merely
+  incomplete.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

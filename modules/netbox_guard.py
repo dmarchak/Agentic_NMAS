@@ -31,6 +31,7 @@ import hashlib
 import json
 import logging
 import os
+import stat
 import threading
 
 from modules.config import DATA_DIR, list_slug
@@ -548,11 +549,31 @@ def sanitise_modified() -> dict:
                     rewritten += 1
 
     after_bytes = len(_serialise(data))
-    if rewritten:
-        with _file_lock:
-            _write_json_atomic(_MODIFIED_FILE, data)
+
+    # ALWAYS write, even with nothing to rewrite.
+    #
+    # Measured: with `rewritten == 0` the old version returned without
+    # touching the file, so a record already within the cap but created
+    # group-readable by an older version stayed that way -- and
+    # `nmas-check-secret-storage` reports the mode while naming THIS command
+    # as the remedy. A refusal whose named remedy does not fix the thing is
+    # the "says what to do without saying how to do it right" failure, one
+    # step worse: here the remedy runs, reports success, and changes nothing.
+    #
+    # The write is what tightens the mode, because `os.replace` swaps in the
+    # temp file's 0600 inode.
+    with _file_lock:
+        wrote = _write_json_atomic(_MODIFIED_FILE, data)
+
+    mode = ""
+    try:
+        mode = oct(stat.S_IMODE(os.stat(_MODIFIED_FILE).st_mode))
+    except OSError:
+        pass
+
     return {"ok": True, "reason": "", "entries": entries, "rewritten": rewritten,
-            "bytes_before": before_bytes, "bytes_after": after_bytes}
+            "bytes_before": before_bytes, "bytes_after": after_bytes,
+            "written": wrote, "mode": mode}
 
 
 def get_modified(list_name: str, endpoint: str = "") -> dict:

@@ -80,6 +80,9 @@ def main() -> int:
             return 0
         print(f"{got['rewritten']} of {got['entries']} entr(ies) rewritten")
         print(f"{_human(got['bytes_before'])} → {_human(got['bytes_after'])}")
+        print(f"mode {got.get('mode') or 'unknown'}"
+              + ("  (owner-only)" if got.get("mode") == "0o600" else
+                 "  ⚠ NOT owner-only"))
         if got["rewritten"]:
             print("\nWhat was removed was the CONTENT of oversized fields. "
                   "Each is now recorded as changed, its size, and a hash of "
