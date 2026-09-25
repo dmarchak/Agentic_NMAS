@@ -2658,8 +2658,14 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   re-deriving from *what would a wrong order let a check claim* — the two
   answers differ, and only one of them is about the check being worth
   anything.
-- **One device → one intent commit → one plan → one confirm → one deploy →
-  one golden commit.** Two devices' changes in one plan couples them through
+- **Two cases, and the reader must know which one they are in.**
+  **(a) COUPLED changes, where the devices' changes depend on each other
+  (the r6/s3 branch site): one device → one intent commit → one plan → one
+  confirm → one deploy → one golden commit.** Reverting one alone leaves a
+  half-state. **(b) The SAME change made INDEPENDENTLY on each device (the
+  P.1 syslog block): one commit may name all of them**, and a batch deploy
+  is correct (see the correction below, measured from the code).
+  The original reasoning, written for (a): two devices' changes in one plan couples them through
   the **confirm hash** (either half moving between plan and apply refuses the
   other's confirmed program) and through the **intent commit**, since
   `.nsot/rolled_back.json` keys on the device's current intent commit and
@@ -4059,7 +4065,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **19 open at 2026-09-25**, counted from the rows: 15 recorded only in
+present when each was recorded. **20 open at 2026-09-25**, counted from the rows: 16 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
