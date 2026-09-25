@@ -88,7 +88,19 @@ class TestVerificationIsAFactAboutTheDevice:
 
         out = _verify(repo, online=lambda ip: True, reach=_refuse)
         assert out["state"] == REFUSED_CREDENTIAL
-        assert len(out["causes"]) == 1
+        # THE PROPERTY, NOT A COUNT. This asserted `len(causes) == 1`, which
+        # broke when a second, correct cause was added -- the fixture stages no
+        # override, so "the tool fell back to a profile" genuinely applies. A
+        # count standing in for a property fails on any true addition, which is
+        # the same shape as asserting a byte offset instead of a substring.
+        # ON THE `cause` LABELS ONLY. The first attempt searched `why` too and
+        # matched the sentence that RULES the interface OUT ("so the interface
+        # and the address are right") -- a pattern that can appear in English
+        # needing an anchor, in the test asserting it.
+        offered = [c["cause"] for c in out["causes"]]
+        assert not any("is not on" in c for c in offered), offered
+        assert not any("did not answer" in c for c in offered), offered
+        assert all("credential" in c for c in offered), offered
         assert "credential" in out["causes"][0]["cause"]
 
     def test_a_broken_check_is_not_a_verdict(self, repo):

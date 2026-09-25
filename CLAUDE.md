@@ -3282,6 +3282,38 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   MAC pinned in the topology. The assumption was recorded as *probable,
   unverified* with a check and a fallback; it is now measured, and a DHCP
   reservation can be written before a node's first boot.
+- **A DENYLIST OF SUSPICIOUS SOURCES WAS OUTGROWN BY THE NEXT SOURCE.**
+  Verification reported `credential_source: "profile:default"` — the tool knew
+  perfectly well it had fallen back to the list's default profile — and the
+  causes list said *"only the credential is wrong"* and sent the operator to
+  the console. The condition was `cred_source in ("none", "unresolved",
+  "caller")`, so `profile:default` walked straight past it. **The diagnostic
+  that solved the problem was in the payload and absent from the message.**
+  `STAGED_CREDENTIAL_SOURCE` is an **allowlist of one**: a device
+  mid-onboarding has never held any credential but the staged one, so a profile
+  cannot be right even by accident, and an allowlist cannot be outgrown by a
+  source `credentials.resolve()` adds later. It is the first cause, ahead of the
+  console check, and says *"a profile cannot be right here even by accident"*
+  rather than restating the source.
+- **A device in an unrecoverable state with no signal is the pending-forever
+  shape the banner exists to prevent** — and one existed. The override is keyed
+  on the address `resolve()` looks under; a DHCP device staged before that key
+  was corrected has its credential under the **empty string**, so Verify falls
+  back to a profile, the device refuses it, and nothing beforehand said a word.
+  `pending_devices()` now carries `credential_findable`, and the banner says
+  **"Abandon and re-create — nothing has reached the device, so there is
+  nothing to undo"**: the recovery *and* the reassurance, because a destructive
+  instruction with no cost stated is one an operator hesitates over. An
+  unreadable credential store answers **True**, since flagging every pending
+  device as broken because the store could not be read is a worse lie than the
+  one this catches.
+- **Two of my own assertions failed the rules I had just applied elsewhere.** A
+  test asserted `len(causes) == 1` — a **count standing in for a property** —
+  and broke the moment a second, *correct* cause was added; and its replacement
+  searched `why` for `"interface"` and matched the sentence that RULES THE
+  INTERFACE OUT (*"so the interface and the address are right"*), which is *a
+  pattern that can appear in English needing an anchor*, inside the test
+  asserting it. Both now assert on the `cause` labels only.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

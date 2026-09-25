@@ -1642,6 +1642,13 @@ REFUSED_CREDENTIAL = "answered_but_refused_the_credential"
 DID_NOT_ANSWER = "did_not_answer"
 
 
+#: The only credential source that is correct during onboarding. An
+#: ALLOWLIST of one, deliberately: a denylist of suspicious sources has to
+#: anticipate every source `credentials.resolve()` might grow, and the one it
+#: did not anticipate -- `profile:default` -- walked straight past it.
+STAGED_CREDENTIAL_SOURCE = "device-override"
+
+
 def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
             hostname: str, cred_source: str = "") -> list:
     """Likely causes, most-worth-checking first, each with what settles it.
@@ -1656,7 +1663,20 @@ def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
                "`containerlab exec`), run:")
     if state == REFUSED_CREDENTIAL:
         causes = []
-        if cred_source in ("none", "unresolved", "caller"):
+        # ANYTHING THAT IS NOT THE STAGED OVERRIDE IS A FINDING, and the
+        # condition used to be a LIST of suspicious sources -- `none`,
+        # `unresolved`, `caller` -- which is a denylist, so
+        # `profile:default` walked past it. Measured 2026-09-24: the tool
+        # reported `credential_source: "profile:default"`, knew perfectly well
+        # it had fallen back to the list's default profile, and printed *"only
+        # the credential is wrong"* with a console command.
+        #
+        # **A device mid-onboarding falling back to a profile is always
+        # wrong**: the whole point of the staged bootstrap credential is that
+        # the device has never had any other, so a profile cannot be right
+        # even by accident. An allowlist of one says that; a denylist has to
+        # anticipate every source `resolve()` might grow.
+        if cred_source != STAGED_CREDENTIAL_SOURCE:
             # FIRST, because it is the one the tool can answer about itself.
             # Measured 2026-09-24: Netmiko with the staged password reached
             # the device on the first try while phase 2 reported
@@ -1664,11 +1684,21 @@ def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
             # and never reached the connection. The diagnosis was correct
             # about the evidence ("something answered, so only the
             # credential is wrong") and wrong about the cause.
+            fell_back = str(cred_source or "").startswith("profile:")
             causes.append({
-                "cause": "the tool did not use the credential it holds",
+                "cause": ("the tool fell back to a profile instead of the "
+                          "staged bootstrap credential" if fell_back
+                          else "the tool did not use the credential it holds"),
                 "why": (f"the credential offered came from '{cred_source}' "
                         f"rather than the device override onboarding staged. "
-                        f"Check that a credential resolves for {mgmt_ip}"),
+                        + ("A device mid-onboarding has never held any "
+                           "credential but the staged one, so a profile "
+                           "cannot be right here even by accident: the "
+                           "override is missing or is stored under a "
+                           "different key than " + (mgmt_ip or "this address")
+                           + ". "
+                           if fell_back else "")
+                        + f"Check that a credential resolves for {mgmt_ip}"),
                 "command": "python scripts/nmas-check-credential "
                            f"--ip {mgmt_ip}",
                 "where": "On the NMAS host:",

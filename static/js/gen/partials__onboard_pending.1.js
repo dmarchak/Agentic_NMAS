@@ -58,8 +58,19 @@ function pendingBannerHtml(data) {
           ? `awaiting DHCP (Kea reservation \u2192 ${esc(r.reserved_address)})`
           : `awaiting DHCP (reservation for ${esc(r.mgmt_mac || 'an unrecorded MAC')})`)
       : (r.mgmt_ip ? `<code>${esc(r.mgmt_ip)}</code>` : 'no address recorded');
+    /* AN UNRECOVERABLE STATE WITH NO SIGNAL IS THE PENDING-FOREVER SHAPE.
+       The staged credential is keyed on the address `resolve()` looks under,
+       and a device staged before that key was corrected for DHCP has it under
+       the empty string: Verify will fall back to a profile, the device will
+       refuse it, and nothing before this said a word. */
+    const credGap = r.credential_findable === false
+      ? `<div class="small text-danger">The staged credential cannot be found
+           under this device's address, so Verify will fall back to a profile
+           and be refused. Abandon and re-create &mdash; nothing has reached
+           the device, so there is nothing to undo.</div>`
+      : '';
     return `<li><code>${esc(r.name)}</code> at ${where}
-      — pending ${esc(age)}${flag}
+      — pending ${esc(age)}${flag}${credGap}
       <button class="btn btn-sm btn-outline-secondary py-0 px-1"
         onclick="onboardBootstrap('${esc(r.name)}', '${esc(data.list)}')"
         title="Re-rendered from the staged credential; gone once it is rotated"

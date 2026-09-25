@@ -725,3 +725,127 @@ class TestTheCredentialIsKeyedOnSomethingThatExistsAtPlanTime:
         assert "reservation_address" in names, \
             "the credential is still keyed on an address a DHCP device lacks"
         assert "set_device_override(key" in source.replace("\n", " ")
+
+
+class TestAProfileFallbackIsAlwaysAFindingDuringOnboarding:
+    """The diagnostic that solved it was in the payload and not in the message.
+
+    Measured 2026-09-24: verification reported `credential_source:
+    "profile:default"` — the tool knew perfectly well it had fallen back to the
+    list's default profile — and the causes list said *"only the credential is
+    wrong"* with a console command. **A device mid-onboarding has never held
+    any credential but the staged one**, so a profile cannot be right even by
+    accident.
+
+    The condition was a **denylist** (`none`, `unresolved`, `caller`), so
+    `profile:default` walked past it. An allowlist of one cannot be outgrown by
+    a source `credentials.resolve()` adds later.
+    """
+
+    @staticmethod
+    def _causes(source):
+        from modules.nsot.onboard import REFUSED_CREDENTIAL, _causes
+
+        return _causes(REFUSED_CREDENTIAL, "10.255.0.40", "GigabitEthernet2",
+                       "/tmp", "bp-dhcp-a", source)
+
+    def test_a_profile_fallback_is_the_first_cause(self):
+        causes = self._causes("profile:default")
+        assert "fell back to a profile" in causes[0]["cause"]
+
+    def test_it_says_a_profile_cannot_be_right_here(self):
+        why = self._causes("profile:default")[0]["why"]
+        assert "never held any credential but the staged one" in why
+        assert "cannot be right here even by accident" in why
+
+    def test_any_profile_flavour_is_caught_not_just_default(self):
+        """`profile:role:…` and `profile:site:…` are the same finding."""
+        for source in ("profile:default", "profile:role:router",
+                       "profile:site:lab"):
+            assert "fell back to a profile" in self._causes(source)[0]["cause"]
+
+    def test_the_staged_override_offers_no_such_cause(self):
+        """**The floor.** An allowlist of one must actually let that one
+        through, or every successful resolution is reported as a failure."""
+        causes = self._causes("device-override")
+        assert not any("fell back" in c["cause"] for c in causes)
+        assert not any("did not use the credential" in c["cause"] for c in causes)
+
+    def test_an_unresolved_credential_keeps_its_own_wording(self):
+        """`none` is a different fact from a profile fallback: the tool had
+        nothing, rather than having the wrong thing."""
+        causes = self._causes("none")
+        assert "did not use the credential it holds" in causes[0]["cause"]
+
+    def test_it_is_an_allowlist_not_a_denylist(self):
+        import inspect
+
+        from modules.nsot import onboard
+
+        source = inspect.getsource(onboard._causes)
+        assert "cred_source != STAGED_CREDENTIAL_SOURCE" in source, \
+            "the condition is a denylist again, and the next source will pass"
+
+
+class TestAnUnfindableStagedCredentialIsFlaggedBeforeVerify:
+    """**A device in an unrecoverable state with no signal is the
+    pending-forever shape the banner exists to prevent.**
+
+    The override is keyed on the address `resolve()` looks under. A device
+    staged before that key was corrected for DHCP has its credential under the
+    empty string: Verify falls back to a profile, the device refuses it, and
+    nothing before this said a word.
+    """
+
+    @staticmethod
+    def _findable(entry, has_override):
+        from modules.nsot import manifest as _m
+
+        import modules.credentials as creds
+
+        original = creds.has_device_override
+        creds.has_device_override = lambda key: has_override(key)
+        try:
+            return _m._credential_findable(entry)
+        finally:
+            creds.has_device_override = original
+
+    def test_a_credential_under_the_reserved_address_is_findable(self):
+        assert self._findable({"reserved_address": "10.255.0.40"},
+                              lambda k: k == "10.255.0.40") is True
+
+    def test_a_credential_staged_under_the_empty_string_is_not(self):
+        """The exact state of a device created before the key was corrected."""
+        assert self._findable({"reserved_address": "10.255.0.40"},
+                              lambda k: k == "") is False
+
+    def test_a_device_with_no_address_at_all_is_not_findable(self):
+        assert self._findable({}, lambda _k: True) is False
+
+    def test_an_unreadable_store_answers_TRUE(self):
+        """Flagging every pending device as broken because the store could not
+        be read is a worse lie than the one this catches."""
+        from modules.nsot import manifest as _m
+
+        import modules.credentials as creds
+
+        original = creds.has_device_override
+
+        def _boom(_key):
+            raise RuntimeError("store unreadable")
+
+        creds.has_device_override = _boom
+        try:
+            assert _m._credential_findable(
+                {"reserved_address": "10.255.0.40"}) is True
+        finally:
+            creds.has_device_override = original
+
+    def test_the_banner_says_what_to_do_about_it(self):
+        from tests.js_source import read_shipped
+
+        js = read_shipped("static/js/gen/partials__onboard_pending.1.js")
+        assert "credential_findable === false" in js
+        assert "Abandon and re-create" in js
+        assert "nothing has reached" in js, \
+            "the row must say the recovery is safe, or it reads as destructive"

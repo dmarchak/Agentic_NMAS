@@ -517,6 +517,29 @@ def _age_seconds(stamp: str) -> int:
     return max(0, int(time.time() - calendar.timegm(parsed)))
 
 
+def _credential_findable(entry: dict) -> bool:
+    """Is the staged credential under the key `resolve()` will look up?
+
+    The override is keyed on the management address. For a DHCP device that is
+    the **reserved** address, which is what `bind_credentials_step` now uses —
+    a device staged before that correction has its credential under the empty
+    string, and no lookup will ever find it.
+
+    Never raises: an unreadable credential store answers **True**, because
+    flagging every pending device as broken when the store cannot be read
+    would be a worse lie than the one this is here to catch.
+    """
+    key = entry.get("mgmt_ip") or entry.get("reserved_address") or ""
+    if not key:
+        return False
+    try:
+        from modules import credentials
+
+        return bool(credentials.has_device_override(key))
+    except Exception:                          # noqa: BLE001
+        return True
+
+
 def pending_devices(repo: str) -> list:
     """Devices onboarded and never reached, **with their age and state**.
 
@@ -549,5 +572,17 @@ def pending_devices(repo: str) -> list:
                     "mgmt_mac": entry.get("mgmt_mac", ""),
                     "reserved_address": entry.get("reserved_address", ""),
                     "onboarded_at": entry["onboarded_at"],
-                    "age_seconds": age, "state": state})
+                    "age_seconds": age, "state": state,
+                    # CAN THE STAGED CREDENTIAL BE FOUND?
+                    #
+                    # The override is keyed on the address `resolve()` will
+                    # look under, and a device staged before that key was
+                    # corrected for DHCP has its credential under the empty
+                    # string -- unreachable, unrecoverable, and previously
+                    # with no signal at all. **A device in an unrecoverable
+                    # state and nothing saying so is the pending-forever shape
+                    # the banner exists to prevent**, so the row carries it and
+                    # the banner says "re-create" rather than the operator
+                    # discovering it at Verify.
+                    "credential_findable": _credential_findable(entry)})
     return sorted(out, key=lambda r: -r["age_seconds"])
