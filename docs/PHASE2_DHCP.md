@@ -874,3 +874,94 @@ Both provenance records are now written **temp-then-`os.replace`**. They were
 `user_settings.json`. A fragment of either reads as **empty**, and for the
 created-id record that means Remove can no longer find objects it created:
 they become *tagged and unrecorded*, the one combination it cannot act on.
+
+
+## 13. The recorder's first run found three things, and one was the recorder
+
+Measured on the live NMAS, first sync after §12 shipped.
+
+**Two genuine findings, which is the mechanism working.** `prefixes
+55:10.255.1.16/32` — r6's loopback, created since the baseline, reported by
+the census. And the sync rewrites `local_context_data` wholesale, so the
+before/after showed r2's stored running config moving from an **August**
+capture to today's: NetBox had been holding a month-stale full config copy and
+the sync refreshed it. Worth knowing on its own, and nothing would have said so
+before.
+
+**And the recorder was the third.** 113,767 bytes from one sync of ten
+devices, because `local_context_data` is a **dict** holding a whole running
+config, and the cap was on **strings**. Two costs beyond the size:
+
+- **It stored credentials.** The after-value carried a device's
+  `secret 9 $9$…` and a `username … password 0` line, unmasked, in
+  `data/netbox_modified.json`. *A new place a device credential lives,
+  created by the fix for a provenance gap* — and
+  `nmas-check-secret-storage` did not know about it, which is **verbatim its
+  own warning**: *a secret in a store this script does not know about is not
+  reported at all*, arriving in a store created after the warning was
+  written.
+- **A record that costs 113 KB a sync is one somebody turns off** — the same
+  end as the drift checker, reached by volume instead of noise.
+
+### Measured by size, never by type
+
+`record_value()` serialises first and caps on **that**, so a dict, a list and
+a string are all subject to the same limit. Over it, the record is
+*changed, this big, this hash*:
+
+```
+local_context_data: 14.2 KB → 15.1 KB (sha 3f2a1c4b8e91 → 9c81d0f2a7b3)
+```
+
+That **is** the finding. The bytes are not — the same lesson as
+`skipped_drifted` carrying a whole device config and neither of the two hashes
+it had compared.
+
+**The hash is of the raw value, deliberately.** Hashing the masked form would
+make a credential rotation hash-identical to no change at all: the one
+movement most worth noticing, rendered invisible by the masking meant to
+protect it. A truncated digest of a multi-kilobyte config is no practical
+oracle, and a value short enough to be guessable never reaches that path — it
+is under the cap, so it is redacted and stored instead.
+
+### Masked on the way in, and failing closed
+
+Everything recorded goes through `redact_text()`, the same redactor a golden
+gets on the way out — **positional as well as value-based**, so a device NMAS
+has never been told about is covered too.
+
+It **fails closed**, which is the opposite of the log filter and deliberately
+so. A log that silently loses entries is the worse failure in the file an
+operator reaches for when something has already gone wrong; **nobody diagnoses
+an outage from the modification record**, so a dropped value costs a detail and
+a leaked one costs a credential. When redaction cannot run, the record says
+`<unredactable — not recorded>`.
+
+Note what is *not* claimed: a `$9$` value is a salted hash, not a recoverable
+password, and it is already in `golden/` verbatim by design — *masking is
+outbound, never at rest*, because a golden has to restore a network. **That
+argument does not extend to an audit record**, which nobody restores anything
+from, so this one is masked at rest. The `password 0` form is a plaintext
+credential outright.
+
+### What was already on disk
+
+Fixing the writer does nothing about what is written, and *a tightened mode
+does not undo exposure* applies to a record as much as to a file.
+`scripts/nmas-netbox-modified --sanitise` rewrites the existing record through
+today's summarisation and masking, **keeping both findings** — it is the
+content of oversized fields that goes, replaced by the size and hash of each
+side.
+
+Both provenance records are also now created `0600`, and a loose mode
+**self-heals on the next write**: `os.replace` swaps in the temp file's inode,
+so the mode it was created with becomes the record's. Measured — the checker
+found `netbox_created_ids.json` at `0664` on the dev checkout, from before
+`open_secure` was applied.
+
+### On the live host
+
+```bash
+python3 scripts/nmas-netbox-modified --sanitise   # then:
+python3 scripts/nmas-check-secret-storage         # must report no secret-shaped content
+```

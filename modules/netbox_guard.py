@@ -27,6 +27,7 @@ Against a hand-curated NetBox that is unrecoverable data loss.
 """
 
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -62,11 +63,19 @@ _MODIFIED_FILE = os.path.join(DATA_DIR, "netbox_modified.json")
 #: different facts, and the second is a real before-value.
 UNKNOWN_BEFORE = "<unknown>"
 
-#: Longest before/after value recorded. A config-template body or a long
-#: description would otherwise put kilobytes into an audit record -- and
-#: *bulk is not evidence*, which the `skipped_drifted` entry proved by
-#: carrying a whole device config and neither of the two hashes it compared.
-_MAX_VALUE_CHARS = 200
+#: Longest before/after value recorded, measured on the **serialised** form.
+#:
+#: Measured by SIZE, never by type. The first version capped strings only, so
+#: `local_context_data` -- a dict holding a device's whole running config --
+#: went in untouched: **113,767 bytes from one sync of ten devices**, two
+#: complete configs per device. *Bulk is not evidence*, which the
+#: `skipped_drifted` entry proved by carrying a whole device config and
+#: neither of the two hashes it had compared; this is the same error inside
+#: the fix for a different one.
+#:
+#: Anything larger is recorded as *changed, this big, this hash* -- which is
+#: the finding. The bytes are not.
+_MAX_VALUE_BYTES = 200
 _file_lock = threading.Lock()
 
 # Per-thread dry-run state: sync runs on a background thread, so this must not
@@ -258,9 +267,13 @@ def _write_json_atomic(path: str, data: dict) -> bool:
     partial read returned ``{}``, the next write persisted it.
     """
     try:
+        from modules.config import open_secure
+
         os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp = f"{path}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
+        # 0600 at CREATION, and the temp file carries it so the replace
+        # cannot leave a world-readable window.
+        with open_secure(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
         os.replace(tmp, path)
         return True
@@ -286,11 +299,70 @@ def _comparable(value):
     return value
 
 
-def _short(value):
-    """Cap a recorded value, marking it rather than silently truncating."""
-    if isinstance(value, str) and len(value) > _MAX_VALUE_CHARS:
-        return value[:_MAX_VALUE_CHARS] + f"…(+{len(value) - _MAX_VALUE_CHARS} chars)"
+def _redact(text: str) -> str:
+    """Mask a value on its way into the record. **Fails closed.**
+
+    The log filter fails *open* -- a record that cannot be redacted is written
+    unredacted, because a log that silently loses entries is the worse failure
+    in the file an operator reaches for when something has already gone wrong.
+    **This file is not that file.** Nobody diagnoses an outage from the
+    modification record, so a dropped value costs a detail and a leaked one
+    costs a credential. It therefore returns a marker rather than the value
+    when redaction cannot run.
+    """
+    try:
+        from modules.redact import redact_text
+        return redact_text(text)
+    except Exception as exc:               # pragma: no cover - defensive
+        log.warning("netbox_guard: could not redact a recorded value: %s", exc)
+        return "<unredactable — not recorded>"
+
+
+def _redact_leaves(value):
+    """Redact every string inside a structure, leaving the shape intact.
+
+    Per leaf rather than over the serialised blob: positional redaction reads
+    config-line syntax, and running it across JSON punctuation would mangle
+    the document it is meant to protect.
+    """
+    if isinstance(value, str):
+        return _redact(value)
+    if isinstance(value, dict):
+        return {k: _redact_leaves(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_leaves(v) for v in value]
     return value
+
+
+def _serialise(value) -> str:
+    return json.dumps(value, sort_keys=True, default=str)
+
+
+def record_value(value):
+    """What is safe to write down for *value*.
+
+    Small values are kept, **redacted**. Large ones become
+    ``{summarised, bytes, sha256}`` -- *"changed, 14.2 KB → 15.1 KB, sha
+    3f2a… → 9c81…"* is the finding, and it is also the only form that stays
+    readable.
+
+    **The hash is of the RAW value, deliberately.** Hashing the masked form
+    would make a credential rotation hash-identical to no change at all --
+    the one movement most worth noticing, rendered invisible by the masking
+    meant to protect it. A truncated digest of a multi-kilobyte config is no
+    practical oracle, and a value short enough to be guessable never reaches
+    this path: it is under the cap, so it is redacted and stored instead.
+    """
+    if isinstance(value, dict) and value.get("summarised"):
+        return value                      # already a summary; do not re-wrap
+    blob = _serialise(value)
+    if len(blob) > _MAX_VALUE_BYTES:
+        return {
+            "summarised": True,
+            "bytes": len(blob),
+            "sha256": hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12],
+        }
+    return _redact_leaves(value)
 
 
 def changed_fields(before_obj, payload: dict):
@@ -313,7 +385,9 @@ def changed_fields(before_obj, payload: dict):
         now = _comparable(after)
         if before == now:
             continue
-        out[field] = {"before": _short(before), "after": _short(now)}
+        # COMPARE RAW, RECORD SAFE. The comparison must see the real values
+        # or a rotation looks like no change; the record must not carry them.
+        out[field] = {"before": record_value(before), "after": record_value(now)}
     return out
 
 
@@ -430,6 +504,55 @@ def modified_since(since: str = "", list_name: str = "") -> dict:
         "total_recorded": total,
         "exists": os.path.exists(_MODIFIED_FILE),
     }
+
+
+def sanitise_modified() -> dict:
+    """Rewrite the existing record through today's summarisation and masking.
+
+    The first version of this recorder capped strings only, so a sync wrote
+    two complete running configs per device -- 113,767 bytes in one run, with
+    a device's `secret 9` hash and a `username … password 0` line among them.
+    Fixing the writer does nothing about what is already on disk, and *"a
+    tightened mode does not undo exposure"* applies to a record as much as to
+    a file: this is what makes the existing one safe to keep.
+
+    Kept rather than deleted, because that file holds two genuine findings --
+    r6's loopback prefix, and a month-stale config copy the sync refreshed --
+    and the summary preserves both. Returns counts; writes nothing when
+    nothing changes.
+    """
+    data, reason = read_modified()
+    if reason:
+        return {"ok": False, "reason": reason, "entries": 0, "rewritten": 0,
+                "bytes_before": 0, "bytes_after": 0}
+    if not data:
+        return {"ok": True, "reason": "", "entries": 0, "rewritten": 0,
+                "bytes_before": 0, "bytes_after": 0}
+
+    before_bytes = len(_serialise(data))
+    entries = rewritten = 0
+    for endpoints in data.values():
+        for rows in (endpoints or {}).values():
+            for row in rows:
+                entries += 1
+                fields = row.get("fields")
+                if not fields:
+                    continue
+                new_fields = {
+                    name: {side: record_value(pair.get(side))
+                           for side in ("before", "after") if side in pair}
+                    for name, pair in fields.items()
+                }
+                if new_fields != fields:
+                    row["fields"] = new_fields
+                    rewritten += 1
+
+    after_bytes = len(_serialise(data))
+    if rewritten:
+        with _file_lock:
+            _write_json_atomic(_MODIFIED_FILE, data)
+    return {"ok": True, "reason": "", "entries": entries, "rewritten": rewritten,
+            "bytes_before": before_bytes, "bytes_after": after_bytes}
 
 
 def get_modified(list_name: str, endpoint: str = "") -> dict:

@@ -26,6 +26,8 @@ import importlib.util
 import json
 import os
 import re
+import stat
+import sys
 import ast
 
 import pytest
@@ -106,10 +108,203 @@ class TestTheBeforeIsRecorded:
         fields = netbox_guard.changed_fields({"comments": None}, {"comments": "x"})
         assert fields["comments"]["before"] is None
 
-    def test_a_long_value_is_marked_not_silently_truncated(self):
+    def test_a_long_value_becomes_a_summary_not_its_contents(self):
         fields = netbox_guard.changed_fields({"comments": "a"}, {"comments": "b" * 900})
         after = fields["comments"]["after"]
-        assert len(after) < 900 and "chars)" in after
+        assert after["summarised"] is True
+        assert after["bytes"] > 900 and len(after["sha256"]) == 12
+
+
+class TestSizeIsMeasuredNotTyped:
+    """The recorder's own first run found this, which is the point.
+
+    Capping strings and not structures let `local_context_data` -- a dict
+    holding a device's whole running config -- through untouched: 113,767
+    bytes from ONE sync of ten devices. *Bulk is not evidence*, and a record
+    that costs 113 KB a sync is one somebody turns off.
+    """
+
+    def test_a_large_dict_is_summarised(self):
+        big = {"config": "hostname r2\n" * 900}
+        got = netbox_guard.record_value(big)
+        assert got["summarised"] is True and got["bytes"] > 10_000
+        assert "hostname" not in json.dumps(got)
+
+    def test_a_large_list_is_summarised(self):
+        got = netbox_guard.record_value(["line"] * 400)
+        assert got["summarised"] is True
+
+    def test_one_sync_shaped_change_stays_small(self):
+        """The regression in the units it was found in."""
+        before = {"config": "hostname r2\n" * 900}
+        after = {"config": "hostname r2\n" * 950}
+        fields = netbox_guard.changed_fields({"local_context_data": before},
+                                             {"local_context_data": after})
+        assert len(json.dumps(fields)) < 400
+
+    def test_the_hash_is_of_the_raw_value_so_a_rotation_is_visible(self):
+        """Hashing the MASKED form would make a credential rotation
+        hash-identical to no change at all -- the one movement most worth
+        noticing, made invisible by the masking meant to protect it."""
+        pad = "interface Gi1\n" * 40
+        one = netbox_guard.record_value(
+            {"c": pad + "username admin secret 9 $9$AAAAAAAAAAAAAA"})
+        two = netbox_guard.record_value(
+            {"c": pad + "username admin secret 9 $9$BBBBBBBBBBBBBB"})
+        assert one["summarised"] and two["summarised"]
+        assert one["sha256"] != two["sha256"]
+
+    def test_a_summary_is_never_re_wrapped(self):
+        once = netbox_guard.record_value({"config": "x" * 900})
+        assert netbox_guard.record_value(once) == once
+
+
+class TestNothingRecordedCarriesACredential:
+    """The fix for a provenance gap created a new place a credential lived.
+
+    `nmas-check-secret-storage` did not know about the file either -- which
+    is verbatim its own warning, *a secret in a store this script does not
+    know about is not reported at all*, arriving in a store created after the
+    warning was written.
+    """
+
+    def test_a_credential_line_is_masked_before_it_is_written(self, record):
+        fields = netbox_guard.changed_fields(
+            {"description": "old"},
+            {"description": "username admin privilege 15 password 0 sekrit99"})
+        netbox_guard.record_modified("default", "dcim/devices", 3, fields)
+
+        raw = open(netbox_guard._MODIFIED_FILE, encoding="utf-8").read()
+        assert "sekrit99" not in raw
+        assert "redacted" in raw
+
+    def test_masking_is_positional_so_an_unknown_devices_secret_is_covered(self):
+        """Value matching would need the store to have seen it. Positional
+        masking covers a device NMAS was never told about."""
+        got = netbox_guard.record_value("snmp-server community s3cr3tpub RW")
+        assert "s3cr3tpub" not in got
+
+    def test_redaction_failure_records_a_marker_not_the_value(self, monkeypatch):
+        """FAILS CLOSED, opposite to the log filter.
+
+        A log that loses entries is the worse failure in the file an operator
+        reaches for when something has gone wrong. Nobody diagnoses an outage
+        from this record, so a dropped value costs a detail and a leaked one
+        costs a credential.
+        """
+        import modules.redact as redact_mod
+
+        def boom(*a, **k):
+            raise RuntimeError("credential store unreadable")
+
+        monkeypatch.setattr(redact_mod, "redact_text", boom)
+        got = netbox_guard.record_value("username admin password 0 hunter2")
+        assert "hunter2" not in got
+        assert "not recorded" in got
+
+    def test_the_checker_scans_this_file(self):
+        src = open("scripts/nmas-check-secret-storage", encoding="utf-8").read()
+        assert "netbox_modified.json" in src
+        assert "redact_positional" in src
+
+    def test_the_checker_actually_finds_a_planted_secret(self, tmp_path):
+        """The positive control. A scan that can only report 'clean' is
+        indistinguishable from one that cannot run."""
+        census = importlib.machinery.SourceFileLoader(
+            "chk", "scripts/nmas-check-secret-storage")
+        spec = importlib.util.spec_from_loader("chk", census)
+        mod = importlib.util.module_from_spec(spec)
+        census.exec_module(mod)
+
+        clean = tmp_path / "clean.json"
+        clean.write_text('{"default": {"dcim/sites": [{"id": 5}]}}')
+        assert mod._holds_a_secret(str(clean)) == (False, "")
+
+        dirty = tmp_path / "dirty.json"
+        dirty.write_text('{"a": "username admin privilege 15 password 0 hunter2"}')
+        found, _ = mod._holds_a_secret(str(dirty))
+        assert found is True
+
+        missing, why = mod._holds_a_secret(str(tmp_path / "nope.json"))
+        assert missing is None and why
+
+
+class TestSanitisingWhatIsAlreadyOnDisk:
+    """Fixing the writer does nothing about what is already written, and
+    *a tightened mode does not undo exposure* applies to a record too."""
+
+    def _oversized(self, record):
+        netbox_guard.record_modified(
+            "default", "dcim/devices", 3,
+            {"local_context_data": {
+                "before": {"config": "hostname r2\n" * 900},
+                "after": {"config": "hostname r2\n" * 950}}})
+
+    def test_it_shrinks_the_record_and_keeps_the_finding(self, record):
+        self._oversized(record)
+        before_bytes = os.path.getsize(netbox_guard._MODIFIED_FILE)
+
+        got = netbox_guard.sanitise_modified()
+        assert got["ok"] and got["rewritten"] == 1
+        assert os.path.getsize(netbox_guard._MODIFIED_FILE) < before_bytes / 10
+
+        entry = netbox_guard.modified_since()["entries"][0]
+        pair = entry["fields"]["local_context_data"]
+        assert pair["before"]["summarised"] and pair["after"]["summarised"]
+        assert pair["before"]["sha256"] != pair["after"]["sha256"]
+        assert entry["endpoint"] == "dcim/devices" and entry["id"] == 3
+
+    def test_a_planted_credential_is_gone_afterwards(self, record):
+        netbox_guard.record_modified(
+            "default", "dcim/devices", 3,
+            {"description": {"before": "old",
+                             "after": "username admin password 0 sekrit99"}})
+        assert "sekrit99" in open(netbox_guard._MODIFIED_FILE, encoding="utf-8").read()
+
+        netbox_guard.sanitise_modified()
+        assert "sekrit99" not in open(netbox_guard._MODIFIED_FILE,
+                                      encoding="utf-8").read()
+
+    def test_it_is_idempotent(self, record):
+        self._oversized(record)
+        netbox_guard.sanitise_modified()
+        second = netbox_guard.sanitise_modified()
+        assert second["rewritten"] == 0
+
+    def test_an_unreadable_record_is_unproven_not_clean(self, record):
+        with open(netbox_guard._MODIFIED_FILE, "w", encoding="utf-8") as fh:
+            fh.write("{ truncated")
+        got = netbox_guard.sanitise_modified()
+        assert got["ok"] is False and got["reason"]
+
+    def test_the_script_runs_and_never_prints_a_value(self, record):
+        import subprocess
+        netbox_guard.record_modified(
+            "default", "dcim/devices", 3,
+            {"description": {"before": "a", "after": "b"}})
+        out = subprocess.run(
+            [sys.executable, "scripts/nmas-netbox-modified", "--sanitise"],
+            capture_output=True, text=True, timeout=120)
+        assert out.returncode == 0, out.stderr
+
+
+class TestTheRecordIsOwnerOnly:
+    def test_it_is_created_0600(self, record):
+        netbox_guard.record_modified(
+            "default", "dcim/sites", 7, {"region": {"before": 1, "after": 2}})
+        mode = stat.S_IMODE(os.stat(netbox_guard._MODIFIED_FILE).st_mode)
+        assert mode == 0o600, oct(mode)
+
+    def test_a_loose_mode_self_heals_on_the_next_write(self, record):
+        """os.replace swaps in the temp file's inode, so the 0600 it was
+        created with becomes the record's mode — a file written before this
+        existed does not stay group-readable for ever."""
+        netbox_guard.record_modified(
+            "default", "dcim/sites", 7, {"region": {"before": 1, "after": 2}})
+        os.chmod(netbox_guard._MODIFIED_FILE, 0o664)
+        netbox_guard.record_modified(
+            "default", "dcim/sites", 8, {"region": {"before": 1, "after": 3}})
+        assert stat.S_IMODE(os.stat(netbox_guard._MODIFIED_FILE).st_mode) == 0o600
 
 
 # ---------------------------------------------------------------------------

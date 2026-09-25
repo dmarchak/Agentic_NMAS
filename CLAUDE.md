@@ -3572,6 +3572,61 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   created-id record that means Remove can no longer find objects it created,
   which makes them *tagged and unrecorded*, the one combination it cannot act
   on.
+- **THE FIX FOR A PROVENANCE GAP CREATED A NEW PLACE A CREDENTIAL LIVED.**
+  §13. The modification record's first live run found three things and **one
+  was the recorder**: 113,767 bytes from a single sync of ten devices,
+  because the cap was on **strings** and `local_context_data` is a **dict**
+  holding a whole running config. It stored a device's `secret 9 $9$…` and a
+  `username … password 0` line unmasked — and `nmas-check-secret-storage` did
+  not know the file existed, which is **verbatim that script's own warning**
+  (*a secret in a store this script does not know about is not reported at
+  all*) arriving in a store created after the warning was written. The other
+  cost is the same end the drift checker reached by a different road: **a
+  record costing 113 KB a sync is one somebody turns off.** The two genuine
+  findings in that same run are the mechanism working — r6's loopback prefix,
+  and NetBox holding a **month-stale** full config copy that the sync
+  refreshed, which nothing would have reported before.
+- **Cap a recorded value by SERIALISED SIZE, never by type**, and above it
+  record *changed, this big, this hash* — `local_context_data: 14.2 KB → 15.1
+  KB (sha 3f2a… → 9c81…)` is the finding; the bytes are not. Same lesson as
+  `skipped_drifted` carrying a whole device config and neither of the two
+  hashes it had compared. **The hash is of the RAW value, deliberately**:
+  hashing the masked form makes a credential rotation hash-identical to no
+  change at all — the one movement most worth noticing, made invisible by the
+  masking meant to protect it — and a value short enough to be a guessable
+  preimage never reaches that path, being under the cap and therefore
+  redacted and stored instead.
+- **An audit record is masked AT REST, and the golden-config argument does
+  not extend to it.** *Masking is outbound, never at rest* holds for
+  `golden/` because a golden has to restore a network and masking it would
+  make the repository useless for its one purpose. Nobody restores anything
+  from a modification record, so it is masked on the way **in**, through the
+  same `redact_text()` — positional as well as value-based, so a device NMAS
+  was never told about is covered. And it **fails closed**, the opposite of
+  the log filter and for the reason that decided that one: a log that loses
+  entries is the worse failure in the file an operator reaches for when
+  something has gone wrong, and **nobody reaches for this file in an
+  outage** — so a dropped value costs a detail while a leaked one costs a
+  credential. Severity stated in both directions: a `$9$` value is a salted
+  hash already in `golden/` by design, while the `password 0` form is a
+  plaintext credential outright.
+- **A checker whose stores are named keys needs a second shape for a blob
+  whose policy is "no secret at all".** `nmas-check-secret-storage` classified
+  named keys as encrypted or plaintext, which cannot express a file that
+  should simply never contain a credential. Those are scanned instead with
+  `redact_positional()` — *the finding is that redacting the file changes
+  it* — reported UNPROVEN when the scan cannot run, and carrying a positive
+  control that a planted secret IS found, because a scan that can only say
+  "clean" is indistinguishable from one that could not run.
+- **Fixing a writer does nothing about what is already written.**
+  `scripts/nmas-netbox-modified --sanitise` rewrites the existing record
+  through today's summarisation and masking, **keeping the findings** and
+  dropping only the content of oversized fields — *a tightened mode does not
+  undo exposure* applies to a record as much as to a file. Both provenance
+  records are created `0600`, and a loose mode **self-heals on the next
+  write**, because `os.replace` swaps in the temp file's inode (measured; the
+  checker found `netbox_created_ids.json` at `0664` from before `open_secure`
+  was applied).
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""What NMAS has MODIFIED in NetBox — and a way to sanitise the record.
+
+An update is the one NetBox write that carries no provenance: the
+`nmas-managed` tag means *"NMAS created this"* and is injected on POST only,
+so a PATCH leaves nothing behind. `data/netbox_modified.json` is that missing
+record, and this reads it.
+
+`--sanitise` exists because the first version of the recorder capped strings
+and not **structures**, so `local_context_data` — a dict holding a device's
+whole running config — went in whole: 113,767 bytes from one sync of ten
+devices, carrying a `secret 9` hash and a `username … password 0` line. The
+writer is fixed; this is what makes what is already on disk safe, without
+throwing away the findings it holds.
+
+    python3 scripts/nmas-netbox-modified
+    python3 scripts/nmas-netbox-modified --sanitise
+
+Names, sizes and hashes only. It never prints a recorded value.
+"""
+
+import argparse
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def _human(n: int) -> str:
+    return f"{n/1024:.1f} KB" if n >= 1024 else f"{n} B"
+
+
+def _report(entries: list) -> None:
+    for e in entries:
+        fields = e.get("fields") or {}
+        if e.get("before_unknown"):
+            detail = "before-state unreadable"
+        else:
+            parts = []
+            for name, pair in fields.items():
+                b, a = pair.get("before"), pair.get("after")
+                if isinstance(b, dict) and b.get("summarised"):
+                    parts.append(f"{name}: {_human(b['bytes'])} → "
+                                 f"{_human((a or {}).get('bytes', 0))} "
+                                 f"(sha {b['sha256']} → "
+                                 f"{(a or {}).get('sha256', '?')})")
+                else:
+                    parts.append(f"{name}: {b} → {a}")
+            detail = "; ".join(parts)
+        print(f"  {e['at']}  {e['endpoint']}/{e['id']} {e.get('name') or ''} "
+              f"[{e.get('actor')}]")
+        print(f"      {detail}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--sanitise", action="store_true",
+                    help="rewrite the record through today's summarisation "
+                         "and masking, in place")
+    ap.add_argument("--list", dest="list_name", default="",
+                    help="only this device list")
+    args = ap.parse_args()
+
+    from modules.netbox_guard import (_MODIFIED_FILE, modified_since,
+                                      sanitise_modified)
+
+    if args.sanitise:
+        got = sanitise_modified()
+        if not got["ok"]:
+            print(f"UNPROVEN — {got['reason']}")
+            print("Nothing was rewritten. That is not the same as nothing "
+                  "needing it.")
+            return 2
+        if not got["entries"]:
+            print("no record to sanitise — nothing has been written to "
+                  f"{_MODIFIED_FILE}")
+            return 0
+        print(f"{got['rewritten']} of {got['entries']} entr(ies) rewritten")
+        print(f"{_human(got['bytes_before'])} → {_human(got['bytes_after'])}")
+        if got["rewritten"]:
+            print("\nWhat was removed was the CONTENT of oversized fields. "
+                  "Each is now recorded as changed, its size, and a hash of "
+                  "each side — which is the finding. The bytes were not.")
+        else:
+            print("\nNothing needed rewriting — every value was already "
+                  "within the cap.")
+        return 0
+
+    got = modified_since(list_name=args.list_name)
+    if not got["ok"]:
+        print(f"UNKNOWN — the record could not be read: {got['reason']}")
+        print("That is weaker than 'nothing was modified', not equal to it.")
+        return 2
+    if not got["exists"]:
+        print(f"NO RECORD EXISTS — nothing has been written to {_MODIFIED_FILE}.")
+        print("On an install that has run an import, read that as 'unknown' "
+              "rather than 'none'.")
+        return 0
+
+    print(f"{got['count']} modification(s) recorded"
+          + (f", {got['unknown_before']} with an unreadable before-state"
+             if got["unknown_before"] else ""))
+    _report(got["entries"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
