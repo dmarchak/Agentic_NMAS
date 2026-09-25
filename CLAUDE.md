@@ -869,6 +869,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_template_library_renders.py` | the shared `_common.j2` is listed with what editing it revokes; a withdrawal's reason is drawn; the save message says what happened |
 | `test_bulk_intent.py` | P.1b: before-state compare-and-set per device with both operands; every refusal reason at once; the group count is the headline; one-shot hash; one commit; one device reverts alone from it |
 | `test_retire.py` | the whole exit in one commit, history kept; the break-glass record must hold the CURRENT credential; what it will NOT do is stated; resumable; a failed commit restores the tree |
+| `test_clab_sync_commit.py` | the sanitiser's commit block EXECUTED under bash: identity rides on every commit; a failed commit names git's reason and is not "not versioned"; helpers resolve beside the script under a systemd PATH |
+| `test_job_health.py` | a failing timer is visible: the cause line and the streak; not-installed is never ok; could-not-ask is unknown |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
@@ -4028,6 +4030,17 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   been wrong for a slow clock. One 750 s window would have alerted on a
   single missed s4 heartbeat. Windows are now per dialect, from measured
   real intervals, and an unmeasured dialect is refused.
+- **A job that fails into a journal nobody reads has not been reported**
+  (C14). `clab-sync` refused correctly 72 times in a row, because its
+  helper was on the login PATH and not systemd's, while r6's startup config
+  went a day stale. **Resolve helpers beside the script, never through
+  PATH**, and deploy scripts as symlinks to the repository, so there is one
+  copy. `modules/job_health.py` reads each declared job's journal. It must
+  never trust `Result` alone: systemd reports `Result=success` for a unit
+  that does not exist. The sanitiser's commit also named a missing git
+  identity "NOT VERSIONED" and prescribed `git init`. The committer's
+  identity now rides on every commit (`-c`), and a failure in an existing
+  repository reports git's own reason.
 - **A device leaves management through `nmas-retire`, never the Delete
   button** (C11). Delete removes the CSV row and nothing else, and measured
   on r5 that left it bound to its template, in the sync map with a false
@@ -4076,7 +4089,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **22 open at 2026-09-25**, counted from the rows: 18 recorded only in
+present when each was recorded. **23 open at 2026-09-25**, counted from the rows: 19 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

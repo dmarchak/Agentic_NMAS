@@ -64,7 +64,7 @@ is a result.
 The sync half is done: `~/bin/clab-sync` and
 `~/lab-configs/oxidized-to-config.sh` take the map from
 `nmas-clab-targets`, write per destination, and report per lab. The whole
-file is `docs/patches/oxidized-to-config.sh.new`.
+file is `scripts/oxidized-to-config.sh` (moved from `docs/patches/` on 2026-09-25; deployed as a symlink).
 
 ### Next
 

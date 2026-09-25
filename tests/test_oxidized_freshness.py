@@ -738,7 +738,7 @@ class TestTheSignalRenders:
 
 SANITISER = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "docs", "patches", "oxidized-to-config.sh.new")
+    "scripts", "oxidized-to-config.sh")
 
 
 def _gate_case_block():

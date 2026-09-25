@@ -505,7 +505,7 @@ confusing the two sends somebody to debug the wrong machine. A test asserts
 
 ## 12. The sync half, as a whole file
 
-`docs/patches/oxidized-to-config.sh.new` — the complete script, not a patch.
+`scripts/oxidized-to-config.sh` (moved from `docs/patches/` on 2026-09-25; deployed as a symlink) — the complete script, not a patch.
 The first attempt was a hand-written unified diff whose `@@` headers carried
 no line ranges, so `patch(1)` rejected it outright as garbage. A full file
 avoids line numbers entirely and `diff -u` against the original gives the

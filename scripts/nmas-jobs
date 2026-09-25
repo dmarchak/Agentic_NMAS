@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Are the scheduled jobs NMAS depends on succeeding? (modules/job_health.py)
+
+    nmas-jobs          # one line per job; exit 0 all ok, 1 any not ok
+
+States: ok, failing (with the job's own last error), stale (nothing failed,
+nothing succeeded recently: a stopped timer), never_succeeded, not_installed
+(never ok -- systemd reports Result=success for a unit that does not exist),
+unknown (could not ask -- not the same as ok).
+"""
+
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def main() -> int:
+    from modules.job_health import health
+
+    h = health()
+    print(h["headline"])
+    for j in h["jobs"]:
+        print(f"  {j['state']:<16} {j['unit']:<26} {j['detail']}")
+    return 0 if not h["not_ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

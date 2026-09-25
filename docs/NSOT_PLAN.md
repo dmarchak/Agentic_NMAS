@@ -2074,6 +2074,16 @@ the confirmed path.
       `nmas-retire`'s plan flags the applet until then.
    2. One clab sync **while r5 is still mapped**, so the frozen `r5.cfg`
       is the clean one.
+      *Run 2026-09-25, and it found C14: `clab-sync.service` had failed 72
+      runs in a row (helper not on systemd's PATH), and the r6 commit was
+      reported as NOT VERSIONED when it lacked a git identity. Both fixed
+      in `scripts/oxidized-to-config.sh`. **Deploy it as a symlink**, then
+      re-run this step:*
+      ```
+      cd ~/lab-configs && mv oxidized-to-config.sh oxidized-to-config.sh.bak-2026-09-25
+      ln -s ~/python/Agentic_NMAS/scripts/oxidized-to-config.sh oxidized-to-config.sh
+      sudo systemctl start clab-sync.service; ~/python/Agentic_NMAS/scripts/nmas-jobs
+      ```
    3. `scripts/nmas-breakglass export --list Default --out <file>` and
       `verify`.
    4. `scripts/nmas-retire --list Default --device r5 --reason "..."`, read

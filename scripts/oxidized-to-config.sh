@@ -109,8 +109,30 @@ CLAB_FROM_ENV="${CLAB+yes}"
 CLAB="${CLAB:-dmarchak@10.0.0.210}"
 STAGE="/tmp/oxidized-staged"
 NMAS_URL="${NMAS_URL:-http://10.0.0.211:5000}"
-TARGETS="${TARGETS:-nmas-clab-targets}"
-FRESH="${FRESH:-nmas-oxidized-freshness}"
+# HELPERS ARE RESOLVED BESIDE THIS SCRIPT, NEVER THROUGH PATH.
+#
+# Measured 2026-09-25: `~/bin/nmas-clab-targets` was on the operator's
+# interactive PATH and not on systemd's, so clab-sync.service failed every
+# 30 minutes for ~36 hours (72 runs, 2026-09-24 08:40 onwards) with
+# "command not found" -> "REFUSED - the NMAS could not be asked". The
+# refusal was correct and went into a journal nobody read, and r6's startup
+# config fell a day behind its branch-site config.
+#
+# This script lives in the NMAS repository (scripts/) and is deployed as a
+# SYMLINK, so its real path is the checkout and the helpers are its
+# siblings. One copy: the deployed file had also diverged from the repo's.
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SELF")"
+TARGETS="${TARGETS:-$HERE/nmas-clab-targets}"
+FRESH="${FRESH:-$HERE/nmas-oxidized-freshness}"
+for helper in "$TARGETS" "$FRESH"; do
+  if [ ! -x "$helper" ]; then
+    echo "REFUSED - helper not found or not executable: $helper"
+    echo "  (resolved beside this script, $SELF -- not through PATH, which"
+    echo "  differs between a login shell and systemd)"
+    exit 2
+  fi
+done
 # The RAW configs, kept so the gate compares the exact bytes this run read.
 # Re-reading them for the gate would be a second `git show` and a second
 # chance for Oxidized to have polled in between - the gate would then approve
@@ -626,28 +648,59 @@ ssh -n "$CLAB" "rm -rf $STAGE"
 # an unversioned destination, and it put that key in a commit. The defect
 # was in the advice, not in the action -- which is why the recipe below now
 # writes a .gitignore and names the paths it stages.
+# IDENTITY RIDES ON EVERY COMMIT (-c), and is never assumed from the repo.
+#
+# Measured 2026-09-25: labs/r6 IS a repo (d3f8486 "initial: configs only")
+# with configs/r6.cfg staged, and the commit failed because the repo has no
+# user.email -- its first commit passed -c inline and never persisted it. That
+# failure was reported as "NOT VERSIONED" with the `git init` recipe: a
+# commit that wanted an identity, announced as an absent repository, with a
+# remedy that would be wrong to follow.
+#
+# The committer is this job, so the identity is a property of the job and
+# travels with it: setting it at init covers only repos this script created,
+# and relying on the repo's config fails on exactly the repos somebody set
+# up by hand. `.invalid` (RFC 2606) because it names a service, not a mailbox.
+GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)
 unversioned=()
+failed=()
 while read -r dir; do
   [ -n "$dir" ] || continue
   outcome="$(ssh -n "$CLAB" "cd \$(dirname '$dir') 2>/dev/null || { echo nodir; exit 0; }; \
     git rev-parse --git-dir >/dev/null 2>&1 || { echo norepo; exit 0; }; \
-    git add -A \$(basename '$dir') >/dev/null 2>&1 || { echo addfailed; exit 0; }; \
+    err=\$(git add -A \$(basename '$dir') 2>&1) || { printf 'addfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"; exit 0; }; \
     git diff --cached --quiet && { echo unchanged; exit 0; }; \
-    git commit -q -m 'harvest from oxidized $ts' >/dev/null 2>&1 \
-      && echo committed || echo commitfailed")"
-  case "$outcome" in
-    committed)  echo "  $dir: committed" ;;
-    unchanged)  echo "  $dir: unchanged - nothing to commit (the content did not move)" ;;
-    norepo)     echo "  $dir: NOT VERSIONED - the parent directory is not a git repo"
-                unversioned+=("$dir") ;;
-    nodir)      echo "  $dir: NOT VERSIONED - parent directory does not exist"
-                unversioned+=("$dir") ;;
-    addfailed)  echo "  $dir: NOT VERSIONED - git add refused (ignored path?)"
-                unversioned+=("$dir") ;;
-    *)          echo "  $dir: commit FAILED ($outcome)"
-                unversioned+=("$dir") ;;
+    err=\$(git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $ts' 2>&1) \
+      && echo committed \
+      || printf 'commitfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"")"
+  kind="${outcome%% *}"
+  reason="${outcome#"$kind"}"; reason="${reason# }"
+  case "$kind" in
+    committed)    echo "  $dir: committed" ;;
+    unchanged)    echo "  $dir: unchanged - nothing to commit (the content did not move)" ;;
+    norepo)       echo "  $dir: NOT VERSIONED - the parent directory is not a git repo"
+                  unversioned+=("$dir") ;;
+    nodir)        echo "  $dir: NOT VERSIONED - parent directory does not exist"
+                  unversioned+=("$dir") ;;
+    addfailed)    echo "  $dir: ADD FAILED in an existing repository - git said: ${reason:-no reason given}"
+                  failed+=("$dir") ;;
+    commitfailed) echo "  $dir: COMMIT FAILED in an existing repository - git said: ${reason:-no reason given}"
+                  failed+=("$dir") ;;
+    *)            echo "  $dir: UNKNOWN OUTCOME ($outcome) - treat as not committed"
+                  failed+=("$dir") ;;
   esac
 done < <(destinations)
+
+# A failure in an EXISTING repository is not "not versioned": the repository
+# is there and the fix is git's own message, not `git init`. Reported apart,
+# and it makes the run exit non-zero so the job's failure is visible.
+if [ ${#failed[@]} -gt 0 ]; then
+  echo
+  echo "${#failed[@]} destination(s) did NOT COMMIT, in repositories that exist:"
+  printf '    %s\n' "${failed[@]}"
+  echo "  The startup configs were written; their history did not move. Fix"
+  echo "  the cause git named above -- do NOT run the git init recipe."
+fi
 
 if [ ${#unversioned[@]} -gt 0 ]; then
   echo
@@ -677,3 +730,6 @@ fi
 echo
 echo "Startup-configs updated. They take effect on the next destroy/deploy of"
 echo "each affected lab."
+# Exit 3 when a destination did not commit, so a timer running this reports
+# the failure rather than succeeding around it.
+[ ${#failed[@]} -eq 0 ] || exit 3
