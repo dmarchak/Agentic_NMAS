@@ -363,3 +363,92 @@ def test_the_pinned_mac_matches_the_documented_reservation():
     assert "aa:bb:cc:00:02:40" in topology
     assert "aa:bb:cc:00:02:40" in scope, \
         "the reservation in the scope document no longer matches the topology"
+
+
+# --------------------------------------------------------------------------
+# Management subnets: one per network name, and none that is already taken
+# --------------------------------------------------------------------------
+
+#: Subnets in use by something **outside this repository**, and why.
+#:
+#: Docker refuses a second network on a subnet already in use, so a probe that
+#: picks an occupied one fails at deploy with *"Subnet already in use by Docker
+#: network clab"*. The constraint lives in the docker daemon on the clab host;
+#: the files that must respect it live here. **"Pick a free subnet" is advice,
+#: not a mechanism** — and nobody can check it from the repository, because the
+#: labs that occupy them are not all in it.
+#:
+#: This converts the advice into a mechanism with a stated limit: it can only
+#: know what somebody wrote down. Declaring a lab here is the price of the test
+#: being able to help at all.
+RESERVED_MGMT_SUBNETS = {
+    "172.20.20.0/24": ("rcn-lab1 — the production lab's default `clab` "
+                       "network, and the reason every probe declares its own"),
+    "172.30.50.0/24": ("clab-r6 — r6's own lab, created on the clab host and "
+                       "NOT in this repository. The phase 2 probe picked this "
+                       "first and collided with a running network"),
+}
+
+
+def _mgmt_networks():
+    """``[(file, network name, subnet)]`` for every probe topology."""
+    out = []
+    for path in _topologies():
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh) or {}
+        mgmt = doc.get("mgmt") or {}
+        out.append((os.path.basename(path), mgmt.get("network"),
+                    mgmt.get("ipv4-subnet")))
+    return out
+
+
+def test_the_subnet_scan_finds_something():
+    """**The floor.** Every assertion below is over a mapping, and an empty one
+    satisfies all of them."""
+    rows = [r for r in _mgmt_networks() if r[1] and r[2]]
+    assert len(rows) >= 5, (
+        f"only {len(rows)} topologies declare a management network — the scan "
+        "is reading almost nothing")
+
+
+def test_a_network_name_has_exactly_one_subnet():
+    """Sharing a NAME is legitimate — five of these are sequential throwaways
+    that never run together and reuse `clab-bootstrap-probe` deliberately. What
+    is not legitimate is one name meaning two subnets."""
+    by_name = {}
+    for _file, name, subnet in _mgmt_networks():
+        if name and subnet:
+            by_name.setdefault(name, set()).add(subnet)
+    offenders = {n: sorted(s) for n, s in by_name.items() if len(s) > 1}
+    assert not offenders, f"one network name, two subnets: {offenders}"
+
+
+def test_a_subnet_belongs_to_exactly_one_network_name():
+    """**The collision that happened.** Two different network names on one
+    subnet is what docker refuses, and it is the shape a hand-picked subnet
+    produces: `clab-dhcp-probe` and `clab-r6` both chose 172.30.50.0/24."""
+    by_subnet = {}
+    for _file, name, subnet in _mgmt_networks():
+        if name and subnet:
+            by_subnet.setdefault(subnet, set()).add(name)
+    offenders = {s: sorted(n) for s, n in by_subnet.items() if len(n) > 1}
+    assert not offenders, (
+        "one subnet, two network names — docker will refuse the second: "
+        + str(offenders))
+
+
+def test_no_probe_uses_a_subnet_declared_taken():
+    for filename, name, subnet in _mgmt_networks():
+        if subnet in RESERVED_MGMT_SUBNETS:
+            raise AssertionError(
+                f"{filename} declares {name} on {subnet}, which is taken by "
+                f"{RESERVED_MGMT_SUBNETS[subnet]}")
+
+
+def test_the_reserved_list_is_not_empty_and_says_why():
+    """A list of reserved things with no reasons is a list nobody can maintain
+    — the next person cannot tell a live claim from a stale one."""
+    assert len(RESERVED_MGMT_SUBNETS) >= 2
+    for subnet, why in RESERVED_MGMT_SUBNETS.items():
+        assert "/" in subnet, subnet
+        assert len(why) > 20, f"{subnet} has no usable reason: {why!r}"

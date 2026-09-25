@@ -114,6 +114,23 @@ into production is not throwaway. `-adopted` because `c8000v-launch.py` in
 that directory deliberately **predates** the user-skip and is what makes
 `nmas-bootstrap-probe.clab.yml` reproduce the hazard.
 
+### 3a2. Confirm the containerlab subnet is free
+
+The probe declares `clab-dhcp-probe` on **172.30.60.0/24**. Its first choice,
+`172.30.50.0/24`, collided with `clab-r6` — running now, and a file on the clab
+host rather than in this repository, so nothing in the repo could have known.
+
+```bash
+ssh <clab> 'docker network ls --format "{{.Name}}" | while read n; do \
+  printf "%-26s %s\n" "$n" "$(docker network inspect -f "{{range .IPAM.Config}}{{.Subnet}}{{end}}" "$n")"; done'
+```
+
+- [ ] nothing holds `172.30.60.0/24`
+- [ ] if something does, pick another **and add the occupied one to
+      `RESERVED_MGMT_SUBNETS` in `tests/test_probe_topologies.py`** — that list
+      is the only way the repository can know, and the next probe will make the
+      same mistake otherwise
+
 ### 3b. Confirm `br-mgmt` and see who is on it
 
 ```bash

@@ -3170,6 +3170,27 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   format would have lost the protection with nothing saying so. `_link_endpoints()`
   understands both, with the blindness pinned as a test and a floor that the
   extended form on `Gi2` is still accepted.
+- **The constraint lives in the docker daemon and the files that must respect
+  it live in the repository, so "pick a free subnet" is advice rather than a
+  mechanism.** The phase 2 probe chose `172.30.50.0/24` — which is `clab-r6`,
+  running now — and docker refuses a second network on an occupied subnet
+  (*"Subnet already in use by Docker network clab"*). **Nothing here could have
+  known**: r6's topology is a file on the clab host, not in this repo. Same
+  shape as the device → lab map, where the authority and the consumers were in
+  different places, and *a per-lab allocation that nothing owns is how the
+  next one collides too.*
+  The mechanism is narrower than it first looks, because the obvious rule is
+  wrong: **five probe topologies deliberately share one network name** —
+  sequential throwaways that never run together — so "every topology gets a
+  distinct subnet" would flag five correct files. The real invariant is that
+  **(network name → subnet) is a function in both directions**: one name never
+  means two subnets, and one subnet never belongs to two names. That is exactly
+  the collision, and it is now a test.
+  `RESERVED_MGMT_SUBNETS` declares what is taken **outside** the repo, with a
+  reason per entry, and the stated limit is that it can only know what somebody
+  wrote down — declaring a lab there is the price of the test being able to
+  help at all. A reserved list without reasons is one nobody can maintain,
+  because the next reader cannot tell a live claim from a stale one.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
