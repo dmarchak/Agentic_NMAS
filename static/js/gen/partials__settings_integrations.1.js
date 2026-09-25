@@ -60,6 +60,14 @@ const INTEGRATION_SPEC = {
     {key: 's3_region', label: 'Region', type: 'text'},
     {key: 's3_prefix', label: 'Prefix', type: 'text'},
     {key: 's3_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+  proxmox: {icon: '🖥️', fields: [
+    {key: 'proxmox_url', label: 'API URL', type: 'url', help: 'e.g. https://<host>:8006. Read-only: watches the nightly VM images (docs/VM_IMAGES.md).'},
+    {key: 'proxmox_node', label: 'Node', type: 'text'},
+    {key: 'proxmox_token_id', label: 'API token ID', type: 'text', help: 'user@realm!tokenname, with the PVEAuditor role and nothing more.'},
+    {key: 'proxmox_token_secret', label: 'API token secret', type: 'secret'},
+    {key: 'proxmox_backup_storage', label: 'Backup storage', type: 'text', help: 'The storage the vzdump job writes to.'},
+    {key: 'proxmox_backup_vmids', label: 'VM IDs imaged', type: 'text', help: 'Comma-separated. Each is reported on its own.'},
+    {key: 'proxmox_verify_tls', label: 'Verify TLS', type: 'switch', help: 'Off only for a self-signed certificate you have checked.'}]},
 };
 
 function _intField(f, cfg) {

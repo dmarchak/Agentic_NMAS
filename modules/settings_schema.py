@@ -176,6 +176,18 @@ DEFAULTS: dict = {
     "kea_services":   ["dhcp4"],
     "kea_verify_tls": True,
 
+    # ── Proxmox VE (read-only: watching the nightly VM images, B6) ──
+    # All empty: an install that has not set these is reported by job_health
+    # as "not configured", never as ok -- a job NMAS depends on and cannot
+    # see is the failure it exists to catch.
+    "proxmox_url":            "",
+    "proxmox_node":           "",
+    "proxmox_token_id":       "",
+    "proxmox_token_secret":   "",
+    "proxmox_backup_storage": "",
+    "proxmox_backup_vmids":   "",     # text, "100,102", so the card can carry it
+    "proxmox_verify_tls":     True,
+
     # ── External topology service ───────────────────────────────────────────
     "topology_service_url":   "",
     "topology_service_type":  "json",    # json | svg | iframe
@@ -622,6 +634,12 @@ SCHEMA: dict = {
         "kea_url": _STR,
         "kea_services": {"type": "array", "items": {"enum": ["dhcp4", "dhcp6"]}},
         "kea_verify_tls": _BOOL,
+        "proxmox_url": _STR,
+        "proxmox_node": _STR,
+        "proxmox_token_id": _STR,
+        "proxmox_backup_storage": _STR,
+        "proxmox_backup_vmids": {"type": "string", "pattern": r"^[0-9, ]*$"},
+        "proxmox_verify_tls": _BOOL,
 
         "topology_service_url": _STR,
         "topology_service_type": {"enum": ["json", "svg", "iframe"]},

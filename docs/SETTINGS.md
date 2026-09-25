@@ -39,7 +39,7 @@ So each setting is in one of three states, visible in the posture panel:
 | Group | Where |
 |---|---|
 | `netbox_*` | Settings → NetBox |
-| `prometheus_*`, `grafana_*`, `loki_*`, `oxidized_*`, `kea_*`, `topology_service_*`, `s3_*`, `nsot_git_*` | Settings → Integrations |
+| `prometheus_*`, `grafana_*`, `loki_*`, `oxidized_*`, `kea_*`, `topology_service_*`, `s3_*`, `nsot_git_*`, `proxmox_*` | Settings → Integrations |
 | `flask_host`, `flask_port`, `auto_open_browser`, `tftp_root`, `tftp_server_ip`, `jenkins_step_shell` | Settings → Server |
 | `collector_*`, `monitoring_*`, `promql_*` | Settings → Monitoring |
 | `ai_enabled`, **`background_agent_enabled`**, `wf_*` | Settings → AI |

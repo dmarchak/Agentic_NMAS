@@ -17,6 +17,7 @@ from modules.integrations.kea import KeaIntegration
 from modules.integrations.topology_service import TopologyServiceIntegration
 from modules.integrations.nsot_git import NsotGitIntegration
 from modules.integrations.s3_archive import S3ArchiveIntegration
+from modules.integrations.proxmox import ProxmoxIntegration
 
 #: Registry keyed by settings prefix. Drives the Settings panel and the
 #: dashboard status strip.
@@ -32,6 +33,7 @@ REGISTRY: dict = {
         TopologyServiceIntegration,
         NsotGitIntegration,
         S3ArchiveIntegration,
+        ProxmoxIntegration,
     )
 }
 

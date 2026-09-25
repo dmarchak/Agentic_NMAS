@@ -150,8 +150,185 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
             "active_state": show.get("ActiveState", "")}
 
 
-def health(now: float = None, run=None) -> dict:
+# ---------------------------------------------------------------------------
+# The nightly VM images on the Proxmox host (register B6, docs/VM_IMAGES.md)
+# ---------------------------------------------------------------------------
+#
+# PULLED from the Proxmox API, not pushed by its notifications: a
+# notification reports a job that ran and failed, and cannot report one that
+# STOPPED -- disabled, deleted, a broken schedule, the host down at 02:30.
+# That silence is C14's shape, so each VM is judged, like every job above, by
+# the age of its newest image.
+
+#: A nightly job, so a day plus two hours before an image is stale.
+IMAGE_MAX_AGE_MINUTES = 26 * 60
+#: Free space must hold the largest image this much over: vzdump writes the
+#: new image BEFORE pruning the oldest, so tonight's needs room beside every
+#: kept one. A question about the next run, never a percentage -- 85% full
+#: with 40 G free is fine for 12 G images and 60% is not for 60 G ones.
+FIT_FACTOR = 1.2
+#: An LVM-thin pool this full, in data OR metadata, is reported. A full pool
+#: fails writes for every volume in it; full metadata is the worse of the two.
+POOL_WARN_FRACTION = 0.80
+
+_IMAGES_WHAT = "nightly VM image (vzdump) on the Proxmox host (B6)"
+
+
+def _gb(n) -> str:
+    return f"{(n or 0) / 1e9:.1f} G"
+
+
+def _age(now, ts) -> str:
+    minutes = int((now - ts) // 60)
+    return f"{minutes // 60} h {minutes % 60} min ago" if minutes >= 60 else f"{minutes} min ago"
+
+
+def _fraction(used, size):
+    """The API reports some pool figures as bytes and some as a 0..1
+    fraction (not yet measured on this host's version), so both are read."""
+    try:
+        used, size = float(used), float(size or 0)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= used <= 1:
+        return used
+    return used / size if size > 0 else None
+
+
+def image_jobs(now: float = None, client=None) -> list:
+    """One row per imaged VM, one for the destination, one for the thin pools.
+
+    Every read that fails is ``unknown`` (not the same as ok), and an
+    unconfigured Proxmox is ``not_configured``, never ok: a job NMAS depends
+    on and cannot see is the failure this module exists to catch.
+    """
+    now = now or time.time()
+    if client is None:
+        from modules.integrations.proxmox import ProxmoxIntegration
+        client = ProxmoxIntegration()
+
+    def row(unit, state, detail, **extra):
+        return {"unit": unit, "what": _IMAGES_WHAT, "state": state,
+                "detail": detail, "max_age_minutes": IMAGE_MAX_AGE_MINUTES, **extra}
+
+    missing = client.missing_settings()
+    if missing:
+        return [row("vm-images", "not_configured",
+                    "the Proxmox integration is not configured (" + ", ".join(missing)
+                    + "), so the nightly images are not watched -- not the same as ok")]
+    try:
+        vmids = client.vmids()
+    except ValueError as exc:
+        return [row("vm-images", "not_configured", str(exc))]
+    if not vmids:
+        return [row("vm-images", "not_configured", "proxmox_backup_vmids names no VM")]
+    storage = client.storage
+
+    rows = []
+    backups = client.backups()
+    tasks = client.vzdump_tasks()
+    finished = sorted((t for t in (tasks.get("data") or []) if t.get("endtime")),
+                      key=lambda t: t.get("starttime") or 0, reverse=True)
+    newest_sizes = []
+    for vmid in vmids:
+        unit = f"vm-image:{vmid}"
+        if not backups["ok"]:
+            rows.append(row(unit, "unknown",
+                            f"could not list the backups on {storage}: {backups['error']} "
+                            f"-- not the same as ok"))
+            continue
+        images = [b for b in backups["data"] or []
+                  if str(b.get("vmid", "")) == str(vmid) and b.get("ctime")]
+        newest = max(images, key=lambda b: b["ctime"]) if images else None
+        if newest:
+            newest_sizes.append(newest.get("size") or 0)
+        # A backup job covering several VMs is one task with an empty id; a
+        # single-VM run carries the VM's id.
+        task = next((t for t in finished if str(t.get("id") or "") in ("", str(vmid))), None)
+        status = str(task.get("status", "")) if task else ""
+        task_failed = bool(task) and status != "OK" and not status.startswith("WARNINGS")
+        notes = []
+        if not tasks["ok"]:
+            notes.append(f"vzdump tasks unreadable ({tasks['error']}), so a failure "
+                         f"is judged by image age alone")
+        elif status.startswith("WARNINGS"):
+            notes.append(f"latest vzdump task finished with {status}")
+
+        if task_failed and (newest is None or newest["ctime"] < task.get("starttime", 0)):
+            state = "failing"
+            detail = (f"latest vzdump task failed {_age(now, task['endtime'])}: {status}; "
+                      + (f"newest image {_age(now, newest['ctime'])}" if newest else "no image at all"))
+        elif newest is None:
+            state, detail = "never", f"no image of VM {vmid} on {storage}"
+        elif now - newest["ctime"] > IMAGE_MAX_AGE_MINUTES * 60:
+            state = "stale"
+            detail = (f"newest image {_age(now, newest['ctime'])} ({_gb(newest.get('size'))}); "
+                      f"nothing failed, and nothing has succeeded since")
+        else:
+            state = "ok"
+            detail = f"newest image {_age(now, newest['ctime'])} ({_gb(newest.get('size'))})"
+        rows.append(row(unit, state, "; ".join([detail] + notes),
+                        last_success=newest["ctime"] if newest else None))
+
+    # ── the destination ─────────────────────────────────────────────────────
+    unit = f"vm-images-storage:{storage}"
+    st = client.storage_status()
+    if not st["ok"]:
+        rows.append(row(unit, "unknown", f"storage status unreadable: {st['error']} -- not the same as ok"))
+    elif not (st["data"] or {}).get("active"):
+        rows.append(row(unit, "inactive",
+                        f"{storage} is not active: not mounted, or disabled. Tonight's "
+                        f"job will fail (is_mountpoint refusing is this state, made visible)"))
+    elif not newest_sizes:
+        rows.append(row(unit, "unsized",
+                        f"{_gb(st['data'].get('avail'))} free, and no image yet to size "
+                        f"the next run against"))
+    else:
+        avail = st["data"].get("avail") or 0
+        largest = max(newest_sizes)
+        need = largest * FIT_FACTOR
+        if avail < need:
+            rows.append(row(unit, "will_not_fit",
+                            f"{_gb(avail)} free < {_gb(need)} ({FIT_FACTOR} x the largest "
+                            f"image, {_gb(largest)}). vzdump writes before it prunes, so the "
+                            f"next run will not fit beside the kept images"))
+        else:
+            rows.append(row(unit, "ok", f"{_gb(avail)} free; the largest image "
+                                        f"({_gb(largest)}) fits with {_gb(avail - need)} to spare"))
+
+    # ── the thin pools on the node ─────────────────────────────────────────
+    pools = client.thin_pools()
+    if not pools["ok"]:
+        rows.append(row("thin-pools", "unknown", f"LVM-thin pools unreadable: {pools['error']} "
+                                                 f"-- not the same as ok"))
+    elif not pools["data"]:
+        rows.append(row("thin-pools", "unknown",
+                        "the node reports no LVM-thin pool, and the destination is "
+                        "expected to be on one (docs/VM_IMAGES.md)"))
+    else:
+        parts, filling = [], []
+        for pool in pools["data"]:
+            name = f"{pool.get('vg', '?')}/{pool.get('lv', '?')}"
+            data = _fraction(pool.get("used"), pool.get("lv_size"))
+            meta = _fraction(pool.get("metadata_used"), pool.get("metadata_size"))
+            shown = (f"{name} data {'?' if data is None else f'{data:.0%}'}, "
+                     f"metadata {'?' if meta is None else f'{meta:.0%}'}")
+            parts.append(shown)
+            if (data or 0) >= POOL_WARN_FRACTION or (meta or 0) >= POOL_WARN_FRACTION:
+                filling.append(shown)
+            elif data is None or meta is None:
+                filling.append(shown + " (unreadable figure)")
+        rows.append(row("thin-pools", "pool_filling" if filling else "ok",
+                        ("; ".join(filling) + f" (warn at {POOL_WARN_FRACTION:.0%})")
+                        if filling else "; ".join(parts)))
+    return rows
+
+
+def health(now: float = None, run=None, images=None) -> dict:
+    """*images*: the image rows, for a caller that has them; by default they
+    are read from Proxmox."""
     jobs = [job_status(j, now, run) for j in JOBS]
+    jobs += image_jobs(now) if images is None else list(images)
     bad = [j["unit"] for j in jobs if j["state"] != "ok"]
     return {"ok": True, "jobs": jobs, "not_ok": bad,
             "headline": (f"{len(jobs) - len(bad)} of {len(jobs)} job(s) ok"

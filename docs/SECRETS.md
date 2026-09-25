@@ -5,7 +5,7 @@ three by name and never by value, and exits 1 on a finding.
 
 | Secret | Store | At rest | Protected by |
 |---|---|---|---|
-| `netbox_token`, `prometheus_password`, `grafana_token`, `loki_*`, `oxidized_password`, `kea_password`, `topology_service_token`, `nsot_git_token`, `s3_*` | `data/user_settings.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
+| `netbox_token`, `prometheus_password`, `grafana_token`, `loki_*`, `oxidized_password`, `kea_password`, `topology_service_token`, `nsot_git_token`, `s3_*`, `proxmox_token_secret` | `data/user_settings.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
 | `jenkins_api_key`, `jenkins_token` | `data/jenkins_checks.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
 | `ANTHROPIC_API_KEY` | `.env` | **plaintext, by design** | file mode, and nothing else |
 | Device credentials | `data/lists/<slug>/devices.csv` | **encrypted** (raw Fernet fields) | the key + file mode |

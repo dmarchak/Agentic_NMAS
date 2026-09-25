@@ -202,7 +202,9 @@ pveum aclmod / -token 'nmas-monitor@pve!job-health' -role PVEAuditor
 The token secret becomes a new encrypted setting (`secrets_store.SECRET_KEYS`),
 and `nmas-check-secret-storage` classifies it with the rest.
 
-**What NMAS would read, and the states it reports.** Proposed, not built.
+**Built 2026-09-25** (`modules/integrations/proxmox.py`, `job_health.image_jobs()`). Configure it in **Settings → Integrations → Proxmox VE**. The rows then appear in `nmas-jobs` and `GET /jobs/health` beside the systemd jobs. Until it is configured, the one row reads `not_configured` and names every missing value. That row is never ok.
+
+**What NMAS reads, and the states it reports:**
 
 | Source (Proxmox API) | State reported |
 |---|---|
@@ -220,9 +222,23 @@ the day before the failure. The thin pool is checked separately, because a
 full thin pool fails writes for every volume in it, and a full **metadata**
 area is the worse of the two.
 
-It would surface wherever `job_health` does (`nmas-jobs`, the jobs route).
-**Nothing there pushes an alert** — that is a limit of `job_health` as a
+It surfaces wherever `job_health` does (`nmas-jobs`, the jobs route).
+**Nothing there pushes an alert**. That is a limit of `job_health` as a
 whole, not of this addition.
+
+**What the first live run has to confirm**, because the tests use API shapes
+taken from the documentation, not measured on this host:
+1. **A multi-VM job's task carries an empty `id`.** The code matches a task
+   to a VM by `id == ""` or `id == "<vmid>"`. If this Proxmox version puts
+   something else there, every VM reads its failures by image age alone.
+   That still catches a job that stopped, but it would not name the
+   failure. Check with
+   `pvesh get /nodes/<node>/tasks --typefilter vzdump --limit 3`.
+2. **The thin-pool figures.** `used` and `metadata_used` are read as bytes
+   against `lv_size` and `metadata_size`, or as a fraction when they are 1
+   or less. Compare the row's percentages with `lvs pve/data`.
+3. **Its own negative control:** `umount /mnt/vzdump` must turn the storage
+   row `inactive` on the next `nmas-jobs`. Then mount it again.
 
 ## Whether to send images to `vmdata` as well
 

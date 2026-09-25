@@ -55,6 +55,7 @@ SECRET_KEYS = (
     "nsot_git_token",
     "s3_access_key",
     "s3_secret_key",
+    "proxmox_token_secret",
 )
 
 _fernet: "Fernet | None" = None
