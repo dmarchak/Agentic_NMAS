@@ -3895,6 +3895,19 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
   mostly unused. Don't mistake them for dead code — Phase 3 depends on them.
 
+## Open findings register
+
+**[docs/OPEN_FINDINGS.md](docs/OPEN_FINDINGS.md) is the list of things
+measured, recorded and not fixed, with no line item in any stage.** Each was
+written into prose beside the thing it was found next to — the right place to
+explain *why* it is true and the wrong place to keep a list, because prose
+accumulates invisibly and knowing what is outstanding required having been
+present when each was recorded. **14 open at 2026-09-25**: 11 recorded only in
+prose, 4 in the plan without a stage. An item leaves by being fixed,
+scheduled or closed with a reason — never by being forgotten, and anything
+recorded as *"not applied"*, *"noted, not yet addressed"* or *"left open"*
+belongs there the same day it is written.
+
 ## Known defects deferred to later phases
 
 Verified, deliberately not fixed yet. Recorded in full in
