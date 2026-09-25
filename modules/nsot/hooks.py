@@ -132,4 +132,54 @@ def run_post_commit(context: dict) -> None:
                 log.warning("hooks: '%s' failed: %s", hook["name"],
                             result.get("error", "unknown"))
 
-    threading.Thread(target=_runner, daemon=True, name="nsot-post-commit").start()
+    runner = threading.Thread(target=_runner, daemon=True,
+                              name="nsot-post-commit")
+    with _lock:
+        _pending.append(runner)
+    _ensure_exit_join()
+    runner.start()
+
+
+# A SHORT-LIVED PROCESS MUST NOT EXIT UNDER ITS OWN PUSH.
+#
+# Hooks run on daemon threads so they never block a commit, and a daemon
+# thread dies with its process. Measured 2026-09-25: `nmas-retire` committed
+# r5's retirement (3592113) and exited, and the push hook died with it: the
+# remote stayed one commit behind and nothing recorded a failure. The same
+# shape as the 1.4 repair commit, from a cause the registry fix did not reach.
+# So a process that fired hooks JOINS them at exit, bounded, and says on
+# stderr which did not finish -- never silently.
+_pending: list = []
+_EXIT_JOIN_SECONDS = 90
+_exit_join_registered = False
+
+
+def _ensure_exit_join() -> None:
+    global _exit_join_registered
+    with _lock:
+        if _exit_join_registered:
+            return
+        _exit_join_registered = True
+    import atexit
+    atexit.register(wait_for_hooks)
+
+
+def wait_for_hooks(timeout: float = _EXIT_JOIN_SECONDS) -> list:
+    """Join every hook runner this process started. Returns the names of any
+    still running when *timeout* ran out, after saying so on stderr."""
+    import sys
+    import time
+
+    deadline = time.monotonic() + timeout
+    with _lock:
+        runners = list(_pending)
+    for runner in runners:
+        runner.join(max(0.0, deadline - time.monotonic()))
+    unfinished = [r.name for r in runners if r.is_alive()]
+    if unfinished:
+        msg = (f"nsot: post-commit hooks still running at exit after "
+               f"{timeout:.0f}s ({', '.join(unfinished)}) -- the commit is "
+               "local and may not have been pushed")
+        log.error(msg)
+        print(msg, file=sys.stderr)
+    return unfinished

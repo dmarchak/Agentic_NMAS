@@ -60,7 +60,13 @@ def _load() -> dict:
 def _save(data: dict) -> None:
     os.makedirs(os.path.dirname(_FILE), exist_ok=True)
     tmp = _FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
+    # OWNER-ONLY, through open_secure. Measured 2026-09-25: the live store was
+    # 0664 -- the main credential store, holding every profile, override and
+    # template secret -- written by a plain open() under the process umask,
+    # and the secret-storage checker did not know the file existed. os.replace
+    # swaps in the temp file's inode, so the next write heals an old file.
+    from modules.config import open_secure
+    with open_secure(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
     os.replace(tmp, _FILE)
 

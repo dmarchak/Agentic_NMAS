@@ -231,10 +231,20 @@ def save_device(device: dict, filename: str | None = None) -> None:
     if not any(row.get("ip") == device.get("ip") for row in devices):
         devices.append(encrypted)
 
-    with open(filename, mode="w", newline="") as f:
+    with _open_csv_secure(filename) as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(devices)
+
+
+def _open_csv_secure(path: str):
+    """A devices.csv holds every device's Fernet-encrypted credentials, so it
+    is written owner-only. Measured 2026-09-25: the live file (and two older
+    copies) were 0664 from plain open() writes, and the secret-storage check
+    did not know the file existed. open_secure also tightens an existing
+    file, so the next write heals it."""
+    from modules.config import open_secure
+    return open_secure(path, "w", newline="")
 
 
 def delete_device(ip: str, filename: str | None = None) -> None:
@@ -244,7 +254,7 @@ def delete_device(ip: str, filename: str | None = None) -> None:
         filename = DEVICES_FILE
     devices = [d for d in load_saved_devices(filename) if d.get("ip") != ip]
     fieldnames = DEVICE_CSV_FIELDS
-    with open(filename, mode="w", newline="") as f:
+    with _open_csv_secure(filename) as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(devices)
@@ -335,7 +345,7 @@ def write_devices_csv(devices: list[dict], filename: str | None = None) -> None:
     if not filename:
         filename = DEVICES_FILE
     fieldnames = DEVICE_CSV_FIELDS
-    with open(filename, mode="w", newline="") as f:
+    with _open_csv_secure(filename) as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(devices)
@@ -421,7 +431,7 @@ def _ensure_devices_csv(list_dir: str) -> None:
     """Create an empty devices.csv with headers if it doesn't exist."""
     csv_path = os.path.join(list_dir, "devices.csv")
     if not os.path.exists(csv_path):
-        with open(csv_path, mode="w", newline="") as f:
+        with _open_csv_secure(csv_path) as f:
             csv.DictWriter(f, fieldnames=DEVICE_CSV_FIELDS).writeheader()
 
 

@@ -123,7 +123,11 @@ if os.path.exists(SECRET_KEY_FILE):
 else:
     # Generate new secret key and persist it
     app.secret_key = os.urandom(24)
-    with open(SECRET_KEY_FILE, "wb") as f:
+    # Owner-only AT CREATION: this signs every session. Measured 2026-09-25:
+    # the live file was 0664, created by a plain open() before open_secure
+    # existed, and no secret-storage check knew the file was there.
+    from modules.config import open_secure
+    with open_secure(SECRET_KEY_FILE, "wb") as f:
         f.write(app.secret_key)
 
 

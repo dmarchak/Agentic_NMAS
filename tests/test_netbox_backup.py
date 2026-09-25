@@ -328,3 +328,30 @@ class TestCounting:
         assert B.compare_counts({"a": 3, "b": 0}, got) == []
         assert B.compare_counts({"a": 3}, {"a": 3, "z": 1}) == [
             "z: manifest None restored 1"]
+
+
+class TestOffboxRetentionIsTheBucketsByDefault:
+    """Decided 2026-09-25: the off-box key cannot delete; a lifecycle rule
+    expires files. The script must not try to delete unless told to."""
+
+    def _calls(self, monkeypatch, env):
+        calls = []
+        monkeypatch.setattr(B, "_run", lambda cmd, **kw: calls.append(cmd))
+        cfg = B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket", **env})
+        B.ship_offbox(cfg, "/x/20260925T000000Z.tar.gpg")
+        return calls
+
+    def test_default_copies_and_never_deletes(self, monkeypatch):
+        calls = self._calls(monkeypatch, {})
+        assert [c[1] for c in calls] == ["copyto"]
+
+    def test_prune_only_when_asked(self, monkeypatch):
+        calls = self._calls(monkeypatch, {"NMAS_BACKUP_OFFBOX_PRUNE": "1"})
+        assert [c[1] for c in calls] == ["copyto", "delete"]
+
+    def test_status_says_whose_retention_it_is(self):
+        cfg = B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket"})
+        cfg["recipient_file"] = "/k.asc"
+        _code, lines = B.status_report({"backup_success": {"at": NOW.isoformat()}},
+                                       cfg, NOW)
+        assert any("lifecycle rule" in l and "cannot delete" in l for l in lines)

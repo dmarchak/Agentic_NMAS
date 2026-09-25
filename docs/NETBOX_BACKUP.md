@@ -118,9 +118,18 @@ rclone config                            # as dmarchak: create a remote, e.g. "o
 NMAS_BACKUP_RCLONE_REMOTE=offbox:nmas-netbox
 ```
 
-Only a newly promoted daily is sent. Remote retention is
-`rclone delete --min-age 15d`. **Which provider is your decision**; the
-script needs only a working `rclone` remote name.
+Only a newly promoted daily is sent. **Backblaze B2, decided 2026-09-25: the
+key is write-and-list only, and retention is the bucket's.**
+- A lifecycle rule on the bucket keeps files 15 days.
+- The application key is restricted to that bucket, with `listBuckets`,
+  `listFiles` and `writeFiles`, and **no `deleteFiles`**.
+- A VM that can delete its own backups is protected against disk failure
+  and not against compromise, which is the case backups exist for. The
+  Proxmox copy is write-only for the same reason (`rrsync -wo`).
+- `NMAS_BACKUP_OFFBOX_PRUNE` stays `0`, so the script never tries to delete,
+  and `--status` says retention is the bucket's.
+- **The B2 key lives in `~/.config/rclone/rclone.conf`**, a secret store
+  that `nmas-check-secret-storage` checks by path (`0600`).
 
 ## 5. Status, and proving a copy decrypts
 

@@ -112,6 +112,12 @@ def config_from_env(env=None) -> dict:
         "proxmox_target": env.get("NMAS_BACKUP_PROXMOX_TARGET", ""),
         "ssh_key": env.get("NMAS_BACKUP_SSH_KEY", ""),
         "rclone_remote": env.get("NMAS_BACKUP_RCLONE_REMOTE", ""),
+        # OFF by default (the operator's decision, 2026-09-25): the off-box key
+        # is write-and-list only and a BUCKET LIFECYCLE RULE expires files, so
+        # a compromised VM cannot delete its own backups -- the same reasoning
+        # as `rrsync -wo` on Proxmox. Set to 1 only for a remote whose key may
+        # delete and which has no lifecycle rule of its own.
+        "offbox_prune": env.get("NMAS_BACKUP_OFFBOX_PRUNE", "0") == "1",
     }
 
 
@@ -217,6 +223,12 @@ def status_report(state: dict, cfg: dict, now: datetime.datetime) -> tuple:
          bool(cfg["proxmox_target"]))
     line("off-box daily", "offbox_success", OFFBOX_STALE_AFTER_HOURS,
          bool(cfg["rclone_remote"]))
+    if cfg["rclone_remote"]:
+        lines.append("off-box retention: " + (
+            f"pruned here after {DAILY_KEEP_DAYS} days (NMAS_BACKUP_OFFBOX_PRUNE=1)"
+            if cfg.get("offbox_prune") else
+            "the bucket's lifecycle rule -- this key cannot delete, and "
+            "nothing here can see whether that rule exists"))
     rt = state.get("restore_test")
     if not rt:
         lines.append("restore test: NEVER RUN -- a backup nobody has "
@@ -451,8 +463,9 @@ def ship_offbox(cfg: dict, artefact: str) -> None:
     _run(["rclone", "copyto", artefact,
           f"{remote}/daily/{os.path.basename(artefact)}"],
          capture_output=True, text=True)
-    _run(["rclone", "delete", f"{remote}/daily", "--min-age",
-          f"{DAILY_KEEP_DAYS}d"], capture_output=True, text=True)
+    if cfg.get("offbox_prune"):
+        _run(["rclone", "delete", f"{remote}/daily", "--min-age",
+              f"{DAILY_KEEP_DAYS}d"], capture_output=True, text=True)
 
 
 def _reason(exc: BaseException) -> str:

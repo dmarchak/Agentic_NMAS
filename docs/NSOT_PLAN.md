@@ -2324,6 +2324,42 @@ The first live restore **failed correctly**: the count query reached
 Decided: the off-box copy is dailies only, via rclone, ~14 days, gpg. There
 is no git copy. The units are system units, with no linger.
 
+**WHAT HAS A COPY, measured 2026-09-25** (what P.2 covers, and what it
+does not):
+
+| Store | Copy today | After P.2 |
+|---|---|---|
+| NetBox (DB, media, env) | none | hourly on the VM, Proxmox, daily off-box (B2) |
+| `config_repo` (goldens, intent, templates) | GitHub `rcn-nsot-config` via the post-commit push, **one commit behind** (r5's retire, C18) | unchanged |
+| `data/key.key` | **none found** (B5) | **none** |
+| `credential_profiles.json`, `devices.csv` | device credentials only, in the break-glass record on the laptop | unchanged |
+| `user_settings.json` | `.bak-*` copies on the same disk | unchanged |
+| the rest of `data/` (drift, approvals, AI history) | none | none |
+| `/etc/kea` (config, API password) | none | none |
+| clab host `~/labs/*` | local git, **no remote** for any of the eight; `labs/r6/r6.clab.yml` and `patches/` are **untracked** | none |
+| Oxidized `rcn-lab.git` | unknown (needs sudo to read its remote) | unchanged |
+| Grafana (`/var/lib/grafana`) | none; the heartbeat rules are regenerable from the repo | none |
+| NMAS code | GitHub | GitHub |
+
+**The vzdump question decides most of the "none" rows.** `/etc/pve/jobs.cfg`
+holds `vzdump:` jobs. Each names a `schedule`, the VMs it covers (a `vmid`
+list, or `all 1` with an `exclude`, or a `pool`), a `storage`, a `mode`
+(snapshot / suspend / stop) and its retention.
+- **If the NMAS VM is in an enabled job to storage off the VM's own disk**,
+  every VM-local store above has a nightly whole-VM image. P.2 is still
+  needed for what an image does not give: an **hour** rather than a day of
+  loss, a **consistent** database dump rather than a crash-consistent disk,
+  a restore of NetBox **alone** without rolling back `config_repo` and
+  everything else, a restore **proven nightly**, and an encrypted copy
+  **off the Proxmox host**.
+- **If it is in a job to the same host's local storage**, the image
+  survives a broken VM and not a lost host.
+- **If it is in no job**, key.key, the credential store, `/etc/kea` and
+  Grafana are single copies. The whole-VM gap is then larger than A1 ever
+  was.
+- The clab host is a separate machine (`10.0.0.210`); the same question
+  applies to it separately.
+
 **P.2 ACCEPTANCE** (written 2026-09-25; the section had a build record
 and no acceptance). Every item is observed, not inferred:
 1. **The installed timer backs up on its own.** `nmas-jobs` shows
