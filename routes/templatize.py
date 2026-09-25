@@ -660,3 +660,115 @@ def _summarise(reports: list) -> dict:
         "fully_reproduced": sum(1 for r in reports if r["ok"]),
         "total_unmodeled": sum(r["unmodeled"] for r in reports),
     }
+
+
+# ---------------------------------------------------------------------------
+# Bulk intent (NSOT_PLAN P.1b): one structured change, N devices, ONE commit
+# ---------------------------------------------------------------------------
+
+def _bulk_inputs(data: dict):
+    """(list_name, repo, devices, steps, error). The list is CARRIED, never
+    derived: this ends in a commit, and a write may not infer its list."""
+    list_name = (data.get("list_name") or "").strip()
+    if not list_name:
+        return None, None, None, None, (
+            "list_name is required -- a bulk intent change ends in a commit, "
+            "and the list it commits into is stated, never inferred")
+    devices = [str(d).strip() for d in (data.get("devices") or []) if str(d).strip()]
+    steps = []
+    for raw in data.get("steps") or []:
+        path = raw.get("path")
+        if isinstance(path, str):
+            path = [p for p in path.split(".") if p]
+        if not isinstance(path, list) or not path or "before" not in raw \
+                or "after" not in raw:
+            return None, None, None, None, (
+                "each step needs path (a list), before and after -- use "
+                '{"__absent__": true} for a key that is not there')
+        steps.append({"path": path, "before": raw["before"],
+                      "after": raw["after"]})
+    if not devices:
+        return None, None, None, None, "no devices named"
+    # From the registry, never `get_list_data_dir()`, which creates the
+    # directory: a mistyped list name must be refused, not brought into being.
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists
+    match = next((l for l in get_device_lists() if l["name"] == list_name), None)
+    if match is None:
+        return None, None, None, None, f"no device list named {list_name!r}"
+    return (list_name, os.path.join(LISTS_DIR, match["filename"], "config_repo"),
+            devices, steps, "")
+
+
+def _bulk_render_and_eligible(list_name: str, repo: str):
+    from modules.device import load_saved_devices
+    from modules.nsot import hostvars, manifest, templates_repo
+    from routes.templates import (_captured_golden, _captured_running,
+                                  _platform_for as _platform_of_host,
+                                  artifact_for)
+
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists
+    match = next((l for l in get_device_lists() if l["name"] == list_name), None)
+    inventory = ({d.get("hostname") for d in load_saved_devices(
+        os.path.join(LISTS_DIR, match["filename"], "devices.csv"))}
+        if match else set())
+    pending = {p.get("name") for p in manifest.pending_devices(repo)}
+
+    def eligible(host):
+        if host in pending:
+            return "pending onboarding -- not reached yet"
+        if host not in inventory:
+            return "not in this list's inventory (stale, or a typo)"
+        return ""
+
+    def render(host, host_vars):
+        golden, _a = _captured_golden(host, list_name)
+        running, _b = _captured_running(list_name, host)
+        capture = golden or running
+        if not capture:
+            raise RuntimeError("no captured config to render against")
+        platform = _platform_of_host(host)
+        template = templates_repo.template_for_device(repo, host, platform)
+        art = artifact_for(host, capture, repo, platform, template,
+                           host_vars=hostvars.hydrate_secrets(
+                               host_vars, host, list_name))
+        return art.rendered_masked, art.deployable, art.blocking_reasons
+
+    return render, eligible
+
+
+@bp.route("/bulk/preview", methods=["POST"])
+def bulk_preview():
+    """Preview one change against N devices' intent. Writes nothing."""
+    from modules.nsot import bulk_intent
+
+    data = request.get_json(silent=True) or {}
+    list_name, repo, devices, steps, error = _bulk_inputs(data)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    render, eligible = _bulk_render_and_eligible(list_name, repo)
+    report = bulk_intent.plan(repo, devices, steps, render=render,
+                              eligible=eligible,
+                              summary=data.get("summary", ""))
+    for entry in report.get("accepted", []):
+        entry.pop("text", None)      # the preview shows effects, not files
+    return jsonify({**report, "list_name": list_name}), (200 if report["ok"] else 400)
+
+
+@bp.route("/bulk/apply", methods=["POST"])
+def bulk_apply():
+    """Recompute the preview; refuse unless it is what was confirmed; commit once."""
+    from modules.nsot import bulk_intent
+
+    data = request.get_json(silent=True) or {}
+    list_name, repo, devices, steps, error = _bulk_inputs(data)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    render, eligible = _bulk_render_and_eligible(list_name, repo)
+    result = bulk_intent.apply(list_name, repo, devices, steps,
+                               str(data.get("confirmed_hash") or ""),
+                               render=render, eligible=eligible,
+                               summary=data.get("summary", ""),
+                               actor=data.get("actor", "user"))
+    return jsonify(result), (200 if result.get("ok") else 409)

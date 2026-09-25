@@ -1,0 +1,13 @@
+{
+  "summary": "syslog block with heartbeat (NSOT_PLAN P.1)",
+  "steps": [
+    {"path": ["logging", "settings"],
+     "before": ["trap critical", "origin-id hostname", "source-interface Loopback0"],
+     "after": []},
+    {"path": ["logging", "hosts"], "before": ["10.255.1.10"], "after": []},
+    {"path": ["logging", "syslog"], "before": {"__absent__": true},
+     "after": {"trap": "notifications", "origin_id": "hostname",
+               "source_interface": "Loopback0", "hosts": ["10.255.1.10"],
+               "heartbeat": 300}}
+  ]
+}

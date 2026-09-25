@@ -1964,6 +1964,19 @@ the confirmed path.
    `logging host 10.255.1.10`. **Any other line in the preview means the
    device or its secrets drifted: stop.**
 
+   **With P.1b: s1, s2, s3, r1, r3, r4, r5 in ONE intent commit, then one
+   batch deploy of six.**
+   1. `scripts/nmas-bulk-intent --list Default --devices
+      s1,s2,s3,r1,r3,r4,r5 --change deploy/intent-changes/p1-syslog-block.json`
+      must read **"7 device(s), 1 group(s)"**. Anything else, stop.
+   2. `--apply <hash> --actor <you>` gives one commit.
+   3. Batch-deploy s1, s2, r1, r3, r4, r5. Every device's preview is the same
+      five-line program. s3 follows on its own; its intent is committed now,
+      so until it is deployed s3 shows intent ahead of device, which is
+      expected.
+   4. **r6 through the editor.** Its file is hand-formatted and its logging
+      is empty, so the bulk change correctly refuses it.
+
    **Order**, and why:
    1. **s4** (vIOS-L2 leaf, not the manager's gateway) proves the switch
       path end to end.
@@ -2052,7 +2065,26 @@ the confirmed path.
    deliberately silenced device alerting.
 
 **P.1b BULK INTENT: one structured change to N devices' intent, as one
-commit (scoped 2026-09-25, not built).** Batch *deploy* exists: `/deploy/plan`
+commit. BUILT 2026-09-25** (`modules/nsot/bulk_intent.py`,
+`POST /templatize/bulk/preview` and `/apply`, `scripts/nmas-bulk-intent`, the
+P.1 change committed as `deploy/intent-changes/p1-syslog-block.json`).
+**Previewed live, read-only, against the real `default` repo:
+"7 device(s), 1 group(s), 1 refused"**:
+- The group is s1, s2, s3, r1, r3, r4, r5, and it renders
+  `+ logging trap notifications`, `+` the applet and its two children, and
+  `- logging trap critical`: exactly the program s4 and r2 received.
+- **r6 refused, with every reason:** its file is hand-formatted (the branch
+  site was hand-authored), and its intent is not what the change expects
+  (`logging.settings` expected the three lines, has `[]`; `logging.hosts`
+  expected `[10.255.1.10]`, has `[]`).
+- The first version stopped at the formatting reason and never reported the
+  before-state. It now reports every reason at once, pinned by a test.
+- 17 tests, with a control shown failing for each refusal, the grouping, the
+  one-shot hash, the dirty-tree guard and not creating a mistyped list.
+- One commit; revert of one device from the shared commit leaves the others
+  (pinned).
+
+*Original scope, kept below as the specification the build was held to.* Batch *deploy* exists: `/deploy/plan`
 takes `devices`, and `plan_batch`/`run_batch` account for every device. Batch
 *intent* does not. So the same edit is typed into N host_vars files, as N
 commits, with nothing but a render diff that "looks wrong on one device" to

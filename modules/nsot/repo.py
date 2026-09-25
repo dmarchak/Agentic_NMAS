@@ -884,7 +884,7 @@ ACTOR_CONVENTION = ("person | ai-agent | service:<client-id>; a script names "
 
 def save_host_vars(list_name: str, devices: list, actor: str = "user",
                    message: str = "", source: str = "extraction",
-                   tool: str = "") -> dict:
+                   tool: str = "", extra_trailers: list = None) -> dict:
     """Commit ``host_vars`` after human review.
 
     Phase 3a writes extractions to a gitignored staging area precisely so that
@@ -906,6 +906,7 @@ def save_host_vars(list_name: str, devices: list, actor: str = "user",
     if tool:
         trailers.append(f"Tool: {tool}")
     trailers.append(f"Devices: {','.join(devices)}")
+    trailers.extend(extra_trailers or [])
     return _commit_paths(list_name, ["host_vars"], subject, trailers, source)
 
 
