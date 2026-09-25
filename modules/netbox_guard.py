@@ -442,6 +442,12 @@ def changed_fields(before_obj, payload: dict):
 #: record that cannot be written cannot write down that it could not be
 #: written. Lost on restart, which is stated rather than hidden.
 _FAILURES: dict = {"writes": 0, "unreadable": 0, "last_error": ""}
+# The window the counters cover, stated with them (C4, decided 2026-09-25:
+# the counters stay in-process; durable counts come from the app log). It is
+# the time this module was imported -- when counting began -- not the
+# process's start time, because that is what a zero here is a claim about.
+_COUNTING_SINCE = datetime.datetime.now(datetime.timezone.utc).strftime(
+    "%Y-%m-%dT%H:%M:%SZ")
 
 
 def health() -> dict:
@@ -452,7 +458,7 @@ def health() -> dict:
     only logged is a failure nobody reads. Every caller that reports "N
     modifications" reports this beside it.
     """
-    return dict(_FAILURES)
+    return {**_FAILURES, "pid": os.getpid(), "counting_since": _COUNTING_SINCE}
 
 
 def record_modified(list_name: str, endpoint: str, obj_id: int, fields,

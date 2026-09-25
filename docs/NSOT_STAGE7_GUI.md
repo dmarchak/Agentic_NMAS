@@ -1035,7 +1035,7 @@ here starts before Stage 6 closes.
 | **7.2b** | §0b's inline script moved to cacheable files, then §6c's `Cache-Control` on HTML | They are one piece of work: the HTML must not be cached and the 647 KB of script must be, and while the script is inside the HTML neither can have the policy it needs |
 | **7.3** | `Device` page at `/device/<hostname>`, folding in `device.html` and the four NSoT actions | The largest win; everything per-device stops being scattered |
 | **7.4** | `Fleet → Versions`: Git tab absorbs the golden panel, baselines, remote | §4 |
-| **7.5** | Monitoring: Grafana embed **after (a) and (b) are done and the iframe test is recorded**; then Kea leases, then Loki query | §3, and the blockers gate it |
+| **7.5** | Monitoring: Grafana embed **after (a) and (b) are done and the iframe test is recorded**; then Kea leases, then Loki query. **Absorbs Stage 5** (decided 2026-09-25): acceptance includes 7.5-a…f in [NSOT_PLAN.md](NSOT_PLAN.md) *Stage 5*: per-device Prometheus, Loki, Oxidized history and leases, the legacy collector retired, and `logging trap` in intent | §3, and the blockers gate it. Switch syslog is **P.1**, before Stage 7 |
 | **7.6** | `Fleet → Changes`: approvals, deploys, drift, Jenkins strip, agent output | §6 folds |
 | **7.7** | Settings split; Logs tab dissolved | §6 |
 | **7.8** | Redundancy removals, each with `check_removed_definitions.py` and a recorded reason | Last, so nothing is removed before its replacement is on screen |

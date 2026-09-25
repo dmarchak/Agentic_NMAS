@@ -74,11 +74,20 @@ sudo systemctl enable --now nmas
 sudo journalctl -u nmas -f
 ```
 
-> **The current deployment host does not use this unit** (measured
-> 2026-09-25: `python3 app.py` under PPID 1, no `nmas` unit), so
-> `journalctl -u nmas` there prints `-- No entries --` whatever happened.
-> Its log is `logs/device_manager.log`. See
-> [OPEN_FINDINGS.md](OPEN_FINDINGS.md) C5.
+> **What the deployment host actually runs** (measured 2026-09-25). The
+> unit is **`flask-app.service`**, not `nmas`: `User=dmarchak`,
+> `WorkingDirectory=` the checkout, `Restart=always`, enabled at boot,
+> journal output. It has **none** of the hardening above and no
+> `NMAS_HEADLESS` / `NMAS_HOST`. `~/bin/nmas-deploy` restarts it by name
+> after a fast-forward pull. Neither file is in this repository.
+>
+> **The log is `logs/device_manager.log`, not the journal**, under either
+> unit name. `app.py` attaches its rotating file handler at the root logger,
+> so every `modules.*` logger writes there. The journal gets only what
+> reaches stdout, which is the werkzeug start-up banner. `journalctl -u nmas`
+> prints `-- No entries --` on that host, and `journalctl -u flask-app`
+> would show start-ups and not much else. Neither is the place to look for a
+> failure. Hardening the unit is [NSOT_PLAN.md](NSOT_PLAN.md) **6.5**.
 
 `NMAS_HEADLESS=1` is what stops the app trying to open a browser at startup.
 

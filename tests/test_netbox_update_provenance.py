@@ -1351,10 +1351,21 @@ class TestHealthNamesWhoseProcessItIs:
         src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()
         assert "THIS process only" in src
 
-    # The channel was NAMED as `journalctl -u nmas`, and the deployment host
-    # has no such unit: journalctl answers "-- No entries --", which reads as
-    # no failures. The test above used to assert "journalctl" in the source,
+    # The channel was NAMED as `journalctl -u nmas`; the deployment host's
+    # unit is `flask-app.service`, and its journal carries only the start-up
+    # banner, since module loggers go to the file handler. journalctl answers
+    # "-- No entries --", which reads as no failures. The test above used to assert "journalctl" in the source,
     # pinning the dead channel as correct. The reader now READS the log.
+
+    def test_health_states_the_window_its_counts_cover(self):
+        """C4, decided: counters stay in-process, so a zero is only
+        readable beside WHOSE process and SINCE WHEN."""
+        h = netbox_guard.health()
+        assert h["pid"] == os.getpid()
+        assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ",
+                            h["counting_since"])
+        src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()
+        assert "counting_since" in src and "'pid'" in src
 
     def test_the_named_channel_is_not_a_systemd_unit(self):
         src = open("scripts/nmas-netbox-modified", encoding="utf-8").read()

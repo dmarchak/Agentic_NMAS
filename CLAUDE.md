@@ -3952,14 +3952,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   …` at `06:34:40Z`, with the file's mtime 0.18 s after NetBox's
   `last_updated`, listed by the reader as the last of 44 entries. C3 is
   closed, and the syncs that recorded nothing since then count as evidence
-  again. How it was misread is undetermined. **The cheapest discriminator
+  again. **The misreading was the check lacking its own positive control, not
+  the recorder**: "no entry" was accepted without anything showing that the
+  reading method could see one. Re-run on `bbf3d8e`: record T0, hand-patch
+  r1, sync. **One** new entry, r1's, after T0, and 0 recorder errors in
+  550,725 log lines. The deliberate change appeared and nothing else did, so
+  both sides were proven by one sync. **The cheapest discriminator
   was not on the list**: `ls -l` on the record beside NetBox's timestamp,
   cheaper than all three.
 - **`journalctl -u nmas` is empty BY CONSTRUCTION on the deployment host.**
-  No `nmas` unit exists; the app is `python3 app.py` under PPID 1, not the
-  systemd unit [docs/DEPLOY_LINUX.md](docs/DEPLOY_LINUX.md) describes. So
-  the channel named as *the one that crosses processes* printed `-- No
-  entries --`, which is what "no failures" looks like, and a test asserting
+  The unit is `flask-app.service`, and even its journal carries only the
+  start-up banner, because module loggers go to the root file handler. *(First
+  recorded as "no unit, PPID 1": PPID 1 is systemd. That was inferred from a
+  process listing instead of read from `systemctl`, and corrected the same
+  day.)* So the channel named as *the one that crosses processes* printed
+  `-- No entries --`, which is what "no failures" looks like, and a test asserting
   `"journalctl" in src` pinned it as correct. The app's root handler writes
   `logs/device_manager.log`; `nmas-netbox-modified` now **reads** it and
   prints a count with its denominator, reporting `UNPROVEN` when there is
@@ -3977,8 +3984,17 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **15 open at 2026-09-25** (C3 closed as a misreading, C5 added): 12 recorded only in
-prose, 4 in the plan without a stage. An item leaves by being fixed,
+present when each was recorded. **13 open at 2026-09-25**, counted from the rows: 9 recorded only in
+prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
+scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
+because it adjusted a previous count instead of counting.
+
+**Sequencing decided 2026-09-25** ([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md)):
+**Stage 5 is folded into 7.5**, so the views are built once, with its
+paragraph enumerated as 7.5-a…f. Two standalone items come **before Stage
+7**: **P.1** switch syslog (stopped 2026-09-09; a pipeline defect, not a
+screen) and **P.2** NetBox backup with a tested restore (A1). The service
+unit's hardening is **6.5**. An item leaves by being fixed,
 scheduled or closed with a reason — never by being forgotten, and anything
 recorded as *"not applied"*, *"noted, not yet addressed"* or *"left open"*
 belongs there the same day it is written.

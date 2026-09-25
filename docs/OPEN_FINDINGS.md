@@ -18,6 +18,9 @@ day it is written.
 
 Status: **open** unless stated. Last reviewed 2026-09-25.
 
+> **No live thread.** C3 closed, and the positive control re-run on `bbf3d8e`
+> passed (§23).
+>
 > **C3 is closed (2026-09-25, [PHASE2_DHCP.md](PHASE2_DHCP.md) §23).** The
 > recorder did **not** miss the write: `data/netbox_modified.json` holds
 > `r1 comments … TEST → …` at `06:34:40Z`, written 0.18 s after NetBox's
@@ -30,7 +33,6 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 
 | # | Finding | Kind | Where recorded |
 |---|---|---|---|
-| A1 | **Nothing backs up NetBox.** `config_repo/` is committed, tagged, pushed and restorable; NetBox is a live database this tool writes to with no history, no baseline and no rollback. The 2026-09-24 damage was bounded *only* because its contents happened to be derivable from golden configs — a property of what was damaged, not a guarantee. Anything hand-curated (a site description, a custom field, a tenant, a rack) has nothing to restore it from. | build | CLAUDE.md, *"git is versioned and NetBox is not"* |
 | A2 | **The census records identity, not assignment.** `_identity()` is `id:display`, so an object moved between parents is invisible to `--compare` — which is exactly the 2026-09-24 address incident. The modification record now catches NMAS's own moves; a move by anything else still is not seen. | build | [PHASE2_DHCP.md](PHASE2_DHCP.md) §12 |
 | A3 | **Nine of ten devices are outside Remove's provenance.** Both halves — the `nmas-managed` tag and `netbox_created_ids.json` — arrive in Phase 0 (2026-09-20); the sync dates from 2026-04-22. The nine reference devices carry neither, so a provenance-based Remove can act on r6 and is blind to the rest. Safe, and it means the teardown mechanism has never been proven against them and by construction never can be. Adopting them is a deliberate act. | decide, then build | [PHASE2_DHCP.md](PHASE2_DHCP.md) §16 |
 
@@ -48,8 +50,6 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 |---|---|---|---|
 | C1 | **`nmas-deploy`'s behaviour is UNCONFIRMED, and the second report of it was a misreading.** *"Already at `da4d479` while `32329bf` exists on origin"* is correct behaviour: `32329bf` is an **ancestor** of `da4d479`, so the tip already contains it. The first report (*"already at `cfbe7fe`"* while origin was ahead, moved only by an explicit fetch) is not explained by that and may be real. **Status: needs one measurement** — `git fetch && git rev-parse HEAD origin/main` before and after a run. Whatever it does, it should end by printing both SHAs, because *"already current"* is a claim with operands and it was reported as a shrug. | verify, then build | this file — 2026-09-25 |
 | C2 | **`routes/templatize.py`'s fleet report drops a device with an unreadable golden through a bare `continue`.** Fourth instance of *the artefact is not the population*; the other three are fixed. | build | CLAUDE.md, *"The inventory is the population for a RESTORE PREVIEW"* |
-| C4 | **`health()` is per-process, and the recorder runs inside the app.** It counts in memory, so the figure `nmas-netbox-modified` prints is about the CLI and reads `0 writes failed` however badly the app is failing — *the reassuring zero, one level up*. The CLI now says so and names the app log as the channel that crosses processes; what remains undecided is whether the counters should be made durable at all, given the alternative is writing a failure report into the file that just failed to be written. | decide | [PHASE2_DHCP.md](PHASE2_DHCP.md) §21–§22 |
-| C5 | **The deployment host does not run the deployment documented.** [DEPLOY_LINUX.md](DEPLOY_LINUX.md) describes a systemd unit `nmas` and `journalctl -u nmas`; the host runs `python3 app.py` as a bare process (PPID 1, no unit), so `journalctl -u nmas` answers `-- No entries --` — **the shape of "no failures"** — and that is the channel §22 and `nmas-netbox-modified` named for the recorder's failures. The CLI now reads `logs/device_manager.log` itself. What remains: install the unit, or document how the host actually starts the app — nothing records it, and the restart on every pull is done by something the repository does not describe. | decide | [PHASE2_DHCP.md](PHASE2_DHCP.md) §23 |
 
 ## D. Interface and input surfaces
 
@@ -73,10 +73,13 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
-**15 open**: 12 recorded only in prose (A1–D2; C3 closed, C5 added), 4 in the plan without a stage
-(E1–E4, one of which is Stage 3.3's tail).
+**13 open** (counted from the rows, 2026-09-25): 9 recorded only in prose
+(A2–D2), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
+tail). The previous figure, 15, was **off by one**: it was produced by
+adjusting an earlier count rather than counting rows, and the rows then held
+16. A1 and C5 are now scheduled (P.2, 6.5), and C3 and C4 are closed.
 
-By kind: **9 build**, **2 decide-then-build**, **3 decide**, **1 verify**.
+By kind: **8 build**, **2 decide-then-build**, **1 decide**, **2 verify**.
 
 None of them blocks Stage 7 — the per-stage scope and the ordering
 constraints are in [NSOT_PLAN.md](NSOT_PLAN.md), *Scope of what remains*,
@@ -84,8 +87,8 @@ where **Stage 5's count is flagged as a reading of an acceptance paragraph
 rather than an enumeration**: it is the one figure there with a different
 provenance from the rest, and enumerating Stage 5 is the first item of Stage 5.
 
-**A1 is the one whose absence makes other work untrustworthy** rather than merely incomplete: a mistake in NetBox has nothing
-to restore from.
+**A1 was the one whose absence makes other work untrustworthy** rather than merely incomplete: a mistake in NetBox has nothing
+to restore from. It is now P.2, scheduled ahead of Stage 7 for that reason.
 
 C1 was the second such item until it was measured, and the correction is worth
 keeping: a finding recorded as a defect became the explanation for the next
@@ -93,8 +96,16 @@ confusing output, and that output was correct behaviour. *A pattern that has
 been right four times is exactly the one to distrust on the fifth* — the
 register makes a finding easier to find, and easier to reach for.
 
+## Scheduled out of the register
+
+| # | Finding | Scheduled | Where |
+|---|---|---|---|
+| A1 | Nothing backs up NetBox. | 2026-09-25 | [NSOT_PLAN.md](NSOT_PLAN.md) **P.2**, before Stage 7. Sized: `pg_dump` (30 MB) + media (empty), with a tested `pg_restore` into a scratch instance. That closes the core. Config secrets, an off-host copy, version records and a staleness signal are part of P.2, not left over. |
+| C5 | The documented deployment is not the one running. | 2026-09-25 | **Corrected, then scheduled.** First recorded as "no unit". The unit exists as `flask-app.service` (enabled, `Restart=always`, journal), but the journal carries only the start-up banner. The log channel is fixed (docs and CLI name and read `logs/device_manager.log`). What remains is hardening, `NMAS_HOST`, and versioning the unit plus `nmas-deploy`: [NSOT_PLAN.md](NSOT_PLAN.md) **6.5**. |
+
 ## Closed
 
 | # | Finding | Closed | Reason |
 |---|---|---|---|
+| C4 | `health()` is per-process. | 2026-09-25 | **Decided and built.** The counters stay in-process; `health()` now carries `pid` and `counting_since` (when counting began), and the CLI prints both beside the counts. Durable counts come from `logs/device_manager.log`, which the CLI reads with a denominator. |
 | C3 | *"The recorder missed a confirmed write."* | 2026-09-25 | **Measured false.** The record holds the entry (`r1 comments … TEST → …`, `06:34:40Z`), the file's mtime is 0.18 s after NetBox's `last_updated`, the reader lists it, and the app log holds 0 recorder ERROR lines in 549,266. The positive control **passed**; it was read as failing. The misreading's mechanism is undetermined — the entry is the newest of 44, printed last, so any view of the output's head would omit it, but that is a candidate, not a measurement. [PHASE2_DHCP.md](PHASE2_DHCP.md) §23. |

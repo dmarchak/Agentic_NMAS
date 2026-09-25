@@ -155,10 +155,12 @@ def main() -> int:
     # The cross-process channel is the app log, which `_write_json_atomic`
     # and `record_modified` write at ERROR — and it is READ here, not named.
     # This line used to print `journalctl -u nmas … | grep netbox_guard`,
-    # and the deployment host has no `nmas` unit: journalctl answers
+    # and the deployment host's unit is `flask-app.service`, whose journal
+    # carries only the start-up banner anyway: journalctl answers
     # "-- No entries --", which is exactly what "no failures" looks like.
     # The file below is what app.py's root handler actually writes.
-    print("health below is THIS process only — the recorder runs inside the "
+    print(f"health below is THIS process only (pid {h.get('pid')}, counting "
+          f"since {h.get('counting_since')}) — the recorder runs inside the "
           "app, so its failures are in the app log:")
     print("    " + _app_log_summary(ROOT))
     print()

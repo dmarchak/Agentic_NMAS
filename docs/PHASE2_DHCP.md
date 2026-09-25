@@ -1676,8 +1676,9 @@ where it crosses:
 journalctl -u nmas --since today | grep netbox_guard   # WRONG — see §23
 ```
 
-*(Corrected in §23: the host has no `nmas` unit, so this prints `-- No
-entries --` whatever happened. The log is `logs/device_manager.log`, and
+*(Corrected in §23: the host's unit is `flask-app.service`, and its journal
+carries only the start-up banner, so this prints `-- No entries --` whatever
+happened. The log is `logs/device_manager.log`, and
 `nmas-netbox-modified` now reads it.)*
 
 `could not persist` means the file write failed — permissions are the
@@ -1732,12 +1733,18 @@ taken.
 
 ### The channel named for failures did not exist
 
-`journalctl -u nmas` prints `-- No entries --` on the host. There is **no
-`nmas` unit**: the app is `python3 app.py` with PPID 1, and
-[DEPLOY_LINUX.md](DEPLOY_LINUX.md)'s systemd unit is not what is deployed.
-So the channel §22 and the CLI named as *the one that crosses processes* was
-empty by construction, and **empty is the shape of "no failures"**. It is the
-reassuring zero again, one level further out. The test pinning the CLI
+`journalctl -u nmas` prints `-- No entries --` on the host, because the unit
+is named **`flask-app.service`**. *(Corrected the same day: this section first
+said there was no unit and the app ran as a bare process "with PPID 1". PPID 1
+**is** systemd. I inferred that from a process listing instead of reading
+`systemctl`, and `~/bin/nmas-deploy` restarts `flask-app.service` by name.)*
+The unit is enabled at boot, has `Restart=always`, and sends output to the
+journal. **Even under its real name, the journal is not the channel.** It
+carries only the werkzeug start-up banner, because module loggers go to the
+file handler `app.py` attaches at the root. So the channel §22 and the CLI
+named was empty under the documented name, and would have been nearly empty
+under the real one. **Empty is the shape of "no failures"**, which makes this
+the reassuring zero again, one level further out. The test pinning the CLI
 asserted `"journalctl" in src`, **which pinned the dead channel as correct**.
 
 The real channel is `logs/device_manager.log`: `app.py` attaches a rotating
@@ -1766,3 +1773,41 @@ the record and the reader. That is the §22 lesson in its own words: *the
 cheapest question that halves the space* here was `ls -l` on the record
 against NetBox's `last_updated`. One command, and the record already had
 the entry.
+
+### The positive control, re-run on `bbf3d8e` — PASSED
+
+The first sync on any recorder since `67e3c58`. The run before this one
+(06:33:50–06:35:13) ran on `da4d479`; nothing synced between then and now.
+
+```
+T0                     2026-09-25T16:00:44Z
+r1 hand-patched        last_updated 16:00:45.361Z   comments … 10.255.1.11 TEST2
+POST /netbox/sync      started 10 devices; complete 16:02:12  (updated=10 failed=0)
+r1 after               last_updated 16:01:38.487Z   comments canonical
+record                 mtime 16:01:38.719Z   44 -> 45 entries
+  2026-09-25T16:01:38Z  dcim/devices/5 r1
+      comments: … 10.255.1.11 TEST2 → … 10.255.1.11
+reader                 0 recorder ERROR line(s) (550,725 lines read from 11 files)
+```
+
+**It passes on both sides in one run.** The deliberate change appears, and
+it is the **only** new entry. The other nine devices and the config template
+wrote nothing, so the silence the churn fixes produced is now measured on
+the same sync as a control that shows the recorder working.
+
+The patch went to NetBox's API directly, not through NMAS, the way a human
+edit would. So the entry is attributed `unattributed`: NMAS was undoing a
+change it did not make. The patch script ran from `/tmp`, and the live
+checkout stayed clean.
+
+### What the 06:34 misreading was
+
+**The check lacked its own positive control, not the recorder.** The recorder
+worked at 06:34 exactly as it did at 16:01. What failed was *reading* the
+result: "no entry" was accepted as a finding without anything showing that the
+reading method could see an entry that was there. It is the same rule applied
+one level up. §18 made the *recorder's* verification two-sided; the *reading*
+of that verification was one-sided, and it is the half that produced the false
+finding. The method is fixed as the procedure above: record T0, then assert an
+entry **after T0**, found by the reader, beside an error count with its
+denominator. Asserting "there is no entry" has no such anchor.

@@ -1604,10 +1604,16 @@ not an order**; the ordering constraints are named below it.
 
 | Stage | Items | Build | Decide | Note |
 |---|---|---|---|---|
-| **5** — per-device monitoring | **7** | 6 | 0 | ⚠ **derived, not enumerated** — see below |
-| **6** — security | **4** (6.1–6.4) | 3 | 1 | infrastructure and device-side; touches no GUI |
+| **5** — per-device monitoring | — | — | — | **FOLDED INTO 7.5 — DECIDED 2026-09-25.** Its six remaining items are 7.5's acceptance; switch syslog is carved out as **P.1** |
+| **Before 7** — standalone | **2** (P.1, P.2) | 2 | 0 | P.1 switch syslog (a pipeline defect); P.2 NetBox backup (A1) |
+| **6** — security | **5** (6.1–6.5) | 4 | 1 | infrastructure and device-side; touches no GUI. 6.5 added 2026-09-25 (C5) |
 | **7** — the interface | **11** (7.0–7.9, incl. 7.2b) | 8 | 2 | **7.2b is DONE** — §0b's script extraction and §6c's cache headers both landed |
 | **8** — AI and agent | **6** (8.0–8.5) | 4 | 2 | plus three named sub-findings inside 8.2/8.3 |
+
+**⚠ Stage 5's seven was a different kind of number from the others**, and
+the fold resolves it: the paragraph is now enumerated as 7.5's acceptance,
+six items plus P.1. The original note is kept below because it is why the
+enumeration was needed.
 
 **⚠ Stage 5's seven is a different kind of number from the other three.**
 Stages 6, 7 and 8 carry numbered item lists and were counted. **Stage 5 is one
@@ -1636,7 +1642,12 @@ of an existing one.
   map is the checklist every later step is written against.
 - **Grafana `allow_embedding` + an Access policy for the embed path → 7.5 →
   7.9.** Named blockers, not measured ones; the iframe test comes first.
-- Stages 5 and 6 block nothing and are blocked by nothing.
+- **P.1 and P.2 are scheduled ahead of Stage 7 by DECISION, not dependency.**
+  Nothing in Stage 7 needs them. P.1 is a defect in a running pipeline, and
+  every day it waits is a day of switch logs that do not exist. P.2 is what
+  makes the Stage 7 work recoverable if it damages NetBox. It is the one
+  store NMAS writes to that has no restore path.
+- Stage 6 blocks nothing and is blocked by nothing.
 
 **The overlap worth knowing: Stage 5 and Stage 7.5 are the same screens.**
 Stage 5's per-device Prometheus / Loki / Oxidized / lease views and Stage 7.5's
@@ -1644,9 +1655,37 @@ Monitoring destination are one surface. Doing 5 before 7 means building it
 twice — which is the argument the plan already makes for putting Stage 8 last,
 and does not make here.
 
+**DECIDED 2026-09-25: Stage 5 folds into 7.5.** The views are built once,
+inside the redesigned interface, rather than built into the current UI and
+rebuilt by Stage 7. Enumerating Stage 5 becomes 7.5's acceptance criteria;
+see *Stage 5*, below. **The exception is switch syslog**, which is not a
+screen. Logs that stopped arriving on 2026-09-09 are a defect in a pipeline
+that runs whether or not anyone looks at it, and folding it into a UI stage
+would schedule a repair behind a redesign. It is **P.1**, before Stage 7.
+
 ---
 
-### STAGE 5 — Phase 5: per-device monitoring
+### STAGE 5 — Phase 5: per-device monitoring — FOLDED INTO 7.5 (decided 2026-09-25)
+
+**No longer a stage.** Building these views before Stage 7 builds them twice,
+because 7.5's Monitoring destination is the same surface. The acceptance
+paragraph below is kept as written, since it is the source. Its enumeration
+is **7.5's acceptance criteria**:
+
+| # | 7.5 acceptance item (from Stage 5) |
+|---|---|
+| 7.5-a | A device page shows **its own** Prometheus series |
+| 7.5-b | ... its own Loki lines. Switch lines must be flowing first, which is **P.1** |
+| 7.5-c | ... its own Oxidized fetch history |
+| 7.5-d | ... its own Kea leases |
+| 7.5-e | The legacy SNMP/NetFlow collector is **retired**, not collapsed |
+| 7.5-f | `logging trap` level set deliberately and **recorded in intent**, through the deploy path, not configured by hand |
+
+Carved out: **switch syslog restored** is **P.1**, below. Stage 5's derived
+count was seven, and this is six plus P.1, so the enumeration agrees with the
+reading. If P.1 finds that restoring syslog needs a logging change on the
+switches, that change is 7.5-f made early, through intent. It is not a
+hand edit.
 
 Per Section 6's Phase 5, narrowed by what Part 1 built: the Integrations panel
 already gives the fleet view. This stage is the **per-device** view.
@@ -1681,8 +1720,89 @@ them at once and no audit trail distinguishes them.
 recovery** — the console is the break-glass path, and an enable secret nobody
 holds turns a recoverable node into a rebuild.
 
+**6.5 The NMAS service unit is unhardened and unversioned** (C5, measured
+2026-09-25). The host runs `flask-app.service`: `Restart=always`, enabled,
+journal. That part is right. It has **none** of
+[DEPLOY_LINUX.md](DEPLOY_LINUX.md)'s hardening (`NoNewPrivileges`,
+`ProtectSystem`, `ProtectHome`, `ReadWritePaths`) and sets **no `NMAS_HOST`**,
+so the app binds every address. CLAUDE.md asks for a specific address as a
+second layer independent of the firewall. The unit and `~/bin/nmas-deploy` live
+only on the host, so the unit the repository describes and the unit that runs
+have diverged in name, hardening and environment, and nothing notices.
+*Acceptance:* the unit and deploy script are versioned in the repository with
+one copy (the host file a symlink or an install step, never a second copy),
+hardened, and bound to a named address. Verified **from another host** that
+`:5000` answers only where intended. Measured before and after, like 6.1.
+Whether to rename it `nmas` is part of 6.5. Renaming touches the unit,
+`nmas-deploy` and every runbook line naming it, for no functional gain. The
+lean is to keep `flask-app` and make the docs say so.
+
+*Why here and not ahead of Stage 6:* what C5 actually cost was a **log
+channel named wrongly**, and that is fixed. The docs and the CLI name
+`logs/device_manager.log`, and the CLI reads it. What remains is posture
+(privileges, bind address), which is Stage 6's subject and uses its method:
+measure from another host.
+
 *Acceptance:* each is measured before and after; 6.2 ends with a rotation that
 changes one consumer's credential without disturbing another's.
+
+---
+
+### BEFORE STAGE 7 — two standalone items (scheduled 2026-09-25)
+
+**P.1 Switch syslog stopped around 2026-09-09.** The Loki card showed 0 lines
+during the demo. It is a pipeline defect, not a view, so it is carved out of
+the Stage 5 fold. *First measurement:* find where the chain breaks, hop by
+hop. Does a switch emit (`show logging`, the `logging host` line)? Does the
+receiver get packets (a capture on its port)? Does the shipper forward? Does
+Loki hold switch-labelled streams? Every hop gets checked, not just the most
+likely one. *Acceptance:* switch lines queried **from Loki**, from all four
+switches, with a timestamp after the fix. If it needs a device-side change,
+that change goes through intent (7.5-f), not a hand edit. And the loss gets a
+signal: a switch that stops logging must show up somewhere other than a
+count of 0, or the next outage is found the way this one was.
+
+**P.2 NetBox backup and a tested restore path (closes the core of A1).**
+Sized on the host, 2026-09-25. NetBox is `netbox-docker` under
+`~/netbox-docker`, image `netboxcommunity/netbox:v4.6-5.0.2`,
+`postgres:18-alpine`. The database is **30 MB**. The `media`, `reports` and
+`scripts` volumes are **empty** (4 KB each). The root filesystem has 259 GB
+free.
+- **Backup:** a scheduled `pg_dump -Fc` of the NetBox database plus a tar of
+  the media volume, run on a timer. Nightly at 30 MB costs nothing, and
+  retention is a count, not a disk question.
+- **Restore path:** `pg_restore` into a **scratch** NetBox (a second compose
+  project on another port, same image tag, same postgres major), never into
+  the live one. It is tested by **comparing** the restored instance with the
+  live one at dump time: `nmas-netbox-census` identity-per-type **and** a
+  per-table row count. The census alone compares identity, not contents, so
+  it would pass a restore that lost every field value.
+
+**Does it close A1? The core, yes; four things remain, and they are part of
+P.2, not later:**
+1. **Configuration is not in the database.** `~/netbox-docker/env/netbox.env`
+   holds `SECRET_KEY` and `API_TOKEN_PEPPER_1`, which
+   `configuration/configuration.py` reads into `API_TOKEN_PEPPERS` (names
+   confirmed on the host, values not read). Restoring the database without
+   the pepper invalidates every v2 API token. Whether NMAS's own token is v1
+   or v2 is not measured. They are
+   secrets, so they go into the backup encrypted, never into git.
+2. **Same host is not a backup of the host.** A dump beside the database it
+   dumps survives a bad write and not a lost disk. At least one copy goes off
+   the host.
+3. **The versions are part of the restore.** A dump records the NetBox image
+   tag and the postgres major beside it, and a restore refuses a mismatch
+   rather than migrating silently.
+4. **A backup job that fails silently is A1 again with a false sense of
+   safety.** The age of the last successful dump is surfaced, and a missing
+   or old one is a named state. A timer that stopped is a backup that does
+   not exist.
+
+What P.2 does **not** give: point-in-time recovery. A nightly dump loses up
+to a day of **human** NetBox edits. NMAS's own writes in that window are
+recoverable from the modification record and the golden configs, but hand
+curation between dumps is not. That limit is stated here rather than left to
+be discovered.
 
 ---
 
