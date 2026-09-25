@@ -1392,3 +1392,71 @@ the sanitised running config, so a device whose config genuinely moved still
 logs — summarised to size and hash. On r1–r5 that includes the regenerated
 self-signed certificates already documented as a standing difference. That is
 a real change being reported, not the fix having failed.
+
+
+## 19. A fifth churn source: an unordered collection compared as an ordered one
+
+```
+2026-09-25T06:15:43Z  dcim/devices/6 r2
+    tags: [4, 2, 1] → [1, 2, 4]
+```
+
+The same three tags in a different order — logged as a change on every sync,
+for every device with more than one tag, and reading as though the tags had
+been rewritten.
+
+### Two defects, and only fixing the comparison would have hidden the worse one
+
+`_comparable` compared lists **positionally**, so a reordered m2m reference
+read as a different value. That is the reported symptom.
+
+The cause is in the caller:
+
+```python
+merged = list(set(current_tags + tag_ids))
+device = _nb_patch(..., {"tags": merged})
+```
+
+`list(set(...))` hands back an arbitrary order, and **the PATCH fired
+unconditionally** whenever the device had any protocol tag — so this was a
+*guaranteed no-op write on every sync, for ever*, with NetBox bumping
+`last_updated` for nothing.
+
+Comparing unordered alone would have made the **entry** disappear while the
+pointless write carried on — the log quietly stopping covering a write that
+happens every time, which is the checker-exemption shape again. So: `sorted`
+makes the value stable, and `if set(merged) != set(current_tags)` means the
+write does not happen at all.
+
+### Named fields, never "every list"
+
+`UNORDERED_LIST_FIELDS = {"tags", "tagged_vlans", "object_types"}` — each a
+**many-to-many reference**, which NetBox returns in whatever order it pleases.
+
+The default stays **ordered**, because order carries meaning in plenty of
+places — an ACL, a route-map, a prefix-list. This project already learned that
+once, for config sections: `section_is_unordered()` is an allowlist and
+*order-significant anywhere wins*. A control treating every list as a set
+fails, which is what keeps this from degrading into *"lists never differ"*.
+
+Cable `a_terminations`/`b_terminations` are deliberately absent: POST-only
+today, and a list of dicts needs a stable identity to sort on — a different
+problem from this one.
+
+### The count, and what it says about the record
+
+Five churn sources, all found within a day of the record existing, none of
+them visible before it:
+
+| # | source | why it churned |
+|---|---|---|
+| 1 | `comments` | embedded the sync's own timestamp |
+| 2 | `local_context_data.ndm_sync` | same timestamp, one level down |
+| 3 | enum vs reference in `_comparable` | `{"value","label"}` never equalled `"active"` |
+| 4 | `role` / `device_role` | one field under two names; the server echoes one |
+| 5 | `tags` | a set compared as a sequence, plus an unconditional write |
+
+**Every one of them was a write NMAS had been making for months**, and the
+only reason they are visible now is that something finally recorded what it
+wrote. A record that nobody can bear to read is worth nothing — which is why
+each of these mattered enough to fix rather than filter.

@@ -1133,3 +1133,76 @@ class TestASecondSyncOfAnUnchangedDeviceIsSilent:
             monkeypatch, running="hostname r4\nntp server 10.255.0.1\n")
         assert set(netbox_guard.changed_fields(existing, sent)) == {
             "local_context_data"}
+
+
+class TestAnUnorderedCollectionIsNotAChange:
+    """`tags: [4, 2, 1] → [1, 2, 4]` — the same three tags in a different
+    order, logged as a change on every sync, for every device with more than
+    one tag.
+
+    The same shape this project already solved once for config sections, where
+    `section_is_unordered()` is an **allowlist** and *order-significant
+    anywhere wins*. The default here is likewise ordered: a field earns its
+    place by being a many-to-many reference, which NetBox returns in whatever
+    order it pleases.
+    """
+
+    def test_a_reordered_tag_list_is_not_a_change(self):
+        assert netbox_guard.changed_fields(
+            {"tags": [{"id": 4}, {"id": 2}, {"id": 1}]},
+            {"tags": [1, 2, 4]}) == {}
+
+    def test_a_real_tag_change_still_is(self):
+        """The floor. Treating every list as a set would pass the test above
+        and lose genuine additions."""
+        got = netbox_guard.changed_fields(
+            {"tags": [{"id": 4}, {"id": 2}]}, {"tags": [1, 2, 4]})
+        assert got == {"tags": {"before": [2, 4], "after": [1, 2, 4]}}
+
+    def test_an_unlisted_field_is_still_compared_in_order(self):
+        """Order carries meaning in an ACL, a route-map, a prefix-list. The
+        allowlist is what keeps this from becoming 'lists never differ'."""
+        got = netbox_guard.changed_fields({"prefixes": [1, 2]},
+                                          {"prefixes": [2, 1]})
+        assert got["prefixes"] == {"before": [1, 2], "after": [2, 1]}
+
+    def test_every_unordered_field_is_a_many_to_many_reference(self):
+        """A list that must not grow silently. Each entry is named in the
+        constant's own docstring with the reason it qualifies."""
+        assert netbox_guard.UNORDERED_LIST_FIELDS == {
+            "tags", "tagged_vlans", "object_types"}
+        src = open("modules/netbox_guard.py", encoding="utf-8").read()
+        decl = src.split("UNORDERED_LIST_FIELDS = ")[0][-1400:]
+        for name in netbox_guard.UNORDERED_LIST_FIELDS:
+            assert f"``{name}``" in decl, f"{name} is unlisted and unexplained"
+        assert "m2m" in decl
+
+    def test_sorting_cannot_raise_on_mixed_types(self):
+        got = netbox_guard.changed_fields({"tags": [2, "a", 1]},
+                                          {"tags": ["a", 1, 2]})
+        assert got == {}
+
+
+class TestTheProtocolTagMergeDoesNotWriteForNothing:
+    """Comparing unordered would have hidden the ENTRY while the pointless
+    PATCH carried on — NetBox bumping `last_updated`, work for nothing, every
+    sync. The cause is fixed as well as the symptom.
+    """
+
+    def _body(self):
+        src = open("modules/netbox_client.py", encoding="utf-8").read()
+        return src.split("# ── Protocol tags ")[1].split("# ── DCIM")[0]
+
+    def test_the_merged_value_is_stable(self):
+        """`list(set(...))` hands back an arbitrary order, so the value
+        differed from NetBox's on every sync even when the set did not."""
+        body = self._body()
+        assert "sorted(set(current_tags + tag_ids))" in body
+        assert "list(set(current_tags + tag_ids))" not in body
+
+    def test_it_only_patches_when_the_set_changes(self):
+        body = self._body()
+        assert "if set(merged) != set(current_tags):" in body
+        # Floor: the PATCH is still reachable, i.e. this did not pass by the
+        # write having been deleted.
+        assert "_nb_patch(session, base," in body

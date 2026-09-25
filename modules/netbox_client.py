@@ -1821,9 +1821,24 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         if tag_ids:
             try:
                 current_tags = [t["id"] for t in (device.get("tags") or [])]
-                merged = list(set(current_tags + tag_ids))
-                device = _nb_patch(session, base, f"dcim/devices/{device_id}/",
-                                   {"tags": merged})
+                merged = sorted(set(current_tags + tag_ids))
+                # ONLY WRITE WHEN THE SET ACTUALLY CHANGES.
+                #
+                # This PATCHed unconditionally whenever the device had any
+                # protocol tag, and `list(set(...))` hands back an arbitrary
+                # order — so every such device logged
+                # `tags: [4, 2, 1] → [1, 2, 4]` on every sync: the same three
+                # tags, rewritten for nothing, reading as though they had been
+                # replaced. A guaranteed no-op write, every sync, for ever.
+                #
+                # `sorted` makes the value stable; the guard means the write
+                # does not happen at all. Comparing unordered in the record
+                # would have hidden the entry while the pointless PATCH
+                # carried on.
+                if set(merged) != set(current_tags):
+                    device = _nb_patch(session, base,
+                                       f"dcim/devices/{device_id}/",
+                                       {"tags": merged})
             except Exception as exc:
                 log.debug("netbox: device tag update failed on %s: %s", hostname, exc)
 

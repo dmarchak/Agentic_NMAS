@@ -284,6 +284,38 @@ def _write_json_atomic(path: str, data: dict) -> bool:
         return False
 
 
+#: Fields whose list value is a **set** in NetBox's model, so a different
+#: order is not a different value.
+#:
+#: **Named, never "every list".** Order carries meaning in plenty of places —
+#: an ACL, a route-map, a prefix-list — and this project already learned that
+#: once for config sections, where `section_is_unordered()` is an allowlist
+#: and *order-significant anywhere wins*. The default here is likewise
+#: **ordered**, and a field earns its place by being a many-to-many reference,
+#: which NetBox returns in whatever order it pleases:
+#:
+#: * ``tags``          — m2m to tags; reaches a PATCH via the protocol-tag merge
+#: * ``tagged_vlans``  — m2m to VLANs on an interface; reaches the interface PATCH
+#: * ``object_types``  — m2m to content types on a custom-field definition
+#:
+#: Cable ``a_terminations``/``b_terminations`` are deliberately absent: they
+#: are POST-only today, and a list of dicts needs a stable identity to sort on,
+#: which is a different problem from this one.
+UNORDERED_LIST_FIELDS = frozenset({"tags", "tagged_vlans", "object_types"})
+
+
+def _sort_key(value):
+    """Total order over mixed scalars, so sorting cannot raise."""
+    return (type(value).__name__, repr(value))
+
+
+def _unordered(field: str, value):
+    """*value*, sorted, when *field* is a set rather than a sequence."""
+    if field in UNORDERED_LIST_FIELDS and isinstance(value, list):
+        return sorted(value, key=_sort_key)
+    return value
+
+
 def _comparable(value):
     """NetBox's nested form reduced to what a payload would carry.
 
@@ -394,9 +426,9 @@ def changed_fields(before_obj, payload: dict):
         return None
     out = {}
     for field, after in (payload or {}).items():
-        before = (_comparable(before_obj[field]) if field in before_obj
-                  else UNKNOWN_BEFORE)
-        now = _comparable(after)
+        before = (_unordered(field, _comparable(before_obj[field]))
+                  if field in before_obj else UNKNOWN_BEFORE)
+        now = _unordered(field, _comparable(after))
         if before == now:
             continue
         # COMPARE RAW, RECORD SAFE. The comparison must see the real values

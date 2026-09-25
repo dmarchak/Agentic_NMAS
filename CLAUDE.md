@@ -3842,6 +3842,32 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `PASS`, the entry would have been written and nobody would have had reason
   to look. *A report that qualifies its own claim is not a courtesy to the
   reader; it is what makes the next question askable.*
+- **A FIFTH CHURN SOURCE: AN UNORDERED COLLECTION COMPARED AS AN ORDERED ONE**
+  (§19). `tags: [4, 2, 1] → [1, 2, 4]` — the same three tags, logged as a
+  change on every sync for every device with more than one. **Two defects, and
+  fixing only the comparison would have hidden the worse one**: the caller did
+  `list(set(current_tags + tag_ids))`, which hands back an arbitrary order, and
+  **PATCHed unconditionally** whenever the device had any protocol tag — a
+  guaranteed no-op write every sync, for ever. Comparing unordered alone would
+  have made the entry vanish while the pointless write carried on, which is the
+  checker-exemption shape. So `sorted` makes the value stable *and* `if
+  set(merged) != set(current_tags)` stops the write happening.
+  **Named fields, never "every list"**: `UNORDERED_LIST_FIELDS = {tags,
+  tagged_vlans, object_types}`, each a many-to-many reference NetBox returns in
+  whatever order it pleases. The default stays **ordered**, because order
+  carries meaning in an ACL, a route-map, a prefix-list — the same lesson
+  `section_is_unordered()` already encodes for config sections, where the
+  allowlist is explicit and *order-significant anywhere wins*. A control
+  treating every list as a set fails, which is what stops this degrading into
+  *"lists never differ"*.
+- **Five churn sources, all found within a day of the record existing, none
+  visible before it**: a sync timestamp in `comments`, the same timestamp in
+  `local_context_data.ndm_sync`, the enum-versus-reference asymmetry, the
+  `role`/`device_role` alias, and unordered tags plus their unconditional
+  write. **Every one was a write NMAS had been making for months**, and the
+  only reason they are visible is that something finally recorded what it
+  wrote. *A record nobody can bear to read is worth nothing* — which is why
+  each was fixed rather than filtered.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
