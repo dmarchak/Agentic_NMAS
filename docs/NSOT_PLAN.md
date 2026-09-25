@@ -2054,8 +2054,30 @@ the confirmed path.
      s1, s2, r1, r3, r4 and r5 as batch golden `01d45b7`); seven
      heartbeating; s3 and r6 remain. **Leaving r5 is not the delete
      button**: that leaves r5 bound, mapped, alerting and half-present
-     (OPEN_FINDINGS C11), and destroys the only copy of its credential. The
-     sequence is in the r5 notes below.
+     (OPEN_FINDINGS C11), and destroys the only copy of its credential.
+
+   **r5's exit, in order** (proposed 2026-09-25; items marked *decide* are
+   the operator's):
+   1. `scripts/nmas-breakglass export --list Default --out <file>`, then
+      `verify`. The CSV row holds the only copy NMAS has of r5's rotated
+      credential.
+   2. **Take the block off by hand** over SSH: `no event manager applet
+      NMAS-HEARTBEAT` and `logging trap critical`. The deploy path cannot
+      remove it (C12), and a hand change on the day a device leaves
+      management creates no drift NMAS will ever see.
+   3. Save r5's golden, so the repository's last record is what the device
+      holds. Then run one clab sync **while r5 is still mapped**, so the
+      frozen `r5.cfg` is the clean one and a redeploy does not put the
+      applet back.
+   4. **Retire, not delete** (C11): the files removed in one commit (history
+      kept in git), the identity released, then the CSV row. Releasing the
+      identity changes `cisco_iosxe/base.j2`'s bound set, which withdraws its
+      approval, so re-approve against r1–r4 and r6.
+   5. *decide* NetBox device 9: r5 is real, so keeping it is defensible.
+      Either way the heartbeat rules must not take their population from
+      NetBox alone (C11 (3)).
+   6. *decide* the sanitiser: `r5.cfg` becomes a declared, deliberately
+      unmapped file (not built).
    - **Every device's REAL interval measured:** over at least an hour of
      heartbeats, the shortest and longest inter-arrival gap per device. For
      its dialect's window W, **2 × longest < W < 3 × shortest**, or the
