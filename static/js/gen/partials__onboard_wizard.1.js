@@ -125,6 +125,16 @@ const ONBOARD_FIELDS = {
    filling it in for a static device where nothing reads it. Revealed rather
    than disabled, so the form does not carry a control whose purpose is
    unexplained. */
+/* DRIVEN BY THE SELECT'S CURRENT VALUE, and called on OPEN as well as on
+   change. It only ran on `change`, and a select's initial value is set without
+   firing one -- so a browser that remembered "dhcp" from a previous session
+   showed DHCP selected beside a visible Management IP and Mask and no MAC
+   field. **It therefore only appeared on the SECOND use**, which is why
+   building and testing the fields did not reveal it.
+   The form then SAID dhcp and COLLECTED static: two sources disagreeing about
+   one fact. `onboardFormPayload()` reads every field unconditionally, so the
+   select won and the typed address rode along -- see `build_plan`, which now
+   drops it. */
 function onboardAddressSourceChanged() {
   const source = document.getElementById('obAddrSource');
   const row = document.getElementById('obMacRow');
@@ -132,6 +142,18 @@ function onboardAddressSourceChanged() {
   const dhcp = !!source && source.value === 'dhcp';
   if (row) row.style.display = dhcp ? '' : 'none';
   staticRows.forEach(function (el) { el.style.display = dhcp ? 'none' : ''; });
+  /* CLEARED, not just hidden. A hidden field still has a value, and browser
+     autofill puts one there -- so hiding alone leaves the payload carrying an
+     address the operator cannot see and did not choose for this device. */
+  if (dhcp) {
+    ['obMgmtIp', 'obMgmtMask'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  } else {
+    const mac = document.getElementById('obMgmtMac');
+    if (mac) mac.value = '';
+  }
 }
 
 function onboardFormPayload() {
@@ -179,6 +201,12 @@ async function onboardCreate() {
 }
 
 async function openOnboardWizard() {
+  /* ON OPEN, from the select's CURRENT value. A select's initial value is set
+     without firing `change`, so a remembered "dhcp" left the form saying one
+     thing and collecting another -- visible on the SECOND use and never the
+     first. Reading the value rather than assuming it starts at the default is
+     the whole fix. */
+  onboardAddressSourceChanged();
   const sel = document.getElementById('obPlatform');
   if (sel && !sel.options.length) {
     try {

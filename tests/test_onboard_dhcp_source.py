@@ -849,3 +849,131 @@ class TestAnUnfindableStagedCredentialIsFlaggedBeforeVerify:
         assert "Abandon and re-create" in js
         assert "nothing has reached" in js, \
             "the row must say the recovery is safe, or it reads as destructive"
+
+
+class TestADhcpPlanCarriesNoStaticAddress:
+    """**The wrong-device path, and not the cosmetic one.**
+
+    The wizard's reveal ran only on `change`, and a select's initial value is
+    set without firing one — so a browser that remembered "dhcp" showed DHCP
+    selected beside a visible, pre-filled Management IP and no MAC field. *The
+    form said dhcp and collected static.*
+
+    Measured which won: `onboardFormPayload()` reads every field
+    unconditionally, so **the select wins** — the bootstrap config correctly
+    emits `ip address dhcp` and contains no static address. And in the session
+    where this appeared, Create would have been **refused**, because the hidden
+    MAC field was empty and a DHCP plan without a MAC is a blocking reason.
+
+    But the typed address rode along on the plan, and that is the hazard:
+    `commit_step` records `plan.mgmt_ip` on the manifest, and `verify_device`
+    starts with `mgmt_ip or entry["mgmt_ip"]` — so the stray address would have
+    been written, found, and **the lease discovery skipped entirely**, sending
+    verification at a torn-down device's old address.
+    """
+
+    def _plan(self, tmp_path, monkeypatch, **kw):
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.nsot.onboard._name_in_manifest",
+                            lambda *a: (False, True))
+        monkeypatch.setattr("modules.nsot.onboard._name_in_netbox",
+                            lambda *a: (False, True))
+
+        class _Kea:
+            @staticmethod
+            def reservation_for(_mac):
+                return {"state": "reserved", "address": "10.255.0.40",
+                        "source": "config", "error": ""}
+
+        base = dict(hostname="bp-dhcp-a", platform="cisco_iosxe",
+                    list_name="probe", secret="S", manager_interface="Gi2",
+                    mgmt_interface="Gi1", kea=_Kea())
+        base.update(kw)
+        return build_plan(**base)
+
+    def test_a_stray_static_address_is_dropped(self, tmp_path, monkeypatch):
+        plan = self._plan(tmp_path, monkeypatch, address_source="dhcp",
+                          mgmt_mac="aa:bb:cc:00:02:40",
+                          mgmt_ip="10.255.0.31", mgmt_mask="255.255.255.0")
+        assert plan.mgmt_ip == "", \
+            "a DHCP plan carrying an address writes it to the manifest and " \
+            "verification then skips the lease discovery"
+        assert plan.mgmt_mask == ""
+        assert plan.onboardable, plan.blocking_reasons
+
+    def test_the_config_never_contained_it_anyway(self, tmp_path, monkeypatch):
+        """The render was already correct — which is what made this subtle."""
+        plan = self._plan(tmp_path, monkeypatch, address_source="dhcp",
+                          mgmt_mac="aa:bb:cc:00:02:40",
+                          mgmt_ip="10.255.0.31", mgmt_mask="255.255.255.0")
+        assert " ip address dhcp" in plan.bootstrap_config
+        assert "10.255.0.31" not in plan.bootstrap_config
+
+    def test_the_session_that_showed_this_would_have_been_refused(
+            self, tmp_path, monkeypatch):
+        """The MAC field was hidden, so it was empty — and a DHCP plan without
+        a MAC is a blocking reason. The precondition caught it incidentally."""
+        plan = self._plan(tmp_path, monkeypatch, address_source="dhcp",
+                          mgmt_mac="", mgmt_ip="10.255.0.31",
+                          mgmt_mask="255.255.255.0")
+        assert not plan.onboardable
+        assert any("no MAC address" in r for r in plan.blocking_reasons)
+
+    def test_static_keeps_its_address(self, tmp_path, monkeypatch):
+        """**The floor.** Dropping the address for every plan would make the
+        static path unusable."""
+        plan = self._plan(tmp_path, monkeypatch, mgmt_ip="203.0.113.32",
+                          mgmt_mask="255.255.255.0")
+        assert plan.mgmt_ip == "203.0.113.32"
+        assert plan.onboardable, plan.blocking_reasons
+
+
+class TestTheRevealRunsOnOpenNotOnlyOnChange:
+    """A select's initial value is set without firing `change`, so this
+    appeared on the **second** use and never the first — which is why building
+    and testing the fields did not reveal it."""
+
+    @staticmethod
+    def _js():
+        from tests.js_source import read_shipped
+
+        return read_shipped("static/js/gen/partials__onboard_wizard.1.js")
+
+    def test_the_wizard_calls_it_on_open(self):
+        js = self._js()
+        opener = js[js.index("async function openOnboardWizard"):]
+        assert "onboardAddressSourceChanged();" in opener[:900], \
+            "the reveal runs only on change, so a remembered value is not applied"
+
+    def test_it_reads_the_selects_CURRENT_value(self):
+        js = self._js()
+        fn = js[js.index("function onboardAddressSourceChanged"):]
+        assert "source.value === 'dhcp'" in fn, \
+            "it must read the value, not assume the default"
+
+    def test_hidden_static_fields_are_CLEARED_not_just_hidden(self):
+        """A hidden field still has a value, and autofill puts one there — so
+        hiding alone leaves the payload carrying an address the operator cannot
+        see and did not choose for this device."""
+        js = self._js()
+        fn = js[js.index("function onboardAddressSourceChanged"):]
+        block = fn[:fn.index("\n}")]
+        assert "obMgmtIp" in block and "value = ''" in block
+
+    def test_the_mac_is_cleared_when_static_is_chosen(self):
+        js = self._js()
+        fn = js[js.index("function onboardAddressSourceChanged"):]
+        assert "obMgmtMac" in fn[:fn.index("\n}")]
+
+    def test_no_placeholder_names_a_real_fleet_address(self):
+        """`10.255.0.31` is bp-onboard-c's address from the first probe — a
+        torn-down device. A placeholder naming a live range invites typing that
+        exact address, and an address that used to belong to something is the
+        worst kind to reuse by accident."""
+        from tests.js_source import read_shipped
+
+        form = read_shipped("templates/partials/onboard_wizard.html")
+        for real in ("10.255.0.31", "10.255.0.32", "10.255.1."):
+            assert f'placeholder="{real}' not in form, real
+        assert 'placeholder="192.0.2.10"' in form, \
+            "the example address is gone — the check now proves nothing"

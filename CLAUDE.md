@@ -3314,6 +3314,38 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   INTERFACE OUT (*"so the interface and the address are right"*), which is *a
   pattern that can appear in English needing an anchor*, inside the test
   asserting it. Both now assert on the `cause` labels only.
+- **A reveal driven by `change` alone is wrong on the SECOND use and right on
+  the first**, which is why building and testing the field did not reveal it. A
+  select's initial value is set without firing `change`, so a browser that
+  remembered `dhcp` showed *DHCP* selected beside a visible, pre-filled
+  Management IP and no MAC field: **the form said dhcp and collected static**,
+  two sources disagreeing about one fact. The fix is to run it **on open, from
+  the select's current value**, rather than assuming it starts at the default.
+  **Which won, measured**: `onboardFormPayload()` reads every field
+  unconditionally, so the *select* won — the bootstrap config emitted
+  `ip address dhcp` and contained no static address — and in that session
+  Create would have been **refused**, because the hidden MAC field was empty
+  and a DHCP plan without a MAC is a blocking reason. The precondition caught
+  it incidentally.
+- **The cosmetic half was the smaller half: a DHCP plan must carry no static
+  address at all.** The typed address rode along on the plan, `commit_step`
+  records `plan.mgmt_ip` on the manifest, and `verify_device` starts with
+  `mgmt_ip or entry["mgmt_ip"]` — so a stray address would have been written,
+  found, and **the lease discovery skipped entirely**, sending verification at
+  a torn-down device's old address. Dropped in `build_plan()`, the only
+  constructor, so it holds however the arguments arrive. *Not merely unused —
+  actively harmful, and the render being correct all along is what made it
+  subtle.*
+  Hidden fields are **cleared**, not just hidden: a hidden input still has a
+  value and autofill puts one there, so hiding alone leaves the payload
+  carrying an address the operator cannot see and did not choose.
+- **A placeholder naming a real fleet address is a small trap of its own.** The
+  Management IP field suggested `10.255.0.31` — bp-onboard-c's actual address
+  from the first probe, a **torn-down** device. A placeholder naming a live
+  range invites typing that exact address, and *an address that used to belong
+  to something is the worst kind to reuse by accident*. RFC 5737 exists for
+  this; a test now refuses any placeholder in the fleet's ranges, with a
+  positive anchor so it cannot pass by the examples having been deleted.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

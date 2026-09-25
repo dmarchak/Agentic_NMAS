@@ -526,6 +526,21 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
 
         assert_dialect(platform, where="build_plan(platform=…)")
 
+    # A DHCP PLAN CARRIES NO STATIC ADDRESS. Not merely unused -- actively
+    # harmful, and this is the wrong-device path rather than the cosmetic one.
+    #
+    # `commit_step` records `plan.mgmt_ip` on the manifest, and
+    # `verify_device` starts with `mgmt_ip or entry["mgmt_ip"]` -- so a DHCP
+    # plan carrying a stray typed address writes it to the manifest, and
+    # verification then finds it, **skips the lease discovery entirely**, and
+    # tries to reach that address. Measured: a form showing "DHCP" while still
+    # displaying a pre-filled Management IP produced exactly that plan.
+    #
+    # Dropped here rather than in the route, because `build_plan` is the only
+    # constructor and this must hold however the arguments arrive.
+    if address_source == "dhcp":
+        mgmt_ip, mgmt_mask = "", ""
+
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
 
     in_manifest, manifest_ok = _name_in_manifest(repo, hostname)

@@ -55,15 +55,21 @@
           </div>
           <div class="col-md-3 ob-static-only">
             <label class="form-label small fw-semibold" for="obMgmtIp">Management IP</label>
+            {# A DOCUMENTATION-RANGE EXAMPLE, deliberately. This read
+               `10.255.0.31`, which is bp-onboard-c's real address from the
+               first probe -- a torn-down device. A placeholder naming a live
+               range invites typing that exact address, and an address that
+               used to belong to something is the worst kind to reuse by
+               accident. RFC 5737 exists for this. #}
             <input class="form-control form-control-sm" id="obMgmtIp"
-                   placeholder="10.255.0.31">
+                   autocomplete="off" placeholder="192.0.2.10">
           </div>
         </div>
         <div class="row g-2 mb-3">
           <div class="col-md-3 ob-static-only">
             <label class="form-label small fw-semibold" for="obMgmtMask">Mask</label>
             <input class="form-control form-control-sm" id="obMgmtMask"
-                   placeholder="255.255.255.0">
+                   autocomplete="off" placeholder="255.255.255.0">
           </div>
           {# Revealed only for DHCP. The reservation is checked at PLAN time,
              so the review screen states what Kea said rather than what will
@@ -72,7 +78,7 @@
           <div class="col-md-3" id="obMacRow" style="display:none">
             <label class="form-label small fw-semibold" for="obMgmtMac">MAC address</label>
             <input class="form-control form-control-sm" id="obMgmtMac"
-                   placeholder="aa:bb:cc:00:02:40">
+                   autocomplete="off" placeholder="aa:bb:cc:00:02:40">
             <div class="form-text small">Must match a <strong>host
               reservation</strong> in Kea, and the MAC pinned in the
               topology. A dynamic lease is refused.</div>
