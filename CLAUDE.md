@@ -3475,6 +3475,40 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   while they were made. A stage that only runs the suite discovers nothing,
   and a stage that only runs the tool goes backwards while it works.
   [docs/PHASE2_DHCP.md](docs/PHASE2_DHCP.md) §10.
+- **`netbox_allow_writes` stays ON as the steady state, and an UPDATE is the
+  class no provenance covers.** Both probe runbooks said *"turn it off again
+  at teardown"* and neither said why — an instruction whose reason is *"that
+  is what the last one said"* is one nobody can evaluate, so it was argued
+  and dropped ([docs/PHASE2_DHCP.md](docs/PHASE2_DHCP.md) §11). The gate is
+  real, but it was **on throughout both NetBox incidents it would nominally
+  have prevented** — it has to be, or the import that caused them could not
+  have run — so what caught them was the census baseline, the tag, the
+  created-id record and `--compare`. Its contribution is *"you turned it on
+  deliberately once"*: a reminder, not a defence, against which every onboard
+  needs it and off means the next one refuses until somebody remembers.
+  **The case worth checking exists, in the second half.** Nothing writes
+  outside the gate — exactly **three** HTTP write calls in the tree, each
+  inside its chokepoint behind `assert_writes_allowed()`. But `_nb_patch` is
+  outside the **provenance** path: gated and previewed, yet **not tagged, not
+  recorded, not reversible by Remove, and invisible to `--compare`** — the
+  last measured, not reasoned, because the census identity is `id:display`
+  and moving an address between interfaces changes neither (`41:10.0.0.15/24`
+  both sides, `compare()` finds nothing). **That is precisely the 2026-09-24
+  damage**: `_ensure_ip_address()` PATCHing `assigned_object_id`, the object
+  never disappearing, so nothing had anything to report for weeks. Not
+  tagging an update is **correct** — the tag means *NMAS created this*, and
+  claiming a human's object would make it deletable — so the gap is that
+  **nothing records the touch at all**. Eleven PATCH sites; `_ensure_site()`
+  re-parents any slug-matching site with the comment *"if someone moved
+  it"*, deliberately overriding a human on an object Remove correctly skips.
+  **It does not change the decision**, and the reason is the sharp part: a
+  control that is necessarily open whenever the dangerous path runs is not a
+  defence against that path, so turning it off at teardown covers the
+  uncovered class not at all. *Provenance protects an OBJECT; a cascade
+  travels a RELATIONSHIP* — and **an update travels neither.** Plan: the
+  census records an assignable object's **assignment**, and `_nb_patch`
+  records what it changed, so *"NMAS modified this"* is answerable. Today it
+  is not.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

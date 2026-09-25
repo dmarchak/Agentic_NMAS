@@ -605,7 +605,7 @@ Isolating those was the point of doing this on a throwaway.
   cascade map
 - `br-mgmt` holds `uplink`, `s3-mgmt`, `r6-mgmt` and no `dhcpa-mgmt`; docker
   networks are `clab` and `clab-r6`
-- the temporary list is gone; `netbox_allow_writes` is back off
+- the temporary list is gone; `netbox_allow_writes` is left **on** (§11)
 - Kea: reservation removed, pools still **0**, `config-test` 0, reload
   successful, `_reservation()` back to `not_reserved`
 - **r6 regression**: `r1` still learns `10.255.1.16` as extern 2, metric 20,
@@ -678,3 +678,99 @@ So the honest division of labour, and it should be stated this way rather than
 as scepticism about tests: **running the tool is how defects are found; the
 suite is how they stay fixed.** A stage that only runs the suite discovers
 nothing, and a stage that only runs the tool goes backwards while it works.
+
+
+## 11. `netbox_allow_writes` stays ON, and a gap the decision exposed
+
+Both probe runbooks said *"turn it off again at teardown"*. Neither said why,
+and an instruction whose reason is *"that is what the last one said"* is one
+nobody can evaluate — so it is either justified here or dropped.
+
+### It is dropped, and the measurement is why
+
+The gate is a real control: it means *"this instance may write to NetBox at
+all"*, it defaults off, and it is a persistent operator decision. But it
+prevented neither of the two NetBox incidents, because **it was on throughout
+both** — it has to be, or the import that caused them could not have run. What
+caught them was the census baseline, the `nmas-managed` tag, the created-id
+record, and `--compare`.
+
+So its contribution on this installation is *"you turned it on deliberately
+once"*: a reminder rather than a defence. Against that, ten devices are in
+NetBox and **every onboard needs it on**, so off means the next onboard refuses
+at plan time until somebody remembers — friction guarding a hazard the real
+defences already cover.
+
+**Steady state is on.** It stays a persistent, deliberate decision; it is
+simply one that has been made.
+
+### The case worth checking, and it exists
+
+*"Is there anything that writes to NetBox without going through the provenance
+path?"* Measured, in two parts.
+
+**Nothing writes outside the gate.** There are exactly **three** HTTP write
+calls in the whole codebase — `session.post`, `session.patch`,
+`session.delete` — each inside its chokepoint, each behind
+`assert_writes_allowed()`. Grep the tree for a fourth and there is none.
+
+**But `_nb_patch` is outside the PROVENANCE path**, and that is a different
+claim:
+
+| | `_nb_post` | `_nb_patch` | `_nb_delete` |
+|---|---|---|---|
+| gated on `netbox_allow_writes` | yes | yes | yes |
+| previewed in dry run | `creates` | `updates` | `deletes` |
+| tagged `nmas-managed` | yes | **no** | n/a |
+| recorded in `netbox_created_ids.json` | yes | **no** | forgotten |
+| reversible by Remove | yes | **no** | n/a |
+| visible to `--compare` | yes | **no** | yes |
+
+The last row is measured, not reasoned. The census identity is
+`f"{id}:{display}"`, and moving an address between interfaces changes neither:
+
+```
+identity before : 41:10.0.0.15/24
+identity after  : 41:10.0.0.15/24
+compare() findings: NONE
+```
+
+**That is exactly the 2026-09-24 damage** — *"one object passed between six
+devices"* was `_ensure_ip_address()` PATCHing `assigned_object_id`. The object
+never disappeared, so the census had nothing to report, and Remove could not
+have undone it because an update is not a creation.
+
+Not tagging an update is **correct**: the tag means *NMAS created this*, and
+tagging something it merely touched would claim ownership of a human's object
+and make it deletable. The gap is not the missing tag, it is that **nothing
+records the touch at all.**
+
+Eleven PATCH call sites, and one shows the shape plainly — `_ensure_site()`
+re-parents any site whose slug matches, with the comment *"re-parent to the
+right region if someone moved it"*. It is deliberately overriding a human's
+change, on an object provenance explicitly does not cover, and Remove
+correctly reports as skipped. Nothing anywhere records that it happened.
+
+### Why this does not change the decision
+
+It reads like an argument for off, and it is not, for one reason: **the gate
+must be on for the importer to run at all.** Both incidents happened with it
+on, and the next import will too. A control that is necessarily open whenever
+the dangerous path executes is not a defence against that path — turning it
+off at teardown does not cover the uncovered class, it only makes the next
+onboard refuse once.
+
+So: leave it on, and **close the gap instead of keeping a setting off that has
+to be on.** The shape is the same finding as the cascade, one field over:
+*provenance protects an OBJECT; a cascade travels a RELATIONSHIP* — and an
+**update travels neither.** Plan items, both cheap:
+
+- the census records the **assignment** for an assignable object, not only its
+  identity, so a moved address is a finding rather than a silence
+- `_nb_patch` records what it changed — object, fields, before-values — into
+  an update log beside the created-id record. Not to make it reversible
+  (deciding whether a field should go back is an operator's call) but so that
+  *"NMAS modified this"* is answerable at all. Today it is not.
+
+That second item is what would have turned the address incident from **weeks
+invisible** into a line somebody could read.

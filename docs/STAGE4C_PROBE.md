@@ -315,7 +315,21 @@ route, not inferred.** A `grep` would also match
 **If it fails:** the wizard will name it as a blocking reason at step 6 — that
 is the designed behaviour, not a problem to work around.
 
-> **Turn it off again at step 13.** It defaults off and should end off.
+> **Leave it ON.** This instruction used to read *"turn it off again"*, and
+> the reason was inherited rather than argued. Measured 2026-09-24: the gate
+> was **on** throughout both NetBox incidents it would nominally have
+> prevented, so it prevented neither. What caught them was the census
+> baseline, the `nmas-managed` tag, the created-id record and `--compare`.
+> Its real contribution is *"you turned it on deliberately once"* — a
+> reminder, not a defence — and against that, ten devices are in NetBox and
+> **every onboard needs it**, so off means the next one refuses at plan time
+> until somebody remembers. Steady state is on.
+>
+> **What does not follow:** that writes are therefore covered. See
+> [PHASE2_DHCP.md](PHASE2_DHCP.md) §11 — a **PATCH** is gated but carries no
+> provenance and is invisible to `--compare`, which is the class that caused
+> both incidents. The answer to that is to close the gap, not to keep a
+> setting off that has to be on whenever the importer runs.
 
 ---
 
@@ -827,8 +841,10 @@ would have called a pass.
    list slug — and the three objects would become **tagged and unrecorded**,
    the one combination Remove cannot act on.
 2. Device List bar → **Delete List** → confirm.
-3. Settings → Integrations → **Allow writes to NetBox** → **off**. It
-   defaults off and should end off.
+3. **Leave `netbox_allow_writes` ON.** Earlier revisions turned it off
+   here. See step 0 for why that instruction was dropped: the gate was on
+   through both incidents it would nominally have prevented, and every
+   onboard needs it.
 
 The delete does **not** cascade into NetBox unless
 `netbox_remove_on_list_delete` is on — leave it off, because step 12 already

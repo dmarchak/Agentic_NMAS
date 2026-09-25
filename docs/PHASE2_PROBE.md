@@ -244,7 +244,10 @@ ssh <clab> 'cd ~/labs/dhcp-a && containerlab destroy -t nmas-dhcp-a.clab.yml --c
       preview names every foreign object
 - [ ] `nmas-netbox-census --compare /tmp/census-dhcp-a.json` → **exit 0**.
       Exit 1 is *"objects left behind"*; **exit 2 is UNPROVEN** and is not a pass
-- [ ] delete the temporary list; turn `netbox_allow_writes` back off
+- [ ] delete the temporary list. **Leave `netbox_allow_writes` ON** — see
+      [PHASE2_DHCP.md](PHASE2_DHCP.md) §11; the earlier *"turn it back off"*
+      was an instruction whose reason was inherited, and the gate was on
+      through both incidents it would nominally have prevented
 - [ ] `br-mgmt` holds no `dhcpa-mgmt`, and `--cleanup` disturbed neither the
       bridge nor r6
 - [ ] **step 0c again**: `r1` still learns `10.255.1.16` as extern 2, metric
@@ -263,6 +266,7 @@ r6 regression     extern 2, metric 20, from 10.255.1.23, six hours old
 br-mgmt           uplink, s3-mgmt, r6-mgmt   (no dhcpa-mgmt)
 docker networks   clab, clab-r6              (clab-dhcp-probe gone)
 list              deleted; data/lists holds only `default`
+writes gate       left ON, deliberately (§11)
 Kea               reservation removed, pools still 0, config-test 0,
                   reload successful, _reservation() -> not_reserved
 overrides         10.255.0.40 flagged ORPHAN the moment its list stopped
