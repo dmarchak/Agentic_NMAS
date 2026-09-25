@@ -3734,6 +3734,43 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   would satisfy every no-timestamp assertion. The claim that matters is
   end-to-end: **a repeat sync of an unchanged device now records nothing at
   all**, not something small.
+- **PROVENANCE-BY-CREATION IS THE WRONG TEST FOR A FIELD-LEVEL CORRECTION**
+  (§16). `nmas-netbox-status-reset` refused to fix s1 — *"NMAS did not create
+  them, so their status is somebody's decision"* — while
+  `netbox_modified.json` held NMAS's own write of that exact value, `before
+  {'label': 'Active', 'value': 'active'} → after 'offline'`. Correct by its
+  rule and **false about the fact**: the tool declined to correct a value it
+  had made, in a message asserting the opposite. *Did NMAS create this
+  object* and *did NMAS write this value* are different questions — removal
+  needs the first, because deleting what it did not create is unrecoverable;
+  a field-level undo needs the second, which was **unanswerable until the
+  modification record existed**, which is why the script was written against
+  the wrong one. It now takes its authority from the log, which is also
+  **stronger than resetting to `active`**: it restores what the field held
+  *before NMAS touched it* — `active` for s1, `staged` for a device somebody
+  staged. `_restore_target()` unwinds an **unbroken run of NMAS's own
+  writes** and stops where the chain breaks, because a gap means somebody
+  wrote in between and theirs is the one to restore; an unrecorded
+  before-state **refuses** rather than defaulting, since this script exists
+  because a value was asserted without being known.
+- **Ten devices in NetBox and one of them removable, measured.** Both halves
+  of provenance — the `nmas-managed` tag and `netbox_created_ids.json` —
+  arrive in `eac9c5e` (**Phase 0, 2026-09-20**), while the NetBox sync dates
+  from `3135efd` (**2026-04-22**). The nine reference devices were imported by
+  five months of an importer with no provenance mechanism, so they carry
+  **neither** tag nor record; r6, onboarded after, carries both. A
+  provenance-based Remove can therefore act on r6 and is blind to the other
+  nine — *safe*, and it means the teardown mechanism has never been proven
+  against them and by construction never can be. Adopting them is a
+  deliberate act, not something to do in passing.
+- **A third churn source, in the comparison itself.** NetBox renders an enum
+  as `{"value", "label"}` and accepts a bare string, and `_comparable` reduced
+  a **reference** (`{"id": N}` → `N`) while leaving an **enum** alone — so an
+  *unchanged* enum compared unequal and the record logged a change that did
+  not happen. Reachable: `_ensure_ip_address` PATCHes its whole payload when
+  only the description or VRF differs, and that payload carries `status`.
+  Fixed keyed on the exact shape, so an arbitrary dict with a `value` key is
+  left alone, with a floor that a real enum change is still recorded.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

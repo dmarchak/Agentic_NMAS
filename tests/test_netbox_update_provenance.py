@@ -799,3 +799,125 @@ class TestNoFieldChangesJustBecauseTheSyncRan:
 
         assert netbox_guard.changed_fields(
             {"local_context_data": first}, {"local_context_data": second}) == {}
+
+
+
+class TestTheEnumShapeIsNotAChange:
+    """NetBox renders an enum as {"value": x, "label": X} and accepts "x", so
+    without normalising, an UNCHANGED enum compares unequal and the record
+    logs a change that did not happen.
+
+    Reachable today: `_ensure_ip_address` PATCHes its whole payload when only
+    the description or VRF differs, and that payload carries `status`. The
+    same churn class as the sync timestamps, living in the comparison itself.
+    """
+
+    def test_an_unchanged_enum_is_not_recorded(self):
+        assert netbox_guard.changed_fields(
+            {"status": {"value": "active", "label": "Active"}},
+            {"status": "active"}) == {}
+
+    def test_a_real_enum_change_still_is(self):
+        """The floor: normalising everything to nothing would pass the test
+        above."""
+        got = netbox_guard.changed_fields(
+            {"status": {"value": "active", "label": "Active"}},
+            {"status": "offline"})
+        assert got == {"status": {"before": "active", "after": "offline"}}
+
+    def test_a_reference_still_reduces_to_its_id(self):
+        assert netbox_guard._comparable({"id": 5, "name": "x"}) == 5
+
+    def test_an_arbitrary_dict_with_a_value_key_is_left_alone(self):
+        """Keyed on the exact enum shape, so a custom field that happens to
+        carry a `value` key is not silently collapsed."""
+        assert netbox_guard._comparable({"value": 1, "other": 2}) == {
+            "other": 2, "value": 1}
+
+
+class TestTheResetTakesAuthorityFromTheLog:
+    """*Did NMAS create this object* and *did NMAS write this value* are
+    different questions, and only the second matters for a field-level
+    correction.
+
+    The first version of this script asked the first one and answered **no**
+    for s1 — whose cohort was imported months before provenance existed — so
+    it refused to correct a value NMAS had itself written, in a message
+    claiming the status was "somebody's decision". The modification record
+    holds that write, with its before and after.
+    """
+
+    def _script(self):
+        loader = importlib.machinery.SourceFileLoader(
+            "reset_under_test", "scripts/nmas-netbox-status-reset")
+        spec = importlib.util.spec_from_loader("reset_under_test", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+
+    def _entry(self, at, before, after, name="s1"):
+        return {"id": 41, "name": name, "at": at, "endpoint": "dcim/devices",
+                "fields": {"status": {"before": before, "after": after}}}
+
+    def test_it_restores_what_the_field_held_before(self):
+        mod = self._script()
+        value, refusal = mod._restore_target([
+            self._entry("2026-09-24T05:22:00Z",
+                        {"value": "active", "label": "Active"}, "offline")])
+        assert refusal is None and value == "active"
+
+    def test_it_restores_a_humans_value_not_a_default(self):
+        """`staged` for a device somebody had deliberately staged — which is
+        the argument for reading the log rather than resetting to 'active'."""
+        mod = self._script()
+        value, _ = mod._restore_target([
+            self._entry("2026-09-24T05:22:00Z",
+                        {"value": "staged", "label": "Staged"}, "offline")])
+        assert value == "staged"
+
+    def test_it_unwinds_an_unbroken_run_of_nmass_own_writes(self):
+        mod = self._script()
+        value, _ = mod._restore_target([
+            self._entry("2026-09-01T00:00:00Z", "active", "offline"),
+            self._entry("2026-09-02T00:00:00Z", "offline", "active"),
+            self._entry("2026-09-03T00:00:00Z", "active", "offline"),
+        ])
+        assert value == "active"
+
+    def test_a_gap_in_the_chain_stops_the_unwind(self):
+        """Somebody else wrote in between, so THEIR value is the one to
+        restore — not whatever the field held before NMAS first touched it."""
+        mod = self._script()
+        value, _ = mod._restore_target([
+            self._entry("2026-09-01T00:00:00Z", "active", "offline"),
+            # a human set it to 'staged' here; NMAS's next write saw that
+            self._entry("2026-09-03T00:00:00Z", "staged", "offline"),
+        ])
+        assert value == "staged"
+
+    def test_an_unknown_before_refuses_rather_than_defaulting(self):
+        """This script exists because a value was asserted without being
+        known. Guessing a target would be the same mistake."""
+        mod = self._script()
+        value, refusal = mod._restore_target(
+            [{"id": 41, "at": "2026-09-24T05:22:00Z",
+              "endpoint": "dcim/devices", "before_unknown": True}])
+        assert value is None and "unknown" in refusal
+
+    def test_a_device_nmas_never_wrote_is_not_touched(self):
+        mod = self._script()
+        value, refusal = mod._restore_target([])
+        assert value is None and "never written" in refusal
+
+    def test_it_does_not_consult_the_created_object_record(self):
+        """The defect this version exists to fix. Asking 'did NMAS create
+        this' refuses to undo NMAS's own write on any device imported before
+        provenance existed — which is nine of the ten here."""
+        src = open("scripts/nmas-netbox-status-reset", encoding="utf-8").read()
+        code = "\n".join(ln for ln in src.splitlines()
+                          if not ln.strip().startswith("#"))
+        body = code.split('"""', 2)[-1]
+        assert "was_created_by_nmas" not in body
+        assert "has_managed_tag" not in body
+        # Floor: it really does read the modification record.
+        assert "modified_since" in body

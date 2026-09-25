@@ -293,8 +293,21 @@ def _comparable(value):
     modification on every no-op sync and stop meaning anything.
     """
     if isinstance(value, dict):
-        return value["id"] if "id" in value else {
-            k: _comparable(v) for k, v in sorted(value.items())}
+        if "id" in value:
+            return value["id"]
+        # NetBox renders an ENUM as {"value": x, "label": X} and accepts a
+        # bare "x" — so without this an unchanged enum compares unequal and
+        # the record logs a change that did not happen. Reachable today:
+        # `_ensure_ip_address` PATCHes its whole payload when only the
+        # description or VRF differs, and that payload carries `status`.
+        # The same churn class as the sync timestamps, living in the
+        # comparison itself rather than in a field.
+        #
+        # Keyed on the exact shape, so an arbitrary dict that happens to have
+        # a "value" key is left alone.
+        if set(value) <= {"value", "label"} and "value" in value:
+            return value["value"]
+        return {k: _comparable(v) for k, v in sorted(value.items())}
     if isinstance(value, (list, tuple)):
         return [_comparable(v) for v in value]
     return value

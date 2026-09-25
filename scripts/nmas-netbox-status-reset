@@ -1,26 +1,34 @@
 #!/usr/bin/env python3
-"""Correct the device statuses NMAS wrote from a ping result.
+"""Undo the device statuses NMAS wrote from a ping result.
 
 Until 2026-09-24 the sync set a device's NetBox status from the in-memory ping
-cache, so a single ICMP or TCP attempt that did not answer within five seconds
-of the sync wrote `offline` into the source of truth as a standing claim.
-Measured: NetBox called s1 offline while s1 was answering SSH.
+cache, so one ICMP or TCP attempt that did not answer within five seconds of
+the sync wrote `offline` into the source of truth as a standing claim.
+Measured: NetBox called s1 offline while s1 was answering SSH. The writer is
+fixed — `status` is out of the update allowlist — and that alone leaves every
+wrong value in place for ever, because nothing will write the field again.
 
-The writer is fixed — `status` is gone from the update allowlist — and **that
-alone leaves every wrong value in place for ever**, because nothing will ever
-write the field again. This corrects them once.
+**Its authority is the modification record, not the created-object record**,
+and that distinction is the whole point of this script's second version. The
+first asked *did NMAS create this device* — and answered **no** for s1, whose
+nine-device cohort was imported months before provenance existed, so it
+refused to correct a value it had itself written, in a message claiming the
+status was "somebody's decision". It was not: `netbox_modified.json` holds the
+write, with `before` and `after`.
 
-After the change the field means *NMAS onboarded this device*, not *it answered
-a ping*. So the target is `active`, and it is claimed only for devices NMAS
-created: **provenance governs**, exactly as removal does. A device a human
-curated, or deliberately marked `planned`, `staged` or `decommissioning`, is
-reported and left alone.
+*Did NMAS create this object* and *did NMAS write this value* are different
+questions, and only the second one matters for a field-level correction. It is
+also now **answerable**, which it was not when the first version was written.
 
-    python3 scripts/nmas-netbox-status-reset              # dry run
+So this restores what the field held **before NMAS touched it** — `active` for
+s1, and `staged` for a device somebody had deliberately staged. It never
+guesses a target.
+
+    python3 scripts/nmas-netbox-status-reset            # dry run
     python3 scripts/nmas-netbox-status-reset --apply
 
-Dry run by default. Every change goes through `_nb_patch`, so it is gated on
-`netbox_allow_writes` and recorded in the modification log like any other.
+Dry run by default. Every write goes through `_nb_patch`, so it is gated on
+`netbox_allow_writes` and recorded like any other.
 """
 
 import argparse
@@ -30,25 +38,89 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-TARGET = "active"
+ENDPOINT = "dcim/devices"
 
 
-def _collect(session, base, list_name):
-    """(eligible, skipped) — devices NMAS created whose status is not active."""
-    from modules.netbox_client import _nb_get
-    from modules.netbox_guard import has_managed_tag, was_created_by_nmas
+def _status_value(raw):
+    """A status as a bare string, whatever shape it was recorded in.
 
-    eligible, skipped = [], []
-    for dev in _nb_get(session, base, "dcim/devices/"):
-        status = (dev.get("status") or {}).get("value") or ""
-        if status == TARGET:
+    Entries written before the enum fix hold NetBox's `{"value", "label"}`
+    form on the `before` side and a bare string on the `after` side, because
+    one came from a GET and the other from the payload. Both must read.
+    """
+    if isinstance(raw, dict):
+        return raw.get("value") or ""
+    return raw or ""
+
+
+def _restore_target(entries):
+    """The value `status` held before NMAS's unbroken run of writes.
+
+    Walks backwards from the most recent write while each entry's `before`
+    is the previous entry's `after` — an unbroken chain of NMAS's own writes —
+    and stops where the chain breaks, because a gap means somebody else set
+    the value in between and **theirs is the one to restore**.
+
+    Returns ``(value, None)`` or ``(None, reason)``. A write whose before-state
+    was unreadable refuses rather than falling back to a default: this script
+    exists because a value was asserted without being known.
+    """
+    chain = [e for e in entries if "status" in (e.get("fields") or {})
+             or e.get("before_unknown")]
+    if not chain:
+        return None, "NMAS has never written this device's status"
+
+    chain.sort(key=lambda e: e.get("at") or "")
+    if chain[-1].get("before_unknown"):
+        return None, ("NMAS's last status write did not record a before-state, "
+                      "so what it replaced is unknown")
+
+    i = len(chain) - 1
+    while i > 0:
+        older = chain[i - 1]
+        if older.get("before_unknown"):
+            break
+        prev_after = _status_value(older["fields"]["status"].get("after"))
+        this_before = _status_value(chain[i]["fields"]["status"].get("before"))
+        if prev_after != this_before:
+            break          # somebody else wrote in between; stop here
+        i -= 1
+
+    value = _status_value(chain[i]["fields"]["status"].get("before"))
+    if not value:
+        return None, "the recorded before-state is empty"
+    return value, None
+
+
+def _plan(session, base, list_name):
+    from modules.netbox_client import _nb_get_by_id
+    from modules.netbox_guard import modified_since
+
+    got = modified_since(list_name=list_name)
+    if not got["ok"]:
+        return None, got["reason"]
+
+    by_device = {}
+    for e in got["entries"]:
+        if e.get("endpoint") != ENDPOINT:
             continue
-        ours = (has_managed_tag(dev)
-                or was_created_by_nmas(list_name, "dcim/devices", dev.get("id")))
-        row = {"id": dev.get("id"), "name": dev.get("name") or dev.get("display"),
-               "status": status}
-        (eligible if ours else skipped).append(row)
-    return eligible, skipped
+        by_device.setdefault(e["id"], []).append(e)
+
+    rows = []
+    for dev_id, entries in sorted(by_device.items()):
+        target, refusal = _restore_target(entries)
+        name = next((e.get("name") for e in reversed(entries) if e.get("name")),
+                    f"id {dev_id}")
+        last_wrote = _status_value(
+            (entries[-1].get("fields") or {}).get("status", {}).get("after"))
+
+        obj = _nb_get_by_id(session, base, ENDPOINT, dev_id)
+        current = _status_value((obj or {}).get("status")) if obj else ""
+
+        rows.append({"id": dev_id, "name": name, "current": current,
+                     "target": target, "refusal": refusal,
+                     "last_wrote": last_wrote, "readable": obj is not None})
+    return rows, None
 
 
 def main() -> int:
@@ -58,7 +130,7 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true",
                     help="actually write; without it nothing is changed")
     ap.add_argument("--list", dest="list_name", default="",
-                    help="the device list whose created-id record to consult")
+                    help="only this device list")
     args = ap.parse_args()
 
     from modules.netbox_client import _nb_patch, _nb_ready
@@ -67,54 +139,70 @@ def main() -> int:
     ok, err, session, base = _nb_ready()
     if not ok:
         print(f"UNPROVEN — NetBox is not reachable: {err}")
-        print("Nothing was examined. That is not the same as nothing needing "
+        print("Nothing was examined, which is not the same as nothing needing "
               "correction.")
         return 2
 
-    list_name = args.list_name
-    if not list_name:
-        from modules.config import get_current_list_name
-        list_name = get_current_list_name()
+    rows, refusal = _plan(session, base, args.list_name)
+    if refusal:
+        print(f"UNPROVEN — the modification record could not be read: {refusal}")
+        print("This script's authority IS that record, so without it there is "
+              "nothing to act on. That is weaker than 'nothing to correct'.")
+        return 2
 
-    eligible, skipped = _collect(session, base, list_name)
-
-    print(f"list: {list_name}")
-    print(f"{len(eligible)} device(s) NMAS created with a status other than "
-          f"'{TARGET}'")
-    for row in eligible:
-        print(f"    {row['name']:20s} {row['status'] or '(none)'} → {TARGET}")
-    if skipped:
-        print(f"\n{len(skipped)} device(s) SKIPPED — NMAS did not create them, "
-              "so their status is somebody's decision:")
-        for row in skipped:
-            print(f"    {row['name']:20s} {row['status'] or '(none)'}")
-
-    if not eligible:
-        print("\nNothing to correct.")
+    if not rows:
+        print("NMAS has no recorded status write for any device — nothing to "
+              "undo.")
+        print("If a status looks wrong anyway, this script is the wrong tool: "
+              "it only undoes writes it can prove NMAS made.")
         return 0
 
+    todo, skipped = [], []
+    for r in rows:
+        if r["refusal"]:
+            skipped.append((r, r["refusal"]))
+        elif not r["readable"]:
+            skipped.append((r, "the device could not be read from NetBox"))
+        elif r["current"] == r["target"]:
+            skipped.append((r, f"already '{r['target']}'"))
+        elif r["current"] != r["last_wrote"]:
+            skipped.append((r, f"now '{r['current']}', which is not what NMAS "
+                               f"wrote ('{r['last_wrote']}') — somebody has "
+                               "set it since, and theirs stands"))
+        else:
+            todo.append(r)
+
+    print(f"list: {args.list_name or '(all)'}")
+    print(f"{len(todo)} device(s) to restore:")
+    for r in todo:
+        print(f"    {r['name']:20s} {r['current']} → {r['target']}"
+              f"   (NMAS wrote '{r['last_wrote']}' over '{r['target']}')")
+    if skipped:
+        print(f"\n{len(skipped)} skipped:")
+        for r, why in skipped:
+            print(f"    {r['name']:20s} {why}")
+
+    if not todo:
+        print("\nNothing to restore.")
+        return 0
     if not args.apply:
         print("\nDRY RUN — nothing was written. Re-run with --apply.")
         return 0
 
     changed = failed = 0
-    with for_list(list_name, actor=f"{os.environ.get('USER') or 'unknown'} "
-                                   "(nmas-netbox-status-reset)"):
-        for row in eligible:
+    actor = f"{os.environ.get('USER') or 'unknown'} (nmas-netbox-status-reset)"
+    with for_list(args.list_name, actor=actor):
+        for r in todo:
             try:
-                _nb_patch(session, base, f"dcim/devices/{row['id']}/",
-                          {"status": TARGET})
+                _nb_patch(session, base, f"{ENDPOINT}/{r['id']}/",
+                          {"status": r["target"]})
                 changed += 1
             except Exception as exc:
                 failed += 1
-                print(f"    FAILED {row['name']}: {exc}")
+                print(f"    FAILED {r['name']}: {exc}")
 
-    print(f"\n{changed} corrected, {failed} failed")
-    if failed:
-        return 1
-    print("Recorded in the modification log like any other write — "
-          "scripts/nmas-netbox-modified")
-    return 0
+    print(f"\n{changed} restored, {failed} failed")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

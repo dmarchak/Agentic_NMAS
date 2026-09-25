@@ -1178,3 +1178,77 @@ unnoticed.
 timestamp from both (the sync time is already in NetBox's own `last_updated`),
 or to exclude a named set of churn fields from the record. The first is
 honest and the second hides a real write, so the first is the recommendation.
+
+
+## 16. The reset refused to undo its own write, and why s1 has no provenance
+
+The first `nmas-netbox-status-reset` reported:
+
+```
+0 device(s) NMAS created with a status other than 'active'
+1 device(s) SKIPPED — NMAS did not create them, so their status is somebody's decision:
+    s1   offline
+```
+
+Correct by its own rule and **false about the fact**. NMAS wrote that
+`offline` at 05:22, from the ping cache, and `netbox_modified.json` holds the
+entry: `before {'label': 'Active', 'value': 'active'} → after 'offline'`. The
+status was not somebody's decision, and the tool refused to correct a value it
+had itself made — in a message asserting the opposite.
+
+### Provenance-by-creation is the wrong test for a field-level correction
+
+*Did NMAS create this object* and *did NMAS write this value* are different
+questions. Removal needs the first, because deleting an object it did not
+create is unrecoverable. A **field-level undo** needs the second — and the
+second was **unanswerable** until the day before, which is why the script was
+written against the wrong one.
+
+So the reset now takes its authority from the **modification record**, and
+that is strictly better than resetting to `active`: it restores *what the
+field held before NMAS touched it*. `active` for s1, and `staged` for a device
+somebody had deliberately staged.
+
+`_restore_target()` walks backwards from the most recent write while each
+entry's `before` is the previous entry's `after` — an unbroken run of NMAS's
+own writes — and **stops where the chain breaks**, because a gap means
+somebody set the value in between and theirs is the one to restore. Three
+refusals rather than a default, since this script exists precisely because a
+value was asserted without being known:
+
+- a write with no recorded before-state → **refuse**, do not fall back
+- the device's current status is not what NMAS last wrote → somebody has set
+  it since, **theirs stands**
+- no recorded write at all → *"this script only undoes writes it can prove
+  NMAS made"*
+
+### Why s1 is in no created-record — measured
+
+Both halves of provenance, the `nmas-managed` tag and
+`netbox_created_ids.json`, arrive in the **same commit**: `eac9c5e`, *NSOT
+Phase 0*, **2026-09-20**. The NetBox sync itself dates from `3135efd`,
+**2026-04-22**. The nine reference devices were imported by five months of an
+importer that had no provenance mechanism at all, so they carry **neither**
+the tag nor a record. r6 was onboarded after Phase 0 and carries both.
+
+**Ten devices in NetBox, one of them removable.** That is the state to know
+before the next teardown: a provenance-based Remove can act on r6 and is
+blind to the other nine — which is *safe*, and means the mechanism has never
+been proven against them and by construction never can be. Adopting them is a
+deliberate act (tag plus record, for objects a human should confirm are
+NMAS's) and is not something to do accidentally in passing.
+
+### A third churn source, found while reading the log's own data
+
+The recorded `before` was `{'label': 'Active', 'value': 'active'}` and the
+`after` was `'offline'` — because NetBox renders an enum as
+`{"value", "label"}` and accepts a bare string, and `_comparable` reduced a
+**reference** (`{"id": N}` → `N`) while leaving an **enum** alone.
+
+So an **unchanged** enum compared unequal, and the record logged a change that
+did not happen. Reachable today: `_ensure_ip_address` PATCHes its whole
+payload when only the description or VRF differs, and that payload carries
+`status`. The same churn class as the sync timestamps, one layer down — in the
+comparison itself rather than in a field. Fixed, keyed on the exact shape so
+an arbitrary dict carrying a `value` key is left alone, with a floor that a
+real enum change is still recorded.
