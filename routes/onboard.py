@@ -127,6 +127,11 @@ def _plan_args(data, list_name: str, *, secret: str) -> dict:
         secret=secret,
         domain=(data.get("domain") or "rcn.lab").strip(),
         mgmt_interface=(data.get("mgmt_interface") or "").strip(),
+        # A STATED SOURCE, defaulted to `static` so every existing caller and
+        # every existing test is unchanged. `dhcp` is only ever reached by
+        # somebody saying so.
+        address_source=(data.get("address_source") or "static").strip(),
+        mgmt_mac=(data.get("mgmt_mac") or "").strip(),
     )
 
 

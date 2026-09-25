@@ -35,9 +35,16 @@ function onboardReviewHtml(plan, bootstrapConfig) {
   const rows = [
     ['Name', plan.hostname], ['Platform', plan.platform],
     ['List', `${plan.list} (${plan.source_kind})`],
-    ['Management IP', plan.mgmt_mask
-        ? `${plan.mgmt_ip} ${plan.mgmt_mask} on ${plan.manager_interface || '(no interface)'}`
-        : plan.mgmt_ip],
+    /* THE PLAN'S OWN CHECK, not a restatement of the form. `address_claim`
+       is computed server-side from what Kea actually said, so for DHCP this
+       reads "assigned by Kea reservation <mac> -> <address>" -- a claim
+       checked a moment ago -- and never "assigned by DHCP", which is a
+       promise about later that nothing here would notice failing. */
+    ['Management IP', plan.address_source === 'dhcp'
+        ? `${plan.address_claim || 'DHCP'} on ${plan.manager_interface || '(no interface)'}`
+        : (plan.mgmt_mask
+            ? `${plan.mgmt_ip} ${plan.mgmt_mask} on ${plan.manager_interface || '(no interface)'}`
+            : plan.mgmt_ip)],
     ['Gateway', plan.manager_gateway || 'none \u2014 NMAS is on this subnet'],
     ['Template', plan.template || '(none bound)'],
     ['Credential source', plan.cred_source || '(not resolved)'],
@@ -106,7 +113,26 @@ const ONBOARD_FIELDS = {
   manager_interface: 'obMgrIntf',
   manager_gateway:   'obMgrGw',
   mgmt_interface:    'obMgmtIntf',
+  /* Phase 2. ORDINARY ENTRIES, so they re-validate like everything else --
+     the binding list is what the change listeners iterate, and a field read
+     and sent but watched by nothing is what left "no network mask" on screen
+     while the payload was already correct. */
+  address_source:    'obAddrSource',
+  mgmt_mac:          'obMgmtMac',
 };
+
+/* The MAC matters only for DHCP, and a field that is always visible invites
+   filling it in for a static device where nothing reads it. Revealed rather
+   than disabled, so the form does not carry a control whose purpose is
+   unexplained. */
+function onboardAddressSourceChanged() {
+  const source = document.getElementById('obAddrSource');
+  const row = document.getElementById('obMacRow');
+  const staticRows = document.querySelectorAll('.ob-static-only');
+  const dhcp = !!source && source.value === 'dhcp';
+  if (row) row.style.display = dhcp ? '' : 'none';
+  staticRows.forEach(function (el) { el.style.display = dhcp ? 'none' : ''; });
+}
 
 function onboardFormPayload() {
   const out = {};

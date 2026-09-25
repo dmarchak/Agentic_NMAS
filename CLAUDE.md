@@ -859,6 +859,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_deploy_plan_apply_seam.py` | plan driven into apply: the capture-hash handshake, and the command_hashes the wizard does not send |
 | `test_authoring_schema.py` | omitting an interface key is fine and misspelling one is refused; filling changes no output |
 | `test_onboard_dhcp_source.py` | dhcp is a source not an absence; the reservation refuses at plan time; the review claim is checkable |
+| `test_server_reads_nothing_the_form_cannot_send.py` | a field only curl can supply is a feature no operator has; both directions, named exemptions |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -3191,6 +3192,39 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   wrote down — declaring a lab there is the price of the test being able to
   help at all. A reserved list without reasons is one nobody can maintain,
   because the next reader cannot tell a live claim from a stale one.
+- **EIGHTH instance of a capability existing and nothing a person can reach
+  calling it**, and the plainest. Phase 2's `address_source` and `mgmt_mac`
+  were built in `_plan_args()`, `build_plan()` and `render_bootstrap()`, and
+  the wizard was still the static-only form — **its acceptance was written as
+  *"the review screen reads 'assigned by Kea reservation …'"*, on a screen with
+  no way to be told the address was reserved.** After `run_onboarding`
+  returning 501, `loadOnboardPending` having no caller, the pending banner
+  dropping its list, `finish_bootstrap` unwired, `/onboard/create` sending
+  `body: '{}'`, the deploy wizard omitting `command_hashes`, and `vs_intent`
+  reading the working tree.
+  **Why the tests were silent**: the payload tests construct plan arguments
+  directly — the seam that hid `body: '{}'` — and the renderer tests execute
+  the render without the fetch. Each half was right about its own half.
+- **So the class is mechanised: the server may read nothing the form cannot
+  send.** `test_server_reads_nothing_the_form_cannot_send.py` parses what
+  `_plan_args()` pulls out of `data` and what `ONBOARD_FIELDS` maps, and
+  asserts the first is covered by the second — *a field only `curl` can supply
+  is a feature no operator has.* It runs **both ways**: a field the form sends
+  and the route ignores is a control that does nothing, which is the same lie
+  as a greyed-out button wearing a placeholder. Exemptions are **named with a
+  reason** and capped at five, because an exemption set that grows unnoticed is
+  the check being switched off one field at a time; a commented-out field does
+  not count as sent, or commenting one out would satisfy the check silently.
+  **It found a second instance on its first run**: `domain` is read, defaults
+  to `rcn.lab`, and has no field — unlike `secret` and `source_kind` there is
+  no reason a person could not set it, so it is recorded as *a gap under
+  exemption* rather than a clean one.
+- **A control that passes on a renderer is a missing test.** Removing the
+  review's DHCP branch left the suite green while the screen said nothing about
+  the reservation — the claim was computed, carried to the browser and drawn
+  nowhere, for the fifth time. `TestTheReviewStatesWhatKeaSaid` executes the
+  shipped `onboardReviewHtml` against a DHCP plan, and carries a floor that the
+  static branch is not captured by it.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

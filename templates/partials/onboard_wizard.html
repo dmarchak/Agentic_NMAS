@@ -39,17 +39,43 @@
             <label class="form-label small fw-semibold" for="obPlatform">Platform</label>
             <select class="form-select form-select-sm" id="obPlatform"></select>
           </div>
+          {# A SOURCE, never an "address optional" checkbox. The generator
+             refuses an empty address because the failure it prevents is
+             silent -- the device boots, reports healthy, answers its console
+             and is onboardable by nothing. A checkbox turns that refusal into
+             something a person switches off, after which "I meant DHCP" and
+             "I forgot the address" look identical from this form. #}
           <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obAddrSource">Address from</label>
+            <select class="form-select form-select-sm" id="obAddrSource"
+                    onchange="onboardAddressSourceChanged()">
+              <option value="static" selected>Static (in the config)</option>
+              <option value="dhcp">DHCP (Kea reservation)</option>
+            </select>
+          </div>
+          <div class="col-md-3 ob-static-only">
             <label class="form-label small fw-semibold" for="obMgmtIp">Management IP</label>
             <input class="form-control form-control-sm" id="obMgmtIp"
                    placeholder="10.255.0.31">
           </div>
         </div>
         <div class="row g-2 mb-3">
-          <div class="col-md-3">
+          <div class="col-md-3 ob-static-only">
             <label class="form-label small fw-semibold" for="obMgmtMask">Mask</label>
             <input class="form-control form-control-sm" id="obMgmtMask"
                    placeholder="255.255.255.0">
+          </div>
+          {# Revealed only for DHCP. The reservation is checked at PLAN time,
+             so the review screen states what Kea said rather than what will
+             happen -- and a device with no reservation is refused, because a
+             dynamic lease moves at a renewal and this record would not. #}
+          <div class="col-md-3" id="obMacRow" style="display:none">
+            <label class="form-label small fw-semibold" for="obMgmtMac">MAC address</label>
+            <input class="form-control form-control-sm" id="obMgmtMac"
+                   placeholder="aa:bb:cc:00:02:40">
+            <div class="form-text small">Must match a <strong>host
+              reservation</strong> in Kea, and the MAC pinned in the
+              topology. A dynamic lease is refused.</div>
           </div>
           <div class="col-md-3">
             <label class="form-label small fw-semibold" for="obMgrIntf">Management interface</label>

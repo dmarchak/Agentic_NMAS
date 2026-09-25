@@ -337,7 +337,12 @@ class TestTheFormIsReadAndWatchedFromOneList:
     """
 
     ALL_IDS = ("obList", "obHostname", "obPlatform", "obMgmtIp", "obMgmtMask",
-               "obMgrIntf", "obMgrGw", "obMgmtIntf")
+               "obMgrIntf", "obMgrGw", "obMgmtIntf",
+               # Phase 2. Ordinary entries on purpose, so they re-validate
+               # like the rest -- a field read and sent but watched by nothing
+               # is what left "no network mask" on screen while the payload
+               # was already correct.
+               "obAddrSource", "obMgmtMac")
 
     def _stub_dom(self, values):
         return ("var __bound = [];\n"
@@ -356,7 +361,8 @@ class TestTheFormIsReadAndWatchedFromOneList:
         payload = json.loads(out)
         assert set(payload) == {"list_name", "hostname", "platform", "mgmt_ip",
                                 "mgmt_mask", "manager_interface",
-                                "manager_gateway", "mgmt_interface"}
+                                "manager_gateway", "mgmt_interface",
+                                "address_source", "mgmt_mac"}
         # Every value arrives, not just every key. A builder reading the
         # wrong id would return the right shape full of empty strings.
         assert "" not in payload.values(), payload
@@ -569,3 +575,50 @@ class TestAnAdvisoryIsShownAndDoesNotBlock:
         """A panel that always carries a note is a panel nobody reads."""
         html = _html(js, CLEAN)
         assert "alert-warning" not in html
+
+
+class TestTheReviewStatesWhatKeaSaid:
+    """**Control BG passed without this**: removing the DHCP branch from the
+    review left the suite green while the screen showed nothing about the
+    reservation. A missing test, not a broken control.
+
+    `address_claim` is computed server-side from Kea's own answer, so the
+    review states *"assigned by Kea reservation <mac> → <address>"* — checked a
+    moment ago — rather than *"assigned by DHCP"*, which is a promise about
+    later that nothing here would notice failing.
+    """
+
+    @staticmethod
+    def _dhcp_plan(**kw):
+        plan = {"hostname": "bp-dhcp-a", "platform": "cisco_iosxe",
+                "list": "probe", "source_kind": "local",
+                "address_source": "dhcp", "mgmt_mac": "aa:bb:cc:00:02:40",
+                "mgmt_ip": "", "mgmt_mask": "",
+                "manager_interface": "GigabitEthernet2",
+                "address_claim": ("assigned by Kea reservation "
+                                  "aa:bb:cc:00:02:40 → 10.255.0.40"),
+                "blocking_reasons": [], "advisories": []}
+        plan.update(kw)
+        return plan
+
+    def test_the_reservation_claim_is_on_screen(self, js):
+        html = _html(js, self._dhcp_plan())
+        assert "Kea reservation aa:bb:cc:00:02:40" in html
+        assert "10.255.0.40" in html
+
+    def test_a_refused_reservation_is_shown_as_refused(self, js):
+        html = _html(js, self._dhcp_plan(
+            address_claim=("DHCP, and Kea has NO reservation for "
+                           "aa:bb:cc:00:02:40 — a dynamic lease moves and "
+                           "this record would not"),
+            blocking_reasons=["Kea has no host reservation for aa:bb:cc:00:02:40"]))
+        assert "NO reservation" in html
+        assert "dynamic lease moves" in html
+
+    def test_static_is_unchanged(self, js):
+        """**The floor.** The DHCP branch must not capture the static case."""
+        html = _html(js, self._dhcp_plan(
+            address_source="static", mgmt_ip="203.0.113.32",
+            mgmt_mask="255.255.255.0", address_claim="ignored for static"))
+        assert "203.0.113.32 255.255.255.0" in html
+        assert "ignored for static" not in html
