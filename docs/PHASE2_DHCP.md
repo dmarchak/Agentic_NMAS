@@ -1460,3 +1460,74 @@ them visible before it:
 only reason they are visible now is that something finally recorded what it
 wrote. A record that nobody can bear to read is worth nothing — which is why
 each of these mattered enough to fix rather than filter.
+
+
+## 20. A sixth: a guard that could never be satisfied
+
+```
+06:21:41  extras/config-templates/1  template_code: 519 B → 521 B (sha e96268e9b1e2 → 57cda3e1ac6b)
+06:24:19  extras/config-templates/1  template_code: 519 B → 521 B (sha e96268e9b1e2 → 57cda3e1ac6b)
+```
+
+**Identical before *and* after, twice.** The log's own repetition is what
+proved this was representational rather than a content change — a content
+change would have moved one of the four numbers.
+
+### The two bytes, measured
+
+Not guessed. The sizes are JSON-serialised, which is the whole explanation:
+
+```
+raw length                508
+json-serialised           521      <- what NMAS sends
+one trailing \n removed   519      <- what NetBox stores and returns
+```
+
+**NetBox strips a trailing newline from `template_code` on write**, and one
+newline is *two* characters once JSON-escaped. Exactly the reported delta,
+arrived at by arithmetic.
+
+### The guard was there, and had never once been true
+
+`_ensure_config_template` already guards its write:
+
+```python
+if existing.get("template_code") != _NDM_TEMPLATE_CODE:
+```
+
+It compares what NetBox stores against a constant NetBox will never store, so
+it was **permanently true** and the template has been rewritten on every sync
+since it was introduced. *A guard that can never be satisfied is worse than no
+guard, because it makes the write look considered.*
+
+Same two halves as the tags fix, and the same ordering: the comparison is one
+of them and the unnecessary write is the other. Here one change closes both —
+the constant is defined as **what NetBox will actually store**, so what is sent
+equals what comes back and the existing guard starts working for the first
+time.
+
+### What was deliberately not done
+
+`.strip()` on both sides of the comparison would also have silenced it — and
+would paper over **any other** normalisation NetBox applies, which is precisely
+the class of thing the record exists to reveal. It would also stop a genuine
+template edit ever being deployed if it differed only in whitespace.
+
+Fix the discrepancy that was measured; let the record surface the next one.
+That is how this one was found.
+
+### Six sources, and the pattern across them
+
+| # | source | shape |
+|---|---|---|
+| 1 | `comments` timestamp | a field that changes because the sync ran |
+| 2 | `ndm_sync` | the same, one level down |
+| 3 | enum vs reference | two representations of one value |
+| 4 | `role`/`device_role` | one field under two names |
+| 5 | `tags` | a set compared as a sequence, and an unconditional write |
+| 6 | `template_code` | a value that cannot round-trip, and a guard that therefore never held |
+
+Three of the six are **two representations of the same fact** compared as if
+they were two facts. That is worth naming as the dominant shape: the record
+did not find six unrelated bugs, it found one kind of mistake six times, and
+it could only find them by writing down what was actually sent.

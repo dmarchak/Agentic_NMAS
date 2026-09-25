@@ -3868,6 +3868,28 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   only reason they are visible is that something finally recorded what it
   wrote. *A record nobody can bear to read is worth nothing* — which is why
   each was fixed rather than filtered.
+- **A SIXTH: A GUARD THAT COULD NEVER BE SATISFIED** (§20). The same entry
+  twice — `template_code: 519 B → 521 B`, **identical before *and* after** —
+  and the log's own repetition is what proved it representational rather than
+  a content change. Measured, not guessed: the sizes are JSON-serialised, so
+  **one stripped trailing newline is two characters**, exactly the delta.
+  `_ensure_config_template` already guarded its PATCH on `existing !=
+  _NDM_TEMPLATE_CODE`, comparing what NetBox stores against a string NetBox
+  will never store — **permanently true**, so the template has been rewritten
+  on every sync since it was introduced. *A guard that can never be satisfied
+  is worse than no guard, because it makes the write look considered.* The
+  constant is now defined as what NetBox will actually store, so the existing
+  guard starts working for the first time. **Deliberately not `.strip()` on
+  both sides**: that papers over any other normalisation NetBox applies —
+  exactly the class the record exists to reveal — and would stop a genuine
+  whitespace-only template edit ever deploying. Fix the measured discrepancy;
+  let the record surface the next.
+- **Six churn sources, and three of them are two representations of one fact
+  compared as two facts** (enum vs reference, `role`/`device_role`,
+  `template_code`'s newline). The record did not find six unrelated bugs — it
+  found **one kind of mistake six times**, and could only find them by writing
+  down what was actually sent. Device noise is now measured to zero: a
+  ten-device sync produced **no device entries at all**.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

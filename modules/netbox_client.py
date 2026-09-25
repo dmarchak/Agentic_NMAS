@@ -1605,7 +1605,22 @@ _NDM_TEMPLATE_CODE = """\
 {% else %}
 ! No running configuration was captured during the last sync.
 {% endif %}
-"""
+""".rstrip("\n")
+# ^ NETBOX STRIPS A TRAILING NEWLINE ON WRITE, so the constant is defined as
+# what NetBox will actually store rather than as what the literal produces.
+#
+# Measured: NMAS sent 521 bytes (JSON-serialised) and read back 519 — one
+# newline, which is two characters once escaped. `_ensure_config_template`
+# already guards its PATCH on `existing != _NDM_TEMPLATE_CODE`, so the guard
+# was **permanently true** and the template was rewritten on every sync since
+# it was introduced, each time recorded as a change that had not happened.
+# A guard that can never be satisfied is worse than no guard, because it makes
+# the write look considered.
+#
+# Deliberately NOT `.strip()` on both sides of the comparison: that would
+# paper over any other normalisation NetBox applies, and the point of the
+# modification record is that such a thing shows up. Fix the discrepancy that
+# was measured; let the record reveal the next one.
 
 
 def _ensure_config_template(session: requests.Session, base: str) -> Optional[int]:

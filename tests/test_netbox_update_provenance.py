@@ -1206,3 +1206,60 @@ class TestTheProtocolTagMergeDoesNotWriteForNothing:
         # Floor: the PATCH is still reachable, i.e. this did not pass by the
         # write having been deleted.
         assert "_nb_patch(session, base," in body
+
+
+class TestTheConfigTemplateRoundTrips:
+    """A guard that can never be satisfied is worse than no guard, because it
+    makes the write look considered.
+
+    `_ensure_config_template` already compared `existing["template_code"]`
+    against the constant before PATCHing — and NetBox strips a trailing
+    newline on write, so the two could never be equal. The template was
+    rewritten on every sync since it was introduced, each time recorded as a
+    change that had not happened:
+
+        06:21:41  extras/config-templates/1  519 B → 521 B (sha e96268… → 57cda3…)
+        06:24:19  extras/config-templates/1  519 B → 521 B (sha e96268… → 57cda3…)
+
+    Identical before *and* after, twice — the log's own repetition is what
+    proved it was representational rather than a content change.
+    """
+
+    def test_the_template_carries_no_trailing_newline(self):
+        from modules.netbox_client import _NDM_TEMPLATE_CODE
+
+        assert _NDM_TEMPLATE_CODE == _NDM_TEMPLATE_CODE.rstrip("\n")
+        # Floor: it is still a template, not an empty string.
+        assert "{% endif %}" in _NDM_TEMPLATE_CODE
+        assert "{{ running_config }}" in _NDM_TEMPLATE_CODE
+
+    def test_what_is_sent_equals_what_netbox_stores(self):
+        """The whole defect in one assertion: the value NMAS sends must be the
+        value it will read back, or the guard compares two different things
+        for ever."""
+        from modules.netbox_client import _NDM_TEMPLATE_CODE
+
+        stored = _NDM_TEMPLATE_CODE.rstrip("\n")   # what NetBox does on write
+        assert netbox_guard.changed_fields(
+            {"template_code": stored},
+            {"template_code": _NDM_TEMPLATE_CODE}) == {}
+
+    def test_a_real_template_edit_is_still_a_change(self):
+        """The floor. Normalising both sides of the comparison would pass the
+        test above and stop the template ever being updated."""
+        from modules.netbox_client import _NDM_TEMPLATE_CODE
+
+        got = netbox_guard.changed_fields(
+            {"template_code": "! something else"},
+            {"template_code": _NDM_TEMPLATE_CODE})
+        assert set(got) == {"template_code"}
+
+    def test_the_comparison_does_not_strip_both_sides(self):
+        """Deliberately not `.strip()` on the comparison: that would paper
+        over any other normalisation NetBox applies, and the record existing
+        is what makes such a thing visible. Fix the measured discrepancy; let
+        the record reveal the next."""
+        src = open("modules/netbox_client.py", encoding="utf-8").read()
+        body = src.split("def _ensure_config_template(")[1].split("\ndef ")[0]
+        assert 'existing.get("template_code") != _NDM_TEMPLATE_CODE' in body
+        assert ".strip()" not in body
