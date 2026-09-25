@@ -229,10 +229,28 @@ def list_templates():
     list_name = _active_list()
     repo = _repo_for(list_name)
     _seed_and_commit(list_name, repo)
+    from modules.nsot import approval
+
     entries = []
-    for tpl in templates_repo.list_templates(repo):
+    listed = templates_repo.list_templates(repo)
+    platform_templates = [t["path"] for t in listed
+                          if not t["path"].split("/")[-1].startswith("_")]
+    for tpl in listed:
         bound = templates_repo.devices_for_template(repo, tpl["path"])
-        entries.append({**tpl, "bound_devices": [b["device"] for b in bound]})
+        entry = {**tpl, "bound_devices": [b["device"] for b in bound]}
+        # A SHARED file (`_common.j2`) has no bindings and no approval of its
+        # own, and was hidden from the panel -- so the only way to edit the
+        # macros every template renders through was the shell, bypassing the
+        # editor's syntax check and its recorded revocation. It is listed
+        # now, with what editing it would revoke.
+        if tpl["path"].split("/")[-1].startswith("_"):
+            entry["shared"] = True
+            entry["imported_by"] = [p for p in platform_templates
+                                    if tpl["path"] in approval.template_closure(repo, p)]
+        entries.append(entry)
+    # NO approval state here, deliberately: `/templates/approval/<path>` is
+    # the one answer. An `approved` key read from this listing is a missing
+    # key, not a verdict.
     return jsonify({"ok": True, "templates": entries,
                     "bindings": templates_repo.load_bindings(repo)})
 

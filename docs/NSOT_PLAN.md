@@ -1920,9 +1920,68 @@ the confirmed path.
    --no-netbox` reads `_common.j2` **stale** (at `4771a4c`) before the edit,
    and must read **current** after it. Anything else, such as `edited`,
    means the pasted text is not byte-identical to the shipped file.
+   *DONE 2026-09-25 17:55 (operator): `_common.j2` committed as `d1057dc`,
+   and both templates re-approved with no changes, against r1–r6 and s1–s4.
+   The approval gate caught the edit from the fingerprint, not from the
+   editor: `/templates/approval/<path>` read `approved: false`, "the template
+   was edited", with previous timestamps kept. **Correction to this step's
+   wording:** `_common.j2` could not be opened from the Template library,
+   which hid every `_`-prefixed file, so the edit was made in the shell. From
+   the commit after `dd9d6ac` the panel lists it as a shared file, with what
+   editing it revokes and Edit only (it has no approval of its own).
+   `GET /templates` carries NO approval field; `/templates/approval/<path>`
+   is the only answer.*
 4. **Per device, one at a time:** complete the block in committed intent
    (trap `notifications`, heartbeat 300; r6 needs the whole block), then plan
    and confirm through the deploy path. Confirm needs a person.
+
+   **The edit, for the nine existing devices** (switches also keep
+   `console: false`):
+   ```yaml
+   logging:
+     hosts: []
+     settings: []
+     syslog:
+       trap: notifications
+       origin_id: hostname
+       source_interface: Loopback0
+       hosts:
+       - 10.255.1.10
+       heartbeat: 300
+   ```
+   The three `settings` lines and the `hosts` entry MOVE into the block. The
+   editor refuses the same fact in two places ("one owner per fact").
+   **r6** has `logging: {hosts: [], settings: []}` and gets the same block
+   whole. It reaches the collector through its `10.255.0.0/16 via 10.255.0.1`
+   route, sourcing from Loopback0 (`10.255.1.16`).
+
+   **The program the plan must show**, computed with `merge_commands()`
+   against the fleet fixtures for s4 and r2:
+   `logging trap notifications`, then `event manager applet NMAS-HEARTBEAT`
+   with its two children, then `exit`. Nothing else. Rollback: `logging trap
+   critical` and `no event manager applet NMAS-HEARTBEAT`. For r6, also
+   `logging origin-id hostname`, `logging source-interface Loopback0` and
+   `logging host 10.255.1.10`. **Any other line in the preview means the
+   device or its secrets drifted: stop.**
+
+   **Order**, and why:
+   1. **s4** (vIOS-L2 leaf, not the manager's gateway) proves the switch
+      path end to end.
+   2. **r2** proves IOS-XE.
+   3. s1, s2, r1, r3, r4, r5.
+   4. **s3** after those: it is the manager's L2 gateway (Vlan99). A logging
+      change does not touch reachability, but s3 is the one device where a
+      surprise costs the whole lab.
+   5. **r6** last: the only full-block deploy, in its own lab.
+
+   **Check each before the next.**
+   - The deploy result verifies, and one golden commit is written.
+   - `show logging` reads `Trap logging: level notifications`.
+   - Within one interval (first firing ~300 s after the applet registers,
+     measured on the probe),
+     `grep NMAS-HEARTBEAT /var/log/network/<loopback-ip>.log` has a line,
+     and Loki `{job="network_syslog"} |= "NMAS-HEARTBEAT" |~ "\s<host>:\s"`
+     returns it. That is the same anchored match the Grafana rule uses.
 5. **Operator:** generate the rules with the Loki datasource UID, install
    them into `/etc/grafana/provisioning/alerting/`, and reload Grafana.
 6. **Acceptance:** heartbeats from all ten devices in Loki, and one

@@ -9,6 +9,61 @@ function _tEsc(s) {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// PURE RENDERERS, executed by tests/test_template_library_renders.py against
+// the payloads the routes return (OPEN_FINDINGS D3).
+
+function templateRowHtml(t) {
+  const shared = !!t.shared;
+  const bound = shared
+    ? `<span class="text-muted">shared macros &mdash; imported by ${
+        (t.imported_by || []).map(_tEsc).join(', ') || 'nothing'}</span>`
+    : (t.bound_devices.length ? t.bound_devices.map(_tEsc).join(', ')
+                              : '<span class="text-muted">none bound</span>');
+  const appr = shared
+    ? `<td class="small text-muted">no approval of its own &mdash; editing it
+         revokes: ${(t.imported_by || []).map(_tEsc).join(', ') || 'nothing'}</td>`
+    : `<td id="appr_${_tEsc(t.path).replace(/[^a-z0-9]/gi,'_')}"
+           class="small text-muted">checking&hellip;</td>`;
+  const actions = shared ? '' : `
+        <button class="btn btn-outline-primary btn-sm"
+                onclick="validateTemplate('${_tEsc(t.path)}')">Validate</button>
+        <button class="btn btn-outline-success btn-sm"
+                onclick="approveTemplate('${_tEsc(t.path)}')">Approve</button>`;
+  return `
+    <tr>
+      <td class="font-monospace small">${_tEsc(t.path)}</td>
+      <td class="small">${bound}</td>
+      ${appr}
+      <td class="text-end text-nowrap">
+        <button class="btn btn-outline-secondary btn-sm"
+                onclick="openTemplate('${_tEsc(t.path)}')">Edit</button>${actions}
+      </td>
+    </tr>`;
+}
+
+// The REASON first, then what re-approval needs. A withdrawal always carries
+// a `changes` entry, and drawing `changes` in preference to `reason` meant
+// the reason ("REVOKED: '_common.j2' was edited...") reached the browser and
+// was drawn nowhere.
+function approvalCellHtml(d) {
+  if (d.approved) {
+    return `<span class="badge bg-success">approved</span>
+        <span class="text-muted ms-1">${_tEsc(d.approved_at || '')}</span>`;
+  }
+  const lines = [d.reason].concat(d.changes || []).filter(Boolean);
+  return `<span class="badge bg-secondary">not approved</span>
+        <div class="text-muted small">${lines.map(_tEsc).join('<br>')}</div>`;
+}
+
+// Says what HAPPENED. It used to read "approval revoked" whatever the route
+// returned, so a save that withdrew nothing claimed it had.
+function saveToastText(d) {
+  const sha = String(d.commit || '').slice(0, 8) || '(no commit)';
+  return d.approval_revoked
+    ? `Saved and committed ${sha} — approval withdrawn: ${(d.revoked || []).join(', ')}`
+    : `Saved and committed ${sha} — no approval was affected`;
+}
+
 async function loadTemplateLibrary() {
   const host = document.getElementById('templateLibrary');
   if (!host || !_tplList()) return;
@@ -24,23 +79,7 @@ async function loadTemplateLibrary() {
           <div class="table-responsive"><table class="table table-sm align-middle mb-0">
             <thead><tr><th>Template</th><th>Bound devices</th>
               <th>Approval</th><th class="text-end">Actions</th></tr></thead>
-            <tbody>${d.templates.filter(t => !t.path.startsWith('_')).map(t => `
-              <tr>
-                <td class="font-monospace small">${_tEsc(t.path)}</td>
-                <td class="small">${t.bound_devices.length
-                    ? t.bound_devices.map(_tEsc).join(', ')
-                    : '<span class="text-muted">none bound</span>'}</td>
-                <td id="appr_${_tEsc(t.path).replace(/[^a-z0-9]/gi,'_')}"
-                    class="small text-muted">checking…</td>
-                <td class="text-end text-nowrap">
-                  <button class="btn btn-outline-secondary btn-sm"
-                          onclick="openTemplate('${_tEsc(t.path)}')">Edit</button>
-                  <button class="btn btn-outline-primary btn-sm"
-                          onclick="validateTemplate('${_tEsc(t.path)}')">Validate</button>
-                  <button class="btn btn-outline-success btn-sm"
-                          onclick="approveTemplate('${_tEsc(t.path)}')">Approve</button>
-                </td>
-              </tr>`).join('')}</tbody>
+            <tbody>${d.templates.map(templateRowHtml).join('')}</tbody>
           </table></div>
           <div class="form-text mb-0">
             A template can only be approved once it round-trips cleanly against
@@ -49,7 +88,7 @@ async function loadTemplateLibrary() {
           </div>
         </div>
       </div>`;
-    d.templates.filter(t => !t.path.startsWith('_')).forEach(t => _loadApproval(t.path));
+    d.templates.filter(t => !t.shared).forEach(t => _loadApproval(t.path));
   } catch (e) { console.error('loadTemplateLibrary', e); }
 }
 
@@ -58,15 +97,7 @@ async function _loadApproval(path) {
   if (!cell) return;
   try {
     const d = await (await fetch(`/templates/approval/${encodeURIComponent(path)}`)).json();
-    if (d.approved) {
-      cell.innerHTML = `<span class="badge bg-success">approved</span>
-        <span class="text-muted ms-1">${_tEsc(d.approved_at || '')}</span>`;
-    } else {
-      const why = (d.changes && d.changes.length)
-        ? d.changes.map(_tEsc).join('; ') : _tEsc(d.reason || '');
-      cell.innerHTML = `<span class="badge bg-secondary">not approved</span>
-        <div class="text-muted small">${why}</div>`;
-    }
+    cell.innerHTML = approvalCellHtml(d);
   } catch (e) { cell.textContent = 'unknown'; }
 }
 
@@ -127,7 +158,7 @@ async function saveTemplate() {
       status.textContent = d.error;            // Jinja errors carry file + line
       return;
     }
-    showToast(`Saved and committed ${d.commit.slice(0,8)} — approval revoked`, 'success');
+    showToast(saveToastText(d), 'success');
     _tplModal.hide();
     loadTemplateLibrary();
   } catch (e) {
