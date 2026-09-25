@@ -1061,7 +1061,18 @@ def bind_credentials_step(plan, *, repo: str) -> str:
     # AttributeError, so `/onboard/create` failed at its first step every
     # time it was called. Fourth inferred-signature finding of this stage,
     # and the first in shipped code rather than in a draft.
-    credentials.set_device_override(plan.mgmt_ip, "admin", secret, secret)
+    # THE RESERVED ADDRESS FOR A DHCP DEVICE, because the override is keyed on
+    # the management IP and a DHCP device has none at plan time -- so this was
+    # keying the credential under the empty string, and `resolve()` at verify
+    # would look under the discovered address and find nothing.
+    #
+    # The reservation is the right key precisely because it is the address the
+    # device is guaranteed to get: that guarantee is why a reservation is a
+    # precondition. And if the lease ever disagrees with it,
+    # `discover_dhcp_address()` refuses before anything asks for a credential,
+    # so a wrong key can never be silently used.
+    key = plan.mgmt_ip or plan.reservation_address
+    credentials.set_device_override(key, "admin", secret, secret)
     return secret
 
 
@@ -1116,6 +1127,10 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
     if sync is None:
         from modules.netbox_client import sync_list_to_netbox as sync
 
+    # THE LEASED ADDRESS, and it reached here because verification discovered
+    # it. `mgmt_ip` is the caller's, and the caller is phase 2, which took it
+    # from `verify_device`'s result rather than from the manifest -- the
+    # manifest had none to give.
     device = {"hostname": hostname, "ip": mgmt_ip,
               "platform": (entry or {}).get("platform", ""), "role": "router"}
     result = sync(list_name, [device]) or {}
@@ -1721,11 +1736,71 @@ def _recovery(repo: str, hostname: str) -> dict:
     }
 
 
+def discover_dhcp_address(mac: str, reserved: str = "", kea=None) -> dict:
+    """The address a DHCP device **actually holds**, from Kea's lease.
+
+    ``{"ok", "address", "source", "reserved", "disagreement", "reason"}``
+
+    **The lease, never the reservation.** A reservation is a statement of
+    intent; a lease is a fact about the device. They are normally equal, which
+    is the point of requiring one — and they can differ: a reservation edited
+    after the device leased, or a device still holding an older lease.
+
+    So when they disagree this **refuses and names both**. It is not a
+    tiebreak: the tool cannot know which is right, and picking one would write
+    an address into the inventory that something else disagrees with — two
+    stores disagreeing, which is the shape the reservation precondition exists
+    to prevent in the first place.
+
+    And it never falls back to the reservation when there is no lease. *"What
+    the device has"* has no answer then, and answering *"probably this"* is how
+    an inventory acquires an address nobody verified.
+    """
+    try:
+        if kea is None:
+            from modules.integrations.kea import KeaIntegration
+
+            kea = KeaIntegration()
+        lease = kea.lease_for(mac)
+    except Exception as exc:                   # noqa: BLE001
+        log.warning("onboard: lease lookup failed for %s: %s", mac, exc)
+        lease = {"state": "unknown", "address": "",
+                 "error": f"{type(exc).__name__}: {exc}"}
+
+    if lease["state"] == "unknown":
+        return {"ok": False, "address": "", "source": "", "reserved": reserved,
+                "disagreement": False, "reason": (
+                    f"Kea could not be asked which address {mac} holds"
+                    + (f" ({lease['error']})" if lease.get("error") else "")
+                    + ". Refusing rather than using the reservation: that is "
+                      "what the address was meant to be, not what the device "
+                      "has.")}
+    if lease["state"] != "found":
+        return {"ok": False, "address": "", "source": "", "reserved": reserved,
+                "disagreement": False, "reason": (
+                    f"Kea holds no active lease for {mac}. The device has not "
+                    "asked yet, or is not on the segment Kea answers on — "
+                    "either way there is no address to verify against, and the "
+                    "reservation is not a substitute for one.")}
+
+    if reserved and lease["address"] != reserved:
+        return {"ok": False, "address": lease["address"], "source": "lease",
+                "reserved": reserved, "disagreement": True, "reason": (
+                    f"the lease and the reservation disagree: Kea has {mac} on "
+                    f"{lease['address']} and the reservation says {reserved}. "
+                    "This is a finding, not a tiebreak — one of them is stale, "
+                    "and writing either into the inventory would make two "
+                    "stores disagree about the same device.")}
+
+    return {"ok": True, "address": lease["address"], "source": "lease",
+            "reserved": reserved, "disagreement": False, "reason": ""}
+
+
 def verify_device(repo: str, hostname: str, list_name: str, *,
                   mgmt_ip: str = "", username: str = "admin",
                   password: str = "", secret: str = "",
                   device_type: str = "cisco_xe", interface: str = "",
-                  online=None, reach=None) -> dict:
+                  online=None, reach=None, kea=None) -> dict:
     """Reach the device. **Reaching is the verification; failing is not.**
 
     Returns ``{"state", "answered", "prompt", "causes", "recovery",
@@ -1744,6 +1819,29 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
                 "error": f"'{hostname}' is not in this list's manifest"}
 
     mgmt_ip = mgmt_ip or (entry or {}).get("mgmt_ip", "")
+
+    # A DHCP DEVICE'S ADDRESS IS DISCOVERED, NOT READ FROM THE MANIFEST.
+    #
+    # The tool never wrote it, so `mgmt_ip` is empty here by construction, and
+    # everything downstream -- the credential lookup, `online()`, `reach()` --
+    # would have been handed "" and reported `did_not_answer` with a list of
+    # causes every one of which is wrong.
+    #
+    # It comes from Kea's LEASE, not the reservation: the reservation is what
+    # the address was meant to be and the lease is what the device has. A
+    # disagreement refuses and names both rather than picking one.
+    dhcp_note = ""
+    if not mgmt_ip and (entry or {}).get("address_source") == "dhcp":
+        found = discover_dhcp_address((entry or {}).get("mgmt_mac", ""),
+                                      (entry or {}).get("reserved_address", ""),
+                                      kea=kea)
+        if not found["ok"]:
+            return {"state": DID_NOT_ANSWER, "answered": False, "causes": [],
+                    "recovery": {"available": False},
+                    "error": found["reason"]}
+        mgmt_ip = found["address"]
+        dhcp_note = (f"address discovered from Kea's lease for "
+                     f"{(entry or {}).get('mgmt_mac', '')}")
 
     # RESOLVE THE CREDENTIAL THE TOOL ALREADY HOLDS.
     #
@@ -1808,6 +1906,10 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
         "answered": state == ANSWERED,
         "prompt": prompt,
         "mgmt_ip": mgmt_ip,
+        # WHERE THE ADDRESS CAME FROM. For a DHCP device the tool never wrote
+        # it, so "the address it verified" is a discovered fact and reporting
+        # it as though it had been configured would hide which store to trust.
+        "address_note": dhcp_note,
         # WHICH credential was tried, never the value. "device-override"
         # means the one onboarding staged; "none" means the tool had none
         # and connected with an empty password, which is the failure this
@@ -2150,6 +2252,33 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     if not _step("verify", seen.get("answered"), seen.get("state", ""),
                  credential_source=seen.get("credential_source", "")):
         return _stop("verify", seen.get("error") or "the device did not answer")
+
+    # ADOPT THE ADDRESS VERIFICATION ACTUALLY USED.
+    #
+    # For a DHCP device the manifest had none and `verify_device` discovered it
+    # from Kea's lease. Without this line every step below -- the credential
+    # lookup, the capture, the RW removal, the golden, the CSV row -- would go
+    # on using the empty string the manifest gave, and the six of them would
+    # fail for a reason none of them could name.
+    #
+    # `verify_device` is the one place that resolves it, so this is adoption
+    # rather than a second derivation.
+    mgmt_ip = seen.get("mgmt_ip") or mgmt_ip
+    result["mgmt_ip"] = mgmt_ip
+    if seen.get("address_note"):
+        result["address_note"] = seen["address_note"]
+        # Recorded on the manifest so the pending banner, the inventory and
+        # NetBox all name one address afterwards -- the device holds it now,
+        # and until this point nothing in the tool did.
+        try:
+            from modules.nsot import manifest as _mm
+
+            identity = _mm.find_by_name(repo, hostname)[0]
+            if identity:
+                _mm.upsert_device(repo, identity, hostname, mgmt_ip=mgmt_ip)
+        except Exception as exc:               # noqa: BLE001
+            log.warning("onboard: could not record %s's leased address: %s",
+                        hostname, exc)
 
     # NO STEP PASSES A CREDENTIAL TO ANOTHER STEP. Each reads it from the
     # override, which is where phase 1 put it and where rotation replaces

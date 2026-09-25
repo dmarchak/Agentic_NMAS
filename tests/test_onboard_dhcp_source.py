@@ -526,3 +526,202 @@ def _lift_pending(source):
             i += 1
         out.append(source[start:i + 1])
     return "\n".join(out) + "\n"
+
+
+class TestTheAddressIsDiscoveredFromTheLeaseNotTheReservation:
+    """The tool never wrote this address, so phase 2 has to **discover** it.
+
+    **A lease is a fact about the device; a reservation is a statement of
+    intent.** They are normally equal — that is the point of requiring one —
+    and they can differ: a reservation edited after the device leased, or a
+    device still holding an older lease. So they are read separately and never
+    substituted for one another.
+    """
+
+    LEASE = [{"result": 0, "arguments": {"leases": [
+        {"ip-address": "10.255.0.40", "hw-address": "aa:bb:cc:00:02:40",
+         "hostname": "bp-dhcp-a", "state": 0, "expire": 9e9}]}}]
+
+    def _kea(self, body, reachable=True):
+        client = KeaIntegration()
+        client.command = (lambda c, service=None:
+                          {"ok": False, "error": "Could not connect"} if not reachable
+                          else ({"ok": False, "error": "unsupported command"}
+                                if "by-hw" in c else {"ok": True, "result": body}))
+        return client
+
+    def test_the_lease_is_what_is_used(self):
+        from modules.nsot.onboard import discover_dhcp_address
+
+        out = discover_dhcp_address("aa:bb:cc:00:02:40", "10.255.0.40",
+                                    kea=self._kea(self.LEASE))
+        assert out["ok"] is True
+        assert out["address"] == "10.255.0.40"
+        assert out["source"] == "lease"
+
+    def test_a_disagreement_is_a_FINDING_not_a_tiebreak(self):
+        """One of them is stale, the tool cannot know which, and writing
+        either would make two stores disagree about one device — which is the
+        shape the reservation precondition exists to prevent."""
+        from modules.nsot.onboard import discover_dhcp_address
+
+        out = discover_dhcp_address("aa:bb:cc:00:02:40", "10.255.0.99",
+                                    kea=self._kea(self.LEASE))
+        assert out["ok"] is False
+        assert out["disagreement"] is True
+        assert "10.255.0.40" in out["reason"] and "10.255.0.99" in out["reason"]
+        assert "not a tiebreak" in out["reason"]
+
+    def test_no_lease_does_NOT_fall_back_to_the_reservation(self):
+        """*"What the device has"* has no answer then, and answering
+        *"probably this"* is how an inventory acquires an address nobody
+        verified."""
+        from modules.nsot.onboard import discover_dhcp_address
+
+        empty = [{"result": 3, "text": "no leases"}]
+        out = discover_dhcp_address("aa:bb:cc:00:02:40", "10.255.0.40",
+                                    kea=self._kea(empty))
+        assert out["ok"] is False
+        assert out["address"] == ""
+        assert "not a substitute" in out["reason"]
+
+    def test_an_unreachable_kea_refuses_and_says_why(self):
+        from modules.nsot.onboard import discover_dhcp_address
+
+        out = discover_dhcp_address("aa:bb:cc:00:02:40", "10.255.0.40",
+                                    kea=self._kea(self.LEASE, reachable=False))
+        assert out["ok"] is False
+        assert "could not be asked" in out["reason"]
+        assert "not what the device has" in out["reason"]
+
+    def test_a_raising_kea_is_refused_not_a_crash(self):
+        from modules.nsot.onboard import discover_dhcp_address
+
+        class _Boom:
+            def lease_for(self, _mac):
+                raise RuntimeError("kea exploded")
+
+        out = discover_dhcp_address("aa:bb:cc:00:02:40", "10.255.0.40",
+                                    kea=_Boom())
+        assert out["ok"] is False
+
+
+class TestVerifyConnectsToTheDiscoveredAddress:
+    """`mgmt_ip` is empty in the manifest by construction, so without the
+    discovery every step of phase 2 — the credential lookup, `online()`,
+    `reach()`, the capture, the golden, the CSV row — would be handed `""` and
+    report `did_not_answer` with a list of causes every one of which is wrong.
+    """
+
+    @staticmethod
+    def _repo(tmp_path, monkeypatch, **entry):
+        import os
+
+        from modules.nsot import manifest as _m, repo as _repo
+        from modules.nsot.repo import GoldenItem, adopt_identity
+
+        list_dir = tmp_path / "probe"
+        repo = str(list_dir / "config_repo")
+        os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda _n: str(list_dir))
+        monkeypatch.setattr("modules.secrets_store.KEY_FILE",
+                            str(tmp_path / "key.key"))
+        _repo.init_repo(repo)
+        identity = adopt_identity(repo, GoldenItem("bp-dhcp-a", "", ""))
+        _m.upsert_device(repo, identity, "bp-dhcp-a", platform="cisco_iosxe",
+                         pending=True, **entry)
+        return repo
+
+    def _kea(self, address):
+        client = KeaIntegration()
+        body = [{"result": 0, "arguments": {"leases": [
+            {"ip-address": address, "hw-address": "aa:bb:cc:00:02:40",
+             "state": 0, "expire": 9e9}]}}]
+        client.command = lambda c, service=None: (
+            {"ok": False, "error": "unsupported"} if "by-hw" in c
+            else {"ok": True, "result": body})
+        return client
+
+    def test_it_connects_to_the_leased_address(self, tmp_path, monkeypatch):
+        from modules.nsot.onboard import verify_device
+
+        repo = self._repo(tmp_path, monkeypatch, address_source="dhcp",
+                          mgmt_mac="aa:bb:cc:00:02:40",
+                          reserved_address="10.255.0.40")
+        reached = {}
+
+        def _reach(ip, *a, **k):
+            reached["ip"] = ip
+            return "bp-dhcp-a#"
+
+        out = verify_device(repo, "bp-dhcp-a", "probe",
+                            online=lambda ip: bool(ip), reach=_reach,
+                            interface="GigabitEthernet2",
+                            kea=self._kea("10.255.0.40"))
+        assert out["answered"] is True, out
+        assert reached["ip"] == "10.255.0.40", \
+            "verify connected to the wrong address"
+        assert out["mgmt_ip"] == "10.255.0.40"
+        assert "Kea's lease" in out["address_note"]
+
+    def test_a_disagreement_stops_verification_before_it_connects(
+            self, tmp_path, monkeypatch):
+        from modules.nsot.onboard import verify_device
+
+        repo = self._repo(tmp_path, monkeypatch, address_source="dhcp",
+                          mgmt_mac="aa:bb:cc:00:02:40",
+                          reserved_address="10.255.0.99")
+        touched = []
+        out = verify_device(repo, "bp-dhcp-a", "probe",
+                            online=lambda ip: touched.append(ip) or True,
+                            reach=lambda *a, **k: touched.append("reach"),
+                            interface="GigabitEthernet2",
+                            kea=self._kea("10.255.0.40"))
+        assert out["answered"] is False
+        assert touched == [], "it connected despite the disagreement"
+        assert "disagree" in out["error"]
+
+    def test_a_static_device_is_untouched_by_any_of_this(self, tmp_path,
+                                                         monkeypatch):
+        """**The floor.** The discovery must not capture the static path, which
+        reads its address from the manifest as it always has."""
+        from modules.nsot.onboard import verify_device
+
+        repo = self._repo(tmp_path, monkeypatch, mgmt_ip="203.0.113.31")
+        reached = {}
+        out = verify_device(repo, "bp-dhcp-a", "probe",
+                            online=lambda ip: True,
+                            reach=lambda ip, *a, **k: reached.setdefault("ip", ip)
+                            or "bp-dhcp-a#",
+                            interface="GigabitEthernet2")
+        assert out["answered"] is True
+        assert reached["ip"] == "203.0.113.31"
+        assert out["address_note"] == ""
+
+
+class TestTheCredentialIsKeyedOnSomethingThatExistsAtPlanTime:
+    """The override is keyed on the management IP, and a DHCP device has none
+    when phase 1 stages the credential — so it was keyed under the **empty
+    string**, and `resolve()` at verify would look under the discovered address
+    and find nothing.
+
+    The reserved address is the right key because it is the address the device
+    is *guaranteed* to get; that guarantee is why a reservation is a
+    precondition. And a lease that disagrees with it refuses before anything
+    asks for a credential, so a wrong key cannot be silently used.
+    """
+
+    def test_the_reserved_address_is_the_key_for_dhcp(self):
+        import ast
+        import inspect
+
+        from modules.nsot import onboard
+
+        source = inspect.getsource(onboard.bind_credentials_step)
+        tree = ast.parse(source.strip())
+        names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        assert "reservation_address" in names, \
+            "the credential is still keyed on an address a DHCP device lacks"
+        assert "set_device_override(key" in source.replace("\n", " ")

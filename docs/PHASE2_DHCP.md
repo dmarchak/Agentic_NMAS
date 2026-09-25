@@ -484,3 +484,43 @@ Two faults in one call, and the second is the serious one:
 `lease4-get-all` on an empty server. Making it a failure would have printed
 *"v4: unavailable"* for an empty pool, so the fix for one half would have
 introduced the absent-versus-empty error into the other. Both pinned.
+
+
+---
+
+## 8. Phase 2's variable is proven, 2026-09-24
+
+```
+device : GigabitEthernet2  10.255.0.40  YES DHCP  up/up
+         bia aabb.cc00.0240          <- the pinned MAC IS what the VM presents
+wire   : DISCOVER + REQUEST from aa:bb:cc:00:02:40, both answered by 10.255.0.10
+Kea    : lease 10.255.0.40, hostname bp-dhcp-a, subnet-id 255, valid-lft 3600
+NMAS   : pings it, 0.58 ms
+```
+
+**The device fetches and applies with no relay in the path** — which is exactly
+what phase 2 was scoped to separate from phase 3. And the *first DHCP
+transaction that segment has ever carried*, against a reservation-only subnet
+with no pool.
+
+**The MAC pin is now measured rather than probable.** `nmas-dhcp-a.clab.yml`'s
+warning and the fallback it described can stand as history: containerlab's
+per-endpoint `mac:` survives vrnetlab's VM, so a reservation can be written
+before a node's first boot.
+
+### What step 9 needed before it could run
+
+The tool never wrote this address, so phase 2 has to **discover** it — and
+three places assumed it had not had to:
+
+| place | what it did | what it does |
+|---|---|---|
+| `verify_device()` | read `mgmt_ip` from the manifest — empty by construction | discovers it from **Kea's lease** |
+| `run_phase_two()` | kept its own local `mgmt_ip`, so six later steps used `""` | adopts what verification used |
+| `bind_credentials_step()` | keyed the override on `plan.mgmt_ip` — the empty string | keys it on the **reserved** address |
+
+**The lease, never the reservation**, and a disagreement between them refuses
+and names both. The reservation is what the address was *meant* to be; the
+lease is what the device *has*. Picking one would put an address into the
+inventory that another store contradicts — the failure the reservation
+precondition exists to prevent, arriving one layer down.

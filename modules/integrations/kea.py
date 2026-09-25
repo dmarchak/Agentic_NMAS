@@ -286,3 +286,68 @@ class KeaIntegration(IntegrationClient):
             found.extend(r for r in (dhcp4.get("reservations") or [])
                          if isinstance(r, dict))
         return found
+
+    def lease_for(self, mac: str) -> dict:
+        """The **active lease** Kea currently holds for *mac*.
+
+        ``{"state": found | none | unknown, "address": str, "hostname": str,
+        "source": str, "error": str}``
+
+        **A lease is a fact about the device; a reservation is a statement of
+        intent.** They are normally equal and they can differ — a reservation
+        edited after the device leased, a device still holding an older lease.
+        So they are read separately and never substituted for one another:
+        nothing here falls back to the reservation when there is no lease,
+        because *"what the device has"* has no answer then and saying
+        *"probably this"* is the wrong kind of help.
+
+        `lease4-get-by-hw-address` needs the `lease_cmds` hook;
+        `lease4-get-all` does not, and is the fallback. Neither readable is
+        `unknown`, never `none`.
+        """
+        wanted = (mac or "").strip().lower().replace("-", ":")
+        if not wanted:
+            return {"state": self.UNKNOWN, "address": "", "hostname": "",
+                    "source": "", "error": "no MAC address given"}
+
+        probe = self.command("lease4-get-by-hw-address",
+                             service=["dhcp4"])
+        leases, source = None, ""
+        if probe.get("ok"):
+            leases, source = self._leases_from(probe["result"]), "lease_cmds"
+        if leases is None:
+            everything = self.command("lease4-get-all", service=["dhcp4"])
+            if not everything.get("ok"):
+                return {"state": self.UNKNOWN, "address": "", "hostname": "",
+                        "source": "", "error": (
+                            "Kea could not be asked for leases: "
+                            f"{everything.get('error') or probe.get('error')}")}
+            leases = self._leases_from(everything["result"])
+            source = "lease4-get-all"
+        if leases is None:
+            return {"state": self.UNKNOWN, "address": "", "hostname": "",
+                    "source": source, "error": "Kea's answer could not be read"}
+
+        for lease in self._active_leases({"arguments": {"leases": leases}}):
+            if (lease.get("hw-address") or "").strip().lower() == wanted:
+                return {"state": "found", "address": lease.get("ip-address", ""),
+                        "hostname": lease.get("hostname", ""),
+                        "source": source, "error": ""}
+        return {"state": "none", "address": "", "hostname": "",
+                "source": source, "error": ""}
+
+    @staticmethod
+    def _leases_from(result) -> list:
+        rows = result if isinstance(result, list) else [result]
+        found = []
+        for row in rows:
+            if not isinstance(row, dict):
+                return None
+            leases = (row.get("arguments") or {}).get("leases")
+            if leases is None:
+                # `result: 3` with no arguments is "no leases", not unreadable.
+                if row.get("result") == KeaIntegration.RESULT_EMPTY:
+                    continue
+                return None
+            found.extend(l for l in leases if isinstance(l, dict))
+        return found

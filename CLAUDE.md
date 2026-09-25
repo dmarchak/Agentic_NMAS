@@ -3252,6 +3252,36 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   *reserved* rather than claiming an address the device does not have yet.
   Same distinction as `inconclusive` against `failed`, and as *"checked 7 of
   9"* against a number that reads as complete.
+- **A LEASE IS A FACT ABOUT THE DEVICE; A RESERVATION IS A STATEMENT OF
+  INTENT.** They are normally equal — that is the point of requiring one — and
+  they can differ: a reservation edited after the device leased, a device still
+  holding an older lease. `discover_dhcp_address()` reads the **lease**, and
+  when the two disagree it **refuses and names both**. Not a tiebreak: the tool
+  cannot know which is stale, and writing either would make two stores disagree
+  about one device, which is the shape the reservation precondition exists to
+  prevent. And it **never falls back to the reservation when there is no
+  lease** — *"what the device has"* has no answer then, and answering *"probably
+  this"* is how an inventory acquires an address nobody verified.
+- **The tool never wrote this address, so phase 2 has to discover it — and
+  three separate places assumed it had.** `verify_device()` read `mgmt_ip` from
+  the manifest, which is empty for a DHCP device **by construction**;
+  `run_phase_two()` kept its own local copy, so adopting the address in verify
+  alone would have left the capture, the RW removal, the golden and the CSV row
+  all using `""`; and `bind_credentials_step()` keyed the device override on
+  `plan.mgmt_ip`, staging the credential **under the empty string**, so
+  `resolve()` at verify would look under the discovered address and find
+  nothing. Each would have failed for a reason none of them could name.
+  The address is resolved in **one** place and adopted, not re-derived:
+  `mgmt_ip = seen.get("mgmt_ip") or mgmt_ip`. The credential is keyed on the
+  **reserved** address, which is the address the device is *guaranteed* to get —
+  that guarantee being why a reservation is a precondition — and a lease that
+  disagrees refuses before anything asks for a credential, so a wrong key
+  cannot be silently used.
+- **containerlab's per-endpoint `mac:` survives vrnetlab's VM** — measured
+  2026-09-24 on `bp-dhcp-a`: `bia aabb.cc00.0240` on `GigabitEthernet2` is the
+  MAC pinned in the topology. The assumption was recorded as *probable,
+  unverified* with a check and a fallback; it is now measured, and a DHCP
+  reservation can be written before a node's first boot.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
