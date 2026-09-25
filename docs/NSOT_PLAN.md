@@ -2094,6 +2094,20 @@ the confirmed path.
       its identity; withdraw `cisco_iosxe/base.j2` (re-approve against r1,
       r2, r3, r4, r6); then the row.
    5. Re-approve `cisco_iosxe/base.j2`.
+
+   **r5 RETIRED 2026-09-25 (operator), and C11's acceptance passed:**
+   - The plan read correctly, including the NOT-doing list.
+   - Applied with the break-glass check: commit `3592113`; zero r5 in
+     host_vars, golden, devices.csv and the manifest.
+   - The approval was withdrawn naming its cause ("device 'r5' is no longer
+     bound"); `cisco_iosxe/base.j2` binds r1–r4 and r6.
+   - `--reconcile` on its first real use: `produced : 9`, `declared : 1`
+     with who and when.
+   - Freshness gate 9 of 9.
+   - The break-glass record is on the operator's laptop (ten devices, r5
+     included) and removed from the NMAS, hashes compared.
+   - **Step 5 (Grafana rules) is unblocked:** r5's intent is gone, so the
+     rule population is the nine.
    - **Every device's REAL interval measured:** over at least an hour of
      heartbeats, the shortest and longest inter-arrival gap per device. For
      its dialect's window W, **2 × longest < W < 3 × shortest**, or the
