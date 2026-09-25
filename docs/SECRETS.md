@@ -75,6 +75,54 @@ does not import device-list side effects. Both create it owner-only, and
 `device.load_key()` also tightens an existing file, because a key created
 before this existed is the common case. A fix in one producer is not a fix.
 
+## A second copy of `key.key`, and proving it is the right one
+
+**Why it has to stay on the box.** NMAS decrypts secrets with nobody present:
+the drift schedule, the redaction value table (every secret, every 30 s), the
+NetBox inventory refresh and the freshness signal. So the key is readable by
+the process, and whoever holds the disk holds every secret. The encryption
+protects copies of `data/` that travel without the key, and nothing on the
+live disk. Supplying the key at start-up (a passphrase or a TPM seal) was
+considered and declined on 2026-09-25: it costs a person at every reboot and
+buys nothing a deployment running unattended can use.
+
+**Why a key copy alone is not a backup.** On 2026-09-25 no vzdump job existed,
+so the key and everything it opens were single copies on one disk. After a
+disk loss, the key without the ciphertext recovers nothing. The key copy and
+a copy of `data/` (the VM image, B6) are one fix.
+
+**The escrow is the break-glass record.** Its passphrase and scrypt are
+independent of `key.key` by design, so the record can carry the key without
+depending on it. On the NMAS host:
+
+```bash
+python3 scripts/nmas-breakglass export --list Default --out /tmp/rcn.bg   # outside the repo
+python3 scripts/nmas-breakglass verify /tmp/rcn.bg --live                  # OPENS -- N of N
+sha256sum /tmp/rcn.bg
+```
+
+Copy it to the laptop, check the sha256 matches, run `verify` there, and check
+that the key fingerprint matches the one the host printed. Then delete the
+host copy. `--live` decrypts the values actually stored on the host with the
+key the RECORD carries, never the one on disk:
+
+- `OPENS`: every stored value opened. This is the key.
+- `WRONG KEY`: none opened. Restoring it would lose every secret.
+- `MIXED`: some opened. Values under two keys exist; not proven.
+- `UNPROVEN` (exit 2): nothing to test against, or a store was unreadable.
+  Zero is what a wrong data directory looks like.
+
+A fingerprint match says which file was copied. Only the decrypt says the
+copy is of the right key.
+
+**Re-export whenever a device credential rotates.** The device credentials in
+the record go stale; the key does not.
+
+**Restoring:** `nmas-breakglass restore-key <record> --out <data dir>/key.key`
+writes the key owner-only and refuses to replace an existing file (a fresh
+start may have generated one; moving it aside is a person's decision). Then
+run `verify <record> --live`.
+
 ## Modes are set at creation, not by hand
 
 Nothing in this program set a mode before 2026-09-23. `os.makedirs()` and

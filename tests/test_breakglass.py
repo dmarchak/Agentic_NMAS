@@ -83,10 +83,27 @@ class TestItDoesNotShareAFailureWithWhatItRecovers:
                     and isinstance(body[0].value.value, str)):
                 docstrings.add(id(body[0].value))
 
+        # DEFAULT_RECOVERY is prose written INTO the record for the person
+        # opening it during an outage, and since key escrow (B5) it has to
+        # tell them where the key goes back. A mention, named and exempted,
+        # not a read. Anything else naming the file is still refused.
+        prose = set()
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Assign)
+                    and any(getattr(t, "id", "") == "DEFAULT_RECOVERY"
+                            for t in node.targets)):
+                prose.update(id(n) for n in ast.walk(node.value))
+        assert prose, "DEFAULT_RECOVERY was not found, so the exemption covers nothing"
+
         for node in ast.walk(tree):
             if (isinstance(node, ast.Constant) and isinstance(node.value, str)
-                    and id(node) not in docstrings):
+                    and id(node) not in docstrings and id(node) not in prose):
                 assert "key.key" not in node.value, node.value
+        assert not any(isinstance(node, ast.Call)
+                       and getattr(node.func, "id", "") == "open"
+                       and any(isinstance(a, ast.Constant) and "key.key" in str(a.value)
+                               for a in node.args)
+                       for node in ast.walk(tree))
 
     def test_a_short_passphrase_is_refused(self, payload):
         with pytest.raises(bg.BreakglassError) as excinfo:
@@ -321,3 +338,198 @@ class TestTheCliNeverTakesAPassphraseOnTheCommandLine:
                              capture_output=True, text=True, timeout=60)
         assert out.returncode == 0
         assert "export" in out.stdout and "verify" in out.stdout
+
+
+# ---------------------------------------------------------------------------
+# Key escrow (B5, 2026-09-25)
+# ---------------------------------------------------------------------------
+
+from cryptography.fernet import Fernet  # noqa: E402
+
+PREFIX = "enc:v1:"
+
+
+def _enc(key: bytes, value: str) -> str:
+    return Fernet(key).encrypt(value.encode()).decode()
+
+
+def _data_dir(tmp_path, key: bytes, *, stray_key: bytes = None) -> str:
+    """A data directory shaped like the host's, every value under *key*.
+
+    Nested JSON (credential profiles hold values two levels down) and a CSV
+    in a list directory, because a collector that only looked at top-level
+    settings would pass a fixture that had only those."""
+    data = tmp_path / "data"
+    (data / "lists" / "default").mkdir(parents=True)
+    (data / "user_settings.json").write_text(json.dumps({
+        "netbox_token": PREFIX + _enc(key, "tok-netbox"),
+        "kea_password": PREFIX + _enc(key, "kea-pass"),
+        "netbox_url": "http://not-a-secret",
+    }))
+    (data / "credential_profiles.json").write_text(json.dumps({
+        "profiles": {"default": {"username": "admin",
+                                 "password": PREFIX + _enc(stray_key or key, "dev-pass")}},
+    }))
+    rows = ["hostname,device_type,ip,username,password,secret,role",
+            f"r1,cisco_xe,a,admin,{_enc(key, 'p1')},,router",
+            f"s1,cisco_ios,b,admin,{_enc(key, 'p2')},{_enc(key, 'e2')},switch"]
+    (data / "lists" / "default" / "devices.csv").write_text("\n".join(rows) + "\n")
+    # A backup under a DIFFERENT key must not count: the application never
+    # decrypts it, so it cannot make the live key look wrong.
+    (data / "lists" / "default" / "devices.csv.bak-1").write_text(
+        rows[0] + "\n" + f"r1,x,a,admin,{_enc(Fernet.generate_key(), 'old')},,r\n")
+    (data / "key.key").write_bytes(key)
+    return str(data)
+
+
+class TestTheRecordEscrowsTheKey:
+    """B5: nothing images the NMAS VM, so the key existed on one disk."""
+
+    def test_the_payload_carries_it_and_describe_prints_only_a_fingerprint(self):
+        key = Fernet.generate_key()
+        payload = bg.build_payload(DEVICES, list_name="rcn", fernet_key=key + b"\n")
+        assert payload["fernet_key"] == key.decode()
+        report = bg.describe(payload)
+        assert report["has_fernet_key"] is True
+        assert report["key_fingerprint"] == bg.key_fingerprint(key)
+        assert key.decode() not in json.dumps(report)
+
+    def test_the_sealed_record_does_not_show_the_key(self):
+        import base64 as b64
+
+        key = Fernet.generate_key()
+        envelope = json.loads(bg.seal(
+            bg.build_payload(DEVICES, list_name="rcn", fernet_key=key), PASS))
+        raw = b64.urlsafe_b64decode(envelope["ciphertext"] + "==")
+        assert key not in raw and key not in json.dumps(envelope).encode()
+
+    def test_a_record_from_before_escrow_says_so(self, payload):
+        legacy = dict(payload)
+        legacy.pop("fernet_key", None)
+        assert bg.describe(legacy)["has_fernet_key"] is False
+        with pytest.raises(bg.BreakglassError) as excinfo:
+            bg.escrowed_key(legacy)
+        assert "predates key escrow" in str(excinfo.value)
+
+
+class TestTheKeyIsProvenByOpeningWhatIsStored:
+    """A copy of the wrong key looks exactly like a working one."""
+
+    def test_the_collector_finds_every_store_and_ignores_backups(self, tmp_path):
+        key = Fernet.generate_key()
+        stores = bg.live_ciphertexts(_data_dir(tmp_path, key), PREFIX)
+        assert {k: len(v) for k, v in stores.items()} == {
+            "user_settings.json": 2, "credential_profiles.json": 1,
+            os.path.join("lists", "default", "devices.csv"): 3}
+
+    def test_the_right_key_opens_everything(self, tmp_path):
+        key = Fernet.generate_key()
+        check = bg.check_key_opens(key, bg.live_ciphertexts(_data_dir(tmp_path, key), PREFIX))
+        assert check["verdict"] == "opens"
+        assert (check["opened"], check["total"]) == (6, 6)
+
+    def test_a_different_key_opens_nothing_and_says_wrong_key(self, tmp_path):
+        """The negative control: the whole reason for the check."""
+        check = bg.check_key_opens(
+            Fernet.generate_key(),
+            bg.live_ciphertexts(_data_dir(tmp_path, Fernet.generate_key()), PREFIX))
+        assert check["verdict"] == "wrong_key" and check["opened"] == 0
+
+    def test_values_under_two_keys_are_mixed_not_a_pass(self, tmp_path):
+        key = Fernet.generate_key()
+        stores = bg.live_ciphertexts(
+            _data_dir(tmp_path, key, stray_key=Fernet.generate_key()), PREFIX)
+        check = bg.check_key_opens(key, stores)
+        assert check["verdict"] == "mixed"
+        assert check["stores"]["credential_profiles.json"] == {"opened": 0, "total": 1}
+
+    def test_nothing_to_test_against_is_unproven_never_a_pass(self, tmp_path):
+        (tmp_path / "empty").mkdir()
+        check = bg.check_key_opens(Fernet.generate_key(),
+                                   bg.live_ciphertexts(str(tmp_path / "empty"), PREFIX))
+        assert check["verdict"] == "unproven" and check["total"] == 0
+
+    def test_an_unreadable_store_is_named_and_withholds_the_pass(self, tmp_path):
+        key = Fernet.generate_key()
+        data = _data_dir(tmp_path, key)
+        with open(os.path.join(data, "jenkins_checks.json"), "w") as handle:
+            handle.write("{ not json")
+        check = bg.check_key_opens(key, bg.live_ciphertexts(data, PREFIX))
+        assert check["unreadable"] == ["jenkins_checks.json"]
+        assert check["verdict"] == "unproven"
+
+    def test_not_a_key_at_all_is_wrong_key(self, tmp_path):
+        key = Fernet.generate_key()
+        check = bg.check_key_opens(b"garbage", bg.live_ciphertexts(_data_dir(tmp_path, key), PREFIX))
+        assert check["verdict"] == "wrong_key"
+
+
+class TestRestoreNeverReplacesAKey:
+
+    def test_it_writes_owner_only_with_the_same_fingerprint(self, tmp_path):
+        key = Fernet.generate_key()
+        out = bg.restore_key(bg.build_payload(DEVICES, list_name="l", fernet_key=key),
+                             str(tmp_path / "key.key"))
+        assert out["mode"] == "0o600"
+        assert out["fingerprint"] == bg.key_fingerprint(key)
+        assert (tmp_path / "key.key").read_bytes() == key
+
+    def test_an_existing_file_is_refused_and_left_alone(self, tmp_path):
+        target = tmp_path / "key.key"
+        target.write_bytes(b"the-key-a-fresh-start-made")
+        with pytest.raises(bg.BreakglassError) as excinfo:
+            bg.restore_key(bg.build_payload(DEVICES, list_name="l",
+                                            fernet_key=Fernet.generate_key()), str(target))
+        assert "Nothing was written" in str(excinfo.value)
+        assert target.read_bytes() == b"the-key-a-fresh-start-made"
+
+
+def _cli():
+    from importlib.machinery import SourceFileLoader
+    import types
+
+    path = TestTheCliNeverTakesAPassphraseOnTheCommandLine.SCRIPT
+    module = types.ModuleType("nmas_breakglass_cli")
+    module.__file__ = path
+    SourceFileLoader("nmas_breakglass_cli", path).exec_module(module)
+    return module
+
+
+class TestVerifyLiveUsesTheEscrowedKey:
+    """Driven through the CLI's own `_verify`, from a record on disk.
+
+    The data directory's key file holds the RIGHT key in every case. A
+    verify that tested the key on disk rather than the one in the record
+    would pass the wrong-key case, which is exactly the failure escrow must
+    not have: the copy is wrong and the check says it is fine."""
+
+    def _run(self, tmp_path, monkeypatch, *, record_key, disk_key):
+        cli = _cli()
+        data = _data_dir(tmp_path, disk_key)
+        record = str(tmp_path / "rec.bg")
+        bg.write_record(record, bg.build_payload(DEVICES, list_name="l",
+                                                 fernet_key=record_key), PASS)
+        monkeypatch.setattr(cli, "_passphrase", lambda confirm=False: PASS)
+        import argparse
+        return cli._verify(argparse.Namespace(path=record, live=True, data_dir=data))
+
+    def test_the_right_key_passes(self, tmp_path, monkeypatch, capsys):
+        key = Fernet.generate_key()
+        assert self._run(tmp_path, monkeypatch, record_key=key, disk_key=key) == 0
+        out = capsys.readouterr().out
+        assert "OPENS -- 6 of 6" in out and "same as the escrowed key" in out
+        assert key.decode() not in out
+
+    def test_a_wrong_escrowed_key_fails_even_though_the_disk_key_is_right(
+            self, tmp_path, monkeypatch, capsys):
+        rc = self._run(tmp_path, monkeypatch, record_key=Fernet.generate_key(),
+                       disk_key=Fernet.generate_key())
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "WRONG KEY -- 0 of 6" in out
+        assert "DIFFERENT from the escrowed key" in out
+
+    def test_reading_the_live_key_never_creates_one(self, tmp_path):
+        (tmp_path / "empty").mkdir()
+        assert _cli()._live_key(str(tmp_path / "empty")) == b""
+        assert os.listdir(tmp_path / "empty") == []

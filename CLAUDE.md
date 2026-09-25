@@ -757,6 +757,31 @@ means the ciphertext beside it was never protected. It has **two producers**
 both create it owner-only and `device.load_key` also tightens an existing one.
 The checker tests it first and separately.
 
+**Encryption at rest here protects COPIES THAT TRAVEL, and nothing on the
+live disk.** That is a property of the design, not a flaw in it. NMAS works
+unattended: the drift schedule opens SSH sessions, redaction decrypts every
+secret every 30 s to build its value table, the NetBox refresh resolves
+credentials, and the freshness signal authenticates to Oxidized. So the key
+has to be readable by the process with nobody present, and **whoever holds
+the disk holds every secret**, whatever the store's format. What the
+encryption buys is that a copy of `data/` without `key.key` (a backup, an
+exported file, a leaked fragment) is worthless. The one design that keeps
+the key off the disk supplies it when the service starts (a passphrase or a
+TPM seal). **Declined 2026-09-25 with that reason**: it costs a person at
+every reboot and buys nothing a deployment running unattended can use.
+
+**A key copy and a copy of `data/` are one fix in two halves** (B5/B6).
+Measured 2026-09-25: no vzdump job exists, so `key.key` was a single copy,
+and so was everything it opens. Escrowing the key alone recovers nothing
+after a disk loss, because the ciphertext dies with it. The key is escrowed
+in the break-glass record (sealed by the passphrase, so the record still
+does not DEPEND on the key), and **`nmas-breakglass verify --live` proves it
+is the right key by decrypting the values actually stored on the host with
+the ESCROWED key**. A copy of the wrong key looks exactly like a working one,
+and a fingerprint match only says which file was copied. On the host, through
+a sealed record: 45 of 45 opened, and a random key 0 of 45. `restore-key`
+refuses to replace an existing file.
+
 **Tightening a mode does not undo exposure.** Anything that read a secret
 while it was readable still has it; rotation is what makes past exposure moot.
 
@@ -872,6 +897,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_clab_sync_commit.py` | the sanitiser's commit block EXECUTED under bash: identity rides on every commit; a failed commit names git's reason and is not "not versioned"; helpers resolve beside the script under a systemd PATH |
 | `test_job_health.py` | a failing timer is visible: the cause line and the streak; not-installed is never ok; could-not-ask is unknown |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
+| `test_breakglass.py` | the record is independent of the key it escrows; `verify --live` tests the ESCROWED key against the stored values (a right key on disk cannot pass a wrong copy); zero values is unproven; restore never replaces a key |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |

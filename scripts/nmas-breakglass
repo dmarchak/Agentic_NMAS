@@ -11,9 +11,18 @@ which otherwise exists only inside `devices.csv`, encrypted with
     python3 scripts/nmas-breakglass export --list Default --out /media/usb/rcn.bg
     python3 scripts/nmas-breakglass verify /media/usb/rcn.bg
     python3 scripts/nmas-breakglass reveal /media/usb/rcn.bg --device r1
+    python3 scripts/nmas-breakglass verify /media/usb/rcn.bg --live      # on the NMAS host
+    python3 scripts/nmas-breakglass restore-key /media/usb/rcn.bg --out data/key.key
 
 `export` and `verify` never print a credential. `reveal` is the only command
 that does, it takes one device at a time, and it says so before it does.
+
+The record also escrows the application's Fernet key (B5). `verify` prints
+its fingerprint, never the key. `verify --live`, run on the NMAS host,
+decrypts the values actually stored there with the ESCROWED key and counts
+them. A copy of the wrong key looks exactly like a working one, and that is
+the check that tells them apart. `restore-key` writes the key back owner-only
+and refuses to replace a file that exists.
 
 The passphrase is read from the terminal, never from an argument: anything on
 a command line is in the shell history and in `ps`.
@@ -84,7 +93,22 @@ def _export(args):
           "a failure with the thing it recovers is not a record.")
     print()
 
-    payload = bg.build_payload(devices, list_name=list_name)
+    key = _live_key()
+    if not key:
+        print("REFUSED: the application key could not be read, so it cannot "
+              "be escrowed. Nothing written.")
+        return 1
+    check = bg.check_key_opens(key, _live_stores())
+    print(f"key     : fingerprint {bg.key_fingerprint(key)}; "
+          f"{_verdict_line(check)}")
+    if check["verdict"] != "opens":
+        print("WARNING : the key being escrowed is the one the application "
+              "reads, and it does not open everything stored here. The "
+              "record is written anyway, since it is the key in use, but "
+              "this is a finding to resolve before relying on it.")
+    print()
+
+    payload = bg.build_payload(devices, list_name=list_name, fernet_key=key)
     try:
         out = bg.write_record(args.out, payload, _passphrase(confirm=True))
     except bg.BreakglassError as exc:
@@ -92,9 +116,12 @@ def _export(args):
         return 1
 
     print(f"\nwritten : {out['path']}  mode {out['mode']}")
-    print("\nVerify it now, on the medium it will live on. An untested "
-          "break-glass record is a hope, not a record:")
-    print(f"    python3 scripts/nmas-breakglass verify {out['path']}")
+    print("\nVerify it now, from the file, before it leaves this host "
+          "(this reads the record back and tests the key it CARRIES):")
+    print(f"    python3 scripts/nmas-breakglass verify {out['path']} --live")
+    print("Then copy it to where it will live, check the sha256 matches, "
+          "verify it there, and compare the key fingerprint with the one "
+          "above. An untested break-glass record is a hope, not a record.")
     return 0
 
 
@@ -123,10 +150,39 @@ def _verify(args):
               f"{'yes' if row['has_password'] else 'NO ':<5}"
               f"{'yes' if row['has_enable_secret'] else '-  ':<5}{row['digest']}")
     print(f"\ncomplete: {report['complete']}")
-    print("\nNo credential was printed. The digest is salted per hostname, so "
-          "two devices sharing a password do not show the same token -- it "
-          "proves the record opened, not what is in it.")
-    return 0 if report["complete"] else 1
+    if report["has_fernet_key"]:
+        print(f"key     : escrowed, fingerprint {report['key_fingerprint']}")
+    else:
+        print("key     : NOT ESCROWED. This record predates key escrow "
+              "(2026-09-25). Export a new one on the NMAS host (B5).")
+    print("\nNo credential and no key was printed. The digest is salted per "
+          "hostname, so two devices sharing a password do not show the same "
+          "token -- it proves the record opened, not what is in it.")
+
+    rc = 0 if report["complete"] and report["has_fernet_key"] else 1
+    if not args.live:
+        if report["has_fernet_key"]:
+            print("\nThis proves the record opens and carries A key. Whether "
+                  "it is THE key is answered on the NMAS host by --live.")
+        return rc
+    if not report["has_fernet_key"]:
+        return 1
+    check = bg.check_key_opens(bg.escrowed_key(payload), _live_stores(args.data_dir))
+    print(f"\nlive    : {_verdict_line(check)}")
+    for name, counts in sorted(check["stores"].items()):
+        print(f"  {name:<40}{counts['opened']} of {counts['total']}")
+    for name in check["unreadable"]:
+        print(f"  {name:<40}UNREADABLE -- not checked")
+    live = _live_key(args.data_dir)
+    if live:
+        same = bg.key_fingerprint(live) == report["key_fingerprint"]
+        print(f"on disk : fingerprint {bg.key_fingerprint(live)} "
+              f"({'same as the escrowed key' if same else 'DIFFERENT from the escrowed key'})")
+    else:
+        print("on disk : no application key could be read here")
+    if check["verdict"] == "opens":
+        return rc
+    return 2 if check["verdict"] == "unproven" else 1
 
 
 def _reveal(args):
@@ -164,6 +220,69 @@ def _current_list():
     return get_current_list_name()
 
 
+def _data_dir(data_dir=""):
+    from modules.config import DATA_DIR
+
+    return data_dir or DATA_DIR
+
+
+def _live_key(data_dir=""):
+    """The key file's bytes, or b"" -- READ ONLY. Deliberately not
+    `device.load_key()` or `secrets_store`, both of which CREATE a key when
+    none exists, and a verify that generates the key it is checking for
+    would pass against itself."""
+    from modules.config import KEY_FILE
+
+    path = os.path.join(data_dir, os.path.basename(KEY_FILE)) if data_dir else KEY_FILE
+    try:
+        with open(path, "rb") as handle:
+            return handle.read().strip()
+    except OSError:
+        return b""
+
+
+def _live_stores(data_dir=""):
+    import modules.breakglass as bg
+    from modules.secrets_store import _PREFIX
+
+    return bg.live_ciphertexts(_data_dir(data_dir), _PREFIX)
+
+
+def _verdict_line(check):
+    verdict = check["verdict"]
+    counts = f"{check['opened']} of {check['total']} stored value(s) open with it"
+    if verdict == "opens":
+        return f"OPENS -- {counts}"
+    if verdict == "wrong_key":
+        return (f"WRONG KEY -- {counts}. Restoring it would lose every "
+                f"encrypted value on this host.")
+    if verdict == "mixed":
+        return (f"MIXED -- {counts}. Values under two different keys are "
+                f"stored here; the record is not proven.")
+    if check["total"] == 0:
+        return ("UNPROVEN -- no encrypted value was found to test against. "
+                "Zero is what a wrong data directory looks like, so it is "
+                "not a pass.")
+    return (f"UNPROVEN -- {counts}, but {len(check['unreadable'])} store(s) "
+            f"could not be read, so not everything was checked.")
+
+
+def _restore_key(args):
+    import modules.breakglass as bg
+
+    try:
+        payload = bg.read_record(args.path, _passphrase())
+        out = bg.restore_key(payload, args.out)
+    except (bg.BreakglassError, OSError) as exc:
+        print(f"REFUSED: {exc}")
+        return 1
+    print(f"written : {out['path']}  mode {out['mode']}  "
+          f"fingerprint {out['fingerprint']}")
+    print("\nNot proven yet. Run, on this host:")
+    print(f"    python3 scripts/nmas-breakglass verify {args.path} --live")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -178,12 +297,23 @@ def main() -> int:
 
     verify = sub.add_parser("verify", help="prove it opens; prints no value")
     verify.add_argument("path")
+    verify.add_argument("--live", action="store_true",
+                        help="on the NMAS host: decrypt the stored values "
+                             "with the escrowed key and count them")
+    verify.add_argument("--data-dir", default="",
+                        help="the application's data directory (default: this checkout's)")
     verify.set_defaults(run=_verify)
 
     reveal = sub.add_parser("reveal", help="print ONE device's credential")
     reveal.add_argument("path")
     reveal.add_argument("--device", required=True)
     reveal.set_defaults(run=_reveal)
+
+    restore = sub.add_parser("restore-key",
+                             help="write the escrowed key back; never over a file")
+    restore.add_argument("path")
+    restore.add_argument("--out", required=True)
+    restore.set_defaults(run=_restore_key)
 
     args = ap.parse_args()
     return args.run(args)

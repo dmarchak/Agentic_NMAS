@@ -1713,9 +1713,32 @@ surfaced only by contrast: Grafana runs as a native process and *was* blocked.
 **from another host**, not by reading a rule table, which is the presence-check
 mistake again. Bind to `127.0.0.1` or add `DOCKER-USER` rules.
 
-**6.2 Per-consumer accounts.** One `admin` credential is shared by NMAS,
-Oxidized and any future consumer, so a rotation moves the floor under all of
-them at once and no audit trail distinguishes them.
+**6.2 Per-consumer accounts: Stage 6's FIRST item** (operator's decision,
+2026-09-25). One `admin` credential is shared by NMAS, Oxidized and the
+operator. A leak of it compromises everything, a rotation moves the floor
+under all three at once, and **no log anywhere can tell which of the three
+did something**. Separate accounts with separate passwords give most of what
+SSH keys would, namely attribution and revoking one consumer, without a key
+mode through every credential path and without 6.2b's SHA-1 question.
+
+**6.2b SSH keys for device access, behind 6.2** (option C of the
+2026-09-25 design review). With keys, a stolen credential store yields no
+device passwords, goldens carry only public keys, and the device password
+can live only in the break-glass record, since the console still needs one.
+They do NOT protect against theft of the disk: the private key on it becomes
+the most valuable file there. Costs: a key mode through rotation, the
+persistence chain, the startup-file check, the deploy credential guard,
+retire's break-glass check and onboarding phase 2; `transport input` without
+telnet (the fixtures show `all` / `telnet ssh`); and a measurement first,
+because vIOS may accept only SHA-1 `ssh-rsa` signatures, which current
+paramiko and OpenSSH turn off by default.
+
+**Declined: keeping the Fernet key off the disk** (a passphrase or a TPM
+seal at service start). NMAS works unattended, so the key must be readable
+with nobody present. The option costs a person at every reboot and buys
+nothing this deployment can use. Recorded so it is not re-proposed without
+new facts (CLAUDE.md, *Encryption at rest here protects COPIES THAT
+TRAVEL*).
 
 **6.3 The `yang-push-sub` credential**, and **6.4 enable secret vs console
 recovery** — the console is the break-glass path, and an enable secret nobody
