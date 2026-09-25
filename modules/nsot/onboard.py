@@ -1479,12 +1479,26 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     try:
         from modules import credentials
 
-        mgmt_ip = (entry or {}).get("mgmt_ip", "")
+        # EVERY KEY THAT COULD HOLD THIS DEVICE'S CREDENTIAL, not just
+        # `mgmt_ip`.
+        #
+        # This read `mgmt_ip` alone, guarded by `if mgmt_ip` -- and a pending
+        # DHCP device has none until verification discovers it, so the override
+        # keyed on the RESERVED address survived abandon untouched. Measured on
+        # the live store: an `''` key left behind by a device created before
+        # the key was corrected, still there after that device was abandoned.
+        #
+        # A staged credential outliving the device it was staged for is a
+        # secret with no owner, in the one file where a device-specific
+        # credential lives. Both keys are cleared, and the pair is listed so
+        # the report says which.
         cleared = []
-        if mgmt_ip and credentials.has_device_override(mgmt_ip):
-            if not dry_run:
-                credentials.clear_device_override(mgmt_ip)
-            cleared.append(f"override {mgmt_ip}")
+        for key in dict.fromkeys([(entry or {}).get("mgmt_ip", ""),
+                                  (entry or {}).get("reserved_address", "")]):
+            if key and credentials.has_device_override(key):
+                if not dry_run:
+                    credentials.clear_device_override(key)
+                cleared.append(f"override {key}")
         if staged_bootstrap_credential(repo, hostname):
             if not dry_run:
                 clear_bootstrap_credential(repo, hostname)

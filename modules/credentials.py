@@ -121,9 +121,32 @@ def list_profiles() -> list:
     ]
 
 
+class UnkeyedCredential(ValueError):
+    """A credential with no device key. See :func:`set_device_override`."""
+
+
 def set_device_override(device_key: str, username: str, password: str,
                         secret: str = "") -> dict:
-    """Set a one-off credential for a single device, keyed by management IP."""
+    """Set a one-off credential for a single device, keyed by management IP.
+
+    **An empty key is refused.** It means *"I do not know which device this is
+    for"*, and a credential stored under that is worse than one not stored:
+    nothing can ever look it up, nothing can attribute it, and abandoning the
+    device it belonged to cannot clear it — so it accumulates in the one file
+    where a device-specific credential lives.
+
+    Measured on the live store: an `''` key, left by an onboarding that ran
+    before the key was corrected for DHCP devices, still present after that
+    device had been abandoned. It would also have been **collided with** by
+    the next such device, which is a credential for one device being served
+    for another.
+    """
+    if not (device_key or "").strip():
+        raise UnkeyedCredential(
+            "a device credential needs a key — the management address the "
+            "resolver will look it up by. An empty key stores a secret "
+            "nothing can find, nothing can attribute, and abandoning the "
+            "device cannot clear.")
     with _lock:
         data = _load()
         data["device_overrides"][device_key] = {

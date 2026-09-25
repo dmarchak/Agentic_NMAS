@@ -3346,6 +3346,34 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   to something is the worst kind to reuse by accident*. RFC 5737 exists for
   this; a test now refuses any placeholder in the fleet's ranges, with a
   positive anchor so it cannot pass by the examples having been deleted.
+- **Abandon DID clear the credential override — only the key it knew about.**
+  It read `mgmt_ip` alone, guarded by `if mgmt_ip`, so the `''` key left by a
+  device created before the DHCP key was corrected survived it — and
+  **80b4e37 introduced a second leak of the same shape**, because a pending
+  DHCP device's override is keyed on the **reserved** address and abandon never
+  looked there. Both are cleared now, per key. *A staged credential outliving
+  the device it was staged for is a secret with no owner, in the one file where
+  a device-specific credential lives.*
+- **`set_device_override("")` is refused.** An empty key means *"I do not know
+  which device this is for"*, and a credential stored under it is worse than
+  one not stored: nothing can look it up, nothing can attribute it, abandoning
+  the device cannot clear it — **and the next such device collides with it**,
+  which is one device's credential being served for another. The guard is at
+  the setter, because that is the only place the decision is made.
+- **`data/credential_profiles.json` is a secret store with no expiry and no
+  owner check** — the shape of the 29 untracked backup directories beside
+  `labs/lab/configs`, **except these hold credentials**. Measured on the live
+  store: five keys, one `''`, one belonging to a probe torn down hours earlier,
+  one nobody recognised. `scripts/nmas-credential-overrides` surveys which keys
+  a list can plausibly look up — a `devices.csv` row, a manifest `mgmt_ip`, or
+  a manifest `reserved_address` (a pending DHCP device) — and names the rest
+  orphans. **Keys and names only; no value is read or printed**, or the audit
+  becomes a second place the secrets appear. It **does not delete**: an override
+  may be a deliberate break-glass credential, and removing a secret because a
+  script could not attribute it is the wrong direction — it prints what would.
+  And zero claims across every list is **UNPROVEN**, not *all orphans*: the
+  inventories being unreadable would otherwise report the worst possible answer
+  with confidence.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

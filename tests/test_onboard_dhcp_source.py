@@ -977,3 +977,131 @@ class TestTheRevealRunsOnOpenNotOnlyOnChange:
             assert f'placeholder="{real}' not in form, real
         assert 'placeholder="192.0.2.10"' in form, \
             "the example address is gone — the check now proves nothing"
+
+
+class TestAbandonClearsEveryKeyThatCouldHoldTheCredential:
+    """**80b4e37 introduced this, and the live store showed it.**
+
+    Abandon read `mgmt_ip` alone, guarded by `if mgmt_ip`. A pending DHCP
+    device has none until verification discovers it, so the override keyed on
+    the **reserved** address survived abandon untouched — and the `''` key left
+    by a device created before the key was corrected survived for the same
+    reason.
+
+    A staged credential outliving the device it was staged for is a secret with
+    no owner, in the one file where a device-specific credential lives.
+    """
+
+    def test_both_keys_are_cleared(self):
+        import ast
+        import inspect
+
+        from modules.nsot import onboard
+
+        source = inspect.getsource(onboard.abandon_onboarding)
+        tree = ast.parse(source.strip())
+        literals = {n.value for n in ast.walk(tree)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+        assert "mgmt_ip" in literals
+        assert "reserved_address" in literals, (
+            "abandon still clears only the mgmt_ip key, so a pending DHCP "
+            "device's credential survives it")
+
+    def test_the_guard_is_per_key_not_on_mgmt_ip_alone(self):
+        import inspect
+
+        from modules.nsot import onboard
+
+        source = inspect.getsource(onboard.abandon_onboarding)
+        assert "if mgmt_ip and credentials.has_device_override" not in source
+
+
+class TestAnUnkeyedCredentialIsRefused:
+    """`''` means *"I do not know which device this is for"*, and a credential
+    stored under it is worse than one not stored: nothing can look it up,
+    nothing can attribute it, abandoning the device cannot clear it — and the
+    **next** such device collides with it, which is one device's credential
+    being served for another."""
+
+    def test_an_empty_key_raises(self):
+        from modules.credentials import UnkeyedCredential, set_device_override
+
+        with pytest.raises(UnkeyedCredential):
+            set_device_override("", "admin", "secret")
+
+    def test_whitespace_is_not_a_key_either(self):
+        from modules.credentials import UnkeyedCredential, set_device_override
+
+        with pytest.raises(UnkeyedCredential):
+            set_device_override("   ", "admin", "secret")
+
+    def test_the_refusal_says_what_an_empty_key_costs(self):
+        from modules.credentials import UnkeyedCredential, set_device_override
+
+        with pytest.raises(UnkeyedCredential) as exc:
+            set_device_override("", "admin", "secret")
+        assert "nothing can find" in str(exc.value)
+
+    def test_a_real_key_is_accepted(self, tmp_path, monkeypatch):
+        """**The floor.** A setter that refused everything would satisfy the
+        three above and make onboarding impossible."""
+        from modules import credentials
+
+        monkeypatch.setattr(credentials, "CRED_FILE",
+                            str(tmp_path / "creds.json"), raising=False)
+        monkeypatch.setattr("modules.secrets_store.KEY_FILE",
+                            str(tmp_path / "key.key"))
+        assert credentials.set_device_override(
+            "10.255.0.40", "admin", "s3cret")["ok"] is True
+
+
+class TestTheOverrideSurveyCanRun:
+    """A secret store with no expiry and no owner check — the shape of the 29
+    backup directories, except these hold credentials."""
+
+    @staticmethod
+    def _script():
+        import importlib.util
+        import os
+
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts", "nmas-credential-overrides")
+        spec = importlib.util.spec_from_loader(
+            "nmas_cred_overrides",
+            importlib.machinery.SourceFileLoader("nmas_cred_overrides", path))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_it_never_reads_a_value(self):
+        """A tool auditing a secret store must not become a second place the
+        secrets appear."""
+        import inspect
+
+        source = inspect.getsource(self._script())
+        for leak in ("decrypt_value", "decrypt_field", '["password"]',
+                     '["secret"]', "get_secret("):
+            assert leak not in source, f"the survey reads a value: {leak}"
+
+    def test_no_claims_at_all_is_UNPROVEN_not_all_orphans(self):
+        """**The floor on the other side.** Zero claims means the inventories
+        could not be read, and then every key looks like an orphan — a scan
+        that could not run reporting the worst possible answer confidently."""
+        import inspect
+
+        source = inspect.getsource(self._script())
+        assert "EXIT_UNPROVEN" in source
+        assert "not result[\"claimed_total\"]" in source
+
+    def test_it_does_not_delete_anything(self):
+        """An override may be a deliberate break-glass credential, and removing
+        a secret because a script could not attribute it is the wrong
+        direction."""
+        import inspect
+
+        source = inspect.getsource(self._script())
+        assert "clear_device_override(" in source, \
+            "it must at least say what removes one"
+        assert "credentials.clear_device_override(row" not in source
+        assert "does not delete" in source
