@@ -768,9 +768,18 @@ processes, because a CLI such as `nmas-retire` writes settings while the app
 runs. After the fix: 300 of 300, threads and processes. An AST scan requires
 the lock in any function that both loads and saves. **`write_settings()` is
 not the only write path**: the general-settings POST in
-`routes/settings_integrations.py` does its own read-modify-write, and
-`migrate()` writes on every GET of that panel. Both hold the lock now. The
-bypass is recorded, not yet removed.
+`routes/settings_integrations.py` does its own read-modify-write. `migrate()`
+RUNS on every GET of that panel, and WRITES only when the schema version is
+behind or a secret is still plaintext. Both hold the lock now. The bypass is
+recorded, not yet removed.
+**Where it came from, and whether it fired.** The shared temp name arrived
+in `4f8a0f1` (2026-09-23 18:26), the fix for that day's erasure. So it is
+NOT the erasure's mechanism, which was truncate-in-place followed by a write
+built on `{}`. It is a defect the fix introduced, and it was latent for two
+days. On the live host on 2026-09-25 there were no `user_settings.json.corrupt-*`
+copies and no stray temp files, so as far as anything durable shows, it never
+fired there. A lost update leaves no trace, so that half cannot be ruled out.
+The C7 frozen defaults come from the erasure's reseed, not from this.
 
 **Encryption at rest here protects COPIES THAT TRAVEL, and nothing on the
 live disk.** That is a property of the design, not a flaw in it. NMAS works
@@ -1283,6 +1292,29 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The better the comment, the more likely it quotes the code it explains**,
   so the places most likely to carry an explanatory quotation are the places
   most likely to have a test asserting something subtle.
+- **An investigation's instrument can be the variable** (C20, 2026-09-25).
+  A settings test failed in streaks, eight in a row and then clean at the
+  same SHA, which reads as a race. It was file-order dependent and fully
+  deterministic. The randomness came from the command choosing the test
+  subset: `grep` in the agent's shell is a parallel `ugrep`, so the file
+  order changed between runs. **The tool used to investigate produced the
+  symptom being investigated**, and a bisect built on it pointed at a commit
+  (8 of 8 against 0 of 8) that had nothing to do with it. Before
+  attributing variation to the system, fix every input to the experiment:
+  pass an explicit, ordered file list, and write down the command that
+  produced it. Same family as *a pattern that can appear in English*: in
+  both, the measuring apparatus matched or moved the thing it was pointed at.
+- **A document asserting a property the code does not have is worse than no
+  document, because it stops the next person looking.** CLAUDE.md said
+  `write_settings()` was "the one path into `user_settings.json`". There was
+  a second, the general-settings POST, and the claim is why nobody went to
+  look for it. What found it was a scan of the code (every function that both
+  loads and saves), not the sentence. A property a document states should
+  have a test, or be written as *intended* rather than as fact. **It
+  happened again while recording it:** the correction said `migrate()`
+  "writes on every GET", and the code writes only when there is something to
+  migrate. Read the function before writing the sentence about it.
+
 - **The interface is for an enterprise network, not for nine devices**
   ([docs/NSOT_STAGE7_GUI.md](docs/NSOT_STAGE7_GUI.md) §0a) — a constraint on
   the Stage 7 architecture, not a later feature. Measured with
