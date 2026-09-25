@@ -3155,6 +3155,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   re-reads leases from the lease file** rather than preserving them in memory:
   harmless on subnets nothing holds, and not a thing to discover during a
   change that matters.
+- **A check pointed at one data FORMAT goes blind when a file uses the
+  other, and produces no offenders doing it.**
+  `c8000v_links_on_the_reserved_interface()` read link endpoints as
+  ``"node:iface"`` strings. containerlab also has an **extended** link format
+  — a list of mappings, and the only one with a per-endpoint ``mac:``, which
+  phase 2's probe needs because a DHCP reservation is keyed on a MAC that must
+  be known before the first boot. `str(endpoint).partition(":")` on a dict
+  yields garbage, so a `Gi1` cabled that way was **not an offender and not an
+  error — it was not seen.** Measured before changing it: the whole suite
+  passed against a topology deliberately cabling a c8000v's reserved
+  interface. *A gate that silently opens produces no offenders, which is
+  exactly what a clean run looks like* — and the first file to use the newer
+  format would have lost the protection with nothing saying so. `_link_endpoints()`
+  understands both, with the blindness pinned as a test and a floor that the
+  extended form on `Gi2` is still accepted.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and

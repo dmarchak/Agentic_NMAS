@@ -134,6 +134,10 @@ from the wizard.
 
 ## 3a. Built ahead of the probe, 2026-09-24
 
+Runbook: **[PHASE2_PROBE.md](PHASE2_PROBE.md)**. Topology:
+`docs/bootstrap-probe/nmas-dhcp-a.clab.yml`.
+
+
 The tool half is done, so the probe measures the network rather than the code:
 
 * `KeaIntegration.reservation_for(mac)` — `reserved` / `not_reserved` /

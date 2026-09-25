@@ -1,0 +1,100 @@
+name: nmas-dhcp-a
+
+# ---------------------------------------------------------------------------
+# PHASE 2 PROBE - a management address delivered by DHCP.
+# Runbook: docs/PHASE2_PROBE.md   Scope: docs/PHASE2_DHCP.md
+#
+# WHY A THROWAWAY AND NOT r6. Phase 2's variable is how the address ARRIVES AT
+# ONBOARDING, and r6 is already onboarded -- running it there would be
+# re-addressing a managed device, a different capability nothing needs. And a
+# management-address change is the one class where the repair path travels over
+# the thing being changed: the push succeeds, reachability fails, and both the
+# failure capture and the rollback are delivered over the address just given
+# up. On this node that costs a `containerlab destroy`.
+#
+# THE MAC IS PINNED HERE AND RESERVED IN KEA, AS ONE PAIR.
+#   aa:bb:cc:00:02:40  ->  10.255.0.40
+# The last octet of the MAC mirrors the host part of the address. It buys
+# nothing mechanically and makes a mismatch visible at a glance, which is the
+# only moment anyone looks. A MAC that differs between this file and the
+# reservation is a node that boots and gets silence -- and that looks exactly
+# like a Kea problem.
+#
+# ⚠ THE PIN IS PROBABLE, NOT VERIFIED. vrnetlab runs a VM behind the
+# container, and the MAC the IOS-XE DHCP client presents may be assigned by
+# vrnetlab rather than taken from the container's veth. Runbook step 7 checks
+# `show interface GigabitEthernet2 | include bia` on the booted node BEFORE
+# anything is concluded about Kea. If it does not match, that is the finding,
+# and the fallback (read the real MAC, reserve it, redeploy) is acceptable only
+# because this node is disposable.
+#
+# ⚠ NOTHING HAS EVER ANSWERED A DHCPDISCOVER ON 10.255.0.0/24. The subnet was
+# added on 2026-09-24 with reservations and no pool; before that Kea served
+# only the two relay-reached subnets. The read path is proven -- the tool
+# resolves the reservation -- and the ANSWER path is not. So a failure here can
+# be the code, the config, or the segment, and step 8 separates them before
+# anyone starts editing.
+#
+# NO STARTUP-CONFIG UNTIL THE WIZARD HAS RUN, same ordering as
+# nmas-onboard-c: the wizard runs first, writes configs/bp-dhcp-a.cfg, and
+# only then is this file deployed. What differs is what is IN that config --
+# `ip address dhcp` on Gi2 instead of a static address, from
+# `OnboardPlan.address_source == "dhcp"`.
+#
+# THE BIND IS LOAD-BEARING TWICE, as everywhere: `smp="2"` (without which a
+# C8000v never finishes booting on this host) and the stage-C USER-SKIP
+# (without which vrnetlab injects `username admin privilege 15 password admin`
+# ahead of the startup config, IOS-XE refuses a secret for a user that already
+# has a password, and the node boots on admin/admin reporting healthy). It
+# binds this probe's OWN COPY, staged by runbook step 3a -- a throwaway lab
+# whose teardown can reach into production is not throwaway.
+#
+# br-mgmt is a PREREQUISITE, not something this file creates. This node becomes
+# the FOURTH device on that wire, after the NMAS, s3 and r6.
+#   Verify first:  ip -br link show master br-mgmt
+# ---------------------------------------------------------------------------
+
+mgmt:
+  # The CONTAINERLAB-facing network only, and unrelated to the address under
+  # test. vrnetlab owns Gi1 and reaches it here. Its own subnet, because
+  # rcn-lab1 holds 172.20.20.0/24 and nmas-onboard-c held 172.30.40.0/24.
+  network: clab-dhcp-probe
+  ipv4-subnet: 172.30.50.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a      # identical to r1-r5 and r6
+
+  nodes:
+    bp-dhcp-a:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.50.11
+      # Written by the operator from the wizard's artefact, BEFORE deploy.
+      startup-config: configs/bp-dhcp-a.cfg
+      binds:
+        - patches/c8000v-launch-adopted.py:/launch.py   # smp=2 AND user-skip
+
+    # A PREREQUISITE ON THE HOST, declared so this lab can attach to it.
+    br-mgmt:
+      kind: bridge
+
+  links:
+    # EXTENDED LINK FORMAT, because the brief form has no per-endpoint `mac:`.
+    # containerlab 0.79.0 on this host; the extended form needs 0.54+.
+    #
+    # Gi2, never Gi1 -- vrnetlab owns Gi1 on this kind, and cabling it there
+    # produces a file that is internally consistent, deploys, and fights the
+    # launch script for the interface.
+    #
+    # `dhcpa-mgmt` on the bridge side: unique on br-mgmt (which holds the host
+    # uplink, s3-mgmt, r6's veth and nothing else), under the 15-character
+    # limit, and named for what it is rather than for a device -- so an
+    # orphaned dhcpa-mgmt is self-evidently not production.
+    - type: veth
+      endpoints:
+        - node: bp-dhcp-a
+          interface: Gi2
+          mac: aa:bb:cc:00:02:40
+        - node: br-mgmt
+          interface: dhcpa-mgmt

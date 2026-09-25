@@ -200,6 +200,36 @@ def test_the_bind_source_is_the_probes_own_copy():
 # Gi1 belongs to vrnetlab, on the topology side too
 # --------------------------------------------------------------------------
 
+def _link_endpoints(link):
+    """``[(node, interface, as-written)]`` for **both** link formats.
+
+    containerlab has two. The brief one is a list of ``"node:iface"`` strings;
+    the **extended** one is a list of mappings, and it is the only one with a
+    per-endpoint ``mac:`` — which phase 2's probe needs, because a DHCP
+    reservation is keyed on a MAC that has to be known before the first boot.
+
+    **This function exists because the check was blind to the second.**
+    `str(endpoint).partition(":")` on a dict yields garbage, so a `Gi1` cabled
+    in the extended format was not an offender and not an error — it simply was
+    not seen. Measured before changing it: the whole suite passed against a
+    topology deliberately cabling a c8000v's reserved interface.
+
+    A gate that silently opens produces no offenders, which is exactly what a
+    clean run looks like. The first file to use the newer format would have
+    lost the protection and nothing would have said so.
+    """
+    out = []
+    for endpoint in (link or {}).get("endpoints") or []:
+        if isinstance(endpoint, dict):
+            node = str(endpoint.get("node", ""))
+            iface = str(endpoint.get("interface", ""))
+            out.append((node, iface, f"{node}:{iface}"))
+        else:
+            node, _, iface = str(endpoint).partition(":")
+            out.append((node, iface, str(endpoint)))
+    return out
+
+
 def c8000v_links_on_the_reserved_interface(paths):
     """Every c8000v link endpoint that lands on Gi1.
 
@@ -222,13 +252,12 @@ def c8000v_links_on_the_reserved_interface(paths):
         kinds = {name: (cfg or {}).get("kind")
                  for name, cfg in (topology.get("nodes") or {}).items()}
         for link in (topology.get("links") or []):
-            for endpoint in (link or {}).get("endpoints") or []:
-                node, _, iface = str(endpoint).partition(":")
+            for node, iface, shown in _link_endpoints(link):
                 if kinds.get(node) not in PATCH_REQUIRED_KINDS:
                     continue
                 # Gi1 exactly -- Gi10 and Gi11 are ordinary data interfaces.
                 if iface.lower() in ("gi1", "gigabitethernet1"):
-                    offenders.append(f"{os.path.basename(path)}:{endpoint}")
+                    offenders.append(f"{os.path.basename(path)}:{shown}")
     return offenders
 
 
@@ -265,3 +294,72 @@ def test_the_reserved_interface_check_can_fail(tmp_path):
             f"    - endpoints: [\"c8k:{good}\", \"br-mgmt:x-mgmt\"]\n",
             encoding="utf-8")
         assert c8000v_links_on_the_reserved_interface([str(ok)]) == [], good
+
+
+# --------------------------------------------------------------------------
+# Both link formats, because the check was blind to the newer one
+# --------------------------------------------------------------------------
+
+def _write(tmp_path, name, body):
+    path = tmp_path / name
+    path.write_text(body, encoding="utf-8")
+    return str(path)
+
+
+_EXTENDED = """name: x
+topology:
+  nodes:
+    lonely-c8k:
+      kind: cisco_c8000v
+      binds: ["patches/c8000v-launch-adopted.py:/launch.py"]
+    br-mgmt: {kind: bridge}
+  links:
+    - type: veth
+      endpoints:
+        - node: lonely-c8k
+          interface: %s
+          mac: aa:bb:cc:00:02:40
+        - node: br-mgmt
+          interface: x-mgmt
+"""
+
+
+def test_the_reserved_interface_check_sees_the_EXTENDED_format(tmp_path):
+    """**The blindness, pinned.** Before `_link_endpoints`, a `Gi1` cabled in
+    the extended format was not an offender and not an error — it was not
+    seen, and the whole suite passed against it. A gate that silently opens
+    produces no offenders, which is what a clean run looks like."""
+    bad = _write(tmp_path, "extended.clab.yml", _EXTENDED % "Gi1")
+    assert c8000v_links_on_the_reserved_interface([bad]) == \
+        ["extended.clab.yml:lonely-c8k:Gi1"]
+
+
+def test_the_extended_format_on_Gi2_is_accepted(tmp_path):
+    """**The floor.** A parser that flagged every extended link would satisfy
+    the test above and make the format unusable."""
+    good = _write(tmp_path, "ok.clab.yml", _EXTENDED % "Gi2")
+    assert c8000v_links_on_the_reserved_interface([good]) == []
+
+
+def test_the_phase_2_probe_uses_the_extended_format():
+    """A positive anchor: the format really is in the corpus, so the parser
+    above is exercised by a real file and not only by a fixture."""
+    import yaml as _yaml
+
+    path = os.path.join(PROBE_DIR, "nmas-dhcp-a.clab.yml")
+    doc = _yaml.safe_load(open(path, encoding="utf-8"))
+    endpoints = (doc["topology"]["links"][0] or {})["endpoints"]
+    assert isinstance(endpoints[0], dict), "the probe no longer pins a MAC"
+    assert endpoints[0]["mac"] == "aa:bb:cc:00:02:40"
+
+
+def test_the_pinned_mac_matches_the_documented_reservation():
+    """The pair is written in two files and a mismatch is silence on the wire,
+    which looks exactly like a Kea problem."""
+    path = os.path.join(PROBE_DIR, "nmas-dhcp-a.clab.yml")
+    topology = open(path, encoding="utf-8").read()
+    scope = open(os.path.join(os.path.dirname(PROBE_DIR), "PHASE2_DHCP.md"),
+                 encoding="utf-8").read()
+    assert "aa:bb:cc:00:02:40" in topology
+    assert "aa:bb:cc:00:02:40" in scope, \
+        "the reservation in the scope document no longer matches the topology"
