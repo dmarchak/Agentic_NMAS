@@ -1597,6 +1597,55 @@ and the topology service; no RW community exists on it.
 
 ---
 
+### Scope of what remains — measured 2026-09-25
+
+Counted from what these stages actually say, not estimated. **This is scope,
+not an order**; the ordering constraints are named below it.
+
+| Stage | Items | Build | Decide | Note |
+|---|---|---|---|---|
+| **5** — per-device monitoring | **7** | 6 | 0 | ⚠ **derived, not enumerated** — see below |
+| **6** — security | **4** (6.1–6.4) | 3 | 1 | infrastructure and device-side; touches no GUI |
+| **7** — the interface | **11** (7.0–7.9, incl. 7.2b) | 8 | 2 | **7.2b is DONE** — §0b's script extraction and §6c's cache headers both landed |
+| **8** — AI and agent | **6** (8.0–8.5) | 4 | 2 | plus three named sub-findings inside 8.2/8.3 |
+
+**⚠ Stage 5's seven is a different kind of number from the other three.**
+Stages 6, 7 and 8 carry numbered item lists and were counted. **Stage 5 is one
+acceptance paragraph**, so its seven is a *reading* of that paragraph — the
+per-device Prometheus, Loki, Oxidized and lease views, retiring the legacy
+collector, restoring switch syslog, and putting `logging trap` into intent.
+Quote it as an estimate, not a count, and **enumerating Stage 5 is itself the
+first item of Stage 5**.
+
+**There is no separate settings rebuild.** Stage 3.2a — `migrate()` never
+seeds, `ratify()`, the v2 trap — is **built and shipped**. What remains is
+**one line item, 7.7 (*Settings split; Logs tab dissolved*)**, inside Stage 7.
+It has been carried in conversation as a fifth workstream and is a single step
+of an existing one.
+
+#### What blocks what
+
+**Nothing blocks Stage 7.** The dependencies run the other way:
+
+- **Stage 7 → Stage 8**, explicitly and deliberately: the tool library must
+  describe a finished system rather than a moving one.
+- **The CI decision (GitHub Actions vs Jenkins) → 8.0 → 8.2.** Eighteen of the
+  seventy-three tools are `jenkins_*` — a quarter of the library classified
+  against a system that may not survive.
+- **7.0 → everything in Stage 7.** The reachability test plus the invalidation
+  map is the checklist every later step is written against.
+- **Grafana `allow_embedding` + an Access policy for the embed path → 7.5 →
+  7.9.** Named blockers, not measured ones; the iframe test comes first.
+- Stages 5 and 6 block nothing and are blocked by nothing.
+
+**The overlap worth knowing: Stage 5 and Stage 7.5 are the same screens.**
+Stage 5's per-device Prometheus / Loki / Oxidized / lease views and Stage 7.5's
+Monitoring destination are one surface. Doing 5 before 7 means building it
+twice — which is the argument the plan already makes for putting Stage 8 last,
+and does not make here.
+
+---
+
 ### STAGE 5 — Phase 5: per-device monitoring
 
 Per Section 6's Phase 5, narrowed by what Part 1 built: the Integrations panel

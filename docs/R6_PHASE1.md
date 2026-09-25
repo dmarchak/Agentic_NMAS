@@ -77,7 +77,9 @@ file is `docs/patches/oxidized-to-config.sh.new`.
 2. **Then phase 2 (address from Kea) or the branch site** — operator's
    choice, not a sequencing constraint.
 
-Stages 5, 6, 7, 8 and the settings rebuild are unchanged.
+Stages 5, 6, 7 and 8 are unchanged. **There is no separate settings
+rebuild** — Stage 3.2a is shipped and what remains is 7.7 inside Stage 7;
+see NSOT_PLAN.md, *Scope of what remains*.
 
 ---
 
