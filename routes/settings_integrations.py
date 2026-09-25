@@ -14,7 +14,7 @@ from flask import Blueprint, jsonify, request
 
 from modules.integrations import REGISTRY, all_statuses, get_integration
 from modules.settings_schema import DEFAULTS, get_setting, migrate, validate
-from modules.config import load_user_settings, save_user_settings
+from modules.config import load_user_settings, save_user_settings, settings_lock
 from modules.secrets_store import SECRET_KEYS
 
 log = logging.getLogger(__name__)
@@ -110,12 +110,15 @@ def general_settings():
 
     values = request.get_json(silent=True) or {}
     try:
-        settings = load_user_settings()
-        settings.update({k: v for k, v in values.items() if k in keys})
-        ok, err = validate(settings)
-        if not ok:
-            return jsonify({"ok": False, "error": f"Invalid setting — {err}"}), 400
-        save_user_settings(settings)
+        # A read-modify-write outside `write_settings()`, so it takes the
+        # lock itself (C20).
+        with settings_lock():
+            settings = load_user_settings()
+            settings.update({k: v for k, v in values.items() if k in keys})
+            ok, err = validate(settings)
+            if not ok:
+                return jsonify({"ok": False, "error": f"Invalid setting — {err}"}), 400
+            save_user_settings(settings)
         log.info("settings_integrations: saved general settings (%d key(s))",
                  len([k for k in values if k in keys]))
         return jsonify({"ok": True,

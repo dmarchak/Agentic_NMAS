@@ -236,11 +236,17 @@ whole, not of this addition.
   fills, the VMs on it pause or fail their writes. That is the same risk as
   filling `local`'s root filesystem, one level down, and it doubles the
   destinations `will_not_fit` has to watch.
-- **Your two `vmdata` figures disagree.** 942 G at 85 % used leaves about
-  141 G free, not 849 G. They are probably two different measures (thin-pool
-  allocation against filesystem use). That needs settling
-  (`pvesm status`, and `lvs` or `zfs list`) before `vmdata` is used for
-  anything.
+- **`vmdata` has two "free" figures, and they measure different things**
+  (operator, 2026-09-25). `zpool list` shows **79.3 G allocated and 849 G
+  free**: what is actually WRITTEN to the pool. `pvesm` shows **85 % used and
+  ~141 G available**: what is UNRESERVED, because each zvol carries a
+  `refreservation` equal to its full volume size whether written or not. **141 G
+  is the number that governs allocating anything new on `vmdata`**, and 849 G
+  is how much of the disk is genuinely idle. *"85 % full" on a pool that is
+  8 % written is exactly the kind of number somebody acts on wrongly*: in
+  either direction, a reader can conclude the pool is nearly full or
+  that it has room it cannot reserve. A `will_not_fit` check pointed at
+  `vmdata` would have to read the reservation figure, not the pool's.
 
 The gap neither disk closes is **off the host**. That is where depth belongs
 next: Proxmox Backup Server with client-side encryption, or the images

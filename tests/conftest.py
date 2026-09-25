@@ -13,6 +13,28 @@ the store its own.
 import pytest
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _import_the_application_first():
+    """Import the whole program before any test can patch it (register C20).
+
+    Several modules bind a function by NAME at import
+    (`from modules.settings_schema import get_setting`), so a module imported
+    for the FIRST time while a test has that function monkeypatched keeps
+    the test's stub for the rest of the process. Measured: `test_onboard_plan`'s
+    `lab` fixture replaces `settings_schema.get_setting` with a lambda
+    answering unlisted keys with the schema default, and when it ran before
+    anything had imported `app`, `modules.integrations.base` was first
+    imported inside that fixture. Every later `get_config()` then read settings
+    through the lambda, and the Kea route echoed `kea_username` as `''`
+    after writing it correctly. The full suite never showed it, because an
+    earlier test always imported `app` first. A subset in another order
+    failed every time.
+
+    The program imports everything at start-up, so the harness does too.
+    """
+    import app  # noqa: F401
+
+
 @pytest.fixture(autouse=True)
 def _fresh_redaction_cache():
     from modules import redact

@@ -249,6 +249,71 @@ def load_user_settings(strict: bool = False) -> dict:
         raise SettingsUnreadable(reason) from exc
 
 
+import threading as _threading
+from contextlib import contextmanager as _contextmanager
+
+_settings_rlock = _threading.RLock()
+_settings_lock_depth = 0
+
+
+@_contextmanager
+def settings_lock():
+    """Hold this across a READ-MODIFY-WRITE of ``user_settings.json``.
+
+    Measured 2026-09-25 (register C20): two threads each calling
+    `set_user_setting()` 150 times left the file UNREADABLE in both runs
+    (`JSONDecodeError: Extra data`), and 141 writes failed. Two defects:
+    every writer used the same temp name, so one truncated the temp file
+    while the other was renaming it into place and two documents landed in
+    one file; and nothing serialised the read-modify-write, so a writer that
+    read before another's write put back its stale copy. The unreadable-file
+    guard then refused every write -- nothing was erased, and nothing could
+    be saved until the `.corrupt` copy was restored by hand.
+
+    In-process, an RLock, re-entrant so `write_settings()` may call helpers
+    that also take it. Across processes (a CLI such as `nmas-retire` writes
+    settings while the app runs), an exclusive `flock` on
+    ``user_settings.json.lock``, taken only at the outermost level: a second
+    `flock` from the same process on a new descriptor would block on itself.
+    `fcntl` does not exist on Windows (the development box); there the lock
+    is in-process only.
+    """
+    global _settings_lock_depth
+    with _settings_rlock:
+        outermost = _settings_lock_depth == 0
+        _settings_lock_depth += 1
+        fd = None
+        try:
+            if outermost:
+                fd = _acquire_settings_file_lock()
+            yield
+        finally:
+            _settings_lock_depth -= 1
+            if fd is not None:
+                _release_settings_file_lock(fd)
+
+
+def _acquire_settings_file_lock():
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    path = f"{USER_SETTINGS_FILE}.lock"
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+
+def _release_settings_file_lock(fd) -> None:
+    import fcntl
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
 def save_user_settings(settings: dict) -> bool:
     """Save user settings to JSON file, owner-only.
 
@@ -256,24 +321,41 @@ def save_user_settings(settings: dict) -> bool:
     rest, but the key sits beside it in the same directory -- so the file
     mode is not redundant with the encryption, it is what stops the two being
     readable together.
+
+    A caller that READ the settings to build *settings* must hold
+    :func:`settings_lock` across the read and this call, or a concurrent
+    writer's change is lost.
     """
     # ATOMIC. This used to open the real path with "w", which truncates in
     # place: a reader arriving mid-write got a partial document, and
     # `load_user_settings()` turned that into `{}`. Two settings requests
     # 10ms apart is enough. `credentials._save()` already had this shape;
     # this one did not, and the two defects together erased the file.
-    tmp = f"{USER_SETTINGS_FILE}.tmp"
+    #
+    # A temp file PER WRITE (C20). A fixed `<file>.tmp` shared by every
+    # writer let two of them write into one inode and install the result.
+    # `mkstemp` creates it 0600, like `open_secure`, and in the same
+    # directory so `os.replace` stays a rename. The name matches the
+    # checker's `user_settings.json.*` secret pattern, so a crash leftover
+    # is classified rather than unknown.
+    import tempfile
+
+    directory = os.path.dirname(USER_SETTINGS_FILE) or "."
+    tmp = None
     try:
-        with open_secure(tmp, "w") as f:
-            json.dump(settings, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, USER_SETTINGS_FILE)
+        with settings_lock():
+            fd, tmp = tempfile.mkstemp(
+                prefix=os.path.basename(USER_SETTINGS_FILE) + ".tmp-", dir=directory)
+            with os.fdopen(fd, "w") as f:
+                json.dump(settings, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, USER_SETTINGS_FILE)
         return True
     except OSError:
         log.error("settings: could not write %s", USER_SETTINGS_FILE)
         try:
-            if os.path.exists(tmp):
+            if tmp and os.path.exists(tmp):
                 os.remove(tmp)
         except OSError:
             pass
@@ -287,9 +369,10 @@ def set_user_setting(key: str, value) -> bool:
     rather than returning `{}`, and that raise propagates here on purpose: a
     write built on defaults is exactly what erased every other key.
     """
-    settings = load_user_settings()
-    settings[key] = value
-    return save_user_settings(settings)
+    with settings_lock():
+        settings = load_user_settings()
+        settings[key] = value
+        return save_user_settings(settings)
 
 
 def get_user_setting(key: str, default=None):

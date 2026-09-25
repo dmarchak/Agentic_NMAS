@@ -757,6 +757,21 @@ means the ciphertext beside it was never protected. It has **two producers**
 both create it owner-only and `device.load_key` also tightens an existing one.
 The checker tests it first and separately.
 
+**Every read-modify-write of `user_settings.json` holds `config.settings_lock()`,
+and every write uses its own temp file** (C20, 2026-09-25). Measured before
+the fix: two threads each writing 150 keys left the file **unreadable** in 2 of
+2 runs. Every writer used one temp name, so two documents landed in one inode,
+and nothing serialised the read-modify-write. The unreadable-file guard then
+refused every write: nothing was erased, and nothing could be saved. The lock
+is an RLock in-process plus `flock` on `user_settings.json.lock` across
+processes, because a CLI such as `nmas-retire` writes settings while the app
+runs. After the fix: 300 of 300, threads and processes. An AST scan requires
+the lock in any function that both loads and saves. **`write_settings()` is
+not the only write path**: the general-settings POST in
+`routes/settings_integrations.py` does its own read-modify-write, and
+`migrate()` writes on every GET of that panel. Both hold the lock now. The
+bypass is recorded, not yet removed.
+
 **Encryption at rest here protects COPIES THAT TRAVEL, and nothing on the
 live disk.** That is a property of the design, not a flaw in it. NMAS works
 unattended: the drift schedule opens SSH sessions, redaction decrypts every
@@ -898,6 +913,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_job_health.py` | a failing timer is visible: the cause line and the streak; not-installed is never ok; could-not-ask is unknown |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_breakglass.py` | the record is independent of the key it escrows; `verify --live` tests the ESCROWED key against the stored values (a right key on disk cannot pass a wrong copy); zero values is unproven; restore never replaces a key |
+| `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -3058,6 +3074,19 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   is empty. A guard gated on a key nothing sets always refuses — the
   `clab_host` shape with the setting removed rather than blanked — and a test
   pins that an empty legacy key never refuses a configured client.
+- **The harness imports the program before any test can patch it**
+  (`conftest.py`, C20). A module that binds a function by name at import
+  keeps whatever that name meant at the moment of its FIRST import. If that
+  moment falls inside a test's monkeypatch, the stub stays for the rest of
+  the process. Measured: `test_onboard_plan.py` run first left
+  `modules.integrations.base` holding its `get_setting` lambda, and the Kea
+  route echoed `''` after writing the value correctly. It was deterministic
+  given the file order and invisible in the full suite, where an earlier
+  test always imported `app` first. **The streaks that made it look like a
+  race came from the command choosing the subset**: `grep` in the agent's
+  shell is a parallel `ugrep`, so its file order varied between runs. *A
+  diagnosis that says "race" needs the variable named. Here it was an input
+  to the experiment, not the system under test.*
 - **A test that passes alone and fails in the suite is telling you which
   binding it is missing.** `get_setting` is bound in **three** modules — the
   definition, `integrations/base` (for `url`), `integrations/oxidized` (for
@@ -4124,7 +4153,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **26 open at 2026-09-25**, counted from the rows: 22 recorded only in
+present when each was recorded. **25 open at 2026-09-25**, counted from the rows: 21 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

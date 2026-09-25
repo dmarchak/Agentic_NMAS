@@ -19,7 +19,7 @@ import logging
 import os
 import re
 
-from modules.config import load_user_settings, save_user_settings
+from modules.config import load_user_settings, save_user_settings, settings_lock
 
 log = logging.getLogger(__name__)
 
@@ -762,6 +762,13 @@ def migrate() -> dict:
     Old keys are never deleted — constraint 1 requires they stay readable.
     Returns a summary describing what changed.
     """
+    # A read-modify-write, and it runs on every GET of the general settings
+    # panel, so it takes the lock like any other writer (C20).
+    with settings_lock():
+        return _migrate_unlocked()
+
+
+def _migrate_unlocked() -> dict:
     settings = load_user_settings()
     current  = settings.get("settings_schema_version", 0)
     summary  = {"from_version": current, "to_version": SCHEMA_VERSION,
@@ -841,16 +848,17 @@ def write_settings(updates: dict, actor: str = "") -> dict:
                             "validated, migrated or reported."),
                 "written": [], "refused": sorted(refused)}
 
-    settings = load_user_settings()
-    merged = dict(settings)
-    merged.update(updates)
+    with settings_lock():       # read-modify-write (C20)
+        settings = load_user_settings()
+        merged = dict(settings)
+        merged.update(updates)
 
-    ok, why = validate(merged)
-    if not ok:
-        return {"ok": False, "error": f"invalid settings: {why}",
-                "written": [], "refused": []}
+        ok, why = validate(merged)
+        if not ok:
+            return {"ok": False, "error": f"invalid settings: {why}",
+                    "written": [], "refused": []}
 
-    save_user_settings(merged)
+        save_user_settings(merged)
     if actor:
         # Names and keys, never values: this line goes to the app log.
         log.info("settings: %s wrote %s", actor, ",".join(sorted(updates)))
