@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Restore a NetBox backup into a SCRATCH postgres and prove it is complete.
+
+NSOT_PLAN.md **P.2**. A backup nobody has restored is a hope, so this restores
+one and checks the result against the manifest it was taken with:
+
+1. every file re-hashed against the manifest;
+2. the configuration carries the names a restore depends on (`SECRET_KEY`,
+   `API_TOKEN_PEPPER_1`) -- names only, values are never read;
+3. ``pg_restore`` into a throwaway container of **the same postgres image**
+   the live database runs (a version mismatch refuses rather than migrating);
+4. every table counted in the restored database and compared **exactly** with
+   the manifest's counts, which were taken on the dump's own snapshot -- so
+   any difference is a real loss, not a race.
+
+The scratch container is removed on every path, including failure. It never
+touches the live database or the live NetBox.
+
+**What it does not prove**, stated rather than implied: it restores the
+database, not the application. It does not boot NetBox on the restored data,
+so a migration the image would run on start, or a pepper that no longer
+matches the tokens, is not exercised here.
+
+    nmas-netbox-restore-test                  # the newest hourly backup
+    nmas-netbox-restore-test --backup DIR     # a specific one
+
+Exit 0 restored and identical, 1 failed or differs, 2 nothing to test.
+The result is recorded in the backup root's ``state.json`` so that
+``nmas-netbox-backup --status`` reports when a restore last succeeded.
+"""
+
+import argparse
+import datetime
+import importlib.machinery
+import importlib.util
+import json
+import os
+import secrets
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _backup_module():
+    loader = importlib.machinery.SourceFileLoader(
+        "nmas_netbox_backup", os.path.join(HERE, "nmas-netbox-backup"))
+    spec = importlib.util.spec_from_loader("nmas_netbox_backup", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+B = _backup_module()
+
+
+def newest_backup(root: str) -> str:
+    hourly = os.path.join(root, "hourly")
+    names = sorted(n for n in (os.listdir(hourly) if os.path.isdir(hourly)
+                               else []) if B._parse_ts(n))
+    return os.path.join(hourly, names[-1]) if names else ""
+
+
+def config_names(backup_dir: str) -> set:
+    env = os.path.join(backup_dir, "config", "env", "netbox.env")
+    if not os.path.isfile(env):
+        return set()
+    with open(env, encoding="utf-8") as fh:
+        return {l.split("=", 1)[0].strip() for l in fh if "=" in l}
+
+
+def restore_and_count(manifest: dict, dump: str) -> dict:
+    """pg_restore into a scratch container; return its row counts."""
+    name = "nmas-restore-test-" + datetime.datetime.now(
+        datetime.timezone.utc).strftime(B.TS_FORMAT).lower()
+    user, db = manifest["postgres_user"], manifest["postgres_db"]
+    B._run(["docker", "run", "-d", "--rm", "--name", name,
+            "-e", f"POSTGRES_USER={user}", "-e", f"POSTGRES_DB={db}",
+            "-e", f"POSTGRES_PASSWORD={secrets.token_hex(16)}",
+            manifest["postgres_image"]], capture_output=True, text=True)
+    try:
+        for _ in range(60):
+            ok = subprocess.run(["docker", "exec", name, "pg_isready", "-U",
+                                 user, "-d", db], capture_output=True)
+            if ok.returncode == 0:
+                break
+            time.sleep(1)
+        else:
+            raise RuntimeError("scratch postgres never became ready")
+        time.sleep(2)  # the entrypoint restarts postgres once after init
+        with open(dump, "rb") as fh:
+            B._run(["docker", "exec", "-i", name, "pg_restore", "-U", user,
+                    "-d", db, "--exit-on-error", "--no-owner"], stdin=fh,
+                   capture_output=True)
+        out = B._run(["docker", "exec", "-i", name, "sh", "-c", B.PSQL],
+                     input=B.COUNT_SQL + "\n", capture_output=True,
+                     text=True).stdout.splitlines()
+        return B.parse_counts(out)
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
+def run(backup_dir: str, root: str) -> tuple:
+    """(exit code, detail). Pure orchestration; restore_and_count is the
+    only part that touches docker."""
+    if not backup_dir or not os.path.isdir(backup_dir):
+        return B.EXIT_UNPROVEN, "no backup to test"
+    try:
+        with open(os.path.join(backup_dir, "manifest.json"),
+                  encoding="utf-8") as fh:
+            manifest = json.load(fh)
+    except (OSError, ValueError) as exc:
+        return B.EXIT_FAILED, f"manifest unreadable: {exc}"
+    problems = B.verify_files(backup_dir, manifest)
+    if problems:
+        return B.EXIT_FAILED, "files: " + "; ".join(problems[:5])
+    missing = {"SECRET_KEY", "API_TOKEN_PEPPER_1"} - config_names(backup_dir)
+    if missing:
+        return B.EXIT_FAILED, f"config lacks {sorted(missing)}"
+    expected = manifest.get("row_counts") or {}
+    if not expected:
+        return B.EXIT_FAILED, "manifest has no row counts to compare against"
+    try:
+        got = restore_and_count(manifest,
+                                os.path.join(backup_dir, "netbox.pgdump"))
+    except Exception as exc:
+        return B.EXIT_FAILED, "restore: " + B._reason(exc)
+    diffs = B.compare_counts(expected, got)
+    if diffs:
+        return B.EXIT_FAILED, (f"{len(diffs)} table(s) differ: "
+                               + "; ".join(diffs[:5]))
+    total = sum(expected.values())
+    return B.EXIT_OK, (f"{os.path.basename(backup_dir)}: {len(expected)} "
+                       f"tables, {total} rows, identical")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--backup", default="", help="backup directory to test")
+    args = ap.parse_args()
+    cfg = B.config_from_env()
+    backup = args.backup or newest_backup(cfg["root"])
+    code, detail = run(backup, cfg["root"])
+    label = {B.EXIT_OK: "PASS", B.EXIT_FAILED: "FAIL",
+             B.EXIT_UNPROVEN: "UNPROVEN"}[code]
+    print(f"{label}: {detail}")
+    if os.path.isdir(cfg["root"]):
+        B._record(cfg["root"], "restore_test", result=label, detail=detail)
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

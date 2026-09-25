@@ -1807,6 +1807,66 @@ template or fixture carries `event manager`. Putting it into intent means a
 parser + template + round-trip change and a deploy to every device, through
 the confirmed path.
 
+**P.1 DECIDED 2026-09-25**, and what is built so far:
+1. **Trap level `notifications`, through intent.**
+2. **Heartbeat:** EEM `event timer watchdog time 300` →
+   `action syslog priority notifications msg "NMAS-HEARTBEAT"`; alert after
+   2 missed. **Heartbeat, trap level, logging host and source-interface are
+   ONE template block**, so a device cannot carry some of the block and not
+   the rest.
+3. **Onboarding gives every device that block as part of its baseline.** r6
+   gets it through that path, not by hand.
+4. **Alerting: Grafana alert rules on Loki, generated from the NetBox
+   inventory** (one expected heartbeat per device), **NoData = alerting**,
+   provisioned from the repository. NMAS displays Grafana's alert state in
+   7.5 and does not run the check itself.
+5. **The rsyslog address filter is fixed, not registered.**
+   [deploy/rsyslog/10-network-devices.conf](../deploy/rsyslog/10-network-devices.conf)
+   binds the UDP input to its own ruleset and files every message by source
+   address, so no addressing plan lives in a host file. It passes
+   `rsyslogd -N1` on the host (8.2312.0). Installing it needs sudo, so it is
+   not yet live.
+
+**EEM measured on both platforms: `docs/bootstrap-probe/nmas-eem-probe.clab.yml`**
+(a throwaway lab on the clab host, 172.30.70.0/24, same images as the fleet,
+60 s watchdog):
+- **vIOS-L2 executes it.** Four firings exactly 60 s apart (16:33:44 through
+  16:36:44), each recorded in `show event manager history events` as
+  `success`. The line is `%HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT`, so
+  its severity (5) passes `notifications`, and the logging-host counter moved
+  (7 lines sent).
+- **C8000v executes it too.** Three firings exactly 60 s apart (16:37:54,
+  16:38:54, 16:39:54), each `success`, the same `%HA_EM-5-LOG` line, and the
+  host counter moved 15 → 19. Its first firing came 60 s after the applet
+  registered (16:36:53), and the same holds on vIOS.
+- **One firing was not taken as proof of a timer.** The C8000v's first
+  measurement showed exactly one, so the probe was polled until there were
+  three.
+- Torn down with `--cleanup`: 0 probe containers, 0 probe networks, lab
+  directory removed, and the clab host back to its 16 production containers.
+
+**Two findings on the way:**
+- **NMAS's Grafana integration is not configured** (`grafana_url` is empty),
+  so generating the rules needs the Loki datasource UID from Grafana
+  itself. Whether this is another casualty of the 2026-09-23 settings
+  erasure is not established.
+- **The probe's own wait loop passed on the opposite state.** It matched the
+  substring `healthy`, which `unhealthy` contains. Caught because the first
+  measurement found neither node up. The check is now an exact comparison.
+
+**Remaining P.1 build, in order:**
+1. The logging block into the parser, the templates and host_vars (a new
+   modelled construct: EEM applet + logging settings), with a round-trip
+   against the fleet fixtures.
+2. The block into onboarding's baseline.
+3. The rule generator: from NetBox, keyed on **hostname** (from
+   `logging origin-id hostname`), not on the file name, because a device
+   sourcing from Loopback0 is filed under an address that is not NetBox's
+   primary IP.
+4. Deploy per device through the confirmed path, one device, one commit.
+5. The P.1 acceptance: heartbeats from all ten devices in Loki, and one
+   deliberately silenced device alerting.
+
 **P.2 NetBox backup and a tested restore path (closes the core of A1).**
 Sized on the host, 2026-09-25. NetBox is `netbox-docker` under
 `~/netbox-docker`, image `netboxcommunity/netbox:v4.6-5.0.2`,
@@ -1842,6 +1902,20 @@ P.2, not later:**
    safety.** The age of the last successful dump is surfaced, and a missing
    or old one is a named state. A timer that stopped is a backup that does
    not exist.
+
+**BUILT 2026-09-25**: `scripts/nmas-netbox-backup`,
+`scripts/nmas-netbox-restore-test`, `deploy/systemd/*`. Install and the
+Proxmox-side setup are in [NETBOX_BACKUP.md](NETBOX_BACKUP.md). Measured on
+the VM from `/tmp`:
+- backup: 198 tables, 3,142 rows on the dump's own snapshot;
+- encryption: decrypts with the key, refuses without it;
+- restore test: **PASS**, all counts identical.
+
+The first live restore **failed correctly**: the count query reached
+`docker exec` without `-i`, and the mocked seam could not see it.
+
+Decided: the off-box copy is dailies only, via rclone, ~14 days, gpg. There
+is no git copy. The units are system units, with no linger.
 
 **Proposal (2026-09-25):** `pg_dump -Fc` **hourly** (retain ~24), promoted
 to **daily** (retain ~14). Each backup is one directory: the dump, a media

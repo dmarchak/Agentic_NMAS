@@ -1,0 +1,23 @@
+# NSOT_PLAN.md P.2 -- installed as a SYSTEM unit (no linger needed).
+#   sudo install -m 0644 deploy/systemd/nmas-netbox-backup.* /etc/systemd/system/
+#   sudo install -m 0644 deploy/systemd/nmas-netbox-restore-test.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nmas-netbox-backup.timer nmas-netbox-restore-test.timer
+[Unit]
+Description=NMAS: back up NetBox (dump + media + config; encrypted copies shipped)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=dmarchak
+Group=dmarchak
+SupplementaryGroups=docker
+UMask=0077
+StateDirectory=nmas-netbox
+StateDirectoryMode=0700
+EnvironmentFile=/etc/nmas/netbox-backup.env
+ExecStart=/home/dmarchak/python/Agentic_NMAS/scripts/nmas-netbox-backup
+Nice=10
+TimeoutStartSec=30min

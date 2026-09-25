@@ -1,0 +1,16 @@
+[Unit]
+Description=NMAS: restore the newest NetBox backup into a scratch postgres and compare
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=dmarchak
+Group=dmarchak
+SupplementaryGroups=docker
+UMask=0077
+StateDirectory=nmas-netbox
+StateDirectoryMode=0700
+EnvironmentFile=/etc/nmas/netbox-backup.env
+ExecStart=/home/dmarchak/python/Agentic_NMAS/scripts/nmas-netbox-restore-test
+TimeoutStartSec=30min

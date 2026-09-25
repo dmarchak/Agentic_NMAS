@@ -1,0 +1,50 @@
+name: nmas-eem-probe
+
+# ---------------------------------------------------------------------------
+# P.1 - do EEM applets EXECUTE on vIOS-L2 and on C8000v?
+#
+# The heartbeat design (NSOT_PLAN.md P.1) depends on an EEM timer applet
+# emitting a syslog line every interval on every device. vIOS-L2 has shipped
+# CLI for features that do not run, so the CLI accepting the applet is not
+# evidence. What is measured, per node:
+#
+#   1. EXECUTION  - `show logging` buffer holds repeated NMAS-HEARTBEAT lines
+#                   (%HA_EM-5-LOG), one per watchdog interval;
+#   2. EMISSION   - the `Logging to 172.30.70.1` host counter increments at
+#                   `logging trap notifications`. UDP, so nothing needs to be
+#                   listening: the counter is the device's own record of
+#                   having sent.
+#
+# Watchdog is 60 s here to see several firings in minutes; production is
+# 300 s. Same mechanism, different constant.
+#
+# Own lab name, own network (172.30.70.0/24, free on the clab host when
+# checked with `docker network inspect`), destroyed after with --cleanup.
+# The vIOS startup config is typed at the console, so it carries no comments
+# and is pure ASCII.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-eem-probe
+  ipv4-subnet: 172.30.70.0/24
+
+topology:
+  kinds:
+    cisco_vios:
+      image: vrnetlab/cisco_vios:L2-20180619       # identical to s1-s4
+      env:
+        CLAB_MGMT_PASSTHROUGH: "false"
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a       # identical to r1-r5
+
+  nodes:
+    bp-eem-vios:
+      kind: cisco_vios
+      mgmt-ipv4: 172.30.70.51
+      startup-config: configs/bp-eem-vios.cfg
+    bp-eem-c8k:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.70.11
+      startup-config: configs/bp-eem-c8k.cfg
+      binds:
+        - patches/c8000v-launch-adopted.py:/launch.py   # smp=2 AND user-skip

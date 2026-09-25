@@ -1,0 +1,532 @@
+#!/usr/bin/env python3
+"""Back up NetBox: database, media and configuration, with encrypted copies shipped.
+
+NSOT_PLAN.md **P.2** (closes the core of OPEN_FINDINGS A1). NetBox is the one
+store NMAS writes to with no history and no rollback; `config_repo/` is
+versioned, NetBox was not.
+
+One backup is one directory, and it is **complete or absent**: it is built as
+``<ts>.partial`` and renamed only after every file is written and hashed, so a
+crash never leaves something that looks like a backup.
+
+    netbox.pgdump   pg_dump -Fc, taken on an EXPORTED SNAPSHOT
+    media.tar       media/, reports/, scripts/ from the NetBox container
+    config/         env/*.env, configuration/, docker-compose*.yml
+    manifest.json   versions, per-table row counts, sha256 of every file
+
+**The row counts are taken on the same snapshot as the dump.** A read-only
+``REPEATABLE READ`` transaction exports its snapshot, counts every table, and
+``pg_dump --snapshot`` dumps exactly that state while the transaction is held.
+So a restore can be compared **exactly** against the manifest -- counts taken
+a moment before or after the dump would differ by whatever NetBox wrote in
+between, and a comparison that must tolerate differences cannot detect one.
+
+**The configuration travels with the dump**, because a restore without it
+does not work: `env/netbox.env` carries `SECRET_KEY` and
+`API_TOKEN_PEPPER_1`, and without the pepper every v2 API token is invalid.
+That is why no copy of this goes to git, and why every copy that leaves the
+host is **gpg-encrypted to a public key**: the host holds only the public
+key, so it cannot decrypt what it has shipped.
+
+Retention: hourly backups are kept ~26 h; the first backup of each UTC day is
+also kept as a daily (hard links, no second copy on disk) for ~15 days.
+Shipping: every backup to the Proxmox host (rsync over ssh to an
+``rrsync -wo`` account, which can write and cannot delete -- retention there
+is the Proxmox side's job); dailies also off-box via rclone.
+
+**A destination that is not configured is a named state, never a success.**
+``--status`` exits 0 only when the last local backup is fresh AND every
+configured destination has received one recently; an unconfigured one is
+reported as such. A backup job that stopped is a backup that does not exist,
+and the failure mode this must not have is *looking* like it runs.
+
+    nmas-netbox-backup              # take one backup, prune, ship
+    nmas-netbox-backup --status     # 0 fresh, 1 stale/failed, 2 never ran
+
+Configuration comes from the environment (``/etc/nmas/netbox-backup.env``
+under systemd) -- see ``deploy/systemd/netbox-backup.env.example``.
+Standalone by design: it imports nothing from ``modules``.
+"""
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+EXIT_OK, EXIT_FAILED, EXIT_UNPROVEN = 0, 1, 2
+
+TS_FORMAT = "%Y%m%dT%H%M%SZ"
+HOURLY_KEEP_HOURS = 26
+DAILY_KEEP_DAYS = 15
+STALE_AFTER_HOURS = 3
+OFFBOX_STALE_AFTER_HOURS = 30
+RESTORE_STALE_AFTER_HOURS = 50
+
+#: One row per base table in `public`, counted inside the snapshot.
+#: query_to_xml runs the per-table count dynamically without creating a
+#: function, which a READ ONLY transaction could not do.
+COUNT_SQL = (
+    "SELECT table_name || '|' || (xpath('/row/c/text()', query_to_xml("
+    "format('SELECT count(*) AS c FROM %I.%I', table_schema, table_name), "
+    "false, true, '')))[1]::text FROM information_schema.tables "
+    "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
+    "ORDER BY table_name;")
+
+PSQL = ('exec psql -X -q -At -v ON_ERROR_STOP=1 '
+        '-U "$POSTGRES_USER" -d "$POSTGRES_DB"')
+END = "__NMAS_END__"
+
+
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _ts(dt: datetime.datetime) -> str:
+    return dt.strftime(TS_FORMAT)
+
+
+def _parse_ts(name: str):
+    try:
+        return datetime.datetime.strptime(name, TS_FORMAT).replace(
+            tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return None
+
+
+def config_from_env(env=None) -> dict:
+    env = os.environ if env is None else env
+    return {
+        "root": env.get("NMAS_BACKUP_ROOT", "/var/lib/nmas-netbox"),
+        "compose_dir": os.path.expanduser(
+            env.get("NMAS_BACKUP_COMPOSE_DIR", "~/netbox-docker")),
+        "pg_container": env.get("NMAS_BACKUP_PG_CONTAINER",
+                                "netbox-docker-postgres-1"),
+        "netbox_container": env.get("NMAS_BACKUP_NETBOX_CONTAINER",
+                                    "netbox-docker-netbox-1"),
+        "recipient_file": env.get("NMAS_BACKUP_GPG_RECIPIENT_FILE", ""),
+        "proxmox_target": env.get("NMAS_BACKUP_PROXMOX_TARGET", ""),
+        "ssh_key": env.get("NMAS_BACKUP_SSH_KEY", ""),
+        "rclone_remote": env.get("NMAS_BACKUP_RCLONE_REMOTE", ""),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pure parts: retention, verification, status
+# ---------------------------------------------------------------------------
+
+def retention_plan(hourly: list, daily: list, now: datetime.datetime,
+                   hourly_hours: int = HOURLY_KEEP_HOURS,
+                   daily_days: int = DAILY_KEEP_DAYS) -> dict:
+    """Which backup names to delete. Names that do not parse are never
+    touched -- something this tool did not name is not this tool's to delete.
+    The newest of each tier is always kept, however old, so a stopped timer
+    cannot prune the last backup that exists."""
+    def expired(names, limit):
+        dated = sorted((n for n in names if _parse_ts(n)), reverse=True)
+        return [n for n in dated[1:] if now - _parse_ts(n) > limit]
+    return {"hourly": expired(hourly, datetime.timedelta(hours=hourly_hours)),
+            "daily": expired(daily, datetime.timedelta(days=daily_days))}
+
+
+def needs_daily(name: str, daily: list) -> bool:
+    """The first backup of a UTC day becomes that day's daily."""
+    return not any(d[:8] == name[:8] for d in daily if _parse_ts(d))
+
+
+def sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def verify_files(backup_dir: str, manifest: dict) -> list:
+    """Every file the manifest names, re-hashed. Returns the problems."""
+    problems = []
+    files = manifest.get("files") or {}
+    if not files:
+        problems.append("manifest lists no files")
+    for rel, want in files.items():
+        path = os.path.join(backup_dir, rel)
+        if not os.path.isfile(path):
+            problems.append(f"missing: {rel}")
+        elif sha256_file(path) != want:
+            problems.append(f"hash differs: {rel}")
+    return problems
+
+
+def compare_counts(expected: dict, got: dict) -> list:
+    """Table-by-table differences between two row-count maps."""
+    diffs = []
+    for table in sorted(set(expected) | set(got)):
+        a, b = expected.get(table), got.get(table)
+        if a != b:
+            diffs.append(f"{table}: manifest {a} restored {b}")
+    return diffs
+
+
+def parse_counts(lines: list) -> dict:
+    out = {}
+    for line in lines:
+        name, _, n = line.partition("|")
+        if name and n.isdigit():
+            out[name] = int(n)
+    return out
+
+
+def status_report(state: dict, cfg: dict, now: datetime.datetime) -> tuple:
+    """(exit code, lines). Never 0 unless everything configured is fresh."""
+    if not state:
+        return EXIT_UNPROVEN, ["UNPROVEN: no backup has ever been recorded "
+                               "here. That is not the same as none being due."]
+    lines, code = [], EXIT_OK
+
+    def age(key):
+        at = (state.get(key) or {}).get("at")
+        return (now - datetime.datetime.fromisoformat(at)) if at else None
+
+    def line(label, key, limit_h, configured=True):
+        nonlocal code
+        if not configured:
+            lines.append(f"{label}: NOT CONFIGURED (named, not a success)")
+            return
+        a = age(key)
+        fail = (state.get(key.replace("success", "failure")) or {})
+        if a is None:
+            code = max(code, EXIT_FAILED)
+            lines.append(f"{label}: NEVER SUCCEEDED"
+                         + (f" -- last failure: {fail.get('reason')}"
+                            if fail else ""))
+        elif a > datetime.timedelta(hours=limit_h):
+            code = max(code, EXIT_FAILED)
+            lines.append(f"{label}: STALE, last success "
+                         f"{state[key]['at']} ({a} ago)"
+                         + (f" -- last failure: {fail.get('reason')}"
+                            if fail else ""))
+        else:
+            lines.append(f"{label}: ok, last success {state[key]['at']}")
+
+    line("local backup", "backup_success", STALE_AFTER_HOURS)
+    line("proxmox copy", "proxmox_success", STALE_AFTER_HOURS,
+         bool(cfg["proxmox_target"]))
+    line("off-box daily", "offbox_success", OFFBOX_STALE_AFTER_HOURS,
+         bool(cfg["rclone_remote"]))
+    rt = state.get("restore_test")
+    if not rt:
+        lines.append("restore test: NEVER RUN -- a backup nobody has "
+                     "restored is a hope")
+    else:
+        rt_age = now - datetime.datetime.fromisoformat(rt["at"])
+        if rt["result"] != "PASS" or rt_age > datetime.timedelta(
+                hours=RESTORE_STALE_AFTER_HOURS):
+            code = max(code, EXIT_FAILED)
+        lines.append(f"restore test: {rt['result']} at {rt['at']}"
+                     + (" (STALE)" if rt_age > datetime.timedelta(
+                         hours=RESTORE_STALE_AFTER_HOURS) else "")
+                     + f" -- {rt.get('detail', '')}")
+    if not cfg["recipient_file"]:
+        code = max(code, EXIT_FAILED)
+        lines.append("encryption: NO RECIPIENT KEY -- nothing can be shipped")
+    return code, lines
+
+
+# ---------------------------------------------------------------------------
+# I/O
+# ---------------------------------------------------------------------------
+
+def _read_state(root: str) -> dict:
+    try:
+        with open(os.path.join(root, "state.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return {}
+
+
+def _write_state(root: str, state: dict) -> None:
+    path = os.path.join(root, "state.json")
+    fd, tmp = tempfile.mkstemp(dir=root, prefix=".state.")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, indent=2, sort_keys=True)
+    os.replace(tmp, path)
+
+
+def _record(root: str, key: str, **fields) -> None:
+    state = _read_state(root)
+    state[key] = {"at": _now().isoformat(timespec="seconds"), **fields}
+    _write_state(root, state)
+
+
+def _run(cmd, **kw) -> subprocess.CompletedProcess:
+    kw.setdefault("check", True)
+    return subprocess.run(cmd, **kw)
+
+
+def _docker_out(*args) -> str:
+    return _run(["docker", *args], capture_output=True,
+                text=True).stdout.strip()
+
+
+class _Session:
+    """A psql session held open so its exported snapshot stays valid."""
+
+    def __init__(self, container: str):
+        self.p = subprocess.Popen(
+            ["docker", "exec", "-i", container, "sh", "-c", PSQL],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, bufsize=1)
+
+    def ask(self, sql: str) -> list:
+        self.p.stdin.write(f"{sql}\n\\echo {END}\n")
+        self.p.stdin.flush()
+        out = []
+        for line in self.p.stdout:
+            line = line.rstrip("\n")
+            if line == END:
+                return out
+            out.append(line)
+        raise RuntimeError("psql ended: " + self.p.stderr.read()[:300])
+
+    def close(self):
+        try:
+            self.p.stdin.write("COMMIT;\n\\q\n")
+            self.p.stdin.close()
+        except OSError:
+            pass
+        self.p.wait(timeout=30)
+
+
+def dump_database(cfg: dict, out_path: str) -> dict:
+    """Dump on an exported snapshot and count every table on that snapshot."""
+    s = _Session(cfg["pg_container"])
+    try:
+        s.ask("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;")
+        snapshot = s.ask("SELECT pg_export_snapshot();")[0]
+        server_version = s.ask("SHOW server_version;")[0]
+        counts = parse_counts(s.ask(COUNT_SQL))
+        with open(out_path, "wb") as fh:
+            _run(["docker", "exec", cfg["pg_container"], "sh", "-c",
+                  'exec pg_dump -Fc --snapshot="$1" -U "$POSTGRES_USER" '
+                  '-d "$POSTGRES_DB"', "sh", snapshot], stdout=fh)
+    finally:
+        s.close()
+    if not counts:
+        raise RuntimeError("the row count returned no tables -- refusing to "
+                           "record a manifest that cannot verify anything")
+    user_db = _docker_out("exec", cfg["pg_container"], "sh", "-c",
+                          'echo "$POSTGRES_USER $POSTGRES_DB"').split()
+    return {"snapshot": snapshot, "server_version": server_version,
+            "row_counts": counts, "postgres_user": user_db[0],
+            "postgres_db": user_db[1]}
+
+
+def copy_config(compose_dir: str, dest: str) -> None:
+    """env/, configuration/ and the compose files. Written 0600 whatever
+    mode the originals had (OPEN_FINDINGS B4: they were 0664)."""
+    os.makedirs(dest, mode=0o700)
+    for sub in ("env", "configuration"):
+        src = os.path.join(compose_dir, sub)
+        if not os.path.isdir(src):
+            raise RuntimeError(f"missing {src} -- a restore needs it")
+        shutil.copytree(src, os.path.join(dest, sub), copy_function=shutil.copy)
+    for name in sorted(os.listdir(compose_dir)):
+        if name.startswith("docker-compose") and name.endswith(".yml"):
+            shutil.copy(os.path.join(compose_dir, name), dest)
+    for base, dirs, files in os.walk(dest):
+        for d in dirs:
+            os.chmod(os.path.join(base, d), 0o700)
+        for f in files:
+            os.chmod(os.path.join(base, f), 0o600)
+    env = os.path.join(dest, "env", "netbox.env")
+    names = set()
+    if os.path.isfile(env):
+        with open(env, encoding="utf-8") as fh:
+            names = {l.split("=", 1)[0].strip() for l in fh if "=" in l}
+    missing = [n for n in ("SECRET_KEY", "API_TOKEN_PEPPER_1")
+               if n not in names]
+    if missing:
+        raise RuntimeError(f"env/netbox.env lacks {missing} -- a restore "
+                           "without them cannot authenticate (names only "
+                           "were read)")
+
+
+def take_backup(cfg: dict, now=None) -> str:
+    root, now = cfg["root"], now or _now()
+    hourly = os.path.join(root, "hourly")
+    os.makedirs(hourly, mode=0o700, exist_ok=True)
+    name = _ts(now)
+    work = os.path.join(hourly, name + ".partial")
+    os.makedirs(work, mode=0o700)
+    try:
+        db = dump_database(cfg, os.path.join(work, "netbox.pgdump"))
+        with open(os.path.join(work, "media.tar"), "wb") as fh:
+            _run(["docker", "exec", cfg["netbox_container"], "tar", "-C",
+                  "/opt/netbox/netbox", "-cf", "-", "media", "reports",
+                  "scripts"], stdout=fh)
+        copy_config(cfg["compose_dir"], os.path.join(work, "config"))
+        files = {}
+        for base, _, names in os.walk(work):
+            for n in names:
+                p = os.path.join(base, n)
+                os.chmod(p, 0o600)
+                files[os.path.relpath(p, work)] = sha256_file(p)
+        manifest = {
+            "taken_at": now.isoformat(timespec="seconds"),
+            "netbox_image": _docker_out("inspect", "-f", "{{.Config.Image}}",
+                                        cfg["netbox_container"]),
+            "postgres_image": _docker_out("inspect", "-f",
+                                          "{{.Config.Image}}",
+                                          cfg["pg_container"]),
+            "netbox_version": _docker_out(
+                "exec", cfg["netbox_container"], "sh", "-c",
+                "grep -m1 '^version' /opt/netbox/netbox/release.yaml "
+                "| cut -d'\"' -f2"),
+            **db,
+            "files": files,
+        }
+        with open(os.path.join(work, "manifest.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump(manifest, fh, indent=2, sort_keys=True)
+        os.chmod(os.path.join(work, "manifest.json"), 0o600)
+        os.rename(work, os.path.join(hourly, name))
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    return name
+
+
+def promote_and_prune(root: str, name: str, now=None) -> dict:
+    now = now or _now()
+    hourly_dir, daily_dir = os.path.join(root, "hourly"), os.path.join(
+        root, "daily")
+    os.makedirs(daily_dir, mode=0o700, exist_ok=True)
+    daily = os.listdir(daily_dir)
+    promoted = False
+    if needs_daily(name, daily):
+        shutil.copytree(os.path.join(hourly_dir, name),
+                        os.path.join(daily_dir, name), copy_function=os.link)
+        promoted = True
+    plan = retention_plan(os.listdir(hourly_dir), os.listdir(daily_dir), now)
+    for tier, names in plan.items():
+        for n in names:
+            shutil.rmtree(os.path.join(root, tier, n))
+    return {"promoted": promoted, "pruned": plan}
+
+
+def encrypt(cfg: dict, tier_dir: str, name: str, out_dir: str) -> str:
+    """tar | gpg to the recipient's PUBLIC key. No keyring is touched."""
+    os.makedirs(out_dir, mode=0o700, exist_ok=True)
+    out = os.path.join(out_dir, name + ".tar.gpg")
+    with tempfile.TemporaryDirectory() as home:
+        tar = subprocess.Popen(["tar", "-C", tier_dir, "-cf", "-", name],
+                               stdout=subprocess.PIPE)
+        _run(["gpg", "--homedir", home, "--batch", "--yes", "--quiet",
+              "--trust-model", "always", "--recipient-file",
+              cfg["recipient_file"], "--encrypt", "--output", out],
+             stdin=tar.stdout)
+        tar.stdout.close()
+        if tar.wait() != 0:
+            raise RuntimeError(f"tar of {name} failed")
+    os.chmod(out, 0o600)
+    return out
+
+
+def ship_proxmox(cfg: dict, artefact: str, tier: str) -> None:
+    ssh = (f"ssh -i {cfg['ssh_key']} -o BatchMode=yes -o IdentitiesOnly=yes"
+           if cfg["ssh_key"] else "ssh -o BatchMode=yes")
+    # No --mkpath / --chmod: rrsync filters the options it accepts, so the
+    # Proxmox side pre-creates hourly/ and daily/ (docs/NETBOX_BACKUP.md), and
+    # the file is ciphertext whatever mode it lands with.
+    _run(["rsync", "-e", ssh, artefact,
+          f"{cfg['proxmox_target']}:{tier}/"], capture_output=True, text=True)
+
+
+def ship_offbox(cfg: dict, artefact: str) -> None:
+    remote = cfg["rclone_remote"].rstrip("/")
+    _run(["rclone", "copyto", artefact,
+          f"{remote}/daily/{os.path.basename(artefact)}"],
+         capture_output=True, text=True)
+    _run(["rclone", "delete", f"{remote}/daily", "--min-age",
+          f"{DAILY_KEEP_DAYS}d"], capture_output=True, text=True)
+
+
+def _reason(exc: BaseException) -> str:
+    if isinstance(exc, subprocess.CalledProcessError):
+        err = exc.stderr if isinstance(exc.stderr, str) else ""
+        return f"{exc.cmd[0]} exited {exc.returncode}: {err.strip()[:200]}"
+    return f"{type(exc).__name__}: {exc}"[:300]
+
+
+def run_once(cfg: dict) -> int:
+    root = cfg["root"]
+    os.makedirs(root, mode=0o700, exist_ok=True)
+    try:
+        name = take_backup(cfg)
+        kept = promote_and_prune(root, name)
+    except Exception as exc:
+        _record(root, "backup_failure", reason=_reason(exc))
+        print(f"BACKUP FAILED: {_reason(exc)}", file=sys.stderr)
+        return EXIT_FAILED
+    _record(root, "backup_success", name=name)
+    print(f"backup {name} written"
+          + (" (also today's daily)" if kept["promoted"] else "")
+          + f"; pruned {sum(len(v) for v in kept['pruned'].values())}")
+
+    code = EXIT_OK
+    if not cfg["recipient_file"]:
+        print("NOT SHIPPED: no NMAS_BACKUP_GPG_RECIPIENT_FILE -- nothing "
+              "leaves the host unencrypted", file=sys.stderr)
+        return EXIT_FAILED
+    out_dir = os.path.join(root, "outgoing")
+    tiers = [("hourly", os.path.join(root, "hourly"))]
+    if kept["promoted"]:
+        tiers.append(("daily", os.path.join(root, "daily")))
+    for tier, tier_dir in tiers:
+        try:
+            artefact = encrypt(cfg, tier_dir, name, os.path.join(out_dir,
+                                                                 tier))
+        except Exception as exc:
+            _record(root, "proxmox_failure", reason="encrypt: " + _reason(exc))
+            print(f"ENCRYPT FAILED: {_reason(exc)}", file=sys.stderr)
+            return EXIT_FAILED
+        for dest, configured, ship in (
+                ("proxmox", cfg["proxmox_target"],
+                 lambda a=artefact, t=tier: ship_proxmox(cfg, a, t)),
+                ("offbox", cfg["rclone_remote"] and tier == "daily",
+                 lambda a=artefact: ship_offbox(cfg, a))):
+            if not configured:
+                continue
+            try:
+                ship()
+                _record(root, f"{dest}_success", name=name, tier=tier)
+                print(f"shipped {tier}/{name} to {dest}")
+            except Exception as exc:
+                code = EXIT_FAILED
+                _record(root, f"{dest}_failure", reason=_reason(exc))
+                print(f"SHIP TO {dest.upper()} FAILED: {_reason(exc)}",
+                      file=sys.stderr)
+        os.remove(artefact)
+    return code
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--status", action="store_true",
+                    help="report freshness of every tier and destination")
+    args = ap.parse_args()
+    cfg = config_from_env()
+    if args.status:
+        code, lines = status_report(_read_state(cfg["root"]), cfg, _now())
+        print("\n".join(lines))
+        return code
+    return run_once(cfg)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

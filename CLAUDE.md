@@ -861,6 +861,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_authoring_schema.py` | omitting an interface key is fine and misspelling one is refused; filling changes no output |
 | `test_onboard_dhcp_source.py` | dhcp is a source not an absence; the reservation refuses at plan time; the review claim is checkable |
 | `test_server_reads_nothing_the_form_cannot_send.py` | a field only curl can supply is a feature no operator has; both directions, named exemptions |
+| `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -4007,7 +4008,13 @@ screen) and **P.2** NetBox backup with a tested restore (A1). The service
 unit's hardening is **6.5**. **P.1 measured**: nothing stopped. Every device
 has run `logging trap critical` since 8 Sep, and the pipeline delivers
 exactly what that level sends. It needs a trap-level decision and a
-per-device EEM heartbeat, not a repair. An item leaves by being fixed,
+per-device EEM heartbeat, not a repair. **Decided**: `notifications` in
+intent; an EEM 300 s watchdog heartbeat; heartbeat, trap level, host and
+source-interface as ONE template block that onboarding gives every device;
+Grafana alert rules generated from NetBox, with NoData = alerting. **P.2 is
+built** ([docs/NETBOX_BACKUP.md](docs/NETBOX_BACKUP.md)); its first live
+restore test failed correctly (`docker exec` without `-i`), which the mocked
+seam could not have shown. An item leaves by being fixed,
 scheduled or closed with a reason — never by being forgotten, and anything
 recorded as *"not applied"*, *"noted, not yet addressed"* or *"left open"*
 belongs there the same day it is written.
