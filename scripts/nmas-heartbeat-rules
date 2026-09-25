@@ -55,35 +55,53 @@ def host_pattern(hostname: str) -> str:
     return r"\s" + re.escape(hostname) + r":\s"
 
 
-#: The window, as a multiple of the heartbeat interval I. DERIVED, not picked.
+#: The window, as a multiple of the REAL heartbeat interval. DERIVED.
 #:
-#: The rule must stay quiet when ONE heartbeat is missed (a gap of up to
-#: 2I + J, where J is arrival jitter) and fire when TWO are (a gap of at
-#: least 3I - J). Any window strictly between those works; the midpoint,
-#: 2.5 I, is correct for every J below I/2.
-#:
-#: MEASURED, 2026-09-25, s4: the device clock put two heartbeats exactly 300 s
-#: apart (02:02:37.298, 02:07:37.311) and they ARRIVED 391 s apart (18:15:12,
-#: 18:21:43): J = 91 s, inside the I/2 = 150 s this multiplier tolerates. The
-#: first version used 2I + 60 = 660 s, below 2I + J = 691 s, so ONE missed
-#: heartbeat plus the jitter already measured would have alerted, contrary to
-#: the decision ("alert after 2 missed"). One device, one interval: the
-#: fleet-wide spread is re-measured at P.1's acceptance.
+#: The rule must stay quiet when ONE heartbeat is missed (a gap of up to two
+#: real intervals) and fire when TWO are (at least three). Any window
+#: strictly between works; 2.5 real intervals is the midpoint.
 WINDOW_MULTIPLIER = 2.5
-MAX_TOLERATED_JITTER_FRACTION = 0.5
-MEASURED_JITTER_SECONDS = 91
+
+#: REAL seconds per device-clock second, per dialect, MEASURED from Loki
+#: arrival times against the device's own timestamps (2026-09-25).
+#:
+#: This is a fact about each PLATFORM'S CLOCK, not about the network. It was
+#: first attributed to delivery jitter: s4's first two heartbeats arrived 391 s
+#: apart for a 300 s timer. Measured over five intervals, s4's own clock put
+#: every heartbeat 300.0 s apart (299.87 to 300.14) while the arrivals were
+#: 391, 401, 398, 404 and 402.5 s apart. The vIOS clock runs at about 75%
+#: speed (it also reads ~16 h behind), and the watchdog is exact in the
+#: device's time. r2 (C8000v) is 300.0 s by both clocks. A single window of
+#: 2.5 x 300 s = 750 s would have alerted on ONE missed s4 heartbeat (a real
+#: gap of about 800 s).
+#:
+#: Each entry: (rate, (min, max) measured real interval for a 300 s timer,
+#: where). A dialect with no entry is REFUSED: a default rate is a guess, and
+#: a wrong guess is either an alert on every device or none.
+HEARTBEAT_RATE = {
+    "cisco_ios": (399.3 / 300, (391.0, 404.0),
+                  "s4, 5 intervals: device 300.0 s, arrival 391-404 s"),
+    "cisco_iosxe": (1.0, (300.0, 300.1),
+                    "r2, 2 intervals: device 300.0 s, arrival 300.0-300.1 s"),
+}
 
 
-def window_seconds(heartbeat: int) -> int:
-    """2.5 intervals: quiet on one missed heartbeat, firing on two, for any
-    arrival jitter below half an interval (see WINDOW_MULTIPLIER)."""
-    return int(WINDOW_MULTIPLIER * int(heartbeat))
+def window_seconds(heartbeat: int, dialect: str) -> int:
+    """2.5 REAL intervals for this dialect's clock (see HEARTBEAT_RATE)."""
+    if dialect not in HEARTBEAT_RATE:
+        raise ValueError(f"no measured heartbeat rate for {dialect!r} -- "
+                         "measure one device's arrival spacing first "
+                         "(HEARTBEAT_RATE)")
+    import math
+    return math.ceil(WINDOW_MULTIPLIER * int(heartbeat)
+                     * HEARTBEAT_RATE[dialect][0])
 
 
-def rule_for(hostname: str, datasource_uid: str, heartbeat: int) -> dict:
+def rule_for(hostname: str, datasource_uid: str, heartbeat: int,
+             dialect: str) -> dict:
     if not _NAME.match(hostname):
         raise ValueError(f"{hostname!r} is not a usable device name")
-    window = window_seconds(heartbeat)
+    window = window_seconds(heartbeat, dialect)
     expr = (f'sum(count_over_time({{job="{JOB}"}} |= "{MARKER}" '
             f'|~ `{host_pattern(hostname)}` [{window}s]))')
     return {
@@ -106,7 +124,8 @@ def rule_for(hostname: str, datasource_uid: str, heartbeat: int) -> dict:
         "noDataState": "Alerting",
         "execErrState": "Alerting",
         "for": "0s",
-        "labels": {"nmas": "heartbeat", "device": hostname},
+        "labels": {"nmas": "heartbeat", "device": hostname,
+                   "dialect": dialect},
         "annotations": {
             "summary": f"No syslog heartbeat from {hostname} for "
                        f"{window // 60} min",
@@ -120,8 +139,9 @@ def rule_for(hostname: str, datasource_uid: str, heartbeat: int) -> dict:
     }
 
 
-def build(hostnames, datasource_uid: str, heartbeat: int) -> dict:
-    names = sorted(set(hostnames))
+def build(devices: dict, datasource_uid: str, heartbeat: int) -> dict:
+    """*devices* is ``{hostname: dialect}``."""
+    names = sorted(devices)
     if not names:
         raise ValueError("the inventory is empty -- a rule file with no rules "
                          "alerts on nothing and reads like a healthy fleet")
@@ -137,7 +157,8 @@ def build(hostnames, datasource_uid: str, heartbeat: int) -> dict:
                          "built from it would alert on every device")
     return {"apiVersion": 1, "groups": [{
         "orgId": 1, "name": GROUP, "folder": FOLDER, "interval": "1m",
-        "rules": [rule_for(n, datasource_uid, heartbeat) for n in names]}]}
+        "rules": [rule_for(n, datasource_uid, heartbeat, devices[n])
+                  for n in names]}]}
 
 
 def render(doc: dict) -> str:
@@ -153,13 +174,41 @@ def devices_in(doc: dict) -> set:
             for r in g.get("rules", [])}
 
 
-def netbox_hostnames() -> list:
+def netbox_devices() -> dict:
+    """``{hostname: dialect}``: the POPULATION from NetBox, the DIALECT from
+    the NSoT manifests.
+
+    Not NetBox's platform: measured 2026-09-25, NetBox records all ten
+    devices as `ios`, the C8000v routers included (OPEN_FINDINGS A4), and a
+    window keyed on that would give every router the vIOS clock's window.
+    A device no manifest names, or two manifests disagree about, is refused
+    by name -- a default dialect is the slug lookup that silently opens.
+    """
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists
     from modules.netbox_client import _nb_get, _nb_ready
+    from modules.nsot import manifest
+
     ok, err, session, base = _nb_ready()
     if not ok:
         raise RuntimeError(f"NetBox is not reachable: {err}")
-    return [d["name"] for d in _nb_get(session, base, "dcim/devices/")
-            if d.get("name")]
+    names = [d["name"] for d in _nb_get(session, base, "dcim/devices/")
+             if d.get("name")]
+    dialects: dict = {}
+    for entry in get_device_lists():
+        repo = os.path.join(LISTS_DIR, entry["filename"], "config_repo")
+        for dev in (manifest.load(repo).get("devices") or {}).values():
+            dialects.setdefault(dev.get("name"), set()).add(dev.get("platform"))
+    out, refused = {}, []
+    for n in names:
+        found = dialects.get(n) or set()
+        if len(found) != 1 or not next(iter(found)):
+            refused.append(f"{n} ({'no manifest names it' if not found else 'manifests disagree: ' + ', '.join(sorted(map(str, found)))})")
+        else:
+            out[n] = next(iter(found))
+    if refused:
+        raise ValueError("no dialect for " + "; ".join(refused))
+    return out
 
 
 def main() -> int:
@@ -178,7 +227,7 @@ def main() -> int:
     from modules.settings_schema import get_setting
     heartbeat = int(get_setting("syslog_heartbeat_seconds") or 0)
     try:
-        doc = build(netbox_hostnames(), args.datasource_uid, heartbeat)
+        doc = build(netbox_devices(), args.datasource_uid, heartbeat)
     except (RuntimeError, ValueError) as exc:
         print(f"UNPROVEN: {exc}")
         return EXIT_UNPROVEN

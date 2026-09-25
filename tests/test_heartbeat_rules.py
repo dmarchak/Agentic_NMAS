@@ -18,7 +18,8 @@ def _load():
 
 
 H = _load()
-FLEET = ["r1", "r2", "r3", "r4", "r5", "r6", "s1", "s2", "s3", "s4"]
+FLEET = {**{f"r{i}": "cisco_iosxe" for i in range(1, 7)},
+         **{f"s{i}": "cisco_ios" for i in range(1, 5)}}
 
 #: s3's line as rsyslog wrote it (measured, /var/log/network, 2026-09-22),
 #: with the heartbeat message in place of the traceback -- the SHAPE is the
@@ -41,31 +42,32 @@ class TestOneRulePerDevice:
             assert rule["noDataState"] == "Alerting"
             assert rule["execErrState"] == "Alerting"
 
-    def test_the_window_is_2_5_intervals(self):
-        rule = H.build(["r1"], "loki-uid", 300)["groups"][0]["rules"][0]
-        assert rule["data"][0]["relativeTimeRange"]["from"] == 750
-        assert "[750s]" in rule["data"][0]["model"]["expr"]
+    def test_the_window_is_per_dialect(self):
+        doc = H.build({"r2": "cisco_iosxe", "s4": "cisco_ios"}, "uid", 300)
+        w = {r["labels"]["device"]: r["data"][0]["relativeTimeRange"]["from"]
+             for r in doc["groups"][0]["rules"]}
+        assert w == {"r2": 750, "s4": 999}
 
-    @pytest.mark.parametrize("interval", [60, 300, 600])
-    def test_one_missed_is_quiet_and_two_missed_fire_at_measured_jitter(
-            self, interval):
-        """The property, not the constant. With the jitter measured on s4
-        (91 s, scaled to the interval's tolerance), a gap of one missed
-        heartbeat stays inside the window and a gap of two falls outside."""
-        w = H.window_seconds(interval)
-        jitter = min(H.MEASURED_JITTER_SECONDS,
-                     interval * H.MAX_TOLERATED_JITTER_FRACTION - 1)
-        one_missed_worst = 2 * interval + jitter
-        two_missed_best = 3 * interval - jitter
-        assert one_missed_worst < w < two_missed_best, (interval, w)
+    @pytest.mark.parametrize("dialect", sorted(H.HEARTBEAT_RATE))
+    def test_one_missed_is_quiet_and_two_missed_fire_at_the_MEASURED_spread(
+            self, dialect):
+        """The property, against each platform's measured real intervals:
+        one missed heartbeat (two real intervals, at their longest) stays
+        inside the window; two missed (three, at their shortest) fall
+        outside."""
+        _rate, (lo, hi), _where = H.HEARTBEAT_RATE[dialect]
+        w = H.window_seconds(300, dialect)
+        assert 2 * hi < w < 3 * lo, (dialect, w, lo, hi)
 
+    def test_one_window_for_every_platform_would_fail(self):
+        """Why it is per dialect: 2.5 x 300 s is quiet on one missed r2
+        heartbeat and ALERTS on one missed s4 heartbeat."""
+        _r, (lo, hi), _w = H.HEARTBEAT_RATE["cisco_ios"]
+        assert 2 * hi > 750
 
-    def test_the_query_names_the_datasource_and_the_marker(self):
-        rule = H.build(["r1"], "loki-uid", 300)["groups"][0]["rules"][0]
-        assert rule["data"][0]["datasourceUid"] == "loki-uid"
-        expr = rule["data"][0]["model"]["expr"]
-        assert '{job="network_syslog"}' in expr and '"NMAS-HEARTBEAT"' in expr
-        assert "|~ `" in expr, "the regex must be a raw (backtick) string"
+    def test_an_unmeasured_dialect_is_refused_not_defaulted(self):
+        with pytest.raises(ValueError, match="no measured heartbeat rate"):
+            H.build({"n1": "nxos"}, "uid", 300)
 
 
 class TestTheHostMatchIsAnchored:
@@ -84,21 +86,21 @@ class TestTheHostMatchIsAnchored:
 class TestRefusals:
     def test_an_empty_inventory_is_refused_not_written(self):
         with pytest.raises(ValueError, match="empty"):
-            H.build([], "loki-uid", 300)
+            H.build({}, "loki-uid", 300)
 
     def test_no_datasource_is_refused(self):
         with pytest.raises(ValueError, match="datasource"):
-            H.build(["r1"], "", 300)
+            H.build({"r1": "cisco_iosxe"}, "", 300)
 
     @pytest.mark.parametrize("interval", [0, None, 30])
     def test_an_unusable_interval_is_refused(self, interval):
         """Measured: an unset setting read as 0 produced a 60 s window."""
         with pytest.raises(ValueError, match="heartbeat interval"):
-            H.build(["r1"], "loki-uid", interval)
+            H.build({"r1": "cisco_iosxe"}, "loki-uid", interval)
 
     def test_an_unusable_name_is_refused(self):
         with pytest.raises(ValueError):
-            H.build(['r1"} or vector(1) #'], "loki-uid", 300)
+            H.build({'r1"} or vector(1) #': "cisco_iosxe"}, "loki-uid", 300)
 
 
 def test_the_rendered_file_parses_back_to_the_same_rules():

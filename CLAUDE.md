@@ -3998,6 +3998,16 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   every file wrongly while its tests passed. The tests used absolute paths
   and the deployment passed a relative one, which `git -C` then doubled. A
   fixture that could not exhibit the case, again.
+- **A timing difference was attributed to the network, and it was the
+  device's clock.** s4's heartbeats arrived 391 s apart for a 300 s timer,
+  and "91 s of jitter" moved the alert window. The operator asked what else
+  it could be. Measured over five intervals, s4's own clock says 300.0 s
+  every time while arrivals are 391–404 s apart: the vIOS clock runs at
+  ~75% speed, while r2 (C8000v) is exact. A reason that makes a number safe
+  is not therefore the true reason, and a rule tuned for jitter would have
+  been wrong for a slow clock. One 750 s window would have alerted on a
+  single missed s4 heartbeat. Windows are now per dialect, from measured
+  real intervals, and an unmeasured dialect is refused.
 - **STOP A PROCESS BY IDENTITY, NEVER BY PATTERN.** `pkill -f "<pattern>"`
   killed the shell running it three times: a heredoc edit lost
   (`NSOT_WRITEUP_NOTES.md`), a file copy lost, and a probe teardown stopped
@@ -4037,7 +4047,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **17 open at 2026-09-25**, counted from the rows: 13 recorded only in
+present when each was recorded. **19 open at 2026-09-25**, counted from the rows: 15 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

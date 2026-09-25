@@ -1994,12 +1994,34 @@ the confirmed path.
      `notifications` took effect.
    - Device clock 02:02:37.298 → 02:07:37.311, exactly 300 s: the watchdog
      re-arms, it does not fire once.
-   - **Arrivals 18:15:12 → 18:21:43, 391 s apart: 91 s of jitter between
-     the device's timer and the collector.** That measurement changed the
-     alert window from 2I + 60 = 660 s (which one missed heartbeat plus 91 s
-     would already exceed) to 2.5I = 750 s. That is quiet on one miss and
-     firing on two, for any jitter below I/2
-     (`nmas-heartbeat-rules`, `WINDOW_MULTIPLIER`).
+   - **Arrivals 18:15:12 → 18:21:43, 391 s apart.** First read as 91 s of
+     delivery jitter, which moved the window from 2I + 60 = 660 s to
+     2.5 × 300 = 750 s. **That reason was wrong.** At the operator's
+     request it was re-measured over five intervals:
+     - s4's own clock put every heartbeat **300.0 s** apart (299.87 to
+       300.14), and Loki received them **391, 401, 398, 404 and 402.5 s**
+       apart.
+     - So the vIOS **clock runs at about 75% speed**, which also explains
+       it reading ~16 h behind. The watchdog is exact in device time. It is
+       a fact about the platform's clock, not about the network.
+     - A single 750 s window would have alerted on ONE missed s4 heartbeat
+       (a real gap of about 800 s).
+     - **The window is now per dialect:** 2.5 × the platform's measured
+       real interval. vIOS gets 999 s and IOS-XE 750 s (`HEARTBEAT_RATE`
+       in `nmas-heartbeat-rules`, each entry carrying its measurement). An
+       unmeasured dialect is refused.
+     - The dialect comes from the NSoT manifest, not NetBox, which records
+       all ten devices as `ios` (OPEN_FINDINGS A4).
+
+   **r2 DONE 2026-09-25 (operator):**
+   - Arrivals 18:40:20, 18:45:20, 18:50:20: 300.1 and 300.0 s apart. The
+     device clock is one second behind arrival, consistently, so the C8000v
+     clock is correct.
+   - Loki returns all three through the anchored query.
+   - Golden `7115632`, tagged `golden/r2/20260925T183535Z`, with the applet
+     at lines 316-318, byte-identical.
+   - `%SYS-5-CONFIG_I` arrived, so `notifications` took effect on IOS-XE
+     too.
    - The device clock reads 02:02 while the wall clock read 18:15, so **the
      device's own timestamps cannot be used for arrival**. What the rule
      counts is Loki's timestamp.
@@ -2008,11 +2030,13 @@ the confirmed path.
 6. **Acceptance:**
    - Heartbeats from all ten devices in Loki.
    - One deliberately silenced device alerting.
-   - **The fleet's arrival spread re-measured:** over at least an hour of
-     heartbeats, the largest deviation of any device's inter-arrival gap
-     from 300 s. It must stay below 150 s (I/2), or the 2.5I window no
-     longer separates one missed heartbeat from two. The 91 s behind the
-     window is one device over one interval.
+   - **Every device's REAL interval measured:** over at least an hour of
+     heartbeats, the shortest and longest inter-arrival gap per device. For
+     its dialect's window W, **2 × longest < W < 3 × shortest**, or the
+     window no longer separates one missed heartbeat from two. The vIOS
+     rate is from s4 alone; s1–s3 may not run at the same speed, since an
+     emulated clock's slowdown can depend on host load. A switch outside
+     the band gets the band re-measured, not a guessed constant.
 
 **Remaining P.1 build, in order (as first written):**
 1. The logging block into the parser, the templates and host_vars (a new
