@@ -42,6 +42,13 @@ gpg --armor --export-secret-keys "$FPR" > netbox-backup-SECRET.asc # private: st
 second copy somewhere that is not the laptop either (a password manager or
 printed with `paperkey`). Test a decrypt once shipping works (section 5).
 
+**Custody as of 2026-09-25 (register B8):** the keyring and a restore-tested
+`paperkey` file, both `0600`, on the laptop only; no printer for the paper
+copy. The copies on the VM are plain, so losing the laptop alone loses no
+data. Losing the laptop together with the Proxmox host leaves B2's copies
+as the only ones, and nothing can read them. A second copy off this laptop
+closes it. A password-manager entry counts only if it syncs somewhere else.
+
 ## 2. On the Proxmox host (10.0.0.80), as root
 
 ```bash
