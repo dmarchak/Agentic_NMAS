@@ -10,11 +10,77 @@ Cleared before and after every test — cheap, and it makes each test's view of
 the store its own.
 """
 
+import os
+import shutil
+import tempfile
+
 import pytest
+
+# ---------------------------------------------------------------------------
+# THE SUITE NEVER TOUCHES THE LIVE STORE (2026-09-26)
+# ---------------------------------------------------------------------------
+# Run from a checkout, the suite wrote fixture lists into `data/`, and the
+# per-test guard below looked only for NEW paths, so paths that already
+# existed made it blind: the suite passed here because of this checkout's
+# residue and its settings file, and 19 tests errored in a pristine one.
+#
+# So the whole store moves, before anything imports `modules.config`: this
+# file is imported by pytest ahead of every test module. It is ALWAYS a fresh
+# directory, never an inherited NMAS_DATA_DIR, which could name a real store.
+_CHECKOUT_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+#
+# ONCE PER PROCESS. A test that imports `tests.conftest` for a constant
+# executes this file a second time under another module name, and the first
+# version then moved NMAS_DATA_DIR mid-session (measured 2026-09-26). The
+# owner pid makes the second execution adopt the store instead; a subprocess
+# has its own pid and never runs this file anyway.
+if os.environ.get("NMAS_TEST_STORE_OWNER") == str(os.getpid()):
+    _TEST_DATA_DIR = os.environ["NMAS_DATA_DIR"]
+else:
+    _TEST_DATA_DIR = tempfile.mkdtemp(prefix="nmas-test-data-")
+    os.environ["NMAS_DATA_DIR"] = _TEST_DATA_DIR
+    os.environ["NMAS_TEST_STORE_OWNER"] = str(os.getpid())
+
+
+from tests.store_guard import data_tree, tree_changes  # noqa: E402
+
+
+def pytest_sessionstart(session):
+    session.nmas_checkout_data_before = data_tree(_CHECKOUT_DATA_DIR)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """The live store must be byte-for-byte what it was. Any change fails the
+    run, naming the paths, even if every test passed."""
+    changed = tree_changes(getattr(session, "nmas_checkout_data_before", {}),
+                           data_tree(_CHECKOUT_DATA_DIR))
+    shutil.rmtree(_TEST_DATA_DIR, ignore_errors=True)
+    if changed:
+        import sys
+        sys.stderr.write(
+            f"\nTHE SUITE CHANGED THE CHECKOUT'S data/ ({_CHECKOUT_DATA_DIR}): "
+            f"{len(changed)} path(s), first {changed[:10]}. The suite must "
+            "write only under NMAS_DATA_DIR. (Or another process wrote there "
+            "during the run; the app is not meant to run on this machine.)\n")
+        session.exitstatus = 1
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _import_the_application_first():
+def _the_store_is_the_test_store():
+    """Stop at once if the redirect did not take: every later assertion
+    about isolation would be about the wrong directory."""
+    from modules import config
+
+    if os.path.realpath(config.DATA_DIR) != os.path.realpath(_TEST_DATA_DIR):
+        pytest.exit(f"modules.config.DATA_DIR is {config.DATA_DIR}, not the test "
+                    f"store {_TEST_DATA_DIR}: something imported it before "
+                    "conftest set NMAS_DATA_DIR", returncode=2)
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _import_the_application_first(_the_store_is_the_test_store):
     """Import the whole program before any test can patch it (register C20).
 
     Several modules bind a function by NAME at import
@@ -104,9 +170,31 @@ def _fresh_redaction_cache():
     redact.reset_health()
 
 
+#: Tests allowed to create paths in the store, each with the finding that
+#: makes it so. Capped, and each one must still create something (no ghosts):
+#: an exemption that outlives its reason is the check switched off quietly.
+STORE_WRITERS_EXEMPT = {
+    "tests/test_p3_secrets_write_only.py::TestNoGetReturnsASecret::"
+    "test_no_argument_free_get_carries_a_planted_secret":
+        "register C33: 10 of 80 argument-free GET routes write to the store; "
+        "this test calls all of them",
+}
+assert len(STORE_WRITERS_EXEMPT) <= 3
+
+
 @pytest.fixture(autouse=True)
-def _no_test_writes_into_live_data():
-    """No test may create a device list in the real ``data/`` directory.
+def _no_test_writes_into_live_data(request):
+    """No test may create a path in the store, except a named exemption.
+
+    **Since 2026-09-26 the store is a temporary directory** (NMAS_DATA_DIR,
+    set at the top of this file), and the live `data/` is guarded for the
+    whole session by `pytest_sessionfinish`. What this per-test check now
+    catches is a test, or the product path it drives, WRITING where it should
+    only read. That is how it found `/deploy/plan` and the onboarding plan
+    creating directories, the moment the store stopped being pre-populated
+    with the residue that hid them.
+
+    History, from when it watched the live store:
 
     Found while building the intent editor. A fixture called
     ``save_golden("lab", ...)`` **before** monkeypatching
@@ -178,8 +266,13 @@ def _no_test_writes_into_live_data():
         except OSError:
             pass
 
+    exempt = STORE_WRITERS_EXEMPT.get(request.node.nodeid)
+    if exempt:
+        assert created, (f"{request.node.nodeid} is exempt from the store guard "
+                         f"({exempt}) and created nothing: remove the exemption")
+        return
     assert not created, (
-        f"this test created {created[:5]} in the real data directory "
+        f"this test created {created[:5]} in the store "
         f"({LISTS_DIR}). Patch `modules.config.get_list_data_dir` BEFORE "
         f"anything that resolves a path through it — `get_list_data_dir()` "
         f"calls os.makedirs(), so merely resolving a path is enough.")

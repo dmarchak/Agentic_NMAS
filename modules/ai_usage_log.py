@@ -14,11 +14,12 @@ Log file: data/ai_usage_log.jsonl (one JSON object per line).
 
 import json
 import os
+from modules.config import DATA_DIR
 import threading
 import time
 from datetime import datetime, timezone
 
-_LOG_DIR  = os.path.join(os.path.dirname(__file__), "..", "data")
+_LOG_DIR  = DATA_DIR
 _LOG_FILE = os.path.join(_LOG_DIR, "ai_usage_log.jsonl")
 _lock = threading.Lock()
 

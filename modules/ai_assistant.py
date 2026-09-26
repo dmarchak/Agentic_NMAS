@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+from modules.config import DATA_DIR
 import re
 import time
 from typing import Iterator, Optional
@@ -25,8 +26,7 @@ logger = logging.getLogger(__name__)
 # Debug log — written to data/ai_debug.log for diagnosing AI behaviour issues.
 # Tracks what context/constraints are sent to the model each turn.
 # ---------------------------------------------------------------------------
-_DEBUG_LOG_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "data", "ai_debug.log"
+_DEBUG_LOG_PATH = os.path.join(DATA_DIR, "ai_debug.log"
 )
 
 def _dbg(*args) -> None:
@@ -47,8 +47,7 @@ _MIN_PRIOR_HISTORY  = 4
 # ---------------------------------------------------------------------------
 # Provider configuration
 # ---------------------------------------------------------------------------
-_PROVIDER_CONFIG_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "data", "provider_config.json"
+_PROVIDER_CONFIG_FILE = os.path.join(DATA_DIR, "provider_config.json"
 )
 
 # Default configs for each provider.
@@ -169,8 +168,7 @@ def _provider_available(provider: str) -> bool:
 # ---------------------------------------------------------------------------
 # Chat history persistence
 # ---------------------------------------------------------------------------
-_HISTORIES_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "data", "chat_histories"
+_HISTORIES_DIR = os.path.join(DATA_DIR, "chat_histories"
 )
 os.makedirs(_HISTORIES_DIR, exist_ok=True)
 
@@ -179,7 +177,7 @@ os.makedirs(_HISTORIES_DIR, exist_ok=True)
 # never cache these paths at import time so list-switching works correctly.
 
 # Global KB is stored once at the data root — it is shared across all lists.
-_GLOBAL_KB_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "global_kb.json")
+_GLOBAL_KB_FILE = os.path.join(DATA_DIR, "global_kb.json")
 
 
 def _get_lab_notes_file() -> str:
@@ -866,7 +864,7 @@ def _save_variables(variables: dict) -> None:
 # Per-session progress checkpoints — the last meaningful text Claude produced
 # for a session, saved after every agentic loop iteration that includes prose.
 # Injected on "continue" so Claude doesn't re-verify already-gathered state.
-_CHECKPOINTS_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "checkpoints")
+_CHECKPOINTS_DIR = os.path.join(DATA_DIR, "checkpoints")
 os.makedirs(_CHECKPOINTS_DIR, exist_ok=True)
 
 
@@ -1196,8 +1194,7 @@ def _cache_set(tool_name: str, args: dict, result: str) -> None:
 # ---------------------------------------------------------------------------
 # Running-config cache (change-time aware, persisted to disk)
 # ---------------------------------------------------------------------------
-_CONFIG_CACHE_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "data", "config_cache"
+_CONFIG_CACHE_DIR = os.path.join(DATA_DIR, "config_cache"
 )
 os.makedirs(_CONFIG_CACHE_DIR, exist_ok=True)
 _config_cache: dict = {}

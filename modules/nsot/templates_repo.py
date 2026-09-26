@@ -47,9 +47,14 @@ DEFAULT_BINDINGS = {
 
 
 def templates_dir(repo: str) -> str:
-    path = os.path.join(repo, TEMPLATES_REL)
-    os.makedirs(path, exist_ok=True)
-    return path
+    """Where the network's templates live. PURE: resolving it creates nothing.
+
+    It called `os.makedirs()`, so an onboarding PLAN (a read, whose own test
+    is named "plan creates nothing") created `templates/` in the target list
+    (found 2026-09-26, the suite's first pristine run). The writers create it
+    when they write: `seed_templates`, `write_template`, `save_bindings`.
+    """
+    return os.path.join(repo, TEMPLATES_REL)
 
 
 def bindings_path(repo: str) -> str:
@@ -74,6 +79,7 @@ def seed_templates(repo: str, platform: str = "", overwrite: bool = False) -> di
     never silently discard an operator's edits.
     """
     root = templates_dir(repo)
+    os.makedirs(root, exist_ok=True)        # a writer: it creates what it seeds
     copied, skipped = [], []
 
     platforms = [platform] if platform else builtin_platforms()
@@ -201,6 +207,7 @@ def save_bindings(repo: str, bindings: dict) -> dict:
     payload = {"platforms": dict(bindings.get("platforms") or {}),
                "overrides": dict(bindings.get("overrides") or {})}
     path = bindings_path(repo)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         yaml.safe_dump(payload, fh, sort_keys=True, default_flow_style=False)
     return {"ok": True}

@@ -944,6 +944,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_rotation_reports_the_boot_file.py` | P.3 step 12 (B15): success is the checker's SAFE verdict from one shared function; a broken sync stage is named and never success; the message leads with the danger; every outcome is recorded (never a credential) and a not-SAFE rotation is a job-health row until a later persist reads SAFE; the sync script has one owner |
 | `test_actor_verified_trailer.py` | P.3 step 10 (D10): `access` only for the actor the gate verified, `host-shell` for a CLI, `none` for the app's threads; written once at `repo.git()`; every git commit in the tree goes through it or is named; a gated route in the real app commits `access` |
 | `test_setting_not_applicable.py` | C31: a declaration carries who, when and why, and refuses a missing reason or a set key; job health tells `not_applicable` from `unset_guard`, and set-and-declared is a `contradiction`; a declared consumer leaves the rotation's list |
+| `test_harness_isolation.py` | C32/C36: the suite runs on a temporary store; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
+| `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -984,7 +986,9 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_settings_file_integrity.py` | absent vs unreadable; a write on defaults refused; the save is atomic |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
-All HTTP and SSH is mocked; **no test touches a live network.**
+All HTTP and SSH is mocked; **no test touches a live network.** And **no test touches the live store**:
+conftest points `NMAS_DATA_DIR` at a fresh temporary directory before anything imports, and fails the
+run if the checkout's `data/` changed at all (C32). Importing `app` starts no service (C36).
 
 ## Conventions
 
@@ -1506,6 +1510,20 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   answer, with who, when and why. It is written only on the host, and job
   health reads it as `not_applicable`, or as `contradiction` when the key is
   also set.
+- **THE SUITE HAD NEVER RUN CLEAN ANYWHERE** (C32, 2026-09-26; the operator's
+  framing). Run from a pristine checkout for the first time it gave 5 failed and
+  19 errors, every one passing here: tests wrote into the live `data/`, a guard
+  looked only for NEW paths so the residue hid them, and four tests passed by
+  reading the checkout's own settings file. **"N passed" is a statement about the
+  environment it ran in** until the environment is shown not to matter, and the
+  only way to show that is a second, empty one. It is also how two product reads
+  that wrote (`/deploy/plan`, the onboarding plan) were found, and ten GETs that
+  write (C33).
+- **An instrument that re-executes its setup can move what it measures.**
+  Measuring GET writers by importing `tests.conftest` for a helper executed conftest
+  a second time and re-pointed `NMAS_DATA_DIR`, so the measurement watched an empty
+  directory and reported ZERO writers: the vacuous result, produced by the
+  instrument. The floor that caught it was a writer already known to exist.
 - **A CHECK OF THE CODE IS NOT A CHECK OF THE INSTALL** (register C28).
   `discover_empty_default_guards()` derived, from the code, every setting
   whose emptiness silently switches off a guard, and only tests called it. So
@@ -4477,7 +4495,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **26 open at 2026-09-26**, counted from the rows: 21 recorded only in
+present when each was recorded. **30 open at 2026-09-26**, counted from the rows: 25 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

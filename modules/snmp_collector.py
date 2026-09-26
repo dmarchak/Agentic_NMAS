@@ -14,6 +14,7 @@ Listens on UDP port 1162 by default (no root required).
 import json
 import logging
 import os
+from modules.config import DATA_DIR
 import socket
 import struct
 import threading
@@ -72,7 +73,7 @@ def _trap_file() -> str:
         from modules.config import get_current_list_data_dir
         return os.path.join(get_current_list_data_dir(), "snmp_traps.json")
     except Exception:
-        return os.path.join(os.path.dirname(__file__), "..", "data", "snmp_traps.json")
+        return os.path.join(DATA_DIR, "snmp_traps.json")
 
 
 def _load_traps_from_disk() -> None:

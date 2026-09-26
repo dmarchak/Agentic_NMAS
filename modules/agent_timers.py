@@ -11,10 +11,11 @@ labels used by the settings UI.  Defaults are applied for any missing key.
 import json
 import logging
 import os
+from modules.config import DATA_DIR
 
 log = logging.getLogger(__name__)
 
-_TIMERS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "agent_timers.json")
+_TIMERS_FILE = os.path.join(DATA_DIR, "agent_timers.json")
 
 DEFAULTS = {
     "event_check_interval":   300,      # event_monitor: golden config / variable checks

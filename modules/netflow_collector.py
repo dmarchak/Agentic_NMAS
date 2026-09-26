@@ -13,6 +13,7 @@ collector_config.  Runs as a daemon thread started on server startup.
 import json
 import logging
 import os
+from modules.config import DATA_DIR
 import socket
 import struct
 import threading
@@ -39,7 +40,7 @@ def _flow_file() -> str:
         from modules.config import get_current_list_data_dir
         return os.path.join(get_current_list_data_dir(), "netflow_flows.json")
     except Exception:
-        return os.path.join(os.path.dirname(__file__), "..", "data", "netflow_flows.json")
+        return os.path.join(DATA_DIR, "netflow_flows.json")
 
 
 def _load_flows() -> None:

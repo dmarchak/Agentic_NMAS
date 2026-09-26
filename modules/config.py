@@ -25,8 +25,17 @@ else:
     # Running as normal Python script
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# Data directory - stored alongside executable or in project root
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# Data directory - stored alongside executable or in project root.
+#
+# ONE OWNER. Fifteen places computed `<repo>/data` for themselves until
+# 2026-09-26, so no single setting could say where the store is. The test
+# suite found out why that matters: run from a checkout, it wrote fixture lists
+# into the live store, and the only guard looked for NEW paths, so paths that
+# already existed made it blind. `NMAS_DATA_DIR` moves the whole store; the
+# suite sets it to a temporary directory before anything imports this module.
+# Every other module derives its paths from DATA_DIR, and a test (AST, with a
+# floor) refuses a second computation of the path.
+DATA_DIR = os.environ.get("NMAS_DATA_DIR") or os.path.join(BASE_DIR, "data")
 
 # Per-list data directories live under data/lists/{slug}/
 LISTS_DIR = os.path.join(DATA_DIR, "lists")

@@ -24,6 +24,7 @@ Flask exposes:
 import json
 import logging
 import os
+from modules.config import DATA_DIR
 import threading
 import time
 import uuid
@@ -35,14 +36,11 @@ MAX_LOG_ENTRIES    = 100
 _POLL_INTERVAL     = 30        # seconds between event-queue drains
 _DRIFT_CHECK_INTERVAL = 4 * 3600   # run drift check every 4 hours
 _STARTUP_GRACE     = 300       # seconds after startup before first drift check
-_ACTIVITY_LOG_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "data", "agent_activity.json"
+_ACTIVITY_LOG_PATH = os.path.join(DATA_DIR, "agent_activity.json"
 )
-_DRIFT_STATE_PATH  = os.path.join(
-    os.path.dirname(__file__), "..", "data", "drift_state.json"
+_DRIFT_STATE_PATH  = os.path.join(DATA_DIR, "drift_state.json"
 )
-_TRAP_STATE_PATH   = os.path.join(
-    os.path.dirname(__file__), "..", "data", "trap_analysis_state.json"
+_TRAP_STATE_PATH   = os.path.join(DATA_DIR, "trap_analysis_state.json"
 )
 _TRAP_FLAP_WINDOW      = 15     # default: wait 15 s before dispatching AI task (overridden by agent_timers)
 _TRAP_ALERT_AGE_MAX    = 3600   # ignore traps older than 1 hour at startup scan

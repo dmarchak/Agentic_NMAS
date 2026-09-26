@@ -103,7 +103,8 @@ def _get_current_devices_file():
     _, filepath = get_current_device_list()
     return filepath
 
-ping_worker(device_status_cache, filename=_get_current_devices_file, interval=PING_INTERVAL)
+# The ping worker is started by `_start_background_daemons()`, when the
+# program RUNS, never by importing this module (see below).
 
 # Flask application and Socket.IO initialization
 # Handle paths for both normal Python and PyInstaller frozen executable
@@ -3490,7 +3491,8 @@ def session_pending_restart():
     The file is deleted after reading (one-shot) and expires after 120 seconds.
     """
     import time as _time
-    path = os.path.join(os.path.dirname(__file__), "data", "pending_restart.json")
+    from modules.config import DATA_DIR
+    path = os.path.join(DATA_DIR, "pending_restart.json")
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -4503,7 +4505,8 @@ def clear_netflow_flows():
 @app.route("/ai/debug_log")
 def ai_debug_log():
     """Return the last N lines of data/ai_debug.log for in-browser diagnostics."""
-    log_path = os.path.join(os.path.dirname(__file__), "data", "ai_debug.log")
+    from modules.config import DATA_DIR
+    log_path = os.path.join(DATA_DIR, "ai_debug.log")
     lines_param = request.args.get("lines", "200")
     try:
         n = min(int(lines_param), 2000)
@@ -4547,6 +4550,20 @@ def server_log():
 # Start background daemons — must be here so _load_current_devices is defined
 # ---------------------------------------------------------------------------
 def _start_background_daemons():
+    """Start every background service. Called ONLY when app.py runs as a
+    program (`if __name__ == "__main__"`), never by importing it.
+
+    Importing used to start six threads (the ping worker, the event monitor,
+    the agent loop, the drift scheduler, and the SNMP and NetFlow listeners
+    on UDP 1162 and 9996). So the test suite, `nmas-verify-runbook` and
+    `nmas-scale-report` each ran a second copy of the services: the tests'
+    per-test guard blamed whichever test was running when a thread wrote,
+    and a script run on the host would contend for the service's ports. A
+    service starts because a program runs, not because a module is imported.
+    """
+    ping_worker(device_status_cache, filename=_get_current_devices_file,
+                interval=PING_INTERVAL)
+
     # Repair any corrupted chat histories on startup (orphaned tool_use blocks
     # left by interrupted or max_tokens-truncated sessions cause 400 errors).
     try:
@@ -4596,12 +4613,10 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.warning("Monitoring daemons: %s", _e)
 
-_start_background_daemons()
-
-
 # Run the Flask app with Socket.IO
 if __name__ == "__main__":
     import sys
+    _start_background_daemons()
     try:
         url = f"http://{'127.0.0.1' if FLASK_HOST == '0.0.0.0' else FLASK_HOST}:{FLASK_PORT}"
         # Off for a headless deployment (NMAS_HEADLESS=1 or the setting).

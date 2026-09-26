@@ -126,8 +126,18 @@ def list_staged(repo: str) -> list:
 # ---------------------------------------------------------------------------
 
 def committed_dir(repo: str) -> str:
-    path = os.path.join(repo, COMMITTED_REL)
-    os.makedirs(path, exist_ok=True)
+    """Where committed intent lives. PURE: resolving it creates nothing.
+
+    It called `os.makedirs()`, so every READ of intent created `host_vars/`:
+    a deploy PLAN created a directory in the repository it was previewing
+    (found 2026-09-26 when the suite first ran from a pristine checkout). The
+    two writers create it at the moment they write, via `_ensure_dir()`.
+    """
+    return os.path.join(repo, COMMITTED_REL)
+
+
+def _ensure_dir(path: str) -> str:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     return path
 
 
@@ -511,7 +521,7 @@ def write_committed(repo: str, host_vars: dict) -> str:
     text = to_yaml(host_vars)
     assert_no_secret_values(text, hostname)
     assert_printable(text, hostname)
-    path = committed_path(repo, hostname)
+    path = _ensure_dir(committed_path(repo, hostname))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
     log.info("hostvars: committed intent written for %s", hostname)
@@ -538,7 +548,7 @@ def write_committed_text(repo: str, hostname: str, text: str) -> str:
     if problems:
         raise PartialSyslogBlock(f"{hostname}: " + "; ".join(problems))
     assert_no_secret_values(text, hostname)
-    path = committed_path(repo, hostname)
+    path = _ensure_dir(committed_path(repo, hostname))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text if text.endswith("\n") else text + "\n")
     return path
