@@ -55,13 +55,11 @@
       <button type="submit" class="btn btn-outline-success">💾 Save Device Config</button>
     </form>
     <!-- Restore Golden Config -->
-    <form method="post" action="{{ url_for('restore_golden_config', ip=device['ip']) }}" style="display:inline;">
-      <input type="hidden" name="active_tab" value="{{ tab }}">
-      <button type="submit" class="btn btn-outline-warning"
-              onclick="return confirm('Push saved golden config to this device\'s running and startup config?');">
-        ⭐ Restore Golden Config
-      </button>
-    </form>
+    <a class="btn btn-outline-warning"
+       href="{{ url_for('index', restore_head=device['hostname']) }}"
+       title="Preview re-applying this device's golden at HEAD: the exact program, what stays behind, then a confirm">
+      ⭐ Restore Golden Config
+    </a>
     <!-- Ask AI about this device -->
     <button type="button" class="btn btn-outline-primary"
             onclick="document.getElementById('aiOpenBtn').click();"

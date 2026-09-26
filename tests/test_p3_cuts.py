@@ -27,6 +27,9 @@ CUT = [
     ("POST", "/netbox/sync"),
     ("POST", "/netbox/sync_all"),
     ("POST", "/netbox/remove"),
+    # P.3 step 3 (D5): the unguarded golden replay, behind two buttons.
+    ("POST", "/device/192.0.2.1/restore_golden_config"),
+    ("POST", "/bulk_restore_golden_config"),
 ]
 
 #: What a caller would have written to reach each one.
@@ -37,7 +40,8 @@ NEEDLES = ["/execute_command", "url_for('run_script'", "/run_script",
            "/restore_backup", "/bulk_remove_static_routes",
            "bulkRemoveStaticRoutes", "/configure/apply", "/netbox/sync",
            "/netbox/remove", "run_playbook_id", "runPlaybook",
-           "showRestoreModal"]
+           "showRestoreModal", "/restore_golden_config",
+           "url_for('restore_golden_config'"]
 
 
 def _client():

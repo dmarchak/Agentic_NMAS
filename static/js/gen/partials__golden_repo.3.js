@@ -239,33 +239,7 @@ async function previewBaselineRestore(tag, unOnboard, from) {
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); return; }
 
-    // Three categories, because "re-apply" and "restore" differ exactly here:
-    // residue is what stays behind, and it is the only thing the old label
-    // implied would be removed.
-    const lines = [];
-    (d.devices || []).forEach(dev => {
-      const adds = (dev.add || []).length, reps = (dev.replace || []).length;
-      const res  = (dev.residue || []).length;
-      if (!dev.deployable) {
-        lines.push(`  • ${dev.device} — BLOCKED: ${(dev.blocking_reasons || []).join('; ')}`);
-        return;
-      }
-      lines.push(`  • ${dev.device} — ${adds} to add, ${reps} to replace, ${res} left in place`);
-      (dev.replace || []).slice(0, 3).forEach(rp =>
-        lines.push(`      replace: ${rp.old.trim()}  →  ${rp.new.trim()}`));
-      (dev.residue || []).slice(0, 3).forEach(rs =>
-        lines.push(`      stays:   ${rs.trim()}`));
-      // The intent half of the same unit. A device restored with its committed
-      // intent left behind would have the next plan offer to undo the restore.
-      const it = dev.intent || {};
-      if (it.action === 'restore')  lines.push(`      intent:  restored to this ref`);
-      if (it.action === 'un_onboard') lines.push(`      intent:  REMOVED (un-onboard)`);
-    });
-
     const skipped = d.skipped || [];
-    const skippedText = skipped.length
-      ? '\n\nSkipped:\n' + skipped.map(s => `  • ${s.hostname} — ${s.reason}`).join('\n')
-      : '';
 
     // Devices this ref predates. The default outcome is SKIP: removing a
     // device's committed intent un-does a human review, so it is never
@@ -284,20 +258,11 @@ async function previewBaselineRestore(tag, unOnboard, from) {
       }
     }
 
-    // What the agent saw, when it saw it — shown above the program so the
-    // operator can compare, and labelled so it cannot be mistaken for what
-    // will be sent.
-    const advisory = from.advisoryDiff
-      ? `WHAT THE AGENT SAW when the drift was detected (context only, NOT `
-        + `what will be sent):\n${from.advisoryDiff.trim().split('\n').slice(0, 12)
-            .map(l => '  ' + l).join('\n')}\n\n`
-        + `${from.advisoryNote || ''}\n\n${'-'.repeat(60)}\n\n`
-      : '';
-
-    if (!confirm(
-        advisory + `${d.summary}\n\n${lines.join('\n')}${skippedText}\n\n`
-        + `SCOPE: ${d.scope}\n\n`
-        + `This ADDS and REPLACES. It does not remove lines a device has gained.\n\nContinue?`)) return;
+    // The EXACT program per device, every line (P.3 step 3). The dialog used
+    // to show counts and at most three replace and three residue lines, and
+    // never the lines to be added: `commands` was computed, carried to the
+    // browser, and drawn nowhere, while the confirm hash covered it.
+    if (!(await _confirmProgram(`Re-apply ${tag}`, restorePreviewText(d, from)))) return;
 
     const confirmations = {}, hashes = {};
     (d.devices || []).filter(x => x.deployable).forEach(x => {
@@ -327,4 +292,100 @@ async function previewBaselineRestore(tag, unOnboard, from) {
   } catch (e) { showToast(e.message, 'danger'); }
 }
 
+// What a restore will send, as text: every device's exact program, what it
+// replaces, what stays behind, the dangerous lines, and what was skipped or is
+// blocked. PURE, so a test executes it against the route's real payload.
+function restorePreviewText(d, from) {
+  from = from || {};
+  const out = [];
+  if (from.advisoryDiff) {
+    out.push('WHAT THE AGENT SAW when the drift was detected (context only, NOT '
+             + 'what will be sent):');
+    from.advisoryDiff.trim().split('\n').slice(0, 12).forEach(l => out.push('  ' + l));
+    if (from.advisoryNote) out.push(from.advisoryNote);
+    out.push('-'.repeat(60), '');
+  }
+  out.push(d.summary || '', '');
+  (d.devices || []).forEach(dev => {
+    if (!dev.deployable) {
+      out.push(`${dev.device}: BLOCKED, nothing will be sent: `
+               + (dev.blocking_reasons || []).join('; '), '');
+      return;
+    }
+    const cmds = dev.commands || [];
+    const risky = new Set(dev.dangerous || []);
+    out.push(`${dev.device}: ${cmds.length} line(s) will be sent, exactly these:`);
+    if (!cmds.length) out.push('  (nothing: the device already matches)');
+    cmds.forEach(c => out.push((risky.has(c) ? '! ' : '  ') + c));
+    if (risky.size) {
+      out.push(`  ${risky.size} line(s) marked ! are dangerous commands. A restore `
+               + 'cannot authorise them yet, so this device will be refused (P.3 step 4).');
+    }
+    (dev.replace || []).forEach(rp =>
+      out.push(`  replaces: ${String(rp.old).trim()}  ->  ${String(rp.new).trim()}`));
+    (dev.residue || []).forEach(rs =>
+      out.push(`  stays (not removed): ${String(rs).trim()}`));
+    const it = dev.intent || {};
+    if (it.action === 'restore')    out.push('  intent: restored to this ref');
+    if (it.action === 'un_onboard') out.push('  intent: REMOVED (un-onboard)');
+    out.push('');
+  });
+  const skipped = d.skipped || [];
+  if (skipped.length) {
+    out.push('Skipped:');
+    skipped.forEach(sk => out.push(`  ${sk.hostname}: ${sk.reason}`));
+    out.push('');
+  }
+  out.push(`SCOPE: ${d.scope || ''}`, '',
+           'This ADDS and REPLACES. It does not remove lines a device has gained.');
+  return out.join('\n');
+}
+
+// A modal holding a block of text and two buttons. Resolves true on Confirm.
+// Text goes in via textContent, never innerHTML: it carries device config.
+function _confirmProgram(title, text) {
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'modal fade';
+    el.tabIndex = -1;
+    el.innerHTML =
+      '<div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">'
+      + '<div class="modal-header"><h5 class="modal-title"></h5>'
+      + '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'
+      + '<div class="modal-body"><pre class="small mb-0" style="white-space:pre-wrap"></pre></div>'
+      + '<div class="modal-footer">'
+      + '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>'
+      + '<button type="button" class="btn btn-warning" data-confirm>Send exactly this</button>'
+      + '</div></div></div>';
+    el.querySelector('.modal-title').textContent = title;
+    el.querySelector('pre').textContent = text;
+    let answer = false;
+    el.querySelector('[data-confirm]').addEventListener('click', () => {
+      answer = true;
+      modal.hide();
+    });
+    el.addEventListener('hidden.bs.modal', () => { el.remove(); resolve(answer); });
+    document.body.appendChild(el);
+    const modal = new bootstrap.Modal(el);
+    modal.show();
+  });
+}
+
+// The device page's and bulk ops' "Restore Golden Config" (P.3 step 3, D5)
+// arrive here as ?restore_head=<hostname>[,<hostname>...]: the guarded
+// preview at HEAD, scoped to those devices, exactly as an approval-queue
+// handoff opens it. The parameter is removed first, so a reload cannot
+// re-open a preview nobody asked for.
+function _restoreHeadFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('restore_head');
+  if (!raw) return;
+  params.delete('restore_head');
+  const q = params.toString();
+  history.replaceState(null, '', window.location.pathname + (q ? '?' + q : ''));
+  const devices = raw.split(',').map(x => x.trim()).filter(Boolean);
+  if (devices.length) previewBaselineRestore('HEAD', null, {devices});
+}
+
 document.addEventListener('DOMContentLoaded', loadGoldenRepoPanel);
+document.addEventListener('DOMContentLoaded', _restoreHeadFromUrl);

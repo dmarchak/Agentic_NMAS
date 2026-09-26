@@ -81,8 +81,6 @@ GATES = {
                          "onboard_verify"),
     "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
                           "onboard_abandon"),
-    "restore_golden_config": _g(C, "unguarded golden replay (D5; removed in P.3 step 3)"),
-    "bulk_restore_golden_config": _g(C, "unguarded golden replay to many devices (D5; removed in P.3 step 3)"),
     "bulk_execute": _g(C, "sends ENABLE-mode commands to many devices (config mode cut in P.3 step 2); enable mode can still copy, delete, reload and erase"),
     "bulk_reload": _g(C, "reloads devices"),
     "bulk_tftp_upload": _g(C, "copies a file ONTO devices' flash (copy tftp: flash:)"),

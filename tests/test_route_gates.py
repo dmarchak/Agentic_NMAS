@@ -26,7 +26,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MUTATING_FLOOR = 123     # 131 measured 2026-09-26; P.3 step 2 cut eight
+MUTATING_FLOOR = 121     # 131 measured 2026-09-26; P.3 steps 2 and 3 cut ten
 
 
 def _app():

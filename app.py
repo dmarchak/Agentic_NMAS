@@ -1562,64 +1562,6 @@ def save_settings():
     return jsonify({"status": "ok"})
 
 
-@app.route("/device/<ip>/restore_golden_config", methods=["POST"])
-def restore_golden_config(ip):
-    """Restore the AI's stored golden config for this device by pushing it line-by-line via SSH."""
-    try:
-        _, current_list_file = get_current_device_list()
-        devices = load_saved_devices(current_list_file)
-        dev = next((d for d in devices if d["ip"] == ip), None)
-
-        if not dev:
-            flash("Device not found", "danger")
-            return redirect(url_for("index"))
-
-        # Load the golden config from the app's file store (same source the AI uses)
-        cfg_text = _ai._load_golden_config_file(ip)
-        if not cfg_text:
-            flash(f"No golden config saved for {dev.get('hostname', ip)} — save one via the AI first.", "warning")
-            return redirect(url_for("manage_device", ip=ip))
-
-        # Strip comment header lines the app adds (lines starting with !)
-        config_lines = [l for l in cfg_text.splitlines() if not l.startswith("!") and l.strip()]
-
-        app.logger.info(f"Restoring golden config on {ip} ({len(config_lines)} lines)")
-
-        lines_applied = []
-        def execute_restore(conn):
-            conn.config_mode()
-            try:
-                for line in config_lines:
-                    run_device_command(conn, line)
-                    lines_applied.append(line)
-            finally:
-                conn.exit_config_mode()
-            return f"Applied {len(lines_applied)} configuration lines from stored golden config."
-
-        output = with_temp_connection(dev, execute_restore)
-
-        app.logger.info(f"Golden config restored on {ip}")
-        flash(f"Golden config restored on {dev['hostname']} ({len(lines_applied)} lines applied)", "success")
-
-        active_tab = request.form.get("active_tab", "utilities")
-        filesystems, file_list, selected_fs = get_device_context(dev)
-        return render_template(
-            "device.html",
-            device=dev,
-            filesystems=filesystems,
-            files=file_list,
-            selected_fs=selected_fs,
-            output=output,
-            filename=f"{dev['hostname']}_golden_restore.txt",
-            active_tab=active_tab,
-            quick_actions=load_quick_actions().get("global", []),
-            tftp_server=TFTP_SERVER_IP,
-        )
-
-    except Exception as e:
-        app.logger.error(f"Failed to restore golden config on {ip}: {e}")
-        flash(f"Failed to restore golden config: {e}", "danger")
-        return redirect(url_for("manage_device", ip=ip))
 
 
 @app.route("/refresh_hostnames", methods=["POST"])
@@ -4095,59 +4037,6 @@ def list_golden_configs_route():
     return jsonify({"golden_configs": _ai._list_golden_configs()})
 
 
-@app.route("/bulk_restore_golden_config", methods=["POST"])
-def bulk_restore_golden_config():
-    """
-    Restore the AI's stored golden configs for one or more devices.
-    Accepts JSON: {"device_ips": ["1.2.3.4", ...]}
-    Same source as the AI restore_golden_config tool — pushes line-by-line via SSH.
-    """
-    data = request.get_json(force=True, silent=True) or {}
-    requested_ips = data.get("device_ips", [])
-    if not requested_ips:
-        return jsonify({"status": "error", "message": "No device IPs provided"}), 400
-
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    dev_by_ip = {d["ip"]: d for d in devices}
-
-    results = []
-    for ip in requested_ips:
-        dev = dev_by_ip.get(ip)
-        if not dev:
-            results.append({"ip": ip, "status": "error", "message": "Device not in inventory"})
-            continue
-
-        cfg_text = _ai._load_golden_config_file(ip)
-        if not cfg_text:
-            results.append({"ip": ip, "status": "error", "message": "No golden config saved — save one via the AI first"})
-            continue
-
-        config_lines = [l for l in cfg_text.splitlines() if not l.startswith("!") and l.strip()]
-        try:
-            def _push(conn, lines=config_lines):
-                conn.config_mode()
-                try:
-                    for line in lines:
-                        run_device_command(conn, line)
-                finally:
-                    conn.exit_config_mode()
-                return len(lines)
-
-            n = with_temp_connection(dev, _push)
-            results.append({"ip": ip, "status": "ok", "message": f"Restored {n} lines on {dev.get('hostname', ip)}"})
-            app.logger.info(f"bulk_restore_golden_config: restored {ip} ({n} lines)")
-        except Exception as exc:
-            results.append({"ip": ip, "status": "error", "message": str(exc)})
-            app.logger.error(f"bulk_restore_golden_config: failed {ip}: {exc}")
-
-    ok_count  = sum(1 for r in results if r["status"] == "ok")
-    err_count = len(results) - ok_count
-    return jsonify({
-        "status":    "success" if ok_count else "error",
-        "message":   f"Restored {ok_count} device(s)" + (f", {err_count} failed" if err_count else ""),
-        "results":   results,
-    })
 
 
 # ---------------------------------------------------------------------------

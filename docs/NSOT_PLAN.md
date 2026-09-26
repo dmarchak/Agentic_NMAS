@@ -2758,6 +2758,36 @@ doing it now.
    GUARDED restore preview for those devices at HEAD (the client function the
    approval handoff already uses). `/device/<ip>/restore_golden_config` and
    `/bulk_restore_golden_config` are removed.
+
+   **BUILT 2026-09-26.**
+   - **Both buttons open `previewBaselineRestore('HEAD', null, {devices})`**,
+     the path the approval queue already hands off to. Bulk ops calls it
+     directly. The device page links to `/?restore_head=<hostname>`, and the
+     index page opens the preview from that. The parameter is removed BEFORE
+     the preview opens, so a reload cannot re-open one nobody asked for.
+   - **Both replay routes are removed (404).** The AI's own
+     `restore_golden_config` TOOL, the same replay, is step 8's.
+   - **Routing two buttons into that preview exposed its own defect.** Its
+     confirm dialog showed counts and at most three replace and three residue
+     lines, and never the lines to be ADDED. `commands` was computed, carried
+     to the browser and drawn nowhere, while the confirm hash covered it.
+     - `restorePreviewText()` is now a pure renderer of every line that will
+       be sent, every replacement, every residue line, blocked devices with
+       their reasons, and skips. It is shown in a modal via `textContent`,
+       never `innerHTML`.
+     - It is executed in duktape against the route's real payload (the real
+       `merge_diff` and `merge_commands`).
+     - Dangerous lines are marked `!`, with the true consequence: the restore
+       path sends no authorisation, so `run_targets` refuses such a device
+       before sending (step 4's work, shared with the deploy wizard).
+   - **Five negative controls.** The first ordering control was a dud (it left
+     the original removal in place), and the re-aimed one fires.
+   - **The pre-commit hook was bypassed ONCE, as it documents for a deliberate
+     removal.** Its one GONE was a name collision: the model's tool is also
+     called `restore_golden_config`, in `ai_assistant.py`, which never imports
+     `app`.
+   - 3815 passed, 0 failed, 0 errors.
+
 4. **D4, in the current wizard** (7.1 later re-homes it in the shared
    component):
    - draw the PROGRAM (`commands`), not the diff;
@@ -2791,6 +2821,17 @@ doing it now.
    The 19 CI tools go in P.4.
 9. **CLAUDE.md's B12 correction** is replaced by the enforced statement, with
    the measurement that proves it.
+10. **D10 (decided 2026-09-26): every commit says whether its actor was
+    verified.** Each commit path writes `Actor-Verified: access` (a gated
+    route: the identity the gate verified), `host-shell` (a CLI on the host,
+    where SSH is the authentication) or `none`. The line is drawn by what the
+    code WROTE, never by date: the host ran old code after `c5a34c1` was
+    pushed, which is C1's race arriving as a data-integrity question. The
+    display is 7.5's: Versions states once, *"N of M commits carry a verified
+    identity"*, and marks the rest *"recorded, not verified"*. At the time of
+    the decision that was 5 of 92, so the actor filter answers from claims
+    for 95% of the history, and a muted style alone would not say that. It is
+    a denominator, as drift's *"checked 7 of 9"* is.
 
 **P.3 ACCEPTANCE** (each item observed, each with a control that must fail):
 1. **Every mutating endpoint is classified**, and the classification test has
@@ -2845,6 +2886,30 @@ section 7 is the acceptance:
 Still **UNDECIDED** inside P.4: scheduled protocol regression (N13), and
 config-repo checks (R5-R10) as a post-commit job on the NMAS. Neither blocks
 Stage 7.
+
+### P.5 — Template approval, scheme 3 (D11; decided 2026-09-26, placement proposed)
+
+**Approval becomes the template closure hash and the person who approved
+it.** Per-device fidelity stays where it already runs, live, in
+`blocking_reasons`. The argument is in
+[NSOT_FEATURE_AUDIT.md](NSOT_FEATURE_AUDIT.md) 8c. The deciding point: the
+device-set half repeats a check that already runs per device, so it is a
+property of the inventory, not of the template.
+
+- **Approving** shows the validation across the bound set, per device, as
+  evidence. It requires at least one validated device, not all of them.
+- **A template edit** still revokes every approval over it.
+- **A scheme-2 record** is not honoured silently, so moving to scheme 3 is an
+  explicit re-approval.
+- **The operator's addition: the approval badge says what it covers AND what
+  it does not.** It is a claim about the template. Each device is validated
+  at its own deploy, and a device the template cannot reproduce is blocked
+  alone. Without that sentence scheme 3 reads as weaker than scheme 2, to
+  anyone who does not know why.
+- **It resolves D2**, and onboarding stops revoking its platform's approval.
+
+**Placement, proposed:** after P.4 and before 7.0. It changes a gate's
+behaviour, and Stage 7 does not, while 7.6 draws the badge.
 
 **Carried from P.3 step 2 (2026-09-26)**: `pipeline_builder.ensure_function_pipeline`
 and `check_runner`'s `--config-id` mode have no producer since the configure

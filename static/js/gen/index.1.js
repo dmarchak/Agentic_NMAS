@@ -577,46 +577,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  // P.3 step 3 (D5): the guarded restore preview at HEAD, scoped to the
+  // selected devices. It used to POST to an unguarded replay that pushed the
+  // whole golden line by line: no plan, no hash, no rollback.
   window.bulkRestoreGoldenConfig = function() {
-    const selectedIps = Array.from(deviceCheckboxes)
+    const hosts = Array.from(deviceCheckboxes)
       .filter(cb => cb.checked && !cb.disabled)
-      .map(cb => cb.value);
-
-    if (selectedIps.length === 0) {
+      .map(cb => { const tr = cb.closest('tr'); return tr ? tr.dataset.hostname : ''; })
+      .filter(Boolean);
+    if (hosts.length === 0) {
       showToast('No devices selected', 'warning');
       return;
     }
-
-    if (!confirm(`Restore the AI golden config baseline to ${selectedIps.length} device(s)?\n\nThis pushes the config stored by the AI — the same source used by the AI restore tool.\nThis will overwrite the running configuration!`)) {
-      return;
-    }
-
-    showToast('Starting golden config restore...', 'info');
-
-    fetch('/bulk_restore_golden_config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_ips: selectedIps }),
-    })
-    .then(resp => resp.json())
-    .then(data => {
-      if (data.status === 'success') {
-        showToast(data.message, 'success');
-        // Show per-device results
-        if (data.results && data.results.length) {
-          const lines = data.results.map(r => `${r.ip}: ${r.message}`).join('\n');
-          console.info('Bulk golden restore results:\n' + lines);
-        }
-      } else {
-        const detail = (data.results || []).map(r => `${r.ip}: ${r.message}`).join('\n') || data.message;
-        showToast('Restore failed: ' + (data.message || 'unknown error'), 'danger');
-        console.error('Bulk restore failed:\n' + detail);
-      }
-    })
-    .catch(err => {
-      console.error('Bulk restore failed:', err);
-      showToast('Failed to start bulk restore', 'danger');
-    });
+    previewBaselineRestore('HEAD', null, {devices: hosts});
   };
 
   // Update hint when command mode changes

@@ -930,6 +930,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_route_gates.py` | P.3: every mutating endpoint and terminal event declared, both directions with floors; the table agrees with every in-route gate; refused before input; a person passes and a service does not; the actor is the verified one |
 | `test_p3_cuts.py` | P.3 step 2: the eight direct-push routes answer 404 and nothing shipped names them; bulk config mode and chat playbook replay refused by name; the Configure forms send nothing |
 | `test_harness_leaves_the_app_log_alone.py` | the suite never writes into the app log of the checkout it runs in (C26) |
+| `test_p3_restore_is_guarded.py` | P.3 step 3 (D5): both Restore Golden Config buttons open the guarded preview at HEAD; the preview draws every line it will send, executed against the route's real payload |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1386,6 +1387,19 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   not more privilege (those can restore over a VM and delete backups) but a
   different source the auditor can read: the task logs. The row states which
   claim it makes.
+- **A GATE KEYED ON SOMETHING THAT MOVES FOR REASONS UNRELATED TO WHAT IT
+  PROTECTS** (the operator's name for it, 2026-09-26). Three instances, each
+  one level up from the last:
+  1. Phase 3c: gating deployability on INTENT DRIFT would have made every
+     change block itself. It was caught in design.
+  2. Approval scheme 1 hashed each device's host_vars, so the deploy it
+     authorised revoked it.
+  3. Scheme 2 keyed on the bound device set, so onboarding one device revoked
+     every approval on its platform (D11; scheme 3 decided).
+
+  **Each was found the same way: something was revoked that nobody had
+  changed.** Treat that symptom as the signature. Before keying a gate, ask
+  what ELSE moves the key, and whether any of it is the gate's business.
 - **An investigation's instrument can be the variable** (C20, 2026-09-25).
   A settings test failed in streaks, eight in a row and then clean at the
   same SHA, which reads as a race. It was file-order dependent and fully
@@ -4312,7 +4326,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **29 open at 2026-09-26**, counted from the rows: 25 recorded only in
+present when each was recorded. **27 open at 2026-09-26**, counted from the rows: 23 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
@@ -4362,7 +4376,7 @@ design so the tool library describes a finished system.
   layer — not because anything checks what the agent may do. Stage 8.3 makes
   the allowlist real in code (no credential rotation, no template approval,
   no remote push, no baseline re-apply, no deploy apply).
-- **The unguarded golden replay is reachable from TWO GUI buttons, not only the AI** (register D5): `/device/<ip>/restore_golden_config` (device page) and `/bulk_restore_golden_config` (bulk ops) are the same line-by-line push.
+- **The unguarded golden replay was reachable from TWO GUI buttons, not only the AI** (register D5). **Fixed by P.3 step 3**: both buttons open the guarded restore preview at HEAD, and the two routes are gone. The AI's tool of the same name remains until step 8.
 - **`restore_golden_config` is a fourth config-push path**: whole golden
   replayed in config mode with no confirm hash, no merge-only check, no ASCII
   guard, no dangerous-line authorisation, no snapshot, no rollback, no
