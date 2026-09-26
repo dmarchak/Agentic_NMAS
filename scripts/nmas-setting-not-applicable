@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Declare that a guard-gating setting has nothing to name on this host.
+
+Register C31. An empty guard setting reported `unset_guard` in job health
+whether somebody forgot it or there was nothing to set, so a dead consumer
+and an erased setting looked the same. A declaration records the second
+case, with who decided, when and why, and job health then reads
+`not_applicable`.
+
+    nmas-setting-not-applicable --list
+    nmas-setting-not-applicable KEY --reason "why nothing here uses it"
+    nmas-setting-not-applicable KEY --withdraw
+
+It refuses a key that is currently set: clear the value first, so the value
+and the declaration cannot contradict each other. The actor defaults to the
+OS user running this, since it runs on the host (host-shell); `--actor`
+names a person instead.
+
+There is deliberately no route or form: like the identity gates, a
+declaration that switches a check's meaning is made on the host.
+"""
+
+import argparse
+import getpass
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("key", nargs="?", default="")
+    ap.add_argument("--reason", default="")
+    ap.add_argument("--withdraw", action="store_true")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--actor", default="")
+    args = ap.parse_args(argv)
+
+    from modules import settings_schema as ss
+
+    if args.list or not args.key:
+        declared = ss.not_applicable()
+        if not declared:
+            print("No setting is declared not applicable on this host.")
+        for key, d in sorted(declared.items()):
+            print(f"{key}: declared by {d.get('by')} at {d.get('at')}: {d.get('reason')}")
+        return 0
+
+    actor = args.actor or getpass.getuser()
+    if args.withdraw:
+        out = ss.withdraw_not_applicable(args.key, actor)
+    else:
+        out = ss.declare_not_applicable(args.key, actor, args.reason)
+    if not out.get("ok"):
+        print(f"REFUSED: {out.get('error')}", file=sys.stderr)
+        return 1
+    print(f"{args.key}: " + ("declaration withdrawn" if args.withdraw else
+                             f"declared not applicable by {actor}"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

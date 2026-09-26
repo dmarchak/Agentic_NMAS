@@ -10411,3 +10411,58 @@ any reason to look.
 
 A report that qualifies its own claim is not a courtesy to the reader. It is
 the thing that makes the next question askable.
+
+
+## What P.3 cost and bought (2026-09-26)
+
+P.3 was scoped as five register items (B12, B11, D5, D4, C23) and the cuts:
+make every path that changes a device guarded, or gone. It closed those. It
+also produced eleven findings nobody had scoped, and every one came from doing
+the work, not from looking for it:
+
+- **B13**: the terminal sent the stored enable secret into a session that was
+  already privileged, and echoed 27 of s1's 32 password characters to a
+  browser. Found by opening the terminal through the tunnel to check the gate.
+- **B14**: every device stored its login password twice.
+- **B15**: a rotation of that exposed credential completed on the device and
+  in the store, and its persistence silently did not run. The boot file kept
+  a public password.
+- **B16**: an ungated GET ran any exec-mode command. Found because the gate
+  table, keyed on HTTP method, covered eighteen routes and not the
+  nineteenth.
+- **C24, C27, C29, C31, D10, D12**. The last was the terminal: one shell per
+  device, shared by every browser that opened it.
+- **C28**: four settings erased on 2026-09-23, each rediscovered by the
+  failure it caused.
+
+The shapes: gating eighteen routes and opening the nineteenth; routing two
+buttons into a preview nobody had examined; surveying for one thing and
+noticing another. **Gating a path is not reviewing it.**
+
+**Item 2 of the acceptance, observed on the host by the operator.** A real
+deploy through the tunnel, and both commits verified through the gate:
+
+    c7711d6 golden: baseline 1 device(s) via pipeline batch-85f32b   Actor: dustnm@gmail.com   Verified: access
+    2fb07db host_vars: r1 TEST ACTOR FIX 8401b88                     Actor: dustnm@gmail.com   Verified: access
+
+Two different paths, the intent commit and the deploy's golden. With the
+unauthenticated 403s measured at step 9, that is the gate refusing without a
+person and passing with one, on the real system.
+
+**Two things the acceptance run is worth keeping for.**
+
+1. **The stale floor.** The plan asked for "at least 131 mutating rules",
+   measured before steps 2, 3 and 7 cut eleven routes. Applied as written it
+   would have FAILED correct code, reading as a regression. It was caught by
+   checking the number against the population rather than against the plan.
+   That is the proxy-population rule: a count stands in for "the scan found
+   everything", and the population it counts moves. Note the direction. A
+   floor set too HIGH fails loudly on correct code. The dangerous direction is
+   too LOW: a floor that passes because the population shrank under it. Both
+   are the same mistake, a number that has stopped describing its population.
+2. **The controls.** There were eleven. Each removed the property its item
+   protects, and each failed the test aimed at it with no collection errors,
+   so a crash could not pass as a control. Every file was restored from a
+   scratch copy, a rule written the day before, after a `git checkout`
+   restore reverted a step's uncommitted work. The rule earned itself within
+   a day.

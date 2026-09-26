@@ -1754,7 +1754,16 @@ nothing this deployment can use. Recorded so it is not re-proposed without
 new facts (CLAUDE.md, *Encryption at rest here protects COPIES THAT
 TRAVEL*).
 
-**6.3 The `yang-push-sub` credential**, and **6.4 enable secret vs console
+**6.3 The `yang-push-sub` credential: RETIRE THE SCRIPT** (decided
+2026-09-26, register C31). It has not worked since 2026-09-22: its credential
+is the vrnetlab factory default that every router refuses. Nothing runs it,
+it is in no repository, and its mode is `0664`. **Operator's steps on the NMAS
+host:** remove `~/lab-configs/yang-push-sub.py`, then run
+`scripts/nmas-setting-not-applicable yang_push_script --reason "yang-push-sub.py
+retired 2026-09-26 (C31): dead since the redeploy, nothing ran it"`. Job health
+then reads `not_applicable` with who and when, and the rotation stops listing
+it as a consumer. If a yang-push consumer ever returns, its check needs the
+third state recorded in `_yang_push_consumer`'s docstring. And **6.4 enable secret vs console
 recovery** — the console is the break-glass path, and an enable secret nobody
 holds turns a recoverable node into a rebuild.
 
@@ -3222,6 +3231,20 @@ a control.
   email. The host now runs `9c4cf07` (step 8), so steps 9-12 are not
   deployed there. **Re-observing it after the pull is the operator's step**,
   and the one thing P.3 still needs from the host.
+  **OBSERVED by the operator, 2026-09-26, after the pull.** A real deploy
+  through the tunnel: `c7711d6` (the deploy's golden) and `2fb07db` (an
+  intent commit) both carry `Actor: dustnm@gmail.com` and `Actor-Verified:
+  access`. So there are two paths, both verified through the gate. With step
+  9's unauthenticated 403s, the gate refuses without a person and passes with
+  one, on the real system.
+- Item 1's correction, read the right way round: a floor set too HIGH fails
+  correct code, loudly. The dangerous direction is a floor too LOW, which
+  passes because the population shrank under it. Both are a number that has
+  stopped describing its population.
+
+**P.3 IS COMPLETE (2026-09-26).** It closed its five scoped items and found
+eleven more that nobody had scoped; the ledger is in
+[NSOT_WRITEUP_NOTES.md](NSOT_WRITEUP_NOTES.md), "What P.3 cost and bought".
 
 **Full suite at `5b087c4`: 3950 passed, 0 failed, 0 errors.**
 

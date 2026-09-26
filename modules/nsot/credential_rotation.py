@@ -1146,14 +1146,24 @@ import os                                    # noqa: E402  (used below)
 
 
 def consumer_report(hostname: str, mgmt_ip: str) -> list:
-    """Who else logs in as this account. See the plan's GAP 1."""
-    return [
+    """Who else logs in as this account. See the plan's GAP 1.
+
+    A consumer DECLARED retired (`yang_push_script` in
+    `settings_not_applicable`, register C31) is not listed: it is not a
+    consumer any more, and warning that a rotation "may break" it would be a
+    warning about nothing. The declaration itself is visible in job health.
+    """
+    from modules.settings_schema import not_applicable
+
+    rows = [
         {"name": "NMAS", "where": "devices.csv (this device's row)",
          "action": "updated automatically"},
         {"name": "Oxidized", "where": f"router.db row for {mgmt_ip}",
          "action": "updated automatically, then a fetch is confirmed"},
-        _yang_push_consumer(mgmt_ip),
     ]
+    if "yang_push_script" not in not_applicable():
+        rows.append(_yang_push_consumer(mgmt_ip))
+    return rows
 
 
 def _yang_push_consumer(mgmt_ip: str) -> dict:
@@ -1168,6 +1178,15 @@ def _yang_push_consumer(mgmt_ip: str) -> dict:
     The address is read out of the file rather than written here — partly
     because it can change, and partly because an IPv4 literal in this package
     fails `test_no_ip_literals`.
+
+    **A gap, recorded as the design if a yang-push consumer ever returns**
+    (register C31): this never asks whether the literal is the device's
+    CURRENT credential. On 2026-09-26 it was `admin`, the vrnetlab factory
+    default, which no device had accepted for four days, so "may break"
+    implied a script that worked. The third state is *holds a credential this
+    device does not have: already not working*, decided by comparing values
+    in memory and never printing them. The script was retired instead, so
+    there is nothing for it to check today.
     """
     import re
 

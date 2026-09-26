@@ -553,14 +553,29 @@ def settings_rows(guards: dict = None, load=None) -> list:
         return [row("settings", "unknown",
                     f"user_settings.json could not be read ({exc}); whether "
                     "any guard's setting is empty is unknown")]
+    # C31: "nothing to set here" is a DECISION, and reported as one, with who
+    # and when; "somebody forgot" stays `unset_guard`. The two used to share
+    # a state, so a dead consumer and an erased setting looked the same.
+    declared = stored.get("settings_not_applicable") or {}
     out = []
     for key in sorted(guards):
         value = stored.get(key, DEFAULTS.get(key, ""))
         where = "; ".join(guards[key])
+        decl = declared.get(key)
+        said = (f"declared NOT APPLICABLE by {decl.get('by', '?')} at "
+                f"{decl.get('at', '?')}: {decl.get('reason', '')}") if decl else ""
         if value in ("", None, [], {}):
-            out.append(row(f"setting:{key}", "unset_guard",
-                           f"EMPTY. It gates {where}, which will refuse and say "
-                           "'not configured' until it is set"))
+            if decl:
+                out.append(row(f"setting:{key}", "not_applicable",
+                               f"{said}. It gates {where}, which nothing on this "
+                               "host uses"))
+            else:
+                out.append(row(f"setting:{key}", "unset_guard",
+                               f"EMPTY. It gates {where}, which will refuse and say "
+                               "'not configured' until it is set"))
+        elif decl:
+            out.append(row(f"setting:{key}", "contradiction",
+                           f"SET, and also {said}. One of the two is wrong"))
         else:
             out.append(row(f"setting:{key}", "ok", "set"))
     return out
@@ -649,6 +664,11 @@ def sync_owner_rows(run=None, get=None) -> list:
     return [{**row, "state": "ok", "detail": f"both name {setting}"}]
 
 
+#: A declared not-applicable setting is a recorded decision, not a fault. It
+#: is still counted in the headline, so it cannot vanish from view.
+OK_STATES = ("ok", "not_applicable")
+
+
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
@@ -658,7 +678,9 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += settings_rows() if settings is None else list(settings)
     jobs += rotation_rows() if rotations is None else list(rotations)
     jobs += sync_owner_rows(run) if owner is None else list(owner)
-    bad = [j["unit"] for j in jobs if j["state"] != "ok"]
+    bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
+    na = sum(1 for j in jobs if j["state"] == "not_applicable")
     return {"ok": True, "jobs": jobs, "not_ok": bad,
             "headline": (f"{len(jobs) - len(bad)} of {len(jobs)} job(s) ok"
+                         + (f" ({na} of them declared not applicable)" if na else "")
                          + (f"; not ok: {', '.join(bad)}" if bad else ""))}

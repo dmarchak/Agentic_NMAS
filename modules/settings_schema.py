@@ -312,6 +312,11 @@ DEFAULTS: dict = {
     #: as DECLARED, with its reason, instead of as unmapped for ever. A
     #: declaration for a device that is mapped again is a conflict, reported.
     "clab_declared_unmapped": {},
+    #: Guard-gating settings DECLARED not applicable on this host, with who,
+    #: when and why (register C31). An empty guard setting and "there is
+    #: nothing here to set" used to report identically, as `unset_guard`.
+    #: Written only by `declare_not_applicable()` (`nmas-setting-not-applicable`).
+    "settings_not_applicable": {},
     "syslog_host": "",
     "syslog_trap_level": "notifications",
     #: Puts the hostname in every line; the Grafana heartbeat rules key on it.
@@ -681,6 +686,11 @@ SCHEMA: dict = {
         "service_allowed_operations": {"type": "array", "items": _STR},
         "netbox_excluded_vrfs": {"type": "array", "items": _STR},
         "clab_declared_unmapped": {"type": "object"},
+        "settings_not_applicable": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object", "required": ["by", "at", "reason"],
+                "properties": {"by": _STR, "at": _STR, "reason": _STR}}},
         "syslog_host": _STR,
         "syslog_trap_level": {"enum": ["emergencies", "alerts", "critical",
                                        "errors", "warnings", "notifications",
@@ -940,3 +950,68 @@ def ratify(key: str, actor: str) -> dict:
         return result
     return {"ok": True, "error": "", "already": False,
             "key": key, "origin": "file"}
+
+
+def _is_empty(value) -> bool:
+    return value in ("", None, [], {})
+
+
+def not_applicable() -> dict:
+    """``{key: {"by", "at", "reason"}}``: settings declared not applicable here."""
+    return dict(get_setting("settings_not_applicable") or {})
+
+
+def declare_not_applicable(key: str, actor: str, reason: str) -> dict:
+    """Record that *key* has nothing to name on this host (register C31).
+
+    `yang_push_script` was empty, and the script it names was dead: nothing
+    ran it and its credential was one no device accepts. Setting the key would
+    make job health read `ok` for a script that cannot work, and leaving it
+    empty reported "somebody forgot", which was not true either. This is the
+    third answer: *nothing to set*, with who decided and why.
+
+    Refused:
+    - with no actor or no reason: a declaration nobody made, or nobody can
+      evaluate, is a silenced check;
+    - for a key whose default is not empty: "nothing to set" means something
+      only where empty is the unset state;
+    - for a key that is SET now: a value and a declaration that it has none
+      would contradict each other. Clear the value first.
+    """
+    reason = (reason or "").strip()
+    if not actor:
+        return {"ok": False, "error": "a declaration requires an actor"}
+    if not reason:
+        return {"ok": False, "error": ("a declaration requires a reason: the next "
+                                       "reader has to be able to tell a decision "
+                                       "from a stale one")}
+    if key not in DEFAULTS or key == "settings_not_applicable":
+        return {"ok": False, "error": f"not a known setting: {key}"}
+    if not _is_empty(DEFAULTS[key]):
+        return {"ok": False, "error": (f"{key} has a non-empty default, so it is "
+                                       "never unset; there is nothing to declare")}
+    import time
+    with settings_lock():       # read-modify-write (C20)
+        if not _is_empty(get_setting(key)):
+            return {"ok": False, "error": (
+                f"{key} is SET on this host. Clear it first: a value and a "
+                "declaration that it has none would contradict each other")}
+        current = not_applicable()
+        current[key] = {"by": actor, "reason": reason,
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        result = write_settings({"settings_not_applicable": current}, actor=actor)
+    return result if not result["ok"] else {"ok": True, "error": "", "key": key,
+                                            "declared": current[key]}
+
+
+def withdraw_not_applicable(key: str, actor: str) -> dict:
+    """Remove a declaration: the setting is expected to be set again."""
+    if not actor:
+        return {"ok": False, "error": "withdrawing a declaration requires an actor"}
+    with settings_lock():
+        current = not_applicable()
+        if key not in current:
+            return {"ok": False, "error": f"{key} is not declared not applicable"}
+        del current[key]
+        result = write_settings({"settings_not_applicable": current}, actor=actor)
+    return result if not result["ok"] else {"ok": True, "error": "", "key": key}

@@ -949,6 +949,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_credential_single_copy.py` | P.3 step 11 (B14): an empty secret falls back to the password; rotation writes no copy; break-glass reports only a distinct enable secret; the dedupe script's dry run writes nothing, prints no value, and refuses an unparseable store |
 | `test_rotation_reports_the_boot_file.py` | P.3 step 12 (B15): success is the checker's SAFE verdict from one shared function; a broken sync stage is named and never success; the message leads with the danger; every outcome is recorded (never a credential) and a not-SAFE rotation is a job-health row until a later persist reads SAFE; the sync script has one owner |
 | `test_actor_verified_trailer.py` | P.3 step 10 (D10): `access` only for the actor the gate verified, `host-shell` for a CLI, `none` for the app's threads; written once at `repo.git()`; every git commit in the tree goes through it or is named; a gated route in the real app commits `access` |
+| `test_setting_not_applicable.py` | C31: a declaration carries who, when and why, and refuses a missing reason or a set key; job health tells `not_applicable` from `unset_guard`, and set-and-declared is a `contradiction`; a declared consumer leaves the rotation's list |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1491,6 +1492,14 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 
   So the sixth is found by listing what each population ASSUMES stays true,
   and asking what would move it.
+- **"Nothing to set" and "somebody forgot" must not share a state** (C31).
+  `yang_push_script` was empty, and the script it named was dead. Setting the
+  key would have made job health read `ok` for a script that cannot work (the
+  operator's reason for clearing it). Leaving it empty read `unset_guard`,
+  which claims somebody forgot. `settings_not_applicable` records the third
+  answer, with who, when and why. It is written only on the host, and job
+  health reads it as `not_applicable`, or as `contradiction` when the key is
+  also set.
 - **A CHECK OF THE CODE IS NOT A CHECK OF THE INSTALL** (register C28).
   `discover_empty_default_guards()` derived, from the code, every setting
   whose emptiness silently switches off a guard, and only tests called it. So
@@ -4461,7 +4470,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
+present when each was recorded. **26 open at 2026-09-26**, counted from the rows: 21 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
@@ -4493,8 +4502,9 @@ written against the feature audit
 ([docs/NSOT_FEATURE_AUDIT.md](docs/NSOT_FEATURE_AUDIT.md)) and the CI design
 ([docs/NSOT_CI.md](docs/NSOT_CI.md)). **P.3** makes every device-changing
 path guarded or gone (B12, B11, D5, D4, C23); **accepted 2026-09-26** at
-`5b087c4`, every item observed and all eleven controls firing, with the
-operator's tunnel deploy to re-observe after the pull. **P.4** cuts Jenkins. The
+`5b087c4`, every item observed and all eleven controls firing, and
+**COMPLETE** once the operator's tunnel deploy committed with `Actor-Verified:
+access` on two paths. **P.4** cuts Jenkins. The
 agent becomes an on-call responder (Stage 8): it triages autonomously,
 PROPOSES fixes as ordinary plans, and never confirms its own.
 
