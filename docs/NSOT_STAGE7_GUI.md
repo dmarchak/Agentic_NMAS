@@ -1,5 +1,11 @@
 # Stage 7 — the interface, redesigned
 
+> **Superseded for STRUCTURE (2026-09-26) by [NSOT_STAGE7_PLAN.md](NSOT_STAGE7_PLAN.md).**
+> Its measurements still hold and are carried there: §0a (scale), §0b and
+> §6c (built as 7.2b), §6b (the invalidation rule, specified as 7.0) and §7.0's
+> specification. The information architecture below (§2), the Monitoring
+> destination (§3) and the sequencing (§7) are replaced.
+
 **Status: plan only.** Stages 3.2, 4, 5 and 6 come first. This is posted early
 so that work lands in the structure below rather than being arranged twice.
 

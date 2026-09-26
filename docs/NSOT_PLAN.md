@@ -2612,19 +2612,156 @@ a version bump would seed a `require_*` key.
 
 ---
 
+### P.3 — Every path that changes a device is guarded or gone (before 7.0)
+
+**Decided 2026-09-26 (operator), after B12.** Of 19 mutating routes that
+reach a device, one checked identity, and CLAUDE.md asserted they all did.
+That assertion is why nobody checked. Stage 7 moves controls, and must not
+re-home a control whose guard does not exist. So P.3 makes one statement
+true, and makes it mechanical: **every route or socket event that can change
+a device, a secret, or the tool's gates either requires a person, or is
+removed.**
+
+**Scope** (register rows): B12, B11, D5, D4, C23; the direct-push paths the
+audit cut; the terminal's audit trail; and the agent's push, commit and
+self-modification tools, which are a push path no person gate can cover.
+
+**Steps**
+
+1. **One gate, declared per endpoint.** `modules/identity.py` gains a table
+   classifying every mutating endpoint:
+   - an **action**: `confirm` (changes a device), `approve`, `reveal`,
+     `publish_remote`, `configure` (a new kind, for writes to the tool's own
+     settings and gates), or `break_glass` (a new kind, for the terminal);
+   - **`not_device`**, with a reason;
+   - removed.
+
+   One `before_request` hook enforces the table, before any input
+   validation, the order `/onboard/create` already has. The SocketIO
+   terminal enforces `break_glass` at `connect_terminal` and on each
+   `terminal_input`. **A mutating endpoint missing from the table fails the
+   suite.** No route can be added without declaring what it is.
+2. **Cut the direct-push paths the audit cut** (docs/NSOT_FEATURE_AUDIT.md):
+   - `/execute_command`;
+   - `/run_script/<ip>` and the Scripts tab;
+   - `/device/<ip>/restore_backup`;
+   - `/bulk_execute` in config mode (enable mode stays, gated);
+   - `/bulk_remove_static_routes`;
+   - `/configure/apply`'s push: the forms stay, the Apply button is removed,
+     and each form says *"being converted into intent authoring"* (decision
+     2);
+   - the legacy unguarded `/netbox/sync`, `/netbox/sync_all` and
+     `/netbox/remove`;
+   - `/ai/chat`'s `run_playbook_id` replay.
+3. **D5.** The device page's and bulk ops' "Restore Golden Config" open the
+   GUARDED restore preview for those devices at HEAD (the client function the
+   approval handoff already uses). `/device/<ip>/restore_golden_config` and
+   `/bulk_restore_golden_config` are removed.
+4. **D4, in the current wizard** (7.1 later re-homes it in the shared
+   component):
+   - draw the PROGRAM (`commands`), not the diff;
+   - draw each `dangerous` line with its own authorise checkbox, sent as
+     `authorise` and folded into the confirm hash;
+   - draw the `attribution` split (this edit vs already on the device).
+5. **C23.** The restore preview's population is the inventory: devices absent
+   from the ref are named with what will happen to them, and the denominator
+   counts the inventory. That is `plan_restore()`'s logic, now called by the
+   route.
+6. **B11.** `GET /settings` returns `*_set` flags for every secret and never a
+   value. `POST /settings` treats an empty secret field as "unchanged". The
+   Anthropic key is write-only in the form, like NetBox's token.
+7. **The terminal is the break-glass path** (decision 3):
+   - opening it requires a person (`break_glass`);
+   - `data/terminal_audit.jsonl` records who opened it, for which device,
+     when it opened and closed, and the peer. It never records keystrokes: a
+     trail that copies what it records becomes a second place secrets live;
+   - the page says: *"This is the break-glass path. Its use is recorded."*
+     and *"A change made here is drift until it is captured into intent."*
+8. **The agent loses every tool that sends to a device, commits, or edits
+   code**:
+   - three `execute_*` tools in config mode;
+   - `restore_golden_config` and `restore_pre_change_snapshot`;
+   - `run_ansible_playbook`;
+   - `save_golden_config` and `finalize_verified_config_change`;
+   - `read_app_file`, `patch_app_file`, `restart_server` and `git_commit`;
+   - the auto-continue that answers the model's own confirmation questions.
+
+   It keeps its read tools until Stage 8 rebuilds the library (decision 1).
+   The 19 CI tools go in P.4.
+9. **CLAUDE.md's B12 correction** is replaced by the enforced statement, with
+   the measurement that proves it.
+
+**P.3 ACCEPTANCE** (each item observed, each with a control that must fail):
+1. **Every mutating endpoint is classified**, and the classification test has
+   a floor (at least 131 mutating rules) and anchors: `/deploy/apply` must be
+   `confirm`, and one known settings route must be `configure`. **Control:**
+   add an unclassified device-changing route, and the suite fails.
+2. **Refused before input, for real.** Called with no identity, every gated
+   route answers **403** before its own validation, shown for `/deploy/apply`,
+   `/golden/restore/apply`, `/ai/approvals/<id>/approve`, `/bulk_reload`, a
+   file transfer and `POST /settings`. On the HOST, `curl localhost:5000`
+   without an Access assertion gets 403 on `/deploy/apply`. **Through the
+   tunnel, as the operator, a real deploy still completes**, because the gate
+   passes a person. Both measured, operands printed.
+3. **The static scan finds zero ungated device-changing routes**, with a
+   floor on the scan's own population and the anchor that failed on
+   2026-09-26 now passing.
+4. **No GET route returns a secret value.** Planted secrets (settings, the
+   Jenkins fields, the Anthropic key) are searched for in every GET route's
+   JSON. None appears. **Control:** return one, and it is found. A `POST
+   /settings` with an empty secret field leaves the stored value unchanged.
+5. **Every cut route answers 404**, `check_removed_definitions.py` reports
+   nothing still called, and no template or script refers to them.
+6. **Restoring one device from the GUI goes through the guarded preview**:
+   program, residue, confirm hash, a person. The replay routes are gone.
+7. **The wizard draws the program, `dangerous` and `attribution`**, executed
+   in duktape against a real `/deploy/plan` payload. A program with an
+   authorised `shutdown` deploys end to end in the test client, and changing
+   the authorisation after the plan is refused.
+8. **The restore preview counts the inventory.** Over a baseline older than a
+   device, the device is named and the denominator is the inventory size.
+   **Control:** revert to `build_targets`, and the test fails.
+9. **Opening the terminal writes one audit row and no keystrokes**, and the
+   page carries both sentences.
+10. **The agent's tool list contains none of the removed tools**, with a test
+    pinning the names, and no reply is auto-answered.
+11. **Operator: the Anthropic key is rotated.** B11's exposure has already
+    happened, and only rotation retires it.
+
+### P.4 — Cut Jenkins (before Stage 7)
+
+**Decided 2026-09-26 (operator): before Stage 7**, so Stage 7 does not draw a
+tab it is about to delete. The design, the check inventory and the reasons
+are in [NSOT_CI.md](NSOT_CI.md). Its section 6 is the step list, and its
+section 7 is the acceptance:
+- remove Jenkins, including the 19 CI tools;
+- correct the `ci_gate` stage to say what it checks;
+- GitHub Actions on the app repository;
+- `nmas-deploy` refuses a SHA whose CI failed or is pending, with `--offline`
+  running the suite locally;
+- `nmas-deploy` versioned into the repository (with 6.5).
+
+Still **UNDECIDED** inside P.4: scheduled protocol regression (N13), and
+config-repo checks (R5-R10) as a post-commit job on the NMAS. Neither blocks
+Stage 7.
+
+---
+
 ### STAGE 7 — the interface, redesigned
+
+**THE GUI PLAN: [NSOT_STAGE7_PLAN.md](NSOT_STAGE7_PLAN.md) governs this stage (2026-09-26).** The summary below predates it.
 
 **Written first, 2026-09-26, and governing the GUI plan** (the operator's
 order: the CI design and the feature audit, then the tasks, then the GUI):
 - [NSOT_CI.md](NSOT_CI.md): what CI checks and where, what each check can
-  stop, cutting Jenkins, and CI as state beside its trigger. Proposed as
-  **P.4**.
+  stop, cutting Jenkins, and CI as state beside its trigger. Decided:
+  **P.4, before Stage 7**.
 - [NSOT_FEATURE_AUDIT.md](NSOT_FEATURE_AUDIT.md): every tab, feature and
   agent tool, classified KEEP / ABSORB / CUT / UNDECIDED, with six decisions
   left to the operator.
 - [NSOT_TASKS.md](NSOT_TASKS.md): who the interface is for, what it must
   teach, and the task list the GUI is organised around.
-- **Proposed P.3, before 7.0**: B12 (the identity gate is not enforced on
+- **P.3, before 7.0 (decided 2026-09-26)**: B12 (the identity gate is not enforced on
   deploy, restore or approval), B11 (secrets returned by `GET /settings`),
   D5 (the unguarded golden replay behind two buttons), D4 (the confirm
   screen shows the diff, not the program) and C23 (the restore preview's

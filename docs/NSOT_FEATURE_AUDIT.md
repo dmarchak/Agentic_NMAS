@@ -194,14 +194,162 @@ From the dead-code audit (verified where it mattered):
 - **Fix separately:** the four CDN-loaded libraries (D8), vendored like the
   rest.
 
-## 7. What the audit leaves the operator to decide
+## 7. Decisions (the operator, 2026-09-26)
 
-1. **The agent** (section 5): keep it as "proposes, never applies", or cut it.
-2. **The Configure tab** (section 3): absorb it into intent authoring, or cut
-   it.
-3. **The terminal** (section 2): keep it gated and labelled, read-only, or cut.
-4. **Topology** (section 1): per-device neighbours only, or a fleet view as
-   well.
-5. **P.3 before Stage 7**: fix B12, B11, D5, D4 and C23 first.
-6. **Knowledge tools and reports** (section 5): part of the tool, or out of
-   scope.
+**Sequencing:** P.3 (every device path guarded or gone), then P.4 (cut
+Jenkins), then Stage 7. Both are written into NSOT_PLAN.md.
+
+### 1. The agent: an ON-CALL RESPONDER that triages and proposes, and never confirms
+
+This changes the lean in section 5. The operator wants the thing the project
+is named for: an alert fires (a device goes silent, a critical syslog line,
+drift, a failed job), and the agent investigates, attempts a fix, and reports.
+It is scoped in three verbs:
+- **TRIAGE autonomously.** It reads everything and correlates the alert
+  against drift, intent, goldens, job state, neighbours and logs, then writes
+  a report a person can act on. This needs no guards, and it is most of the
+  value at 3am.
+- **PROPOSE** a fix as an ordinary plan: a drafted intent change, a deploy
+  plan with its program and hash, or an approval item.
+- **NEVER CONFIRM ITS OWN PLAN.**
+
+The current 73-tool library is cut, and Stage 8 rebuilds on triage and
+propose. P.3 removes the push, commit and self-modification tools now, and
+P.4 the 19 CI tools.
+
+**(a) Does triage and propose satisfy "automatically respond and attempt to
+fix", or does it cut the thing asked for?** It satisfies it, and here is what
+it costs.
+- **The response is automatic:** triage starts within minutes of the alert,
+  and the correlation a person would do at 3am is already done.
+- **The attempt is real:** it produces the fix as a ready plan, with its
+  program and hash, one confirm from done.
+- **What is lost is the fix landing without a person.** Two facts say that
+  loss is cheap:
+  1. **Tonight's evidence.** No incident this session was fixed by a device
+     push a program could have chosen alone:
+     - s4 went silent because a person silenced it;
+     - s4 became INSEPARABLE because of a query bug in the measurement;
+     - clab-sync failed 72 times because of a helper's PATH, a code fix;
+     - B9's hole needed a lock design;
+     - B12 needed reading the code.
+
+     Every real fix took judgement or code.
+  2. **The gates.** An autonomous device fix would have to pass the same
+     gates, and after P.3 those gates require a person by construction. So
+     letting the agent act would mean granting it an exemption from the gate,
+     which is B12 reintroduced on purpose.
+
+  **So this cuts the part that would make it untrustworthy, not the thing
+  asked for.**
+
+**(b) The boundary: what could safely be autonomous.** A narrow class is
+defensible. An action may be taken without a person **only if all five
+hold**:
+1. **It touches no device and no source of truth**: not git, NetBox,
+   credentials, settings or gates.
+2. **The schedule would do it anyway.** It is a declared job run EARLY, so it
+   changes the timing and never the outcome.
+3. **Every guard that job has still applies.** For example, a re-run
+   clab-sync still meets the freshness gate.
+4. **It is bounded and recorded.** Once per alert, never in a loop, written
+   to the triage report. It is granted by name through
+   `service_allowed_operations`, which starts EMPTY, so the operator grants
+   each kind.
+5. **It cannot hide the alert.** It never silences, acknowledges, disables,
+   or changes a threshold or window. (The drift checker was silenced once;
+   the agent must never be able to repeat that.)
+
+**Inside that class:**
+- re-run a failed timer job once (the NetBox backup, the restore test, the
+  heartbeat check, clab-sync);
+- run a check now (drift, freshness, the heartbeat window);
+- refresh an inventory;
+- re-test an integration's connection.
+
+**Outside it, and why:**
+- **"Re-send a known-good deploy already confirmed once" is an empty class.**
+  A confirmed program is bound to its capture hash. If the device is still in
+  that state, merge-only has nothing to add. If it has moved, the hash
+  refuses. Either way, anything to send is a NEW plan, and a new plan needs a
+  person. The deploy path's own design leaves this class empty.
+- **"Restart a collector" is not the schedule's job, and it destroys
+  evidence.** A restart changes running state, loses the in-memory cause, and
+  is the move that hides C14-class failures: clab-sync refused correctly 72
+  times, and a restart-until-it-works loop would have turned a named cause
+  into silence. It is proposed, not taken. It can be granted by name later,
+  if ever.
+- **Never:**
+  - any device configuration;
+  - any commit;
+  - any write to NetBox or credentials;
+  - approving, confirming or rejecting anything;
+  - changing settings or gates;
+  - silencing or acknowledging an alert;
+  - deleting anything (backups, jobs, logs);
+  - editing its own code;
+  - answering its own confirmation question.
+
+**What makes the autonomous class different from the rest:** it contains
+only actions whose worst outcome is **"it happened earlier than scheduled"**.
+
+### 2. The Configure tab: absorb, phased
+
+- The direct push is **CUT now**, in P.3: every use makes intent drift.
+- The ~90 forms are **KEPT**. They encode how to express OSPF, BGP, VLANs,
+  ACLs and QoS.
+- They are **CONVERTED in batches**, starting with features the intent schema
+  already models, so the first batch is mapping rather than schema work.
+- A form whose feature the schema cannot express says so and offers nothing,
+  rather than pushing.
+- Stage 7 does not block on the conversion.
+
+### 3. The terminal
+
+**Keep it, gated, labelled, and as the LAST RESORT**, recording who opened it
+and when (P.3 step 7). The page says two things: this is the break-glass path
+and its use is recorded; and a change made here is drift until it is captured
+into intent.
+
+### 4. Topology
+
+**Per-device neighbours on the device page only. No fleet view now.**
+Recorded for later, not scoped: if a fleet view returns, it caps the devices
+shown, and lists can be organised into groups, with the view showing one
+group at a time. A topology of 200 devices is a picture nobody reads; one of
+a single site is useful.
+
+### 5. P.3 and P.4 before Stage 7 (see sequencing above)
+
+### 6. Knowledge tools and reports: cut, and what that does to the assistant
+
+The question was whether the knowledge base and lab notes feed the
+assistant's context, or are standalone study aids. **Measured: they feed
+it.** `ai_assistant.py` injects lab notes ("apply immediately"), the global
+KB ("treat as standing rules") and the network KB ("confirmed facts about
+this network") into every prompt's stable context.
+
+**On the host they are empty**: no global KB, no lab notes, and a network KB
+with one entry from 2026-09-01. The assistant has never built its memory,
+since its tools have never run. **So cutting the self-writing tools costs
+nothing today.**
+
+**The need they were built for is real, though, and triage needs it most**:
+facts about a network such as "s4's clock runs at 75%" or "r6 has no
+`/etc/hosts` entry". What is wrong is the mechanism. A rule the model writes
+for itself, injected as "apply immediately", is **self-modification at the
+prompt layer**, the same concern as `patch_app_file`, one level up.
+- **So: cut the self-writing knowledge tools.**
+- **Stage 8 gives triage read access to CURATED, COMMITTED network notes.**
+  People write them, or the agent PROPOSES them as a commit a person accepts,
+  and they are versioned like intent.
+- **The CCIE syntax knowledge base is cut.** The agent never writes IOS in
+  this model; templates render it.
+- **Reports are not cut as a capability: the triage report IS the on-call
+  responder's output.** The current report tools (markdown files in `data/`)
+  are cut. The triage report becomes a first-class record attached to its
+  alert, shown in "Is anything wrong".
+
+**If the operator wants the knowledge base back as it was**, the trade is
+this: an assistant whose standing rules nobody reviewed, against an
+assistant with no memory until curated notes exist.
