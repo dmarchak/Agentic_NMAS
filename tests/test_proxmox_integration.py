@@ -101,3 +101,52 @@ def test_the_settings_card_carries_every_key_the_client_reads():
     for key in (P.ProxmoxIntegration.plain_keys + P.ProxmoxIntegration.secret_keys
                 + (P.ProxmoxIntegration.url_key,)):
         assert f"key: '{key}'" in spec, key
+
+
+class TestTheTlsWarningIsScopedToThisClient:
+    """Verify TLS off for a self-signed certificate is deliberate, and urllib3
+    warned four times per run. The warning is correct, so it is silenced for
+    THIS client's requests only, replaced by one log line."""
+
+    def _emit(self, *a, **k):
+        import warnings
+        from urllib3.exceptions import InsecureRequestWarning
+
+        warnings.warn("Unverified HTTPS request", InsecureRequestWarning)
+        return {"ok": True, "response": _Resp([])}
+
+    def test_its_own_requests_are_quiet_and_logged_once(self, client, monkeypatch, caplog):
+        import warnings
+        import modules.integrations.base as base
+
+        client._settings["proxmox_verify_tls"] = False
+        monkeypatch.setattr(base.IntegrationClient, "_get", self._emit)
+        monkeypatch.setattr(P.ProxmoxIntegration, "_warned_unverified", False)
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("always")
+            client.backups()
+            client.storage_status()
+        assert [w for w in seen if "Unverified" in str(w.message)] == []
+        assert sum("TLS verification is OFF" in r.getMessage() for r in caplog.records) == 1
+
+    def test_everything_else_still_gets_the_warning(self, client, monkeypatch):
+        import warnings
+        import modules.integrations.base as base
+
+        client._settings["proxmox_verify_tls"] = False
+        monkeypatch.setattr(base.IntegrationClient, "_get", self._emit)
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("always")
+            client.backups()
+            self._emit()                        # some other code's request
+        assert len([w for w in seen if "Unverified" in str(w.message)]) == 1
+
+    def test_with_verification_on_nothing_is_suppressed(self, client, monkeypatch):
+        import warnings
+        import modules.integrations.base as base
+
+        monkeypatch.setattr(base.IntegrationClient, "_get", self._emit)
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("always")
+            client.backups()
+        assert len([w for w in seen if "Unverified" in str(w.message)]) == 1

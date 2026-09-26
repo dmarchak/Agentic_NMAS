@@ -68,3 +68,8 @@ C:/
 # deleted when the probe lab is destroyed.
 docs/bootstrap-probe/configs/bp-vios-d3.cfg
 docs/bootstrap-probe/configs/bp-vios-d3neg.cfg
+
+# Generated on the host from measured heartbeat gaps (scripts/nmas-heartbeat-rules).
+# Host-specific; never committed. Ignored so the live checkout stays clean and a
+# pull can never collide with it.
+deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml

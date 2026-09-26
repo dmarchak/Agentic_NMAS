@@ -226,19 +226,39 @@ It surfaces wherever `job_health` does (`nmas-jobs`, the jobs route).
 **Nothing there pushes an alert**. That is a limit of `job_health` as a
 whole, not of this addition.
 
-**What the first live run has to confirm**, because the tests use API shapes
-taken from the documentation, not measured on this host:
-1. **A multi-VM job's task carries an empty `id`.** The code matches a task
-   to a VM by `id == ""` or `id == "<vmid>"`. If this Proxmox version puts
-   something else there, every VM reads its failures by image age alone.
-   That still catches a job that stopped, but it would not name the
-   failure. Check with
-   `pvesh get /nodes/<node>/tasks --typefilter vzdump --limit 3`.
-2. **The thin-pool figures.** `used` and `metadata_used` are read as bytes
-   against `lv_size` and `metadata_size`, or as a fraction when they are 1
-   or less. Compare the row's percentages with `lvs pve/data`.
-3. **Its own negative control:** `umount /mnt/vzdump` must turn the storage
-   row `inactive` on the next `nmas-jobs`. Then mount it again.
+**The first live run, 2026-09-25, and what it changed.**
+1. **The backup LISTING is empty for an auditor token.** HTTP 200 with 0
+   items, with and without `content=backup`, while both images were on the
+   storage. So the first version reported `never` for two VMs that had
+   images. As far as Proxmox's source goes, it hides a backup volume from a
+   caller without `VM.Backup` on its VM or `Datastore.Allocate` on the
+   storage; the measurement is only the empty list. Those privileges can
+   restore over a VM and delete backups, so the token keeps PVEAuditor and
+   **the per-VM facts now come from the vzdump task LOGS**, which an auditor
+   can read. They carry the archive path, its size, the guest-agent freeze
+   and each VM's own error. A VM row therefore claims *the last run wrote
+   this archive*, not *the image is on disk now*, and says so. The storage
+   row's `images_missing` (space used below the newest images' total) is
+   what notices an image removed afterwards. The listing is still read and
+   used as a presence check whenever a token can see it. The prune listing
+   answers HTTP 500 to this token.
+2. **Task shape: the manual `vzdump 100 102` made one task PER VM**, each
+   carrying the VM's id. A scheduled job's shape is not yet measured. The
+   log parser splits at each `Starting Backup of VM` line, so a single task
+   covering both VMs is read per VM either way.
+3. **PVE's "GB" is GiB**: a `25.21GB` archive is `26G` in `ls -h`. Rows now
+   print GiB, like `df`. The first version printed decimal G, which made
+   `121.6 G free` look like a different measurement from df's `114G`.
+4. **The guest agent froze both VMs**: `fs-freeze` and `fs-thaw` appear in
+   both logs, and each VM row now reports it.
+5. **The thin-pool row matched `lvs`**: `pve/data data 11%, metadata 1%`.
+6. **Still to do: the negative control.** `umount /mnt/vzdump` must turn the
+   storage row `inactive` on the next `nmas-jobs`. Then mount it again.
+
+**TLS.** With Verify TLS off, urllib3 warned four times per run. The warning
+is correct, so it is suppressed for the Proxmox client's own requests only,
+and replaced by one log line per process. The better fix removes the reason:
+verify against the host's own CA (`/etc/pve/pve-root-ca.pem`).
 
 ## Whether to send images to `vmdata` as well
 

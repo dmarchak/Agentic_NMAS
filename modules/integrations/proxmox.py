@@ -13,7 +13,19 @@ an API token holding the PVEAuditor role (docs/VM_IMAGES.md section 6):
 The API wraps every answer as ``{"data": ...}``. Each method returns
 ``{"ok": True, "data": ...}`` or ``{"ok": False, "error": ...}`` and never
 raises, like every integration.
+
+**Measured on the live host, 2026-09-25: the backup LISTING is empty for an
+auditor token** -- HTTP 200 with 0 items, with or without ``content=backup``,
+while two images sat on the storage. Proxmox hides a backup volume from a
+caller without ``VM.Backup`` on its VM or ``Datastore.Allocate`` on the
+storage. Those privileges can restore over a VM and delete backups, so a
+monitor must not hold them. What an auditor CAN read is the task history and
+each task's LOG, which names the archive, its size, the guest-agent freeze
+and every per-VM error. So the per-VM facts come from the task logs, and
+the listing is a presence check used only when it returns anything.
 """
+
+import warnings
 
 import logging
 
@@ -76,6 +88,31 @@ class ProxmoxIntegration(IntegrationClient):
 
     # ── reads ───────────────────────────────────────────────────────────────
 
+    _warned_unverified = False
+
+    def _get(self, path: str, **params) -> dict:
+        """TLS verification OFF is a deliberate setting for a self-signed
+        certificate, and urllib3 warns on EVERY request (four lines per
+        `nmas-jobs` run). The warning is correct, so it is suppressed for
+        this client's own requests only, never globally, and replaced by one
+        log line per process that says verification is off. The rest of the
+        program keeps the warning. (`catch_warnings` swaps the process's
+        filter list for the call's duration, so another thread's warning in
+        that instant could be swallowed too; a price paid once per request
+        for a warning that is also written as a log line.)"""
+        if self.verify_tls:
+            return super()._get(path, **params)
+        if not ProxmoxIntegration._warned_unverified:
+            ProxmoxIntegration._warned_unverified = True
+            log.warning("proxmox: TLS verification is OFF (proxmox_verify_tls); "
+                        "the API token is sent to %s without checking its certificate",
+                        self.url)
+        from urllib3.exceptions import InsecureRequestWarning
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", InsecureRequestWarning)
+            return super()._get(path, **params)
+
     def _data(self, path: str, **params) -> dict:
         result = self._get(f"api2/json/{path}", **params)
         if not result.get("ok"):
@@ -104,3 +141,10 @@ class ProxmoxIntegration(IntegrationClient):
 
     def thin_pools(self) -> dict:
         return self._data(f"nodes/{self.node}/disks/lvmthin")
+
+    def task_log(self, upid: str, limit: int = 2000) -> dict:
+        """One task's log lines, as text. Readable with Sys.Audit."""
+        result = self._data(f"nodes/{self.node}/tasks/{upid}/log", limit=limit)
+        if result["ok"]:
+            result["data"] = [row.get("t", "") for row in (result["data"] or [])]
+        return result

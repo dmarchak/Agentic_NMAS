@@ -24,6 +24,8 @@ a systemctl or journal that cannot be asked is ``unknown``, never ``ok``.
 """
 
 import logging
+import os
+import re
 import subprocess
 import time
 
@@ -172,10 +174,22 @@ FIT_FACTOR = 1.2
 POOL_WARN_FRACTION = 0.80
 
 _IMAGES_WHAT = "nightly VM image (vzdump) on the Proxmox host (B6)"
+#: How many finished vzdump tasks' logs to read, newest first, before a VM
+#: that no task mentions is reported `never`.
+IMAGE_TASK_LOGS = 20
+#: The storage must hold at least this share of the newest images' total, or
+#: an image was removed after it was written.
+PRESENT_FRACTION = 0.95
+
+_GIB = 1024 ** 3
+_UNITS = {"B": 1, "KB": 1024, "KIB": 1024, "MB": 1024 ** 2, "MIB": 1024 ** 2,
+          "GB": _GIB, "GIB": _GIB, "TB": 1024 ** 4, "TIB": 1024 ** 4}
 
 
-def _gb(n) -> str:
-    return f"{(n or 0) / 1e9:.1f} G"
+def _gib(n) -> str:
+    """GiB, the unit `df -h` and `ls -h` print. Decimal G printed 121.6 for
+    df's 114, which read as a different measurement rather than a unit."""
+    return f"{(n or 0) / _GIB:.1f} GiB"
 
 
 def _age(now, ts) -> str:
@@ -185,7 +199,8 @@ def _age(now, ts) -> str:
 
 def _fraction(used, size):
     """The API reports some pool figures as bytes and some as a 0..1
-    fraction (not yet measured on this host's version), so both are read."""
+    fraction, so both are read. Measured: `pve/data data 11%, metadata 1%`
+    matched `lvs` on the live host."""
     try:
         used, size = float(used), float(size or 0)
     except (TypeError, ValueError):
@@ -195,12 +210,57 @@ def _fraction(used, size):
     return used / size if size > 0 else None
 
 
+_START = re.compile(r"Starting Backup of VM (\d+)")
+_FINISHED = re.compile(r"Finished Backup of VM (\d+)")
+_FAILED = re.compile(r"ERROR: Backup of VM (\d+) failed\s*-?\s*(.*)")
+_ARCHIVE = re.compile(r"creating vzdump archive '([^']+)'")
+_SIZE = re.compile(r"archive file size: ([\d.]+)\s*([KMGT]?i?B)", re.I)
+
+
+def parse_vzdump_log(lines: list) -> dict:
+    """Per VM, from one vzdump task's log: ``{vmid: {ok, size, froze,
+    archive, error}}``. A job over several VMs is ONE task, so its log is
+    split at each `Starting Backup of VM` line. PVE's "GB" is GiB, measured:
+    a `25.21GB` archive is 26G in `ls -h`, which decimal would put at 24."""
+    out, vmid = {}, None
+    for line in lines:
+        m = _START.search(line)
+        if m:
+            vmid = int(m.group(1))
+            out[vmid] = {"ok": None, "size": None, "froze": False,
+                         "archive": "", "error": ""}
+            continue
+        m = _FAILED.search(line)
+        if m:
+            entry = out.setdefault(int(m.group(1)), {"size": None, "froze": False,
+                                                     "archive": ""})
+            entry.update(ok=False, error=m.group(2).strip() or line.strip())
+            continue
+        if vmid is None:
+            continue
+        entry = out[vmid]
+        if _FINISHED.search(line) and int(_FINISHED.search(line).group(1)) == vmid:
+            entry["ok"] = True if entry["ok"] is None else entry["ok"]
+        elif _ARCHIVE.search(line):
+            entry["archive"] = _ARCHIVE.search(line).group(1)
+        elif _SIZE.search(line):
+            num, unit = _SIZE.search(line).groups()
+            entry["size"] = int(float(num) * _UNITS.get(unit.upper(), 1))
+        elif "fs-freeze" in line and "issuing" in line:
+            entry["froze"] = True
+    return out
+
+
 def image_jobs(now: float = None, client=None) -> list:
     """One row per imaged VM, one for the destination, one for the thin pools.
 
-    Every read that fails is ``unknown`` (not the same as ok), and an
-    unconfigured Proxmox is ``not_configured``, never ok: a job NMAS depends
-    on and cannot see is the failure this module exists to catch.
+    Per-VM facts come from the vzdump TASK LOGS, because the backup listing
+    is empty for an auditor token (measured, docs/VM_IMAGES.md section 6).
+    So a VM row claims "the last run wrote this archive", never "the image
+    is on disk now"; it says so, and the storage row's used-space check is
+    what notices an image removed afterwards. Every read that fails is
+    ``unknown`` (not the same as ok), and an unconfigured Proxmox is
+    ``not_configured``, never ok.
     """
     now = now or time.time()
     if client is None:
@@ -224,51 +284,70 @@ def image_jobs(now: float = None, client=None) -> list:
         return [row("vm-images", "not_configured", "proxmox_backup_vmids names no VM")]
     storage = client.storage
 
-    rows = []
-    backups = client.backups()
+    # ── per VM, newest task first, reading logs until every VM is answered ──
     tasks = client.vzdump_tasks()
-    finished = sorted((t for t in (tasks.get("data") or []) if t.get("endtime")),
-                      key=lambda t: t.get("starttime") or 0, reverse=True)
-    newest_sizes = []
+    outcome, log_errors = {}, []
+    if tasks["ok"]:
+        finished = sorted((t for t in (tasks["data"] or []) if t.get("endtime")),
+                          key=lambda t: t.get("starttime") or 0, reverse=True)
+        for task in finished[:IMAGE_TASK_LOGS]:
+            if all(v in outcome for v in vmids):
+                break
+            if str(task.get("id") or "") not in ("",) + tuple(str(v) for v in vmids):
+                continue
+            logged = client.task_log(task["upid"])
+            if not logged["ok"]:
+                log_errors.append(logged["error"])
+                continue
+            for vmid, fact in parse_vzdump_log(logged["data"]).items():
+                if vmid in vmids and vmid not in outcome:
+                    outcome[vmid] = {**fact, "endtime": task["endtime"],
+                                     "status": str(task.get("status", ""))}
+
+    listing = client.backups()
+    listed = {str(item.get("volid", "")).rsplit("/", 1)[-1]
+              for item in (listing.get("data") or [])} if listing["ok"] else set()
+
+    rows, newest_sizes = [], []
     for vmid in vmids:
         unit = f"vm-image:{vmid}"
-        if not backups["ok"]:
-            rows.append(row(unit, "unknown",
-                            f"could not list the backups on {storage}: {backups['error']} "
-                            f"-- not the same as ok"))
-            continue
-        images = [b for b in backups["data"] or []
-                  if str(b.get("vmid", "")) == str(vmid) and b.get("ctime")]
-        newest = max(images, key=lambda b: b["ctime"]) if images else None
-        if newest:
-            newest_sizes.append(newest.get("size") or 0)
-        # A backup job covering several VMs is one task with an empty id; a
-        # single-VM run carries the VM's id.
-        task = next((t for t in finished if str(t.get("id") or "") in ("", str(vmid))), None)
-        status = str(task.get("status", "")) if task else ""
-        task_failed = bool(task) and status != "OK" and not status.startswith("WARNINGS")
-        notes = []
+        fact = outcome.get(vmid)
         if not tasks["ok"]:
-            notes.append(f"vzdump tasks unreadable ({tasks['error']}), so a failure "
-                         f"is judged by image age alone")
-        elif status.startswith("WARNINGS"):
-            notes.append(f"latest vzdump task finished with {status}")
-
-        if task_failed and (newest is None or newest["ctime"] < task.get("starttime", 0)):
-            state = "failing"
-            detail = (f"latest vzdump task failed {_age(now, task['endtime'])}: {status}; "
-                      + (f"newest image {_age(now, newest['ctime'])}" if newest else "no image at all"))
-        elif newest is None:
-            state, detail = "never", f"no image of VM {vmid} on {storage}"
-        elif now - newest["ctime"] > IMAGE_MAX_AGE_MINUTES * 60:
+            rows.append(row(unit, "unknown", f"vzdump tasks unreadable: {tasks['error']} "
+                                             f"-- not the same as ok"))
+            continue
+        if fact is None:
+            why = (f"; {len(log_errors)} task log(s) unreadable ({log_errors[0]})"
+                   if log_errors else "")
+            state = "unknown" if log_errors else "never"
+            rows.append(row(unit, state, f"no vzdump task in the last {IMAGE_TASK_LOGS} "
+                                         f"mentions VM {vmid}{why}"))
+            continue
+        if fact.get("ok") is False:
+            rows.append(row(unit, "failing",
+                            f"latest vzdump run failed {_age(now, fact['endtime'])}: "
+                            f"{fact['error']}"))
+            continue
+        if fact.get("size"):
+            newest_sizes.append(fact["size"])
+        archive = os.path.basename(fact.get("archive") or "")
+        notes = [f"froze the filesystem: {'yes' if fact.get('froze') else 'NO (crash-consistent image)'}"]
+        if listed and archive and archive not in listed:
+            state = "missing"
+            detail = (f"the last run wrote {archive} {_age(now, fact['endtime'])}, and the "
+                      f"storage no longer lists it")
+        elif now - fact["endtime"] > IMAGE_MAX_AGE_MINUTES * 60:
             state = "stale"
-            detail = (f"newest image {_age(now, newest['ctime'])} ({_gb(newest.get('size'))}); "
-                      f"nothing failed, and nothing has succeeded since")
+            detail = (f"last successful run {_age(now, fact['endtime'])} "
+                      f"({_gib(fact.get('size'))}); nothing failed, and nothing has "
+                      f"succeeded since")
         else:
             state = "ok"
-            detail = f"newest image {_age(now, newest['ctime'])} ({_gb(newest.get('size'))})"
+            detail = f"last run {_age(now, fact['endtime'])} wrote {_gib(fact.get('size'))}"
+        if not listed:
+            notes.append("from the task log; this token cannot list the images themselves")
         rows.append(row(unit, state, "; ".join([detail] + notes),
-                        last_success=newest["ctime"] if newest else None))
+                        last_success=fact["endtime"]))
 
     # ── the destination ─────────────────────────────────────────────────────
     unit = f"vm-images-storage:{storage}"
@@ -281,20 +360,26 @@ def image_jobs(now: float = None, client=None) -> list:
                         f"job will fail (is_mountpoint refusing is this state, made visible)"))
     elif not newest_sizes:
         rows.append(row(unit, "unsized",
-                        f"{_gb(st['data'].get('avail'))} free, and no image yet to size "
-                        f"the next run against"))
+                        f"{_gib(st['data'].get('avail'))} free, and no archive size yet "
+                        f"to size the next run against"))
     else:
         avail = st["data"].get("avail") or 0
-        largest = max(newest_sizes)
+        used = st["data"].get("used")
+        largest, total = max(newest_sizes), sum(newest_sizes)
         need = largest * FIT_FACTOR
-        if avail < need:
+        if used is not None and used < PRESENT_FRACTION * total:
+            rows.append(row(unit, "images_missing",
+                            f"the storage holds {_gib(used)}, less than the newest images "
+                            f"alone add up to ({_gib(total)}): an image was removed after "
+                            f"it was written"))
+        elif avail < need:
             rows.append(row(unit, "will_not_fit",
-                            f"{_gb(avail)} free < {_gb(need)} ({FIT_FACTOR} x the largest "
-                            f"image, {_gb(largest)}). vzdump writes before it prunes, so the "
+                            f"{_gib(avail)} free < {_gib(need)} ({FIT_FACTOR} x the largest "
+                            f"image, {_gib(largest)}). vzdump writes before it prunes, so the "
                             f"next run will not fit beside the kept images"))
         else:
-            rows.append(row(unit, "ok", f"{_gb(avail)} free; the largest image "
-                                        f"({_gb(largest)}) fits with {_gb(avail - need)} to spare"))
+            rows.append(row(unit, "ok", f"{_gib(avail)} free; the largest image "
+                                        f"({_gib(largest)}) fits with {_gib(avail - need)} to spare"))
 
     # ── the thin pools on the node ─────────────────────────────────────────
     pools = client.thin_pools()

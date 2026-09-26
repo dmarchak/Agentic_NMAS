@@ -111,28 +111,47 @@ def test_the_route_reports_rather_than_withholds(monkeypatch):
 # ---------------------------------------------------------------------------
 
 HOUR = 3600
-G = 10 ** 9
+GIB = 1024 ** 3
+
+
+def _vm_log(vmid, size="8.12GB", froze=True, ok=True, error="unable to connect"):
+    """Lines in the shape the live host's vzdump task logs have
+    (2026-09-25), trimmed to the ones the parser reads."""
+    lines = [f"INFO: Starting Backup of VM {vmid} (qemu)",
+             f"INFO: creating vzdump archive '/mnt/vzdump/dump/vzdump-qemu-{vmid}-2026_09_25-17_46_38.vma.zst'"]
+    if froze:
+        lines += ["INFO: issuing guest-agent 'fs-freeze' command",
+                  "INFO: issuing guest-agent 'fs-thaw' command"]
+    if ok:
+        lines += [f"INFO: archive file size: {size}", f"INFO: Finished Backup of VM {vmid} (00:07:35)"]
+    else:
+        lines += [f"ERROR: Backup of VM {vmid} failed - {error}"]
+    return lines
 
 
 class FakeProxmox:
-    """Answers the four reads with fixtures shaped like the Proxmox API's
-    `data` payloads. Each can be made to fail independently, because a read
-    that failed must never come out as ok."""
+    """Answers the reads with the live host's shapes. The backup LISTING is
+    empty by default, because that is what an auditor token gets (measured).
+    Each read can fail independently: a failed read must never come out ok."""
 
-    def __init__(self, *, backups=None, tasks=None, storage=None, pools=None,
+    def __init__(self, *, tasks=None, logs=None, listing=(), storage=None, pools=None,
                  missing=(), vmids=(100, 102)):
         self._missing, self._vmids = list(missing), list(vmids)
         self.storage = "vzdump-sda"
-        self._backups = backups if backups is not None else [
-            {"vmid": 100, "ctime": NOW - 6 * HOUR, "size": 11 * G},
-            {"vmid": 102, "ctime": NOW - 6 * HOUR, "size": 14 * G},
-            {"vmid": 102, "ctime": NOW - 30 * HOUR, "size": 13 * G}]
+        # Default: the manual run measured live -- one task per VM, each with its id.
         self._tasks = tasks if tasks is not None else [
-            {"id": "", "starttime": NOW - 7 * HOUR, "endtime": NOW - 6 * HOUR, "status": "OK"}]
-        self._storage = storage if storage is not None else {"active": 1, "avail": 100 * G}
+            {"upid": "U100", "id": "100", "starttime": NOW - 7 * HOUR,
+             "endtime": NOW - 6 * HOUR, "status": "OK"},
+            {"upid": "U102", "id": "102", "starttime": NOW - 8 * HOUR,
+             "endtime": NOW - 7 * HOUR, "status": "OK"}]
+        self._logs = logs if logs is not None else {
+            "U100": _vm_log(100, "25.21GB"), "U102": _vm_log(102, "8.12GB")}
+        self._listing = list(listing)
+        self._storage = storage if storage is not None else {
+            "active": 1, "avail": 114 * GIB, "used": 34 * GIB}
         self._pools = pools if pools is not None else [
-            {"vg": "pve", "lv": "data", "lv_size": 348 * G, "used": 40 * G,
-             "metadata_size": G, "metadata_used": G // 20}]
+            {"vg": "pve", "lv": "data", "lv_size": 348 * GIB, "used": 0.11,
+             "metadata_size": GIB, "metadata_used": 0.01}]
 
     def missing_settings(self):
         return self._missing
@@ -145,11 +164,14 @@ class FakeProxmox:
         return {"ok": False, "error": value.args[0]} if isinstance(value, Exception) \
             else {"ok": True, "data": value}
 
-    def backups(self):
-        return self._wrap(self._backups)
-
     def vzdump_tasks(self):
         return self._wrap(self._tasks)
+
+    def task_log(self, upid):
+        return self._wrap(self._logs.get(upid, RuntimeError(f"no log for {upid}")))
+
+    def backups(self):
+        return self._wrap(self._listing)
 
     def storage_status(self):
         return self._wrap(self._storage)
@@ -162,58 +184,82 @@ def _rows(client):
     return {r["unit"]: r for r in J.image_jobs(NOW, client)}
 
 
+class TestTheLogIsParsedPerVm:
+
+    def test_a_job_over_two_vms_is_split_at_each_start_line(self):
+        facts = J.parse_vzdump_log(_vm_log(100, "25.21GB") + _vm_log(102, ok=False))
+        assert facts[100]["ok"] is True and facts[102]["ok"] is False
+        assert "unable to connect" in facts[102]["error"]
+
+    def test_pves_gb_is_gib(self):
+        """25.21 "GB" is 26G in `ls -h` on the live host; decimal would be 24."""
+        assert J.parse_vzdump_log(_vm_log(100, "25.21GB"))[100]["size"] == int(25.21 * GIB)
+
+    def test_a_run_without_the_freeze_says_so(self):
+        assert J.parse_vzdump_log(_vm_log(102, froze=False))[102]["froze"] is False
+
+
 class TestTheImagesAreWatched:
 
-    def test_a_healthy_night_is_ok_everywhere_with_its_numbers(self):
+    def test_the_live_night_is_ok_everywhere_with_its_numbers(self):
+        """The host's measured state: two per-VM tasks, an EMPTY listing,
+        34 GiB used, 114 GiB free, pve/data at 11% and 1%."""
         rows = _rows(FakeProxmox())
         assert {u: r["state"] for u, r in rows.items()} == {
             "vm-image:100": "ok", "vm-image:102": "ok",
             "vm-images-storage:vzdump-sda": "ok", "thin-pools": "ok"}
-        assert "14.0 G" in rows["vm-image:102"]["detail"]     # the NEWEST, not the older
+        assert "25.2 GiB" in rows["vm-image:100"]["detail"]
+        assert "froze the filesystem: yes" in rows["vm-image:100"]["detail"]
+        assert "cannot list the images" in rows["vm-image:100"]["detail"]
+        assert "114.0 GiB free" in rows["vm-images-storage:vzdump-sda"]["detail"]
+
+    def test_the_empty_listing_no_longer_reads_as_never(self):
+        """The live defect: `never` for a VM that HAS an image, because the
+        auditor's listing is empty. The listing is now only a presence check."""
+        assert _rows(FakeProxmox(listing=[]))["vm-image:102"]["state"] == "ok"
 
     def test_unconfigured_is_never_ok_and_names_what_is_missing(self):
         rows = J.image_jobs(NOW, FakeProxmox(missing=["proxmox_token_secret"]))
         assert [r["state"] for r in rows] == ["not_configured"]
         assert "proxmox_token_secret" in rows[0]["detail"]
-        assert "not the same as ok" in rows[0]["detail"]
 
     def test_a_job_that_stopped_is_stale_though_nothing_failed(self):
-        """What a notification cannot report: the job did not run at all."""
-        old = [{"vmid": v, "ctime": NOW - 50 * HOUR, "size": 12 * G} for v in (100, 102)]
-        rows = _rows(FakeProxmox(backups=old, tasks=[]))
+        old = [{"upid": "U100", "id": "", "starttime": NOW - 51 * HOUR,
+                "endtime": NOW - 50 * HOUR, "status": "OK"}]
+        logs = {"U100": _vm_log(100) + _vm_log(102)}
+        rows = _rows(FakeProxmox(tasks=old, logs=logs))
         assert rows["vm-image:100"]["state"] == "stale"
         assert "nothing has succeeded since" in rows["vm-image:100"]["detail"]
 
-    def test_a_failed_run_is_failing_with_its_own_status_line(self):
-        tasks = [{"id": "", "starttime": NOW - HOUR, "endtime": NOW - HOUR + 60,
-                  "status": "job errors"}]
-        rows = _rows(FakeProxmox(tasks=tasks))
-        assert rows["vm-image:100"]["state"] == "failing"
-        assert "job errors" in rows["vm-image:100"]["detail"]
-
-    def test_a_vm_whose_image_is_newer_than_the_failed_task_is_not_failing(self):
-        """A multi-VM job fails as one task; the VM that succeeded in it
-        must not be reported as failing."""
-        backups = [{"vmid": 100, "ctime": NOW - 30 * 60, "size": 11 * G},
-                   {"vmid": 102, "ctime": NOW - 30 * HOUR, "size": 14 * G}]
-        tasks = [{"id": "", "starttime": NOW - HOUR, "endtime": NOW - 20 * 60,
-                  "status": "job errors"}]
-        rows = _rows(FakeProxmox(backups=backups, tasks=tasks))
+    def test_one_vm_failing_in_a_shared_job_does_not_condemn_the_other(self):
+        job = [{"upid": "J", "id": "", "starttime": NOW - HOUR,
+                "endtime": NOW - 40 * 60, "status": "job errors"}]
+        logs = {"J": _vm_log(100, "25.21GB") + _vm_log(102, ok=False, error="guest agent timeout")}
+        rows = _rows(FakeProxmox(tasks=job, logs=logs))
         assert rows["vm-image:100"]["state"] == "ok"
         assert rows["vm-image:102"]["state"] == "failing"
+        assert "guest agent timeout" in rows["vm-image:102"]["detail"]
 
-    def test_warnings_are_named_and_not_a_failure(self):
-        tasks = [{"id": "", "starttime": NOW - 7 * HOUR, "endtime": NOW - 6 * HOUR,
-                  "status": "WARNINGS: 1"}]
-        row = _rows(FakeProxmox(tasks=tasks))["vm-image:102"]
-        assert row["state"] == "ok" and "WARNINGS: 1" in row["detail"]
-
-    def test_no_image_at_all_is_never(self):
-        rows = _rows(FakeProxmox(backups=[{"vmid": 100, "ctime": NOW - HOUR, "size": G}]))
+    def test_no_task_mentions_the_vm_is_never(self):
+        rows = _rows(FakeProxmox(logs={"U100": _vm_log(100), "U102": _vm_log(100)}))
         assert rows["vm-image:102"]["state"] == "never"
 
+    def test_an_unreadable_log_is_unknown_not_never(self):
+        rows = _rows(FakeProxmox(logs={"U100": _vm_log(100)}))
+        assert rows["vm-image:102"]["state"] == "unknown"
+        assert "unreadable" in rows["vm-image:102"]["detail"]
+
+    def test_listed_but_not_this_archive_is_missing(self):
+        """With a token that CAN list, a written archive absent from the
+        listing is reported, not assumed present."""
+        listing = [{"volid": "vzdump-sda:backup/vzdump-qemu-100-2026_09_25-17_46_38.vma.zst"}]
+        rows = _rows(FakeProxmox(listing=listing, logs={
+            "U100": _vm_log(100), "U102": [l.replace("-102-2026", "-102-2025") for l in _vm_log(102)]}))
+        assert rows["vm-image:100"]["state"] == "ok"
+        assert rows["vm-image:102"]["state"] == "missing"
+
     def test_a_read_that_failed_is_unknown_never_ok(self):
-        rows = _rows(FakeProxmox(backups=RuntimeError("HTTP 403"),
+        rows = _rows(FakeProxmox(tasks=RuntimeError("HTTP 403"),
                                  storage=RuntimeError("HTTP 403"),
                                  pools=RuntimeError("HTTP 403")))
         assert {r["state"] for r in rows.values()} == {"unknown"}
@@ -223,43 +269,46 @@ class TestTheImagesAreWatched:
 class TestFillingIsAboutTheNextRun:
 
     def test_will_not_fit_below_one_point_two_times_the_largest_image(self):
-        # largest newest image is 14 G -> needs 16.8 G
-        row = _rows(FakeProxmox(storage={"active": 1, "avail": 16 * G}))[
+        # largest is 25.21 GiB -> needs 30.25 GiB
+        row = _rows(FakeProxmox(storage={"active": 1, "avail": 30 * GIB, "used": 34 * GIB}))[
             "vm-images-storage:vzdump-sda"]
-        assert row["state"] == "will_not_fit"
-        assert "16.8 G" in row["detail"] and "writes before it prunes" in row["detail"]
+        assert row["state"] == "will_not_fit" and "writes before it prunes" in row["detail"]
 
     def test_just_enough_room_fits(self):
-        row = _rows(FakeProxmox(storage={"active": 1, "avail": 17 * G}))[
+        row = _rows(FakeProxmox(storage={"active": 1, "avail": 31 * GIB, "used": 34 * GIB}))[
             "vm-images-storage:vzdump-sda"]
         assert row["state"] == "ok"
 
     def test_a_percentage_does_not_decide_it(self):
-        """90% used with plenty free for these images is fine."""
-        row = _rows(FakeProxmox(storage={"active": 1, "avail": 40 * G,
-                                         "total": 400 * G, "used": 360 * G}))[
+        row = _rows(FakeProxmox(storage={"active": 1, "avail": 40 * GIB,
+                                         "total": 400 * GIB, "used": 360 * GIB}))[
             "vm-images-storage:vzdump-sda"]
         assert row["state"] == "ok"
+
+    def test_less_used_than_the_newest_images_is_images_missing(self):
+        """The check that stands in for the listing an auditor cannot read."""
+        row = _rows(FakeProxmox(storage={"active": 1, "avail": 140 * GIB, "used": 9 * GIB}))[
+            "vm-images-storage:vzdump-sda"]
+        assert row["state"] == "images_missing"
 
     def test_an_unmounted_destination_is_inactive(self):
         row = _rows(FakeProxmox(storage={"active": 0, "avail": 0}))[
             "vm-images-storage:vzdump-sda"]
         assert row["state"] == "inactive" and "not mounted" in row["detail"]
 
-    def test_no_image_yet_is_unsized_not_ok(self):
-        row = _rows(FakeProxmox(backups=[]))["vm-images-storage:vzdump-sda"]
+    def test_no_archive_size_yet_is_unsized_not_ok(self):
+        row = _rows(FakeProxmox(tasks=[]))["vm-images-storage:vzdump-sda"]
         assert row["state"] == "unsized"
 
     def test_a_pool_whose_metadata_fills_is_reported(self):
-        pools = [{"vg": "pve", "lv": "data", "lv_size": 348 * G, "used": 40 * G,
-                  "metadata_size": G, "metadata_used": 0.85 * G}]
+        pools = [{"vg": "pve", "lv": "data", "lv_size": 348 * GIB, "used": 40 * GIB,
+                  "metadata_size": GIB, "metadata_used": 0.85 * GIB}]
         row = _rows(FakeProxmox(pools=pools))["thin-pools"]
         assert row["state"] == "pool_filling" and "metadata 85%" in row["detail"]
 
-    def test_a_pool_reported_as_a_fraction_is_read_as_one(self):
-        pools = [{"vg": "pve", "lv": "data", "used": 0.9, "metadata_used": 0.1}]
-        row = _rows(FakeProxmox(pools=pools))["thin-pools"]
-        assert row["state"] == "pool_filling" and "data 90%" in row["detail"]
+    def test_the_live_pool_figures_read_as_measured(self):
+        row = _rows(FakeProxmox())["thin-pools"]
+        assert row["detail"] == "pve/data data 11%, metadata 1%"
 
 
 def test_health_carries_the_image_rows_in_its_headline():

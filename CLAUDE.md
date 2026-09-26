@@ -1292,6 +1292,21 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The better the comment, the more likely it quotes the code it explains**,
   so the places most likely to carry an explanatory quotation are the places
   most likely to have a test asserting something subtle.
+- **A marker is not a match: count the line's exact FORM** (C21,
+  2026-09-25). The heartbeat query matched any line containing
+  `NMAS-HEARTBEAT`. Removing the applet's timer logs an error that NAMES the
+  applet, and it was counted as a heartbeat by the measurement and by the
+  alert rules. The alert case is the unsafe direction: a broken applet's own
+  error reads as a sign of life. Same family as *a pattern that can appear
+  in English needs an anchor*, with a device's log as the English.
+- **A monitor's permissions can hide what it monitors, and the API says 200.**
+  The Proxmox backup listing returned HTTP 200 with 0 items to an auditor
+  token while two images sat on the storage, so the first `job_health` read
+  `never` for VMs that had images. *A lookup that misses is a fact about the
+  query*, and here the query included the caller's privileges. The fix was
+  not more privilege (those can restore over a VM and delete backups) but a
+  different source the auditor can read: the task logs. The row states which
+  claim it makes.
 - **An investigation's instrument can be the variable** (C20, 2026-09-25).
   A settings test failed in streaks, eight in a row and then clean at the
   same SHA, which reads as a race. It was file-order dependent and fully

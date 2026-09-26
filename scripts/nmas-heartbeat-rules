@@ -30,7 +30,7 @@ derived:
   label says a double miss may go unseen.
 
 **A rate that moves is a named state, not a silently wrong window.**
-``--check`` re-measures every device and compares with the committed rules:
+``--check`` re-measures every device and compares with the generated rules file (made on the host, never committed):
 ``stale_rate`` (the band moved off the window), ``provisional_ready`` (it can
 be measured now), ``inseparable``, and the population in both directions.
 Run on a timer (deploy/systemd/nmas-heartbeat-check.*) and declared in
@@ -68,6 +68,24 @@ GROUP = "nmas-heartbeat"
 FOLDER = "NMAS"
 JOB = "network_syslog"
 MARKER = "NMAS-HEARTBEAT"
+#: The heartbeat line ITSELF: the applet's `action syslog`, which IOS writes
+#: as `%HA_EM-<sev>-LOG: <applet>: <message>`, both NMAS-HEARTBEAT.
+#: A bare substring match on the marker also counted any line that merely
+#: NAMES the applet. Measured 2026-09-25: silencing s4 by removing the
+#: applet's timer logged `%HA_EM-4-FMPD_NO_EVENT: No event configured for
+#: applet NMAS-HEARTBEAT`, which was counted as a heartbeat. That made a 73 s
+#: gap and marked s4 INSEPARABLE. The alert rules use the same query, so a
+#: device whose applet BROKE logged a line that read as a sign of life: the
+#: unsafe direction. Over 6 h of the whole fleet, those were the only two
+#: shapes naming the applet. The severity digit is left free, so changing
+#: the applet's priority cannot silently stop every match.
+HEARTBEAT_LINE = r"%HA_EM-\d-LOG: " + re.escape(MARKER) + ": " + re.escape(MARKER)
+#: A gap during which the device was reconfigured is not a measurement of its
+#: interval: re-entering the applet restarts its timer, so the gap can fall
+#: anywhere between one and two intervals. That is under the long-gap cut,
+#: and it widens the band until one miss and two overlap. So every
+#: maintenance window would otherwise leave INSEPARABLE behind it.
+CONFIG_EVENT = r"%SYS-5-CONFIG_I:"
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
 
 #: Fewer consecutive gaps than this and a device is PROVISIONAL.
@@ -91,17 +109,28 @@ def host_pattern(hostname: str) -> str:
 
 
 def query_for(hostname: str) -> str:
-    return (f'{{job="{JOB}"}} |= "{MARKER}" |~ `{host_pattern(hostname)}`')
+    # The substring filter first is only for Loki's cost; the anchored
+    # regex is the match.
+    return (f'{{job="{JOB}"}} |= "{MARKER}" |~ `{HEARTBEAT_LINE}` '
+            f'|~ `{host_pattern(hostname)}`')
+
+
+def config_query_for(hostname: str) -> str:
+    return (f'{{job="{JOB}"}} |~ `{CONFIG_EVENT}` |~ `{host_pattern(hostname)}`')
 
 
 # ---------------------------------------------------------------------------
 # The measurement
 # ---------------------------------------------------------------------------
 
-def gaps_from(arrivals: list) -> list:
-    """Consecutive arrival gaps, with misses in the history excluded."""
+def gaps_from(arrivals: list, config_events=()) -> list:
+    """Consecutive arrival gaps, with misses in the history excluded, and
+    every gap spanning one of the device's own configuration changes."""
     times = sorted(arrivals)
-    raw = [b - a for a, b in zip(times, times[1:])]
+    events = sorted(config_events)
+    pairs = [(a, b) for a, b in zip(times, times[1:])
+             if not any(a < e <= b for e in events)]
+    raw = [b - a for a, b in pairs]
     if not raw:
         return []
     median = statistics.median(raw)
@@ -141,13 +170,13 @@ def windows(gaps_by_host: dict, interval: int) -> dict:
 
 
 def loki_arrivals(loki_url: str, hostname: str,
-                  hours: int = LOOKBACK_HOURS) -> list:
+                  hours: int = LOOKBACK_HOURS, query: str = "") -> list:
     """Arrival times (Loki's timestamps, the ones the rule counts)."""
     import requests
 
     now = time.time()
     r = requests.get(loki_url.rstrip("/") + "/loki/api/v1/query_range",
-                     params={"query": query_for(hostname), "limit": 5000,
+                     params={"query": query or query_for(hostname), "limit": 5000,
                              "start": int((now - hours * 3600) * 1e9),
                              "end": int(now * 1e9), "direction": "forward"},
                      timeout=30)
@@ -361,7 +390,8 @@ def main() -> int:
     ap.add_argument("--loki-url", default=os.environ.get("NMAS_LOKI_URL", ""),
                     help="where to MEASURE (default: the Loki integration)")
     ap.add_argument("--check", action="store_true",
-                    help="re-measure and compare with the committed rules")
+                    help="re-measure and compare with the generated rules file "
+                         "(--out; generated on the host, not committed)")
     ap.add_argument("--out", default=OUT)
     args = ap.parse_args()
 
@@ -375,7 +405,8 @@ def main() -> int:
     heartbeat = int(get_setting("syslog_heartbeat_seconds") or 0)
     try:
         expected, not_expected = expected_devices()
-        fresh = windows({h: gaps_from(loki_arrivals(loki, h))
+        fresh = windows({h: gaps_from(loki_arrivals(loki, h),
+                                      loki_arrivals(loki, h, query=config_query_for(h)))
                          for h in sorted(expected)}, heartbeat)
     except Exception as exc:                   # noqa: BLE001
         print(f"UNPROVEN: {type(exc).__name__}: {exc}")

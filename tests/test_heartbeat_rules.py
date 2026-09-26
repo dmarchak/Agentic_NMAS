@@ -285,3 +285,61 @@ class TestThePopulationIsWhoIsToldToHeartbeat:
                     platforms={"s1": "cisco_ios"}, netbox=["s1"])
         expected, not_expected = H.expected_devices()
         assert expected == set() and not_expected == ["s1"]
+
+
+class TestOnlyTheHeartbeatLineCounts:
+    """Measured 2026-09-25: silencing s4 by removing its applet's timer logged
+    `%HA_EM-4-FMPD_NO_EVENT: No event configured for applet NMAS-HEARTBEAT`,
+    and the substring query counted it as a heartbeat -- a 73 s gap, and s4
+    INSEPARABLE. The alert rules share the query, so a broken applet's own
+    error read as a sign of life. Both lines below are the real shapes."""
+
+    BEAT = ("Sep 25 21:21:22 s4 63: s4: *Sep 25 04:22:37.786: "
+            "%HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT")
+    NOT_A_BEAT = ("Sep 25 21:22:35 s4 64: s4: *Sep 25 04:23:34.016 UTC: "
+                  "%HA_EM-4-FMPD_NO_EVENT: No event configured for applet NMAS-HEARTBEAT")
+
+    def _regexes(self, query):
+        return re.findall(r"\|~ `([^`]*)`", query)
+
+    def test_the_heartbeat_matches_and_the_error_naming_the_applet_does_not(self):
+        pats = self._regexes(H.query_for("s4"))
+        assert len(pats) == 2, pats
+        assert all(re.search(p, self.BEAT) for p in pats)
+        assert not all(re.search(p, self.NOT_A_BEAT) for p in pats)
+        # ...and the bare marker, which the old query relied on, is in both.
+        assert H.MARKER in self.BEAT and H.MARKER in self.NOT_A_BEAT
+
+    def test_the_severity_digit_is_free(self):
+        """Changing the applet's priority must not silently stop every match."""
+        pat = re.compile(H.HEARTBEAT_LINE)
+        assert pat.search(self.BEAT.replace("HA_EM-5-LOG", "HA_EM-6-LOG"))
+
+    def test_the_rule_uses_the_same_anchored_query(self):
+        rule = H.rule_for("s4", "uid", 300, {"basis": "measured", "window": 900,
+                                             "lo": 390, "hi": 430, "n": 40, "rate": 0.75})
+        assert H.HEARTBEAT_LINE in yaml.safe_dump(rule, width=10_000)
+
+
+class TestAConfigurationChangeIsNotAMeasurement:
+    """Re-entering the applet restarts its timer, so the gap spanning the
+    change lands between one and two intervals: under the long-gap cut, and
+    enough to widen the band until one miss overlaps two."""
+
+    def test_a_gap_spanning_a_config_change_is_excluded(self):
+        arrivals = _arrivals(_gaps(390, 430) + [700.0] + _gaps(390, 430))
+        restart_gap_end = arrivals[11]
+        with_restart = H.gaps_from(arrivals)
+        assert 700.0 in with_restart, "the fixture must exhibit the case"
+        assert H.measure(with_restart, 300)["basis"] == "inseparable"
+        cleaned = H.gaps_from(arrivals, config_events=[restart_gap_end - 100])
+        assert 700.0 not in cleaned
+        assert H.measure(cleaned, 300)["basis"] == "measured"
+
+    def test_a_config_change_outside_every_gap_excludes_nothing(self):
+        arrivals = _arrivals(_gaps(390, 430))
+        assert H.gaps_from(arrivals, config_events=[arrivals[0] - 1000]) == H.gaps_from(arrivals)
+
+    def test_the_config_query_is_anchored_to_the_device(self):
+        q = H.config_query_for("s4")
+        assert H.host_pattern("s4") in q and "CONFIG_I" in q
