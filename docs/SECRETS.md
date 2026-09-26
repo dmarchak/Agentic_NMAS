@@ -1,7 +1,12 @@
 # Where secrets live, and why
 
-Three stores, deliberately. `scripts/nmas-check-secret-storage` reports all
-three by name and never by value, and exits 1 on a finding.
+`scripts/nmas-check-secret-storage` reports every store below by name and
+mode, never by value, and exits 1 on a finding. **Inside `data/` it
+classifies EVERY file**, so a new store fails the check until it is declared
+here. **Outside `data/` it knows only the list below** (`EXTERNAL_SECRETS`),
+so that list is the whole claim. (This section said "three stores" until
+2026-09-25, while the checker already knew seven. A count in a document is
+a claim, and this one was wrong.)
 
 | Secret | Store | At rest | Protected by |
 |---|---|---|---|
@@ -10,6 +15,10 @@ three by name and never by value, and exits 1 on a finding.
 | `ANTHROPIC_API_KEY` | `.env` | **plaintext, by design** | file mode, and nothing else |
 | Device credentials | `data/lists/<slug>/devices.csv` | **encrypted** (raw Fernet fields) | the key + file mode |
 | The Fernet key itself | `data/key.key` | — | file mode, and nothing else |
+| Credential profiles, device overrides, template secrets | `data/credential_profiles.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
+| **The B2 application key** (off-box NetBox dailies) | `~/.config/rclone/rclone.conf` | **plaintext** (rclone obscures, it does not encrypt) | file mode, and nothing else. The key has no `deleteFiles`, and whether it can HIDE is register B9 |
+| NetBox's `SECRET_KEY`, API token pepper, DB password | `~/netbox-docker/env/netbox.env`, `postgres.env` | plaintext | file mode (B4) |
+| The backup push key (rrsync -wo to Proxmox) | `~/.ssh/nmas_netbox_backup` | plaintext | file mode, plus `from=`, `restrict` and a forced command on the Proxmox side |
 
 **Required modes: `0600` for every file above, `0700` for `data/`.** These are
 applied **at creation**, by `config.open_secure()` and `config.secure_dir()`.

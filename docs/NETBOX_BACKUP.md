@@ -210,55 +210,138 @@ B7; docs/VM_IMAGES.md).
 
 ## 3. On the NMAS VM
 
+**Pull first.** The unit runs the script from the checkout, and the off-box
+push needs the `--no-check-dest` change (2026-09-25).
+
 ```bash
-# trust the Proxmox host key once, after checking its fingerprint on the console
-ssh-keyscan -t ed25519 10.0.0.80 | tee -a ~/.ssh/known_hosts
-ssh-keygen -lf <(ssh-keyscan -t ed25519 10.0.0.80 2>/dev/null)   # compare with: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on Proxmox
-
-sudo install -d -m 0750 -o root -g dmarchak /etc/nmas
-sudo install -m 0644 -o root -g dmarchak netbox-backup-recipient.asc /etc/nmas/netbox-backup-recipient.asc
-sudo install -m 0640 -o root -g dmarchak deploy/systemd/netbox-backup.env.example /etc/nmas/netbox-backup.env
-sudoedit /etc/nmas/netbox-backup.env      # set NMAS_BACKUP_RCLONE_REMOTE when off-box is ready
-
-sudo install -m 0644 deploy/systemd/nmas-netbox-backup.service deploy/systemd/nmas-netbox-backup.timer \
-     deploy/systemd/nmas-netbox-restore-test.service deploy/systemd/nmas-netbox-restore-test.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl start nmas-netbox-backup.service && journalctl -u nmas-netbox-backup -n 20 --no-pager
-sudo systemctl start nmas-netbox-restore-test.service && journalctl -u nmas-netbox-restore-test -n 5 --no-pager
-sudo systemctl enable --now nmas-netbox-backup.timer nmas-netbox-restore-test.timer
+# 3a. The Proxmox host key: VERIFY, then trust. Compare this fingerprint with
+#     `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` run on the Proxmox console.
+ssh-keygen -lf <(ssh-keyscan -t ed25519 10.0.0.80 2>/dev/null)
+# only if they match:
+ssh-keyscan -t ed25519 10.0.0.80 >> ~/.ssh/known_hosts
 ```
+
+```bash
+# 3b. The recipient's PUBLIC key, copied from the laptop to ~/ on this host
+#     (scp netbox-backup-recipient.asc dmarchak@10.0.0.211:~/). Every path is
+#     absolute, so this does not depend on the directory it is run from.
+( set -eu
+  cd ~/python/Agentic_NMAS
+  sudo install -d -m 0750 -o root -g dmarchak /etc/nmas
+  sudo install -m 0644 -o root -g dmarchak ~/netbox-backup-recipient.asc /etc/nmas/netbox-backup-recipient.asc
+  gpg --show-keys --with-fingerprint /etc/nmas/netbox-backup-recipient.asc   # must equal the laptop's fingerprint
+  # The env file is installed ONCE: re-running this must not overwrite an edited one.
+  if [ -e /etc/nmas/netbox-backup.env ]; then
+    echo "env exists, left as it is"
+  else
+    sudo install -m 0640 -o root -g dmarchak deploy/systemd/netbox-backup.env.example /etc/nmas/netbox-backup.env
+  fi
+)
+sudoedit /etc/nmas/netbox-backup.env      # set NMAS_BACKUP_RCLONE_REMOTE (section 4); check RCLONE_CONFIG
+sudo grep -v '^#' /etc/nmas/netbox-backup.env | grep .     # show what the unit will read
+```
+
+```bash
+# 3c. The units, one run of each by hand, then the timers.
+( set -eu
+  cd ~/python/Agentic_NMAS
+  sudo install -m 0644 deploy/systemd/nmas-netbox-backup.service deploy/systemd/nmas-netbox-backup.timer \
+       deploy/systemd/nmas-netbox-restore-test.service deploy/systemd/nmas-netbox-restore-test.timer /etc/systemd/system/
+  sudo systemctl daemon-reload
+)
+sudo systemctl start nmas-netbox-backup.service; journalctl -u nmas-netbox-backup -n 20 --no-pager
+sudo systemctl start nmas-netbox-restore-test.service; journalctl -u nmas-netbox-restore-test -n 5 --no-pager
+# Enable the timers only after both runs above read as they should:
+sudo systemctl enable --now nmas-netbox-backup.timer nmas-netbox-restore-test.timer
+~/python/Agentic_NMAS/scripts/nmas-jobs    # nmas-netbox-backup and -restore-test ok; not "not_installed"
+```
+
+The two `start` lines are deliberately NOT chained with `&&`. A failed run
+must still show its journal, because the journal is where its reason is.
 
 These are system units running as `dmarchak` with `docker` as a
 supplementary group, so no linger is needed. `StateDirectory=nmas-netbox`
 creates `/var/lib/nmas-netbox` (`0700`, owned by the service user).
+`RCLONE_CONFIG` in the env file points rclone at the B2 key's config
+explicitly, rather than relying on systemd setting `$HOME`.
 
 ## 4. Off-box (dailies only)
 
-```bash
-sudo apt-get install -y rclone
-rclone config                            # as dmarchak: create a remote, e.g. "offbox"
-# then in /etc/nmas/netbox-backup.env:
-NMAS_BACKUP_RCLONE_REMOTE=offbox:nmas-netbox
+**Set up 2026-09-25:** bucket `nmas-netbox-dmarchak`; lifecycle keeps a file
+15 days, then hides it, and deletes a hidden version 1 day later. The
+application key is restricted to that bucket with `listBuckets`,
+`listFiles` and `writeFiles`, and **no `deleteFiles` and no `readFiles`**.
+Only a newly promoted daily is sent.
+
+In `/etc/nmas/netbox-backup.env`:
+```
+NMAS_BACKUP_RCLONE_REMOTE=<remote-name>:nmas-netbox-dmarchak
+RCLONE_CONFIG=/home/dmarchak/.config/rclone/rclone.conf
+NMAS_BACKUP_OFFBOX_PRUNE=0
 ```
 
-Only a newly promoted daily is sent. **Backblaze B2, decided 2026-09-25: the
-key is write-and-list only, and retention is the bucket's.**
-- A lifecycle rule on the bucket keeps files 15 days.
-- The application key is restricted to that bucket, with `listBuckets`,
-  `listFiles` and `writeFiles`, and **no `deleteFiles`**.
-- A VM that can delete its own backups is protected against disk failure
-  and not against compromise, which is the case backups exist for. The
-  Proxmox copy is write-only for the same reason (`rrsync -wo`).
-- `NMAS_BACKUP_OFFBOX_PRUNE` stays `0`, so the script never tries to delete,
-  and `--status` says retention is the bucket's.
-- **The B2 key lives in `~/.config/rclone/rclone.conf`**, a secret store
-  that `nmas-check-secret-storage` checks by path (`0600`).
+- **The push needs `--no-check-dest`, and the script always passes it.**
+  By default rclone first reads the destination (a HEAD request) to decide
+  whether to copy, and that needs `readFiles`. Measured: without it the copy
+  fails with 401. A 401 or 403 is reported as the key being REFUSED, with
+  the capabilities it needs, rather than as rclone's raw text.
+- **The B2 key lives in `~/.config/rclone/rclone.conf`**, in plaintext
+  (rclone obscures, it does not encrypt). `nmas-check-secret-storage`
+  checks it by path: `0600`, measured.
+
+### What the key can and cannot do: measure it, with a test that can fail
+
+**Neither the exit code nor a listing after a deletion is evidence by
+itself.** Measured 2026-09-25: `rclone delete <remote>:<bucket>/b2probe.txt`
+exited 0, and the file was still listed. Two readings produce exactly that
+output:
+1. The deletion was attempted and refused.
+2. **The deletion was never attempted.** To use a single-file path, rclone
+   first checks that the path is a file, by the same HEAD request that
+   needs `readFiles`. Refused, it treats `b2probe.txt` as a *directory*,
+   finds nothing in it, deletes nothing, and exits 0. This is the same
+   refusal that made the default copy fail.
+
+A test that passes in both cases proves nothing. And the property that
+matters is not quite deletion. **On B2, rclone's delete HIDES a file by
+default** (unless given `--b2-hard-delete`). Per B2's documentation as
+understood here, hiding needs only `writeFiles`, which this key has. **The
+lifecycle deletes a hidden version 1 day later.** If both hold, a
+compromised VM can erase every off-box copy within a day, with no
+`deleteFiles` at all (register **B9**).
+
+The test that decides it points rclone at the bucket, which needs only
+`listFiles`, and selects the probe with a filter, so a deletion is actually
+attempted:
+
+```bash
+rclone lsl <remote>:nmas-netbox-dmarchak --b2-versions            # BEFORE: note b2probe.txt
+rclone delete -vv <remote>:nmas-netbox-dmarchak --include b2probe.txt 2>&1 | tail -20
+rclone lsl <remote>:nmas-netbox-dmarchak                          # the current view
+rclone lsl <remote>:nmas-netbox-dmarchak --b2-versions            # every version, hidden ones included
+```
+
+Read the `-vv` output first. It says what rclone attempted and what B2
+answered.
+- **Refused** (an error naming the capability, a non-zero exit, and the
+  file still in the current view): the key cannot hide. The off-box copy is
+  protected against a compromised VM, and B9 closes.
+- **Hidden** (a line saying the file was deleted or hidden, gone from the
+  current view, present among the versions): the key CAN destroy the
+  off-box copy within a day. The fix is **B2 Object Lock** with a default
+  retention at least as long as the lifecycle's 15 days. A hide is then
+  still possible, but no version can be deleted until its retention
+  expires, by the lifecycle or by anyone. The lifecycle's 1-day
+  hide-to-delete is the window an attacker would use, and lengthening it
+  only widens the window to notice.
+
+Only the probe file is touched either way. It was written to be disposable.
 
 ## 5. Status, and proving a copy decrypts
 
 ```bash
 NMAS_BACKUP_ROOT=/var/lib/nmas-netbox NMAS_BACKUP_GPG_RECIPIENT_FILE=/etc/nmas/netbox-backup-recipient.asc \
-  NMAS_BACKUP_PROXMOX_TARGET=nmas-backup@10.0.0.80 NMAS_BACKUP_RCLONE_REMOTE=offbox:nmas-netbox \
+  NMAS_BACKUP_PROXMOX_TARGET=nmas-backup@10.0.0.80 NMAS_BACKUP_RCLONE_REMOTE=<remote-name>:nmas-netbox-dmarchak \
   scripts/nmas-netbox-backup --status        # 0 fresh, 1 stale/failed, 2 never ran
 ```
 

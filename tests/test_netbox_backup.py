@@ -349,9 +349,42 @@ class TestOffboxRetentionIsTheBucketsByDefault:
         calls = self._calls(monkeypatch, {"NMAS_BACKUP_OFFBOX_PRUNE": "1"})
         assert [c[1] for c in calls] == ["copyto", "delete"]
 
-    def test_status_says_whose_retention_it_is(self):
+    def test_status_says_whose_retention_it_is_and_what_is_unproven(self):
+        """It said "this key cannot delete". On B2 a writeFiles key may HIDE,
+        and the lifecycle deletes hidden versions, so that claim is withdrawn
+        until B9 is measured."""
         cfg = B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket"})
         cfg["recipient_file"] = "/k.asc"
         _code, lines = B.status_report({"backup_success": {"at": NOW.isoformat()}},
                                        cfg, NOW)
-        assert any("lifecycle rule" in l and "cannot delete" in l for l in lines)
+        line = next(l for l in lines if l.startswith("off-box retention"))
+        assert "lifecycle rule" in line and "B9" in line
+        assert "cannot delete" not in line
+
+    def test_the_push_never_reads_the_destination(self, monkeypatch):
+        """Measured: without --no-check-dest rclone HEADs the destination,
+        which needs readFiles, and the key has none: a 401."""
+        calls = self._calls(monkeypatch, {})
+        assert calls[0][:3] == ["rclone", "copyto", "--no-check-dest"]
+
+    def test_a_refused_key_is_named_not_passed_through(self, monkeypatch):
+        import subprocess
+
+        def refuse(cmd, **kw):
+            raise subprocess.CalledProcessError(
+                1, cmd, stderr="ERROR : Failed to copy: 401 unauthorized")
+        monkeypatch.setattr(B, "_run", refuse)
+        cfg = B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket"})
+        with pytest.raises(RuntimeError) as excinfo:
+            B.ship_offbox(cfg, "/x/20260925T000000Z.tar.gpg")
+        assert "REFUSED" in str(excinfo.value) and "writeFiles" in str(excinfo.value)
+
+    def test_any_other_failure_is_left_as_it_is(self, monkeypatch):
+        import subprocess
+
+        def fail(cmd, **kw):
+            raise subprocess.CalledProcessError(1, cmd, stderr="no route to host")
+        monkeypatch.setattr(B, "_run", fail)
+        cfg = B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket"})
+        with pytest.raises(subprocess.CalledProcessError):
+            B.ship_offbox(cfg, "/x/20260925T000000Z.tar.gpg")

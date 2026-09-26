@@ -113,10 +113,12 @@ def config_from_env(env=None) -> dict:
         "ssh_key": env.get("NMAS_BACKUP_SSH_KEY", ""),
         "rclone_remote": env.get("NMAS_BACKUP_RCLONE_REMOTE", ""),
         # OFF by default (the operator's decision, 2026-09-25): the off-box key
-        # is write-and-list only and a BUCKET LIFECYCLE RULE expires files, so
-        # a compromised VM cannot delete its own backups -- the same reasoning
-        # as `rrsync -wo` on Proxmox. Set to 1 only for a remote whose key may
-        # delete and which has no lifecycle rule of its own.
+        # has no deleteFiles and a BUCKET LIFECYCLE RULE expires files. Whether
+        # that stops a compromised VM from destroying its backups is NOT
+        # established: on B2 a key with writeFiles may be able to HIDE a file,
+        # and the lifecycle deletes hidden versions a day later (register B9).
+        # Set to 1 only for a remote whose key may delete and which has no
+        # lifecycle rule of its own.
         "offbox_prune": env.get("NMAS_BACKUP_OFFBOX_PRUNE", "0") == "1",
     }
 
@@ -227,8 +229,9 @@ def status_report(state: dict, cfg: dict, now: datetime.datetime) -> tuple:
         lines.append("off-box retention: " + (
             f"pruned here after {DAILY_KEEP_DAYS} days (NMAS_BACKUP_OFFBOX_PRUNE=1)"
             if cfg.get("offbox_prune") else
-            "the bucket's lifecycle rule -- this key cannot delete, and "
-            "nothing here can see whether that rule exists"))
+            "the bucket's lifecycle rule. This key has no deleteFiles; whether "
+            "it can HIDE files, which the lifecycle then deletes, is unmeasured "
+            "(register B9). Nothing here can see whether the rule exists"))
     rt = state.get("restore_test")
     if not rt:
         lines.append("restore test: NEVER RUN -- a backup nobody has "
@@ -458,11 +461,32 @@ def ship_proxmox(cfg: dict, artefact: str, tier: str) -> None:
           f"{cfg['proxmox_target']}:{tier}/"], capture_output=True, text=True)
 
 
+#: What the B2 key's refusal looks like in rclone's stderr.
+_REFUSED = ("401", "403", "unauthorized", "forbidden", "not authorized")
+
+
 def ship_offbox(cfg: dict, artefact: str) -> None:
+    """``--no-check-dest`` is REQUIRED, not an optimisation. By default rclone
+    first reads the destination (a HEAD request) to decide whether to copy,
+    which needs ``readFiles``. The key has no read access by design, so the
+    push failed with 401 (measured by the operator, 2026-09-25). Append-only
+    storage has nothing to compare against anyway."""
     remote = cfg["rclone_remote"].rstrip("/")
-    _run(["rclone", "copyto", artefact,
-          f"{remote}/daily/{os.path.basename(artefact)}"],
-         capture_output=True, text=True)
+    try:
+        _run(["rclone", "copyto", "--no-check-dest", artefact,
+              f"{remote}/daily/{os.path.basename(artefact)}"],
+             capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        err = exc.stderr if isinstance(exc.stderr, str) else ""
+        if any(word in err.lower() for word in _REFUSED):
+            raise RuntimeError(
+                "the off-box key was REFUSED (401/403). The push uses "
+                "--no-check-dest, so the key needs listBuckets, listFiles and "
+                "writeFiles on this bucket and nothing more. Check the key's "
+                "capabilities and bucket restriction in B2, and that "
+                "NMAS_BACKUP_RCLONE_REMOTE names that bucket. rclone said: "
+                + err.strip()[:200]) from exc
+        raise
     if cfg.get("offbox_prune"):
         _run(["rclone", "delete", f"{remote}/daily", "--min-age",
               f"{DAILY_KEEP_DAYS}d"], capture_output=True, text=True)
