@@ -1300,6 +1300,22 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   shape: a report read as a claim it did not make. The reader-side half of
   *a tool's output is a claim*: before reporting a document wrong, run the
   command it names.
+- **A TEST THAT PASSES IN BOTH CASES SHOWS NOTHING. Before accepting a
+  result, ask what ELSE produces that output** (B9, 2026-09-26; the
+  operator's wording). The clearest instance yet. To prove a "write-only"
+  B2 key could not delete, the test ran `rclone delete <bucket>/b2probe.txt`:
+  exit 0, file still listed, read as PROVEN. But rclone's single-file path
+  check needs `readFiles`, so it treated the path as an empty directory and
+  never touched the file. The file survived because nothing tried to delete
+  it. The test that could fail pointed at the bucket with `--include`:
+  `Deleted`, the listing empty, the version hidden. The key HID the file
+  with `writeFiles` alone, and the lifecycle deletes hidden versions a day
+  later, so **withholding `deleteFiles` bought nothing**. Two lessons:
+  - *A capability's NAME is not its power.* `writeFiles` includes hiding,
+    and hide plus the lifecycle is delete.
+  - *An absence after an action proves the action only if the action was
+    shown to happen.* This is the vacuous-pass rule, applied to a live test
+    rather than a unit test.
 - **A marker is not a match: count the line's exact FORM** (C21,
   2026-09-25). The heartbeat query matched any line containing
   `NMAS-HEARTBEAT`. Removing the applet's timer logs an error that NAMES the
@@ -4239,7 +4255,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **25 open at 2026-09-25**, counted from the rows: 21 recorded only in
+present when each was recorded. **26 open at 2026-09-26**, counted from the rows: 22 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

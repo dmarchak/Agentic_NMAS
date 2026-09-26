@@ -114,9 +114,10 @@ def config_from_env(env=None) -> dict:
         "rclone_remote": env.get("NMAS_BACKUP_RCLONE_REMOTE", ""),
         # OFF by default (the operator's decision, 2026-09-25): the off-box key
         # has no deleteFiles and a BUCKET LIFECYCLE RULE expires files. Whether
-        # that stops a compromised VM from destroying its backups is NOT
-        # established: on B2 a key with writeFiles may be able to HIDE a file,
-        # and the lifecycle deletes hidden versions a day later (register B9).
+        # that stops a compromised VM from destroying its backups is FALSE,
+        # measured 2026-09-26: the key HID a file with writeFiles alone, and
+        # the lifecycle deletes hidden versions a day later. The protection is
+        # the bucket's Object Lock (register B9).
         # Set to 1 only for a remote whose key may delete and which has no
         # lifecycle rule of its own.
         "offbox_prune": env.get("NMAS_BACKUP_OFFBOX_PRUNE", "0") == "1",
@@ -229,9 +230,10 @@ def status_report(state: dict, cfg: dict, now: datetime.datetime) -> tuple:
         lines.append("off-box retention: " + (
             f"pruned here after {DAILY_KEEP_DAYS} days (NMAS_BACKUP_OFFBOX_PRUNE=1)"
             if cfg.get("offbox_prune") else
-            "the bucket's lifecycle rule. This key has no deleteFiles; whether "
-            "it can HIDE files, which the lifecycle then deletes, is unmeasured "
-            "(register B9). Nothing here can see whether the rule exists"))
+            "the bucket's lifecycle rule. This key has no deleteFiles and CAN "
+            "HIDE files (measured), which the lifecycle deletes a day later; "
+            "only the bucket's Object Lock protects the copies (register B9). "
+            "Nothing here can see the rule or the lock"))
     rt = state.get("restore_test")
     if not rt:
         lines.append("restore test: NEVER RUN -- a backup nobody has "

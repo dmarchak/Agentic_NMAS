@@ -337,6 +337,67 @@ answered.
 
 Only the probe file is touched either way. It was written to be disposable.
 
+### MEASURED 2026-09-26: the key CAN hide, so without a lock it can destroy the off-box copies
+
+The discriminating test above, run by the operator:
+- `rclone delete -vv --include b2probe.txt` printed `INFO : b2probe.txt: Deleted`, with no refusal anywhere;
+- the normal listing was **empty**;
+- `--b2-versions` listed `b2probe-v2026-09-26-020544-483.txt`, 27 bytes.
+
+**The write-only key hid the file using only `writeFiles`.** The lifecycle
+deletes a hidden version 1 day later, so a compromised NMAS erases every
+off-box copy within 24 hours. **Withholding `deleteFiles` bought nothing.**
+The earlier test (a single-file path: exit 0, file still listed) passed
+because the file was never touched.
+
+### The fix: Object Lock, Governance mode, a default retention equal to the lifecycle's 15 days
+
+B2's semantics as understood here, **to be measured on probes before real
+data depends on them** (the plan below):
+- **Governance, not Compliance.** Against a compromised VM they protect
+  equally, because the NMAS key has no `bypassGovernance`. Governance leaves
+  the account owner an escape hatch (a key with `bypassGovernance`, which
+  the master key is believed to have) for a mistake such as a retention of
+  15 *years*. Compliance cannot be undone by anyone, and protects against a
+  stolen B2 login, which is not this threat.
+- **Enabling Object Lock on the bucket is one-way.** The default retention
+  can be changed or removed later, and it applies only to NEW uploads.
+- **A lock stops deletion, not hiding.** After an attack, every file may be
+  hidden. The locked versions remain, recoverable with the account's own key
+  until their retention expires.
+- **What a lock cannot stop is filling.** Anything written with
+  `writeFiles` is locked for 15 days, including garbage from a compromised
+  VM or a bug. Guard it with a B2 storage cap on the account, and
+  Governance's bypass for cleaning up.
+- **Retention = 15 days = the lifecycle's hide-after, as ONE decision.** A
+  daily is locked until day 15, hidden by the lifecycle at day 15, and
+  deleted at day 16, after its lock has expired. **Shorter** retention
+  re-opens the hole for anything older than it. **Longer** retention
+  defers the lifecycle's deletions until the lock expires, so the lock
+  silently becomes the retention: two owners of one decision. As
+  understood here, B2's lifecycle neither errors nor reports when it meets
+  a locked version; it deletes the version on a later daily run once the
+  lock has expired.
+
+**Measurement plan, probes only:**
+1. The hidden, unlocked `b2probe` version should be GONE from
+   `--b2-versions` about a day after it was hidden. That proves the
+   lifecycle runs, and it is the positive control for step 4.
+2. Enable Object Lock with a default retention of Governance, 15 days.
+   Upload a new probe with the NMAS key (`copyto --no-check-dest`) and check
+   its retention in the B2 web UI.
+3. With the NMAS key, hide it (`delete -vv --include`). Expected: hidden,
+   with the locked version still present in `--b2-versions`.
+4. A day later, the hidden LOCKED version should still be there. That is
+   the direct measurement of what the lifecycle does under a lock.
+5. With the master key, delete the probe, bypassing governance. That proves
+   a mistake can be undone.
+
+**Not yet possible: checking that the two windows agree.** Reading the
+bucket's lifecycle rules and default retention would let `--status` refuse a
+mismatch. That needs capabilities this key lacks (`readBucketRetentions`), and
+B2 key capabilities cannot be edited, only issued anew (register B10).
+
 ## 5. Status, and proving a copy decrypts
 
 ```bash
