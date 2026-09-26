@@ -90,18 +90,19 @@ These have acceptance criteria written and no stage owning them.
 | E2 | **Q3 — empty-command rejections at boot.** r3–r5 each logged two rejections of an empty command during the redeploy; the source of the blank line is unfound. Explicitly **not** to be silenced by filtering the log. | build | NSOT_PLAN.md, *Queued from the Stage 2 session* |
 | E3 | **Tighten `transport input` on r1–r5.** They still carry `transport input all`. An ordinary authored-intent deploy, deliberately done one device at a time, scheduled after r6's branch site — which is now done. | build | NSOT_PLAN.md, *Deferred* |
 | E4 | **Re-enable the drift checker.** Stage 3.3's one remaining item. The known-noisy check that would have fired first — regenerated self-signed certificates — is fixed, so the precondition is met. | verify, then enable | NSOT_PLAN.md, Stage 3.3 |
+| E5 | **Authorization: roles and separation of duties are DECIDED and unbuilt.** Any verified person may do every gate kind today. The decision covers the roles, the split of `approve` into `author` and `approve`, per-artifact separation of duties, host-side storage, and the `any_person` default. Two parts are needed before any build: measure whether Access tokens carry groups, and D10's trailer. Stage 7 already draws for it (pattern 6). | build | [NSOT_AUTHORIZATION.md](NSOT_AUTHORIZATION.md); NSOT_PLAN.md *AUTHZ* |
 
 ---
 
 ## Count
 
-**27 open** (counted from the rows, 2026-09-26): 23 recorded only in prose
-(A2–D2, with C24, C25 and D9 added by P.3 step 1, D10 and D11 by step 2 and scheduled by decision, C26 and C27 added and closed, D5 closed by step 3, A4, B8–B12, C6–C10, C23, D4–D8, C12–C14 and C17 added the same day; B4, B5, B6, B7, D3, C11, C15, C16, C18, C19, C20, C21 and C22 added and closed; C1 closed as not reproduced), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
+**28 open** (counted from the rows, 2026-09-26): 23 recorded only in prose
+(A2–D2, with E5 (authorization, decided and unbuilt) added, C24, C25 and D9 added by P.3 step 1, D10 and D11 by step 2 and scheduled by decision, C26 and C27 added and closed, D5 closed by step 3, A4, B8–B12, C6–C10, C23, D4–D8, C12–C14 and C17 added the same day; B4, B5, B6, B7, D3, C11, C15, C16, C18, C19, C20, C21 and C22 added and closed; C1 closed as not reproduced), 5 in the plan without a stage (E1–E5, one of which is Stage 3.3's
 tail). The previous figure, 15, was **off by one**: it was produced by
 adjusting an earlier count rather than counting rows, and the rows then held
 16. C5 is scheduled (6.5); A1 is closed by P.2, and C3 and C4 are closed.
 
-By kind, counted from the Kind column: **17 build**, **3 decide-then-build**, **4 decide**, **1 verify**, **2 operator's steps**. (The previous line said 15 build, which summed to 25 against 24 rows. It was adjusted rather than counted, the same error as the total's.)
+By kind, counted from the Kind column: **18 build**, **3 decide-then-build**, **4 decide**, **1 verify**, **2 operator's steps**. (The previous line said 15 build, which summed to 25 against 24 rows. It was adjusted rather than counted, the same error as the total's.)
 
 None of them blocks Stage 7 — the per-stage scope and the ordering
 constraints are in [NSOT_PLAN.md](NSOT_PLAN.md), *Scope of what remains*,

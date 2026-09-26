@@ -223,6 +223,21 @@ has five sections:
    - a mutating action's response names what it invalidates;
    - the panels showing that data re-fetch;
    - a failed re-fetch shows the time of the value still displayed.
+6. **Authorization-aware controls** (decided 2026-09-26,
+   [NSOT_AUTHORIZATION.md](NSOT_AUTHORIZATION.md) section 7). Roles are built
+   later, and the screens are drawn for them NOW:
+   - **every gated control's state comes from `may`**, the server's answer
+     for this caller, never from a client-side guess at a role;
+   - **a control the caller may not use is DISABLED, WITH THE REASON AND WHO
+     CAN**, never hidden: a viewer must see that Approve exists and has not
+     been pressed, and the terminal reads *"break-glass: not granted to
+     you"*;
+   - **approval screens show the separation-of-duties state** when that
+     policy is on;
+   - **the status bar shows the caller, their roles and their grants.**
+
+   Until roles exist, the mode is `any_person`, and the same drawing code
+   draws every control enabled for a person.
 
 ## 3. Grafana, embedded and central
 
@@ -424,3 +439,9 @@ first.**
 12. **Behaviour:** Stage 7 moves controls, adds entry points and performs the
     audit's removals. Any other change to what a control DOES belongs to
     another stage.
+
+13. **Authorization-aware controls:** every gated control's state is read
+    from `may`. A test asserts that no gated control is hidden or enabled by a
+    client-side role check, and that a refused control renders its reason.
+    Its control fails when a button is drawn without consulting `may`
+    ([NSOT_AUTHORIZATION.md](NSOT_AUTHORIZATION.md) section 7).

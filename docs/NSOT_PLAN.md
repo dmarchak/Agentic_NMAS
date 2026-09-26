@@ -2911,6 +2911,31 @@ property of the inventory, not of the template.
 **Placement, proposed:** after P.4 and before 7.0. It changes a gate's
 behaviour, and Stage 7 does not, while 7.6 draws the badge.
 
+### AUTHZ — Roles and separation of duties (DECIDED 2026-09-26; built later, unscheduled)
+
+The decision and its reasoning are in
+[NSOT_AUTHORIZATION.md](NSOT_AUTHORIZATION.md).
+- **Mechanism:** a verified identity carrying group names. Cloudflare Access
+  groups first (whether its token carries them is unmeasured); OIDC against
+  an IdP we run for a network without Cloudflare; no user table.
+- **The gate kind `approve` splits into `author` and `approve`.** Today one
+  kind covers both editing a template and approving it, so no role map could
+  keep them apart.
+- **Roles:**
+  - **viewer** (none);
+  - **operator** (`author` + `confirm`);
+  - **approver** (`approve`);
+  - **administrator** (`configure`).
+- **Grants per named person:** `reveal`, `break_glass`, `publish_remote`.
+- **Separation of duties is per ARTIFACT**, from verified attribution (D10):
+  - the author of a revision may not approve it;
+  - intent-author-versus-deploy-confirmer is a per-install policy, off by
+    default.
+- **The mode, the map and the grants are host-side**, like the gates. The
+  default is `any_person`; in `roles` mode an empty map means nobody mutates.
+- **Stage 7 draws every gated control from `may`**, disabled with its reason
+  when refused (Stage 7 plan, pattern 6).
+
 **Carried from P.3 step 2 (2026-09-26)**: `pipeline_builder.ensure_function_pipeline`
 and `check_runner`'s `--config-id` mode have no producer since the configure
 push was removed. They go with the rest of Jenkins.

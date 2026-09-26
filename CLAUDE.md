@@ -4326,8 +4326,8 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **27 open at 2026-09-26**, counted from the rows: 23 recorded only in
-prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
+present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
+prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
 
@@ -4360,6 +4360,21 @@ written against the feature audit
 path guarded or gone (B12, B11, D5, D4, C23). **P.4** cuts Jenkins. The
 agent becomes an on-call responder (Stage 8): it triages autonomously,
 PROPOSES fixes as ordinary plans, and never confirms its own.
+
+**Authorization is decided, and built later**
+([docs/NSOT_AUTHORIZATION.md](docs/NSOT_AUTHORIZATION.md), 2026-09-26).
+Today any verified person may do every gate kind.
+- **Roles:** viewer; operator (`author` + `confirm`); approver (`approve`);
+  administrator (`configure`). `reveal`, `break_glass` and `publish_remote`
+  are grants to named people.
+- **The gate kind `approve` must split into `author` and `approve`** before
+  any role map, because today one kind covers both editing a template and
+  approving it.
+- **Separation of duties is per ARTIFACT** (a revision's author may not
+  approve it), from VERIFIED attribution only.
+- **The mode and the map are host-side**, like the gates.
+- **Stage 7 draws every gated control from `may`**, disabled with its reason
+  when refused, never hidden.
 
 ## Known defects deferred to later phases
 
