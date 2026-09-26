@@ -948,6 +948,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_ci_workflow.py` | P.4 step 3: the workflow reads only this repository (no `repository:`, no secret, read-only token, token not persisted), installs the lock, never gates on coverage, cancels superseded runs; parsed values, not raw text |
+| (overview) | **[docs/TESTING.md](docs/TESTING.md)**: what the suite checks, the 180 controls that run every time against the ~330 that ran once, and what it cannot reach |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -4509,7 +4510,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **30 open at 2026-09-26**, counted from the rows: 25 recorded only in
+present when each was recorded. **31 open at 2026-09-26**, counted from the rows: 26 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
