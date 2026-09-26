@@ -224,6 +224,59 @@ class TestRefusedBeforeInput:
         assert resp.get_json()["outcome"] == "unclassified"
 
 
+def _gated_requests(app):
+    """(method, url, endpoint, kind) for EVERY gated rule and mutating method,
+    URL arguments filled with placeholders."""
+    from modules.route_gates import GATES, SAFE_METHODS
+    from werkzeug.routing import IntegerConverter, PathConverter
+    out = []
+    for rule in app.url_map.iter_rules():
+        gate = GATES.get(rule.endpoint)
+        if gate is None or gate.kind == "not_device":
+            continue
+        values = {}
+        for arg in rule.arguments:
+            conv = rule._converters.get(arg)
+            values[arg] = (1 if isinstance(conv, IntegerConverter)
+                           else "p/q" if isinstance(conv, PathConverter) else "x")
+        url = app.url_map.bind("localhost").build(rule.endpoint, values,
+                                                  append_unknown=False)
+        for method in sorted(set(rule.methods or ()) - SAFE_METHODS):
+            out.append((method, url, rule.endpoint, gate.kind))
+    return out
+
+
+@pytest.mark.real_identity
+class TestEveryGatedEndpointRefusesWithoutIdentity:
+    """P.3 step 9: the statement CLAUDE.md makes, measured over the whole
+    table rather than a sample. Every view is replaced by a sentinel first,
+    so a gate that failed to refuse would reach a sentinel, never a real
+    route, and the failure names it."""
+
+    def test_the_sweep_finds_the_population(self):
+        reqs = _gated_requests(_app())
+        # 87 measured 2026-09-26: 121 mutating endpoints, 34 of them not_device
+        assert len({e for _, _, e, _ in reqs}) >= 80, len(reqs)
+        assert any(e == "deploy.apply_deploy" or u == "/deploy/apply"
+                   for _, u, e, _ in reqs)
+
+    def test_every_one_is_403_and_no_view_runs(self, monkeypatch):
+        app = _app()
+        reached = []
+        for endpoint in list(app.view_functions):
+            monkeypatch.setitem(app.view_functions, endpoint,
+                                (lambda ep: (lambda *a, **k: (reached.append(ep) or ("", 599))))(endpoint))
+        client = app.test_client()
+        wrong = []
+        for method, url, endpoint, kind in _gated_requests(app):
+            resp = client.open(url, method=method, json={})
+            body = resp.get_json(silent=True) or {}
+            if resp.status_code != 403 or body.get("requires_identity") is not True:
+                wrong.append((method, url, kind, resp.status_code))
+        assert not wrong, wrong
+        assert not reached, reached
+
+
 class TestAPersonPasses:
     def test_deploy_apply_reaches_its_own_validation(self):
         """The default harness identity is a verified person: the gate lets

@@ -936,7 +936,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_job_health.py` | a failing timer is visible: the cause line and the streak; not-installed is never ok; could-not-ask is unknown; the Proxmox images: stale when the job STOPPED, failing names the task's own status, a multi-VM failure does not condemn the VM that succeeded, `will_not_fit` asks about the next run (1.2 × the largest image), never a percentage |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_breakglass.py` | the record is independent of the key it escrows; `verify --live` tests the ESCROWED key against the stored values (a right key on disk cannot pass a wrong copy); zero values is unproven; restore never replaces a key |
-| `test_route_gates.py` | P.3: every mutating endpoint and terminal event declared, both directions with floors; the table agrees with every in-route gate; refused before input; a person passes and a service does not; the actor is the verified one |
+| `test_route_gates.py` | P.3: every mutating endpoint and terminal event declared, both directions with floors; all 87 gated endpoints answer 403 with no identity and no view runs (views replaced by sentinels); the table agrees with every in-route gate; refused before input; a person passes and a service does not; the actor is the verified one |
 | `test_p3_cuts.py` | P.3 step 2: the eight direct-push routes answer 404 and nothing shipped names them; bulk config mode and chat playbook replay refused by name; the Configure forms send nothing |
 | `test_harness_leaves_the_app_log_alone.py` | the suite never writes into the app log of the checkout it runs in (C26) |
 | `test_p3_restore_is_guarded.py` | P.3 step 3 (D5): both Restore Golden Config buttons open the guarded preview at HEAD; the preview draws every line it will send, executed against the route's real payload |
@@ -1083,27 +1083,42 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `X-Forwarded-For` is never consulted and `ProxyFix` is never installed, both
   pinned by tests. Nothing logs a value: only header presence, the validation
   outcome, and the actor **kind**.
-- **CORRECTION, measured 2026-09-26 (register B12): the gates below are ENFORCED only on
-  onboarding, the golden reveal, the remote publish routes and posture ratify.** `/deploy/apply`,
-  `/golden/restore/apply` and `/ai/approvals/<id>/approve` never call `identity.require()`:
-  called with no identity they reach their own input checks (400, 400, 404), where `/onboard/create`
-  answers 403. Neither does any legacy device route. The paragraphs that follow describe the gate's
-  DESIGN; its call sites are the gap. What has stood in for it is the network (the Access-protected
-  tunnel, and port 5000 firewalled from the LAN).
-  **P.3 step 1, 2026-09-26: the gate is a TABLE now, enforced in code.** `modules/route_gates.py`
-  declares every mutating endpoint (131) and the three terminal events, each with a kind and a
-  reason, and one `before_request` hook enforces it ahead of input validation. An undeclared
-  endpoint is refused at run time and fails `tests/test_route_gates.py`. **A new mutating route must
-  be declared there**, and that is a code change, not a setting. Two kinds were added: `configure`
-  (the tool's own settings, gates, inventory and records) and `break_glass` (the terminal). Routes
-  record `identity.request_actor()`, the VERIFIED person, never an actor from the request body. The
-  test harness is a verified person by default; a test about identity uses
-  `@pytest.mark.real_identity`. **Measured on the host 2026-09-26**: an unauthenticated local
-  `POST /deploy/apply` answers 403 `no_header`, and through the tunnel a real deploy's golden commit
-  carries the operator's email where it said `pipeline`. The terminal through the tunnel is not yet
-  measured, so this correction stays until step 9. **Step 2 removed eight direct-push routes**
-  (`tests/test_p3_cuts.py`); bulk config mode and chat playbook replay are REFUSED by name, not
-  degraded, because the edge can serve a page older than the server.
+- **Every route and socket event that can change a device, a secret, or the
+  tool's own gates requires a verified identity, enforced by ONE table**
+  (P.3, register B12, closed 2026-09-26). `modules/route_gates.py` declares
+  every mutating endpoint (121: 41 `configure`, 23 `approve`, 15 `confirm`,
+  5 `publish_remote`, 3 `reveal`, 34 `not_device` with a reason) and the
+  terminal's socket events (`break_glass`). One `before_request` hook enforces
+  it **ahead of input validation**, and `socket_gated()` does the same for
+  the socket. An undeclared endpoint is refused at run time. **A new
+  mutating route must be declared there**, which is a code change, not a
+  setting. Routes record `identity.request_actor()`, the VERIFIED person,
+  never an actor from the request body.
+  **Measured, not asserted:**
+  - `test_route_gates.py` sends a request with no identity to all 87 gated
+    endpoints, with every view replaced by a sentinel. All 87 answer 403
+    `requires_identity`, and no sentinel runs. Its control lets `approve`
+    through and names every approve route that then reaches its view.
+  - On the host, at `9c4cf07`, 2026-09-26: an unauthenticated POST answers
+    **403 `no_header`** on `/deploy/apply`, `/golden/restore/apply`,
+    `/ai/approvals/<id>/approve`, `/templatize/bulk/apply` and
+    `/onboard/create`. Before P.3 the first three answered 400, 400 and 404:
+    they reached their own input checks, so no gate ran. The two unguarded
+    golden replays (`/bulk_restore_golden_config`,
+    `/device/<ip>/restore_golden_config`) answer **404**: removed.
+  - An unauthenticated socket asking the live terminal for `192.0.2.1` got
+    `[refused: … no Cf-Access-Jwt-Assertion header.]`. No shell was opened,
+    and one `refused` row went to `data/terminal_audit.jsonl` (`0600`, peer
+    `127.0.0.1`). That row is the measurement's own probe.
+  - Through the tunnel, a real deploy's golden commit carries the operator's
+    email where it used to say `pipeline`. Since step 10, every commit's
+    `Actor-Verified:` says how its actor was established.
+  **What this does not cover, stated so it is not read as covered:** a CLI on
+  the host is authenticated by SSH to the host, not by this gate. Its commits
+  say `host-shell`. The AI agent is a separate matter: it cannot change a
+  device (P.3 step 8), and a real pre-execution authority gate for its tools
+  is Stage 8.3. The network (the Access-protected tunnel, and port 5000
+  firewalled from the LAN) is a second layer now, not the only one.
 - **Reveal, approve and confirm all require a verified identity** by default.
   Reveal exposes a secret; approve and confirm put configuration on a device.
   **There is no localhost exemption** — an exemption for requests from the box

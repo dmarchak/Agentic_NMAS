@@ -2979,6 +2979,24 @@ one NMAS uses (register B17).
 
 9. **CLAUDE.md's B12 correction** is replaced by the enforced statement, with
    the measurement that proves it.
+
+    **BUILT 2026-09-26.**
+    - **Local, the whole table**: `test_route_gates.py` sends a request with
+      no identity to all 87 gated endpoints (121 mutating, 34 `not_device`),
+      with every view replaced by a sentinel. All 87 answer 403 and no
+      sentinel runs. The earlier test sampled eight paths; a statement about
+      every route needs a measurement of every route. Control: letting
+      `approve` through names each approve route that then reaches its view.
+    - **On the host at `9c4cf07`**: 403 `no_header` on `/deploy/apply`,
+      `/golden/restore/apply` and `/ai/approvals/<id>/approve` (400, 400 and
+      404 before P.3), and on `/templatize/bulk/apply` and `/onboard/create`.
+      404 on both removed golden replays.
+    - **The live terminal**: an unauthenticated socket was refused before any
+      shell, and one `refused` row went to `data/terminal_audit.jsonl`
+      (`0600`). That row is the probe's own.
+    - The CLAUDE.md paragraph now states the property, its measurements, and
+      what it does not cover: the host CLI (authenticated by SSH, and its
+      commits say `host-shell`) and the agent's tool gate (Stage 8.3).
 10. **D10 (decided 2026-09-26): every commit says whether its actor was
     verified.** Each commit path writes `Actor-Verified: access` (a gated
     route: the identity the gate verified), `host-shell` (a CLI on the host,
