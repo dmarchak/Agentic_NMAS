@@ -176,8 +176,6 @@
       <div class="btn-group" role="group" aria-label="Command mode">
         <input type="radio" class="btn-check" name="commandMode" id="modeEnable" value="enable" checked>
         <label class="btn btn-outline-primary" for="modeEnable">Enable Mode</label>
-        <input type="radio" class="btn-check" name="commandMode" id="modeConfig" value="config">
-        <label class="btn btn-outline-primary" for="modeConfig">Config Mode</label>
       </div>
       <small class="text-muted ms-2" id="modeHint">Run show/exec commands (e.g., show ip int brief) — separate multiple with semicolons</small>
     </div>
@@ -268,18 +266,6 @@
               Restore Golden Config
             </button>
             <small class="text-muted">Pushes saved golden config to selected devices via SSH</small>
-          </div>
-        </div>
-      </div>
-      <!-- Remove Static Routes -->
-      <div class="col-md-6">
-        <div class="card border-danger">
-          <div class="card-body p-2">
-            <label class="form-label mb-1 small fw-bold">Remove Static Routes</label>
-            <button class="btn btn-outline-danger btn-sm w-100" onclick="bulkRemoveStaticRoutes()">
-              Remove All Static Routes
-            </button>
-            <small class="text-muted">Removes all "ip route" lines from running-config (VRF routes are preserved)</small>
           </div>
         </div>
       </div>
@@ -1019,7 +1005,14 @@
 <div class="d-flex align-items-center gap-2 mb-3">
   <h2 class="text-primary mb-0 me-auto">Configure</h2>
 </div>
-<p class="text-muted small mb-3">Select devices, choose a configuration type, fill in the parameters, and click <strong>Apply</strong>. Golden configs are saved automatically. A Jenkins pipeline verifies the change runs in the background.</p>
+<div class="alert alert-secondary small mb-3" data-p3-configure-note>
+  <strong>These forms no longer send anything to a device.</strong> They are being
+  converted into intent authoring: a change becomes an edit to committed intent, then
+  a plan you read and confirm, which is previewed exactly and can be rolled back.
+  Until each form is converted, <em>Check this form</em> validates it and shows the
+  parameters it collected. To change a device now, use Templates &rarr; the intent
+  editor, then Deploy plan.
+</div>
 
 <!-- Step 1: Device selector -->
 <div class="card mb-3" style="background:var(--bs-body-bg,#1e293b);border:1px solid #334155">
@@ -1963,7 +1956,7 @@
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cfgCancelWizard()">Cancel</button>
         <span id="cfgWizardValidationMsg" class="d-none text-danger small fw-semibold me-auto"></span>
         <button type="button" class="btn btn-primary" id="cfgWizardModalBtn" onclick="cfgWizardModalStep()">
-          <span id="cfgWizardModalBtnText">Apply Configuration</span>
+          <span id="cfgWizardModalBtnText">Check this form</span>
           <span class="spinner-border spinner-border-sm d-none ms-1" id="cfgWizardModalSpin"></span>
         </button>
       </div>
@@ -3937,10 +3930,10 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     const btnEl  = document.getElementById('cfgWizardModalBtn');
     const btnTxt = document.getElementById('cfgWizardModalBtnText');
     if (!isMulti) {
-      btnTxt.textContent = 'Apply Configuration';
+      btnTxt.textContent = 'Check this form';
       btnEl.className    = 'btn btn-primary';
     } else {
-      btnTxt.textContent = isLast ? 'Apply to All Devices' : `Next: ${devices[index + 1].hostname} →`;
+      btnTxt.textContent = isLast ? 'Check all devices' : `Next: ${devices[index + 1].hostname} →`;
       btnEl.className    = `btn ${isLast ? 'btn-success' : 'btn-primary'}`;
     }
     btnEl.disabled = false;
@@ -4082,7 +4075,7 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
       // Single device — submit immediately
       const payload = { device_ips: [devices[0].ip], config_type: type, params };
       if (_cfgWizardModal) { _cfgWizardModal.hide(); _cfgWizardModal = null; }
-      _cfgSendApply(payload);
+      _cfgShowParams(payload);
       return;
     }
 
@@ -4097,7 +4090,7 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     const payload = { config_type: type, per_device: _cfgWizard.perDeviceParams };
     _cfgWizard    = null;
     if (_cfgWizardModal) { _cfgWizardModal.hide(); _cfgWizardModal = null; }
-    _cfgSendApply(payload);
+    _cfgShowParams(payload);
   };
 
   /* ---- open config modal ---- */
@@ -4143,39 +4136,18 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     _cfgWizardModal.show();
   };
 
-  function _cfgSendApply(payload) {
-    document.getElementById('cfgOutputPanel').classList.add('d-none');
-    showCfgResult('info', 'Sending configuration…');
-
-    fetch('/configure/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { showCfgResult('danger', data.error); return; }
-      document.getElementById('cfgOutputCommands').textContent =
-        (data.commands || []).join('\n') || '(no commands generated)';
-      const devOut = document.getElementById('cfgOutputDevices');
-      devOut.innerHTML = (data.push_results || []).map(r => `
-        <div class="mb-2">
-          <strong class="small">${r.hostname || r.ip} (${r.ip})</strong>
-          <span class="badge ms-1 ${r.ok ? 'bg-success' : 'bg-danger'}">${r.ok ? 'OK' : 'FAILED'}</span>
-          ${r.error ? `<span class="text-danger small ms-2">${r.error}</span>` : ''}
-          ${r.commands ? `<details class="mt-1"><summary class="small text-muted" style="cursor:pointer">Commands sent (${r.commands.length})</summary><pre class="bg-dark text-light p-2 rounded small mt-1 mb-0" style="max-height:100px;overflow-y:auto;white-space:pre-wrap">${r.commands.join('\n')}</pre></details>` : ''}
-          ${r.output ? `<pre class="bg-dark text-light p-2 rounded small mt-1 mb-0" style="max-height:150px;overflow-y:auto;white-space:pre-wrap">${r.output}</pre>` : ''}
-        </div>`).join('');
-      document.getElementById('cfgOutputPanel').classList.remove('d-none');
-      const allOk = (data.push_results || []).every(r => r.ok);
-      const pipeMsg = data.pipeline_triggered
-        ? `Pipeline <code>${data.pipeline_job}</code> triggered.`
-        : `<span class="text-warning">Pipeline skipped${data.pipeline_error ? ': ' + data.pipeline_error : ''}.</span>`;
-      showCfgResult(allOk ? 'success' : 'warning',
-        `<strong>${allOk ? 'Configuration applied.' : 'Applied with errors.'}</strong> ${pipeMsg}
-         <div class="text-muted small mt-1">If the pipeline passes, an approval to update the golden config will appear in the Approvals tab.</div>`);
-    })
-    .catch(err => showCfgResult('danger', 'Request failed: ' + err));
+  // P.3 step 2: the configure-apply route is removed. The forms still validate and
+  // collect their parameters, which the conversion to intent authoring (7.9)
+  // reuses, and nothing is sent.
+  function _cfgShowParams(payload) {
+    document.getElementById('cfgOutputCommands').textContent =
+      JSON.stringify(payload, null, 2);
+    document.getElementById('cfgOutputDevices').innerHTML = '';
+    document.getElementById('cfgOutputPanel').classList.remove('d-none');
+    showCfgResult('secondary',
+      '<strong>Nothing was sent.</strong> This form is being converted into intent '
+      + 'authoring. The parameters it collected are shown below. To change a device '
+      + 'now, edit its committed intent and deploy a plan.');
   }
 
   /* ---- auto-create golden configs ---- */

@@ -221,10 +221,21 @@ def _code_mentions(name: str, path: str, rev: str = "") -> bool:
         if isinstance(node, ast.alias) and node.name.split(".")[-1] == name:
             return True
         if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and _REFERENCE_SHAPED.fullmatch(node.value.strip())
                 and word.search(node.value)
                 and id(node) not in docstrings and id(node) not in probed):
             return True
     return False
+
+
+#: The shape a string has when it IS a Python reference: a name, a dotted path
+#: (`"mod._gone"`, what `monkeypatch.setattr` and `mock.patch` take), or an
+#: entry point (`"pkg.mod:_gone"`). A string with a slash, a space or a quote
+#: in it cannot be one. P.3 step 2 (2026-09-26): the commit removing eight
+#: routes names them as PATHS in the test asserting they answer 404
+#: (`"/<route>/192.0.2.1"`), and the model's prompt names a removed route
+#: in a sentence. Counted as uses, both made the gate unsatisfiable.
+_REFERENCE_SHAPED = re.compile(r"[A-Za-z_][\w.]*(:[A-Za-z_][\w.]*)?")
 
 
 def main() -> int:

@@ -1246,7 +1246,6 @@
             <div style="margin-bottom:.3rem">${kws}</div>
             <div style="color:#64748b;font-size:.75rem">Devices: ${devs} &nbsp;·&nbsp; Saved: ${pb.created_at || ''}</div>
             <div style="margin-top:.5rem;display:flex;gap:.4rem">
-              <button class="pb-run-btn" style="font-size:.75rem;background:#4f46e5;color:#fff;border:none;border-radius:4px;padding:.25rem .6rem;cursor:pointer">&#9654; Run</button>
               <button class="pb-del-btn" style="font-size:.75rem;background:#64748b;color:#fff;border:none;border-radius:4px;padding:.25rem .6rem;cursor:pointer">&#128465; Delete</button>
             </div>`;
 
@@ -1255,9 +1254,6 @@
           card.querySelectorAll('div')[1].textContent = pb.description || '';
 
           // Attach event listeners with proper closure — no innerHTML injection
-          card.querySelector('.pb-run-btn').addEventListener('click', function () {
-            runPlaybook(pb.id, pb.name);
-          });
           card.querySelector('.pb-del-btn').addEventListener('click', function () {
             deletePlaybook(pb.id, this);
           });
@@ -1277,54 +1273,6 @@
       playbookDrawer.style.display = 'none';
     });
 
-    window.runPlaybook = function (pbId, pbName) {
-      playbookDrawer.style.display = 'none';
-      if (busy) { alert('AI is busy — please wait.'); return; }
-      // Directly trigger playbook execution via run_playbook_id param.
-      // This bypasses keyword matching and the Claude API entirely.
-      const displayMsg = pbName ? `▶ Run playbook: ${pbName}` : `▶ Run playbook: ${pbId}`;
-      busy = true;
-      setInputEnabled(false);
-      appendUserMessage(displayMsg);
-      currentAssistantRow = null; currentTextBuffer = ''; currentToolCards = {}; liveToolCardEl = null;
-      showThinking();
-      // Use fetch with run_playbook_id to directly execute the playbook
-      const body = JSON.stringify({ message: displayMsg, session_id: sessionId, run_playbook_id: pbId });
-      // Reuse the same SSE stream logic via a helper
-      (async function () {
-        try {
-          const resp = await fetch('/ai/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body,
-          });
-          if (!resp.ok || !resp.body) throw new Error('Stream failed');
-          const reader = resp.body.getReader();
-          const decoder = new TextDecoder();
-          activeReader = reader;
-          let buf = '';
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            const lines = buf.split('\n'); buf = lines.pop();
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-              // Never let one bad event's render throw out of the read loop —
-              // that would silently drop every event after it for this turn.
-              try { handleEvent(evt); } catch (e) { console.error('handleEvent failed', evt, e); }
-            }
-          }
-        } catch (err) {
-          if (err.name !== 'AbortError') appendError('Playbook error: ' + err.message);
-          hideThinking();
-        } finally {
-          activeReader = null; setInputEnabled(true); busy = false;
-        }
-      })();
-    };
-
     window.deletePlaybook = function (pbId, btn) {
       if (!confirm('Delete this playbook?')) return;
       fetch(`/ai/playbooks/${pbId}`, { method: 'DELETE' })
@@ -1332,66 +1280,6 @@
         .then(() => loadPlaybooks())
         .catch(() => alert('Delete failed'));
     };
-
-    // confirmRunPlaybook / confirmSkipPlaybook are now wired via addEventListener
-    // (data-action="run-pb" / "skip-pb") to avoid double-quote issues in onclick attributes.
-
-    // Like sendMessage but doesn't add another user bubble (used for re-sends)
-    async function _sendRaw(text, extraBody) {
-      if (busy) return;
-      busy = true;
-      setInputEnabled(false);
-      currentAssistantRow = null;
-      currentTextBuffer   = '';
-      currentToolCards    = {};
-      liveToolCardEl      = null;
-      showThinking();
-      const [deviceContext, topologyContext] = await Promise.all([
-        getDeviceContext(),
-        getTopologyContext(),
-      ]);
-      try {
-        const resp = await fetch('/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(Object.assign({
-            message:          text,
-            session_id:       sessionId,
-            context_ip:       contextIp,
-            device_context:   deviceContext,
-            topology_context: topologyContext,
-          }, extraBody || {})),
-        });
-        if (!resp.ok || !resp.body) {
-          appendError('Server error: ' + resp.status);
-          hideThinking(); setInputEnabled(true); busy = false;
-          return;
-        }
-        activeReader = resp.body.getReader();
-        const reader = activeReader;
-        const decoder = new TextDecoder();
-        let buf = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split('\n'); buf = lines.pop();
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-            try { handleEvent(evt); } catch (e) { console.error('handleEvent failed', evt, e); }
-          }
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError' && err.message !== 'cancelled') {
-          hideThinking(); setInputEnabled(true); busy = false;
-        } else {
-          hideThinking(); setInputEnabled(true); busy = false;
-        }
-      } finally {
-        activeReader = null;
-      }
-    }
 
     /* ---- Clear history ------------------------------------------------- */
     clearBtn.addEventListener('click', function () {
@@ -2275,47 +2163,6 @@
           window._pendingAnsibleFix = { name: evt.name, failed_plays: evt.failed_plays };
         }
 
-      } else if (evt.type === 'playbook_confirm') {
-        // Server found a matching playbook — ask the user before running it.
-        hideThinking();
-        const confirmCard = document.createElement('div');
-        confirmCard.className = 'ai-tool-card';
-        confirmCard.style.cssText = 'border-left-color:#f59e0b;max-width:98%';
-        // Store message/id on data attributes to avoid double-quote conflicts inside onclick
-        confirmCard.dataset.pbId      = evt.id      || '';
-        confirmCard.dataset.pbMessage = evt.message || '';
-        confirmCard.innerHTML =
-          '<div class="ai-tool-header" style="background:rgba(245,158,11,.1);cursor:default">' +
-            '<span style="font-size:.9rem">📋</span>' +
-            '<span class="ai-tool-label" style="color:#fde68a">Matching playbook found</span>' +
-          '</div>' +
-          '<div class="ai-tool-body" style="display:block">' +
-            '<div style="color:#e2e8f0;font-size:.85rem;margin-bottom:.4rem"><strong>' + escHtml(evt.name) + '</strong></div>' +
-            (evt.description ? '<div style="color:#94a3b8;font-size:.78rem;margin-bottom:.75rem">' + escHtml(evt.description) + '</div>' : '') +
-            '<div style="color:#cbd5e1;font-size:.82rem;margin-bottom:.75rem">Do you want to run this playbook, or should I proceed with your request from scratch?</div>' +
-            '<div class="d-flex gap-2">' +
-              '<button class="btn btn-warning btn-sm" data-action="run-pb">Run playbook</button>' +
-              '<button class="btn btn-outline-secondary btn-sm" data-action="skip-pb">No, continue without it</button>' +
-            '</div>' +
-          '</div>';
-        confirmCard.querySelector('[data-action="run-pb"]').addEventListener('click', function () {
-          confirmCard.querySelectorAll('button').forEach(b => b.disabled = true);
-          window.runPlaybook(confirmCard.dataset.pbId, null);
-        });
-        confirmCard.querySelector('[data-action="skip-pb"]').addEventListener('click', function () {
-          confirmCard.querySelectorAll('button').forEach(b => b.disabled = true);
-          const note = document.createElement('div');
-          note.className = 'ai-msg-row user';
-          note.innerHTML = '<div class="ai-msg-label">You</div>'
-            + '<div class="ai-msg-bubble text-muted" style="opacity:.7;font-style:italic">Skipped playbook — continuing from scratch</div>';
-          confirmCard.replaceWith(note);
-          _sendRaw(confirmCard.dataset.pbMessage, { skip_playbook_match: true });
-        });
-        messages.insertBefore(confirmCard, thinking);
-        setInputEnabled(true);
-        busy = false;
-        scrollBottom();
-
       } else if (evt.type === 'report_saved') {
         // AI finished writing a network report — show a download card.
         const reportCard = document.createElement('div');
@@ -2374,7 +2221,7 @@
           lines.push('After fixing, update the saved playbook with the corrected commands using save_ansible_playbook.');
           setTimeout(function () {
             openPanel();
-            sendMessage(lines.join('\n'), { skip_playbook_match: true });
+            sendMessage(lines.join('\n'));
           }, 400);
         }
       }

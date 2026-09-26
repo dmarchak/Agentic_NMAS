@@ -534,13 +534,61 @@ template validates against EVERY bound device (`approval.py:314-317`), and
 every device joining the set revokes the approval. At ten devices this is
 the right strictness. At 500, one adopted device the template cannot
 reproduce blocks deploys to the other 499 on that platform, and every
-adoption wave revokes the approval for everyone. The honest options:
-- adopt the unreproducible devices UNBOUND (managed, captured and
-  drift-checked, but not deployable), as a bucket;
-- or scope approval narrower than the platform.
+adoption wave revokes the approval for everyone.
 
-**Undecided.** Recorded here so the bulk path is designed against it rather
-than discovering it at wave two.
+**The argument (2026-09-26, asked for by the operator), from the code.**
+- **Two things gate a deploy per device.** The approval record is one.
+  `blocking_reasons` is the other: it re-runs, live on every plan and per
+  device, the capture's own parse rendered and compared, plus the
+  unmodelled-line acknowledgement.
+- **The approval's validation is the same check.**
+  `approval.validate_template()` runs exactly that, per bound device.
+- **So the device-set half of the fingerprint duplicates a gate that already
+  runs per device.** It records a snapshot of what `blocking_reasons` checks
+  live, and couples every device on the platform to each other's snapshot.
+
+What each half of the fingerprint claims:
+
+| Half | Claim | What it is a property of |
+|---|---|---|
+| the template closure hash | a person looked at THIS TEXT | the template |
+| the bound identities | this text was validated against THIS SET | the inventory |
+
+The project's own rule, from 3b's correction of scheme 1: **key a gate on
+the property it claims to protect.** Scheme 1 hashed each device's
+host_vars, and a successful deploy revoked its own approval. Scheme 2's set
+term is the same shape, one level up: onboarding one device revokes
+everyone's approval (D2, and CLAUDE.md "Onboarding revokes its platform's
+template approval at CREATE"). Adopting 500 would do it 500 times.
+
+**Recommended, not decided: scheme 3.**
+- **Approval is the template closure hash, and the person who approved it.**
+- **Per-device fidelity stays where it already is**: `blocking_reasons`,
+  live, naming the lines.
+- **Approving shows the validation across the bound set as evidence, with
+  every device's result.** It requires at least one validated device, the
+  floor that stops an approval over nothing. It does not require all of
+  them: a device the template cannot reproduce is individually not
+  deployable and is NAMED, instead of taking its platform down.
+- **A template edit still revokes everything**, because the hash changes.
+
+**What scheme 3 gives up, stated:**
+- A new device joining no longer makes a person press Approve again. What
+  that press added was a re-run of an all-or-nothing validation, not a review
+  of the new device. The new device's own review is its first deploy
+  preview, under the confirm hash, which shows the program and names any
+  fidelity blocker.
+- *"The gate notices its population changed"* moves from the approval record
+  to the per-device gate, which always noticed.
+
+**It fixes D2 and the onboarding revocation as a side effect.** Records carry
+`scheme`, and an older scheme is never silently honoured (the existing
+rule), so moving to 3 is an explicit re-approval.
+
+**The alternative, adopting unreproducible devices UNBOUND,** keeps scheme
+2 and moves the cost onto the operator: every such device is managed but
+never deployable until someone writes a bindings override. It is honest,
+and it does not scale either.
 
 ### 8d. Where it belongs
 

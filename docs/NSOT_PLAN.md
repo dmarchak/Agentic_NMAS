@@ -2690,6 +2690,20 @@ doing it now.
      `Cf-Access-Jwt-Assertion` on the Socket.IO handshake is unmeasured. If it
      does not, a person is refused the terminal, and that shows up as a
      refusal, not an open shell.
+   - **MEASURED ON THE HOST 2026-09-26 (operator), two of three.**
+     1. **A local unauthenticated `POST /deploy/apply` answers 403**, naming
+        the cause: *"the request carried no Cf-Access-Jwt-Assertion header"*,
+        with `outcome: no_header`.
+     2. **Through the tunnel, the verified actor is recorded on three paths.**
+        A real deploy completed, so the gate passes a person:
+        - `13e5408` host_vars (`Source: extraction`);
+        - `b0a345e` template approve (`Source: template`);
+        - `7a43784` the deploy's golden commit (`Source: pipeline`).
+
+        All three read `Actor: dustnm@gmail.com`. The last said
+        `Actor: pipeline` before.
+     3. **The terminal through the tunnel: NOT REPORTED** (the report's line
+        read `[result]`). It is still unmeasured.
 2. **Cut the direct-push paths the audit cut** (docs/NSOT_FEATURE_AUDIT.md):
    - `/execute_command`;
    - `/run_script/<ip>` and the Scripts tab;
@@ -2702,6 +2716,44 @@ doing it now.
    - the legacy unguarded `/netbox/sync`, `/netbox/sync_all` and
      `/netbox/remove`;
    - `/ai/chat`'s `run_playbook_id` replay.
+
+   **BUILT 2026-09-26.**
+   - **Eight routes are removed**, and each answers 404 by path.
+   - **Their UI is removed**: the Scripts tab, the restore-backup modal and
+     its button, Remove Static Routes, the bulk Config Mode radio, and every
+     playbook Run button (drawer and tab).
+   - **Two cuts keep a route and REFUSE by name rather than degrade.** A stale
+     page (the edge caches HTML) would otherwise get a quieter behaviour than
+     it asked for:
+     - `/bulk_execute` refuses `command_mode=config` with 400. Enable mode
+       stays, needs a person, and can still copy, delete, reload and erase.
+       That is recorded in its gate reason.
+     - `/ai/chat` refuses `run_playbook_id` with 410, **never** passing it to
+       the model as a message, because the model still holds
+       `run_ansible_playbook` until step 8.
+   - **Configure: the Apply button became "Check this form"**. It validates
+     and shows the parameters the form collected, and sends nothing. A note
+     heads the tab. The button was not deleted: it also drives the per-device
+     steps, and `collectParams` and `_cfgValidate` are what the conversion to
+     intent authoring (7.9) reuses.
+   - **Removed with them, having no other caller**: `run_ansible_direct` and
+     its YAML loader, the dead `playbook_confirm` card (nothing had emitted it
+     since keyword matching was disabled), and `_sendRaw`, which the
+     unreachable-UI test caught.
+   - **Left for P.4, recorded there**: `pipeline_builder.ensure_function_pipeline`
+     and `check_runner`'s `--config-id` mode, whose only producer was the
+     configure push.
+   - **No test had ever named any of the eight.** `tests/test_p3_cuts.py`
+     names them to assert their absence. Four negative controls were shown
+     firing.
+   - **`check_removed_definitions.py` learned one rule**: a string counts as a
+     use only when it is shaped like a reference (a name, a dotted path, or
+     `pkg.mod:attr`). A path in a 404 test and a sentence in the model's
+     prompt are not. Tested both ways, with a control.
+   - **Also fixed, found while answering C25**: the harness imports `app`,
+     which attached the app's file log handler in whatever checkout the suite
+     ran in (C26, closed).
+   - 3803 passed, 0 failed, 0 errors.
 3. **D5.** The device page's and bulk ops' "Restore Golden Config" open the
    GUARDED restore preview for those devices at HEAD (the client function the
    approval handoff already uses). `/device/<ip>/restore_golden_config` and
@@ -2793,6 +2845,10 @@ section 7 is the acceptance:
 Still **UNDECIDED** inside P.4: scheduled protocol regression (N13), and
 config-repo checks (R5-R10) as a post-commit job on the NMAS. Neither blocks
 Stage 7.
+
+**Carried from P.3 step 2 (2026-09-26)**: `pipeline_builder.ensure_function_pipeline`
+and `check_runner`'s `--config-id` mode have no producer since the configure
+push was removed. They go with the rest of Jenkins.
 
 ---
 

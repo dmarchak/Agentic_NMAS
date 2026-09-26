@@ -103,6 +103,32 @@ class TestProseIsNotAReference:
         assert CHECK._code_mentions("_gone", p) is False
 
 
+class TestOnlyAReferenceShapedStringIsAUse:
+    """P.3 step 2: a route removed and its 404 pinned in the same commit named
+    it as a PATH, and the model's prompt names it in a sentence."""
+
+    def test_a_url_path_is_not_a_use(self, source):
+        p = source('CUT = [("POST", "/_gone/192.0.2.1")]\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_sentence_is_not_a_use(self, source):
+        p = source('PROMPT = "IF you make a change (_gone / other):"\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_caller_spelling_is_not_a_use(self, source):
+        p = source("NEEDLES = [\"url_for('_gone'\"]\n")
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_bare_name_string_is_still_a_use(self, source):
+        """Control: a list of names fed to getattr in a loop is a real use."""
+        p = source('for n in ["_gone"]:\n    getattr(mod, n)()\n')
+        assert CHECK._code_mentions("_gone", p) is True
+
+    def test_an_entry_point_string_is_still_a_use(self, source):
+        p = source('ep = "pkg.mod:_gone"\n')
+        assert CHECK._code_mentions("_gone", p) is True
+
+
 class TestWholeWordsOnly:
     """`"_scan_device" in "_scan_device_from_golden"` is True."""
 

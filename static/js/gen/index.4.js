@@ -227,10 +227,6 @@ async function loadPlaybooks() {
               </div>
             </div>
             <div class="d-flex gap-2 flex-shrink-0">
-              <button class="btn btn-primary btn-sm pb-run-btn"
-                      data-id="${_escHtml(pb.id)}" data-name="${_escHtml(pb.name)}">
-                &#9654; Run
-              </button>
               <button class="btn btn-outline-danger btn-sm pb-del-btn"
                       data-id="${_escHtml(pb.id)}" data-name="${_escHtml(pb.name)}">
                 Delete
@@ -240,11 +236,6 @@ async function loadPlaybooks() {
         </div>
       </div>`).join('');
 
-    container.querySelectorAll('.pb-run-btn').forEach(btn => {
-      btn.addEventListener('click', function () {
-        _runPlaybookFromTab(this.dataset.id, this.dataset.name);
-      });
-    });
     container.querySelectorAll('.pb-del-btn').forEach(btn => {
       btn.addEventListener('click', function () {
         _deletePlaybookFromTab(this.dataset.id, this.dataset.name);
@@ -252,21 +243,6 @@ async function loadPlaybooks() {
     });
   } catch (err) {
     container.innerHTML = `<div class="alert alert-danger">Failed to load playbooks: ${_escHtml(err.message)}</div>`;
-  }
-}
-
-function _runPlaybookFromTab(pbId, pbName) {
-  // Delegate to the runPlaybook function defined in base.html
-  if (typeof window.runPlaybook === 'function') {
-    window.runPlaybook(pbId, pbName);
-  } else {
-    // Fallback: open AI panel with a pre-filled message
-    const openBtn = document.getElementById('aiOpenBtn');
-    if (openBtn) openBtn.click();
-    setTimeout(() => {
-      const input = document.getElementById('ai-input');
-      if (input) { input.value = `Run playbook: ${pbName}`; input.dispatchEvent(new Event('input')); input.focus(); }
-    }, 400);
   }
 }
 

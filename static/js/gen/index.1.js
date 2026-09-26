@@ -619,41 +619,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  window.bulkRemoveStaticRoutes = function() {
-    const selectedIps = Array.from(deviceCheckboxes)
-      .filter(cb => cb.checked && !cb.disabled)
-      .map(cb => cb.value);
-
-    if (selectedIps.length === 0) {
-      showToast('No devices selected', 'warning');
-      return;
-    }
-
-    if (!confirm(`Remove ALL static routes from ${selectedIps.length} device(s)?\n\nVRF routes will be preserved.\nThis action modifies the running configuration!`)) {
-      return;
-    }
-
-    const formData = new FormData();
-    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
-
-    showToast('Removing static routes...', 'info');
-
-    fetch('/bulk_remove_static_routes', { method: 'POST', body: formData })
-    .then(resp => resp.json())
-    .then(data => {
-      if (data.status === 'success') {
-        showToast(data.message, 'success');
-        showBulkResults(data.operation_id);
-      } else {
-        showToast(data.message || 'Remove static routes failed', 'danger');
-      }
-    })
-    .catch(err => {
-      console.error('Remove static routes failed:', err);
-      showToast('Failed to start static route removal', 'danger');
-    });
-  };
-
   // Update hint when command mode changes
   document.querySelectorAll('input[name="commandMode"]').forEach(radio => {
     radio.addEventListener('change', function() {

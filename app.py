@@ -745,134 +745,8 @@ def run_command(ip):
         return redirect(url_for("index"))
 
 
-# JSON API: execute a single command on a device (used by Jenkins pipelines)
-@app.route("/execute_command", methods=["POST"])
-def api_execute_command():
-    """Execute a single IOS command and return JSON output.
-
-    Expects JSON body: {"ip": "...", "command": "...", "mode": "enable|config"}
-    Returns: {"output": "...", "error": null} or {"output": null, "error": "..."}
-    """
-    data = request.get_json(silent=True) or {}
-    ip = data.get("ip")
-    command = data.get("command")
-    mode = data.get("mode", "enable")
-
-    if not ip or not command:
-        return jsonify({"output": None, "error": "ip and command are required"}), 400
-
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    dev = next((d for d in devices if d["ip"] == ip), None)
-    if not dev:
-        return jsonify({"output": None, "error": f"Device {ip} not found"}), 404
-
-    try:
-        if mode == "config":
-            def execute_config(conn):
-                conn.config_mode()
-                result = run_device_command(conn, command)
-                try:
-                    conn.exit_config_mode()
-                except Exception:
-                    pass
-                return result
-            output = with_temp_connection(dev, execute_config)
-        else:
-            try:
-                conn = get_persistent_connection(dev, connections, lock)
-                output = run_device_command(conn, command)
-            except Exception:
-                output = with_temp_connection(dev, lambda c: run_device_command(c, command))
-
-        return jsonify({"output": output, "error": None})
-    except Exception as e:
-        return jsonify({"output": None, "error": str(e)}), 500
 
 
-# Run script (temporary connection for each command or config mode block)
-@app.route("/run_script/<ip>", methods=["POST"])
-def run_script(ip):
-    # Run a multi-line script on the device
-    script = request.form.get("script")
-    mode = request.form.get("mode")
-    filesystem = request.form.get("filesystem")
-
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    dev = next((d for d in devices if d["ip"] == ip), None)
-    if not dev:
-        flash("Device not found", "danger")
-        return redirect(url_for("index"))
-
-    if not script:
-        flash("No script provided.", "warning")
-        return redirect(url_for("manage_device", ip=ip))
-
-    try:
-        # If config mode, run all commands in a single temp connection with config mode entered
-        if mode == "config":
-
-            def execute_config(conn):
-                conn.config_mode()
-                collected = []
-                for line in script.splitlines():
-                    cmd = line.strip()
-                    if not cmd:
-                        continue
-                    result = run_device_command(conn, cmd)
-                    collected.append(f"{cmd}:\n{result}\n")
-                try:
-                    conn.exit_config_mode()
-                except Exception:
-                    pass
-                return "".join(collected)
-
-            output = with_temp_connection(dev, execute_config)
-
-        else:
-            # Reuse a single temporary connection for the entire script to
-            # avoid reconnecting for each line. This greatly speeds up
-            # multi-line scripts where creating a new SSH session per line
-            # is the dominant cost.
-            lines = [line.strip() for line in script.splitlines() if line.strip()]
-
-            def execute_all(conn):
-                collected = []
-                for cmd in lines:
-                    try:
-                        result = run_device_command(conn, cmd)
-                    except Exception as e:
-                        result = f"ERROR: {e}"
-                    collected.append(f"{cmd}:\n{result}\n")
-                return "\n".join(collected)
-
-            output = with_temp_connection(dev, execute_all)
-
-        # Save output for download
-        session["last_output"] = output
-        session["last_filename"] = f"{dev['hostname']}_script_output.txt"
-
-        filesystems, file_list, selected_fs = get_device_context(dev, filesystem)
-
-        return render_template(
-            "device.html",
-            device=dev,
-            filesystems=filesystems,
-            files=file_list,
-            selected_fs=selected_fs,
-            output=output,
-            filename=session["last_filename"],
-            active_tab="scripts",
-            quick_actions=load_quick_actions().get("global", []),
-            tftp_server=TFTP_SERVER_IP,
-        )
-    except Exception as e:
-        flash(
-            f"Failed to run script on {dev.get('hostname', ip)} ({dev['ip']}): {e}",
-            "danger",
-        )
-        return redirect(url_for("index"))
 
 
 # Download last output
@@ -2160,106 +2034,6 @@ def compare_backups_route():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/device/<ip>/restore_backup", methods=["POST"])
-def restore_backup(ip):
-    """Restore a device configuration from a backup file."""
-    try:
-        filename = request.form.get("filename")
-        save_to_startup = request.form.get("save_to_startup", "false") == "true"
-
-        if not filename:
-            return jsonify({"status": "error", "message": "No backup filename provided"}), 400
-
-        # Get backup content
-        config_content = get_backup_content(filename)
-        if config_content is None:
-            return jsonify({"status": "error", "message": "Backup file not found"}), 404
-
-        # Get device
-        _, current_list_file = get_current_device_list()
-        devices = load_saved_devices(current_list_file)
-        dev = next((d for d in devices if d["ip"] == ip), None)
-
-        if not dev:
-            return jsonify({"status": "error", "message": "Device not found"}), 404
-
-        app.logger.info(f"Restoring backup {filename} to device {ip}")
-
-        # Parse config lines - skip lines that shouldn't be sent
-        config_lines = []
-        skip_patterns = [
-            "Building configuration",
-            "Current configuration",
-            "Last configuration change",
-            "NVRAM config last updated",
-            "!",
-            "end",
-            "version ",
-        ]
-
-        for line in config_content.splitlines():
-            line_stripped = line.strip()
-            # Skip empty lines and comment lines
-            if not line_stripped:
-                continue
-            # Skip metadata/comment lines
-            if any(line_stripped.startswith(pattern) for pattern in skip_patterns):
-                continue
-            config_lines.append(line)
-
-        if not config_lines:
-            return jsonify({"status": "error", "message": "No valid configuration lines in backup"}), 400
-
-        def execute_restore(conn):
-            output_lines = []
-
-            # Enter config mode
-            conn.config_mode()
-            output_lines.append("Entered configuration mode")
-
-            # Send each config line
-            for line in config_lines:
-                try:
-                    result = conn.send_command_timing(line, strip_prompt=False, strip_command=False)
-                    # Check for common error patterns
-                    if "% Invalid" in result or "% Incomplete" in result:
-                        output_lines.append(f"WARNING: {line} -> {result.strip()}")
-                    else:
-                        output_lines.append(f"OK: {line}")
-                except Exception as e:
-                    output_lines.append(f"ERROR: {line} -> {str(e)}")
-
-            # Exit config mode
-            try:
-                conn.exit_config_mode()
-                output_lines.append("Exited configuration mode")
-            except Exception:
-                pass
-
-            # Optionally save to startup
-            if save_to_startup:
-                try:
-                    save_result = conn.send_command_timing("write memory")
-                    output_lines.append(f"Saved to startup-config: {save_result.strip()}")
-                except Exception as e:
-                    output_lines.append(f"WARNING: Failed to save to startup: {str(e)}")
-
-            return "\n".join(output_lines)
-
-        output = with_temp_connection(dev, execute_restore)
-
-        app.logger.info(f"Restore completed for {ip} from {filename}")
-
-        return jsonify({
-            "status": "success",
-            "message": f"Configuration restored from {filename}",
-            "output": output,
-            "lines_sent": len(config_lines)
-        })
-
-    except Exception as e:
-        app.logger.error(f"Restore backup failed for {ip}: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/backup_stats")
@@ -2801,8 +2575,18 @@ def bulk_execute():
         if not command:
             return jsonify({"status": "error", "message": "No command provided"}), 400
 
-        # Validate command mode
-        if command_mode not in ("enable", "config"):
+        # Config mode is CUT (NSOT_PLAN P.3 step 2): a free-form command list
+        # pushed to many devices with no plan, no hash and no rollback. It is
+        # REFUSED by name rather than downgraded, so a stale page asking for it
+        # learns why instead of silently running its commands in enable mode.
+        # Configuration changes go through intent: edit, plan, confirm.
+        if command_mode == "config":
+            return jsonify({"status": "error", "message": (
+                "Config mode was removed (P.3): a configuration change goes "
+                "through intent (edit, plan, confirm), which previews exactly "
+                "what is sent and can roll it back. Enable mode is still "
+                "available and needs a person.")}), 400
+        if command_mode != "enable":
             command_mode = "enable"
 
         # Load devices from current list
@@ -3110,45 +2894,6 @@ def bulk_download_config():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/bulk_remove_static_routes", methods=["POST"])
-def bulk_remove_static_routes():
-    """Remove all non-VRF static routes from selected devices."""
-    try:
-        device_ips = request.form.getlist("device_ips[]")
-
-        if not device_ips:
-            return jsonify({"status": "error", "message": "No devices selected"}), 400
-
-        # Load devices from current list
-        _, current_list_file = get_current_device_list()
-        all_devices = load_saved_devices(current_list_file)
-        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
-
-        if not selected_devices:
-            return jsonify({"status": "error", "message": "No valid devices found"}), 400
-
-        app.logger.info(f"Bulk remove static routes from {len(selected_devices)} devices")
-
-        # Start bulk operation with remove_static_routes mode
-        operation_id = bulk_manager.execute_bulk_command(
-            devices=selected_devices,
-            command="",
-            connection_factory=get_persistent_connection,
-            connections_pool=connections,
-            pool_lock=lock,
-            max_workers=5,
-            command_mode="remove_static_routes"
-        )
-
-        return jsonify({
-            "status": "success",
-            "operation_id": operation_id,
-            "message": f"Removing static routes from {len(selected_devices)} device(s)"
-        })
-
-    except Exception as e:
-        app.logger.error(f"Bulk remove static routes failed: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/bulk_delete_file", methods=["POST"])
@@ -3455,13 +3200,19 @@ def ai_chat():
         device_context    = data.get("device_context") or None    # browser-cached snapshot
         topology_context  = data.get("topology_context") or None  # browser-cached topology
         attached_files    = data.get("attached_files") or []       # [{name, content}] uploaded by user
-        run_playbook_id    = data.get("run_playbook_id") or None    # direct playbook execution
-        # Block AI chat when disabled — but allow direct playbook execution through
-        # since run_ansible_direct makes no Claude API calls.
-        if not _ai_enabled() and not run_playbook_id:
+        # Playbook replay is CUT (P.3 step 2): it pushed stored command lists
+        # over Netmiko in config mode, even with AI disabled. A request still
+        # naming one (a cached page) is REFUSED, never passed to the model as
+        # a message: the model still holds run_ansible_playbook until step 8.
+        if data.get("run_playbook_id"):
+            return jsonify({"error": (
+                "Running a playbook was removed (P.3). A configuration change "
+                "goes through intent: edit, plan, confirm.")}), 410
+        # Block AI chat when disabled.
+        if not _ai_enabled():
             return jsonify({"error": "AI is disabled. Re-enable it in Settings."}), 503
 
-        if not message and not run_playbook_id:
+        if not message:
             return jsonify({"error": "Message is required"}), 400
 
         # Tell the background agent the user is active so it defers tasks
@@ -3473,16 +3224,7 @@ def ai_chat():
 
         import queue as _queue
 
-        # Determine which playbook to run (if any).
-        # Only explicit run_playbook_id triggers playbook execution; keyword matching is disabled.
-        matched_playbook = None
-        confirm_playbook = False   # True when match came from keyword heuristic (needs user OK)
-        if run_playbook_id:
-            idx = _ai._load_playbook_index()
-            matched_playbook = next((p for p in idx if p["id"] == run_playbook_id), None)
-        # Keyword-based auto-suggest disabled: playbooks are run manually only.
-
-        # Run the agent (or playbook) in a background thread and drain events via a queue.
+        # Run the agent in a background thread and drain events via a queue.
         # This lets us send SSE keepalive pings while SSH tool calls block,
         # preventing browsers from closing the connection on long-running tasks.
         _SENTINEL = object()
@@ -3490,50 +3232,24 @@ def ai_chat():
 
         def _agent_thread():
             try:
-                # Re-check AI gate — but allow direct playbook runs since they
-                # call run_ansible_direct which makes no Claude API calls.
-                if not _ai_enabled() and not (matched_playbook and not confirm_playbook):
+                if not _ai_enabled():
                     event_queue.put({"type": "error",
                                      "content": "AI disabled — re-enable in Settings."})
                     event_queue.put(_SENTINEL)
                     return
-                if matched_playbook and confirm_playbook:
-                    # Emit a confirmation prompt — let the user decide before we run anything.
-                    event_queue.put({
-                        "type":        "playbook_confirm",
-                        "id":          matched_playbook.get("id", ""),
-                        "name":        matched_playbook.get("name", ""),
-                        "description": matched_playbook.get("description", ""),
-                        "message":     message,
-                    })
-                    event_queue.put(_SENTINEL)
-                    return
-                if matched_playbook:
-                    # Direct playbook execution — no Claude API call needed.
-                    pb_msg = message or f"Run playbook: {matched_playbook.get('name', matched_playbook.get('id', ''))}"
-                    gen = _ai.run_ansible_direct(
-                        session_id=session_id,
-                        user_message=pb_msg,
-                        playbook=matched_playbook,
-                        devices_loader=_load_current_devices,
-                        status_cache=device_status_cache,
-                        connections_pool=connections,
-                        pool_lock=lock,
-                    )
-                else:
-                    gen = _ai.run_chat(
-                        session_id=session_id,
-                        user_message=message,
-                        devices_loader=_load_current_devices,
-                        status_cache=device_status_cache,
-                        connections_pool=connections,
-                        pool_lock=lock,
-                        context_ip=context_ip,
-                        device_context=device_context,
-                        topology_context=topology_context,
-                        attached_files=attached_files if attached_files else None,
-                        workflow_flags=_load_workflow_flags(),
-                    )
+                gen = _ai.run_chat(
+                    session_id=session_id,
+                    user_message=message,
+                    devices_loader=_load_current_devices,
+                    status_cache=device_status_cache,
+                    connections_pool=connections,
+                    pool_lock=lock,
+                    context_ip=context_ip,
+                    device_context=device_context,
+                    topology_context=topology_context,
+                    attached_files=attached_files if attached_files else None,
+                    workflow_flags=_load_workflow_flags(),
+                )
                 for event in gen:
                     event_queue.put(event)
             except Exception as e:
@@ -4305,116 +4021,10 @@ def netbox_status():
     })
 
 
-@app.route("/netbox/sync", methods=["POST"])
-def netbox_sync():
-    """Sync the current (or a named) device list to NetBox in a background thread."""
-    from modules.netbox_client import (
-        sync_list_to_netbox, set_sync_running, get_netbox_config,
-    )
-    from modules.config import LISTS_DIR
-
-    cfg = get_netbox_config()
-    if not cfg["url"] or not cfg["token"]:
-        return jsonify({"status": "error",
-                        "message": "NetBox is not configured — set URL and API token first."}), 400
-
-    data = request.get_json(silent=True) or {}
-    list_name = (data.get("list_name") or "").strip()
-
-    if list_name:
-        # Look up the list's CSV file by name.
-        all_lists = get_device_lists()
-        match = next((l for l in all_lists if l["name"] == list_name), None)
-        if not match:
-            return jsonify({"status": "error", "message": f"List '{list_name}' not found"}), 404
-        csv_path = os.path.join(LISTS_DIR, match["filename"], "devices.csv")
-        devices  = load_saved_devices(csv_path)
-    else:
-        list_name, csv_path = get_current_device_list()
-        devices = load_saved_devices(csv_path)
-
-    if not devices:
-        return jsonify({"status": "error", "message": f"List '{list_name}' has no devices"}), 400
-
-    def _run(name=list_name, devs=devices):
-        try:
-            set_sync_running(name, True)
-            sync_list_to_netbox(name, devs, status_cache=device_status_cache)
-        except Exception as exc:
-            app.logger.error("netbox_sync thread failed: %s", exc, exc_info=True)
-        finally:
-            set_sync_running(name, False)
-
-    threading.Thread(target=_run, daemon=True, name=f"netbox-sync-{list_name}").start()
-    set_sync_running(list_name, True)
-    return jsonify({
-        "status":    "started",
-        "list":      list_name,
-        "device_count": len(devices),
-        "message":   f"NetBox sync started for '{list_name}' ({len(devices)} device(s)). Refresh in ~15–30s.",
-    })
 
 
-@app.route("/netbox/sync_all", methods=["POST"])
-def netbox_sync_all():
-    """Sync every device list to NetBox (one region per list)."""
-    from modules.netbox_client import (
-        sync_all_lists_to_netbox, set_sync_running, get_netbox_config,
-    )
-    from modules.config import LISTS_DIR
-
-    cfg = get_netbox_config()
-    if not cfg["url"] or not cfg["token"]:
-        return jsonify({"status": "error",
-                        "message": "NetBox is not configured — set URL and API token first."}), 400
-
-    all_lists = get_device_lists()
-    if not all_lists:
-        return jsonify({"status": "error", "message": "No device lists available"}), 400
-
-    # Load each list's devices up front (cheap — just CSV reads).
-    lists_with_devices = []
-    for lst in all_lists:
-        csv_path = os.path.join(LISTS_DIR, lst["filename"], "devices.csv")
-        lists_with_devices.append((lst["name"], load_saved_devices(csv_path)))
-
-    def _run(payload=lists_with_devices):
-        for name, _ in payload:
-            set_sync_running(name, True)
-        try:
-            sync_all_lists_to_netbox(payload, status_cache=device_status_cache)
-        except Exception as exc:
-            app.logger.error("netbox_sync_all thread failed: %s", exc, exc_info=True)
-        finally:
-            for name, _ in payload:
-                set_sync_running(name, False)
-
-    threading.Thread(target=_run, daemon=True, name="netbox-sync-all").start()
-    return jsonify({
-        "status":    "started",
-        "list_count": len(lists_with_devices),
-        "message":   f"NetBox sync started for {len(lists_with_devices)} list(s). Refresh in ~15–30s.",
-    })
 
 
-@app.route("/netbox/remove", methods=["POST"])
-def netbox_remove():
-    """Delete all NetBox objects for a device list (devices → site → region)."""
-    from modules.netbox_client import remove_list_from_netbox, get_netbox_config
-    cfg = get_netbox_config()
-    if not cfg["url"] or not cfg["token"]:
-        return jsonify({"ok": False, "error": "NetBox is not configured"}), 400
-
-    data      = request.get_json(silent=True) or {}
-    list_name = (data.get("list_name") or "").strip()
-    if not list_name:
-        _, current_list_file = get_current_device_list()
-        list_name = os.path.basename(os.path.dirname(current_list_file))
-    if not list_name:
-        return jsonify({"ok": False, "error": "No list name provided"}), 400
-
-    result = remove_list_from_netbox(list_name)
-    return jsonify(result), (200 if result["ok"] else 500)
 
 
 @app.route("/netbox/query/devices", methods=["GET"])
@@ -4761,210 +4371,6 @@ def ai_approval_approve_all():
 # Configure tab — push IOS config, create Jenkins verification pipeline
 # ---------------------------------------------------------------------------
 
-@app.route("/configure/apply", methods=["POST"])
-def configure_apply():
-    """
-    Apply a network configuration to one or more devices.
-
-    Intentionally simple — the goal is to get config onto devices quickly:
-      1. Generate IOS commands from the selected type and params
-      2. Safety check  — block genuinely dangerous commands (no SSH yet)
-      3. Pre-backup    — save running-config so rollback is always possible
-      4. Push          — canary device first, then fleet; write memory after each
-      5. Golden config — saved immediately for every successfully configured device
-      6. Verification  — create/update the Jenkins function pipeline and trigger
-                         it asynchronously; results appear in the CI tab, they
-                         do NOT block this response
-      7. Audit log     — written regardless of outcome
-
-    Jenkins CI verifies that existing features still work after new config is
-    added.  It is advisory, not a gate.  The configure tab never waits for it.
-    """
-    import secrets as _sec
-    from modules.configure import generate_config_commands, save_config_job
-    from modules.device import load_saved_devices, decrypt_field
-    from modules.jenkins_runner import load_config as _jcfg, _trigger_jenkins
-
-    data        = request.get_json(silent=True) or {}
-    config_type = data.get("config_type", "")
-    per_device  = data.get("per_device")
-    params      = data.get("params", {})
-    device_ips  = data.get("device_ips", [])
-
-    if not config_type:
-        return jsonify({"ok": False, "error": "config_type is required"}), 400
-
-    if per_device:
-        ip_params_map = {e["ip"]: e["params"] for e in per_device if "ip" in e}
-        device_ips    = list(ip_params_map.keys())
-    else:
-        ip_params_map = {}
-
-    if not device_ips:
-        return jsonify({"ok": False, "error": "No devices specified"}), 400
-
-    _, current_list_file = get_current_device_list()
-    all_devices = load_saved_devices(current_list_file)
-    device_map  = {d["ip"]: d for d in all_devices}
-    selected    = [device_map[ip] for ip in device_ips if ip in device_map]
-    if not selected:
-        return jsonify({"ok": False, "error": "None of the selected IPs found in device list"}), 400
-
-    # ── Step 1: Generate commands (local, no I/O) ────────────────────────────
-    rendered: dict[str, list[str]] = {}
-    for dev in selected:
-        ip = dev["ip"]
-        p  = ip_params_map.get(ip, params) if per_device else params
-        try:
-            rendered[ip] = generate_config_commands(config_type, p)
-        except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # ── Step 2: Push to devices — canary first, then fleet ───────────────────
-    push_results: list[dict] = []
-    canary_ip = device_ips[0] if device_ips else None
-    ordered   = [canary_ip] + [ip for ip in device_ips if ip != canary_ip]
-
-    canary_failed = False
-    for ip in ordered:
-        dev = device_map.get(ip)
-        if not dev:
-            continue
-        hn   = dev.get("hostname", ip)
-        cmds = rendered.get(ip, [])
-        r    = {"ip": ip, "hostname": hn, "ok": False,
-                "output": "", "error": None, "commands": cmds}
-
-        if canary_failed:
-            r["error"] = "Skipped — canary device failed"
-            push_results.append(r)
-            continue
-
-        try:
-            conn = get_persistent_connection(dev, connections, lock)
-            with _device_lock(ip):
-                conn.enable()
-                # Use send_command_timing throughout — no prompt pattern matching
-                # at all, so IOS warning lines (e.g. /31 subnet, implicit ACE
-                # denied, "% Incomplete command") never cause a timeout.
-                # send_command_timing just waits a fixed delay and returns
-                # whatever the device sent; it works on every IOS version.
-                out_parts = []
-                conn.send_command_timing("configure terminal",
-                                         delay_factor=2, read_timeout=10)
-                for cmd in cmds:
-                    out = conn.send_command_timing(cmd,
-                                                   delay_factor=1,
-                                                   read_timeout=10)
-                    if out.strip():
-                        out_parts.append(out)
-                conn.send_command_timing("end", delay_factor=2, read_timeout=10)
-                conn.send_command_timing("write memory",
-                                         delay_factor=3, read_timeout=30)
-                r["output"] = "\n".join(out_parts)[:500]
-            r["ok"] = True
-
-        except Exception as exc:
-            r["error"] = str(exc)
-            app.logger.warning("configure: push failed for %s: %s", hn, exc)
-            if ip == canary_ip:
-                canary_failed = True
-
-        push_results.append(r)
-
-    # ── Step 6: Verification pipeline (async, non-blocking) ─────────────────
-    succeeded_ips      = [r["ip"] for r in push_results if r["ok"]]
-    config_id          = f"cfg-{int(time.time())}-{_sec.token_hex(4)}"
-    pipeline_triggered = False
-    pipeline_error     = None
-    job_name           = ""
-
-    if succeeded_ips:
-        try:
-            from modules.pipeline_builder import ensure_function_pipeline
-            jenkins_cfg  = _jcfg()
-            params_by_ip = {ip: (ip_params_map.get(ip, params) if per_device else params)
-                            for ip in succeeded_ips}
-            pr = ensure_function_pipeline(
-                config_type     = config_type,
-                newly_added_ips = succeeded_ips,
-                params_by_ip    = params_by_ip,
-                jenkins_cfg     = jenkins_cfg,
-                nmas_base       = request.host_url.rstrip("/"),
-            )
-            job_name      = pr.get("job_name", "")
-            pipeline_error = pr.get("error")
-            if pr.get("ok") and job_name:
-                try:
-                    _trigger_jenkins(jenkins_cfg, job_name)
-                    pipeline_triggered = True
-                except Exception as exc:
-                    pipeline_error = str(exc)
-        except Exception as exc:
-            pipeline_error = str(exc)
-            app.logger.warning("configure: verification pipeline failed: %s", exc)
-
-        # Persist job metadata for status tracking
-        first_ip     = succeeded_ips[0]
-        check_params = ip_params_map.get(first_ip, params) if per_device else params
-        check_devices = []
-        for dev in selected:
-            if dev["ip"] not in succeeded_ips:
-                continue
-            try:
-                pwd = decrypt_field(dev["password"])
-            except Exception:
-                pwd = dev.get("password", "")
-            check_devices.append({
-                "hostname": dev.get("hostname", dev["ip"]),
-                "ip":       dev["ip"],
-                "username": dev.get("username", ""),
-                "password": pwd,
-            })
-        save_config_job(config_id, {
-            "config_id":   config_id,
-            "token":       _sec.token_hex(16),
-            "config_type": config_type,
-            "params":      check_params,
-            "devices":     [{"ip": d["ip"], "hostname": d.get("hostname", d["ip"])}
-                            for d in selected if d["ip"] in succeeded_ips],
-            "job_name":    job_name,
-            "created_at":  time.strftime("%Y-%m-%d %H:%M:%S"),
-            "status":      "pipeline_running" if pipeline_triggered else "pipeline_skipped",
-        })
-
-    # ── Step 7: Audit log ────────────────────────────────────────────────────
-    try:
-        from modules.pipeline import _audit_dir
-        import json as _json
-        _audit_entry = {
-            "schema_version":    1,
-            "config_id":         config_id,
-            "timestamp":         time.strftime("%Y-%m-%d %H:%M:%S"),
-            "config_type":       config_type,
-            "devices":           [{"ip": r["ip"], "hostname": r["hostname"]}
-                                  for r in push_results],
-            "push_results":      {r["ip"]: {"ok": r["ok"], "error": r["error"]}
-                                  for r in push_results},
-            "pipeline_job":      job_name,
-            "pipeline_triggered": pipeline_triggered,
-        }
-        _ap = os.path.join(_audit_dir(), f"{config_id}.json")
-        with open(_ap, "w", encoding="utf-8") as _fh:
-            _json.dump(_audit_entry, _fh, indent=2)
-    except Exception as exc:
-        app.logger.warning("configure: audit log failed: %s", exc)
-
-    all_ok = all(r["ok"] for r in push_results)
-    return jsonify({
-        "ok":                 all_ok,
-        "config_id":          config_id,
-        "commands":           list(dict.fromkeys(c for cs in rendered.values() for c in cs)),
-        "push_results":       push_results,
-        "pipeline_triggered": pipeline_triggered,
-        "pipeline_job":       job_name,
-        "pipeline_error":     pipeline_error,
-    }), (200 if all_ok else 207)
 
 
 @app.route("/configure/kb_schema")

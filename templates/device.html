@@ -99,18 +99,6 @@
       File Management
     </button>
   </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if tab == 'scripts' %}active{% endif %}"
-            id="scripts-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#scripts"
-            type="button"
-            role="tab"
-            aria-controls="scripts"
-            aria-selected="{{ 'true' if tab == 'scripts' else 'false' }}">
-      Scripts
-    </button>
-  </li>
   <!-- Terminal tab -->
   <li class="nav-item" role="presentation">
     <button class="nav-link {% if tab == 'terminal' %}active{% endif %}"
@@ -452,56 +440,6 @@
   }
   </script>
 
-  <!-- Scripts Tab -->
-  <div class="tab-pane fade {% if tab == 'scripts' %}show active{% endif %}"
-       id="scripts"
-       role="tabpanel"
-       aria-labelledby="scripts-tab">
-
-    <hr>
-    <h4>📜 Run a script</h4>
-    <p class="text-muted">
-      Paste multiple IOS commands below. They will be sent sequentially to {{ device["hostname"] }}.
-    </p>
-    <form method="post" action="{{ url_for('run_script', ip=device['ip']) }}" class="mb-4">
-      <input type="hidden" name="filesystem" value="{{ selected_fs }}">
-
-      <!-- Mode selector -->
-      <div class="mb-3">
-        <label for="scriptMode" class="form-label fw-bold">Execution mode</label>
-        <select id="scriptMode" class="form-select" name="mode" required>
-          <option value="enable" {% if request.form.get('mode') == 'enable' %}selected{% endif %}>Enable Mode</option>
-          <option value="config" {% if request.form.get('mode') == 'config' %}selected{% endif %}>Configure Terminal</option>
-        </select>
-      </div>
-
-      <textarea class="form-control mb-3" name="script" rows="10" placeholder="Enter one command per line..." required></textarea>
-      <button type="submit" class="btn btn-outline-primary w-100" id="runScriptBtn">
-        <span class="btn-text">Run Script</span>
-        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-      </button>
-    </form>
-
-    <!-- Command Output (Scripts) -->
-    {% if output and tab == 'scripts' %}
-    <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Script output</span>
-        <button class="btn btn-sm btn-outline-secondary copy-btn" data-target="scriptsOutput" title="Copy to clipboard">
-          📋 Copy
-        </button>
-      </div>
-      <div class="card-body">
-        {% if filename %}
-          <a href="{{ url_for('download_file') }}"
-             class="btn btn-outline-primary mb-3">⬇️ Download</a>
-        {% endif %}
-        <pre class="bg-body-secondary border p-3" id="scriptsOutput">{{ output }}</pre>
-      </div>
-    </div>
-    {% endif %}
-  </div>
-
   <!-- Terminal Tab -->
   <div class="tab-pane fade {% if tab == 'terminal' %}show active{% endif %}"
        id="terminal"
@@ -627,46 +565,6 @@
         <div id="compareResult">
           <p class="text-muted">Select two backups and click Compare.</p>
         </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Restore Backup Modal -->
-<div class="modal fade" id="restoreModal" tabindex="-1" aria-labelledby="restoreModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-warning text-dark">
-        <h5 class="modal-title" id="restoreModalLabel">Restore Configuration</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="alert alert-warning">
-          <strong>Warning:</strong> This will send the backup configuration to the device. This may overwrite current settings.
-        </div>
-        <p><strong>Backup to restore:</strong></p>
-        <ul>
-          <li>Date: <span id="restoreBackupDate"></span></li>
-          <li>Type: <span id="restoreBackupType"></span></li>
-          <li>File: <code id="restoreBackupFile"></code></li>
-        </ul>
-        <div class="form-check mb-3">
-          <input class="form-check-input" type="checkbox" id="saveAfterRestore">
-          <label class="form-check-label" for="saveAfterRestore">
-            Save to startup-config after restore (write memory)
-          </label>
-        </div>
-        <div id="restoreResult" style="display: none;">
-          <h6>Restore Output:</h6>
-          <pre class="bg-body-secondary border p-3" style="max-height: 300px; overflow-y: auto;"><code id="restoreOutput"></code></pre>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-warning" id="restoreBtn" onclick="executeRestore()">
-          <span class="btn-text">Restore Configuration</span>
-          <span class="spinner-border spinner-border-sm d-none" role="status"></span>
-        </button>
       </div>
     </div>
   </div>
@@ -972,23 +870,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Loading indicators for script form ---
-  const scriptForm = document.querySelector('form[action*="run_script"]');
-  const runScriptBtn = document.getElementById('runScriptBtn');
-
-  if (scriptForm && runScriptBtn) {
-    scriptForm.addEventListener('submit', function() {
-      const btnText = runScriptBtn.querySelector('.btn-text');
-      const spinner = runScriptBtn.querySelector('.spinner-border');
-
-      if (btnText && spinner) {
-        btnText.textContent = 'Running Script...';
-        spinner.classList.remove('d-none');
-        runScriptBtn.disabled = true;
-      }
-    });
-  }
-
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
     cleanupTerminal();
@@ -1049,11 +930,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${formatBytes(backup.size)}</td>
         <td>
           <div class="btn-group btn-group-sm">
-            <button type="button" class="btn btn-outline-success btn-sm"
-                    onclick="showRestoreModal('${backup.filename}', '${backup.datetime}', '${backup.config_type}')"
-                    title="Restore this backup to device">
-              ↩️
-            </button>
             <a href="/download_backup/${backup.filename}" class="btn btn-outline-primary btn-sm" title="Download">
               ⬇️
             </a>
@@ -1147,84 +1023,6 @@ document.addEventListener("DOMContentLoaded", () => {
     .catch(err => {
       console.error('Compare failed:', err);
       resultDiv.innerHTML = '<p class="text-danger">Comparison failed.</p>';
-    });
-  };
-
-  // Restore backup functionality
-  let currentRestoreFilename = null;
-
-  window.showRestoreModal = function(filename, datetime, configType) {
-    currentRestoreFilename = filename;
-    document.getElementById('restoreBackupDate').textContent = datetime;
-    document.getElementById('restoreBackupType').textContent = configType;
-    document.getElementById('restoreBackupFile').textContent = filename;
-    document.getElementById('saveAfterRestore').checked = false;
-    document.getElementById('restoreResult').style.display = 'none';
-    document.getElementById('restoreOutput').textContent = '';
-
-    // Reset button state
-    const restoreBtn = document.getElementById('restoreBtn');
-    restoreBtn.disabled = false;
-    restoreBtn.querySelector('.btn-text').textContent = 'Restore Configuration';
-    restoreBtn.querySelector('.spinner-border').classList.add('d-none');
-
-    const modal = new bootstrap.Modal(document.getElementById('restoreModal'));
-    modal.show();
-  };
-
-  window.executeRestore = function() {
-    if (!currentRestoreFilename) {
-      showToast('No backup selected', 'danger');
-      return;
-    }
-
-    if (!confirm('Are you sure you want to restore this configuration to the device?\n\nThis will overwrite the current running configuration.')) {
-      return;
-    }
-
-    const saveToStartup = document.getElementById('saveAfterRestore').checked;
-    const restoreBtn = document.getElementById('restoreBtn');
-    const btnText = restoreBtn.querySelector('.btn-text');
-    const spinner = restoreBtn.querySelector('.spinner-border');
-
-    // Show loading state
-    btnText.textContent = 'Restoring...';
-    spinner.classList.remove('d-none');
-    restoreBtn.disabled = true;
-
-    const formData = new FormData();
-    formData.append('filename', currentRestoreFilename);
-    formData.append('save_to_startup', saveToStartup ? 'true' : 'false');
-
-    fetch(`/device/${deviceIp}/restore_backup`, {
-      method: 'POST',
-      body: formData
-    })
-    .then(resp => resp.json())
-    .then(data => {
-      // Reset button state
-      btnText.textContent = 'Restore Configuration';
-      spinner.classList.add('d-none');
-      restoreBtn.disabled = false;
-
-      if (data.status === 'success') {
-        showToast(data.message + ` (${data.lines_sent} lines sent)`, 'success');
-
-        // Show restore output
-        document.getElementById('restoreResult').style.display = 'block';
-        document.getElementById('restoreOutput').textContent = data.output;
-      } else {
-        showToast(data.message || 'Restore failed', 'danger');
-      }
-    })
-    .catch(err => {
-      // Reset button state
-      btnText.textContent = 'Restore Configuration';
-      spinner.classList.add('d-none');
-      restoreBtn.disabled = false;
-
-      console.error('Restore failed:', err);
-      showToast('Failed to restore backup', 'danger');
     });
   };
 

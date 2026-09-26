@@ -26,7 +26,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MUTATING_FLOOR = 131     # measured 2026-09-26; step 2 lowers it deliberately
+MUTATING_FLOOR = 123     # 131 measured 2026-09-26; P.3 step 2 cut eight
 
 
 def _app():
@@ -101,7 +101,7 @@ class TestEveryMutatingEndpointIsDeclared:
         ("deploy.apply", "confirm"),
         ("golden.restore_apply", "confirm"),
         ("bulk_reload", "confirm"),
-        ("api_execute_command", "confirm"),
+        ("bulk_execute", "confirm"),
         ("bulk_tftp_upload", "confirm"),
         ("ai_approval_approve", "approve"),
         ("templatize.bulk_apply", "approve"),

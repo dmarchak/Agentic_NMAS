@@ -31,8 +31,24 @@ def _import_the_application_first():
     failed every time.
 
     The program imports everything at start-up, so the harness does too.
+
+    **And it takes the app's log file back off.** Importing `app` attaches a
+    RotatingFileHandler for `logs/device_manager.log` to the ROOT logger, in
+    whatever checkout the suite runs in. Measured on the host 2026-09-26: a
+    suite run there on 2026-09-23 wrote fixture lines into the live app log,
+    24 of them ERRORs from `save_golden` refusing devices called `BRAND-NEW`
+    and `never-seen` on a list called `Lab`. That log is the channel
+    `nmas-netbox-modified` counts recorder failures from (C5), so a test run
+    would read as failures of the running app.
     """
+    import logging
     import app  # noqa: F401
+
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        if getattr(handler, "baseFilename", "").endswith("device_manager.log"):
+            root.removeHandler(handler)
+            handler.close()
 
 
 #: The person every test is, unless it asks for the real identity layer.

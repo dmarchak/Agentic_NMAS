@@ -928,6 +928,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_breakglass.py` | the record is independent of the key it escrows; `verify --live` tests the ESCROWED key against the stored values (a right key on disk cannot pass a wrong copy); zero values is unproven; restore never replaces a key |
 | `test_route_gates.py` | P.3: every mutating endpoint and terminal event declared, both directions with floors; the table agrees with every in-route gate; refused before input; a person passes and a service does not; the actor is the verified one |
+| `test_p3_cuts.py` | P.3 step 2: the eight direct-push routes answer 404 and nothing shipped names them; bulk config mode and chat playbook replay refused by name; the Configure forms send nothing |
+| `test_harness_leaves_the_app_log_alone.py` | the suite never writes into the app log of the checkout it runs in (C26) |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -990,6 +992,19 @@ All HTTP and SSH is mocked; **no test touches a live network.**
 - Fernet key at `data/key.key` — back it up; losing it makes stored credentials
   and secrets unrecoverable
 - `.env` holds `ANTHROPIC_API_KEY`; excluded from git
+- **A commit records what it deliberately did NOT do.** `nmas-retire` writes
+  one `Not-Done:` trailer per non-action (NetBox kept, Oxidized still
+  polling, startup frozen), and the operator named the pattern worth reusing
+  (2026-09-26). Each of those is correct and reads as an omission unless it
+  is named, so the history says *retained, not skipped*. Use it wherever a
+  commit's scope is narrower than a reader would assume: an adoption that
+  records and does not rotate, a bulk change that refused some devices (`Refused:`
+  already does this).
+- **A string is a use only when it is shaped like a reference**
+  (`check_removed_definitions.py`, P.3 step 2): a name, a dotted path, or
+  `pkg.mod:attr`. A URL path in a 404 test and a sentence in a prompt are
+  mentions. So a test pinning a removed ROUTE names it by path, and a
+  removal and its pin can land in one commit without `--no-verify`.
 
 ## Things to Keep in Mind
 
@@ -1057,8 +1072,12 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   (the tool's own settings, gates, inventory and records) and `break_glass` (the terminal). Routes
   record `identity.request_actor()`, the VERIFIED person, never an actor from the request body. The
   test harness is a verified person by default; a test about identity uses
-  `@pytest.mark.real_identity`. **Not yet measured on the host** (P.3 acceptance 2), so this
-  correction stays until step 9.
+  `@pytest.mark.real_identity`. **Measured on the host 2026-09-26**: an unauthenticated local
+  `POST /deploy/apply` answers 403 `no_header`, and through the tunnel a real deploy's golden commit
+  carries the operator's email where it said `pipeline`. The terminal through the tunnel is not yet
+  measured, so this correction stays until step 9. **Step 2 removed eight direct-push routes**
+  (`tests/test_p3_cuts.py`); bulk config mode and chat playbook replay are REFUSED by name, not
+  degraded, because the edge can serve a page older than the server.
 - **Reveal, approve and confirm all require a verified identity** by default.
   Reveal exposes a secret; approve and confirm put configuration on a device.
   **There is no localhost exemption** — an exemption for requests from the box
@@ -4293,7 +4312,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **27 open at 2026-09-26**, counted from the rows: 23 recorded only in
+present when each was recorded. **29 open at 2026-09-26**, counted from the rows: 25 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
