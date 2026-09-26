@@ -329,7 +329,7 @@ answered.
 - **Hidden** (a line saying the file was deleted or hidden, gone from the
   current view, present among the versions): the key CAN destroy the
   off-box copy within a day. The fix is **B2 Object Lock** with a default
-  retention at least as long as the lifecycle's 15 days. A hide is then
+  retention at least as long as the lifecycle's whole window (16 days). A hide is then
   still possible, but no version can be deleted until its retention
   expires, by the lifecycle or by anyone. The lifecycle's 1-day
   hide-to-delete is the window an attacker would use, and lengthening it
@@ -350,7 +350,7 @@ off-box copy within 24 hours. **Withholding `deleteFiles` bought nothing.**
 The earlier test (a single-file path: exit 0, file still listed) passed
 because the file was never touched.
 
-### The fix: Object Lock, Governance mode, a default retention equal to the lifecycle's 15 days
+### The fix: Object Lock, Governance mode, a default retention covering the lifecycle's whole window (16 days)
 
 B2's semantics as understood here, **to be measured on probes before real
 data depends on them** (the plan below):
@@ -366,24 +366,31 @@ data depends on them** (the plan below):
   hidden. The locked versions remain, recoverable with the account's own key
   until their retention expires.
 - **What a lock cannot stop is filling.** Anything written with
-  `writeFiles` is locked for 15 days, including garbage from a compromised
+  `writeFiles` is locked for 16 days, including garbage from a compromised
   VM or a bug. Guard it with a B2 storage cap on the account, and
   Governance's bypass for cleaning up.
-- **Retention = 15 days = the lifecycle's hide-after, as ONE decision.** A
-  daily is locked until day 15, hidden by the lifecycle at day 15, and
-  deleted at day 16, after its lock has expired. **Shorter** retention
-  re-opens the hole for anything older than it. **Longer** retention
-  defers the lifecycle's deletions until the lock expires, so the lock
-  silently becomes the retention: two owners of one decision. As
-  understood here, B2's lifecycle neither errors nor reports when it meets
-  a locked version; it deletes the version on a later daily run once the
-  lock has expired.
+- **The property: lock retention >= the lifecycle's hide-after PLUS its
+  hide-to-delete (15 + 1 = 16 days).** A daily's natural life under the
+  lifecycle is 16 days: hidden at 15, deleted at 16. With a 16-day lock,
+  **no hide, at any moment, deletes anything sooner than the lifecycle
+  would have**, so an attack cannot shorten any file's life. (This first
+  said "retention = 15 days, equal to the hide-after". That was wrong by
+  the hide-to-delete day: at 15 the lock expires a day before the
+  lifecycle's deletion, so a file hidden on its last day went a day early.
+  The operator's property caught it, 2026-09-26.) **Shorter** re-opens the
+  hole for every file older than the lock. **Longer** defers the
+  lifecycle's deletions until the lock expires, so the lock silently
+  becomes the retention: two owners of one decision. As understood here,
+  B2's lifecycle neither errors nor reports when it meets a locked
+  version; it deletes the version on a later daily run once the lock has
+  expired. **So a check fails on shorter, warns on longer, and passes at
+  exactly equal** (register B10).
 
 **Measurement plan, probes only:**
 1. The hidden, unlocked `b2probe` version should be GONE from
    `--b2-versions` about a day after it was hidden. That proves the
    lifecycle runs, and it is the positive control for step 4.
-2. Enable Object Lock with a default retention of Governance, 15 days.
+2. Enable Object Lock with a default retention of Governance, 16 days.
    Upload a new probe with the NMAS key (`copyto --no-check-dest`) and check
    its retention in the B2 web UI.
 3. With the NMAS key, hide it (`delete -vv --include`). Expected: hidden,
