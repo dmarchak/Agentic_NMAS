@@ -3499,6 +3499,15 @@ deploy: the shape that already exists.
 **Timing:** the lab due dates are not known. If one is tight, the operator
 pulls this forward.
 
+**SCOPED 2026-09-26: [P6_ZTP.md](P6_ZTP.md).** Measured on the host first:
+Kea 2.4.1 runs on the NMAS host with no `host_cmds` hook, so no
+`reservation-*` command exists, and its config file is `root:root 0644`
+while Kea runs as `_kea`, so a reservation added by `config-set` could not be
+written back and would vanish at the next restart. Nothing serves TFTP. Three
+decisions for the operator (how a reservation is written, how the config is
+served, where the server's address comes from) and five measurements the
+throwaway must make before anything is built, each with its prediction.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
