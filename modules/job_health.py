@@ -493,11 +493,85 @@ def image_jobs(now: float = None, client=None) -> list:
     return rows
 
 
-def health(now: float = None, run=None, images=None) -> dict:
+# ---------------------------------------------------------------------------
+# Settings a guard depends on (register C28)
+# ---------------------------------------------------------------------------
+#
+# After the 2026-09-23 settings erasure nothing re-established which settings
+# were LOAD-BEARING. Each empty one was found by the failure it caused:
+# clab_host during r6's persistence, oxidized_url during the freshness work,
+# clab_sync_script during a credential exposure (B15). One finding, found four
+# times. `discover_empty_default_guards()` had derived the class from the code
+# all along, and was called only by tests: it answered "which settings gate a
+# guard", and nothing ever asked "are they set HERE". These rows ask.
+
+_SETTINGS_WHAT = ("a setting a guard depends on; empty, the guard refuses with "
+                  "'not configured', which reads like a check that ran (C28)")
+
+_guard_map_cache = None
+
+
+def _guard_settings() -> dict:
+    """``{key: [where, ...]}``: discovered from the code, plus the recorded list.
+
+    Cached per process: it parses the code, and the code does not change under
+    a running app.
+    """
+    global _guard_map_cache
+    if _guard_map_cache is None:
+        from modules.settings_schema import (GUARD_GATING_EMPTY_DEFAULTS,
+                                             discover_empty_default_guards)
+        found = dict(discover_empty_default_guards())
+        for key in GUARD_GATING_EMPTY_DEFAULTS:
+            found.setdefault(key, ["recorded by hand in "
+                                   "settings_schema.GUARD_GATING_EMPTY_DEFAULTS"])
+        _guard_map_cache = found
+    return _guard_map_cache
+
+
+def settings_rows(guards: dict = None, load=None) -> list:
+    """One row per guard-gating setting: ``ok`` when set, ``unset_guard`` when
+    empty. An unreadable settings file is ONE ``unknown`` row, never a set of
+    "empty" rows: every key would read as empty, and the loudest possible
+    answer would be the wrong one. A scan that finds no such settings is
+    ``unknown`` too, since that is a scan that could not run."""
+    from modules.config import SettingsUnreadable, load_user_settings
+    from modules.settings_schema import DEFAULTS
+
+    def row(unit, state, detail):
+        return {"unit": unit, "what": _SETTINGS_WHAT, "state": state,
+                "detail": detail, "max_age_minutes": 0}
+
+    guards = _guard_settings() if guards is None else guards
+    if not guards:
+        return [row("settings", "unknown",
+                    "the scan found no guard-gating settings; that is a scan "
+                    "that could not run, not a clean result")]
+    try:
+        stored = (load or load_user_settings)()
+    except SettingsUnreadable as exc:
+        return [row("settings", "unknown",
+                    f"user_settings.json could not be read ({exc}); whether "
+                    "any guard's setting is empty is unknown")]
+    out = []
+    for key in sorted(guards):
+        value = stored.get(key, DEFAULTS.get(key, ""))
+        where = "; ".join(guards[key])
+        if value in ("", None, [], {}):
+            out.append(row(f"setting:{key}", "unset_guard",
+                           f"EMPTY. It gates {where}, which will refuse and say "
+                           "'not configured' until it is set"))
+        else:
+            out.append(row(f"setting:{key}", "ok", "set"))
+    return out
+
+
+def health(now: float = None, run=None, images=None, settings=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
-    are read from Proxmox."""
+    are read from Proxmox. *settings*: the settings rows, likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
     jobs += image_jobs(now) if images is None else list(images)
+    jobs += settings_rows() if settings is None else list(settings)
     bad = [j["unit"] for j in jobs if j["state"] != "ok"]
     return {"ok": True, "jobs": jobs, "not_ok": bad,
             "headline": (f"{len(jobs) - len(bad)} of {len(jobs)} job(s) ok"

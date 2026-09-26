@@ -86,11 +86,11 @@ def test_a_recovery_clears_the_streak():
 
 def test_the_headline_counts_and_names():
     journal = _ok(NOW - 60)
-    # images=[]: this test is about the systemd jobs' count; the Proxmox
-    # image rows have their own tests below.
-    h = J.health(NOW, _runner(LOADED, journal), images=[])
+    # images=[] and settings=[]: this test is about the systemd jobs' count;
+    # the Proxmox image rows and the settings rows have their own tests.
+    h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
-    h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[])
+    h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[])
     assert h["headline"].startswith("0 of") and "clab-sync" in h["headline"]
 
 
@@ -374,5 +374,56 @@ class TestTheZfsPoolThatHoldsEveryVm:
 
 def test_health_carries_the_image_rows_in_its_headline():
     h = J.health(NOW, _runner(LOADED, _ok(NOW - 60)),
-                 images=J.image_jobs(NOW, FakeProxmox(storage={"active": 0})))
+                 images=J.image_jobs(NOW, FakeProxmox(storage={"active": 0})),
+                 settings=[])
     assert "vm-images-storage:vzdump-sda" in h["not_ok"]
+
+
+
+# ---------------------------------------------------------------------------
+# Register C28: a setting a guard depends on, empty on this install
+# ---------------------------------------------------------------------------
+
+GUARDS = {"clab_sync_script": ["modules/nsot/credential_rotation.py:2160"],
+          "clab_host": ["modules/nsot/credential_rotation.py:2213"]}
+
+
+def test_an_empty_guard_setting_is_a_row_naming_what_it_gates():
+    """B15: clab_sync_script was empty for three days and the first rotation to
+    reach it was the one retiring an exposed credential."""
+    rows = {r["unit"]: r for r in J.settings_rows(
+        GUARDS, load=lambda: {"clab_host": "lab@203.0.113.10"})}
+    assert rows["setting:clab_sync_script"]["state"] == "unset_guard"
+    assert "credential_rotation.py:2160" in rows["setting:clab_sync_script"]["detail"]
+    assert "not configured" in rows["setting:clab_sync_script"]["detail"]
+    assert rows["setting:clab_host"]["state"] == "ok"
+
+
+def test_an_unreadable_settings_file_is_unknown_not_everything_empty():
+    from modules.config import SettingsUnreadable
+
+    def _boom():
+        raise SettingsUnreadable("JSONDecodeError")
+    rows = J.settings_rows(GUARDS, load=_boom)
+    assert [r["state"] for r in rows] == ["unknown"]
+
+
+def test_a_scan_that_found_nothing_is_unknown_not_clean():
+    rows = J.settings_rows({}, load=lambda: {})
+    assert [r["state"] for r in rows] == ["unknown"]
+
+
+def test_the_real_scan_covers_the_four_the_erasure_blanked():
+    """Floor and anchors on the REAL map: the four found one at a time
+    (clab_host, clab_sync_script, oxidized_url; yang_push_script by hand)."""
+    guards = J._guard_settings()
+    assert len(guards) >= 4, guards
+    for key in ("clab_host", "clab_sync_script", "oxidized_url", "yang_push_script"):
+        assert key in guards, key
+
+
+def test_health_carries_the_settings_rows():
+    h = J.health(NOW, _runner(LOADED, _ok(NOW - 60)), images=[],
+                 settings=J.settings_rows(GUARDS, load=lambda: {}))
+    assert "setting:clab_sync_script" in h["not_ok"]
+    assert "setting:clab_host" in h["not_ok"]

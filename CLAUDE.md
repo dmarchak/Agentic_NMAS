@@ -933,6 +933,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_p3_restore_is_guarded.py` | P.3 step 3 (D5): both Restore Golden Config buttons open the guarded preview at HEAD; the preview draws every line it will send, executed against the route's real payload |
 | `test_terminal_privilege.py` | B13: the terminal sends the enable secret ONLY in answer to a password prompt, once; a device at `#` receives nothing; the page states the terminal is break-glass and unmasked by design |
 | `test_p3_wizard_draws_the_program.py` | P.3 step 4 (D4): the wizard draws every line of the program, with one authorise box per dangerous line that re-plans the device; an authorised `shutdown` deploys end to end and a changed authorisation is refused; restore can authorise; C24's unbuildable device is named |
+| `test_job_health.py` (C28 rows) | a guard-gating setting empty on this install is an `unset_guard` row naming what it gates; unreadable settings is one `unknown` row; the real scan covers the four the erasure blanked |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1419,6 +1420,18 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The gate in front of it was correct, and the thing behind it had never
   been examined.** Gating a path is not reviewing it. A credential is sent
   only in answer to the prompt that asks for it.
+- **A CHECK OF THE CODE IS NOT A CHECK OF THE INSTALL** (register C28).
+  `discover_empty_default_guards()` derived, from the code, every setting
+  whose emptiness silently switches off a guard, and only tests called it. So
+  the class was KNOWN while the 2026-09-23 erasure left four of them empty on
+  the host, and each was found by the failure it caused: the fourth during a
+  credential exposure (B15). Knowing which settings are load-bearing is half
+  the job; the other half is a job that asks whether they are set HERE.
+  `job_health.settings_rows()` is that job.
+- **A message whose first words are good news is read as good news** (the
+  operator, B15). *"s1: ROTATED and committed"* opened a message whose point
+  was that the boot file still held the old password. Lead with the state
+  the reader must act on.
 - **A negative control that fires by CRASHING proves nothing.** Twice on
   2026-09-26 a mutation broke the file (a syntax error), or sent execution
   down a branch that raised (`set(None)`), and the suite went red for that
