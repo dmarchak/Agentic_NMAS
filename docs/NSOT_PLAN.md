@@ -3192,6 +3192,39 @@ examined.**
 *(Item 11, the Anthropic key's rotation, moved to "Do this first" above,
 2026-09-26.)*
 
+**P.3 ACCEPTANCE RUN, 2026-09-26, at `5b087c4`: every item observed, and
+every control FIRES.** One harness ran the ten items' tests clean (206
+passed), then applied eleven controls. Each file was restored from a scratch
+copy, and the same 206 passed again afterwards. A control counts only if it
+fails its TARGETED test with 0 collection errors, so a crash cannot pass as
+a control.
+
+| # | Observed | Control, and what failed |
+|---|---|---|
+| 1 | 121 mutating endpoints, all classified; `/deploy/apply` is `confirm` | an unclassified POST route added: `test_every_mutating_endpoint_is_in_the_table` |
+| 2 | all 87 gated endpoints 403 with no identity, no view reached (sentinels); on the host, 403 `no_header` on `/deploy/apply`, `/golden/restore/apply`, `/ai/approvals/<id>/approve` | the gate lets `approve` through: the exhaustive sweep plus three sampled paths |
+| 3 | no GET-only view sends request text to a device (80+ views scanned) | such a view added: `test_no_get_only_view_does` |
+| 4 | no argument-free GET carries a planted secret; an empty secret field saves nothing | GET /settings returns the Jenkins key: the planted-secret sweep. The empty-field guard removed: `test_empty_jenkins_secrets_leave_the_stored_values` |
+| 5 | every cut route 404; `check_removed_definitions.py c5a34c1^..HEAD` exits 0 (55 removed or moved, none still called); nothing shipped names them | a cut route put back: `test_each_cut_route_is_404[POST-/bulk_restore_golden_config]` |
+| 6 | both Restore buttons open the guarded preview at HEAD | bulk restore posts to the old replay: `test_bulk_ops_opens_the_guarded_preview_at_head` |
+| 7 | the wizard draws every line, one authorise box per dangerous line, and an authorised `shutdown` deploys end to end | dangerous lines unmarked: `test_the_dangerous_line_has_its_own_authorise_box` |
+| 8 | the restore preview's denominator is the inventory, and a ref older than a device is partial and names it | `partial` forced false: `test_the_denominator_is_the_inventory_and_the_ref_is_partial` and the route's sentence |
+| 9 | opening the terminal writes one row, keystrokes never; the page states both sentences; the live terminal refused an unauthenticated socket and recorded it | the open is not recorded: seven audit tests |
+| 10 | 24 removed tools absent from the list and the dispatch; only read-only verbs run; no reply is auto-answered | `reload` allowed: `test_anything_else_is_refused[reload]` |
+
+**Two corrections to the criteria, stated rather than quietly met:**
+- Item 1's floor said "at least 131 mutating rules". That was measured
+  BEFORE steps 2-3 cut ten routes and step 7 removed `/disconnect`. The test's
+  floor is 121, which is the population now. A floor that still read 131 would
+  fail for the right code.
+- Item 2's tunnel half ("a real deploy still completes, as the operator") was
+  observed at step 1 on the host: the golden commit carried the operator's
+  email. The host now runs `9c4cf07` (step 8), so steps 9-12 are not
+  deployed there. **Re-observing it after the pull is the operator's step**,
+  and the one thing P.3 still needs from the host.
+
+**Full suite at `5b087c4`: 3950 passed, 0 failed, 0 errors.**
+
 ### P.4 — Cut Jenkins (before Stage 7)
 
 **Decided 2026-09-26 (operator): before Stage 7**, so Stage 7 does not draw a

@@ -4461,7 +4461,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **27 open at 2026-09-26**, counted from the rows: 22 recorded only in
+present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
@@ -4492,7 +4492,9 @@ organised around the task list
 written against the feature audit
 ([docs/NSOT_FEATURE_AUDIT.md](docs/NSOT_FEATURE_AUDIT.md)) and the CI design
 ([docs/NSOT_CI.md](docs/NSOT_CI.md)). **P.3** makes every device-changing
-path guarded or gone (B12, B11, D5, D4, C23). **P.4** cuts Jenkins. The
+path guarded or gone (B12, B11, D5, D4, C23); **accepted 2026-09-26** at
+`5b087c4`, every item observed and all eleven controls firing, with the
+operator's tunnel deploy to re-observe after the pull. **P.4** cuts Jenkins. The
 agent becomes an on-call responder (Stage 8): it triages autonomously,
 PROPOSES fixes as ordinary plans, and never confirms its own.
 
