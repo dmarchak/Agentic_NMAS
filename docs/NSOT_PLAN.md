@@ -2896,6 +2896,32 @@ examined.**
     correct the break-glass record's `has_enable_secret`, which reads the
     duplicate and claims every device has one. **A credential stored twice is
     a credential that leaks twice.**
+12. **A rotation reports success only when the device's boot file is SAFE, and
+    says which stage stopped it when it is not** (register B15, the operator's
+    acceptance; with B2's rotation half).
+    - **Success means the checker's verdict.** The chain's last stage calls the
+      same function `nmas-check-startup-applies` uses and requires SAFE, so the
+      rotation and the checker cannot disagree. It currently checks the new
+      hash's presence with `verify_startup_file`, which is a second check of
+      one property.
+    - **A stage that does not run is named**, and the state is never success.
+      This is already true of `ROTATED_UNVERIFIED`, and it stays true.
+    - **The failure message leads with the danger**: *"s1: NOT SAFE TO REBOOT —
+      its startup config still holds the PREVIOUS password"*. The success words
+      (*"ROTATED and committed"*) no longer come first.
+    - **The outcome is DURABLE (B2).** Each stage writes a row: names, outcomes
+      and the reason, never a value. A device whose last rotation did not
+      persist is a Needs-attention row until its boot file reads SAFE. A
+      terminal scrollback is not a record.
+    - **One owner for the sync script.** `clab_sync_script` has been empty since
+      the 2026-09-23 erasure, while the timer's unit names
+      `/home/dmarchak/bin/clab-sync`. Until one source is chosen, job health
+      compares the setting with the unit's `ExecStart` and names a mismatch.
+    - **Acceptance:** with the sync stage broken, a rotation exits non-zero,
+      names `clab_sync`, writes the durable row, and the device appears in
+      Needs attention. With it working, the rotation reports success only
+      after `nmas-check-startup-applies` reads SAFE. Controls: a success path
+      that skips the SAFE check must fail the suite.
 
 **P.3 ACCEPTANCE** (each item observed, each with a control that must fail):
 1. **Every mutating endpoint is classified**, and the classification test has
