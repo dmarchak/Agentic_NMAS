@@ -1143,7 +1143,9 @@ def bind_credentials_step(plan, *, repo: str) -> str:
     # `discover_dhcp_address()` refuses before anything asks for a credential,
     # so a wrong key can never be silently used.
     key = plan.mgmt_ip or plan.reservation_address
-    credentials.set_device_override(key, "admin", secret, secret)
+    # The login credential once, not twice (B14): no enable secret exists, and
+    # the connection falls back to the password.
+    credentials.set_device_override(key, "admin", secret, "")
     return secret
 
 

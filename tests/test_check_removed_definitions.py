@@ -129,6 +129,36 @@ class TestOnlyAReferenceShapedStringIsAUse:
         assert CHECK._code_mentions("_gone", p) is True
 
 
+class TestAMethodOnAnotherObjectIsNotAUse:
+    """P.3 D12: removing the Flask view `disconnect` from app.py was flagged as
+    still used by every Netmiko `conn.disconnect()` in the tree."""
+
+    def test_a_method_call_on_another_object_is_not_a_use(self, source):
+        p = source("conn.disconnect()\n")
+        assert CHECK._code_mentions("disconnect", p, defined_in="app.py") is False
+
+    def test_the_module_attribute_is_a_use(self, source):
+        p = source("import app\napp.disconnect()\n")
+        assert CHECK._code_mentions("disconnect", p, defined_in="app.py") is True
+
+    def test_an_aliased_module_is_a_use(self, source):
+        p = source("import app as A\nA.disconnect()\n")
+        assert CHECK._code_mentions("disconnect", p, defined_in="app.py") is True
+
+    def test_a_dotted_module_path_is_a_use(self, source):
+        p = source("import modules.nsot.restore\nmodules.nsot.restore.plan()\n")
+        assert CHECK._code_mentions("plan", p, defined_in="modules/nsot/restore.py") is True
+
+    def test_a_from_imported_module_is_a_use(self, source):
+        p = source("from modules.nsot import restore as R\nR.plan()\n")
+        assert CHECK._code_mentions("plan", p, defined_in="modules/nsot/restore.py") is True
+
+    def test_without_the_defining_file_any_attribute_still_counts(self, source):
+        """Control: the conservative answer stays when nothing is known."""
+        p = source("conn.disconnect()\n")
+        assert CHECK._code_mentions("disconnect", p) is True
+
+
 class TestWholeWordsOnly:
     """`"_scan_device" in "_scan_device_from_golden"` is True."""
 

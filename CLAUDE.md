@@ -939,6 +939,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_p3_secrets_write_only.py` | P.3 step 6 (B11): all 86 argument-free GETs swept for planted secrets; an empty secret field saves nothing; B16: no GET-only view sends request-supplied text to a device, and `/run_command` is a gated POST; C29: HTTP errors keep their status |
 | `test_terminal_audit.py` | P.3 step 7: every open, failed open, close (page or dropped browser) and refusal of the terminal is a row with actor, device, peer and time; keystrokes never; 0600; a recorder failure is counted and never breaks the terminal |
 | `test_p3_agent_tools.py` | P.3 step 8: 24 tools gone from the list and the dispatch; the `execute_*` tools refuse everything but read-only verbs, before connecting; no reply is auto-answered |
+| `test_credential_single_copy.py` | P.3 step 11 (B14): an empty secret falls back to the password; rotation writes no copy; break-glass reports only a distinct enable secret; the dedupe script's dry run writes nothing, prints no value, and refuses an unparseable store |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1009,6 +1010,13 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   commit's scope is narrower than a reader would assume: an adoption that
   records and does not rotate, a bulk change that refused some devices (`Refused:`
   already does this).
+- **A method call on another object is not a use of a removed module-level
+  function** (`check_removed_definitions.py`, P.3 step 11). Removing the
+  Flask view `disconnect` was flagged by every Netmiko `conn.disconnect()` in
+  the tree, and needed `--no-verify`. For a top-level definition, `X.name`
+  now counts only when `X` is its own module: the dotted path, `import m as
+  A`, `from pkg import m`, or a relative import. A check people routinely
+  override stops being a check.
 - **A string is a use only when it is shaped like a reference**
   (`check_removed_definitions.py`, P.3 step 2): a name, a dotted path, or
   `pkg.mod:attr`. A URL path in a 404 test and a sentence in a prompt are
@@ -1441,7 +1449,12 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   - approval scheme 2 keyed on the bound device set, not the template (D11);
   - the restore preview iterated the ref, not the inventory (C23);
   - the gate table was keyed on the HTTP method, not on reaching a device
-    (B16).
+    (B16);
+  - the agent's "read-only" command tools were defined as NOT CONFIG MODE,
+    not as cannot change anything, and reload, delete, copy and clear all
+    run in exec mode (P.3 step 8, the operator's sixth). The fix is an
+    ALLOWLIST (show, ping, traceroute, dir, more), which a command added later
+    cannot outgrow, where "not config mode" already had been.
 
   **The corollary (the operator's): a proxy population is a dependency on
   something staying true that nobody is watching.** Every member was correct

@@ -3020,6 +3020,33 @@ examined.**
     correct the break-glass record's `has_enable_secret`, which reads the
     duplicate and claims every device has one. **A credential stored twice is
     a credential that leaks twice.**
+
+    **BUILT 2026-09-26.**
+    - **`connection_params` treats an empty secret like `None`**: the login
+      password is used, which is Netmiko's own fallback. It is the one place
+      every connection that passes a secret assembles it. Four direct
+      `ConnectHandler` sites pass no secret at all and are unchanged.
+    - **The writers stopped writing the copy.** Rotation's CSV branch stores
+      an encrypted EMPTY string (every reader decrypts the column, and
+      decrypting `""` raises); rotation's override and onboarding's staged
+      override store `""`.
+    - **The break-glass record's `has_enable_secret`** is true only for a
+      secret that differs from the password. It read true for every device.
+    - **`scripts/nmas-credential-dedupe` empties the copies already stored**,
+      dry run first, in every list's CSV and in the credential store. It
+      keeps a distinct enable secret, leaves anything it cannot decrypt, and
+      prints names and counts only. **It refuses to write a store that does
+      not parse**: the store's own loader reads an unreadable file as empty,
+      and saving that would erase every credential.
+    - **One test had pinned the duplicate as correct** (`got["secret"] ==
+      secret`, in the onboarding credential test). It now asserts the
+      property that matters: the connection's enable secret is the password.
+    - Four negative controls.
+    - 3915 passed, 0 failed, 0 errors.
+    - **Operator's step: run it on the host** (`python3
+      scripts/nmas-credential-dedupe`, read the dry run, then `--apply`). Then
+      re-export the break-glass record, which still carries the copies.
+
 12. **A rotation reports success only when the device's boot file is SAFE, and
     says which stage stopped it when it is not** (register B15, the operator's
     acceptance; with B2's rotation half).
@@ -3369,7 +3396,7 @@ Re-enabling before 8.2 and 8.3 would put the least-tested component in the
 program back on the network with the stale tool library and no authority
 gate. Enabling it is the last act of the stage, not the first.
 
-**8.5 The prompt examples.** They reference another project's PE/P/MPLS
+**8.5 The prompt examples, and the tools the prompt names (C30).** One job (the operator, 2026-09-26): both are instructions describing a system that does not exist. They reference another project's PE/P/MPLS
 topology -- Section 3 finding #11, deferred from Phase 0 and still open.
 `PE-1`, `P1`, `P4`, MPLS TE and LDP appear throughout
 `ai_assistant.py`'s instructions, variable examples, Jenkins stage templates

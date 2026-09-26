@@ -1585,7 +1585,9 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
             from modules import credentials as _creds
 
             mgmt_ip = (device or {}).get("ip", "")
-            _creds.set_device_override(mgmt_ip, username, password, password)
+            # One stored copy of a credential (B14): no enable secret is
+            # configured, and the connection falls back to the password.
+            _creds.set_device_override(mgmt_ip, username, password, "")
             out["devices_csv"] = "not written — pending device"
             out["device_override"] = mgmt_ip
         else:
@@ -1595,7 +1597,10 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
             for row in rows:
                 if row.get("hostname") == hostname:
                     row["password"] = fernet.encrypt(password.encode()).decode()
-                    row["secret"] = fernet.encrypt(password.encode()).decode()
+                    # NOT a second copy of the password (B14). An encrypted
+                    # empty string, because every reader decrypts the column
+                    # and decrypting "" raises.
+                    row["secret"] = fernet.encrypt(b"").decode()
             write_devices_csv(rows, csv_path)
             out["devices_csv"] = "this row only"
 

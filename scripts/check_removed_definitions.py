@@ -146,14 +146,40 @@ def _referenced_elsewhere(name: str, path: str, rev: str = "") -> list:
     files = [l.split(":", 1)[-1] if rev else l for l in out.splitlines()]
     return sorted(f for f in files
                   if f and f != path and name not in _defined_now(f, rev)
-                  and _code_mentions(name, f, rev))
+                  and _code_mentions(name, f, rev, defined_in=path))
 
 
 #: ``hasattr(mod, "name")`` / ``getattr(...)``: an EXISTENCE PROBE, not a use.
 _PROBES = ("hasattr", "getattr")
 
 
-def _code_mentions(name: str, path: str, rev: str = "") -> bool:
+def _module_of(path: str) -> str:
+    """`modules/nsot/restore.py` -> `modules.nsot.restore`."""
+    stem = path[:-3] if path.endswith(".py") else path
+    return stem.replace("\\", "/").replace("/", ".")
+
+
+def _module_aliases(tree, module: str) -> set:
+    """Every expression that names *module* in this file: the dotted path,
+    `import m as A`, `from pkg import m [as B]`, and `from . import m`."""
+    import ast
+
+    found = {module}
+    parent, _, leaf = module.rpartition(".")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == module and alias.asname:
+                    found.add(alias.asname)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == parent or (node.level and node.module in (None, "")):
+                for alias in node.names:
+                    if alias.name == leaf:
+                        found.add(alias.asname or leaf)
+    return found
+
+
+def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "") -> bool:
     """Does *path* actually USE *name*, as opposed to talking about it?
 
     A word-grep cannot tell the difference, and two things make that a
@@ -213,7 +239,17 @@ def _code_mentions(name: str, path: str, rev: str = "") -> bool:
         if isinstance(node, ast.Name) and node.id == name:
             return True
         if isinstance(node, ast.Attribute) and node.attr == name:
-            return True
+            # A MODULE-LEVEL definition is reached as an attribute only through
+            # its own module (`app.disconnect`, `A.disconnect` after `import app
+            # as A`). `conn.disconnect()` is a method on some other object: P.3
+            # D12 removed a Flask view called `disconnect`, and every Netmiko
+            # `conn.disconnect()` in the tree flagged it as still used, which
+            # needed --no-verify. With no defining file known, any attribute
+            # still counts, which is the conservative answer.
+            if not defined_in:
+                return True
+            if ast.unparse(node.value) in _module_aliases(tree, _module_of(defined_in)):
+                return True
         # `from mod import _gone` is not an `ast.Name`, and a file importing a
         # deleted function is the least ambiguous referencer there is. Found
         # by the test rather than by reading, which is the point of writing

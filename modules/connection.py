@@ -59,7 +59,13 @@ def connection_params(dev: dict, *, password: str, secret: str = None) -> dict:
         "ip": dev["ip"],
         "username": dev["username"],
         "password": password,
-        "secret": password if secret is None else secret,
+        # An EMPTY secret means "none stored", and falls back to the login
+        # password, exactly as None always did (register B14, P.3 step 11).
+        # Every device here stored a copy of its password as its "secret", used
+        # for nothing, since no device has an enable secret and Netmiko sends
+        # one only when asked. Emptying those copies must not turn an empty
+        # string into an enable password somebody might be asked for.
+        "secret": secret or password,
         "port": 22,
         "fast_cli": FAST_CLI,
     }

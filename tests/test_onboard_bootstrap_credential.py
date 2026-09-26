@@ -375,7 +375,15 @@ class TestTheOverrideIsWhereTheResolverLooks:
         assert got["source"] == "device-override"
         assert got["username"] == "admin"
         assert got["password"] == secret
-        assert got["secret"] == secret
+        # ONE stored copy (register B14): this asserted `secret == secret`,
+        # pinning the duplicate as correct. No enable secret exists; the
+        # connection falls back to the password, which is what matters.
+        assert got["secret"] == ""
+        from modules.connection import connection_params
+        params = connection_params({"device_type": "cisco_xe", "ip": "203.0.113.31",
+                                    "username": "admin"},
+                                   password=got["password"], secret=got["secret"])
+        assert params["secret"] == secret
 
     def test_it_is_not_keyed_on_the_list_name(self, tmp_path, monkeypatch):
         """The exact wrong key, named — so the defect cannot come back under

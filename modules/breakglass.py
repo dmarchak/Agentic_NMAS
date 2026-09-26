@@ -189,7 +189,10 @@ def describe(payload: dict) -> dict:
             "ip": entry.get("ip", ""),
             "platform": entry.get("platform", ""),
             "has_password": bool(entry.get("password")),
-            "has_enable_secret": bool(entry.get("secret")),
+            # A copy of the password is not an enable secret (B14): every
+            # device stored one, and this reported all of them as having one.
+            "has_enable_secret": bool(entry.get("secret"))
+                                 and entry.get("secret") != entry.get("password"),
             "fields": present,
             "digest": hashlib.sha256(material).hexdigest()[:12],
         })
