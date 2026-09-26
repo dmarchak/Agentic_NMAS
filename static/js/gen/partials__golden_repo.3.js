@@ -232,6 +232,7 @@ async function previewBaselineRestore(tag, unOnboard, from) {
     const r = await fetch('/golden/restore/preview', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ref: tag, un_onboard: unOnboard,
+                            authorise: from.authorise || {},
                             devices: from.devices || null,
                             advisory_diff: from.advisoryDiff || '',
                             approval_id: from.approvalId || ''}),
@@ -258,6 +259,18 @@ async function previewBaselineRestore(tag, unOnboard, from) {
       }
     }
 
+    // Dangerous lines are authorised per device and per exact line BEFORE the
+    // program is shown (P.3 step 4). The choice goes back to the preview, so
+    // the command hashes this confirm carries cover it, and run_targets
+    // recomputes both at apply. Asked once per preview chain.
+    const needAuth = (d.devices || []).filter(x => x.deployable && (x.dangerous || []).length);
+    if (needAuth.length && !from.authoriseAsked) {
+      const chosen = await _authoriseDangerous(needAuth, from.authorise || {});
+      if (chosen === null) return;
+      return previewBaselineRestore(tag, unOnboard,
+        Object.assign({}, from, {authorise: chosen, authoriseAsked: true}));
+    }
+
     // The EXACT program per device, every line (P.3 step 3). The dialog used
     // to show counts and at most three replace and three residue lines, and
     // never the lines to be added: `commands` was computed, carried to the
@@ -278,6 +291,7 @@ async function previewBaselineRestore(tag, unOnboard, from) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ref: tag, confirmations, command_hashes: hashes,
                             un_onboard: unOnboard,
+                            authorise: from.authorise || {},
                             approval_id: from.approvalId || ''}),
     });
     const ad = await ar.json();
@@ -313,13 +327,19 @@ function restorePreviewText(d, from) {
       return;
     }
     const cmds = dev.commands || [];
-    const risky = new Set(dev.dangerous || []);
+    // Stripped on the server; commands keep indentation. Compare trimmed.
+    const risky = new Set((dev.dangerous || []).map(x => x.trim()));
+    const auth = new Set((dev.authorised || []).map(x => x.trim()));
     out.push(`${dev.device}: ${cmds.length} line(s) will be sent, exactly these:`);
     if (!cmds.length) out.push('  (nothing: the device already matches)');
-    cmds.forEach(c => out.push((risky.has(c) ? '! ' : '  ') + c));
-    if (risky.size) {
-      out.push(`  ${risky.size} line(s) marked ! are dangerous commands. A restore `
-               + 'cannot authorise them yet, so this device will be refused (P.3 step 4).');
+    cmds.forEach(c => out.push((risky.has(c.trim()) ? (auth.has(c.trim()) ? 'A ' : '! ') : '  ') + c));
+    const unauth = [...risky].filter(c => !auth.has(c));
+    if (auth.size) {
+      out.push(`  ${auth.size} line(s) marked A are dangerous and AUTHORISED by you.`);
+    }
+    if (unauth.length) {
+      out.push(`  ${unauth.length} line(s) marked ! are dangerous and NOT authorised, `
+               + 'so this device will be refused and nothing sent to it.');
     }
     (dev.replace || []).forEach(rp =>
       out.push(`  replaces: ${String(rp.old).trim()}  ->  ${String(rp.new).trim()}`));
@@ -339,6 +359,63 @@ function restorePreviewText(d, from) {
   out.push(`SCOPE: ${d.scope || ''}`, '',
            'This ADDS and REPLACES. It does not remove lines a device has gained.');
   return out.join('\n');
+}
+
+// Per device, per exact dangerous line: tick to authorise. Resolves the
+// {device: [lines]} map (possibly empty), or null on Cancel.
+function _authoriseDangerous(devices, current) {
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'modal fade';
+    el.tabIndex = -1;
+    el.innerHTML =
+      '<div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">'
+      + '<div class="modal-header"><h5 class="modal-title">Dangerous lines in this restore</h5>'
+      + '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'
+      + '<div class="modal-body"><p class="small">Each line below is a dangerous command. It is sent '
+      + 'only if you authorise that exact line for that device. A device with an unauthorised '
+      + 'line is refused and nothing is sent to it. The full program is shown next.</p>'
+      + '<div data-lines></div></div>'
+      + '<div class="modal-footer">'
+      + '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>'
+      + '<button type="button" class="btn btn-warning" data-continue>Continue to the program</button>'
+      + '</div></div></div>';
+    const box = el.querySelector('[data-lines]');
+    devices.forEach(dev => {
+      const head = document.createElement('div');
+      head.className = 'fw-semibold mt-2';
+      head.textContent = dev.device;
+      box.appendChild(head);
+      (dev.dangerous || []).forEach(line => {
+        const lab = document.createElement('label');
+        lab.className = 'd-flex gap-2 align-items-start font-monospace small';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'form-check-input mt-0';
+        cb.dataset.device = dev.device;
+        cb.dataset.line = line;
+        cb.checked = ((current || {})[dev.device] || []).includes(line);
+        const span = document.createElement('span');
+        span.style.whiteSpace = 'pre';
+        span.textContent = line;
+        lab.appendChild(cb);
+        lab.appendChild(span);
+        box.appendChild(lab);
+      });
+    });
+    let answer = null;
+    el.querySelector('[data-continue]').addEventListener('click', () => {
+      answer = {};
+      el.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        if (cb.checked) (answer[cb.dataset.device] = answer[cb.dataset.device] || []).push(cb.dataset.line);
+      });
+      modal.hide();
+    });
+    el.addEventListener('hidden.bs.modal', () => { el.remove(); resolve(answer); });
+    document.body.appendChild(el);
+    const modal = new bootstrap.Modal(el);
+    modal.show();
+  });
 }
 
 // A modal holding a block of text and two buttons. Resolves true on Confirm.

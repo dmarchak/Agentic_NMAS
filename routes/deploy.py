@@ -357,7 +357,14 @@ def apply():
     for hostname in confirmations:
         built, error = _artifact_for(list_name, hostname, cache)
         if built is None:
+            # Register C24: this was `log.warning(); continue`, so a confirmed
+            # device that could not be built vanished from the report, and the
+            # result screen said "every device in a batch appears here" over a
+            # batch missing one. It is a refusal, and it is named.
             log.warning("deploy: %s unavailable: %s", hostname, error)
+            refused.append({"device": hostname, "outcome": "refused",
+                            "reason": (f"could not be built at apply: {error}. "
+                                       "Nothing was sent.")})
             continue
         artifact, captured, device = built
 

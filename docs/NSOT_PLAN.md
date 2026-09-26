@@ -2794,6 +2794,40 @@ doing it now.
    - draw each `dangerous` line with its own authorise checkbox, sent as
      `authorise` and folded into the confirm hash;
    - draw the `attribution` split (this edit vs already on the device).
+
+   **BUILT 2026-09-26.**
+   - **The wizard draws the PROGRAM**, every line in order, as the thing
+     confirmed.
+   - **Each dangerous line has its own checkbox.** Ticking one RE-PLANS that
+     device with the authorisation, redraws its card with the new command hash
+     and clears its tick, so what is confirmed is what is on screen.
+   - **A device with an unauthorised dangerous line cannot be ticked.**
+   - **Apply sends the authorisation the rendered plan's hash covers**, read
+     from the plan payload, never from the boxes.
+   - **The attribution split is drawn**: from this edit, and already pending.
+   - **The restore path can authorise now.** `/golden/restore/preview`
+     accepts `authorise` and folds it into `command_hash`. The client asks
+     line by line before showing the program, then sends the authorisation on
+     preview and on apply, and the text marks lines `A` (authorised) or `!`
+     (refused).
+   - **Tested end to end** against a real `/deploy/plan` payload:
+     - an authorised `shutdown` deploys and reaches the pipeline;
+     - withdrawing the authorisation after the plan is refused;
+     - adding one the plan did not cover is refused, with both hashes.
+   - **Found by the real payload: `dangerous` and `authorised` are STRIPPED
+     strings, while `commands` keeps indentation.** Comparing them exactly,
+     the line is never marked and never gets its box. Step 3's restore text had
+     the same flaw, and its test passed only because the payload it was given
+     was built by hand with the unstripped form: a fixture that could not
+     exhibit the case. Both renderers now compare trimmed text. An
+     authorisation is therefore `{"s4": ["shutdown"]}`, not the `" shutdown"`
+     written elsewhere in this plan.
+   - **C24 fixed in the same route**: a confirmed device that cannot be built
+     at apply is a named refusal, not a dropped row.
+   - Seven negative controls. One first fired for the wrong reason (a syntax
+     error) and was redone cleanly.
+   - 3841 passed, 0 failed, 0 errors.
+
 5. **C23.** The restore preview's population is the inventory: devices absent
    from the ref are named with what will happen to them, and the denominator
    counts the inventory. That is `plan_restore()`'s logic, now called by the

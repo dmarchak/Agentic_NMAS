@@ -190,7 +190,8 @@ def restore_preview():
     not be removed". The previous report listed every device line absent from
     the target, which included lines about to be overwritten.
     """
-    from modules.nsot.deploy import (command_fingerprint, dangerous_in,
+    from modules.nsot.deploy import (NotAuthorised, assert_authorised,
+                                     command_fingerprint, dangerous_in,
                                      merge_commands, merge_diff,
                                      prepare_restore)
     from modules.nsot import normalize
@@ -203,6 +204,11 @@ def restore_preview():
         return jsonify({"ok": False, "error": "ref is required"}), 400
 
     list_name = _active_list(data)
+    # Per device, exactly as /deploy/plan: an authorisation for one device
+    # never covers another. It is folded into the command hash, so the apply
+    # (run_targets) recomputes both, and a restore can now carry a dangerous
+    # line that a person authorised. It could not before (P.3 step 4).
+    authorise = data.get("authorise") or {}
     try:
         targets, skipped = build_targets(list_name, ref, data.get("devices"),
                                          un_onboard=data.get("un_onboard"))
@@ -233,10 +239,19 @@ def restore_preview():
                 "excluded_unrenderable": normalize.excluded_unrenderable(
                     target.target_config),
                 "commands": commands,
-                "command_hash": command_fingerprint(commands),
                 "dangerous": dangerous_in(commands),
                 "unchanged_count": diff["unchanged_count"],
             })
+            authorised = [a.strip() for a in (authorise.get(target.device) or [])]
+            entry["authorised"] = authorised
+            entry["command_hash"] = command_fingerprint(commands, authorised)
+            if entry["dangerous"] or authorised:
+                try:
+                    assert_authorised(commands, authorised)
+                    entry["authorisation_ok"] = True
+                except NotAuthorised as exc:
+                    entry["authorisation_ok"] = False
+                    entry["authorisation_error"] = str(exc)
         except Exception as exc:              # noqa: BLE001
             entry.update({"add": [], "replace": [], "residue": [],
                           "commands": [],
