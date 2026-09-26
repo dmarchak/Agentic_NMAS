@@ -949,6 +949,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_ci_workflow.py` | P.4 step 3: the workflow reads only this repository (no `repository:`, no secret, read-only token, token not persisted), installs the lock, never gates on coverage, cancels superseded runs; parsed values, not raw text |
 | (overview) | **[docs/TESTING.md](docs/TESTING.md)**: what the suite checks, the 180 controls that run every time against the ~330 that ran once, and what it cannot reach |
+| `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |

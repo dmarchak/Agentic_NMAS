@@ -55,6 +55,16 @@ sudo -u nmas install -m 600 /dev/null /home/nmas/agentic-nmas/.env
 echo 'ANTHROPIC_API_KEY=sk-ant-...' | sudo -u nmas tee -a /home/nmas/agentic-nmas/.env
 ```
 
+## Deploying an update
+
+`scripts/nmas-deploy` fast-forwards the checkout to origin/main ONLY if CI
+passed for that exact commit, then restarts the service and checks it answers.
+Link it into your PATH (one copy, versioned):
+`ln -sf ~/python/Agentic_NMAS/scripts/nmas-deploy ~/bin/nmas-deploy`. On a
+machine that cannot reach GitHub, `nmas-deploy --offline` runs the whole suite
+here against the target instead. There is no flag that deploys an unverified
+commit.
+
 ## Back up the Fernet key
 
 `data/key.key` encrypts stored device credentials **and** settings secrets.

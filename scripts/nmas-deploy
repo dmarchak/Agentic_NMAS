@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Fast-forward the deployment host to origin/main, ONLY if CI passed for it.
+
+NSOT_PLAN P.4 step 4 (docs/NSOT_CI.md). It replaces the 25-line
+~/bin/nmas-deploy that pulled and restarted with no gate. Install it as a
+SYMLINK to this file, so there is one copy (CLAUDE.md, C14):
+
+    ln -sf ~/python/Agentic_NMAS/scripts/nmas-deploy ~/bin/nmas-deploy
+
+    nmas-deploy              # gate on the GitHub Actions result for the target
+    nmas-deploy --offline    # no GitHub: run the whole suite HERE, on this
+                             # machine's packages, against the target first
+
+The gate is decided on the TARGET commit (origin/main after a fetch), before
+HEAD moves. HEAD never reaches a commit that has not passed.
+
+Exit codes. Each means one thing; none is "probably fine":
+  0  deployed, or already at the target and restarted
+  1  CI FAILED, was cancelled, or is still running for the target: refused
+  2  COULD NOT ASK: GitHub unreachable, timed out, rate-limited, answered an
+     error, or has NO run for the target. Refused. There is no flag that
+     deploys an unverified commit; --offline verifies it here instead.
+  3  --offline: the suite failed on this machine against the target: refused
+  4  refused by local state: edits in the checkout, root-owned files in .git,
+     or origin/main is not a fast-forward
+  5  deployed, and the app did not answer after the restart
+
+"No run found" is exit 2, never a pass. That is the fail-open shape of the
+old Jenkins ci_gate, which was skipped silently whenever it could not ask
+(NSOT_CI.md section 0), refused here by construction. The one legitimate
+no-run case is a push that changed only paths the workflow ignores. It passes
+only when every file changed since the last commit CI passed matches the
+workflow's own `paths-ignore`, read from .github/workflows/ci.yml rather than
+copied, so the two cannot disagree.
+
+Every run appends one row to data/deploy_audit.jsonl (0600): who, from, to,
+how the target was verified, the verdict and the exit code.
+"""
+
+import argparse
+import getpass
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+DEFAULT_REPO = os.path.expanduser("~/python/Agentic_NMAS")
+SERVICE = "flask-app.service"
+USER_AGENT = "nmas-automation/1.0"      # honest; Cloudflare-style checks reject urllib's default
+WORKFLOW_PATH = ".github/workflows/ci.yml"
+
+OK, CI_REFUSED, COULD_NOT_ASK, OFFLINE_FAILED, LOCAL_REFUSED, UNHEALTHY = 0, 1, 2, 3, 4, 5
+
+
+def git(repo, *args, check=True):
+    out = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    if check and out.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)}: {out.stderr.strip()}")
+    return out.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# Where the repository lives on GitHub
+# ---------------------------------------------------------------------------
+
+def slug_of(remote_url):
+    """`github-nmas:dmarchak/Agentic_NMAS.git`, `git@github.com:o/r.git` or
+    `https://github.com/o/r` -> `o/r`."""
+    m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/?$", remote_url.strip())
+    if not m:
+        raise ValueError(f"cannot read an owner/repo from the origin URL {remote_url!r}")
+    return f"{m.group(1)}/{m.group(2)}"
+
+
+def github_get(path, timeout=10):
+    """(status, json or None, reason). Never raises."""
+    req = urllib.request.Request(f"https://api.github.com{path}",
+                                 headers={"User-Agent": USER_AGENT,
+                                          "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read().decode()), ""
+    except urllib.error.HTTPError as exc:
+        remaining = exc.headers.get("X-RateLimit-Remaining") if exc.headers else None
+        reason = "rate-limited" if remaining == "0" or exc.code == 429 else f"HTTP {exc.code}"
+        return exc.code, None, reason
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        return 0, None, f"{type(exc).__name__}: {getattr(exc, 'reason', exc)}"
+
+
+# ---------------------------------------------------------------------------
+# The workflow's own ignored paths
+# ---------------------------------------------------------------------------
+
+def ignored_patterns(repo, sha):
+    """`paths-ignore` of the push trigger, read from ci.yml AT the target."""
+    import yaml
+    doc = yaml.safe_load(git(repo, "show", f"{sha}:{WORKFLOW_PATH}"))
+    triggers = doc.get(True) or doc.get("on") or {}     # YAML 1.1 reads `on` as True
+    return list((triggers.get("push") or {}).get("paths-ignore") or [])
+
+
+def _glob_regex(pattern):
+    out, i = "", 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out += "(?:.*/)?"; i += 3
+        elif pattern.startswith("**", i):
+            out += ".*"; i += 2
+        elif pattern[i] == "*":
+            out += "[^/]*"; i += 1
+        else:
+            out += re.escape(pattern[i]); i += 1
+    return re.compile(out + r"\Z")
+
+
+def only_ignored(paths, patterns):
+    rxs = [_glob_regex(p) for p in patterns]
+    return bool(paths) and all(any(rx.match(p) for rx in rxs) for p in paths)
+
+
+# ---------------------------------------------------------------------------
+# The gate
+# ---------------------------------------------------------------------------
+
+def ci_verdict(repo, target, get=github_get):
+    """(exit code, sentence naming the SHA and what was found)."""
+    short = target[:10]
+    try:
+        slug = slug_of(git(repo, "remote", "get-url", "origin"))
+    except (RuntimeError, ValueError) as exc:
+        return COULD_NOT_ASK, f"could not ask CI about {short}: {exc}"
+
+    status, body, reason = get(f"/repos/{slug}/actions/runs?head_sha={target}&event=push&per_page=20")
+    if body is None:
+        return COULD_NOT_ASK, (f"could not ask CI about {short} ({reason}). Refused: an "
+                               "unverified commit is never deployed. Retry, or run "
+                               "`nmas-deploy --offline` to run the suite here.")
+    runs = [r for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
+    if runs:
+        run = max(runs, key=lambda r: r.get("created_at", ""))
+        url = run.get("html_url", "")
+        if run.get("status") != "completed":
+            return CI_REFUSED, f"CI is still {run.get('status')} for {short}: {url}. Run again when it completes."
+        if run.get("conclusion") == "success":
+            return OK, f"CI passed for {short}: {url}"
+        return CI_REFUSED, f"CI {run.get('conclusion')} for {short}: {url}. Refused."
+
+    # No run for the target. Legitimate ONLY for a docs-only push.
+    status, body, reason = get(f"/repos/{slug}/actions/runs?branch=main&status=success"
+                               f"&event=push&per_page=50")
+    if body is None:
+        return COULD_NOT_ASK, f"no CI run for {short}, and could not list passing runs ({reason}). Refused."
+    passed = {r["head_sha"] for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH}
+    for ancestor in git(repo, "rev-list", "--max-count=100", target).split():
+        if ancestor in passed:
+            changed = git(repo, "diff", "--name-only", ancestor, target).split()
+            patterns = ignored_patterns(repo, target)
+            if only_ignored(changed, patterns):
+                return OK, (f"no CI run for {short}, which is expected: every file changed "
+                            f"since {ancestor[:10]} (CI passed) matches the workflow's "
+                            f"paths-ignore {patterns}: {changed}")
+            return COULD_NOT_ASK, (f"no CI run for {short}, and it changes more than ignored "
+                                   f"paths since {ancestor[:10]}, the last commit CI passed: "
+                                   f"{[p for p in changed if not only_ignored([p], patterns)][:5]}. Refused.")
+    return COULD_NOT_ASK, f"no CI run for {short} and no passing ancestor within 100 commits. Refused."
+
+
+def offline_verdict(repo, target, run=subprocess.run):
+    """Run the whole suite on THIS machine against the target, not HEAD."""
+    with tempfile.TemporaryDirectory(prefix="nmas-deploy-") as tmp:
+        archive = subprocess.Popen(["git", "-C", repo, "archive", target], stdout=subprocess.PIPE)
+        subprocess.run(["tar", "-x", "-C", tmp], stdin=archive.stdout, check=True)
+        archive.wait()
+        out = run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+                  cwd=tmp, capture_output=True, text=True)
+    tail = (out.stdout or "").strip().splitlines()[-1:] or ["(no output)"]
+    if out.returncode == 0:
+        return OK, f"the suite passed HERE against {target[:10]}: {tail[0]}"
+    return OFFLINE_FAILED, f"the suite FAILED here against {target[:10]}: {tail[0]}. Refused."
+
+
+# ---------------------------------------------------------------------------
+
+def audit(repo, row):
+    path = os.path.join(repo, "data", "deploy_audit.jsonl")
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    except OSError as exc:
+        print(f"WARNING: could not record this deploy in {path}: {exc}", file=sys.stderr)
+
+
+def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--offline", action="store_true",
+                    help="run the suite here against the target instead of asking CI")
+    ap.add_argument("--repo", default=DEFAULT_REPO)
+    args = ap.parse_args(argv)
+    repo = args.repo
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "user": getpass.getuser(), "gate": "offline" if args.offline else "ci"}
+
+    def finish(code, message):
+        print(message, file=sys.stderr if code else sys.stdout)
+        row.update(exit=code, verdict=message)
+        audit(repo, row)
+        return code
+
+    dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
+    if dirty:
+        return finish(LOCAL_REFUSED, "local changes present, refused:\n" + dirty)
+    foreign = subprocess.run(["find", os.path.join(repo, ".git"), "-not", "-user",
+                              getpass.getuser(), "-print", "-quit"],
+                             capture_output=True, text=True).stdout.strip()
+    if foreign:
+        return finish(LOCAL_REFUSED, f"files in .git not owned by {getpass.getuser()} "
+                                     f"(first: {foreign}): run `sudo chown -R "
+                                     f"{getpass.getuser()}: {repo}/.git`. Refused.")
+
+    git(repo, "fetch", "--quiet", "origin")
+    head, target = git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "origin/main")
+    row.update({"from": head, "to": target})
+    if subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", head, target]).returncode != 0:
+        return finish(LOCAL_REFUSED, f"origin/main ({target[:10]}) is not a fast-forward of "
+                                     f"HEAD ({head[:10]}). Refused.")
+
+    code, message = (offline_verdict(repo, target, run) if args.offline
+                     else ci_verdict(repo, target, get))
+    print(message)
+    if code != OK:
+        return finish(code, message)
+
+    if head != target:
+        git(repo, "merge", "--ff-only", "--quiet", target)
+        print(f"{head[:10]} -> {target[:10]}")
+        print(git(repo, "log", "--oneline", f"{head}..{target}"))
+    else:
+        print(f"already at {target[:10]}")
+
+    (restart or (lambda: subprocess.run(["sudo", "systemctl", "restart", SERVICE], check=True)))()
+    status = (health or _health)()
+    if status == "000":
+        return finish(UNHEALTHY, f"deployed {target[:10]}, and the app did not answer after "
+                                 "the restart (HTTP 000)")
+    return finish(OK, f"deployed {target[:10]} ({message}); health: HTTP {status}")
+
+
+def _health():
+    port = os.environ.get("NMAS_PORT", "5000")
+    url = os.environ.get("NMAS_HEALTH_URL", f"http://127.0.0.1:{port}/")
+    time.sleep(3)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return str(resp.status)
+    except urllib.error.HTTPError as exc:
+        return str(exc.code)
+    except (urllib.error.URLError, OSError):
+        return "000"
+
+
+if __name__ == "__main__":
+    sys.exit(main())

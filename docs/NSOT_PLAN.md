@@ -3301,6 +3301,29 @@ Stage 7.
   removed module, with a floor and an anchor) fails when one import is re-added.
   `check_removed_definitions.py` reports nothing still called. It learned on the
   way that a filename (`"jenkins_results.json"`) is a mention.
+- **Step 3 BUILT (2026-09-26):** `.github/workflows/ci.yml` on the host's
+  versions (`requirements.lock`, `--no-deps`), coverage reported and never
+  gated. Green on a clean runner at the second attempt: the first failed at
+  install, which is how C40 was found. Merged after green.
+- **Step 4 BUILT (2026-09-26):** `scripts/nmas-deploy`, versioned (it was 25
+  lines of bash on the host only).
+  - It gates on the TARGET commit before HEAD moves.
+  - Exits: 0 deployed, 1 CI failed/cancelled/running, 2 could not ask or no
+    run, 3 `--offline` suite failed, 4 local state, 5 no answer after restart.
+  - "No run" is never a pass. The one legitimate no-run case, a docs-only push,
+    passes only when every change since the last green commit matches the
+    workflow's own `paths-ignore`, read from `ci.yml`.
+  - Every run is a row in `data/deploy_audit.jsonl` (0600).
+  - `test_nmas_deploy.py` drives it against a real bare origin and clone, and
+    asserts HEAD unmoved on every refusal. Six controls, each failing its
+    target.
+  - **Operator's steps, in order:**
+    1. Deploy this commit with the OLD script.
+    2. Replace it:
+       `ln -sf ~/python/Agentic_NMAS/scripts/nmas-deploy ~/bin/nmas-deploy`.
+    3. Say so. Only then does the red-commit test (acceptance 3) begin: a
+       deliberately failing commit, the refusal, `--offline` refusing, a fix,
+       and the deploy proceeding.
 - **Operator's step:** delete `data/jenkins_checks.json` on the host. Measured
   2026-09-26, by field state only: all four fields are EMPTY and no per-list
   Jenkins file exists, so it holds no credential and deleting it is
