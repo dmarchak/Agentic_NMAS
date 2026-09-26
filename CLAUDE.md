@@ -4150,6 +4150,20 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   and a moved rate is a named state (`STALE RATE`) from an hourly check
   that `job_health` watches. The same shape as the 60 s slack it replaced,
   caught within an hour this time rather than a day.
+- **Never pass document text through a shell heredoc; write it with a file
+  tool.** 2026-09-25: an edit sent a runbook section to `python3` through a
+  heredoc delimited by `EOF`, and the section contained its own `EOF` lines
+  (the runbook's own heredocs). The shell ended the heredoc early and ran
+  the rest of the runbook, as shell, on the laptop. The prose's backticks
+  became command substitutions, and a code fence (three backticks, then
+  `bash`) started an interactive shell that blocked. It touched nothing,
+  measured afterwards: the root steps failed on permissions, and the
+  blocking shell sat BEFORE the cron write and the `ssh`/`rsync` test lines.
+  That was luck of ordering, not design. Same family as *stop a process by
+  identity*: text a tool treats as a boundary appears inside the payload.
+  The runbook itself now uses `printf` plus a `cat` of each result. Every
+  line expands `$DEST`, and an unset `$DEST` in a fresh root shell would
+  otherwise write `find /hourly … -delete` into cron without an error.
 - **A job that fails into a journal nobody reads has not been reported**
   (C14). `clab-sync` refused correctly 72 times in a row, because its
   helper was on the login PATH and not systemd's, while r6's startup config
