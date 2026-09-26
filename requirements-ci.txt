@@ -1,2 +1,5 @@
-# CI-only tools, not on the deployment host: coverage is REPORTED, never gated (NSOT_PLAN, course labs).
-pytest-cov
+# CI-only tools, not on the deployment host. Installed with --no-deps beside
+# requirements.lock, so they cannot move a host version. Coverage is REPORTED,
+# never gated (NSOT_PLAN, course labs).
+pytest-cov==7.1.0
+coverage==7.16.1

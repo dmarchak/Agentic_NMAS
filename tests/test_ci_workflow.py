@@ -84,7 +84,8 @@ def test_it_can_reach_no_other_repository(path):
 @pytest.mark.parametrize("path", WORKFLOWS)
 def test_it_installs_the_hosts_versions_and_never_gates_on_coverage(path):
     raw = open(path, encoding="utf-8").read()
-    assert "requirements.lock" in raw
+    assert "pip install --no-deps -r requirements.lock" in raw, \
+        "without --no-deps a resolver installs something other than the host's set"
     assert "-r requirements.txt" not in raw, "requirements.txt describes no machine (C37)"
     assert "--cov-fail-under" not in raw and "fail_under" not in raw
 

@@ -41,6 +41,14 @@ IMPORT_TO_DIST = {
     "werkzeug": "Werkzeug", "yaml": "PyYAML",
     "packaging": "packaging",   # this script's own marker evaluation
 }
+#: Debian package names (after `python3-`) whose PyPI distribution differs.
+#: `python3-pkg-resources` ships setuptools' pkg_resources at setuptools'
+#: version; pinning a `pkg-resources` dist would be a name PyPI does not have.
+DEB_TO_PYPI = {"pkg-resources": "setuptools"}
+#: Debian's virtual packages: they name no distribution.
+DEB_VIRTUAL = {"cffi-backend-api-max", "cffi-backend-api-min", "cryptography-egg",
+               "importlib-metadata", "importlib-resources"}
+
 #: Imported, and absent on the host by design.
 OPTIONAL = {"minio"}
 #: Local packages and paths, not distributions.
@@ -55,8 +63,11 @@ HEADER = """\
 # the machine that runs in production. requirements.txt describes no machine:
 # see docs/OPEN_FINDINGS.md C37 for the measured differences.
 #
-# Absent here by design: {optional}. cffi is resolved by pip (Ubuntu ships its
-# backend without a distribution).
+# Absent here by design: {optional}. Where Ubuntu ships a package with no
+# Python dependency metadata (netmiko, pysnmp, scp, textfsm), its Debian
+# dependencies are followed instead, and a module with no distribution (cffi)
+# carries Debian's version. INSTALL WITH --no-deps: PyPI's metadata refuses
+# combinations the host really runs (netmiko 4.3.0 with textfsm 1.1.2).
 """
 
 
@@ -98,6 +109,52 @@ def _norm(name):
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+# ---------------------------------------------------------------------------
+# Debian's dependency graph, where Python's metadata is empty
+# ---------------------------------------------------------------------------
+# MEASURED 2026-09-26: Ubuntu ships netmiko, pysnmp, scp and textfsm with NO
+# Requires-Dist, so a closure over Python metadata never reached ntc-templates,
+# pyasn1, pysmi, pycryptodome or six, all of which the host has because apt
+# installed them. And PyPI's netmiko 4.3.0 declares textfsm>=1.1.3 while the
+# host runs 1.1.2, so pip's resolver refuses the host's own combination: CI
+# installs this lock with --no-deps, exactly as the host has it.
+
+def _run(*cmd):
+    import subprocess
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _deb_package_of(dist):
+    path = str(getattr(dist, "_path", ""))
+    out = _run("dpkg", "-S", path) if path else ""
+    return out.split(":", 1)[0].strip() if ":" in out else ""
+
+
+def _deb_depends(package):
+    raw = _run("dpkg-query", "-W", "-f=${Depends}", package)
+    return [re.split(r"[\s(]", d.strip(), 1)[0] for d in raw.split(",") if d.strip()]
+
+
+def _dists_in_deb(package):
+    """Python distribution names a Debian package installs (its dist-info)."""
+    names = []
+    for line in _run("dpkg", "-L", package).splitlines():
+        base = os.path.basename(line)
+        if base.endswith((".dist-info", ".egg-info")) and "/dist-packages/" in line:
+            names.append(base.split("-", 1)[0])
+    return names
+
+
+def _deb_upstream_version(package):
+    """`1:1.16.0-2build1` -> `1.16.0`; empty if not installed."""
+    raw = _run("dpkg-query", "-W", "-f=${Version}", package).strip()
+    raw = raw.split(":", 1)[-1]
+    return re.split(r"[-+~]", raw, 1)[0] if raw else ""
+
+
 def closure(names):
     """{norm: (Name, version)} for *names* and their installed dependencies,
     and the list of names not installed here."""
@@ -114,10 +171,30 @@ def closure(names):
         try:
             dist = md.distribution(name)
         except md.PackageNotFoundError:
-            missing.append(key)
+            # A module Debian ships without a distribution (python3-cffi-backend
+            # provides _cffi_backend, not a `cffi` dist): pin Debian's version.
+            if key in DEB_VIRTUAL:
+                continue
+            for package in (f"python3-{key}", f"python3-{key}-backend"):
+                version = _deb_upstream_version(package)
+                if version:
+                    pypi = DEB_TO_PYPI.get(key, name)
+                    seen[_norm(pypi)] = (pypi, version)
+                    break
+            else:
+                missing.append(key)
             continue
         seen[key] = (dist.metadata["Name"], dist.version)
-        for raw in dist.requires or []:
+        requires = dist.requires or []
+        # For an apt-installed package Debian's graph is the truth, and its
+        # Python metadata may be stripped (netmiko: none) or partial
+        # (ncclient: one entry, which missed lxml). Take the UNION.
+        if "/usr/lib/python3/dist-packages" in str(getattr(dist, "_path", "")):
+            package = _deb_package_of(dist)
+            for dep in _deb_depends(package) if package else []:
+                if dep.startswith("python3-") and dep != "python3":
+                    stack.extend(_dists_in_deb(dep) or [dep[len("python3-"):]])
+        for raw in requires:
             req = Requirement(raw)
             if req.marker and not req.marker.evaluate({**env, "extra": ""}):
                 continue
