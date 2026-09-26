@@ -9,7 +9,11 @@ the gate sees one person start a conversation and nothing of what the model
 then sends.
 
 None of the 24 removed tools had a test; this file names them to pin their
-absence. The 19 Jenkins tools are P.4's.
+absence. P.4 step 1 removed the 19 CI tools (docs/NSOT_CI.md section 4), and
+they are pinned here too: they administered a system that no longer exists,
+and several were unsafe with it present (creating jobs from arbitrary XML,
+deleting jobs and builds, decrypting every device password to build
+pipelines).
 """
 
 import ast
@@ -30,6 +34,18 @@ REMOVED = [
     "set_variable", "delete_variable", "update_compliance_policy", "set_collector_ip",
 ]
 
+#: P.4 step 1: the 19 CI tools.
+REMOVED_CI = [
+    "jenkins_set_schedule", "jenkins_get_current_pipelines", "jenkins_list_jobs",
+    "jenkins_get_pipeline_script", "jenkins_get_config", "jenkins_create_job",
+    "jenkins_update_job", "jenkins_delete_job", "jenkins_get_builds",
+    "jenkins_delete_failed_builds", "jenkins_get_console", "jenkins_enable_job",
+    "jenkins_disable_job", "jenkins_link_pipeline", "jenkins_unlink_pipeline",
+    "run_jenkins_checks", "run_jenkins_job", "jenkins_wait_for_result",
+    "build_network_pipelines",
+]
+REMOVED = REMOVED + REMOVED_CI
+
 
 def _tool_names():
     import modules.ai_assistant as ai
@@ -43,7 +59,7 @@ class TestTheToolList:
     def test_the_read_tools_are_still_there(self):
         """Floor and anchors: an empty tool list satisfies the test above."""
         names = _tool_names()
-        assert len(names) >= 40, len(names)
+        assert len(names) >= 25, len(names)     # 30 after P.4
         for anchor in ("get_running_config", "read_golden_config", "detect_config_drift",
                        "request_approval", "execute_command", "nsot_get_device_context"):
             assert anchor in names, anchor
@@ -55,7 +71,7 @@ class TestTheToolList:
         dispatched = {c.comparators[0].value for c in ast.walk(fn)
                       if isinstance(c, ast.Compare) and isinstance(c.left, ast.Name)
                       and c.left.id == "name" and isinstance(c.comparators[0], ast.Constant)}
-        assert len(dispatched) >= 40, len(dispatched)
+        assert len(dispatched) >= 25, len(dispatched)
         assert set(REMOVED) & dispatched == set(), set(REMOVED) & dispatched
 
     def test_no_execute_tool_offers_a_mode(self):

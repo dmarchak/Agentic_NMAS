@@ -752,8 +752,7 @@ def _cap(text: str, max_chars: int, label: str = "") -> str:
 
 # ---- Stable-context summary builders ---------------------------------------
 # These are injected as a cached system block so the AI doesn't call
-# discovery tools (list_ansible_playbooks, jenkins_get_current_pipelines,
-# read_compliance_policy) on every task.
+# discovery tools (list_ansible_playbooks, read_compliance_policy) on every task.
 
 def _get_playbooks_summary() -> str:
     index = _load_playbook_index()
@@ -771,35 +770,6 @@ def _get_playbooks_summary() -> str:
         "Do NOT call list_ansible_playbooks — this list is already here."
     )
     return "\n".join(lines)
-
-
-def _get_pipelines_summary() -> str:
-    try:
-        from modules.jenkins_runner import (
-            load_config as _jlc, get_current_list_pipeline_status as _jps,
-        )
-        cfg  = _jlc()
-        info = _jps(cfg)
-        rows = info.get("registered", [])
-        if not rows:
-            return ""
-        list_name = info.get("list_name", "?")
-        lines = [
-            f"[JENKINS PIPELINES for '{list_name}' — pre-loaded; "
-            "do NOT call jenkins_get_current_pipelines to discover these]"
-        ]
-        for r in rows:
-            result = r.get("last_result") or "no builds"
-            build  = f" #{r['last_build']}" if r.get("last_build") else ""
-            warn   = "  ⚠ NOT FOUND ON SERVER" if not r.get("exists_on_server") else ""
-            lines.append(f"  {r['job_name']}{warn}  last={result}{build}")
-        lines.append(
-            "RULE: use these job names directly in run_jenkins_job / run_jenkins_checks. "
-            "No discovery call needed."
-        )
-        return "\n".join(lines)
-    except Exception:
-        return ""
 
 
 def _get_compliance_summary() -> str:
@@ -1189,21 +1159,6 @@ _TOOL_TTL: dict = {
     "save_ansible_playbook":             None,
     "list_ansible_playbooks":             30,
     "run_ansible_playbook":              None,
-    "run_jenkins_checks":                None,
-    "jenkins_wait_for_result":           None,
-    "jenkins_get_current_pipelines":      30,
-    "jenkins_list_jobs":                  30,
-    "jenkins_get_pipeline_script":        60,
-    "jenkins_get_config":                 60,
-    "jenkins_create_job":                None,
-    "jenkins_update_job":                None,
-    "jenkins_delete_job":                None,
-    "jenkins_get_builds":                 60,
-    "jenkins_get_console":                30,
-    "jenkins_enable_job":                None,
-    "jenkins_disable_job":               None,
-    "jenkins_link_pipeline":             None,
-    "jenkins_unlink_pipeline":           None,
     # Monitoring
     "get_collector_ip":                  60,
     "set_collector_ip":                  None,
@@ -1889,175 +1844,6 @@ Resuming interrupted tasks
   specific interrupted tool calls — do not re-gather information that succeeded.
 - The [Topology] block in this message is always current — do not re-discover it.
 
-Jenkins CI — full pipeline control with per-list isolation
-Each device list has its OWN set of Jenkins pipelines. Pipelines are scoped to the
-currently active list — switching lists changes which pipelines are triggered.
-
-Server connection is stored in data/jenkins_checks.json (URL, user, api_key, token).
-Per-list pipeline registries live in data/lists/{slug}/jenkins_pipelines.json.
-Per-list build results live in data/lists/{slug}/jenkins_results.json.
-The repo contains a Jenkinsfile at the project root used by the default pipeline.
-
-Tool reference:
-  jenkins_get_current_pipelines — show pipelines registered to THIS list with latest results [START HERE]
-  jenkins_list_jobs             — list ALL jobs on the server (to discover what exists before creating)
-  jenkins_get_pipeline_script   — read the Groovy pipeline stages (local cache or fetched from server)
-  jenkins_get_config            — read a job's full XML config.xml (use when you need raw XML)
-  jenkins_create_job            — create new pipeline on Jenkins AND register it to the current list
-  jenkins_update_job            — replace a job's XML config (change stages, Groovy script, etc.)
-  jenkins_delete_job            — permanently delete from server AND unlink from this list
-  jenkins_get_builds            — view recent build history with results and durations
-  jenkins_enable_job / jenkins_disable_job — enable or disable a job on the server
-  jenkins_link_pipeline         — associate an EXISTING server job to this list (no server changes)
-  jenkins_unlink_pipeline       — remove a job from this list's set (job stays on server)
-  run_jenkins_checks            — trigger ALL pipelines registered to the current list
-  run_jenkins_job               — trigger ONE specific pipeline by name (use this when re-running after a single failure)
-
-Per-list rules (critical):
-- [JENKINS PIPELINES] is pre-loaded — do NOT call jenkins_get_current_pipelines to discover
-  what pipelines exist. Use the names already in that block for run_jenkins_job / run_jenkins_checks.
-- jenkins_create_job auto-registers the new job to the current list.
-- jenkins_delete_job removes from server AND from this list's registry.
-- run_jenkins_checks triggers ONLY the pipelines registered to the current list.
-- run_jenkins_job triggers a single named pipeline — use this instead of run_jenkins_checks when only one job needs re-running.
-- Results in the Jenkins tab are specific to the current list.
-
-Workflow — setting up CI for a list:
-1. jenkins_get_current_pipelines  → see what's already registered
-2. If none: jenkins_list_jobs     → see what jobs exist on the server
-3a. If a suitable job exists:     jenkins_link_pipeline to associate it
-3b. If no suitable job:           jenkins_create_job with XML below
-4. run_jenkins_checks             → trigger and verify
-
-Jenkins Pipeline XML format (use this exact structure for jenkins_create_job/jenkins_update_job):
-The xml_config argument must be valid Jenkins config.xml. For a Pipeline job:
-
-<?xml version='1.1' encoding='UTF-8'?>
-<flow-definition plugin="workflow-job">
-  <description>DESCRIPTION HERE</description>
-  <keepDependencies>false</keepDependencies>
-  <properties/>
-  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps">
-    <script>
-pipeline {
-    agent any
-
-    options {
-        timeout(time: 10, unit: 'MINUTES')
-        timestamps()
-    }
-
-    stages {
-        stage('Syntax: app.py') {
-            steps {
-                bat "python -m py_compile app.py"
-            }
-        }
-        stage('Syntax: modules/*.py') {
-            steps {
-                bat "FOR %%f IN (modules\\*.py) DO python -m py_compile \"%%f\""
-            }
-        }
-        stage('HTTP: / returns 200') {
-            steps {
-                bat "curl -sf --max-time 10 http://localhost:5000/ > NUL"
-            }
-        }
-    }
-
-    post {
-        always { echo "Pipeline finished: ${currentBuild.currentResult}" }
-        success { echo 'All checks passed.' }
-        failure { echo 'One or more checks FAILED.' }
-    }
-}
-    </script>
-    <sandbox>true</sandbox>
-  </definition>
-  <triggers/>
-  <disabled>false</disabled>
-</flow-definition>
-
-Key XML rules:
-- Root element is <flow-definition>, NOT <project> or <maven2-modularset>.
-- The definition class must be exactly: org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
-- <sandbox>true</sandbox> is required to avoid script approval prompts.
-- On Windows Jenkins agents, use bat steps (not sh). Use %%f (not %f) in FOR loops inside bat.
-- Escape special chars in XML: & → &amp;  < → &lt;  > → &gt;  " → &quot;
-- To read the Jenkinsfile from the repo instead of inline: use CpsScmFlowDefinition.
-  For inline Groovy (most common), use CpsFlowDefinition with <script> as shown above.
-
-Pipeline efficiency — IMPORTANT:
-Run independent checks in parallel using Groovy's parallel{} block. This dramatically
-reduces build time (e.g. 8 sequential 60s checks → ~60s total instead of 8 minutes).
-
-Pattern — wrap independent stages in a parallel stage:
-    stage('Network Checks') {
-        parallel {
-            stage('OSPF') {
-                steps {
-                    script {
-                        // OSPF check logic here
-                    }
-                }
-            }
-            stage('MPLS LFIB') {
-                steps {
-                    script {
-                        // MPLS check logic here
-                    }
-                }
-            }
-            stage('GRE Tunnels') {
-                steps {
-                    script {
-                        // GRE check logic here
-                    }
-                }
-            }
-        }
-    }
-
-Rules for parallel stages:
-- Group INDEPENDENT checks in parallel{} — checks that do NOT depend on each other's results.
-- Keep checks that MUST run in sequence (e.g. device reachability before OSPF) in separate
-  sequential stages BEFORE the parallel block.
-- Each parallel branch should error() on failure — Jenkins collects all failures, not just the first.
-- File collisions: parallel branches MUST use unique temp file names per branch
-  (e.g. _ospf_q.json, _mpls_q.json) — shared names will corrupt each other's data.
-- Always group by logical dependency, not by device. Checking all protocols on all devices
-  in one parallel block is fine as long as temp files are uniquely named.
-
-Modifying an existing pipeline:
-1. jenkins_get_pipeline_script to read the current Groovy stages (easier than parsing XML)
-2. Edit the Groovy script as needed
-3. Embed the updated script into the full XML template and call jenkins_update_job
-4. run_jenkins_checks to verify
-
-Pipeline definition locations:
-- Inline jobs created via jenkins_create_job: Groovy is cached locally at
-  data/lists/{slug}/{job-name}.groovy — updated automatically on every create/update.
-- SCM-based jobs (like the default network-device-manager): reads the Jenkinsfile
-  from the git repo root on each build. Edit the Jenkinsfile directly to change stages.
-
-Automated CI after code changes — MANDATORY two-step pattern:
-Step 1: run_jenkins_checks (startup_delay=8 after restart_server) — triggers the build.
-Step 2: jenkins_wait_for_result — blocks until done, returns result + console for any failure.
-NEVER skip step 2. The build result is unknown until jenkins_wait_for_result completes.
-
-If jenkins_wait_for_result shows a failure (console is included automatically):
-1. Read the console to identify the failing stage and exact error.
-2. Fix the root cause:
-   - Application bug  → patch_app_file + restart_server
-   - Pipeline/XML bug → jenkins_update_job with corrected Groovy
-3. Re-run: if only ONE pipeline failed → use run_jenkins_job (NOT run_jenkins_checks).
-   If multiple pipelines failed → use run_jenkins_checks.
-   Then call jenkins_wait_for_result again.
-4. update_network_kb — record what failed and what fixed it:
-   category="jenkins", key="<job>_last_fix",
-   value="<stage that failed> — <root cause> — fixed by <what you changed>"
-   Also record any reusable lesson (CSRF headers, XML format quirks, bat syntax, etc.).
-
 Git commits — recording successful fixes
 After a patch → restart → Jenkins cycle completes successfully (build passes),
 call git_commit with a concise present-tense message describing what was fixed.
@@ -2536,33 +2322,6 @@ TOOLS = [
     },
     # ---- Jenkins schedule ---------------------------------------------------
     {
-        "name": "jenkins_set_schedule",
-        "description": (
-            "Add or remove a cron-based schedule trigger on a Jenkins pipeline. "
-            "Use this to make compliance checks, drift detection, or health checks run automatically.\n\n"
-            "cron_expression uses Jenkins cron syntax:\n"
-            "  'H 6 * * *'   — once daily at ~6am\n"
-            "  'H/30 * * * *' — every 30 minutes\n"
-            "  'H 0 * * 1'  — weekly on Monday at midnight\n"
-            "  ''            — remove all schedules (empty string disables)\n\n"
-            "The 'H' symbol randomises the exact minute to avoid thundering herd."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {
-                    "type": "string",
-                    "description": "Jenkins job name to schedule.",
-                },
-                "cron_expression": {
-                    "type": "string",
-                    "description": "Jenkins cron expression, or empty string to remove schedule.",
-                },
-            },
-            "required": ["job_name", "cron_expression"],
-        },
-    },
-    {
         "name": "request_approval",
         "description": (
             "Queue an action for human approval instead of executing it immediately. "
@@ -2605,291 +2364,6 @@ TOOLS = [
                 },
             },
             "required": ["action_type", "device_ip", "description"],
-        },
-    },
-    {
-        "name": "jenkins_get_current_pipelines",
-        "description": (
-            "Show which Jenkins pipelines are registered to the CURRENT device list, "
-            "along with their latest build result from the server. "
-            "Call this first whenever the user asks about CI for this list, "
-            "or before creating/linking a pipeline, to avoid duplicates."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "jenkins_list_jobs",
-        "description": (
-            "List ALL Jenkins pipeline jobs on the configured server (not filtered by list). "
-            "Returns each job's name, URL, and whether it is currently buildable. "
-            "Use this to discover what pipelines exist on the server before creating or linking one."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "jenkins_get_pipeline_script",
-        "description": (
-            "Get the Groovy pipeline script for a job — the human-readable stage definitions. "
-            "Returns the locally cached .groovy file if available (created when the job was "
-            "last created/updated via this tool). Falls back to fetching from the Jenkins server "
-            "and caching it. Use this to read and understand a pipeline before modifying it, "
-            "instead of parsing raw XML from jenkins_get_config."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_get_config",
-        "description": (
-            "Retrieve the raw XML configuration of a Jenkins job/pipeline. "
-            "Read this before modifying a pipeline so you know the current Groovy/XML content."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_create_job",
-        "description": (
-            "Create a new Jenkins pipeline job from an XML config string. "
-            "The xml_config must be a valid Jenkins job XML (config.xml format). "
-            "For a Pipeline job, use a <flow-definition> root element containing a <definition> "
-            "with class='org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition' and a <script> "
-            "element holding the Groovy pipeline script."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name":   {"type": "string", "description": "Name for the new Jenkins job"},
-                "xml_config": {"type": "string", "description": "Full Jenkins config.xml content"},
-            },
-            "required": ["job_name", "xml_config"],
-        },
-    },
-    {
-        "name": "jenkins_update_job",
-        "description": (
-            "Replace the XML configuration of an existing Jenkins job. "
-            "Call jenkins_get_config first to get the current XML, modify it, then call this. "
-            "Use this to change pipeline stages, add parameters, update the Groovy script, etc."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name":   {"type": "string", "description": "Exact Jenkins job name to update"},
-                "xml_config": {"type": "string", "description": "New full Jenkins config.xml content"},
-            },
-            "required": ["job_name", "xml_config"],
-        },
-    },
-    {
-        "name": "jenkins_delete_job",
-        "description": (
-            "Permanently delete a Jenkins job and all its build history. "
-            "This is irreversible — confirm the job name with jenkins_list_jobs first."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name to delete"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_get_builds",
-        "description": (
-            "Get recent build history for a Jenkins job — build numbers, results (SUCCESS/FAILURE/ABORTED), "
-            "timestamps, and durations. Useful for diagnosing repeated failures or verifying a fix."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name"},
-                "limit":    {"type": "integer", "description": "Max builds to return (default 10)"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_delete_failed_builds",
-        "description": (
-            "Delete one or more specific builds from a Jenkins job by build number. "
-            "Use this to clean up a job's build history — e.g. remove old FAILURE or ABORTED "
-            "builds so only the current passing builds are visible. "
-            "Call jenkins_get_builds first to get the build numbers to delete."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {
-                    "type": "string",
-                    "description": "Exact Jenkins job name",
-                },
-                "build_numbers": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "List of build numbers to delete (e.g. [1, 2, 3])",
-                },
-            },
-            "required": ["job_name", "build_numbers"],
-        },
-    },
-    {
-        "name": "jenkins_get_console",
-        "description": (
-            "Fetch the full console log for a Jenkins build. "
-            "Call this AUTOMATICALLY whenever a build result is FAILURE or ABORTED — "
-            "do not ask the user to copy-paste it. "
-            "Use build_number='lastFailed' to get the most recent failure without knowing the number. "
-            "The log shows exactly which stage failed and why."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {
-                    "type": "string",
-                    "description": "Exact Jenkins job name",
-                },
-                "build_number": {
-                    "type": "string",
-                    "description": (
-                        "Build number (e.g. '42'), or 'last' for the most recent build, "
-                        "or 'lastFailed' for the most recent failed build (default)."
-                    ),
-                },
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_enable_job",
-        "description": "Enable a disabled Jenkins job so it can be triggered again.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name to enable"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_disable_job",
-        "description": "Disable a Jenkins job so it cannot be triggered (builds are blocked).",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name to disable"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_link_pipeline",
-        "description": (
-            "Associate an existing Jenkins server job with the current device list "
-            "without creating or modifying the job on the server. "
-            "Use this when a job already exists on Jenkins and you want it to run when "
-            "this list's 'Run Checks' is triggered. "
-            "After linking, run_jenkins_checks will include this job."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name to link to this list"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_unlink_pipeline",
-        "description": (
-            "Remove the association between a Jenkins job and the current device list. "
-            "The job remains on the Jenkins server and is NOT deleted — it just won't be "
-            "triggered by this list's run_jenkins_checks any more. "
-            "Use jenkins_delete_job if you want to remove the job from the server too."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {"type": "string", "description": "Exact Jenkins job name to unlink from this list"},
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "run_jenkins_checks",
-        "description": (
-            "Trigger the Jenkins CI pipelines for the current list and return immediately. "
-            "ALWAYS follow this with jenkins_wait_for_result to get the build outcome. "
-            "Use startup_delay=8 after restart_server so the server is up before Jenkins hits HTTP endpoints."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "startup_delay": {
-                    "type": "number",
-                    "description": (
-                        "Seconds to wait before triggering — use 8 after restart_server "
-                        "so the server has time to come back up before Jenkins runs HTTP checks."
-                    ),
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "run_jenkins_job",
-        "description": (
-            "Trigger exactly ONE named Jenkins pipeline and return immediately. "
-            "Use this instead of run_jenkins_checks when you only want to re-run a single "
-            "specific pipeline (e.g. after fixing only one job's failure). "
-            "ALWAYS follow with jenkins_wait_for_result. "
-            "The job must already be registered to the current device list."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_name": {
-                    "type": "string",
-                    "description": "The exact Jenkins job name to trigger (case-sensitive).",
-                },
-                "startup_delay": {
-                    "type": "number",
-                    "description": "Seconds to wait before triggering (use 8 after restart_server).",
-                },
-            },
-            "required": ["job_name"],
-        },
-    },
-    {
-        "name": "jenkins_wait_for_result",
-        "description": (
-            "Wait for all running Jenkins pipelines for this list to finish, "
-            "then return the result of each job. "
-            "ALWAYS call this after run_jenkins_checks or run_jenkins_job — never leave a build unobserved. "
-            "If any pipeline failed, the console log is fetched and included automatically "
-            "so you can diagnose and fix the issue immediately without a separate tool call. "
-            "Blocks until all builds complete or timeout is reached."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "timeout": {
-                    "type": "integer",
-                    "description": "Maximum seconds to wait (default 600 = 10 minutes).",
-                },
-            },
-            "required": [],
         },
     },
     # ── Monitoring: Collector IP ──────────────────────────────────────────
@@ -3112,30 +2586,6 @@ TOOLS = [
             "required": [],
         },
     },
-    {
-        "name": "build_network_pipelines",
-        "description": (
-            "Scan golden configs to detect every active network function "
-            "(OSPF, BGP, MPLS, tunnels, NAT, SNMP, static routes, interfaces, …) "
-            "and create or update a persistent Jenkins verification pipeline for each one. "
-            "Each pipeline has a stable name (nmas-{list}-{function}), runs on a cron "
-            "schedule, and tests ALL devices that have that function configured. "
-            "Use this: (1) when no pipelines exist yet, (2) after bootstrapping a new "
-            "network, or (3) when asked to 'set up CI' or 'create verification pipelines'. "
-            "After every configure_apply success the relevant pipeline is updated "
-            "automatically — this tool is for initial setup and full rebuilds only."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "trigger_runs": {
-                    "type":        "boolean",
-                    "description": "Trigger each newly-created pipeline immediately (default true).",
-                },
-            },
-            "required": [],
-        },
-    },
 ]
 
 
@@ -3208,38 +2658,6 @@ def _tool_label(name: str, args: dict) -> str:
         return "Restarting server to apply code changes..."
     if name == "git_commit":
         return f"Committing: {args.get('message', '')}..."
-    if name == "jenkins_get_current_pipelines":
-        return "Checking pipelines for current list..."
-    if name == "jenkins_list_jobs":
-        return "Listing Jenkins jobs..."
-    if name == "jenkins_get_pipeline_script":
-        return f"Reading pipeline script for '{args.get('job_name', '')}'..."
-    if name == "jenkins_get_config":
-        return f"Getting config for Jenkins job '{args.get('job_name', '')}'..."
-    if name == "jenkins_create_job":
-        return f"Creating Jenkins job '{args.get('job_name', '')}'..."
-    if name == "jenkins_update_job":
-        return f"Updating Jenkins job '{args.get('job_name', '')}'..."
-    if name == "jenkins_delete_job":
-        return f"Deleting Jenkins job '{args.get('job_name', '')}'..."
-    if name == "jenkins_get_builds":
-        return f"Getting build history for '{args.get('job_name', '')}'..."
-    if name == "jenkins_get_console":
-        build = args.get('build_number', 'lastFailed')
-        return f"Fetching console log for '{args.get('job_name', '')}' (build={build})..."
-    if name == "jenkins_enable_job":
-        return f"Enabling Jenkins job '{args.get('job_name', '')}'..."
-    if name == "jenkins_disable_job":
-        return f"Disabling Jenkins job '{args.get('job_name', '')}'..."
-    if name == "jenkins_link_pipeline":
-        return f"Linking pipeline '{args.get('job_name', '')}' to current list..."
-    if name == "jenkins_unlink_pipeline":
-        return f"Unlinking pipeline '{args.get('job_name', '')}' from current list..."
-    if name == "run_jenkins_checks":
-        delay = args.get("startup_delay", 0)
-        return f"Running CI checks{f' (waiting {delay}s for server)' if delay else ''}..."
-    if name == "jenkins_wait_for_result":
-        return "Waiting for Jenkins build to complete..."
     if name == "save_ansible_playbook":
         return f"Saving playbook: {args.get('name', '')}..."
     if name == "list_ansible_playbooks":
@@ -3274,8 +2692,6 @@ def _tool_label(name: str, args: dict) -> str:
     if name == "netbox_get_vpn_tunnels":
         dev = args.get("device", "")
         return f"NetBox: fetching VPN tunnels{' for ' + dev if dev else ''}..."
-    if name == "build_network_pipelines":
-        return "Scanning network functions and building verification pipelines..."
     if name == "query_ccie_kb":
         t = args.get("topic", "")
         s = args.get("subtopic", "")
@@ -3292,7 +2708,6 @@ def _try_local_answer(
     status_cache: dict,
     variables: dict,
     playbook_index: list,
-    pipeline_summary: str,
 ) -> Optional[str]:
     """
     Try to answer a message entirely from cached context without any LLM call.
@@ -3346,13 +2761,6 @@ def _try_local_answer(
                 kw = ", ".join((pb.get("keywords") or [])[:5])
                 lines.append(f"- `{pb['id']}` — **{pb['name']}**" + (f" [{kw}]" if kw else ""))
             return "\n".join(lines)
-
-    # ── Pipeline listing ──────────────────────────────────────────────────
-    if re.search(r'\b(list|show|what|which)\b.*(pipeline|jenkins|ci)', m):
-        if not any(kw in m for kw in ("run", "trigger", "create", "add", "delete", "fail")):
-            if pipeline_summary:
-                return pipeline_summary.replace("[JENKINS PIPELINES", "**Jenkins pipelines")
-            return "No Jenkins pipelines registered for this list yet."
 
     return None  # LLM needed
 
@@ -3481,10 +2889,9 @@ def run_chat(
             _local_devices  = devices_loader()
             _local_vars     = _load_variables()
             _local_pbs      = _load_playbook_index()
-            _local_pipes    = _get_pipelines_summary()
             _local_ans = _try_local_answer(
                 user_message, _local_devices, status_cache,
-                _local_vars, _local_pbs, _local_pipes,
+                _local_vars, _local_pbs,
             )
             if _local_ans is not None:
                 _save_history_to_disk(session_id, _chat_histories.get(session_id, []) + [
@@ -3606,14 +3013,6 @@ def run_chat(
     except Exception:
         pass
 
-    # Jenkins pipeline list — pre-injected so the AI never needs jenkins_get_current_pipelines
-    try:
-        _pipe_summary = _get_pipelines_summary()
-        if _pipe_summary:
-            stable_parts.append(_pipe_summary)
-    except Exception:
-        pass
-
     # Compliance policy — pre-injected so the AI never needs read_compliance_policy
     try:
         _comp_summary = _get_compliance_summary()
@@ -3656,25 +3055,6 @@ def run_chat(
     # Proactive context: surface pending issues
     _proactive_items: list[str] = []
 
-    # Jenkins-configured status — computed once, used below and by the
-    # [CI STATUS] block so the model knows up front whether CI-gated
-    # verification is even available this session, instead of finding out
-    # by having run_jenkins_checks fail mid-task.
-    try:
-        from modules.jenkins_runner import load_config as _ljc
-        _has_jenkins = bool(_ljc().get("jenkins_url", "").strip())
-    except Exception:
-        _has_jenkins = False
-    dynamic_parts.append(
-        "[CI STATUS]\n"
-        + ("Jenkins is configured — use the CI-gated push workflow (run_jenkins_checks → "
-           "jenkins_wait_for_result) as the verification step after a config push.\n"
-           if _has_jenkins else
-           "Jenkins is NOT configured — do not call run_jenkins_checks or jenkins_wait_for_result, "
-           "they will fail. This is expected, not an error to report or a blocker: use direct "
-           "show-command verification instead (see CONFIG PUSH triggers) and proceed normally.\n")
-    )
-
     try:
         _all_devices = devices_loader()
         _golden_ips  = {e["device_ip"] for e in _list_golden_configs()}
@@ -3686,42 +3066,6 @@ def run_chat(
                 + "\nACTION: these have no baseline yet — call save_golden_config for them directly, "
                   "right now. This is a first-time baseline capture, not a change validation, so it "
                   "needs no CI run and no approval (see GOLDEN CONFIG triggers)."
-            )
-    except Exception:
-        pass
-
-    # Surface missing function pipelines so the AI bootstraps CI automatically.
-    try:
-        from modules.jenkins_runner import load_list_pipelines as _llp
-        _existing_pipes = set(_llp())
-        _has_golden = bool(_list_golden_configs())
-        # Only surface if Jenkins is configured, golden configs exist, but no
-        # function pipelines have been created yet for this list.
-        _has_func_pipes = any(p.startswith("nmas-") for p in _existing_pipes)
-        if _has_jenkins and _has_golden and not _has_func_pipes:
-            _proactive_items.append(
-                "NO VERIFICATION PIPELINES:\n"
-                "  This list has golden configs but no persistent function pipelines.\n"
-                "ACTION: call build_network_pipelines() now to scan active functions and "
-                "create a verification pipeline for each one (OSPF, BGP, MPLS, interfaces, …)."
-            )
-    except Exception:
-        pass
-
-    try:
-        from modules.jenkins_runner import _results_file as _jr_results_file
-        with open(_jr_results_file(), encoding="utf-8") as _fh:
-            _jresults = json.load(_fh)
-        _failed_jobs = [
-            f"  - {job}: build #{info.get('build_number','?')} FAILED "
-            f"(triggered {info.get('timestamp','?')})"
-            for job, info in _jresults.items()
-            if isinstance(info, dict) and info.get("result") == "FAILURE"
-        ]
-        if _failed_jobs:
-            _proactive_items.append(
-                "JENKINS FAILURES:\n" + "\n".join(_failed_jobs)
-                + "\nACTION: diagnose and fix without waiting to be asked."
             )
     except Exception:
         pass
@@ -4388,48 +3732,6 @@ def run_chat(
                         lines.append(f"  {k} = {v}")
                 return "\n".join(lines)
 
-            elif name == "jenkins_set_schedule":
-                from modules.jenkins_runner import (
-                    load_config as _jlcfg, get_job_config as _jgcfg,
-                    update_jenkins_job as _jujob, save_pipeline_schedule as _jsched,
-                )
-                job_name = args.get("job_name","").strip()
-                cron_expr = args.get("cron_expression","").strip()
-                if not job_name:
-                    return "Error: job_name is required"
-                try:
-                    cfg_j   = _jlcfg()
-                    xml_str = _jgcfg(cfg_j, job_name)
-                except Exception as exc:
-                    return f"Error fetching job config: {exc}"
-                import re as _re
-                # Build the new triggers block
-                if cron_expr:
-                    new_triggers = (
-                        "<triggers>\n"
-                        "  <hudson.triggers.TimerTrigger>\n"
-                        f"    <spec>{cron_expr}</spec>\n"
-                        "  </hudson.triggers.TimerTrigger>\n"
-                        "</triggers>"
-                    )
-                    verb = f"set to '{cron_expr}'"
-                else:
-                    new_triggers = "<triggers/>"
-                    verb = "removed"
-                # Replace existing triggers block (handles both <triggers/> and <triggers>...</triggers>)
-                xml_updated = _re.sub(
-                    r"<triggers\s*/>|<triggers>.*?</triggers>",
-                    new_triggers, xml_str, flags=_re.DOTALL,
-                )
-                if xml_updated == xml_str:
-                    # No triggers element found — insert before </flow-definition>
-                    xml_updated = xml_str.replace("</flow-definition>", new_triggers + "\n</flow-definition>")
-                try:
-                    _jujob(cfg_j, job_name, xml_updated)
-                    _jsched(job_name, cron_expr)   # persist locally for UI display
-                    return f"Schedule {verb} for '{job_name}'."
-                except Exception as exc:
-                    return f"Error updating job schedule: {exc}"
 
             elif name == "request_approval":
                 from modules.approval_queue import add_approval as _add_appr
@@ -4456,308 +3758,22 @@ def run_chat(
                     f"Do NOT proceed with the action until it is approved."
                 )
 
-            elif name == "jenkins_get_current_pipelines":
-                from modules.jenkins_runner import (
-                    load_config as _jload, get_current_list_pipeline_status,
-                )
-                try:
-                    cfg  = _jload()
-                    info = get_current_list_pipeline_status(cfg)
-                    rows = info.get("registered", [])
-                    list_name = info.get("list_name", "?")
-                    if not rows:
-                        return (
-                            f"No pipelines registered to list '{list_name}'. "
-                            "Use jenkins_create_job to create one, or jenkins_link_pipeline "
-                            "to associate an existing server job."
-                        )
-                    lines = [f"Pipelines for list '{list_name}':"]
-                    for r in rows:
-                        result = r.get("last_result") or "no builds yet"
-                        build  = f" (#{r['last_build']})" if r.get("last_build") else ""
-                        server = "" if r["exists_on_server"] else "  ⚠ NOT FOUND ON SERVER"
-                        lines.append(
-                            f"  • {r['job_name']}{server}  last={result}{build}"
-                        )
-                    return "\n".join(lines)
-                except Exception as exc:
-                    return f"Error: {exc}"
 
-            elif name == "jenkins_list_jobs":
-                from modules.jenkins_runner import (
-                    load_config as _jload, list_jenkins_jobs, load_list_pipelines,
-                )
-                try:
-                    cfg         = _jload()
-                    all_jobs    = list_jenkins_jobs(cfg)
-                    list_pipes  = set(load_list_pipelines())
-                    if not all_jobs:
-                        return "No Jenkins jobs found on server."
-                    lines = [
-                        f"Jenkins jobs on server ({len(all_jobs)} total). "
-                        f"Current list has: {sorted(list_pipes) or 'none'}",
-                        "",
-                    ]
-                    for j in all_jobs:
-                        marker = " [THIS LIST]" if j["name"] in list_pipes else ""
-                        status = "enabled" if j.get("buildable") else "disabled"
-                        color  = j.get("color", "")
-                        state  = color.replace("_anime", " (running)") if color else ""
-                        lines.append(f"  • {j['name']}  [{status}]{marker}  {state}".rstrip())
-                    return "\n".join(lines)
-                except Exception as exc:
-                    return f"Error listing jobs: {exc}"
 
-            elif name == "jenkins_get_pipeline_script":
-                from modules.jenkins_runner import (
-                    load_config as _jload, load_pipeline_script,
-                    save_pipeline_script, get_job_config, _extract_groovy_from_xml,
-                )
-                job = args.get("job_name", "").strip()
-                if not job:
-                    return "Error: job_name is required"
-                # Try local cache first
-                script = load_pipeline_script(job)
-                if script:
-                    return f"Pipeline script for '{job}' (local cache):\n\n{script}"
-                # Not cached — fetch from server and cache it
-                try:
-                    cfg = _jload()
-                    xml = get_job_config(cfg, job)
-                    script = _extract_groovy_from_xml(xml)
-                    if script:
-                        save_pipeline_script(job, script)
-                        return f"Pipeline script for '{job}' (fetched from server):\n\n{script}"
-                    return (
-                        f"No inline Groovy script found in '{job}' config. "
-                        "This job may use an SCM-based Jenkinsfile (read from the git repo). "
-                        "Use jenkins_get_config to see the full XML."
-                    )
-                except Exception as exc:
-                    return f"Error fetching pipeline script for '{job}': {exc}"
 
-            elif name == "jenkins_get_config":
-                from modules.jenkins_runner import load_config as _jload, get_job_config
-                job = args.get("job_name", "").strip()
-                if not job:
-                    return "Error: job_name is required"
-                try:
-                    cfg = _jload()
-                    return get_job_config(cfg, job)
-                except Exception as exc:
-                    return f"Error getting config for '{job}': {exc}"
 
-            elif name == "jenkins_create_job":
-                from modules.jenkins_runner import (
-                    load_config as _jload, create_jenkins_job, register_pipeline,
-                )
-                job = args.get("job_name", "").strip()
-                xml = args.get("xml_config", "").strip()
-                if not job or not xml:
-                    return "Error: job_name and xml_config are required"
-                try:
-                    cfg = _jload()
-                    create_jenkins_job(cfg, job, xml)
-                    register_pipeline(job)
-                    return (
-                        f"Jenkins job '{job}' created and registered to the current device list. "
-                        f"Call run_jenkins_checks to trigger it."
-                    )
-                except Exception as exc:
-                    return f"Error creating job '{job}': {exc}"
 
-            elif name == "jenkins_update_job":
-                from modules.jenkins_runner import load_config as _jload, update_jenkins_job
-                job = args.get("job_name", "").strip()
-                xml = args.get("xml_config", "").strip()
-                if not job or not xml:
-                    return "Error: job_name and xml_config are required"
-                try:
-                    cfg = _jload()
-                    update_jenkins_job(cfg, job, xml)
-                    return f"Jenkins job '{job}' updated successfully."
-                except Exception as exc:
-                    return f"Error updating job '{job}': {exc}"
 
-            elif name == "jenkins_delete_job":
-                from modules.jenkins_runner import (
-                    load_config as _jload, delete_jenkins_job, unregister_pipeline,
-                )
-                job = args.get("job_name", "").strip()
-                if not job:
-                    return "Error: job_name is required"
-                try:
-                    cfg = _jload()
-                    delete_jenkins_job(cfg, job)
-                    unregister_pipeline(job)
-                    return f"Jenkins job '{job}' deleted from server and unregistered from the current list."
-                except Exception as exc:
-                    return f"Error deleting job '{job}': {exc}"
 
-            elif name == "jenkins_link_pipeline":
-                from modules.jenkins_runner import register_pipeline, load_list_pipelines
-                job = args.get("job_name", "").strip()
-                if not job:
-                    return "Error: job_name is required"
-                register_pipeline(job)
-                pipes = load_list_pipelines()
-                return f"Pipeline '{job}' linked to the current list. Current list pipelines: {pipes}"
 
-            elif name == "jenkins_unlink_pipeline":
-                from modules.jenkins_runner import unregister_pipeline, load_list_pipelines
-                job = args.get("job_name", "").strip()
-                if not job:
-                    return "Error: job_name is required"
-                unregister_pipeline(job)
-                pipes = load_list_pipelines()
-                return (
-                    f"Pipeline '{job}' unlinked from the current list "
-                    f"(job still exists on Jenkins server). Remaining: {pipes}"
-                )
 
-            elif name == "jenkins_get_builds":
-                from modules.jenkins_runner import load_config as _jload, get_job_builds
-                job   = args.get("job_name", "").strip()
-                limit = int(args.get("limit", 10))
-                if not job:
-                    return "Error: job_name is required"
-                try:
-                    cfg    = _jload()
-                    builds = get_job_builds(cfg, job, limit=limit)
-                    if not builds:
-                        return f"No builds found for '{job}'."
-                    lines = [f"Recent builds for '{job}':"]
-                    for b in builds:
-                        ts  = b.get("timestamp", 0) // 1000
-                        dt  = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts else "?"
-                        dur = f"{b.get('duration', 0) // 1000}s"
-                        res = b.get("result") or "IN_PROGRESS"
-                        lines.append(f"  #{b.get('number')}  {res:<12}  {dt}  ({dur})")
-                    return "\n".join(lines)
-                except Exception as exc:
-                    return f"Error getting builds for '{job}': {exc}"
 
-            elif name == "jenkins_delete_failed_builds":
-                from modules.jenkins_runner import load_config as _jlcfg, delete_build as _del_build_fn, get_job_builds as _gjb_fail
-                _dfb_job = args.get("job_name", "").strip()
-                _dfb_nums = args.get("build_numbers", [])
-                if not _dfb_job:
-                    return "Error: job_name is required"
-                if not _dfb_nums:
-                    return "Error: build_numbers list is required"
-                _dfb_cfg = _jlcfg()
-                _dfb_ok, _dfb_err = [], []
-                for _dfb_n in _dfb_nums:
-                    try:
-                        _del_build_fn(_dfb_cfg, _dfb_job, int(_dfb_n))
-                        _dfb_ok.append(int(_dfb_n))
-                    except Exception as _dfb_e:
-                        _dfb_err.append(f"#{_dfb_n}: {_dfb_e}")
-                _dfb_out = [f"Deleted {len(_dfb_ok)} failed build(s) from '{_dfb_job}':"]
-                _dfb_out += [f"  OK  #{n}" for n in sorted(_dfb_ok)]
-                if _dfb_err:
-                    _dfb_out.append(f"  Errors ({len(_dfb_err)}):")
-                    _dfb_out += [f"    {f}" for f in _dfb_err]
-                return "\n".join(_dfb_out)
 
-            elif name == "jenkins_get_console":
-                from modules.jenkins_runner import load_config as _jload, get_build_console
-                job   = args.get("job_name", "").strip()
-                build = args.get("build_number", "lastFailed")
-                if not job:
-                    return "Error: job_name is required"
-                try:
-                    cfg = _jload()
-                    log = get_build_console(cfg, job, build_number=build)
-                    # Trim very long logs — keep the tail where failures appear
-                    if len(log) > 15000:
-                        log = "… (log truncated — showing last 15000 chars)\n\n" + log[-15000:]
-                    return f"Console log for '{job}' build={build}:\n\n{log}"
-                except Exception as exc:
-                    return f"Error fetching console log for '{job}': {exc}"
 
-            elif name == "jenkins_enable_job":
-                from modules.jenkins_runner import load_config as _jload, enable_jenkins_job
-                job = args.get("job_name", "").strip()
-                if not job:
-                    return "Error: job_name is required"
-                try:
-                    cfg = _jload()
-                    enable_jenkins_job(cfg, job)
-                    return f"Jenkins job '{job}' enabled."
-                except Exception as exc:
-                    return f"Error enabling job '{job}': {exc}"
 
-            elif name == "jenkins_disable_job":
-                from modules.jenkins_runner import load_config as _jload, disable_jenkins_job
-                job = args.get("job_name", "").strip()
-                if not job:
-                    return "Error: job_name is required"
-                try:
-                    cfg = _jload()
-                    disable_jenkins_job(cfg, job)
-                    return f"Jenkins job '{job}' disabled."
-                except Exception as exc:
-                    return f"Error disabling job '{job}': {exc}"
 
-            elif name == "run_jenkins_checks":
-                from modules.jenkins_runner import run_checks, format_summary
-                delay = float(args.get("startup_delay", 0))
-                summary = run_checks(startup_delay=delay)
-                return format_summary(summary)
 
-            elif name == "run_jenkins_job":
-                from modules.jenkins_runner import run_single_job
-                job_name = args.get("job_name", "").strip()
-                if not job_name:
-                    return "Error: job_name is required."
-                delay = float(args.get("startup_delay", 0))
-                return run_single_job(job_name, startup_delay=delay)
 
-            elif name == "jenkins_wait_for_result":
-                from modules.jenkins_runner import load_config as _jload, wait_for_build_results
-                timeout = int(args.get("timeout", 600))
-                try:
-                    cfg    = _jload()
-                    result = wait_for_build_results(
-                        cfg, timeout=timeout,
-                        stop_check=lambda: _is_stopped(session_id),
-                    )
-                except Exception as exc:
-                    return f"Error waiting for build results: {exc}"
-
-                if "error" in result:
-                    return result["error"]
-
-                jobs       = result.get("jobs", {})
-                timed_out  = result.get("timed_out", False)
-                lines      = []
-
-                if timed_out:
-                    lines.append(f"WARNING: Timed out after {timeout}s — some builds may still be running.\n")
-
-                all_ok = all(j["ok"] for j in jobs.values())
-                lines.append(f"Build results ({len(jobs)} pipeline(s)):")
-
-                for job_name, info in jobs.items():
-                    res  = info.get("result", "UNKNOWN")
-                    num  = f"#{info['build']}" if info.get("build") else ""
-                    url  = f"  {info['url']}" if info.get("url") else ""
-                    mark = "✓" if info["ok"] else "✗"
-                    lines.append(f"\n  {mark} {job_name} {num}  [{res}]{url}")
-                    if not info["ok"] and info.get("console"):
-                        lines.append(f"\n--- Console output ---\n{info['console']}\n--- End console ---")
-                    elif not info["ok"] and info.get("console_error"):
-                        lines.append(f"  (console fetch failed: {info['console_error']})")
-
-                if all_ok:
-                    lines.append("\nAll pipelines passed.")
-                else:
-                    failed = [n for n, i in jobs.items() if not i["ok"]]
-                    lines.append(f"\nFailed pipelines: {', '.join(failed)}")
-                    lines.append("Diagnose using the console output above, fix the root cause, then call run_jenkins_checks + jenkins_wait_for_result again.")
-
-                return "\n".join(lines)
 
             elif name == "get_collector_ip":
                 from modules.collector_config import (
@@ -5018,66 +4034,6 @@ def run_chat(
                     return "No VPN tunnels found in NetBox."
                 return json.dumps(tunnels, indent=2)
 
-            elif name == "build_network_pipelines":
-                from modules.pipeline_builder import bootstrap_all_pipelines
-                from modules.jenkins_runner   import load_config as _pb_jcfg, _trigger_jenkins
-                from modules.device           import load_saved_devices, decrypt_field
-
-                _pb_cfg  = _pb_jcfg()
-                _pb_devs = []
-                for _d in devices_loader():
-                    try:
-                        _pwd = decrypt_field(_d["password"])
-                    except Exception:
-                        _pwd = _d.get("password", "")
-                    _pb_devs.append({
-                        "hostname": _d.get("hostname", _d["ip"]),
-                        "ip":       _d["ip"],
-                        "username": _d.get("username", ""),
-                        "password": _pwd,
-                    })
-
-                _pb_result = bootstrap_all_pipelines(_pb_devs, _pb_cfg)
-
-                if not _pb_result.get("ok") and _pb_result.get("skipped"):
-                    return "Jenkins is not configured — cannot create pipelines. Configure Jenkins in Settings first."
-
-                created = _pb_result.get("created", [])
-                updated = _pb_result.get("updated", [])
-                errors  = _pb_result.get("errors",  [])
-                funcs   = _pb_result.get("functions_detected", [])
-
-                if not funcs:
-                    return (
-                        "No network functions detected. "
-                        "Save golden configs for at least one device first so the builder "
-                        "can determine which protocols are configured."
-                    )
-
-                # Optionally trigger all newly-created pipelines for instant feedback.
-                trigger = args.get("trigger_runs", True)
-                triggered = []
-                if trigger and created:
-                    for _jn in created:
-                        try:
-                            _trigger_jenkins(_pb_cfg, _jn)
-                            triggered.append(_jn)
-                        except Exception:
-                            pass
-
-                lines = [
-                    f"Built verification pipelines for {len(funcs)} network function(s): "
-                    f"{', '.join(funcs)}."
-                ]
-                if created:
-                    lines.append(f"Created ({len(created)}): {', '.join(created)}")
-                if updated:
-                    lines.append(f"Updated ({len(updated)}): {', '.join(updated)}")
-                if triggered:
-                    lines.append(f"Triggered immediately: {', '.join(triggered)}")
-                if errors:
-                    lines.append(f"Errors ({len(errors)}): {'; '.join(errors)}")
-                return "\n".join(lines)
 
             else:
                 return f"Unknown tool: {name}"
@@ -5137,7 +4093,6 @@ def run_chat(
         "read_variables":                             2000,
         "set_variable":                                200,
         "delete_variable":                             200,
-        "jenkins_set_schedule":                        500,
         "request_approval":                            300,
         "read_app_file":                        100000,
         "patch_app_file":                          500,
@@ -5155,24 +4110,7 @@ def run_chat(
         "netbox_get_interfaces":                  5000,
         "netbox_get_prefixes":                    5000,
         "netbox_get_vpn_tunnels":                 5000,
-        "build_network_pipelines":               3000,
         "query_ccie_kb":                         8000,
-        "run_jenkins_checks":                    10000,
-        "run_jenkins_job":                       10000,
-        "jenkins_get_current_pipelines":           1000,
-        "jenkins_list_jobs":                      2000,
-        "jenkins_get_pipeline_script":           10000,
-        "jenkins_get_config":                    20000,
-        "jenkins_create_job":                     1000,
-        "jenkins_update_job":                     1000,
-        "jenkins_delete_job":                      500,
-        "jenkins_get_builds":                     3000,
-        "jenkins_get_console":                   20000,
-        "jenkins_wait_for_result":               40000,
-        "jenkins_enable_job":                      500,
-        "jenkins_disable_job":                     500,
-        "jenkins_link_pipeline":                   500,
-        "jenkins_unlink_pipeline":                 500,
     }
     _DEFAULT_TOOL_CHARS = 80000
 
