@@ -18,8 +18,35 @@ sudo useradd --system --create-home --shell /usr/sbin/nologin nmas
 sudo -u nmas git clone <your-repo-url> /home/nmas/agentic-nmas
 cd /home/nmas/agentic-nmas
 sudo -u nmas python3 -m venv .venv
-sudo -u nmas .venv/bin/pip install -r requirements.txt
+sudo -u nmas .venv/bin/pip install --no-deps -r requirements.lock
 ```
+
+### Which environment a rebuild produces (measured 2026-09-26, register C40)
+
+**The running host cannot be reproduced by pip's resolver.** It runs Ubuntu
+24.04's system Python (3.12.3) with most packages from apt and a few user-level
+pip installs, and no venv. Two facts make a naive rebuild different:
+
+- **`requirements.txt` describes no machine.** Installing it gives paramiko
+  3.4.0 where the host runs 2.12.0, pysnmp 6.x where the host runs 4.4.12,
+  jsonschema 4.20+ where the host runs 4.10.3, and a Flask-SocketIO /
+  python-socketio pair that drops a Socket.IO message in the test client (C35).
+- **pip refuses the host's own combination.** PyPI's netmiko 4.3.0 declares
+  `textfsm>=1.1.3`, and the host runs textfsm 1.1.2 through Ubuntu, which works.
+  And Ubuntu ships netmiko, pysnmp, scp and textfsm with NO Python dependency
+  metadata, so their real dependencies (lxml, pyasn1, pysmi, ntc-templates, six)
+  are visible only to `dpkg`.
+
+So the two faithful rebuilds are:
+1. **Ubuntu 24.04 and its apt packages**, the way the host was built. This is
+   the only one with Debian's patches.
+2. **A venv with `pip install --no-deps -r requirements.lock`.** These are the
+   host's exact versions without a resolver, which is what CI does.
+   `requirements.lock` is generated ON the host by
+   `scripts/nmas-lock-from-host`, which reads Python metadata AND `dpkg`.
+
+`pip install -r requirements.txt`, or the lock WITHOUT `--no-deps`, gives a
+third environment that has never been tested against this code.
 
 Create `.env` with the Anthropic API key (mode `600`, owned by `nmas`):
 
@@ -127,12 +154,6 @@ external collector already owns a port, turn the built-in one off in
 **Settings → Integrations → Built-in collectors** rather than changing code.
 
 Ports themselves are per-device-list settings in `modules/collector_config.py`.
-
-## Jenkins step shell
-
-Generated pipelines default to Windows `bat` steps. For a Linux Jenkins agent,
-set **Settings → Integrations → Jenkins step shell** to `sh` before creating
-pipelines. Existing pipelines are not rewritten; regenerate them.
 
 ## SSH algorithm compatibility
 

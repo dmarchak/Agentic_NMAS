@@ -1527,6 +1527,12 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   installs it. Its first import measurement missed Flask itself, because apt
   packages carry metadata that cannot map an import to its distribution: a
   floor of known imports caught it.
+- **The host's environment cannot be reproduced by pip alone** (C40). Ubuntu
+  satisfies a constraint PyPI enforces (netmiko 4.3.0 with textfsm 1.1.2) and ships
+  packages with no dependency metadata, so a rebuild from `requirements.txt`, or
+  from the lock through a resolver, is an environment nothing has tested. Rebuild
+  with apt on the same release, or `pip install --no-deps -r requirements.lock`
+  (docs/DEPLOY_LINUX.md).
 - **An instrument that re-executes its setup can move what it measures.**
   Measuring GET writers by importing `tests.conftest` for a helper executed conftest
   a second time and re-pointed `NMAS_DATA_DIR`, so the measurement watched an empty
@@ -4503,7 +4509,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
+present when each was recorded. **30 open at 2026-09-26**, counted from the rows: 25 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

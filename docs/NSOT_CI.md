@@ -169,6 +169,13 @@ air-gapped install.**
   takes 65 s. Forgejo or Gitea Actions (self-hosted, Actions-compatible
   syntax) is the option if repo CI must exist air-gapped. **Recorded, not
   chosen.**
+- **apt availability and PyPI availability are different questions**
+  (2026-09-26, C40). The host's environment comes from Ubuntu's packages, and
+  pip alone cannot reproduce it: PyPI's netmiko 4.3.0 refuses the host's
+  textfsm 1.1.2. So an air-gapped rebuild needs either an apt mirror with the
+  same Ubuntu release, or a wheelhouse of `requirements.lock`
+  (`pip download --no-deps -r requirements.lock`) installed with `--no-deps`.
+  Mirroring PyPI with a resolver would reproduce neither.
 - **D8 matters here**: four front-end libraries load from CDNs, so an
   air-gapped NMAS loses its topology view, drag-and-drop and terminal. The
   air-gap question is broader than CI.
