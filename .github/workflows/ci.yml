@@ -47,6 +47,13 @@ jobs:
           python -m pip install --no-deps -r requirements.lock
           python -m pip install --no-deps -r requirements-ci.txt
 
+      # Information, not a gate: the facts the lock does NOT pin. The host
+      # stamps ext4 times from a 1 ms tick and this runner did not, and a test
+      # passed here and failed there (2026-09-26). An annotation, because the
+      # public API returns annotations and not logs.
+      - name: The runner's environment (information, not a gate)
+        run: python scripts/nmas-env-facts --annotate || true
+
       - name: Where PyPI's metadata disagrees with the host (information, not a gate)
         run: python -m pip check || true
 

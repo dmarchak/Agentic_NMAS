@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""The facts about a machine that the test suite can depend on without saying so.
+
+One instrument, run in both places: CI runs it on every run (as an annotation,
+which the public API returns without authentication), and the operator runs it
+on the host. A difference between the two lines is a difference between the
+environment that passed a commit and the one that runs it.
+
+    nmas-env-facts              -> one line: kernel, Python, temp filesystem,
+                                   and the MEASURED timestamp granularity
+    nmas-env-facts --annotate   -> the same line as a GitHub Actions notice
+
+Why the timestamp granularity is here (2026-09-26): the host's kernel (6.8,
+CONFIG_HZ=1000) stamps ext4 times from a 1 ms tick, and a directory's mtime did
+NOT move when a file was created in it in 1,795 of 2,000 tries. The laptop
+(kernel 7.0) moved it every time. A test whose control created a directory and
+a file within microseconds passed in CI and failed on the host, so the runner
+is expected to move it too; this script is how that is measured rather than
+inferred. `requirements.lock` pins Python and packages, and nothing
+pins the kernel.
+
+It is measured, never read from configuration: CONFIG_HZ is printed when the
+kernel config is readable, but multigrain timestamps (Linux 6.13+) make the
+tick alone the wrong answer, and the measurement is what a test experiences.
+Standard library only, so it runs before anything is installed.
+"""
+
+import argparse
+import os
+import platform
+import subprocess
+import sys
+import tempfile
+
+TRIES = 2000
+
+
+def _fs_type(path):
+    try:
+        out = subprocess.run(["findmnt", "-no", "FSTYPE", "-T", path],
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def _config_hz():
+    path = f"/boot/config-{platform.release()}"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("CONFIG_HZ="):
+                    return line.strip().split("=", 1)[1]
+    except OSError:
+        pass
+    return "unreadable"
+
+
+def timestamp_facts(base=None, tries=TRIES):
+    """``(unchanged, tries, smallest_step_ns)``.
+
+    *unchanged*: how often a directory's mtime did not move when a file was
+    created in it straight after a stat. *smallest_step_ns*: the smallest
+    nonzero difference between successive mtimes of a file rewritten in a
+    tight loop, i.e. the clock's resolution as a write sees it.
+    """
+    unchanged = 0
+    with tempfile.TemporaryDirectory(dir=base) as tmp:
+        for i in range(tries):
+            d = os.path.join(tmp, f"d{i}")
+            os.mkdir(d)
+            before = os.lstat(d).st_mtime_ns
+            open(os.path.join(d, "x"), "w").close()
+            if os.lstat(d).st_mtime_ns == before:
+                unchanged += 1
+        path = os.path.join(tmp, "f")
+        stamps = []
+        for _ in range(tries * 5):
+            with open(path, "w") as fh:
+                fh.write("a")
+            stamps.append(os.lstat(path).st_mtime_ns)
+    steps = [b - a for a, b in zip(stamps, stamps[1:]) if b != a]
+    return unchanged, tries, (min(steps) if steps else None)
+
+
+def line():
+    tmp = tempfile.gettempdir()
+    unchanged, tries, step = timestamp_facts()
+    step_text = f"{step / 1e6:.3f} ms" if step else "no step observed"
+    return (f"kernel {platform.release()}; python {sys.version.split()[0]}; "
+            f"{tmp} on {_fs_type(tmp)}; CONFIG_HZ {_config_hz()}; "
+            f"mtime step {step_text}; directory mtime unchanged after a create "
+            f"in {unchanged} of {tries}")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--annotate", action="store_true",
+                    help="print as a GitHub Actions notice")
+    args = ap.parse_args(argv)
+    text = line()
+    print(f"::notice title=environment::{text}" if args.annotate else text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

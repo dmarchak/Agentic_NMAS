@@ -176,6 +176,14 @@ air-gapped install.**
   same Ubuntu release, or a wheelhouse of `requirements.lock`
   (`pip download --no-deps -r requirements.lock`) installed with `--no-deps`.
   Mirroring PyPI with a resolver would reproduce neither.
+- **The lock pins Python and packages, and nothing pins the kernel** (C42,
+  2026-09-26). A test passed on GitHub's runner and failed on the host
+  because the host stamps ext4 times from a 1 ms tick. Every run now prints
+  `scripts/nmas-env-facts` as an annotation, the same probe the operator
+  runs on the host, so the two lines can be compared. Closing the gap needs a
+  runner on the host's kernel. On a PUBLIC repository a self-hosted runner
+  runs pull-request code on the NMAS host, so it is not a default. **Open,
+  the operator's call.**
 - **D8 matters here**: four front-end libraries load from CDNs, so an
   air-gapped NMAS loses its topology view, drag-and-drop and terminal. The
   air-gap question is broader than CI.

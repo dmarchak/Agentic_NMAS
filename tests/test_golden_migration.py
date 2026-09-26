@@ -416,7 +416,12 @@ class TestNeverCommitsAnUnchangedTree:
         migrate.apply("Lab")
         repo = str(lab / "config_repo")
         target = lab / "config_repo" / "golden" / "R1.cfg"
-        stamp = os.stat(target).st_mtime_ns
+        # Backdated, so a rewrite is visible on ANY clock. Compared against the
+        # first write's own stamp, a rewrite in the same tick was invisible: the
+        # host stamps ext4 times from a 1 ms tick (measured 2026-09-26), and
+        # this assertion held there only because apply() is slower than that.
+        stamp = 1_000_000_000 * 1_000_000_000
+        os.utime(target, ns=(stamp, stamp))
 
         os.remove(migrate.marker_path(repo))
         migrate.apply("Lab")

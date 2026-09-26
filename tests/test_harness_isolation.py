@@ -10,11 +10,49 @@ time: 5 failed and 19 errored, all passing here, because this checkout's
 import ast
 import os
 import subprocess
+import stat
 import sys
+import types
 
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+#: The filesystems the store guard must hold on: this machine's own, and ext4
+#: as the host has it (kernel 6.8: a 1 ms tick, measured 2026-09-26), and ext4
+#: on a 1 s tick.
+CLOCKS = (None, 1_000_000, 1_000_000_000)
+CLOCK_IDS = ("native", "ext4-1ms", "ext4-1s")
+#: A moment long before any session: where the store's last change sits.
+LONG_AGO_NS = 1_000_000_000 * 1_000_000_000
+EXT4_DIR_SIZE = 4096
+
+
+def _clock(tick):
+    """An lstat that answers as ext4 on a *tick* (ns) clock, or the real one.
+
+    BOTH halves are needed. On tmpfs, which is the laptop's /tmp, a
+    directory's SIZE grows with its entries, so a create shows up there
+    whatever the clock does; on ext4 a directory is 4096 bytes regardless,
+    and its mtime is the only evidence. The first version of this simulation
+    coarsened the clock alone, ran on tmpfs, and passed with the backdating
+    removed: a fixture that could not exhibit the host's case (2026-09-26).
+    """
+    if tick is None:
+        return os.lstat
+
+    def lstat(path):
+        st = os.lstat(path)
+        size = EXT4_DIR_SIZE if stat.S_ISDIR(st.st_mode) else st.st_size
+        return types.SimpleNamespace(st_size=size, st_mode=st.st_mode,
+                                     st_mtime_ns=st.st_mtime_ns // tick * tick)
+    return lstat
+
+
+def _predates_the_session(*paths):
+    for path in paths:
+        os.utime(path, ns=(LONG_AGO_NS, LONG_AGO_NS))
 
 
 class TestTheStoreIsElsewhere:
@@ -33,15 +71,33 @@ class TestTheStoreIsElsewhere:
                      ai_usage_log._LOG_FILE):
             assert os.path.realpath(path).startswith(root + os.sep), path
 
-    def test_the_session_guard_sees_a_change(self, tmp_path):
-        """Positive control for `pytest_sessionfinish`'s comparison."""
+    @pytest.mark.parametrize("tick", CLOCKS, ids=CLOCK_IDS)
+    def test_the_session_guard_sees_a_change(self, tmp_path, tick):
+        """Positive control for `pytest_sessionfinish`'s comparison, on every
+        clock. The store's last change predates the session, so the control
+        backdates it: made and written within microseconds, as the first
+        version was, the directory's mtime did not move on the host's 1 ms
+        tick, and the control failed there while passing in CI (2026-09-26)."""
         from tests.store_guard import data_tree, tree_changes
         (tmp_path / "lists").mkdir()
-        before = data_tree(str(tmp_path))
+        _predates_the_session(tmp_path, tmp_path / "lists")
+        before = data_tree(str(tmp_path), lstat=_clock(tick))
         (tmp_path / "lists" / "x.json").write_text("{}")
         # the new file, and its directory's mtime: both are writes
-        assert tree_changes(before, data_tree(str(tmp_path))) == ["lists", os.path.join("lists", "x.json")]
+        assert tree_changes(before, data_tree(str(tmp_path), lstat=_clock(tick))) == \
+            ["lists", os.path.join("lists", "x.json")]
         assert tree_changes(before, before) == []
+
+    @pytest.mark.parametrize("tick", CLOCKS, ids=CLOCK_IDS)
+    def test_a_write_tidied_away_is_still_seen(self, tmp_path, tick):
+        """The case the root's own entry exists for: a file created and removed
+        leaves nothing below the root, and moves the root's mtime."""
+        from tests.store_guard import data_tree, tree_changes
+        _predates_the_session(tmp_path)
+        before = data_tree(str(tmp_path), lstat=_clock(tick))
+        (tmp_path / "gone.json").write_text("{}")
+        (tmp_path / "gone.json").unlink()
+        assert tree_changes(before, data_tree(str(tmp_path), lstat=_clock(tick))) == ["."]
 
 
 def _data_literal_joins(path):
