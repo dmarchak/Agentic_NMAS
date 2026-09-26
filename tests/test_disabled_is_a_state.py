@@ -177,16 +177,33 @@ class TestActionsStillRefuse:
     """A read reports. An action refuses — a disabled agent must not be made
     to act, and loosening that would be the opposite mistake."""
 
-    @pytest.fixture
-    def disabled(self, monkeypatch):
-        monkeypatch.setattr("modules.config.load_user_settings",
-                            lambda: {"ai_enabled": False})
+    ROUTES = ["/ai/agent_run", "/ai/agent_pause", "/ai/agent_resume", "/ai/agent_timers"]
 
+    def _client(self, monkeypatch, tmp_path, ai_enabled):
+        """A REAL settings file, written by the real writer and read by the
+        route's own reader (register C34). The first version patched
+        `modules.config.load_user_settings`, but `app.py` bound that name at
+        import, so the patch never reached the route: these tests passed only
+        because this checkout's settings file said `ai_enabled: False`, and
+        failed on a clean store."""
+        from modules import config
+        monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(tmp_path / "user_settings.json"))
+        config.save_user_settings({"ai_enabled": ai_enabled})
         import app as nmas
-
         return nmas.app.test_client()
 
-    @pytest.mark.parametrize("route", ["/ai/agent_run", "/ai/agent_pause",
-                                       "/ai/agent_resume", "/ai/agent_timers"])
-    def test_the_action_routes_still_return_503(self, disabled, route):
-        assert disabled.post(route, json={}).status_code == 503
+    @pytest.mark.parametrize("route", ROUTES)
+    def test_the_action_routes_still_return_503(self, monkeypatch, tmp_path, route):
+        client = self._client(monkeypatch, tmp_path, ai_enabled=False)
+        assert client.post(route, json={}).status_code == 503
+
+    @pytest.mark.parametrize("route", ROUTES)
+    def test_enabled_they_do_not(self, monkeypatch, tmp_path, route):
+        """The floor: a test that answers 503 either way shows nothing. An
+        empty body triggers no task (`/ai/agent_run` answers 400), and the
+        pause is undone so it cannot leak into later tests."""
+        client = self._client(monkeypatch, tmp_path, ai_enabled=True)
+        try:
+            assert client.post(route, json={}).status_code != 503
+        finally:
+            client.post("/ai/agent_resume", json={})
