@@ -3366,6 +3366,51 @@ Stage 7.
   2026-09-26, by field state only: all four fields are EMPTY and no per-list
   Jenkins file exists, so it holds no credential and deleting it is
   housekeeping. `nmas-check-secret-storage` names it until then.
+- **ACCEPTANCE (NSOT_CI.md section 7), item by item, 2026-09-26.**
+  1. **No Jenkins code remains: MET, re-checked against today's tree.**
+     `check_removed_definitions.py` over all of P.4 (`d25e3ff^..HEAD`) exits
+     0: 146 definitions gone, none still called. `test_no_jenkins.py` passes,
+     and fails with one import of `jenkins_runner` re-added to
+     `drift_check.py` (restored from a copy).
+  2. **The gate says what it checks: MET.** An unauthorised dangerous line is
+     refused by name, and a clean program passes with no "no check
+     registered" warning (`test_pipeline.py`, both passing today).
+  3. **A red CI run stops a deploy: MET, every case measured with its
+     operands.**
+     - Pending: exit 1, "CI is still in_progress" (the operator, on `7be2c93`).
+     - Failed: exit 1, "CI failure for 7be2c93c53: …/runs/36270687451.
+       Refused." (the operator, twice).
+     - A code commit with no run: exit 2, "no CI run for 003a93d0cd, and it
+       changes more than ignored paths since 1319890f8d, the last commit CI
+       passed: ['tests/test_red_commit_probe.py']. Refused." This one was
+       asserted and never run until the acceptance measured it (the verdict
+       function against the real API).
+     - A docs-only commit with no run: exit 0, reading `paths-ignore` from
+       `eb70788`, the last commit CI passed, not from the target. Measured
+       LIVE: the operator's 22:00 deploy, `1319890 -> 13a5011`.
+     - The fix proceeds: the operator's 22:27 deploy, `13a5011 -> 5eef2df`,
+       "CI passed", pid 268370 -> 361070, confirmed by identity.
+     - `--offline`, one of each, on the host against a scratch clone with the
+       restart stubbed: green `5eef2df` passed the full suite and reached the
+       restart; red `5055fe5` (the green commit plus only a failing test,
+       local) exit 3, "1 failed, 4004 passed in 287.81s; network: NOT
+       CONFINED". Its FIRST version could not pass at all (a `git archive`
+       has no `.git`), so its first red result proved nothing; the rule this
+       produced is in CLAUDE.md as the inverse of "a test that passes in both
+       cases shows nothing".
+  4. **Every scheduled check names its cause when it fails: NOT YET
+     OBSERVED.** It needs one scheduled check broken deliberately on the
+     host, as P.2 step 8 did. Proposed: the heartbeat check, pointed at a
+     closed loopback port through a RUNTIME drop-in (under `/run`, so a
+     forgotten revert does not survive a reboot). Predicted, to be checked
+     rather than assumed: `--check` exits 2 (`UNPROVEN: ConnectionError …`),
+     systemd records a failure, and `nmas-jobs` names that line as the
+     cause, because its cause scan matches `Error`.
+  5. **No check implemented twice: NOT APPLICABLE YET.** Scheduled
+     regression (step 5) is undecided and unbuilt, and the AI's
+     `detect_config_drift` goes with Stage 8, as the item itself says.
+  6. **The GUI shows each CI state beside its trigger: carried by the Stage 7
+     GUI plan**, as the item itself says.
 
 ### P.5 — Template approval, scheme 3 (D11; decided 2026-09-26, placed after P.4)
 

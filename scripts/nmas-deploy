@@ -40,7 +40,6 @@ how the target was verified, the verdict and the exit code.
 """
 
 import argparse
-import datetime
 import getpass
 import json
 import os
@@ -232,14 +231,14 @@ def offline_forecast(repo, tree=None):
     if last is None:
         seen = "No earlier --offline run is recorded here."
     else:
-        took = (_parse_iso(last["ended_at"]) - _parse_iso(last["started_at"])).total_seconds()
-        seen = (f"The last one here took {int(took // 60)}m{int(took % 60):02d}s "
-                f"({last['started_at']}, {'parallel' if last.get('parallel') else 'serial'}).")
+        start, end = parse_iso(last["started_at"]), parse_iso(last["ended_at"])
+        if start is None or end is None:
+            seen = f"The last one here ({last['started_at']}) recorded no readable duration."
+        else:
+            took = end - start
+            seen = (f"The last one here took {int(took // 60)}m{int(took % 60):02d}s "
+                    f"({last['started_at']}, {'parallel' if last.get('parallel') else 'serial'}).")
     return f"--offline: running the FULL suite here, {how}. {seen}"
-
-
-def _parse_iso(text):
-    return datetime.datetime.strptime(text, "%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def offline_verdict(repo, target, run=subprocess.run):
