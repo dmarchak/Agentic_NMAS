@@ -949,7 +949,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_ci_workflow.py` | P.4 step 3: the workflow reads only this repository (no `repository:`, no secret, read-only token, token not persisted), installs the lock, never gates on coverage, cancels superseded runs; parsed values, not raw text |
 | (overview) | **[docs/TESTING.md](docs/TESTING.md)**: what the suite checks, the 180 controls that run every time against the ~330 that ran once, and what it cannot reach |
-| `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed, and success means `/health` reports the TARGET commit from a process started AFTER the restart; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
+| `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed, and success is decided by IDENTITY (MainPID changed, `/health` answers from it, target commit loaded), never by time; the no-run rule is read from a green commit and a workflow change is never ignorable; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1538,6 +1538,17 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   from the lock through a resolver, is an environment nothing has tested. Rebuild
   with apt on the same release, or `pip install --no-deps -r requirements.lock`
   (docs/DEPLOY_LINUX.md).
+- **A timestamp with millisecond digits is not a millisecond measurement**
+  (the operator, 2026-09-26). psutil's process start on Linux is
+  `/proc/stat`'s boot time, whole seconds and truncated, plus ticks, so
+  `/health` printed `.340Z` for a start systemd put 0.66 s LATER. Deciding
+  "did it restart" by comparing such times would false-fail a real restart;
+  decide it by IDENTITY (the PID changed, and the process answering is that PID)
+  and keep times for the record, from a clock that has the resolution printed.
+- **The rule that says a check was not needed must come from a commit the check
+  PASSED.** Reading `paths-ignore` from the commit being judged would let a
+  commit widen it to `**` and wave itself through; a change to the CI itself is
+  never ignorable.
 - **An instrument that re-executes its setup can move what it measures.**
   Measuring GET writers by importing `tests.conftest` for a helper executed conftest
   a second time and re-pointed `NMAS_DATA_DIR`, so the measurement watched an empty

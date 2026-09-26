@@ -130,21 +130,31 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
             raise subprocess.CalledProcessError(1, "systemctl", stderr="Unit not found")
         restarted.append(now[0])
 
+    def unit():
+        """systemd: MainPID 100 before the restart, 200 after, unless the
+        restart never happened (`unchanged_pid`)."""
+        pid = 200 if (restarted and health != "unchanged_pid") else 100
+        return {"MainPID": pid, "start": "Sat 2026-09-26 20:14:42.123456 UTC"}
+
     def fake_health():
-        """What /health answers. `fresh`: the target, started after the
-        restart. `stale`: the OLD commit still running. `old_process`: the
-        target, but started before the restart. `missing`: no /health."""
+        """What /health answers. `fresh`: the target, from the new pid, with
+        an app start time 0.9 s BEFORE the restart was issued (the /proc bias
+        the operator measured: identity must not depend on it). `stale`: the
+        OLD commit. `foreign_pid`: answered by a process that is not the
+        service's MainPID. `missing`: no /health."""
         running = _git(world.host, "rev-parse", "HEAD")
+        early = mod.iso_ms((restarted[-1] if restarted else now[0]) - 0.9)
         if health == "missing":
             return 404, None
         if health == "stale":
-            return 200, {"commit": world.base, "started_at": mod.iso_ms(now[0]), "pid": 7}
-        started = (restarted[-1] + 0.5) if (restarted and health == "fresh") else now[0] - 3600
-        return 200, {"commit": running, "started_at": mod.iso_ms(started), "pid": 7}
+            return 200, {"commit": world.base, "started_at": early, "pid": unit()["MainPID"]}
+        if health == "foreign_pid":
+            return 200, {"commit": running, "started_at": early, "pid": 999}
+        return 200, {"commit": running, "started_at": early, "pid": unit()["MainPID"]}
 
     code = mod.main(["--repo", world.host] + (["--offline"] if offline else []),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
-                    health=fake_health, clock=clock, sleep=sleep)
+                    health=fake_health, clock=clock, sleep=sleep, unit=unit)
     return code, restarted, calls
 
 
@@ -209,6 +219,35 @@ class TestNoRunFound:
         assert "paths-ignore" in capsys.readouterr().out
 
 
+class TestTheIgnoreRuleComesFromAGreenCommit:
+    """The operator's question, 2026-09-26: whose paths-ignore decides a
+    no-run push? Read at the target, a commit that widens it to '**' produces
+    no run and would be called expected."""
+
+    WIDE = CI_YML.replace('["docs/**", "**/*.md"]', '["**"]')
+
+    def test_a_commit_widening_paths_ignore_is_refused(self, world, capsys):
+        world.advance({".github/workflows/ci.yml": self.WIDE, "app.py": "v = 2\n"})
+        code, _, _ = _run(world, {}, passed=[world.base])
+        assert code == 2 and _head(world) == world.base
+        assert "app.py" in capsys.readouterr().err
+
+    def test_a_workflow_change_is_never_ignorable(self, world):
+        """Even when the GREEN commit's own patterns would ignore it."""
+        yml_ignored = CI_YML.replace('["docs/**", "**/*.md"]', '["docs/**", "**/*.md", "**/*.yml"]')
+        green = world.advance({".github/workflows/ci.yml": yml_ignored}, "green, ignores yml")
+        world.advance({".github/workflows/ci.yml": yml_ignored + "# edited\n"}, "workflow edit")
+        code, _, _ = _run(world, {}, passed=[green])
+        assert code == 2
+
+    def test_the_floor_a_docs_change_still_passes(self, world):
+        yml_ignored = CI_YML.replace('["docs/**", "**/*.md"]', '["docs/**", "**/*.md", "**/*.yml"]')
+        green = world.advance({".github/workflows/ci.yml": yml_ignored}, "green")
+        sha = world.advance({"docs/x.md": "y\n", "config.yml": "a: 1\n"}, "docs and a yml")
+        code, _, _ = _run(world, {}, passed=[green])
+        assert code == 0 and _head(world) == sha
+
+
 class TestOffline:
     def test_a_failing_suite_here_refuses(self, world, capsys):
         world.advance({"app.py": "v = 2\n"})
@@ -246,7 +285,8 @@ class TestAfterTheRestart:
         code, _, _ = _run(world, {sha: _run_entry(sha)})
         out = capsys.readouterr().out
         assert code == 0
-        assert f"deployed {world.base[:10]} -> {sha[:10]}, restarted; running {sha[:10]} since" in out
+        assert (f"deployed {world.base[:10]} -> {sha[:10]}, restarted: pid 100 -> 200, "
+                f"running {sha[:10]} since") in out
 
     def test_already_there_is_not_called_deployed(self, world, capsys):
         code, _, _ = _run(world, {world.base: _run_entry(world.base)})
@@ -260,11 +300,25 @@ class TestAfterTheRestart:
         err = capsys.readouterr().err
         assert code == 5 and "NOT confirmed running" in err and world.base[:10] in err
 
-    def test_a_process_older_than_the_restart_is_not_success(self, world, capsys):
+    def test_a_start_time_before_the_restart_still_passes_on_identity(self, world):
+        """The operator's case: the app's reported start reads up to a second
+        early (measured 0.66 s), and a real restart must not false-fail. The
+        `fresh` fake reports 0.9 s BEFORE the restart was issued."""
         sha = world.advance({"app.py": "v = 2\n"})
-        code, _, _ = _run(world, {sha: _run_entry(sha)}, health="old_process")
+        code, _, _ = _run(world, {sha: _run_entry(sha)})
+        assert code == 0
+
+    def test_an_unchanged_main_pid_is_not_a_restart(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, health="unchanged_pid")
         err = capsys.readouterr().err
-        assert code == 5 and "not after the restart was issued" in err
+        assert code == 5 and "unchanged from 100" in err
+
+    def test_an_answer_from_another_pid_is_not_the_service(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, health="foreign_pid")
+        err = capsys.readouterr().err
+        assert code == 5 and "pid 999, not the service's new MainPID 200" in err
 
     def test_no_health_route_is_not_success(self, world, capsys):
         sha = world.advance({"app.py": "v = 2\n"})
@@ -291,8 +345,9 @@ class TestTheRecord:
         ok = rows[1]
         # run start and end separately, to the millisecond, and what RAN
         assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", ok["started_at"])
-        assert ok["started_at"] < ok["restart_issued_at"] < ok["running_started_at"] <= ok["ended_at"]
-        assert ok["running_commit"] == sha
+        assert ok["started_at"] < ok["restart_issued_at"] <= ok["ended_at"]
+        assert ok["pid_before"] == 100 and ok["pid_after"] == 200 == ok["running_pid"]
+        assert ok["running_commit"] == sha and ok["systemd_start"].endswith(".123456 UTC")
 
 
 class TestIgnoredPaths:
@@ -307,7 +362,8 @@ class TestIgnoredPaths:
 
     def test_the_patterns_are_read_from_the_workflow_not_copied(self):
         src = open(os.path.join(ROOT, "scripts", "nmas-deploy")).read()
-        assert "ignored_patterns(repo, target)" in src
+        assert "ignored_patterns(repo, ancestor)" in src
+        assert "ignored_patterns(repo, target)" not in src
         assert '"docs/**"' not in src
 
 

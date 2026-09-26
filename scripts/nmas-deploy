@@ -99,8 +99,20 @@ def github_get(path, timeout=10):
 # The workflow's own ignored paths
 # ---------------------------------------------------------------------------
 
+#: Never ignorable, whatever any paths-ignore says: a change to the CI itself
+#: must be verified by a run, or a commit could switch the check off and be
+#: waved through by its own switch.
+NEVER_IGNORABLE = (".github/workflows/",)
+
+
 def ignored_patterns(repo, sha):
-    """`paths-ignore` of the push trigger, read from ci.yml AT the target."""
+    """`paths-ignore` of the push trigger, read from ci.yml AT *sha*.
+
+    The caller passes the last GREEN ancestor, never the target (the
+    operator's finding, 2026-09-26): read at the target, a commit that widened
+    paths-ignore to '**' would produce no run, and the gate would call that
+    expected. The rule that decides whether a run was needed must come from a
+    commit CI has already passed."""
     import yaml
     doc = yaml.safe_load(git(repo, "show", f"{sha}:{WORKFLOW_PATH}"))
     triggers = doc.get(True) or doc.get("on") or {}     # YAML 1.1 reads `on` as True
@@ -123,7 +135,9 @@ def _glob_regex(pattern):
 
 def only_ignored(paths, patterns):
     rxs = [_glob_regex(p) for p in patterns]
-    return bool(paths) and all(any(rx.match(p) for rx in rxs) for p in paths)
+    return bool(paths) and all(
+        not p.startswith(NEVER_IGNORABLE) and any(rx.match(p) for rx in rxs)
+        for p in paths)
 
 
 # ---------------------------------------------------------------------------
@@ -162,10 +176,10 @@ def ci_verdict(repo, target, get=github_get):
     for ancestor in git(repo, "rev-list", "--max-count=100", target).split():
         if ancestor in passed:
             changed = git(repo, "diff", "--name-only", ancestor, target).split()
-            patterns = ignored_patterns(repo, target)
+            patterns = ignored_patterns(repo, ancestor)   # the GREEN commit's rule
             if only_ignored(changed, patterns):
                 return OK, (f"no CI run for {short}, which is expected: every file changed "
-                            f"since {ancestor[:10]} (CI passed) matches the workflow's "
+                            f"since {ancestor[:10]} (CI passed) matches that commit's "
                             f"paths-ignore {patterns}: {changed}")
             return COULD_NOT_ASK, (f"no CI run for {short}, and it changes more than ignored "
                                    f"paths since {ancestor[:10]}, the last commit CI passed: "
@@ -213,34 +227,58 @@ def parse_iso(text):
         return None
 
 
-def wait_for_running(target, issued, health, clock, sleep, timeout=90, interval=2):
-    """(ok, seen, reason): wait until /health reports the TARGET commit from a
-    process that STARTED after the restart was issued. A 200 alone proves only
-    that something answered: a process that never restarted answers 200 too."""
+def unit_state(service=SERVICE):
+    """{"MainPID": int, "start": str} from systemd. The start is
+    ExecMainStartTimestamp at MICROSECOND resolution, for the record only:
+    identity is decided by the pid, never by comparing times."""
+    out = subprocess.run(["systemctl", "show", service, "-p", "MainPID",
+                          "-p", "ExecMainStartTimestamp", "--timestamp=us"],
+                         capture_output=True, text=True).stdout
+    props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+    try:
+        pid = int(props.get("MainPID", "0"))
+    except ValueError:
+        pid = 0
+    return {"MainPID": pid, "start": props.get("ExecMainStartTimestamp", "")}
+
+
+def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90, interval=2):
+    """(ok, seen, reason). Confirmed by IDENTITY, never by time:
+
+    - systemd's MainPID CHANGED (the restart happened);
+    - /health answers from THAT pid (the new process is the one answering);
+    - /health reports the TARGET commit (it loaded the right code).
+
+    A time comparison was the first version, and it could false-fail a real
+    restart: the process start came from /proc arithmetic whose boot time is
+    whole seconds, measured 0.66 s early. A 200 alone proves nothing: a process
+    that never restarted answers 200 too."""
     deadline = clock() + timeout
     seen, reason = None, "no answer yet"
     while True:
+        state = unit()
         status, body = health()
-        if body is None:
+        seen = {"unit": state, "health": body}
+        if state["MainPID"] in (0, pid_before):
+            reason = (f"systemd's MainPID is {state['MainPID']}, unchanged from "
+                      f"{pid_before}: the service has not restarted")
+        elif body is None:
             reason = f"/health answered {status}"
+        elif body.get("pid") != state["MainPID"]:
+            reason = (f"/health answered from pid {body.get('pid')}, not the service's "
+                      f"new MainPID {state['MainPID']}")
+        elif body.get("commit") != target:
+            reason = (f"the running process loaded {str(body.get('commit'))[:10]}, "
+                      f"not {target[:10]}")
         else:
-            seen = body
-            started = parse_iso(body.get("started_at"))
-            if body.get("commit") != target:
-                reason = (f"the running process loaded {str(body.get('commit'))[:10]}, "
-                          f"not {target[:10]}")
-            elif started is None or started <= issued:
-                reason = (f"the process that answered started at {body.get('started_at')}, "
-                          f"not after the restart was issued at {iso_ms(issued)}")
-            else:
-                return True, seen, ""
+            return True, seen, ""
         if clock() >= deadline:
             return False, seen, reason
         sleep(interval)
 
 
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
-         clock=time.time, sleep=time.sleep) -> int:
+         clock=time.time, sleep=time.sleep, unit=unit_state) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--offline", action="store_true",
@@ -292,23 +330,26 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
         what = f"already at {target[:10]}"
         print(what)
 
-    # The restart, and proof that the RUNNING process is the target.
-    issued = clock()
-    row["restart_issued_at"] = iso_ms(issued)
+    # The restart, and proof by IDENTITY that the RUNNING process is the target.
+    before = unit()
+    row.update(pid_before=before["MainPID"], restart_issued_at=iso_ms(clock()))
     try:
         (restart or (lambda: subprocess.run(["sudo", "systemctl", "restart", SERVICE],
                                             check=True, capture_output=True, text=True)))()
     except (subprocess.CalledProcessError, OSError) as exc:
         detail = getattr(exc, "stderr", "") or str(exc)
         return finish(UNHEALTHY, f"{what}, NOT restarted: {str(detail).strip()}")
-    ok, seen, reason = wait_for_running(target, issued, health or _health, clock, sleep)
-    if seen:
-        row.update(running_commit=seen.get("commit"), running_started_at=seen.get("started_at"),
-                   running_pid=seen.get("pid"))
+    ok, seen, reason = wait_for_running(target, before["MainPID"], health or _health,
+                                        unit, clock, sleep)
+    body = (seen or {}).get("health") or {}
+    state = (seen or {}).get("unit") or {}
+    row.update(pid_after=state.get("MainPID"), systemd_start=state.get("start"),
+               running_pid=body.get("pid"), running_commit=body.get("commit"),
+               app_started_at=body.get("started_at"))
     if not ok:
-        return finish(UNHEALTHY, f"{what}, restarted, but NOT confirmed running: {reason}")
-    return finish(OK, f"{what}, restarted; running {target[:10]} since "
-                      f"{seen.get('started_at')} (pid {seen.get('pid')}). {message}")
+        return finish(UNHEALTHY, f"{what}, restart issued, but NOT confirmed running: {reason}")
+    return finish(OK, f"{what}, restarted: pid {before['MainPID']} -> {state.get('MainPID')}, "
+                      f"running {target[:10]} since {state.get('start')} (systemd). {message}")
 
 
 def _health():

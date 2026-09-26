@@ -4,9 +4,14 @@ A 200 from `/` proved only that SOMETHING answered. After a deploy, a process
 that never restarted still answers 200, so `nmas-deploy` could report a deploy
 the running service never loaded (the operator's finding, 2026-09-26). This
 reports what the process LOADED, not what the checkout says now: the commit is
-read once, when the process imports its code, and the start time is the
-process's own creation time from the operating system, the same instant
-systemd's ActiveEnterTimestamp and `ps -o lstart` report.
+read once, when the process imports its code, with the process's pid.
+
+**`started_at` is `time.time()` taken when this module loads**, early in the
+process's start-up. It was psutil's `create_time()`, which on Linux is
+`/proc/stat`'s boot time (WHOLE seconds, truncated) plus start ticks, so it
+read up to a second EARLY, and measured 0.66 s before systemd's own start
+timestamp: millisecond precision that was false. Identity is not decided from
+it at all: `nmas-deploy` compares the PID with systemd's MainPID.
 
 Not gated: a diagnostic that hides behind identity is useless when identity
 breaks, and it echoes nothing secret (the repository is public).
@@ -15,6 +20,7 @@ breaks, and it echoes nothing secret (the repository is public).
 import datetime
 import os
 import subprocess
+import time
 
 from flask import Blueprint, jsonify
 
@@ -39,13 +45,8 @@ def _commit_loaded() -> tuple:
     return out.stdout.strip(), ""
 
 
-def _process_started() -> float:
-    import psutil
-    return psutil.Process(os.getpid()).create_time()
-
-
 _COMMIT, _COMMIT_ERROR = _commit_loaded()
-_STARTED = _process_started()
+_STARTED = time.time()
 
 
 @bp.route("/health", methods=["GET"])

@@ -3329,6 +3329,22 @@ Stage 7.
     - The row carries `started_at`, `restart_issued_at` and `ended_at` to
       the millisecond.
     - Three more controls, each failing its target.
+  - **Second refinement, from the operator's measurements (2026-09-26).**
+    - **The restart is confirmed by IDENTITY:** systemd's MainPID changed,
+      `/health` answers from that new pid, and it loaded the target commit.
+      The time comparison could false-fail a real restart. psutil's process
+      start is `/proc/stat` boot time (whole seconds, truncated) plus ticks,
+      and it measured 0.66 s BEFORE systemd's own start.
+    - `/health`'s `started_at` is now the app's own `time.time()` at load.
+      The row records systemd's `ExecMainStartTimestamp` at microsecond
+      resolution, for display only.
+    - **The no-run rule comes from a GREEN commit:** `paths-ignore` is read
+      from the last green ancestor's `ci.yml`, never the target's. Otherwise
+      a commit widening it to `**` would wave itself through.
+    - **A change under `.github/workflows/` is never ignorable,** whatever
+      any `paths-ignore` says.
+    - A test starts the process 0.9 s before the restart and still passes
+      on identity. Five controls, each failing its target.
   - **Operator's steps, in order:**
     1. Deploy this commit with the OLD script.
     2. Replace it:
