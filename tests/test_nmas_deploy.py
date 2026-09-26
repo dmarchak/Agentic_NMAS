@@ -10,6 +10,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import stat
 import subprocess
 import textwrap
@@ -86,7 +87,8 @@ def _fetch_from_real_origin(world):
     _git(world.host, "config", "remote.origin.url", world.origin)
 
 
-def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="200", reachable=True):
+def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
+         reachable=True, restart_fails=False):
     mod = _script()
     calls = []
 
@@ -114,10 +116,35 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="200",
     class Out:
         returncode = suite_rc
         stdout = "3942 passed" if suite_rc == 0 else "1 failed, 3941 passed"
+
+    now = [1_800_000_000.0]
+    def clock():
+        now[0] += 0.25
+        return now[0]
+    def sleep(seconds):
+        now[0] += seconds
     restarted = []
+
+    def restart():
+        if restart_fails:
+            raise subprocess.CalledProcessError(1, "systemctl", stderr="Unit not found")
+        restarted.append(now[0])
+
+    def fake_health():
+        """What /health answers. `fresh`: the target, started after the
+        restart. `stale`: the OLD commit still running. `old_process`: the
+        target, but started before the restart. `missing`: no /health."""
+        running = _git(world.host, "rev-parse", "HEAD")
+        if health == "missing":
+            return 404, None
+        if health == "stale":
+            return 200, {"commit": world.base, "started_at": mod.iso_ms(now[0]), "pid": 7}
+        started = (restarted[-1] + 0.5) if (restarted and health == "fresh") else now[0] - 3600
+        return 200, {"commit": running, "started_at": mod.iso_ms(started), "pid": 7}
+
     code = mod.main(["--repo", world.host] + (["--offline"] if offline else []),
-                    get=get, run=lambda *a, **k: Out(), restart=lambda: restarted.append(1),
-                    health=lambda: health)
+                    get=get, run=lambda *a, **k: Out(), restart=restart,
+                    health=fake_health, clock=clock, sleep=sleep)
     return code, restarted, calls
 
 
@@ -210,10 +237,45 @@ class TestLocalState:
 
 
 class TestAfterTheRestart:
-    def test_no_answer_is_exit_5(self, world):
+    """A 200 from a process that never restarted used to pass (the operator's
+    finding, 2026-09-26). Success now means /health reports the TARGET commit
+    from a process that started AFTER the restart was issued."""
+
+    def test_a_moved_deploy_says_so_and_names_the_running_process(self, world, capsys):
         sha = world.advance({"app.py": "v = 2\n"})
-        code, _, _ = _run(world, {sha: _run_entry(sha)}, health="000")
-        assert code == 5 and _head(world) == sha
+        code, _, _ = _run(world, {sha: _run_entry(sha)})
+        out = capsys.readouterr().out
+        assert code == 0
+        assert f"deployed {world.base[:10]} -> {sha[:10]}, restarted; running {sha[:10]} since" in out
+
+    def test_already_there_is_not_called_deployed(self, world, capsys):
+        code, _, _ = _run(world, {world.base: _run_entry(world.base)})
+        out = capsys.readouterr().out
+        assert code == 0 and f"already at {world.base[:10]}, restarted" in out
+        assert "deployed" not in out.split("already at")[1]
+
+    def test_the_old_commit_still_running_is_not_success(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, health="stale")
+        err = capsys.readouterr().err
+        assert code == 5 and "NOT confirmed running" in err and world.base[:10] in err
+
+    def test_a_process_older_than_the_restart_is_not_success(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, health="old_process")
+        err = capsys.readouterr().err
+        assert code == 5 and "not after the restart was issued" in err
+
+    def test_no_health_route_is_not_success(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, health="missing")
+        assert code == 5 and "/health answered 404" in capsys.readouterr().err
+
+    def test_a_failed_restart_says_not_restarted(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, restart_fails=True)
+        err = capsys.readouterr().err
+        assert code == 5 and "NOT restarted" in err and "Unit not found" in err
 
 
 class TestTheRecord:
@@ -226,6 +288,11 @@ class TestTheRecord:
         assert [r["exit"] for r in rows] == [1, 0]
         assert rows[0]["to"] == sha and rows[0]["gate"] == "ci" and rows[0]["user"]
         assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+        ok = rows[1]
+        # run start and end separately, to the millisecond, and what RAN
+        assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", ok["started_at"])
+        assert ok["started_at"] < ok["restart_issued_at"] < ok["running_started_at"] <= ok["ended_at"]
+        assert ok["running_commit"] == sha
 
 
 class TestIgnoredPaths:
@@ -242,3 +309,15 @@ class TestIgnoredPaths:
         src = open(os.path.join(ROOT, "scripts", "nmas-deploy")).read()
         assert "ignored_patterns(repo, target)" in src
         assert '"docs/**"' not in src
+
+
+class TestTheHealthRoute:
+    @pytest.mark.real_identity
+    def test_it_reports_the_loaded_commit_and_process_start_ungated(self):
+        import app as A
+        body = A.app.test_client().get("/health").get_json()
+        head = subprocess.run(["git", "-C", ROOT, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        assert body["commit"] == head and body["ok"] is True
+        assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", body["started_at"])
+        assert body["pid"] == os.getpid()

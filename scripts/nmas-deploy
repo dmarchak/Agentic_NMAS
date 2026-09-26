@@ -15,7 +15,8 @@ The gate is decided on the TARGET commit (origin/main after a fetch), before
 HEAD moves. HEAD never reaches a commit that has not passed.
 
 Exit codes. Each means one thing; none is "probably fine":
-  0  deployed, or already at the target and restarted
+  0  deployed (or already at the target) AND confirmed running: /health
+     reports the target commit from a process started after the restart
   1  CI FAILED, was cancelled, or is still running for the target: refused
   2  COULD NOT ASK: GitHub unreachable, timed out, rate-limited, answered an
      error, or has NO run for the target. Refused. There is no flag that
@@ -23,7 +24,8 @@ Exit codes. Each means one thing; none is "probably fine":
   3  --offline: the suite failed on this machine against the target: refused
   4  refused by local state: edits in the checkout, root-owned files in .git,
      or origin/main is not a fast-forward
-  5  deployed, and the app did not answer after the restart
+  5  moved (or already there), but NOT confirmed running: the restart failed,
+     or /health never reported the target from a freshly started process
 
 "No run found" is exit 2, never a pass. That is the fail-open shape of the
 old Jenkins ci_gate, which was skipped silently whenever it could not ask
@@ -197,7 +199,48 @@ def audit(repo, row):
         print(f"WARNING: could not record this deploy in {path}: {exc}", file=sys.stderr)
 
 
-def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None) -> int:
+def iso_ms(epoch: float) -> str:
+    import datetime
+    return (datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc)
+            .isoformat(timespec="milliseconds").replace("+00:00", "Z"))
+
+
+def parse_iso(text):
+    import datetime
+    try:
+        return datetime.datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def wait_for_running(target, issued, health, clock, sleep, timeout=90, interval=2):
+    """(ok, seen, reason): wait until /health reports the TARGET commit from a
+    process that STARTED after the restart was issued. A 200 alone proves only
+    that something answered: a process that never restarted answers 200 too."""
+    deadline = clock() + timeout
+    seen, reason = None, "no answer yet"
+    while True:
+        status, body = health()
+        if body is None:
+            reason = f"/health answered {status}"
+        else:
+            seen = body
+            started = parse_iso(body.get("started_at"))
+            if body.get("commit") != target:
+                reason = (f"the running process loaded {str(body.get('commit'))[:10]}, "
+                          f"not {target[:10]}")
+            elif started is None or started <= issued:
+                reason = (f"the process that answered started at {body.get('started_at')}, "
+                          f"not after the restart was issued at {iso_ms(issued)}")
+            else:
+                return True, seen, ""
+        if clock() >= deadline:
+            return False, seen, reason
+        sleep(interval)
+
+
+def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
+         clock=time.time, sleep=time.sleep) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--offline", action="store_true",
@@ -205,12 +248,14 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     ap.add_argument("--repo", default=DEFAULT_REPO)
     args = ap.parse_args(argv)
     repo = args.repo
-    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-           "user": getpass.getuser(), "gate": "offline" if args.offline else "ci"}
+    # started_at is when the RUN began, ended_at when its row is written: two
+    # instants, millisecond resolution, so neither can be read as the other.
+    row = {"started_at": iso_ms(clock()), "user": getpass.getuser(),
+           "gate": "offline" if args.offline else "ci"}
 
     def finish(code, message):
         print(message, file=sys.stderr if code else sys.stdout)
-        row.update(exit=code, verdict=message)
+        row.update(exit=code, verdict=message, ended_at=iso_ms(clock()))
         audit(repo, row)
         return code
 
@@ -240,31 +285,44 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
 
     if head != target:
         git(repo, "merge", "--ff-only", "--quiet", target)
-        print(f"{head[:10]} -> {target[:10]}")
+        what = f"deployed {head[:10]} -> {target[:10]}"
+        print(what)
         print(git(repo, "log", "--oneline", f"{head}..{target}"))
     else:
-        print(f"already at {target[:10]}")
+        what = f"already at {target[:10]}"
+        print(what)
 
-    (restart or (lambda: subprocess.run(["sudo", "systemctl", "restart", SERVICE], check=True)))()
-    status = (health or _health)()
-    if status == "000":
-        return finish(UNHEALTHY, f"deployed {target[:10]}, and the app did not answer after "
-                                 "the restart (HTTP 000)")
-    return finish(OK, f"deployed {target[:10]} ({message}); health: HTTP {status}")
+    # The restart, and proof that the RUNNING process is the target.
+    issued = clock()
+    row["restart_issued_at"] = iso_ms(issued)
+    try:
+        (restart or (lambda: subprocess.run(["sudo", "systemctl", "restart", SERVICE],
+                                            check=True, capture_output=True, text=True)))()
+    except (subprocess.CalledProcessError, OSError) as exc:
+        detail = getattr(exc, "stderr", "") or str(exc)
+        return finish(UNHEALTHY, f"{what}, NOT restarted: {str(detail).strip()}")
+    ok, seen, reason = wait_for_running(target, issued, health or _health, clock, sleep)
+    if seen:
+        row.update(running_commit=seen.get("commit"), running_started_at=seen.get("started_at"),
+                   running_pid=seen.get("pid"))
+    if not ok:
+        return finish(UNHEALTHY, f"{what}, restarted, but NOT confirmed running: {reason}")
+    return finish(OK, f"{what}, restarted; running {target[:10]} since "
+                      f"{seen.get('started_at')} (pid {seen.get('pid')}). {message}")
 
 
 def _health():
+    """(status, body or None) from the app's /health."""
     port = os.environ.get("NMAS_PORT", "5000")
-    url = os.environ.get("NMAS_HEALTH_URL", f"http://127.0.0.1:{port}/")
-    time.sleep(3)
+    url = os.environ.get("NMAS_HEALTH_URL", f"http://127.0.0.1:{port}/health")
     try:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return str(resp.status)
+            return resp.status, json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
-        return str(exc.code)
-    except (urllib.error.URLError, OSError):
-        return "000"
+        return exc.code, None
+    except (urllib.error.URLError, OSError, ValueError):
+        return 0, None
 
 
 if __name__ == "__main__":
