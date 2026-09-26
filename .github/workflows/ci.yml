@@ -46,6 +46,7 @@ jobs:
         run: |
           python -m pip install --no-deps -r requirements.lock
           python -m pip install --no-deps -r requirements-ci.txt
+          python -m pip install --no-deps -r requirements-test.txt
 
       # Information, not a gate: the facts the lock does NOT pin. The host
       # stamps ext4 times from a 1 ms tick and this runner did not, and a test

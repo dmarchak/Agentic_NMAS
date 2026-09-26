@@ -109,3 +109,11 @@ def test_the_suite_runs_confined_and_never_unconfined(path):
     for run in suite:
         assert run.lstrip().startswith("scripts/nmas-test"), run
         assert "--allow-unconfined" not in run, run
+
+
+@pytest.mark.parametrize("path", WORKFLOWS)
+def test_it_installs_the_test_tools_the_host_installs(path):
+    """C45: the runner that schedules the tests is pinned once, for both."""
+    raw = open(path, encoding="utf-8").read()
+    assert "pip install --no-deps -r requirements-test.txt" in raw
+    assert "-n auto" in raw

@@ -30,8 +30,9 @@ SCRIPT = os.path.join(ROOT, "scripts", "nmas-test")
 ROUTE_PROBE = (
     "import socket\n"
     "s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n"
+    "connect = getattr(socket, '_nmas_real_connect', socket.socket.connect)\n"
     "try:\n"
-    "    s.connect(('192.0.2.1', 9)); print('ROUTE')\n"
+    "    connect(s, ('192.0.2.1', 9)); print('ROUTE')\n"
     "except OSError as e:\n"
     "    print('NOROUTE', e.errno)\n")
 
@@ -130,3 +131,125 @@ class TestTheRunner:
         with open(SCRIPT, encoding="utf-8") as fh:
             text = fh.read()
         assert re.search(r'^\s+echo "nmas-test: network: NOT CONFINED: ', text, re.M)
+
+
+#: The C46 address: the live NMAS, which on the deployment host is the host itself.
+LIVE_NMAS = ("10.0.0.211", 5000)
+
+
+class TestEveryProcessATestStarts:
+    """Layer 3, by construction and on every machine, including the host,
+    where no namespace can be made (C46)."""
+
+    def test_a_python_child_with_a_bare_env_is_refused_and_recorded(self):
+        """C46's own shape: an explicit env carrying only PATH and HOME."""
+        guard = network_guard.spawn_guard()
+        code = ("import socket\ns = socket.socket(); s.settimeout(3)\n"
+                f"try:\n    s.connect({LIVE_NMAS!r}); print('CONNECTED')\n"
+                "except OSError as e:\n    print('REFUSED', e)\n")
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                             env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"}, timeout=30)
+        assert out.stdout.startswith("REFUSED") and "test harness refused" in out.stdout, out
+        tried = guard.take()
+        assert len(tried) == 1 and "10.0.0.211" in tried[0], tried
+
+    def test_a_name_is_not_resolved_in_a_child(self):
+        guard = network_guard.spawn_guard()
+        out = subprocess.run([sys.executable, "-c",
+                              "import socket\ntry:\n    socket.getaddrinfo('example.com', 80)\n"
+                              "except OSError as e:\n    print('REFUSED', e)"],
+                             capture_output=True, text=True, timeout=30)
+        assert out.stdout.startswith("REFUSED"), out
+        assert any("resolve 'example.com'" in t for t in guard.take())
+
+    @pytest.mark.parametrize("argv", [["ssh", "-o", "BatchMode=yes", "u@192.0.2.5", "true"],
+                                      ["curl", "-s", "http://192.0.2.6/"],
+                                      ["rsync", "x", "192.0.2.7:/tmp/"]])
+    def test_network_tools_are_refused_and_recorded(self, argv):
+        guard = network_guard.spawn_guard()
+        out = subprocess.run(argv, capture_output=True, text=True,
+                             env={"PATH": "/usr/bin:/bin"}, timeout=30)
+        assert out.returncode == 255 and "test harness refused" in out.stderr, out
+        tried = guard.take()
+        assert len(tried) == 1 and tried[0].startswith(argv[0] + "\t"), tried
+
+    def test_git_may_use_local_paths_only(self, tmp_path):
+        out = subprocess.run(["git", "clone", "-q", "ssh://u@192.0.2.8/r.git", str(tmp_path / "c")],
+                             capture_output=True, text=True, timeout=30)
+        assert out.returncode != 0 and "not allowed" in out.stderr, out.stderr
+        network_guard.spawn_guard().take()
+        local = subprocess.run(["git", "init", "-q", "--bare", str(tmp_path / "o.git")],
+                               capture_output=True, text=True)
+        cloned = subprocess.run(["git", "clone", "-q", str(tmp_path / "o.git"), str(tmp_path / "l")],
+                                capture_output=True, text=True)
+        assert local.returncode == 0 and cloned.returncode == 0, cloned.stderr
+
+    def test_a_fake_the_test_builds_is_run(self, tmp_path):
+        """A recording `curl` in the test's own tmp_path is not a network."""
+        fake = tmp_path / "bin" / "curl"
+        fake.parent.mkdir()
+        fake.write_text("#!/bin/sh\necho FAKE-CURL \"$@\"\n")
+        fake.chmod(0o755)
+        out = subprocess.run(["curl", "http://192.0.2.9/"], capture_output=True, text=True,
+                             env={"PATH": f"{fake.parent}:/usr/bin:/bin"}, timeout=30)
+        assert out.stdout.strip() == "FAKE-CURL http://192.0.2.9/", out
+        assert network_guard.spawn_guard().take() == []
+
+    def test_a_tool_outside_pytests_tree_is_not_a_fake(self):
+        """Floor for the deferral: a directory the test did NOT build under
+        pytest's temporary tree is refused, however it got onto PATH."""
+        import shutil
+        import tempfile
+        outside = tempfile.mkdtemp(prefix="not-pytest-")
+        try:
+            tool = os.path.join(outside, "curl")
+            with open(tool, "w") as fh:
+                fh.write("#!/bin/sh\necho SHOULD-NOT-RUN\n")
+            os.chmod(tool, 0o755)
+            out = subprocess.run(["curl", "http://192.0.2.10/"], capture_output=True, text=True,
+                                 env={"PATH": f"{outside}:/usr/bin:/bin"}, timeout=30)
+            assert "SHOULD-NOT-RUN" not in out.stdout and out.returncode == 255, out
+            assert len(network_guard.spawn_guard().take()) == 1
+        finally:
+            shutil.rmtree(outside, ignore_errors=True)
+
+    def test_the_c46_case_cannot_reach_the_live_nmas(self, tmp_path):
+        """The exact defect: the sync script via a symlink, NMAS_URL left at
+        the script's default (the live NMAS). Refused by construction, not by
+        this test's REPO happening to name nothing."""
+        script = os.path.join(ROOT, "scripts", "oxidized-to-config.sh")
+        link = tmp_path / "oxidized-to-config.sh"
+        link.symlink_to(script)
+        out = subprocess.run(["bash", str(link), "--yes"], capture_output=True, text=True,
+                             env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
+                                  "REPO": str(tmp_path / "none")},
+                             cwd=str(tmp_path), timeout=60)
+        assert "the NMAS could not be asked" in out.stdout, out.stdout
+        tried = network_guard.spawn_guard().take()
+        assert any("10.0.0.211" in t for t in tried), tried
+
+    def test_the_wrapper_saw_the_suites_spawns(self):
+        """Floor: a wrapper that is not on the spawn path counts nothing."""
+        subprocess.run(["true"])
+        assert network_guard.spawn_guard().spawned >= 1
+
+
+class TestAnAttemptFailsTheTestThatMadeIt:
+    def test_by_name_in_a_nested_run(self, tmp_path):
+        """The per-test check, observed from outside: a test whose child
+        tries the live NMAS fails, naming the attempt, even though the child's
+        own error was swallowed."""
+        probe = tmp_path / "test_reaches_out.py"
+        probe.write_text(
+            "import subprocess, sys\n"
+            "def test_swallows_its_childs_error():\n"
+            "    subprocess.run([sys.executable, '-c', 'import socket; s=socket.socket()\\n"
+            "try:\\n    s.connect((\\'10.0.0.211\\', 5000))\\nexcept OSError: pass'])\n")
+        env = {k: v for k, v in os.environ.items() if k != "NMAS_TEST_STORE_OWNER"}
+        env["PYTHONPATH"] = ROOT
+        done = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                               "-p", "tests.conftest", "--rootdir", str(tmp_path), str(probe)],
+                              capture_output=True, text=True, cwd=ROOT, env=env, timeout=120)
+        network_guard.spawn_guard().take()
+        assert done.returncode == 1, done.stdout[-1500:]
+        assert "tried to reach a network (C46)" in done.stdout and "10.0.0.211" in done.stdout, done.stdout[-1500:]

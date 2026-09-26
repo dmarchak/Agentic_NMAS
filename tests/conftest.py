@@ -54,6 +54,33 @@ from tests import network_guard  # noqa: E402
 
 network_guard.install()
 _NETWORK_STATE = network_guard.confinement()
+# Every process a test starts, by construction, on every machine (C46): see
+# network_guard.SpawnGuard. Its own directory, never inside the test store,
+# which some tests delete and restore mid-session.
+if network_guard.spawn_guard() is None:
+    network_guard.install_spawn_guard(tempfile.mkdtemp(prefix="nmas-test-spawn-"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _fakes_live_under_pytests_temporary_tree(tmp_path_factory):
+    network_guard.spawn_guard().fakes_under = os.path.realpath(str(tmp_path_factory.getbasetemp()))
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _no_spawned_process_reaches_a_network(request, _fakes_live_under_pytests_temporary_tree):
+    """A child that tried to reach a real endpoint fails the test that
+    started it, by name: the child's own error is often swallowed by the
+    code under test, which is how C46's request went unseen."""
+    guard = network_guard.spawn_guard()
+    guard.current = request.node.nodeid
+    guard.offset, _ = guard.attempts(0)
+    yield
+    _, tried = guard.attempts(guard.offset)
+    guard.current = ""
+    if tried:
+        pytest.fail("a process this test started tried to reach a network (C46), and "
+                    f"the harness refused it: {tried[:5]}", pytrace=False)
 
 
 def pytest_report_header(config):
@@ -73,6 +100,7 @@ def pytest_sessionfinish(session, exitstatus):
     changed = tree_changes(getattr(session, "nmas_checkout_data_before", {}),
                            data_tree(_CHECKOUT_DATA_DIR))
     shutil.rmtree(_TEST_DATA_DIR, ignore_errors=True)
+    shutil.rmtree(network_guard.spawn_guard().root, ignore_errors=True)
     if changed:
         import sys
         sys.stderr.write(

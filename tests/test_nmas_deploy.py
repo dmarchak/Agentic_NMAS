@@ -464,3 +464,51 @@ class TestTheHealthRoute:
         assert body["commit"] == head and body["ok"] is True
         assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", body["started_at"])
         assert body["pid"] == os.getpid()
+
+
+class TestTheRunnerVersionMatchesCI:
+    """C45: --offline runs in parallel only with the pytest-xdist the target
+    pins, the version CI runs; anything else is serial and says why."""
+
+    @staticmethod
+    def _tree(tmp_path, pin="3.8.0"):
+        (tmp_path / "requirements-test.txt").write_text(f"pytest-xdist=={pin}\nexecnet==2.1.2\n")
+        return str(tmp_path)
+
+    def _with(self, monkeypatch, version):
+        import importlib.metadata as md
+
+        def fake(name):
+            if name != "pytest-xdist" or version is None:
+                raise md.PackageNotFoundError(name)
+            return version
+        monkeypatch.setattr(md, "version", fake)
+
+    def test_the_pinned_version_runs_in_parallel(self, tmp_path, monkeypatch):
+        self._with(monkeypatch, "3.8.0")
+        ok, how = _script().parallel_available(self._tree(tmp_path))
+        assert ok and "in parallel" in how and "3.8.0" in how
+
+    def test_another_version_runs_serially_naming_both(self, tmp_path, monkeypatch):
+        self._with(monkeypatch, "3.4.0")
+        ok, how = _script().parallel_available(self._tree(tmp_path))
+        assert not ok and "3.4.0" in how and "3.8.0" in how and how.startswith("serially")
+
+    def test_not_installed_runs_serially(self, tmp_path, monkeypatch):
+        self._with(monkeypatch, None)
+        ok, how = _script().parallel_available(self._tree(tmp_path))
+        assert not ok and "not installed" in how
+
+
+def test_a_refusal_ends_in_one_full_stop(world):
+    sha = world.advance({"app.py": "v = 2\n", "scripts/nmas-test": "#!/bin/sh\n"})
+    _fetch_from_real_origin(world)
+    _git(world.host, "fetch", "-q", "origin")
+
+    def spy(argv, cwd=None, **_kw):
+        class Out:
+            returncode = 1
+            stdout = "nmas-test: network: NOT CONFINED: no namespace (x). Processes CAN reach.\n1 failed"
+        return Out()
+    _, message = _script().offline_verdict(world.host, sha, run=spy)
+    assert ".." not in message and message.endswith(". Refused."), message

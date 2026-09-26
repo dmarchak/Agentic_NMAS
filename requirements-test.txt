@@ -1,0 +1,9 @@
+# Test tools the host AND CI both install, with --no-deps (C45).
+# The runner that schedules the tests must be the same version in both places:
+# two versions of the thing that decides test order is how an order-dependent
+# finding (C43) comes back. `nmas-deploy --offline` runs in parallel only when
+# the installed version is the one pinned here, and otherwise says why not.
+# Measured with pytest 9.1.1 (the lock's): 4 workers, 3,986 passed in 24.5 s
+# on the laptop against 64 s serial.
+pytest-xdist==3.8.0
+execnet==2.1.2

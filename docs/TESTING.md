@@ -166,6 +166,15 @@ and the test process itself still refuses any non-loopback connect. The
 deployment host cannot make the namespace (AppArmor), so `--offline` there
 runs unconfined and says so in its verdict.
 
+Every process a test starts is also refused a network **by construction**,
+on every machine including the host: a wrapper on `subprocess.Popen` gives
+each child a `sitecustomize` (Python), refusing shims for `ssh`, `curl`,
+`rsync` and the rest, and local-only git, and any attempt fails the test that
+made it, by name (C46).
+
+`requirements-test.txt` pins the test tools the host AND CI install
+(`pytest-xdist`): the runner that decides test order must be one version.
+
 ## Reproducing these numbers
 
 ```bash

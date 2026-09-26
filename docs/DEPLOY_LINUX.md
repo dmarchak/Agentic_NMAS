@@ -45,6 +45,13 @@ So the two faithful rebuilds are:
    `requirements.lock` is generated ON the host by
    `scripts/nmas-lock-from-host`, which reads Python metadata AND `dpkg`.
 
+The test tools the host runs the suite with (`nmas-deploy --offline`) are
+pinned in `requirements-test.txt`, the same versions CI installs. On the
+current host, where pytest is a user-level install:
+`python3 -m pip install --user --break-system-packages --no-deps -r requirements-test.txt`.
+`--offline` runs in parallel only when the installed `pytest-xdist` is the
+pinned version, and says which it did.
+
 `pip install -r requirements.txt`, or the lock WITHOUT `--no-deps`, gives a
 third environment that has never been tested against this code.
 

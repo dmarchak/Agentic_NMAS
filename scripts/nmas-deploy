@@ -188,20 +188,38 @@ def ci_verdict(repo, target, get=github_get):
     return COULD_NOT_ASK, f"no CI run for {short} and no passing ancestor within 100 commits. Refused."
 
 
-def parallel_available():
-    """pytest-xdist importable by THIS interpreter (the one that runs the suite)."""
-    import importlib.util
-    return importlib.util.find_spec("xdist") is not None
+def parallel_available(tree=None):
+    """``(bool, reason)``: run with pytest-xdist only when THIS interpreter has
+    the version the target pins in requirements-test.txt (C45). A different
+    version of the runner that schedules the tests is how an order-dependent
+    finding comes back, so a mismatch runs serially and says so."""
+    import importlib.metadata
+    try:
+        have = importlib.metadata.version("pytest-xdist")
+    except importlib.metadata.PackageNotFoundError:
+        return False, "serially (pytest-xdist is not installed here)"
+    want = None
+    try:
+        with open(os.path.join(tree or ".", "requirements-test.txt"), encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip().lower().startswith("pytest-xdist=="):
+                    want = line.strip().split("==", 1)[1]
+    except OSError:
+        pass
+    if want is None:
+        return False, f"serially (pytest-xdist {have} is installed, and the target pins no version)"
+    if have != want:
+        return False, f"serially (pytest-xdist {have} is installed; the target pins {want}, as CI runs)"
+    return True, f"in parallel on {os.cpu_count()} cores (pytest-xdist {have}, as CI)"
 
 
-def offline_forecast(repo):
+def offline_forecast(repo, tree=None):
     """What --offline is about to cost, said BEFORE it runs (C45): the full
     suite takes minutes on the host, and that is worth knowing rather than
     discovering at the wrong moment. The figure is this machine's own last
     --offline run, from the audit rows; never a constant, which would go
     stale silently."""
-    how = (f"in parallel on {os.cpu_count()} cores" if parallel_available()
-           else "serially (pytest-xdist is not installed here)")
+    _, how = parallel_available(tree)
     last = None
     try:
         with open(os.path.join(repo, "data", "deploy_audit.jsonl"), encoding="utf-8") as fh:
@@ -236,13 +254,13 @@ def offline_verdict(repo, target, run=subprocess.run):
     nothing had ever run the suite inside an archive. `--shared` borrows the
     repository's objects and writes nothing into it.
     """
-    print(offline_forecast(repo), flush=True)
     with tempfile.TemporaryDirectory(prefix="nmas-deploy-") as tmp:
         tree = os.path.join(tmp, "tree")
         subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", repo, tree],
                        check=True, capture_output=True)
         subprocess.run(["git", "-C", tree, "checkout", "-q", "--detach", target],
                        check=True, capture_output=True)
+        print(offline_forecast(repo, tree), flush=True)
         runner = os.path.join(tree, "scripts", "nmas-test")
         if os.path.exists(runner):
             # C46: confined when this machine can make a network namespace,
@@ -250,13 +268,13 @@ def offline_verdict(repo, target, run=subprocess.run):
             argv = [runner, "--allow-unconfined", "-q", "-p", "no:cacheprovider"]
         else:
             argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-        if parallel_available():
+        if parallel_available(tree)[0]:
             argv += ["-n", "auto"]
         out = run(argv, cwd=tree, capture_output=True, text=True)
     lines = (out.stdout or "").strip().splitlines()
     tail = lines[-1:] or ["(no output)"]
     network = next((ln[len("nmas-test: "):] for ln in lines if ln.startswith("nmas-test: network:")),
-                   "network: NOT CONFINED (the target has no scripts/nmas-test)")
+                   "network: NOT CONFINED (the target has no scripts/nmas-test)").rstrip(".")
     if out.returncode == 0:
         return OK, f"the suite passed HERE against {target[:10]}: {tail[0]}; {network}"
     return OFFLINE_FAILED, (f"the suite FAILED here against {target[:10]}: {tail[0]}; "
@@ -353,7 +371,7 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     row = {"started_at": iso_ms(clock()), "user": getpass.getuser(),
            "gate": "offline" if args.offline else "ci"}
     if args.offline:
-        row["parallel"] = parallel_available()
+        row["parallel"] = parallel_available(repo)[0]
 
     def finish(code, message):
         print(message, file=sys.stderr if code else sys.stdout)
