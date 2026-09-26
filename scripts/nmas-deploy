@@ -188,13 +188,25 @@ def ci_verdict(repo, target, get=github_get):
 
 
 def offline_verdict(repo, target, run=subprocess.run):
-    """Run the whole suite on THIS machine against the target, not HEAD."""
+    """Run the whole suite on THIS machine against the target, not HEAD, in a
+    CHECKOUT of the target: the shape of what is deployed.
+
+    Not `git archive`. An archive has no `.git`, and `/health` reads the loaded
+    commit from git, so from an archive its test failed on EVERY commit and
+    `--offline` could not pass at all. It refused a red commit for the wrong
+    reason and would have refused a green one the same way. Found by running it
+    on the host (2026-09-26); its tests replaced the suite run with a stub, so
+    nothing had ever run the suite inside an archive. `--shared` borrows the
+    repository's objects and writes nothing into it.
+    """
     with tempfile.TemporaryDirectory(prefix="nmas-deploy-") as tmp:
-        archive = subprocess.Popen(["git", "-C", repo, "archive", target], stdout=subprocess.PIPE)
-        subprocess.run(["tar", "-x", "-C", tmp], stdin=archive.stdout, check=True)
-        archive.wait()
+        tree = os.path.join(tmp, "tree")
+        subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", repo, tree],
+                       check=True, capture_output=True)
+        subprocess.run(["git", "-C", tree, "checkout", "-q", "--detach", target],
+                       check=True, capture_output=True)
         out = run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
-                  cwd=tmp, capture_output=True, text=True)
+                  cwd=tree, capture_output=True, text=True)
     tail = (out.stdout or "").strip().splitlines()[-1:] or ["(no output)"]
     if out.returncode == 0:
         return OK, f"the suite passed HERE against {target[:10]}: {tail[0]}"

@@ -3345,6 +3345,16 @@ Stage 7.
       any `paths-ignore` says.
     - A test starts the process 0.9 s before the restart and still passes
       on identity. Five controls, each failing its target.
+  - **The red-commit test (2026-09-26).** Pending and failed both refused
+    with exit 1 on `7be2c93`, naming the run; the run failed at the tests
+    step, after the install passed. The first red commit, `003a93d`, got NO
+    run: its message described the next step in words containing GitHub's
+    skip directive, which GitHub honours anywhere in a message, so it became
+    the no-run case (exit 2). **`--offline` was broken**: it tested a
+    `git archive`, where `/health`'s test fails on every commit, so its exit 3
+    on the red commit was right for the wrong reason. Fixed to test a
+    checkout of the target; re-run on the host against a scratch clone with
+    the restart replaced by a function that raises.
   - **Operator's steps, in order:**
     1. Deploy this commit with the OLD script.
     2. Replace it:

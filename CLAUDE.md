@@ -1561,6 +1561,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   so the first simulation passed with the fix removed. `requirements.lock`
   pins Python and packages; nothing pins the kernel, and
   `scripts/nmas-env-facts` prints what differs, in CI and on the host.
+- **`--offline` could not pass on ANY commit, and refused a red one looking
+  correct** (P.4 step 4, 2026-09-26). It ran the suite from `git archive`,
+  which has no `.git`, and `/health`'s test reads the loaded commit from git,
+  so it failed on every commit since `/health` existed. The red-commit test
+  read its exit 3 as a pass. Its unit tests replaced the suite run with a
+  stub, so nothing had ever run the suite inside an archive. Found by running
+  it on the host and reading WHICH tests failed (2, where the probe accounts
+  for 1). It now tests a `--shared` clone checked out at the target, the shape
+  of what is deployed, and a test asserts the suite sees a checkout whose HEAD
+  is the target.
 - **An instrument that re-executes its setup can move what it measures.**
   Measuring GET writers by importing `tests.conftest` for a helper executed conftest
   a second time and re-pointed `NMAS_DATA_DIR`, so the measurement watched an empty
@@ -4537,7 +4547,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **34 open at 2026-09-26**, counted from the rows: 29 recorded only in
+present when each was recorded. **35 open at 2026-09-26**, counted from the rows: 30 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

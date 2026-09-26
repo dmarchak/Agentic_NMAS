@@ -254,6 +254,31 @@ class TestOffline:
         code, _, calls = _run(world, {}, offline=True, suite_rc=1)
         assert code == 3 and _head(world) == world.base and calls == []
 
+    def test_the_suite_runs_in_a_checkout_of_the_target(self, world):
+        """A tree with no .git failed /health's test on every commit, so
+        --offline could never pass (2026-09-26). The suite must see what a
+        deploy runs: a git checkout whose HEAD is the target."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        _fetch_from_real_origin(world)
+        _git(world.host, "fetch", "-q", "origin")
+        seen = {}
+
+        def spy(argv, cwd=None, **_kw):
+            seen["cwd"] = cwd
+            seen["head"] = subprocess.run(["git", "-C", cwd, "rev-parse", "HEAD"],
+                                          capture_output=True, text=True).stdout.strip()
+            seen["app"] = open(os.path.join(cwd, "app.py")).read()
+
+            class Out:
+                returncode, stdout = 0, "1 passed"
+            return Out()
+        code, _ = _script().offline_verdict(world.host, sha, run=spy)
+        assert code == 0
+        assert seen["head"] == sha, "the suite ran in something that is not a checkout of the target"
+        assert seen["app"] == "v = 2\n"
+        assert os.path.realpath(seen["cwd"]) != os.path.realpath(world.host)
+        assert _head(world) == world.base, "testing the target must not move the host"
+
     def test_a_passing_suite_here_deploys_without_asking_github(self, world):
         sha = world.advance({"app.py": "v = 2\n"})
         code, _, calls = _run(world, {}, offline=True, suite_rc=0)
