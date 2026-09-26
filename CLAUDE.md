@@ -946,6 +946,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_setting_not_applicable.py` | C31: a declaration carries who, when and why, and refuses a missing reason or a set key; job health tells `not_applicable` from `unset_guard`, and set-and-declared is a `contradiction`; a declared consumer leaves the rotation's list |
 | `test_harness_isolation.py` | C32/C36: the suite runs on a temporary store; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
+| `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
+| `test_ci_workflow.py` | P.4 step 3: the workflow reads only this repository (no `repository:`, no secret, read-only token, token not persisted), installs the lock, never gates on coverage, cancels superseded runs; parsed values, not raw text |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1519,6 +1521,12 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   only way to show that is a second, empty one. It is also how two product reads
   that wrote (`/deploy/plan`, the onboarding plan) were found, and ten GETs that
   write (C33).
+- **Lock the versions of the machine that RUNS** (C37). The laptop, the pins and
+  the host were three version sets; a test failing on one (C35) was invisible
+  until a fourth ran it. `requirements.lock` is generated ON THE HOST, and CI
+  installs it. Its first import measurement missed Flask itself, because apt
+  packages carry metadata that cannot map an import to its distribution: a
+  floor of known imports caught it.
 - **An instrument that re-executes its setup can move what it measures.**
   Measuring GET writers by importing `tests.conftest` for a helper executed conftest
   a second time and re-pointed `NMAS_DATA_DIR`, so the measurement watched an empty
@@ -4495,7 +4503,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **30 open at 2026-09-26**, counted from the rows: 25 recorded only in
+present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

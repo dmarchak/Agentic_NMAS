@@ -1,4 +1,10 @@
 # Network Device Manager - Python Dependencies
+#
+# TESTED VERSIONS ARE IN requirements.lock, generated on the deployment host
+# (scripts/nmas-lock-from-host); CI installs that file. The pins below describe
+# NO machine (register C37): the host runs paramiko 2.12.0, pysnmp 4.4.12,
+# jsonschema 4.10.3 and Flask-SocketIO 5.3.6, and openai and groq are imported
+# by nothing. Kept as the human-readable declaration until it is reconciled.
 # Install with: pip install -r requirements.txt
 #
 # Note: For Python 3.13+, a telnetlib compatibility shim (telnetlib.py) is included

@@ -1,0 +1,2 @@
+# CI-only tools, not on the deployment host: coverage is REPORTED, never gated (NSOT_PLAN, course labs).
+pytest-cov
