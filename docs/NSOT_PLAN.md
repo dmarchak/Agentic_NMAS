@@ -3317,6 +3317,18 @@ Stage 7.
   - `test_nmas_deploy.py` drives it against a real bare origin and clone, and
     asserts HEAD unmoved on every refusal. Six controls, each failing its
     target.
+  - **Refined after the operator's first live run (2026-09-26, `3b5c6df`).**
+    Its row said "deployed" with from == to, and a 200 from `/` would have
+    passed for a process that never restarted.
+    - `GET /health` now reports the commit the running process LOADED and
+      its OS start time.
+    - `nmas-deploy` waits until both show the target and a start AFTER the
+      restart was issued, and records them.
+    - The verdict is "deployed a -> b", "already at a, restarted" or
+      "... NOT restarted".
+    - The row carries `started_at`, `restart_issued_at` and `ended_at` to
+      the millisecond.
+    - Three more controls, each failing its target.
   - **Operator's steps, in order:**
     1. Deploy this commit with the OLD script.
     2. Replace it:

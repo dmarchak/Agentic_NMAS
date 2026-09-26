@@ -949,7 +949,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_ci_workflow.py` | P.4 step 3: the workflow reads only this repository (no `repository:`, no secret, read-only token, token not persisted), installs the lock, never gates on coverage, cancels superseded runs; parsed values, not raw text |
 | (overview) | **[docs/TESTING.md](docs/TESTING.md)**: what the suite checks, the 180 controls that run every time against the ~330 that ran once, and what it cannot reach |
-| `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
+| `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed, and success means `/health` reports the TARGET commit from a process started AFTER the restart; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1394,7 +1394,10 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   operator's own pattern, named by the operator, 2026-09-25). `nmas-deploy`
   prints `health: HTTP 200`, which was read as the PATH `/health`, and the
   runbook was reported wrong on that basis without measuring. The runbook
-  and the script both check `/`, and `/health` answers 404. C1 was the same
+  and the script both checked `/`, and `/health` answered 404. (Since 2026-09-26
+  `/health` exists and reports the commit the RUNNING process loaded and its
+  start time; `nmas-deploy` waits on both, because a process that never
+  restarted answers `/` with 200 too.) C1 was the same
   shape: a report read as a claim it did not make. The reader-side half of
   *a tool's output is a claim*: before reporting a document wrong, run the
   command it names.
