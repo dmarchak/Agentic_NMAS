@@ -1292,6 +1292,14 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The better the comment, the more likely it quotes the code it explains**,
   so the places most likely to carry an explanatory quotation are the places
   most likely to have a test asserting something subtle.
+- **A label that looks like a path, asserted as a finding** (the
+  operator's own pattern, named by the operator, 2026-09-25). `nmas-deploy`
+  prints `health: HTTP 200`, which was read as the PATH `/health`, and the
+  runbook was reported wrong on that basis without measuring. The runbook
+  and the script both check `/`, and `/health` answers 404. C1 was the same
+  shape: a report read as a claim it did not make. The reader-side half of
+  *a tool's output is a claim*: before reporting a document wrong, run the
+  command it names.
 - **A marker is not a match: count the line's exact FORM** (C21,
   2026-09-25). The heartbeat query matched any line containing
   `NMAS-HEARTBEAT`. Removing the applet's timer logs an error that NAMES the
@@ -4201,7 +4209,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **24 open at 2026-09-25**, counted from the rows: 20 recorded only in
+present when each was recorded. **23 open at 2026-09-25**, counted from the rows: 19 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

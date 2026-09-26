@@ -244,6 +244,7 @@ and `nmas-check-secret-storage` classifies it with the rest.
 | `storage/vzdump-sda/status`: `active`, `avail` | `inactive` when the storage is not mounted (the `is_mountpoint` refusal made visible) |
 | the same, against the newest image sizes | **`will_not_fit`** when `avail` < the largest image x 1.2 |
 | `disks/lvmthin`: the pool's data and metadata use | `pool_filling` at 80 % of either |
+| `disks/zfs`: each ZFS pool's SIZE, ALLOC, FREE, FRAG, health (what `zpool list` prints; readable by the auditor token) | `pool_degrading` at 80 % ALLOC/SIZE (a convention: allocation slows as free space fragments); **`pool_will_pause`** once the headroom above ZFS's reserve (1/32 of the pool, capped at 128 GiB) falls under 5 % of the pool, about 92 % for `vmdata`, because at the reserve writes get ENOSPC and QEMU pauses every VM on the pool; `pool_unhealthy` for any health but ONLINE (B7) |
 
 **"Filling" is a question about the next run, not a percentage.** 85 % full
 with 40 G free is fine when images are 12 G; 60 % full is not when an image

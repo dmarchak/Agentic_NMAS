@@ -142,6 +142,11 @@ class ProxmoxIntegration(IntegrationClient):
     def thin_pools(self) -> dict:
         return self._data(f"nodes/{self.node}/disks/lvmthin")
 
+    def zfs_pools(self) -> dict:
+        """What `zpool list` prints: size, alloc, free, frag, health. Readable
+        with the auditor token (measured 2026-09-25)."""
+        return self._data(f"nodes/{self.node}/disks/zfs")
+
     def task_log(self, upid: str, limit: int = 2000) -> dict:
         """One task's log lines, as text. Readable with Sys.Audit."""
         result = self._data(f"nodes/{self.node}/tasks/{upid}/log", limit=limit)

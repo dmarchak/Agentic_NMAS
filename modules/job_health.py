@@ -174,6 +174,85 @@ FIT_FACTOR = 1.2
 POOL_WARN_FRACTION = 0.80
 
 _IMAGES_WHAT = "nightly VM image (vzdump) on the Proxmox host (B6)"
+
+# ── ZFS pools (register B7) ─────────────────────────────────────────────────
+#
+# `vmdata` holds every VM, and it was made sparse to fit B6's test restore,
+# so it can now overcommit. The figure that says how full it is, is ALLOC
+# against SIZE (`zpool list`). Proxmox's own storage percentage counts
+# REFRESERVATIONS: it read 85 % when 8 % was written, and 52 % after one
+# reservation was dropped, while the data on the pool had not moved.
+#
+# Two thresholds, and they are different kinds of number:
+#: DEGRADING, a convention and not a cliff: as a pool fills, the allocator
+#: searches harder for free space, and fragmentation compounds it. Gradual,
+#: workload-dependent, and milder on NVMe than on spinning disks.
+ZFS_DEGRADING_FRACTION = 0.80
+#: WILL PAUSE, a hard point: OpenZFS keeps a "slop" reserve of 1/32 of the
+#: pool (capped at 128 GiB) and refuses ordinary writes once free space falls
+#: to it. A zvol write then fails with ENOSPC, and QEMU's default for that is
+#: to PAUSE the VM. So when this pool fills, every VM on it freezes at once.
+#: Warned while the headroom above the reserve is under this share of the pool.
+ZFS_PAUSE_HEADROOM_FRACTION = 0.05
+ZFS_SLOP_SHIFT = 5
+ZFS_MAX_SLOP = 128 * 1024 ** 3
+
+
+def zfs_slop(size: int) -> int:
+    """The reserve below which ZFS refuses ordinary writes (OpenZFS
+    `spa_slop_shift` = 5, capped by `spa_max_slop`; from its defaults, not
+    measured on this host)."""
+    return min(int(size) >> ZFS_SLOP_SHIFT, ZFS_MAX_SLOP)
+
+
+def zfs_rows(pools: dict) -> list:
+    """One row per ZFS pool, from ``disks/zfs``. An empty answer is
+    ``unknown``: this token was already shown an empty backup LISTING that
+    was hidden rather than absent, so empty never means "none"."""
+    what = "ZFS pool on the Proxmox host (B7): how full, from ALLOC/SIZE"
+
+    def row(unit, state, detail):
+        return {"unit": unit, "what": what, "state": state, "detail": detail,
+                "max_age_minutes": None}
+
+    if not pools["ok"]:
+        return [row("zfs-pools", "unknown", f"ZFS pools unreadable: {pools['error']} "
+                                            f"-- not the same as ok")]
+    if not pools["data"]:
+        return [row("zfs-pools", "unknown",
+                    "the node reports no ZFS pool. Empty is not the same as none: "
+                    "this token has been shown an empty listing that was hidden")]
+    rows = []
+    for pool in pools["data"]:
+        name = pool.get("name", "?")
+        size, alloc = int(pool.get("size") or 0), int(pool.get("alloc") or 0)
+        free = int(pool.get("free") if pool.get("free") is not None else size - alloc)
+        health = str(pool.get("health", "?"))
+        if size <= 0:
+            rows.append(row(f"zfs-pool:{name}", "unknown", f"{name} reports no size"))
+            continue
+        fill = alloc / size
+        slop = zfs_slop(size)
+        headroom = free - slop
+        detail = (f"{name} {fill:.1%} allocated ({_gib(alloc)} of {_gib(size)}), "
+                  f"frag {pool.get('frag', '?')}%, {health}; "
+                  f"{_gib(max(headroom, 0))} before ZFS refuses writes "
+                  f"(its reserve is {_gib(slop)})")
+        if health != "ONLINE":
+            state = "pool_unhealthy"
+            detail = f"{name} is {health}, not ONLINE: a suspended pool stops writes. " + detail
+        elif headroom < ZFS_PAUSE_HEADROOM_FRACTION * size:
+            state = "pool_will_pause"
+            detail += ("; at the reserve every VM on this pool PAUSES (QEMU stops a VM "
+                       "whose disk write gets ENOSPC)")
+        elif fill >= ZFS_DEGRADING_FRACTION:
+            state = "pool_degrading"
+            detail += (f"; past {ZFS_DEGRADING_FRACTION:.0%}, a convention rather than a "
+                       f"cliff: allocation slows as free space fragments")
+        else:
+            state = "ok"
+        rows.append(row(f"zfs-pool:{name}", state, detail))
+    return rows
 #: How many finished vzdump tasks' logs to read, newest first, before a VM
 #: that no task mentions is reported `never`.
 IMAGE_TASK_LOGS = 20
@@ -409,6 +488,8 @@ def image_jobs(now: float = None, client=None) -> list:
         rows.append(row("thin-pools", "pool_filling" if filling else "ok",
                         ("; ".join(filling) + f" (warn at {POOL_WARN_FRACTION:.0%})")
                         if filling else "; ".join(parts)))
+
+    rows += zfs_rows(client.zfs_pools())
     return rows
 
 

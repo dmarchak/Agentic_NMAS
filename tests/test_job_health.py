@@ -135,7 +135,7 @@ class FakeProxmox:
     Each read can fail independently: a failed read must never come out ok."""
 
     def __init__(self, *, tasks=None, logs=None, listing=(), storage=None, pools=None,
-                 missing=(), vmids=(100, 102)):
+                 zfs=None, missing=(), vmids=(100, 102)):
         self._missing, self._vmids = list(missing), list(vmids)
         self.storage = "vzdump-sda"
         # Default: the manual run measured live -- one task per VM, each with its id.
@@ -149,6 +149,10 @@ class FakeProxmox:
         self._listing = list(listing)
         self._storage = storage if storage is not None else {
             "active": 1, "avail": 114 * GIB, "used": 34 * GIB}
+        # vmdata as measured live, 2026-09-25 (`disks/zfs`, auditor token).
+        self._zfs = zfs if zfs is not None else [
+            {"name": "vmdata", "size": 996432412672, "alloc": 85304246272,
+             "free": 911128166400, "frag": 27, "dedup": 1, "health": "ONLINE"}]
         self._pools = pools if pools is not None else [
             {"vg": "pve", "lv": "data", "lv_size": 348 * GIB, "used": 0.11,
              "metadata_size": GIB, "metadata_used": 0.01}]
@@ -179,6 +183,9 @@ class FakeProxmox:
     def thin_pools(self):
         return self._wrap(self._pools)
 
+    def zfs_pools(self):
+        return self._wrap(self._zfs)
+
 
 def _rows(client):
     return {r["unit"]: r for r in J.image_jobs(NOW, client)}
@@ -207,7 +214,8 @@ class TestTheImagesAreWatched:
         rows = _rows(FakeProxmox())
         assert {u: r["state"] for u, r in rows.items()} == {
             "vm-image:100": "ok", "vm-image:102": "ok",
-            "vm-images-storage:vzdump-sda": "ok", "thin-pools": "ok"}
+            "vm-images-storage:vzdump-sda": "ok", "thin-pools": "ok",
+            "zfs-pool:vmdata": "ok"}
         assert "25.2 GiB" in rows["vm-image:100"]["detail"]
         assert "froze the filesystem: yes" in rows["vm-image:100"]["detail"]
         assert "cannot list the images" in rows["vm-image:100"]["detail"]
@@ -269,7 +277,8 @@ class TestTheImagesAreWatched:
     def test_a_read_that_failed_is_unknown_never_ok(self):
         rows = _rows(FakeProxmox(tasks=RuntimeError("HTTP 403"),
                                  storage=RuntimeError("HTTP 403"),
-                                 pools=RuntimeError("HTTP 403")))
+                                 pools=RuntimeError("HTTP 403"),
+                                 zfs=RuntimeError("HTTP 403")))
         assert {r["state"] for r in rows.values()} == {"unknown"}
         assert all("not the same as ok" in r["detail"] for r in rows.values())
 
@@ -317,6 +326,50 @@ class TestFillingIsAboutTheNextRun:
     def test_the_live_pool_figures_read_as_measured(self):
         row = _rows(FakeProxmox())["thin-pools"]
         assert row["detail"] == "pve/data data 11%, metadata 1%"
+
+
+class TestTheZfsPoolThatHoldsEveryVm:
+    """B7: vmdata is sparse now, so it can overcommit, and when a ZFS pool
+    fills every VM on it pauses at once. ALLOC/SIZE is the figure; Proxmox's
+    percentage counts reservations (85 % when 8 % was written)."""
+
+    SIZE = 996432412672            # vmdata, measured
+
+    def _pool(self, fraction, health="ONLINE", frag=27):
+        alloc = int(self.SIZE * fraction)
+        return [{"name": "vmdata", "size": self.SIZE, "alloc": alloc,
+                 "free": self.SIZE - alloc, "frag": frag, "health": health}]
+
+    def _row(self, zfs):
+        return _rows(FakeProxmox(zfs=zfs))["zfs-pool:vmdata"]
+
+    def test_the_live_pool_reads_ok_with_alloc_over_size(self):
+        row = self._row(None)
+        assert row["state"] == "ok"
+        assert "8.6% allocated" in row["detail"] and "frag 27%" in row["detail"]
+
+    def test_eighty_percent_is_degrading_and_says_it_is_a_convention(self):
+        row = self._row(self._pool(0.82))
+        assert row["state"] == "pool_degrading" and "convention" in row["detail"]
+
+    def test_near_the_reserve_writes_will_pause(self):
+        """The reserve is 1/32 (29 GiB here); warned while the headroom above
+        it is under 5 % of the pool, i.e. from about 92 % allocated."""
+        row = self._row(self._pool(0.93))
+        assert row["state"] == "pool_will_pause" and "PAUSES" in row["detail"]
+        assert self._row(self._pool(0.91))["state"] == "pool_degrading"
+
+    def test_the_reserve_is_a_thirty_second_capped_at_128_gib(self):
+        assert J.zfs_slop(self.SIZE) == self.SIZE >> 5
+        assert J.zfs_slop(10 * 1024 ** 4) == 128 * 1024 ** 3
+
+    def test_an_unhealthy_pool_outranks_how_full_it_is(self):
+        assert self._row(self._pool(0.10, health="SUSPENDED"))["state"] == "pool_unhealthy"
+
+    def test_an_empty_answer_is_unknown_never_none(self):
+        """This token has already been shown a listing that was hidden, not empty."""
+        rows = J.zfs_rows({"ok": True, "data": []})
+        assert [r["state"] for r in rows] == ["unknown"]
 
 
 def test_health_carries_the_image_rows_in_its_headline():
