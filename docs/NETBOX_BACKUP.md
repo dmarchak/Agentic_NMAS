@@ -89,16 +89,19 @@ DEST=/mnt/vzdump/nmas-netbox          # or /srv/nmas-netbox
 ### 2b. The account, the directories, the key
 
 ```bash
-useradd --system --create-home --home-dir /var/lib/nmas-backup --shell /bin/sh nmas-backup
-passwd -S nmas-backup                 # second field must be L (locked): no password login exists
-install -d -o nmas-backup -g nmas-backup -m 0700 "$DEST" "$DEST/hourly" "$DEST/daily"
-install -d -o nmas-backup -g nmas-backup -m 0700 /var/lib/nmas-backup/.ssh
+( set -eu
+  : "${DEST:?set DEST first, see 2a}"
+  useradd --system --create-home --home-dir /var/lib/nmas-backup --shell /bin/sh nmas-backup
+  passwd -S nmas-backup                 # second field must be L (locked): no password login exists
+  install -d -o nmas-backup -g nmas-backup -m 0700 "$DEST" "$DEST/hourly" "$DEST/daily"
+  install -d -o nmas-backup -g nmas-backup -m 0700 /var/lib/nmas-backup/.ssh
 
-printf '%s\n' "command=\"/usr/bin/rrsync -wo $DEST\",restrict,from=\"10.0.0.211\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKeRwEfwUxS5t3mzWUk4MVP6SP6r/b3cS8FT9zU0zep8 nmas-netbox-backup@nmas" \
-    > /var/lib/nmas-backup/.ssh/authorized_keys
-chown nmas-backup:nmas-backup /var/lib/nmas-backup/.ssh/authorized_keys
-chmod 0600 /var/lib/nmas-backup/.ssh/authorized_keys
-cat /var/lib/nmas-backup/.ssh/authorized_keys     # the -wo path must show the real directory, not an empty $DEST
+  printf '%s\n' "command=\"/usr/bin/rrsync -wo $DEST\",restrict,from=\"10.0.0.211\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKeRwEfwUxS5t3mzWUk4MVP6SP6r/b3cS8FT9zU0zep8 nmas-netbox-backup@nmas" \
+      > /var/lib/nmas-backup/.ssh/authorized_keys
+  chown nmas-backup:nmas-backup /var/lib/nmas-backup/.ssh/authorized_keys
+  chmod 0600 /var/lib/nmas-backup/.ssh/authorized_keys
+  cat /var/lib/nmas-backup/.ssh/authorized_keys     # the -wo path must show the real directory, not an empty $DEST
+)
 ```
 
 The key is the dedicated one on the VM (`~/.ssh/nmas_netbox_backup`),
@@ -106,55 +109,88 @@ checked 2026-09-25 to match the line above.
 
 ### 2c. The restriction in a second place: why the shell stays `/bin/sh`
 
-**The shell cannot be `nologin`.** sshd runs a forced command through the
-account's login shell (`$SHELL -c`, then the command). With
+**The shell cannot be `nologin`.** sshd(8)/sshd_config(5): a forced command
+"is invoked by using the user's login shell with the -c option". With
 `/usr/sbin/nologin`, `nologin` receives the rrsync command, refuses it, and
-every push fails. The restriction therefore cannot live in the shell. It
-lives in three places that do not depend on each other:
+every push fails. So the restriction cannot live in the shell. It lives here:
 1. **No password:** `passwd -S` shows the account locked, so the key is the
    only way in.
-2. **The key's own options:** `command=` (rrsync, write-only, one
-   directory), `restrict` (no pty, forwarding or agent) and `from=` (only
-   the VM).
-3. **sshd itself, for the account and not the key:** a `Match` block that
-   forces the same command whatever `authorized_keys` says. So a second key
-   added later without `command=` still gets rrsync and nothing else.
+2. **The key's non-command options, which apply alongside everything else:**
+   `restrict` (no pty, forwarding or agent) and `from=` (only the VM).
+3. **The forced command, set in TWO places, and they are NOT two layers.**
+   When both are set, sshd runs the config's `ForceCommand` and ignores the
+   key's `command=`. sshd(8): the key's command "may be superseded by a
+   sshd_config(5) ForceCommand directive". At any moment **exactly one
+   command is in force**, so this is not belt and braces. What the pair buys
+   is two independent ways to LOSE the restriction, each covered by the
+   other:
+   - the `Match` block covers a key added later **without** `command=`;
+   - the key's `command=` covers the `Match` block being lost (a package
+     upgrade that replaces `sshd_config`, an edit, a reset).
+   **So the two must name the same command.** A difference changes nothing
+   while both stand, and silently changes what the account can do on the
+   day one goes. And the key's `command=` is inert while the `Match` block
+   stands, so no test can show it working. To test it deliberately, comment
+   out the `Match` block, reload, re-run 2d's three tests, and restore.
+
+**rrsync works under either.** It reads the client's rsync request from
+`SSH_ORIGINAL_COMMAND`, which sshd sets for both kinds of forced command
+("the command originally supplied by the client is available in the
+SSH_ORIGINAL_COMMAND environment variable"). It takes the directory and
+`-wo` from its own arguments, and exits with "Not invoked via sshd" without
+the variable (read in rrsync 3.4.1's source; Debian's 3.2.x has the same
+design). So `ForceCommand` does not break the push. 2d's tests are the
+measurement.
 
 ```bash
-# At the END of the main file: a Match block runs until the next Match or
-# end of file, so appended here it cannot capture anyone else's settings.
-printf '\n%s\n' \
-  "Match User nmas-backup" \
-  "    ForceCommand /usr/bin/rrsync -wo $DEST" \
-  "    AuthenticationMethods publickey" \
-  "    PermitTTY no" \
-  "    AllowTcpForwarding no" \
-  "    AllowAgentForwarding no" \
-  "    X11Forwarding no" \
-  "    PermitTunnel no" >> /etc/ssh/sshd_config
-tail -n 10 /etc/ssh/sshd_config       # the ForceCommand path must show the real directory
-sshd -t && echo "config valid"        # reload ONLY if this prints "config valid"
-systemctl reload ssh
-# Measure the effective settings rather than trusting the file:
-sshd -T -C user=nmas-backup,host=nmas,addr=10.0.0.211 | grep -Ei 'forcecommand|permittty|allowtcpforwarding'
-sshd -T -C user=root,host=x,addr=10.0.0.211 | grep -i forcecommand   # must print "forcecommand none"
+( set -eu
+  : "${DEST:?set DEST first, see 2a}"
+  # At the END of the main file: a Match block runs until the next Match or
+  # end of file, so appended here it cannot capture anyone else's settings.
+  printf '\n%s\n' \
+    "Match User nmas-backup" \
+    "    ForceCommand /usr/bin/rrsync -wo $DEST" \
+    "    AuthenticationMethods publickey" \
+    "    PermitTTY no" \
+    "    AllowTcpForwarding no" \
+    "    AllowAgentForwarding no" \
+    "    X11Forwarding no" \
+    "    PermitTunnel no" >> /etc/ssh/sshd_config
+  tail -n 10 /etc/ssh/sshd_config       # the ForceCommand path must show the real directory
+  sshd -t                             # an invalid config stops the block HERE, before the reload
+  systemctl reload ssh
+  # Measure the effective settings rather than trusting the file:
+  sshd -T -C user=nmas-backup,host=nmas,addr=10.0.0.211 | grep -Ei 'forcecommand|permittty|allowtcpforwarding'
+  sshd -T -C user=root,host=x,addr=10.0.0.211 | grep -i forcecommand   # must print "forcecommand none"
+)
 ```
 
 ### 2d. Retention, and the test that passes step 2
 
 ```bash
-# Retention is this side's job: rrsync -wo can write and cannot delete.
-printf '%s\n' \
-  "17 * * * * nmas-backup find $DEST/hourly -name '*.tar.gpg' -mmin +1560 -delete" \
-  "23 3 * * * nmas-backup find $DEST/daily  -name '*.tar.gpg' -mtime +15  -delete" \
-  > /etc/cron.d/nmas-netbox-retention
-cat /etc/cron.d/nmas-netbox-retention # both paths must show the real directory, not "/hourly"
+( set -eu
+  : "${DEST:?set DEST first, see 2a}"
+  # Retention is this side's job: rrsync -wo can write and cannot delete.
+  printf '%s\n' \
+    "17 * * * * nmas-backup find $DEST/hourly -name '*.tar.gpg' -mmin +1560 -delete" \
+    "23 3 * * * nmas-backup find $DEST/daily  -name '*.tar.gpg' -mtime +15  -delete" \
+    > /etc/cron.d/nmas-netbox-retention
+  cat /etc/cron.d/nmas-netbox-retention # both paths must show the real directory, not "/hourly"
+)
 ```
 
 **Why `printf` and not heredocs:** every line above expands `$DEST`, and a
 file written with an EMPTY `$DEST` is not an error. A cron line reading
 `find /hourly ... -delete` would run every hour against the root filesystem.
 So each write is followed by a `cat` or `tail` that shows the expanded path.
+
+**Why each block is one `( set -eu … )` unit:** pasted into an interactive
+shell, a failing line stops only itself and the next lines run anyway, so
+a guard at the top of a pasted block guards nothing. Inside the subshell,
+the first failure ends the block: an unset `$DEST`, a user that already
+exists, or `sshd -t` rejecting the config. If 2c stops at `sshd -t`, the
+file on disk is invalid but NOT loaded. Fix it before anything restarts
+sshd, with the second root session still open.
 
 From the NMAS VM, once section 3 has put the host key in `known_hosts`:
 

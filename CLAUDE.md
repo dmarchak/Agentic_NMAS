@@ -4164,6 +4164,22 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   The runbook itself now uses `printf` plus a `cat` of each result. Every
   line expands `$DEST`, and an unset `$DEST` in a fresh root shell would
   otherwise write `find /hourly … -delete` into cron without an error.
+- **A runbook line that depends on shell state does something different when
+  followed slightly differently** (the operator's generalisation,
+  2026-09-25). A variable set three blocks earlier, a `cd`, a sourced env
+  file, a second terminal: each is state the reader may not have, and the
+  line runs anyway, with no error, doing something else. The form that
+  holds up: **write, then show what was written** (`printf … > f` then
+  `cat f`), so the expanded value is on screen before anything reads it. A
+  line whose result cannot be shown should refuse on missing state instead
+  (`: "${DEST:?set DEST first}"`).
+- **Two settings of one control are not two layers when one supersedes the
+  other.** A key's `command=` and sshd's `ForceCommand` both force rrsync,
+  and the config's wins, so exactly one is in force. The pair covers two
+  different ways of LOSING the restriction, not a stronger restriction. So
+  they must be identical, and the inert one is untestable until the other
+  is removed. Say which case it is. *Belt and braces* is the natural
+  reading, and it is wrong (docs/NETBOX_BACKUP.md 2c).
 - **A job that fails into a journal nobody reads has not been reported**
   (C14). `clab-sync` refused correctly 72 times in a row, because its
   helper was on the login PATH and not systemd's, while r6's startup config
