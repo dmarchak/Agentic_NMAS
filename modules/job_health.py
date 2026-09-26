@@ -332,6 +332,9 @@ def image_jobs(now: float = None, client=None) -> list:
             newest_sizes.append(fact["size"])
         archive = os.path.basename(fact.get("archive") or "")
         notes = [f"froze the filesystem: {'yes' if fact.get('froze') else 'NO (crash-consistent image)'}"]
+        if fact.get("status", "").startswith("WARNINGS"):
+            # Not a failure (the archive was written), and never silent.
+            notes.append(f"its vzdump task finished with {fact['status']}")
         if listed and archive and archive not in listed:
             state = "missing"
             detail = (f"the last run wrote {archive} {_age(now, fact['endtime'])}, and the "

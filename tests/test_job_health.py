@@ -240,6 +240,14 @@ class TestTheImagesAreWatched:
         assert rows["vm-image:102"]["state"] == "failing"
         assert "guest agent timeout" in rows["vm-image:102"]["detail"]
 
+    def test_a_task_that_finished_with_warnings_is_named_and_not_a_failure(self):
+        tasks = [{"upid": "U100", "id": "100", "starttime": NOW - 7 * HOUR,
+                  "endtime": NOW - 6 * HOUR, "status": "WARNINGS: 1"},
+                 {"upid": "U102", "id": "102", "starttime": NOW - 8 * HOUR,
+                  "endtime": NOW - 7 * HOUR, "status": "OK"}]
+        row = _rows(FakeProxmox(tasks=tasks))["vm-image:100"]
+        assert row["state"] == "ok" and "WARNINGS: 1" in row["detail"]
+
     def test_no_task_mentions_the_vm_is_never(self):
         rows = _rows(FakeProxmox(logs={"U100": _vm_log(100), "U102": _vm_log(100)}))
         assert rows["vm-image:102"]["state"] == "never"
