@@ -489,9 +489,61 @@ def ship_offbox(cfg: dict, artefact: str) -> None:
                 "NMAS_BACKUP_RCLONE_REMOTE names that bucket. rclone said: "
                 + err.strip()[:200]) from exc
         raise
+    verify_offbox(remote, artefact)
     if cfg.get("offbox_prune"):
         _run(["rclone", "delete", f"{remote}/daily", "--min-age",
               f"{DAILY_KEEP_DAYS}d"], capture_output=True, text=True)
+        old = [o["Name"] for o in _offbox_listing(remote)
+               if _age_days(o.get("ModTime", "")) > DAILY_KEEP_DAYS + 1]
+        if old:
+            raise RuntimeError(
+                f"the prune exited 0 and {len(old)} file(s) older than "
+                f"{DAILY_KEEP_DAYS} days are still listed ({', '.join(old[:3])}). "
+                "rclone's exit code does not prove a deletion")
+
+
+def _offbox_listing(remote: str) -> list:
+    """The ``daily/`` DIRECTORY listing, never a single-file path. A
+    single-file path makes rclone HEAD the object first, which needs
+    ``readFiles``. Refused, it reads the path as an empty directory. A
+    directory listing needs only ``listFiles``."""
+    out = _run(["rclone", "lsjson", "--files-only", f"{remote}/daily"],
+               capture_output=True, text=True).stdout
+    try:
+        return json.loads(out or "[]")
+    except ValueError as exc:
+        raise RuntimeError(f"the off-box listing is not JSON: {exc}") from exc
+
+
+def _age_days(modtime: str) -> float:
+    try:
+        when = datetime.datetime.fromisoformat(modtime.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return (now - when).total_seconds() / 86400
+
+
+def verify_offbox(remote: str, artefact: str) -> None:
+    """Confirm the upload by LISTING it, never by rclone's exit code.
+
+    Measured 2026-09-26: with a key that could not read, rclone retried a
+    401 ten times, printed "There was nothing to transfer", and exited 0.
+    The 401 was visible only at -vv. So the exit code cannot tell "refused",
+    "absent" and "already up to date" apart. The upload is the object
+    appearing in the listing with the artefact's exact size."""
+    name = os.path.basename(artefact)
+    size = os.path.getsize(artefact)
+    listed = {o.get("Name"): o for o in _offbox_listing(remote)}
+    if name not in listed:
+        raise RuntimeError(
+            f"rclone exited 0 and {name} is NOT in the off-box listing "
+            f"({len(listed)} other file(s) listed). An exit code of 0 proves "
+            "neither permission nor transfer; run the push with -vv to see why")
+    if listed[name].get("Size") != size:
+        raise RuntimeError(
+            f"{name} is listed off-box at {listed[name].get('Size')} bytes, "
+            f"and the local artefact is {size}")
 
 
 def _reason(exc: BaseException) -> str:

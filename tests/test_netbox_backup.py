@@ -337,6 +337,8 @@ class TestOffboxRetentionIsTheBucketsByDefault:
     def _calls(self, monkeypatch, env):
         calls = []
         monkeypatch.setattr(B, "_run", lambda cmd, **kw: calls.append(cmd))
+        monkeypatch.setattr(B, "verify_offbox", lambda remote, artefact: None)
+        monkeypatch.setattr(B, "_offbox_listing", lambda remote: [])
         cfg = B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket", **env})
         B.ship_offbox(cfg, "/x/20260925T000000Z.tar.gpg")
         return calls
@@ -388,3 +390,63 @@ class TestOffboxRetentionIsTheBucketsByDefault:
         cfg = B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket"})
         with pytest.raises(subprocess.CalledProcessError):
             B.ship_offbox(cfg, "/x/20260925T000000Z.tar.gpg")
+
+
+
+class TestAnOffboxTransferIsProvenByTheListingNotTheExitCode:
+    """Measured 2026-09-26: a refused read was retried ten times (401), then
+    rclone printed "There was nothing to transfer" and exited 0. The exit
+    code cannot tell refused, absent and already-present apart."""
+
+    def _setup(self, monkeypatch, tmp_path, listing):
+        artefact = tmp_path / "20260926T000000Z.tar.gpg"
+        artefact.write_bytes(b"x" * 363799)
+        import subprocess
+
+        def run(cmd, **kw):
+            out = json.dumps(listing) if cmd[1] == "lsjson" else ""
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
+        monkeypatch.setattr(B, "_run", run)
+        return B.config_from_env({"NMAS_BACKUP_RCLONE_REMOTE": "b2:bucket"}), str(artefact)
+
+    def test_listed_at_the_right_size_passes(self, monkeypatch, tmp_path):
+        cfg, a = self._setup(monkeypatch, tmp_path,
+                             [{"Name": "20260926T000000Z.tar.gpg", "Size": 363799}])
+        B.ship_offbox(cfg, a)
+
+    def test_exit_zero_and_not_listed_is_a_failure(self, monkeypatch, tmp_path):
+        cfg, a = self._setup(monkeypatch, tmp_path,
+                             [{"Name": "older.tar.gpg", "Size": 5}])
+        with pytest.raises(RuntimeError) as excinfo:
+            B.ship_offbox(cfg, a)
+        assert "NOT in the off-box listing" in str(excinfo.value)
+        assert "proves neither permission nor transfer" in str(excinfo.value)
+
+    def test_listed_at_the_wrong_size_is_a_failure(self, monkeypatch, tmp_path):
+        cfg, a = self._setup(monkeypatch, tmp_path,
+                             [{"Name": "20260926T000000Z.tar.gpg", "Size": 100}])
+        with pytest.raises(RuntimeError) as excinfo:
+            B.ship_offbox(cfg, a)
+        assert "363799" in str(excinfo.value)
+
+    def test_it_lists_the_directory_never_the_file(self, monkeypatch, tmp_path):
+        """A single-file path makes rclone HEAD it, which needs readFiles."""
+        seen = []
+        cfg, a = self._setup(monkeypatch, tmp_path,
+                             [{"Name": "20260926T000000Z.tar.gpg", "Size": 363799}])
+        inner = B._run
+        monkeypatch.setattr(B, "_run", lambda cmd, **kw: (seen.append(cmd), inner(cmd, **kw))[1])
+        B.ship_offbox(cfg, a)
+        lsjson = [c for c in seen if c[1] == "lsjson"]
+        assert lsjson and lsjson[0][-1] == "b2:bucket/daily"
+
+    def test_a_prune_that_deleted_nothing_is_a_failure(self, monkeypatch, tmp_path):
+        old = (datetime.datetime.now(datetime.timezone.utc)
+               - datetime.timedelta(days=30)).isoformat()
+        cfg, a = self._setup(monkeypatch, tmp_path,
+                             [{"Name": "20260926T000000Z.tar.gpg", "Size": 363799},
+                              {"Name": "20260826T000000Z.tar.gpg", "Size": 9, "ModTime": old}])
+        cfg["offbox_prune"] = True
+        with pytest.raises(RuntimeError) as excinfo:
+            B.ship_offbox(cfg, a)
+        assert "still listed" in str(excinfo.value)

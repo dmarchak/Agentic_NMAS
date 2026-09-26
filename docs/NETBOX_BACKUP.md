@@ -405,20 +405,110 @@ bucket's lifecycle rules and default retention would let `--status` refuse a
 mismatch. That needs capabilities this key lacks (`readBucketRetentions`), and
 B2 key capabilities cannot be edited, only issued anew (register B10).
 
-## 5. Status, and proving a copy decrypts
+## 5. Status, and what steps 5 and 6 measured
 
 ```bash
 NMAS_BACKUP_ROOT=/var/lib/nmas-netbox NMAS_BACKUP_GPG_RECIPIENT_FILE=/etc/nmas/netbox-backup-recipient.asc \
-  NMAS_BACKUP_PROXMOX_TARGET=nmas-backup@10.0.0.80 NMAS_BACKUP_RCLONE_REMOTE=<remote-name>:nmas-netbox-dmarchak \
+  NMAS_BACKUP_PROXMOX_TARGET=nmas-backup@10.0.0.80 NMAS_BACKUP_RCLONE_REMOTE=b2:nmas-netbox-dmarchak \
   scripts/nmas-netbox-backup --status        # 0 fresh, 1 stale/failed, 2 never ran
 ```
 
 **An unconfigured destination is reported by name, never as a success**, and
 a failed or stale (>50 h) restore test fails the status.
 
-To prove an off-VM copy is usable, fetch one `.tar.gpg` to the machine that
-holds the private key and run `gpg -d <file> | tar -tf -`. The listing must
-include `netbox.pgdump`, `manifest.json` and `config/env/netbox.env`.
+**Measured 2026-09-26 (operator), steps 5 and 6:**
+- Three destinations, all 363,799 bytes: local (an unencrypted directory),
+  Proxmox (`.tar.gpg`), and B2 (`.tar.gpg`).
+- The Proxmox copy is encrypted to ECDH key `1FDBB1E129FA3C99`, the cv25519
+  subkey of the laptop keypair, and the NMAS **cannot** decrypt it
+  (`No secret key`), as intended.
+- Local contents: `netbox.pgdump` (1.3 MB), `media.tar`, `config/`,
+  `manifest.json`.
+- Restore test **PASS**: 198 tables and 3,143 rows identical, in 20 s.
+
+**Every off-box push is confirmed by LISTING, not by rclone's exit code.**
+Measured: a refused read was retried ten times (`401`), then rclone printed
+`There was nothing to transfer` and exited **0**. The 401 was visible only
+at `-vv`. So after `copyto`, the script lists `daily/` and requires the
+object at the artefact's exact size. It lists the DIRECTORY, because a
+single-file path makes rclone HEAD the object, which needs `readFiles`. A
+prune, when enabled, is confirmed the same way.
+
+## 6. Retrieving an off-box copy (step 7)
+
+**Decided 2026-09-26: one READ-ONLY B2 key, kept on the laptop for
+retrieval and on the NMAS for the lock/lifecycle check (B10).** Until it
+exists, **no credential on any machine can read the off-box copies**: the
+write key has no `readFiles`, by design, and the laptop has no rclone. A
+restore whose first step is "log in to a web console and create a
+credential" fails when it is needed most.
+
+Why the read key may also live on the NMAS: everything it can read, the
+NMAS already holds UNENCRYPTED (the live database, and the plain local
+copies under `/var/lib/nmas-netbox`). A read key there exposes ciphertext of
+data the host already has in the clear, and it lets the NMAS check its own
+off-box copies. It cannot write, hide or delete, so it cannot undermine what
+it checks.
+
+### 6a. The key (B2 web UI, once)
+
+App Keys, then Add a New Application Key: name `nmas-netbox-read`, bucket
+`nmas-netbox-dmarchak` only, type **Read Only**, no file-name prefix, no
+expiry. **Record the capability list B2 shows for it.** B10's check needs
+the bucket's lifecycle rules and lock configuration, and whether a UI
+read-only key can read those is a fact to take from that list, not an
+assumption.
+
+### 6b. The laptop
+
+```bash
+sudo apt-get install -y rclone
+rclone config        # n) new remote, name b2-read, type b2; paste keyID and key AT THE PROMPT
+                     #    (never on the command line: it would be in history and in ps)
+stat -c '%a %n' ~/.config/rclone/rclone.conf     # must be 600
+```
+
+### 6c. Retrieve, then verify by the listing
+
+```bash
+rclone lsjson --files-only b2-read:nmas-netbox-dmarchak/daily    # names, sizes, times
+mkdir -p ~/netbox-restore
+rclone copy -v b2-read:nmas-netbox-dmarchak/daily ~/netbox-restore --include '<name>.tar.gpg'
+ls -l ~/netbox-restore/<name>.tar.gpg    # the size MUST equal the listing's: rclone's exit 0 proves nothing
+```
+
+**After an attack**, if the files are hidden (B9), list and fetch the
+versions:
+`rclone lsjson --files-only --b2-versions b2-read:nmas-netbox-dmarchak/daily`,
+then `rclone copy` with `--b2-versions` and `--include` naming the
+`<name>-v<timestamp>.tar.gpg` version.
+
+### 6d. Decrypt and check it is a whole backup
+
+```bash
+cd ~/netbox-restore
+gpg -d <name>.tar.gpg | tar -tf -                           # must list netbox.pgdump, manifest.json, config/env/netbox.env
+gpg -d <name>.tar.gpg | tar -xOf - manifest.json | head -40  # the row counts the restore will be compared against
+```
+
+### 6e. The read key cannot hide: a test that can fail
+
+B9 is the lesson here: the command form must be shown to delete when
+permitted, or its "not deleted" proves nothing. B9's own run is that
+positive control, since this exact form HID a file with the write key. So,
+with a fresh probe written by the write key from the NMAS:
+
+```bash
+# on the NMAS:
+printf 'probe\n' > /tmp/readkey-probe.txt
+rclone copyto --no-check-dest /tmp/readkey-probe.txt b2:nmas-netbox-dmarchak/readkey-probe.txt
+# on the laptop, with the READ key:
+rclone delete -vv b2-read:nmas-netbox-dmarchak --include readkey-probe.txt 2>&1 | tail -15
+rclone lsjson --files-only b2-read:nmas-netbox-dmarchak | grep readkey-probe   # must still be listed
+```
+
+Pass: `-vv` shows a refusal, and the probe is still in the normal listing.
+A `Deleted` line means the "read-only" key can hide, and it must not be kept.
 
 ## What this does not give
 

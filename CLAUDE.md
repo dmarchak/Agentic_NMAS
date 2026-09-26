@@ -1300,6 +1300,19 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   shape: a report read as a claim it did not make. The reader-side half of
   *a tool's output is a claim*: before reporting a document wrong, run the
   command it names.
+- **An exit code that cannot distinguish the case it is used to check
+  proves nothing about it** (the operator's pattern, 2026-09-26; three
+  instances, one session). **(1)** `rclone delete` exited 0 on a file it
+  never touched (B9). **(2)** `rclone copy` with a key that could not read
+  retried a 401 ten times, printed `There was nothing to transfer`, and
+  exited 0: "no permission", "no such file" and "already up to date" share
+  one exit code, and the 401 shows only at `-vv` (C22). **(3)** systemd
+  reports `Result=success` for a unit that does not exist, which is why
+  `job_health` says `not_installed` rather than trusting `Result`. The form
+  that holds up: **confirm the RESULT** (the object in a listing at the
+  right size, the row count, the file's hash) and treat the exit code as a
+  hint. rclone's summary line carries the tell (`Listed 133`, `Transferred
+  0`).
 - **A TEST THAT PASSES IN BOTH CASES SHOWS NOTHING. Before accepting a
   result, ask what ELSE produces that output** (B9, 2026-09-26; the
   operator's wording). The clearest instance yet. To prove a "write-only"
