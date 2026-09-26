@@ -39,53 +39,6 @@ def _dbg(*args) -> None:
     except Exception:
         pass
 
-# ---------------------------------------------------------------------------
-# Auto-continue detection
-# When Claude ends a turn with end_turn but the last thing it said is a
-# confirmation-seeking phrase ("Should I continue?", "Shall I proceed?", etc.),
-# we inject a brief affirmative and re-enter the loop instead of waiting for
-# the user to type "yes".  A cap prevents infinite loops.
-# ---------------------------------------------------------------------------
-_AUTO_CONTINUE_RE = re.compile(
-    r"(?i)"
-    r"("
-    # explicit "should/shall/may/can I ..."
-    r"should\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute|run|do\s+that)"
-    r"|shall\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute|run|do\s+that)"
-    r"|may\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute)"
-    r"|can\s+i\s+(continue|proceed|go\s+ahead|apply|push|make|execute)"
-    # "would/do you want/like me to ..."
-    r"|would\s+you\s+like\s+me\s+to\s+\w+"
-    r"|do\s+you\s+want\s+me\s+to\s+\w+"
-    r"|want\s+me\s+to\s+\w+"
-    # "would you like to ..."
-    r"|would\s+you\s+like\s+(to\s+)?(proceed|continue|apply|go\s+ahead|push|make|execute|run)"
-    r"|do\s+you\s+want\s+(to\s+)?(proceed|continue|apply|go\s+ahead|push|make|execute|run)"
-    # "let me know ..."
-    r"|let\s+me\s+know\s+(if|when|how|whether|before)"
-    r"|just\s+let\s+me\s+know"
-    # "ready / waiting / waiting for ..."
-    r"|ready\s+to\s+(continue|proceed|apply|go|push)"
-    r"|waiting\s+for\s+your\s+(confirmation|approval|go-?ahead|ok|input|direction|instruction)"
-    r"|awaiting\s+your\s+(confirmation|approval|go-?ahead|ok|input|direction)"
-    # "before I proceed/continue/apply"
-    r"|before\s+i\s+(proceed|continue|apply|push|make|execute|do)"
-    # "if you're ready / when you're ready"
-    r"|if\s+you.{0,10}re\s+ready"
-    r"|when\s+you.{0,10}re\s+ready"
-    # "please confirm/advise"
-    r"|please\s+(confirm|advise|let\s+me\s+know|indicate|specify)"
-    # "go ahead?" as a standalone
-    r"|go\s+ahead\?"
-    r"|ok\s+to\s+(proceed|continue|apply|go|push)"
-    r"|okay\s+to\s+(proceed|continue|apply|go|push)"
-    # "type/say 'continue' to ..."
-    r"|type\s+['\"]?(yes|continue|proceed|go\s+ahead)['\"]?\s+to"
-    r"|say\s+['\"]?(yes|continue|proceed|go\s+ahead)['\"]?\s+to"
-    r")",
-    re.DOTALL,
-)
-_MAX_AUTO_CONTINUES = 10   # cap per run_chat call
 # Minimum number of prior-task messages to keep visible even when the current
 # task's own tool-calling rounds fill the whole history window -- see the
 # history-trimming logic in run_chat().
@@ -250,12 +203,6 @@ def _load_network_kb() -> dict:
         return {}
 
 
-def _save_network_kb(kb: dict) -> None:
-    try:
-        with open(_get_network_kb_file(), "w", encoding="utf-8") as fh:
-            json.dump(kb, fh, indent=2)
-    except Exception as exc:
-        logger.warning("Could not save network KB: %s", exc)
 
 
 # ---- Global KB --------------------------------------------------------------
@@ -269,12 +216,6 @@ def _load_global_kb() -> dict:
         return {}
 
 
-def _save_global_kb(kb: dict) -> None:
-    try:
-        with open(_GLOBAL_KB_FILE, "w", encoding="utf-8") as fh:
-            json.dump(kb, fh, indent=2)
-    except Exception as exc:
-        logger.warning("Could not save global KB: %s", exc)
 
 
 # ---- Shared formatter -------------------------------------------------------
@@ -893,16 +834,6 @@ def _load_change_log() -> list:
         return []
 
 
-def _append_change_log(entry: dict) -> None:
-    log = _load_change_log()
-    entry.setdefault("id", f"{int(time.time() * 1000)}")
-    entry.setdefault("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
-    log.append(entry)
-    # Keep last 500 entries
-    if len(log) > 500:
-        log = log[-500:]
-    with open(_get_change_log_path(), "w", encoding="utf-8") as fh:
-        json.dump(log, fh, indent=2)
 
 
 # ---- Compliance policy store -----------------------------------------------
@@ -1064,43 +995,6 @@ def _save_playbook_index(index: list) -> None:
         json.dump(deduped, fh, indent=2)
 
 
-def _upsert_playbook(pb: dict) -> tuple:
-    """
-    Insert or update a playbook in the index by name (case-insensitive).
-    If a playbook with the same name already exists, overwrite it in-place
-    (preserving its original 'id' so existing references keep working).
-    Returns (index, pb_id, is_update).
-    """
-    index = _load_playbook_index()
-    name_lower = pb.get("name", "").lower().strip()
-    for i, existing in enumerate(index):
-        if existing.get("name", "").lower().strip() == name_lower:
-            # Overwrite in-place; keep the original id so run_ansible_playbook
-            # references from previous sessions continue to work.
-            pb["id"] = existing["id"]
-            # Update the YAML file for this playbook
-            yaml_path = os.path.join(_get_playbooks_dir(), f"{existing['id']}.yml")
-            try:
-                with open(yaml_path, "w", encoding="utf-8") as fh:
-                    fh.write(_playbook_to_yaml(pb))
-            except Exception:
-                pass
-            index[i] = pb
-            _save_playbook_index(index)
-            return index, pb["id"], True
-    # New playbook — assign a fresh id
-    suffix = str(int(time.time() * 1000))[-5:]
-    pb_id = f"{_slug(pb.get('name', 'playbook'))}_{suffix}"
-    pb["id"] = pb_id
-    yaml_path = os.path.join(_get_playbooks_dir(), f"{pb_id}.yml")
-    try:
-        with open(yaml_path, "w", encoding="utf-8") as fh:
-            fh.write(_playbook_to_yaml(pb))
-    except Exception:
-        pass
-    index.append(pb)
-    _save_playbook_index(index)
-    return index, pb_id, False
 
 
 def _slug(name: str) -> str:
@@ -1110,48 +1004,6 @@ def _slug(name: str) -> str:
     return s[:60] or "playbook"
 
 
-def _playbook_to_yaml(pb: dict) -> str:
-    """
-    Render a playbook dict to a human-readable YAML string.
-    Each play targets a single device.  The play's 'mode' field is preserved
-    as a comment and drives which Ansible module is used:
-      - mode 'config' (default) → cisco.ios.ios_config (enter configure terminal)
-      - mode 'enable'           → cisco.ios.ios_command (exec/enable mode, no config terminal)
-    """
-    lines = [
-        "---",
-        f"# Playbook: {pb.get('name', '')}",
-        f"# Description: {pb.get('description', '')}",
-        f"# Created: {pb.get('created_at', '')}",
-        f"# Keywords: {', '.join(pb.get('keywords', []))}",
-        "",
-    ]
-    for play in pb.get("plays", []):
-        hostname = play.get("hostname") or play.get("device_ip", "")
-        device_ip = play.get("device_ip", "")
-        cmds = play.get("commands", [])
-        play_mode = play.get("mode", "config")
-        lines += [
-            f"- name: \"{'Execute on' if play_mode == 'enable' else 'Apply configuration to'} {hostname}\"",
-            f"  hosts: \"{device_ip}\"",
-            "  gather_facts: false",
-            "  vars:",
-            "    ansible_network_os: ios",
-            "    ansible_connection: network_cli",
-            f"  # mode: {play_mode}",
-            "  tasks:",
-            f"    - name: \"{pb.get('name', 'Configure device')}\"",
-        ]
-        if play_mode == "enable":
-            lines.append("      cisco.ios.ios_command:")
-            lines.append("        commands:")
-        else:
-            lines.append("      cisco.ios.ios_config:")
-            lines.append("        lines:")
-        for cmd in cmds:
-            lines.append(f"          - \"{cmd}\"")
-        lines.append("")
-    return "\n".join(lines)
 
 
 def _deduplicate_playbook_index() -> int:
@@ -1279,16 +1131,6 @@ def _load_lab_notes() -> str:
         return ""
 
 
-def _append_lab_note(note: str) -> str:
-    """Append a timestamped note to the current list's lab_notes.md."""
-    try:
-        timestamp = time.strftime("%Y-%m-%d %H:%M")
-        line = f"- [{timestamp}] {note.strip()}\n"
-        with open(_get_lab_notes_file(), "a", encoding="utf-8") as fh:
-            fh.write(line)
-        return f"Note saved: {note.strip()}"
-    except Exception as exc:
-        return f"Error saving note: {exc}"
 
 
 def _history_path(session_id: str) -> str:
@@ -2417,37 +2259,23 @@ TOOLS = [
     {
         "name": "execute_command",
         "description": (
-            "Execute a single IOS command on a specific device. "
-            "Use mode='enable' for show/exec commands. "
-            "Use mode='config' for a single config-mode command — the connection "
-            "enters 'configure terminal' before the command and exits after. "
-            "For multi-line config blocks or commands that require sub-mode navigation "
-            "(e.g. 'ip explicit-path', 'router ospf', 'interface'), use "
-            "execute_commands_on_device instead and pass each line as a separate command."
+            "Run one read-only IOS command on a specific device. "
+            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping, traceroute, dir or more. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "ip":      {"type": "string", "description": "Device IP address"},
-                "command": {"type": "string", "description": "IOS command to run"},
-                "mode": {
-                    "type": "string",
-                    "enum": ["enable", "config"],
-                    "description": "'enable' for show/exec, 'config' for configuration",
-                },
+                "command": {"type": "string", "description": "A read-only IOS command"},
             },
-            "required": ["ip", "command", "mode"],
+            "required": ["ip", "command"],
         },
     },
     {
         "name": "execute_commands_on_device",
         "description": (
-            "Execute a list of IOS commands on a single device in sequence. "
-            "Use this for multi-line config blocks, sub-mode navigation, or any "
-            "config that requires entering a sub-mode (e.g. 'ip explicit-path name X', "
-            "followed by 'next-address Y', 'next-address Z', 'exit'). "
-            "Each string in 'commands' is sent as a separate line while inside "
-            "configure terminal — enter sub-mode commands as individual list entries."
+            "Run several read-only IOS commands on one device, in order. "
+            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping, traceroute, dir or more. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
         ),
         "input_schema": {
             "type": "object",
@@ -2456,18 +2284,18 @@ TOOLS = [
                 "commands": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Ordered list of IOS commands",
+                    "description": "Ordered list of read-only IOS commands",
                 },
-                "mode": {"type": "string", "enum": ["enable", "config"]},
             },
-            "required": ["ip", "commands", "mode"],
+            "required": ["ip", "commands"],
         },
     },
     {
         "name": "execute_command_on_multiple_devices",
         "description": (
-            "Run the same IOS command on multiple devices in parallel. "
-            "Pass device_ips=['all'] to target every online device."
+            "Run the same read-only IOS command on multiple devices in parallel. "
+            "Pass device_ips=['all'] to target every online device. "
+            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping, traceroute, dir or more. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
         ),
         "input_schema": {
             "type": "object",
@@ -2478,9 +2306,8 @@ TOOLS = [
                     "description": "List of IPs, or ['all'] for every online device",
                 },
                 "command": {"type": "string"},
-                "mode": {"type": "string", "enum": ["enable", "config"]},
             },
-            "required": ["device_ips", "command", "mode"],
+            "required": ["device_ips", "command"],
         },
     },
     {
@@ -2542,44 +2369,6 @@ TOOLS = [
         },
     },
     {
-        "name": "update_network_kb",
-        "description": (
-            "Persist a confirmed fact specific to THIS device list's network, pipelines, or playbooks. "
-            "Use for facts that only apply to this list — device IPs, OSPF neighbor counts, "
-            "pipeline thresholds, playbook quirks for specific routers. "
-            "For lessons that apply to ALL lists (Jenkins XML patterns, Ansible connection modes, etc.) "
-            "use update_global_kb instead."
-            "\n\nNetwork categories: 'interfaces', 'routing', 'tunnels', 'devices', 'mpls_te', 'rsvp'"
-            "\nList CI/CD categories: 'jenkins' (this list's pipeline specifics), 'ansible' (this list's playbook quirks)"
-            "\n\nExamples:"
-            "\n  category='jenkins', key='ospf_min_neighbors', value='PE-1 and PE-2 only have 2 OSPF neighbors in this topology — use min:2'"
-            "\n  category='ansible', key='PE1_ospf_commit_order', value='Must send commit before exit or OSPF config is lost on PE-1'"
-            "\n  category='interfaces', key='PE-1_Gi1/0', value='10.0.0.9/30 — connects to P2'"
-            "\nExisting keys are overwritten so the KB always reflects current state."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string",
-                    "description": (
-                        "Top-level grouping. Network: 'interfaces', 'routing', 'tunnels', 'devices'. "
-                        "List CI/CD: 'jenkins', 'ansible'."
-                    ),
-                },
-                "key": {
-                    "type": "string",
-                    "description": "Unique identifier within the category — descriptive, e.g. 'ospf_min_neighbors' or 'PE-1_Gi1/0'",
-                },
-                "value": {
-                    "type": "string",
-                    "description": "The confirmed fact or list-specific lesson",
-                },
-            },
-            "required": ["category", "key", "value"],
-        },
-    },
-    {
         "name": "read_global_kb",
         "description": (
             "Read the global knowledge base — lessons and patterns that apply across ALL device lists. "
@@ -2599,126 +2388,6 @@ TOOLS = [
                 },
             },
             "required": [],
-        },
-    },
-    {
-        "name": "update_global_kb",
-        "description": (
-            "Persist a reusable lesson or pattern to the global knowledge base. "
-            "Use this for lessons that will apply to ALL device lists, not just the current one. "
-            "For list-specific facts use update_network_kb instead."
-            "\n\nCategories:"
-            "\n  'jenkins_patterns' — Pipeline XML format rules, CSRF handling, agent config, bat vs sh, Groovy syntax"
-            "\n  'ansible_patterns' — Connection modes, command patterns, privilege escalation, IOS quirks"
-            "\n  'tools'           — Lessons about using AI tools (file reading strategy, KB update rules, etc.)"
-            "\n  'general'         — Any other cross-list lesson"
-            "\n\nExamples:"
-            "\n  category='jenkins_patterns', key='xml_root', value='Jenkins Pipeline XML root must be <flow-definition plugin=\"workflow-job\">'"
-            "\n  category='jenkins_patterns', key='bat_syntax', value='Use bat() for Windows agents; cmd /c not needed, just the command directly'"
-            "\n  category='ansible_patterns', key='ios_enable_mode', value='Cisco IOS commands require mode: enable in the execute_command payload'"
-            "\nExisting keys are overwritten so the global KB always reflects best current knowledge."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string",
-                    "description": "Top-level grouping: 'jenkins_patterns', 'ansible_patterns', 'tools', or 'general'",
-                },
-                "key": {
-                    "type": "string",
-                    "description": "Unique identifier — descriptive, e.g. 'xml_root' or 'bat_syntax'",
-                },
-                "value": {
-                    "type": "string",
-                    "description": "The reusable lesson or pattern",
-                },
-            },
-            "required": ["category", "key", "value"],
-        },
-    },
-    {
-        "name": "save_golden_config",
-        "description": (
-            "SSH to one or more devices, capture their current startup-config, and save it as "
-            "the golden (known-good) config for this list.\n\n"
-            "Use this directly ONLY for a first-time baseline — a device has no golden config "
-            "yet (see [PROACTIVE CONTEXT] MISSING GOLDEN CONFIGS). No CI or approval needed, "
-            "there is no prior state being protected.\n\n"
-            "After a verified config CHANGE (an existing baseline is being updated), use "
-            "finalize_verified_config_change instead — it does this plus variable extraction "
-            "and change logging in one call, instead of three separate ones.\n\n"
-            "One file per device is kept (overwritten on each call). The saved config can be "
-            "used to restore a device or diff against a future broken state.\n\n"
-            "Call with device_ips=['all'] to snapshot every device in this list, or pass "
-            "specific IPs to snapshot only the devices that were modified."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "device_ips": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "List of device IP addresses to snapshot, or ['all'] for every device "
-                        "in this list."
-                    ),
-                },
-            },
-            "required": ["device_ips"],
-        },
-    },
-    {
-        "name": "finalize_verified_config_change",
-        "description": (
-            "Call this ONCE, right after you have pushed a config change and confirmed it "
-            "works — either via a passing Jenkins pipeline, or your own direct show-command "
-            "verification when Jenkins is not configured (see [CI STATUS] and CONFIG PUSH "
-            "triggers). It replaces the separate save_golden_config + read_golden_config + "
-            "set_variable(...) + log_change calls with one atomic step:\n"
-            "  1. Snapshots each device's startup-config as the new golden baseline\n"
-            "  2. Extracts variables from it automatically (IPs, OSPF/BGP/EIGRP process IDs, "
-            "loopbacks, VRFs, etc.) and merges them into the variable store — manually-set "
-            "values are never overwritten, only previously auto-discovered ones refresh\n"
-            "  3. Logs the change with your verification_summary as the audit trail\n\n"
-            "Do NOT call this for a first-time baseline (no prior change to verify) — use "
-            "save_golden_config directly for that. Do NOT call this if verification failed — "
-            "diagnose and fix first; only finalize once you've actually confirmed success."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "device_ips": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "IPs of the devices that were changed and verified, or ['all'].",
-                },
-                "verification_summary": {
-                    "type": "string",
-                    "description": (
-                        "How you confirmed the change worked — e.g. 'Jenkins pipeline "
-                        "nmas-ospf-verify build #14 passed' or 'show ip ospf neighbor confirms "
-                        "P2 (10.0.0.11) is FULL on Gi0/1'. Stored as the change log entry."
-                    ),
-                },
-                "change_type": {
-                    "type": "string",
-                    "description": "Category of change, e.g. 'ospf', 'bgp', 'acl' (default: config_push).",
-                },
-                "jenkins_pipeline": {
-                    "type": "string",
-                    "description": "Pipeline job name, if Jenkins was used for verification.",
-                },
-                "jenkins_result": {
-                    "type": "string",
-                    "description": "'SUCCESS' if Jenkins was used, otherwise omit.",
-                },
-                "playbook_id": {
-                    "type": "string",
-                    "description": "Playbook id, if this change came from run_ansible_playbook.",
-                },
-            },
-            "required": ["device_ips", "verification_summary"],
         },
     },
     {
@@ -2755,32 +2424,6 @@ TOOLS = [
         },
     },
     # ---- Rollback / restore -------------------------------------------------
-    {
-        "name": "restore_golden_config",
-        "description": (
-            "Restore one or more devices to their last verified golden config by pushing "
-            "the saved startup-config lines back via SSH in config mode. "
-            "Use this when a device is broken and you need to return it to a known-good state, "
-            "or when a Jenkins pipeline fails after a config change and rollback is needed.\n\n"
-            "After restoring, always run Jenkins to confirm the restored state is valid, "
-            "then log the rollback with log_change."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "device_ips": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Device IPs to restore. Use ['all'] for every device with a saved golden config.",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Brief reason for the rollback (logged in audit trail).",
-                },
-            },
-            "required": ["device_ips", "reason"],
-        },
-    },
     # ---- Pre-change snapshot ------------------------------------------------
     {
         "name": "capture_pre_change_snapshot",
@@ -2801,29 +2444,6 @@ TOOLS = [
                 },
             },
             "required": ["device_ips"],
-        },
-    },
-    {
-        "name": "restore_pre_change_snapshot",
-        "description": (
-            "Restore devices to the state captured by capture_pre_change_snapshot. "
-            "Use this when Jenkins fails after a config push and you want to revert to "
-            "the exact pre-change state rather than the golden config baseline."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "device_ips": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Device IPs to restore from their pre-change snapshot.",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Reason for reverting (logged in audit trail).",
-                },
-            },
-            "required": ["device_ips", "reason"],
         },
     },
     # ---- Config drift detection ---------------------------------------------
@@ -2856,52 +2476,6 @@ TOOLS = [
     },
     # ---- Change audit log ---------------------------------------------------
     {
-        "name": "log_change",
-        "description": (
-            "Record a completed configuration change in the audit log for this list. "
-            "Call this at the END of every successful config push workflow — after Jenkins passes "
-            "and golden config is saved.\n\n"
-            "Also call for rollbacks and restores so the full change history is preserved."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "description": "Human-readable summary of what was changed and why.",
-                },
-                "devices": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Device IPs that were modified.",
-                },
-                "change_type": {
-                    "type": "string",
-                    "enum": ["config_push", "rollback", "restore", "playbook", "compliance_fix"],
-                    "description": "Type of change made.",
-                },
-                "jenkins_pipeline": {
-                    "type": "string",
-                    "description": "Name of the Jenkins pipeline used to validate (if any).",
-                },
-                "jenkins_result": {
-                    "type": "string",
-                    "enum": ["SUCCESS", "FAILURE", "SKIPPED", ""],
-                    "description": "Result of the Jenkins validation run.",
-                },
-                "golden_config_saved": {
-                    "type": "boolean",
-                    "description": "Whether golden configs were saved after this change.",
-                },
-                "playbook_id": {
-                    "type": "string",
-                    "description": "ID of the Ansible playbook used (if any).",
-                },
-            },
-            "required": ["description", "devices", "change_type", "jenkins_result", "golden_config_saved"],
-        },
-    },
-    {
         "name": "read_change_log",
         "description": (
             "Read recent entries from the change audit log for this list. "
@@ -2928,46 +2502,6 @@ TOOLS = [
             "Use this before running run_compliance_check to understand what will be evaluated."
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "update_compliance_policy",
-        "description": (
-            "Add, update, or remove a compliance rule for this device list.\n\n"
-            "Each rule has:\n"
-            "  id          — unique slug, e.g. 'ospf_neighbors_pe'\n"
-            "  description — human-readable description\n"
-            "  device_ips  — list of IPs to check, or ['all']\n"
-            "  command     — IOS command to run (enable mode)\n"
-            "  assertion   — how to evaluate output:\n"
-            "      'contains:TEXT'          — output must contain TEXT\n"
-            "      'not_contains:TEXT'      — output must NOT contain TEXT\n"
-            "      'line_count_gte:N'       — output must have >= N lines with content\n"
-            "      'line_count_lte:N'       — output must have <= N lines with content\n"
-            "      'not_empty'              — output must be non-empty\n\n"
-            "Set action='delete' to remove a rule by id."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["upsert", "delete"],
-                    "description": "'upsert' to add/update, 'delete' to remove by id.",
-                },
-                "rule": {
-                    "type": "object",
-                    "description": "Rule definition (required for upsert).",
-                    "properties": {
-                        "id":          {"type": "string"},
-                        "description": {"type": "string"},
-                        "device_ips":  {"type": "array", "items": {"type": "string"}},
-                        "command":     {"type": "string"},
-                        "assertion":   {"type": "string"},
-                    },
-                },
-            },
-            "required": ["action"],
-        },
     },
     {
         "name": "run_compliance_check",
@@ -2998,38 +2532,6 @@ TOOLS = [
                 },
             },
             "required": [],
-        },
-    },
-    {
-        "name": "set_variable",
-        "description": (
-            "Store a network variable for this list. Use this whenever you discover or confirm "
-            "a value that will be reused across configs, playbooks, or Jenkins pipelines.\n\n"
-            "Examples:\n"
-            "  key='ospf_process_id', value='1'\n"
-            "  key='mpls_ldp_router_id', value='10.0.0.1'\n"
-            "  key='gre_tunnel_subnet', value='172.16.0.0/30'\n"
-            "  key='as_number', value='65001'"
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "key":         {"type": "string", "description": "Variable name (snake_case)"},
-                "value":       {"type": "string", "description": "Variable value"},
-                "description": {"type": "string", "description": "Optional human-readable description"},
-            },
-            "required": ["key", "value"],
-        },
-    },
-    {
-        "name": "delete_variable",
-        "description": "Remove a variable from this list's variable store.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "key": {"type": "string", "description": "Variable name to delete"},
-            },
-            "required": ["key"],
         },
     },
     # ---- Jenkins schedule ---------------------------------------------------
@@ -3103,126 +2605,6 @@ TOOLS = [
                 },
             },
             "required": ["action_type", "device_ip", "description"],
-        },
-    },
-    {
-        "name": "read_app_file",
-        "description": (
-            "Read the source code of a file in this application. Use this when you "
-            "encounter a bug or error and need to inspect the relevant code to fix it. "
-            "Readable paths: app.py, modules/*.py, templates/*.html, static/**.\n\n"
-            "For large files (app.py, ai_assistant.py, etc.) use start_line and end_line "
-            "to read only the section you need. The response always includes line numbers "
-            "so you can make accurate patches and know exactly where to read next.\n"
-            "Strategy for large files: read lines 1-80 first to get the structure/imports, "
-            "then jump to the specific section using start_line/end_line."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Relative path from project root, e.g. 'modules/device.py' or 'app.py'",
-                },
-                "start_line": {
-                    "type": "integer",
-                    "description": "First line to return (1-based, inclusive). Omit to start from line 1.",
-                },
-                "end_line": {
-                    "type": "integer",
-                    "description": "Last line to return (1-based, inclusive). Omit to read to end of file.",
-                },
-            },
-            "required": ["path"],
-        },
-    },
-    {
-        "name": "patch_app_file",
-        "description": (
-            "Apply a surgical string-replacement patch to a source file. "
-            "Replaces the first occurrence of old_string with new_string. "
-            "Always read_app_file first to confirm the exact text to replace. "
-            "After patching call restart_server so the change takes effect. "
-            "Writable paths: app.py, modules/*.py, templates/*.html."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Relative path from project root",
-                },
-                "old_string": {
-                    "type": "string",
-                    "description": "Exact text to find and replace (must be unique in the file)",
-                },
-                "new_string": {
-                    "type": "string",
-                    "description": "Replacement text",
-                },
-            },
-            "required": ["path", "old_string", "new_string"],
-        },
-    },
-    {
-        "name": "restart_server",
-        "description": (
-            "Restart the Flask application server so that patched source files take effect. "
-            "Call this after patch_app_file. The server will restart in ~2 seconds; "
-            "the user's browser will reconnect automatically."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "git_commit",
-        "description": (
-            "Stage and commit changes to git. "
-            "Call this after a successful patch → restart → Jenkins checks cycle to record the fix. "
-            "If 'files' is omitted, all modified files within allowed paths are staged automatically. "
-            "Set push=true to also push the commit to the remote repository."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "description": "Commit message — concise present-tense summary (e.g. 'Fix: handle empty device list on index page')",
-                },
-                "files": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "Specific files to stage (relative paths from project root). "
-                        "Omit to auto-stage all modified files within writable paths."
-                    ),
-                },
-                "push": {
-                    "type": "boolean",
-                    "description": "Push to remote after committing (default: false).",
-                },
-            },
-            "required": ["message"],
-        },
-    },
-    {
-        "name": "save_lab_note",
-        "description": (
-            "Save a persistent note about this specific lab/network environment. "
-            "Use this when you discover a limitation, quirk, or confirmed behaviour "
-            "that you should remember in future sessions — e.g. 'backup_device_config "
-            "fails with a parsing error on this platform', or 'PE-1 Gi1/0 is the "
-            "primary MPLS TE interface'. Notes are injected automatically into every "
-            "future session so you never have to rediscover the same thing twice."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "note": {
-                    "type": "string",
-                    "description": "A concise, factual note about this environment.",
-                },
-            },
-            "required": ["note"],
         },
     },
     {
@@ -3510,111 +2892,6 @@ TOOLS = [
             "required": [],
         },
     },
-    {
-        "name": "save_ansible_playbook",
-        "description": (
-            "Save or UPDATE a reusable Ansible-style playbook. "
-            "Creating: call after completing any configuration task. "
-            "Updating/fixing: call list_ansible_playbooks FIRST to get the exact playbook_id, "
-            "then pass that playbook_id here — this overwrites the existing playbook file in-place "
-            "so the user's manual runs and scheduled triggers use the corrected commands. "
-            "If playbook_id is omitted, deduplication is done by name (case-insensitive match)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "playbook_id": {
-                    "type": "string",
-                    "description": (
-                        "ID of an existing playbook to overwrite. "
-                        "Get this from list_ansible_playbooks. "
-                        "Pass this when fixing a broken playbook so the same file is updated, "
-                        "not a new one created."
-                    ),
-                },
-                "name": {
-                    "type": "string",
-                    "description": "Short human-readable task name (e.g. 'Enable MPLS TE on PE-1 and P4')",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "One-sentence description of what this playbook does",
-                },
-                "keywords": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "Keywords for matching future requests. Include: device hostnames, "
-                        "protocol names, action verbs, interface names. "
-                        "Examples: ['mpls', 'te', 'traffic-eng', 'pe-1', 'p4', 'tunnel', 'enable']"
-                    ),
-                },
-                "plays": {
-                    "type": "array",
-                    "description": "One entry per device — the commands applied to that device",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "device_ip":  {"type": "string", "description": "Device management IP"},
-                            "hostname":   {"type": "string", "description": "Device hostname"},
-                            "commands":   {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": (
-                                    "Ordered list of IOS commands that were applied. "
-                                    "For config-mode commands omit 'configure terminal' — "
-                                    "set mode='config'. For exec/enable-mode commands "
-                                    "(e.g. 'mpls traffic-eng reoptimize', 'clear ip ospf process') "
-                                    "set mode='enable'."
-                                ),
-                            },
-                            "mode": {
-                                "type": "string",
-                                "enum": ["config", "enable"],
-                                "description": (
-                                    "'config' (default) — enter configure terminal before running commands. "
-                                    "'enable' — run commands in exec/privileged-exec mode WITHOUT entering "
-                                    "configure terminal. Use 'enable' for operational commands such as "
-                                    "'mpls traffic-eng reoptimize', 'clear ip ospf process', "
-                                    "'debug mpls traffic-eng', etc."
-                                ),
-                            },
-                        },
-                        "required": ["device_ip", "commands"],
-                    },
-                },
-            },
-            "required": ["name", "description", "keywords", "plays"],
-        },
-    },
-    {
-        "name": "list_ansible_playbooks",
-        "description": (
-            "List all saved Ansible playbooks with their names, descriptions, and keywords. "
-            "Call this when the user asks to do something that may already be automated, "
-            "to check if a playbook exists before running SSH commands manually."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "run_ansible_playbook",
-        "description": (
-            "Execute a saved Ansible playbook by replaying its commands on the target devices "
-            "via SSH. This is faster than re-running individual commands and doesn't require "
-            "the AI to reason about what to do — the playbook already knows. "
-            "Use this when a saved playbook exactly matches what the user wants."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "playbook_id": {
-                    "type": "string",
-                    "description": "The 'id' field from list_ansible_playbooks output",
-                },
-            },
-            "required": ["playbook_id"],
-        },
-    },
     # ── Monitoring: Collector IP ──────────────────────────────────────────
     {
         "name": "get_collector_ip",
@@ -3628,20 +2905,6 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {},
-        },
-    },
-    {
-        "name": "set_collector_ip",
-        "description": (
-            "Manually set the collector IP for this list (overrides auto-detection). "
-            "Use when the auto-detected IP is wrong or when the server has multiple OOB interfaces."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "ip": {"type": "string", "description": "IPv4 address of this server on the OOB management network"},
-            },
-            "required": ["ip"],
         },
     },
     # ── Monitoring: SNMP ─────────────────────────────────────────────────
@@ -3730,84 +2993,6 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {},
-        },
-    },
-    {
-        "name": "write_report",
-        "description": (
-            "Save a network report as a Markdown file and make it available for download. "
-            "Call this ONCE after gathering all data and composing the full report. "
-            "The user receives a download link in the UI — do NOT paste the full content in chat."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Short descriptive title, e.g. 'MPLS Core Network Report'",
-                },
-                "content": {
-                    "type": "string",
-                    "description": (
-                        "Full Markdown content of the report. "
-                        "Use ## headers, tables, and fenced code blocks for configs. "
-                        "Include: executive summary, topology, IP addressing, "
-                        "protocol config, design rationale, and observations."
-                    ),
-                },
-            },
-            "required": ["title", "content"],
-        },
-    },
-    {
-        "name": "report_begin",
-        "description": (
-            "Start a new chunked network report. Call this ONCE before any report_append calls. "
-            "Use this instead of write_report when the report will be long (more than 2 devices "
-            "or more than a few sections). Followed by one or more report_append calls, "
-            "then a single report_finish call."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Short descriptive title, e.g. 'MPLS Core Network Report'",
-                },
-            },
-            "required": ["title"],
-        },
-    },
-    {
-        "name": "report_append",
-        "description": (
-            "Append a section to the in-progress report started with report_begin. "
-            "Call multiple times — once per section (executive summary, topology, "
-            "IP addressing, per-device config, etc.). Each call should contain one "
-            "logical section in Markdown. Never put the entire report in one call."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string",
-                    "description": "Markdown content for this section (one logical section per call).",
-                },
-            },
-            "required": ["content"],
-        },
-    },
-    {
-        "name": "report_finish",
-        "description": (
-            "Finalize the in-progress report and make it available for download. "
-            "Call this ONCE after all report_append calls are complete. "
-            "The user receives a download link in the UI."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
         },
     },
     # ── NSoT tools ──────────────────────────────────────────────────────────
@@ -3951,36 +3136,41 @@ TOOLS = [
             "required": [],
         },
     },
-    {
-        "name": "query_ccie_kb",
-        "description": (
-            "Look up exact Cisco IOS command syntax, best practices, verification commands, "
-            "and troubleshooting steps from the local CCIE Enterprise knowledge base. "
-            "ALWAYS call this FIRST before generating any IOS configuration commands — "
-            "it returns verified, production-correct syntax without LLM inference. "
-            "Topics include: ospf, bgp, eigrp, redistribution, pbr, vlans, spanning_tree, "
-            "etherchannel, dhcp_snooping, port_security, gre, dmvpn, ipsec, mpls_vpn, "
-            "mpls_ldp, acl, zbf, aaa, qos, hsrp, vrrp, glbp, ip_sla, ipv6, multicast, "
-            "netconf, restconf, netmiko, ansible, eem, sdwan. "
-            "Omit subtopic to get the full topic section."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "topic": {
-                    "type":        "string",
-                    "description": "Protocol or feature name (e.g. 'ospf', 'bgp', 'dmvpn', 'qos')",
-                },
-                "subtopic": {
-                    "type":        "string",
-                    "description": "Optional sub-section (e.g. 'authentication', 'redistribution', 'verification')",
-                },
-            },
-            "required": ["topic"],
-        },
-    },
 ]
 
+
+
+# ---------------------------------------------------------------------------
+# P.3 step 8: the agent reads devices; it never changes one
+# ---------------------------------------------------------------------------
+
+#: The first word of every command the agent may send, and the abbreviations
+#: IOS accepts for `show`. Exec mode is not read-only (reload, delete, copy,
+#: clear, write erase all run there), so a free-form command is not a read.
+READ_ONLY_VERBS = ("show", "sho", "sh", "ping", "traceroute", "dir", "more")
+
+
+def _read_only_refusal(commands: list, mode: str = "") -> str:
+    """A refusal naming the reason, or "" when every command is a read.
+
+    The agent is an on-call responder (feature audit, decision 1): it triages
+    with reads and PROPOSES a change as an ordinary plan a person confirms. A
+    newline inside a command is refused too, because it would send a second
+    command the check never saw.
+    """
+    if (mode or "").strip().lower() == "config":
+        return ("REFUSED: config mode was removed from the agent (P.3 step 8). "
+                "Propose the change as a plan for a person to confirm.")
+    for cmd in commands:
+        text = (cmd or "").strip()
+        if "\n" in text or "\r" in text:
+            return f"REFUSED: one command per entry, no line breaks: {text[:60]!r}"
+        verb = text.split()[0].lower() if text else ""
+        if verb not in READ_ONLY_VERBS:
+            return (f"REFUSED: {verb or '(empty)'!r} is not a read-only command. "
+                    "The agent may run only show, ping, traceroute, dir or more "
+                    "(P.3 step 8); a change is proposed as a plan, never sent.")
+    return ""
 
 # ---------------------------------------------------------------------------
 # Human-readable tool labels for the UI
@@ -4797,9 +3987,11 @@ def run_chat(
                 return json.dumps(result, indent=2)
 
             elif name == "execute_command":
+                _refused = _read_only_refusal([args.get("command", "")], args.get("mode", ""))
+                if _refused:
+                    return _refused
                 ip      = args["ip"]
                 command = args["command"]
-                mode    = args.get("mode", "enable")
                 device  = _find_device(ip, devices_loader())
                 if not device:
                     return _device_unavailable_message(ip)
@@ -4807,17 +3999,7 @@ def run_chat(
                 while True:
                     conn = _conn(device) if _attempts == 0 else _fresh_conn(device)
                     try:
-                        if mode == "config":
-                            try:
-                                conn.config_mode()
-                                out = run_device_command(conn, command)
-                            finally:
-                                try:
-                                    conn.exit_config_mode()
-                                except Exception:
-                                    pass
-                        else:
-                            out = run_device_command(conn, command)
+                        out = run_device_command(conn, command)
                         break
                     except OSError as _e:
                         if _attempts == 0 and "Socket is closed" in str(_e):
@@ -4827,9 +4009,11 @@ def run_chat(
                 return out or "(no output)"
 
             elif name == "execute_commands_on_device":
+                _refused = _read_only_refusal(list(args.get("commands") or []), args.get("mode", ""))
+                if _refused:
+                    return _refused
                 ip       = args["ip"]
                 commands = args["commands"]
-                mode     = args.get("mode", "enable")
                 device   = _find_device(ip, devices_loader())
                 if not device:
                     return _device_unavailable_message(ip)
@@ -4838,19 +4022,8 @@ def run_chat(
                     conn    = _conn(device) if _attempts == 0 else _fresh_conn(device)
                     outputs = []
                     try:
-                        if mode == "config":
-                            try:
-                                conn.config_mode()
-                                for cmd in commands:
-                                    outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
-                            finally:
-                                try:
-                                    conn.exit_config_mode()
-                                except Exception:
-                                    pass
-                        else:
-                            for cmd in commands:
-                                outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
+                        for cmd in commands:
+                            outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
                         break
                     except OSError as _e:
                         if _attempts == 0 and "Socket is closed" in str(_e):
@@ -4860,9 +4033,11 @@ def run_chat(
                 return "\n\n".join(outputs)
 
             elif name == "execute_command_on_multiple_devices":
+                _refused = _read_only_refusal([args.get("command", "")], args.get("mode", ""))
+                if _refused:
+                    return _refused
                 device_ips = args["device_ips"]
                 command    = args["command"]
-                mode       = args.get("mode", "enable")
                 devices    = devices_loader()
                 targets = (
                     [d for d in devices if status_cache.get(d.get("ip",""), False)]
@@ -4876,14 +4051,7 @@ def run_chat(
                     hostname = dev.get("hostname", dev["ip"])
                     try:
                         conn = get_persistent_connection(dev, connections_pool, pool_lock)
-                        if mode == "config":
-                            try:
-                                conn.config_mode()
-                                out = run_device_command(conn, command)
-                            finally:
-                                conn.exit_config_mode()
-                        else:
-                            out = run_device_command(conn, command)
+                        out = run_device_command(conn, command)
                         return hostname, dev["ip"], out, None
                     except Exception as exc:
                         return hostname, dev["ip"], None, str(exc)
@@ -4972,199 +4140,6 @@ def run_chat(
                     return f"Backup saved: {info.get('filename', 'unknown')}"
                 return "Failed to retrieve config for backup"
 
-            elif name == "read_app_file":
-                rel = args.get("path", "").replace("\\", "/").lstrip("/")
-                abs_path = os.path.normpath(os.path.join(_PROJECT_ROOT, rel))
-                # Safety: must stay inside project root
-                if not abs_path.startswith(_PROJECT_ROOT):
-                    return "Error: path is outside project root"
-                top_dir = rel.split("/")[0]
-                base_file = rel if "/" not in rel else None
-                allowed = (
-                    top_dir in _APP_READ_WHITELIST
-                    or (base_file and base_file in _APP_READ_ROOT_FILES)
-                )
-                if not allowed:
-                    return f"Error: '{rel}' is not in the readable whitelist"
-                try:
-                    with open(abs_path, encoding="utf-8") as fh:
-                        all_lines = fh.readlines()
-                    total = len(all_lines)
-
-                    # Apply optional line range (1-based, inclusive)
-                    start = max(1, int(args.get("start_line") or 1))
-                    end   = min(total, int(args.get("end_line") or total))
-                    slice_lines = all_lines[start - 1 : end]
-
-                    numbered = "".join(
-                        f"{start + i:5d}  {line}"
-                        for i, line in enumerate(slice_lines)
-                    )
-                    header = f"[{rel}  lines {start}-{end} of {total}]\n"
-                    trailer = (
-                        f"\n… {total - end} more lines. "
-                        f"Call read_app_file with start_line={end + 1} to continue."
-                        if end < total else ""
-                    )
-                    return header + numbered + trailer
-                except FileNotFoundError:
-                    return f"Error: file not found: {rel}"
-
-            elif name == "patch_app_file":
-                rel        = args.get("path", "").replace("\\", "/").lstrip("/")
-                old_string = args.get("old_string", "")
-                new_string = args.get("new_string", "")
-                abs_path   = os.path.normpath(os.path.join(_PROJECT_ROOT, rel))
-                if not abs_path.startswith(_PROJECT_ROOT):
-                    return "Error: path is outside project root"
-                # Check denied list first
-                if rel in _APP_WRITE_DENIED:
-                    return f"Error: '{rel}' is protected and cannot be patched"
-                top_dir   = rel.split("/")[0]
-                base_file = rel if "/" not in rel else None
-                allowed   = (
-                    top_dir in _APP_WRITE_WHITELIST
-                    or (base_file and base_file in _APP_WRITE_ROOT_FILES)
-                )
-                if not allowed:
-                    return f"Error: '{rel}' is not in the writable whitelist"
-                try:
-                    with open(abs_path, encoding="utf-8") as fh:
-                        original = fh.read()
-                    if old_string not in original:
-                        return "Error: old_string not found in file — read the file again to get the exact text"
-                    count = original.count(old_string)
-                    if count > 1:
-                        return (f"Error: old_string appears {count} times — make it more specific "
-                                "so the patch is unambiguous")
-                    patched = original.replace(old_string, new_string, 1)
-                    with open(abs_path, "w", encoding="utf-8") as fh:
-                        fh.write(patched)
-                    _dbg(f"patch_app_file: {rel} patched successfully")
-                    return f"Patched {rel} successfully. Call restart_server to apply."
-                except FileNotFoundError:
-                    return f"Error: file not found: {rel}"
-
-            elif name == "restart_server":
-                import threading as _threading
-                # Save a pending-restart marker so the frontend can auto-resume
-                # this session once the server comes back up.
-                _pending_path = os.path.join(_PROJECT_ROOT, "data", "pending_restart.json")
-                try:
-                    _cp = _load_checkpoint(session_id)
-                    os.makedirs(os.path.dirname(_pending_path), exist_ok=True)
-                    with open(_pending_path, "w", encoding="utf-8") as _fh:
-                        json.dump({
-                            "session_id": session_id,
-                            "task":       _cp.get("task", user_message[:200]),
-                            "timestamp":  time.time(),
-                        }, _fh)
-                except Exception:
-                    pass
-                def _do_restart():
-                    time.sleep(2)   # let the SSE response flush first
-                    _dbg("restart_server: exiting with code 3 (watchdog restart)")
-                    os._exit(3)     # exit code 3 tells launcher.py to restart the server
-                _threading.Thread(target=_do_restart, daemon=True).start()
-                return (
-                    "Server restart scheduled in 2 seconds. "
-                    "The watchdog launcher will automatically start a fresh server process. "
-                    "Call run_jenkins_checks with startup_delay=8 to verify "
-                    "the patch didn't break anything once the server is back up."
-                )
-
-            elif name == "git_commit":
-                import subprocess as _sp
-                import shlex as _shlex
-                commit_msg = args.get("message", "").strip()
-                if not commit_msg:
-                    return "Error: commit message is required"
-                files_arg  = args.get("files") or []
-                do_push    = bool(args.get("push", False))
-
-                try:
-                    app_root = _PROJECT_ROOT
-
-                    if files_arg:
-                        # Validate each supplied file against write whitelist
-                        to_stage = []
-                        for rel in files_arg:
-                            rel = rel.replace("\\", "/").lstrip("/")
-                            top_dir   = rel.split("/")[0]
-                            base_file = rel if "/" not in rel else None
-                            allowed   = (
-                                top_dir in _APP_WRITE_WHITELIST
-                                or (base_file and base_file in _APP_WRITE_ROOT_FILES)
-                            )
-                            if not allowed:
-                                return (
-                                    f"Error: '{rel}' is outside the allowed write paths. "
-                                    f"Allowed dirs: {sorted(_APP_WRITE_WHITELIST)}, "
-                                    f"root files: {sorted(_APP_WRITE_ROOT_FILES)}"
-                                )
-                            to_stage.append(rel)
-                    else:
-                        # Auto-detect: stage all modified/new files within write whitelist
-                        status_out = _sp.check_output(
-                            ["git", "status", "--porcelain"],
-                            cwd=app_root, text=True, stderr=_sp.PIPE,
-                        )
-                        to_stage = []
-                        for line in status_out.splitlines():
-                            if len(line) < 4:
-                                continue
-                            rel = line[3:].strip().replace("\\", "/")
-                            top_dir   = rel.split("/")[0]
-                            base_file = rel if "/" not in rel else None
-                            allowed   = (
-                                top_dir in _APP_WRITE_WHITELIST
-                                or (base_file and base_file in _APP_WRITE_ROOT_FILES)
-                            )
-                            if allowed:
-                                to_stage.append(rel)
-                        if not to_stage:
-                            return "Nothing to commit — no modified files found within allowed paths."
-
-                    # Stage
-                    _sp.check_call(
-                        ["git", "add", "--"] + to_stage,
-                        cwd=app_root, stderr=_sp.PIPE,
-                    )
-
-                    # Commit
-                    commit_result = _sp.run(
-                        ["git", "commit", "-m", commit_msg],
-                        cwd=app_root, text=True,
-                        stdout=_sp.PIPE, stderr=_sp.STDOUT,
-                    )
-                    commit_out = commit_result.stdout.strip()
-                    if commit_result.returncode != 0:
-                        # Nothing to commit is not a hard error
-                        if "nothing to commit" in commit_out.lower():
-                            return "Nothing to commit — working tree is clean."
-                        return f"git commit failed:\n{commit_out}"
-
-                    result_lines = [f"Committed: {commit_msg}", commit_out]
-
-                    if do_push:
-                        push_result = _sp.run(
-                            ["git", "push"],
-                            cwd=app_root, text=True,
-                            stdout=_sp.PIPE, stderr=_sp.STDOUT,
-                        )
-                        push_out = push_result.stdout.strip()
-                        if push_result.returncode != 0:
-                            result_lines.append(f"Push FAILED:\n{push_out}")
-                        else:
-                            result_lines.append(f"Pushed to remote.\n{push_out}")
-
-                    return "\n".join(result_lines)
-
-                except _sp.CalledProcessError as exc:
-                    return f"git error: {exc.stderr or exc}"
-                except Exception as exc:
-                    return f"git_commit error: {exc}"
-
             elif name == "read_network_kb":
                 kb  = _load_network_kb()
                 cat = args.get("category", "").strip()
@@ -5177,20 +4152,6 @@ def run_chat(
                     return "List KB is empty — no facts recorded for this list yet."
                 return _format_network_kb(kb)
 
-            elif name == "update_network_kb":
-                category = args.get("category", "general").strip()
-                key      = args.get("key", "").strip()
-                value    = args.get("value", "").strip()
-                if not key:
-                    return "Error: key is required"
-                kb = _load_network_kb()
-                kb.setdefault(category, {})[key] = {
-                    "value":   value,
-                    "updated": time.strftime("%Y-%m-%d %H:%M"),
-                }
-                _save_network_kb(kb)
-                return f"List KB updated: [{category}] {key} = {value}"
-
             elif name == "read_global_kb":
                 gkb = _load_global_kb()
                 cat = args.get("category", "").strip()
@@ -5202,124 +4163,6 @@ def run_chat(
                 if not gkb:
                     return "Global KB is empty — no cross-list lessons recorded yet."
                 return _format_network_kb(gkb)
-
-            elif name == "update_global_kb":
-                category = args.get("category", "general").strip()
-                key      = args.get("key", "").strip()
-                value    = args.get("value", "").strip()
-                if not key:
-                    return "Error: key is required"
-                gkb = _load_global_kb()
-                gkb.setdefault(category, {})[key] = {
-                    "value":   value,
-                    "updated": time.strftime("%Y-%m-%d %H:%M"),
-                }
-                _save_global_kb(gkb)
-                return f"Global KB updated: [{category}] {key} = {value}"
-
-            elif name == "save_golden_config":
-                from modules.commands import run_device_command as _rdc
-                from modules.connection import get_persistent_connection as _gpc
-                req_ips  = args.get("device_ips", [])
-                all_devs = devices_loader()
-                if req_ips == ["all"]:
-                    targets = [d for d in all_devs if status_cache.get(d.get("ip", ""), False)]
-                else:
-                    targets = [d for d in all_devs if d.get("ip") in req_ips]
-                if not targets:
-                    return f"No reachable devices found for IPs: {req_ips}"
-
-                from concurrent.futures import ThreadPoolExecutor as _TPEX, as_completed as _acx
-                results = []
-
-                def _snap(dev):
-                    dip  = dev.get("ip", "")
-                    host = dev.get("hostname") or dip
-                    try:
-                        conn   = _gpc(dev, connections_pool, pool_lock)
-                        config = _rdc(conn, "show startup-config")
-                        _save_golden_config_file(dip, host, config)
-                        return f"  SAVED  {host} ({dip}) — {len(config)} chars"
-                    except Exception as exc:
-                        return f"  ERROR  {host} ({dip}): {exc}"
-
-                with _TPEX(max_workers=min(len(targets), 8)) as _px:
-                    futs = [_px.submit(_snap, d) for d in targets]
-                    for fut in _acx(futs):
-                        results.append(fut.result())
-
-                return f"Golden configs saved ({len(targets)} device(s)):\n" + "\n".join(results)
-
-            elif name == "finalize_verified_config_change":
-                from modules.commands import run_device_command as _rdc
-                from modules.connection import get_persistent_connection as _gpc
-                from modules.variable_discovery import (
-                    parse_running_config as _parse_cfg,
-                    _merge_and_save as _merge_vars,
-                )
-                req_ips = args.get("device_ips", [])
-                verification_summary = args.get("verification_summary", "").strip()
-                if not verification_summary:
-                    return "Error: verification_summary is required — describe how you confirmed the change worked."
-                all_devs = devices_loader()
-                if req_ips == ["all"]:
-                    targets = [d for d in all_devs if status_cache.get(d.get("ip", ""), False)]
-                else:
-                    targets = [d for d in all_devs if d.get("ip") in req_ips]
-                if not targets:
-                    return f"No reachable devices found for IPs: {req_ips}"
-
-                from concurrent.futures import ThreadPoolExecutor as _TPEX, as_completed as _acx
-
-                def _snap_and_extract(dev):
-                    dip  = dev.get("ip", "")
-                    host = dev.get("hostname") or dip
-                    try:
-                        conn   = _gpc(dev, connections_pool, pool_lock)
-                        config = _rdc(conn, "show startup-config")
-                        _save_golden_config_file(dip, host, config)
-                        facts = _parse_cfg(config, dip)
-                        return host, dip, len(config), facts, None
-                    except Exception as exc:
-                        return host, dip, 0, {}, str(exc)
-
-                results   = []
-                all_facts = {}
-                hostnames = []
-                with _TPEX(max_workers=min(len(targets), 8)) as _px:
-                    futs = [_px.submit(_snap_and_extract, d) for d in targets]
-                    for fut in _acx(futs):
-                        host, dip, size, facts, err = fut.result()
-                        hostnames.append(host)
-                        if err:
-                            results.append(f"  ERROR  {host} ({dip}): {err}")
-                        else:
-                            all_facts.update(facts)
-                            results.append(
-                                f"  SAVED  {host} ({dip}) — {size} chars, "
-                                f"{len(facts)} variable(s) extracted"
-                            )
-
-                if all_facts:
-                    _merge_vars(all_facts)
-
-                _append_change_log({
-                    "description":         verification_summary,
-                    "devices":              hostnames,
-                    "change_type":          args.get("change_type", "config_push"),
-                    "jenkins_pipeline":     args.get("jenkins_pipeline", ""),
-                    "jenkins_result":       args.get("jenkins_result", ""),
-                    "golden_config_saved":  True,
-                    "playbook_id":          args.get("playbook_id", ""),
-                })
-
-                return (
-                    f"Finalized verified change for {len(targets)} device(s):\n"
-                    + "\n".join(results)
-                    + f"\n\n{len(all_facts)} variable(s) auto-extracted and merged "
-                      f"(manually-set values preserved)."
-                    + f"\nChange logged: {verification_summary}"
-                )
 
             elif name == "read_golden_config":
                 dip  = args.get("device_ip", "").strip()
@@ -5344,42 +4187,6 @@ def run_chat(
                     )
                 return "\n".join(lines)
 
-            elif name == "restore_golden_config":
-                from modules.commands import run_device_command as _rdc
-                from modules.connection import get_persistent_connection as _gpc
-                req_ips = args.get("device_ips", [])
-                reason  = args.get("reason", "manual rollback")
-                entries = _list_golden_configs()
-                if req_ips == ["all"]:
-                    targets = [(e["device_ip"], e["hostname"]) for e in entries]
-                else:
-                    targets = [(e["device_ip"], e["hostname"]) for e in entries if e["device_ip"] in req_ips]
-                if not targets:
-                    return f"No golden configs found for: {req_ips}"
-                all_devs = devices_loader()
-                results  = []
-                for dip, host in targets:
-                    cfg = _load_golden_config_file(dip)
-                    if not cfg:
-                        results.append(f"  SKIP   {host} ({dip}) — no golden config saved"); continue
-                    # Strip comment header lines
-                    config_lines = [l for l in cfg.splitlines() if not l.startswith("!") and l.strip()]
-                    device = next((d for d in all_devs if d.get("ip") == dip), None)
-                    if not device:
-                        results.append(f"  ERROR  {host} ({dip}) — not in device inventory"); continue
-                    try:
-                        conn = _gpc(device, connections_pool, pool_lock)
-                        conn.config_mode()
-                        try:
-                            for line in config_lines:
-                                run_device_command(conn, line)
-                        finally:
-                            conn.exit_config_mode()
-                        results.append(f"  RESTORED {host} ({dip}) — {len(config_lines)} lines applied")
-                    except Exception as exc:
-                        results.append(f"  ERROR  {host} ({dip}): {exc}")
-                return f"Rollback complete (reason: {reason}):\n" + "\n".join(results)
-
             elif name == "capture_pre_change_snapshot":
                 from modules.commands import run_device_command as _rdc
                 from modules.connection import get_persistent_connection as _gpc
@@ -5403,34 +4210,6 @@ def run_chat(
                     for fut in _acx2([_px2.submit(_snap_pre, d) for d in targets]):
                         results.append(fut.result())
                 return f"Pre-change snapshots captured ({len(targets)} device(s)):\n" + "\n".join(results)
-
-            elif name == "restore_pre_change_snapshot":
-                from modules.commands import run_device_command as _rdc
-                from modules.connection import get_persistent_connection as _gpc
-                req_ips = args.get("device_ips", [])
-                reason  = args.get("reason", "revert after failed change")
-                all_devs = devices_loader()
-                results  = []
-                for dip in req_ips:
-                    cfg = _load_pre_change_file(dip)
-                    if not cfg:
-                        results.append(f"  SKIP {dip} — no pre-change snapshot found"); continue
-                    config_lines = [l for l in cfg.splitlines() if not l.startswith("!") and l.strip()]
-                    device = next((d for d in all_devs if d.get("ip") == dip), None)
-                    if not device:
-                        results.append(f"  ERROR {dip} — not in inventory"); continue
-                    try:
-                        conn = _gpc(device, connections_pool, pool_lock)
-                        conn.config_mode()
-                        try:
-                            for line in config_lines:
-                                run_device_command(conn, line)
-                        finally:
-                            conn.exit_config_mode()
-                        results.append(f"  RESTORED {device.get('hostname') or dip} ({dip})")
-                    except Exception as exc:
-                        results.append(f"  ERROR {dip}: {exc}")
-                return f"Pre-change restore complete (reason: {reason}):\n" + "\n".join(results)
 
             elif name == "detect_config_drift":
                 import difflib as _dl
@@ -5497,19 +4276,6 @@ def run_chat(
                             report.append(f"=== {host} ({dip}) ===\n  ERROR: {status}\n")
                 return "\n".join(report) or "No results."
 
-            elif name == "log_change":
-                entry = {
-                    "description":       args.get("description", ""),
-                    "devices":           args.get("devices", []),
-                    "change_type":       args.get("change_type", "config_push"),
-                    "jenkins_pipeline":  args.get("jenkins_pipeline", ""),
-                    "jenkins_result":    args.get("jenkins_result", ""),
-                    "golden_config_saved": args.get("golden_config_saved", False),
-                    "playbook_id":       args.get("playbook_id", ""),
-                }
-                _append_change_log(entry)
-                return f"Change logged: {entry['description']} [{entry['change_type']}] — {entry['jenkins_result'] or 'no CI run'}"
-
             elif name == "read_change_log":
                 limit = min(int(args.get("limit", 20)), 100)
                 log   = _load_change_log()
@@ -5538,29 +4304,6 @@ def run_chat(
                     lines.append(f"    command:   {r.get('command','')}")
                     lines.append(f"    assertion: {r.get('assertion','')}")
                 return "\n".join(lines)
-
-            elif name == "update_compliance_policy":
-                action = args.get("action", "upsert")
-                policy = _load_compliance_policy()
-                rules  = policy.setdefault("rules", [])
-                rule   = args.get("rule") or {}
-                rid    = rule.get("id", "").strip()
-                if action == "delete":
-                    before = len(rules)
-                    policy["rules"] = [r for r in rules if r.get("id") != rid]
-                    _save_compliance_policy(policy)
-                    removed = before - len(policy["rules"])
-                    return f"Deleted {removed} rule(s) with id='{rid}'" if removed else f"No rule found with id='{rid}'"
-                if not rid:
-                    return "Error: rule.id is required for upsert"
-                idx = next((i for i, r in enumerate(rules) if r.get("id") == rid), None)
-                if idx is not None:
-                    rules[idx] = rule
-                    _save_compliance_policy(policy)
-                    return f"Rule '{rid}' updated."
-                rules.append(rule)
-                _save_compliance_policy(policy)
-                return f"Rule '{rid}' added."
 
             elif name == "run_compliance_check":
                 from modules.commands import run_device_command as _rdc
@@ -5645,26 +4388,6 @@ def run_chat(
                         lines.append(f"  {k} = {v}")
                 return "\n".join(lines)
 
-            elif name == "set_variable":
-                key   = args.get("key","").strip()
-                value = args.get("value","")
-                desc  = args.get("description","")
-                if not key:
-                    return "Error: key is required"
-                variables = _load_variables()
-                variables[key] = {"value": value, "description": desc, "updated": time.strftime("%Y-%m-%d %H:%M")}
-                _save_variables(variables)
-                return f"Variable set: {key} = {value}"
-
-            elif name == "delete_variable":
-                key = args.get("key","").strip()
-                variables = _load_variables()
-                if key not in variables:
-                    return f"Variable '{key}' not found."
-                del variables[key]
-                _save_variables(variables)
-                return f"Variable '{key}' deleted."
-
             elif name == "jenkins_set_schedule":
                 from modules.jenkins_runner import (
                     load_config as _jlcfg, get_job_config as _jgcfg,
@@ -5732,9 +4455,6 @@ def run_chat(
                     f"The user will be notified and can approve or reject from the UI. "
                     f"Do NOT proceed with the action until it is approved."
                 )
-
-            elif name == "save_lab_note":
-                return _append_lab_note(args.get("note", ""))
 
             elif name == "jenkins_get_current_pipelines":
                 from modules.jenkins_runner import (
@@ -6039,162 +4759,6 @@ def run_chat(
 
                 return "\n".join(lines)
 
-            elif name == "save_ansible_playbook":
-                pb_name  = args.get("name", "Unnamed playbook").strip()
-                pb_desc  = args.get("description", "").strip()
-                keywords = [str(k).strip().lower() for k in args.get("keywords", [])]
-                plays    = args.get("plays", [])
-                explicit_id = args.get("playbook_id", "").strip()
-                if not plays:
-                    return "Error: plays list is required and must not be empty"
-
-                pb_record = {
-                    "name":        pb_name,
-                    "description": pb_desc,
-                    "keywords":    keywords,
-                    "plays":       plays,
-                    "updated_at":  time.strftime("%Y-%m-%d %H:%M"),
-                }
-
-                # If caller supplied an explicit ID, look it up and overwrite
-                if explicit_id:
-                    idx = _load_playbook_index()
-                    match = next((p for p in idx if p["id"] == explicit_id), None)
-                    if match is None:
-                        return (
-                            f"Error: playbook id '{explicit_id}' not found. "
-                            f"Call list_ansible_playbooks to see valid IDs."
-                        )
-                    pb_record["id"]         = explicit_id
-                    pb_record["created_at"] = match.get("created_at", pb_record["updated_at"])
-                    yml_file = f"{explicit_id}.yml"
-                    yml_path = os.path.join(_get_playbooks_dir(), yml_file)
-                    with open(yml_path, "w", encoding="utf-8") as fh:
-                        fh.write(_playbook_to_yaml(pb_record))
-                    for i, p in enumerate(idx):
-                        if p["id"] == explicit_id:
-                            idx[i] = pb_record
-                            break
-                    _save_playbook_index(idx)
-                    _dbg(f"save_ansible_playbook: updated '{pb_name}' (id={explicit_id})")
-                    return (
-                        f"Playbook UPDATED in-place: '{pb_name}' (id={explicit_id})\n"
-                        f"Keywords: {', '.join(keywords)}\n"
-                        f"Plays: {len(plays)} device(s)\n"
-                        f"YAML overwritten: {yml_file}"
-                    )
-
-                # No explicit ID — upsert by name (deduplicates automatically)
-                pb_record["created_at"] = time.strftime("%Y-%m-%d %H:%M")
-                _, pb_id, is_update = _upsert_playbook(pb_record)
-                action = "UPDATED" if is_update else "saved"
-                _dbg(f"save_ansible_playbook: {action} '{pb_name}' (id={pb_id})")
-                return (
-                    f"Playbook {action}: '{pb_name}' (id={pb_id})\n"
-                    f"Keywords: {', '.join(keywords)}\n"
-                    f"Plays: {len(plays)} device(s)\n"
-                    f"YAML written to: {pb_id}.yml"
-                )
-
-            elif name == "list_ansible_playbooks":
-                idx = _load_playbook_index()
-                if not idx:
-                    return "No playbooks saved yet. Complete a configuration task and call save_ansible_playbook."
-                lines = [f"Saved playbooks ({len(idx)} total):\n"]
-                for pb in idx:
-                    lines.append(
-                        f"  id: {pb['id']}\n"
-                        f"  name: {pb['name']}\n"
-                        f"  description: {pb.get('description','')}\n"
-                        f"  keywords: {', '.join(pb.get('keywords', []))}\n"
-                        f"  devices: {', '.join(p.get('hostname') or p.get('device_ip','') for p in pb.get('plays',[]))}\n"
-                        f"  created: {pb.get('created_at','')}\n"
-                    )
-                return "\n".join(lines)
-
-            elif name == "run_ansible_playbook":
-                playbook_id = args.get("playbook_id", "").strip()
-                idx = _load_playbook_index()
-                pb  = next((p for p in idx if p["id"] == playbook_id), None)
-                if not pb:
-                    ids = [p["id"] for p in idx]
-                    return f"Error: playbook '{playbook_id}' not found. Available: {ids}"
-
-                _IOS_ERR_PATS = (
-                    "% Invalid input", "% Incomplete command", "% Ambiguous command",
-                    "% Unknown command", "% Error", "% Bad", "% Command rejected",
-                )
-                def _ios_err(out: str) -> str:
-                    for ln in out.splitlines():
-                        if any(p in ln for p in _IOS_ERR_PATS):
-                            return ln.strip()
-                    return ""
-
-                plays    = pb.get("plays", [])
-                devs_inv = devices_loader()
-
-                # Run one play against one device, return (index, lines, ok)
-                def _run_play(idx_play):
-                    idx, play = idx_play
-                    device_ip = play.get("device_ip", "")
-                    hostname  = play.get("hostname") or device_ip
-                    commands  = play.get("commands", [])
-                    lines     = [f"--- {hostname} ({device_ip}) ---"]
-                    ok        = True
-                    device    = _find_device(device_ip, devs_inv)
-                    if not device:
-                        lines.append(f"  ERROR: device {device_ip} not found in inventory")
-                        return idx, lines, False
-                    play_mode = play.get("mode", "config")
-                    try:
-                        conn = _conn(device)
-                        if play_mode == "config":
-                            conn.config_mode()
-                        try:
-                            for cmd in commands:
-                                out = run_device_command(conn, cmd)
-                                err = _ios_err(out)
-                                if err:
-                                    lines.append(f"  [FAIL] {cmd}")
-                                    lines.append(f"         {err}")
-                                    ok = False
-                                else:
-                                    lines.append(f"  [OK]   {cmd}")
-                        finally:
-                            if play_mode == "config":
-                                conn.exit_config_mode()
-                    except Exception as exc:
-                        lines.append(f"  ERROR: {exc}")
-                        ok = False
-                    return idx, lines, ok
-
-                from concurrent.futures import ThreadPoolExecutor, as_completed as _acf
-                header = [
-                    f"Running playbook: {pb['name']}",
-                    f"Description: {pb.get('description','')}",
-                    f"Plays: {len(plays)} device(s) — running in parallel\n",
-                ]
-                results  = {}   # idx -> (lines, ok)
-                all_ok   = True
-                max_workers = min(len(plays), 8) if plays else 1
-                with ThreadPoolExecutor(max_workers=max_workers) as _pool:
-                    futs = {_pool.submit(_run_play, (i, p)): i for i, p in enumerate(plays)}
-                    for fut in _acf(futs):
-                        idx, lines, ok = fut.result()
-                        results[idx] = (lines, ok)
-                        if not ok:
-                            all_ok = False
-
-                # Reassemble in original play order
-                body = []
-                for i in range(len(plays)):
-                    lines, _ = results[i]
-                    body.extend(lines)
-
-                status = "COMPLETED SUCCESSFULLY" if all_ok else "COMPLETED WITH ERRORS"
-                return "\n".join(header + body + [f"\nPlaybook {status}"])
-
-            # ── Monitoring: Collector IP ──────────────────────────────────
             elif name == "get_collector_ip":
                 from modules.collector_config import (
                     get_or_detect_collector_ip, list_local_interfaces,
@@ -6224,15 +4788,6 @@ def run_chat(
                     f"Configure devices to send SNMP traps and NetFlow exports to: {collector_ip}"
                 )
 
-            elif name == "set_collector_ip":
-                from modules.collector_config import set_collector_ip as _set_cip
-                ip = args.get("ip", "").strip()
-                if not ip:
-                    return "Error: ip is required"
-                _set_cip(ip)
-                return f"Collector IP set to {ip} for this list."
-
-            # ── Monitoring: SNMP ─────────────────────────────────────────
             elif name == "snmp_poll":
                 from modules.snmp_collector import snmp_get
                 from modules.collector_config import get_snmp_community
@@ -6369,88 +4924,6 @@ def run_chat(
                     f"    ip flow-export version 9"
                 )
 
-            elif name == "write_report":
-                rpt_title   = args.get("title", "Network Report").strip()
-                rpt_content = args.get("content", "").strip()
-                if not rpt_content:
-                    return "Error: content is required and must not be empty"
-                slug        = re.sub(r'[^\w]+', '_', rpt_title.lower()).strip('_') or "report"
-                timestamp   = time.strftime("%Y%m%d_%H%M%S")
-                filename    = f"{timestamp}_{slug}.md"
-                rpt_dir     = _get_reports_dir()
-                rpt_path    = os.path.join(rpt_dir, filename)
-                header = f"# {rpt_title}\n\n_Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}_\n\n---\n\n"
-                with open(rpt_path, "w", encoding="utf-8") as fh:
-                    fh.write(header + rpt_content)
-                download_url = f"/ai/report/{filename}"
-                _pending_tool_events.setdefault(session_id, []).append({
-                    "type":         "report_saved",
-                    "title":        rpt_title,
-                    "filename":     filename,
-                    "download_url": download_url,
-                })
-                _dbg(f"write_report: saved '{rpt_title}' → {filename}")
-                return (
-                    f"Report saved: '{rpt_title}'\n"
-                    f"File: {filename}\n"
-                    f"Download: {download_url}\n"
-                    f"Size: {len(rpt_content)} characters\n"
-                    "The user will see a download link in the UI."
-                )
-
-            elif name == "report_begin":
-                rpt_title  = args.get("title", "Network Report").strip()
-                slug       = re.sub(r'[^\w]+', '_', rpt_title.lower()).strip('_') or "report"
-                timestamp  = time.strftime("%Y%m%d_%H%M%S")
-                filename   = f"{timestamp}_{slug}.md"
-                rpt_dir    = _get_reports_dir()
-                rpt_path   = os.path.join(rpt_dir, filename)
-                header     = f"# {rpt_title}\n\n_Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}_\n\n---\n\n"
-                with open(rpt_path, "w", encoding="utf-8") as fh:
-                    fh.write(header)
-                _report_in_progress[session_id] = {
-                    "title":      rpt_title,
-                    "filename":   filename,
-                    "path":       rpt_path,
-                    "char_count": len(header),
-                }
-                _dbg(f"report_begin: '{rpt_title}' → {filename}")
-                return f"Report started: '{rpt_title}'. Now call report_append for each section."
-
-            elif name == "report_append":
-                rpt = _report_in_progress.get(session_id)
-                if not rpt:
-                    return "Error: no report in progress. Call report_begin first."
-                section = args.get("content", "").strip()
-                if not section:
-                    return "Error: content is required."
-                with open(rpt["path"], "a", encoding="utf-8") as fh:
-                    fh.write(section + "\n\n")
-                rpt["char_count"] = rpt.get("char_count", 0) + len(section)
-                _dbg(f"report_append: +{len(section)} chars to '{rpt['filename']}'")
-                return f"Section appended ({len(section)} chars). Total so far: {rpt['char_count']} chars."
-
-            elif name == "report_finish":
-                rpt = _report_in_progress.pop(session_id, None)
-                if not rpt:
-                    return "Error: no report in progress. Call report_begin first."
-                download_url = f"/ai/report/{rpt['filename']}"
-                _pending_tool_events.setdefault(session_id, []).append({
-                    "type":         "report_saved",
-                    "title":        rpt["title"],
-                    "filename":     rpt["filename"],
-                    "download_url": download_url,
-                })
-                _dbg(f"report_finish: '{rpt['title']}' saved ({rpt['char_count']} chars)")
-                return (
-                    f"Report finalized: '{rpt['title']}'\n"
-                    f"File: {rpt['filename']}\n"
-                    f"Download: {download_url}\n"
-                    f"Total size: {rpt['char_count']} characters\n"
-                    "The user will see a download link in the UI."
-                )
-
-            # ── NSoT tools ────────────────────────────────────────────────
             elif name == "nsot_get_device_context":
                 from modules.nsot import build_render_context
                 built = build_render_context(args.get("device_name", ""))
@@ -6606,14 +5079,6 @@ def run_chat(
                     lines.append(f"Errors ({len(errors)}): {'; '.join(errors)}")
                 return "\n".join(lines)
 
-            elif name == "query_ccie_kb":
-                from modules.ccie_kb import query as _ccie_query
-                topic    = args.get("topic", "").strip()
-                subtopic = args.get("subtopic", "").strip() or None
-                if not topic:
-                    return "Error: topic is required."
-                return _ccie_query(topic, subtopic)
-
             else:
                 return f"Unknown tool: {name}"
 
@@ -6721,7 +5186,6 @@ def run_chat(
     api_messages    = list(history)
     max_iterations  = 50
     iteration       = 0
-    auto_continues  = 0   # how many times we've auto-injected a "yes, continue"
     total_tools_used = 0  # total tool calls across all iterations this session
 
     # Index of the current user turn in api_messages.  This message must
@@ -7035,30 +5499,10 @@ def run_chat(
                 continue   # next iteration, Claude will proceed from here
 
             if stop_reason not in ("tool_use", "tool_calls"):
-                # Auto-continue if Claude paused mid-task asking for confirmation.
-                # Two independent signals trigger this:
-                #   1. Response ends with '?' — Claude asked a question.
-                #   2. Regex matches a known confirmation-seeking phrase.
-                # Additionally, if tools were used earlier this session and
-                # Claude's last response is very short (< 80 chars), it's almost
-                # certainly a mid-task pause rather than a final answer.
-                if auto_continues < _MAX_AUTO_CONTINUES and _full_text:
-                    _last_char         = _full_text.rstrip()[-1:] if _full_text.rstrip() else ''
-                    _ends_with_q       = _last_char == '?'
-                    _regex_match       = bool(_AUTO_CONTINUE_RE.search(_full_text[-800:]))
-                    _short_mid_task    = total_tools_used > 0 and len(_full_text.strip()) < 80
-
-                    if _ends_with_q or _regex_match or _short_mid_task:
-                        auto_continues += 1
-                        _reason = ("ends-with-?" if _ends_with_q
-                                   else "regex-match" if _regex_match
-                                   else "short-mid-task")
-                        _dbg(f"  AUTO-CONTINUE #{auto_continues} [{_reason}] tools_so_far={total_tools_used}")
-                        api_messages.append({
-                            "role":    "user",
-                            "content": "Yes, please continue.",
-                        })
-                        continue
+                # A question the model asks is for a PERSON (P.3 step 8). This
+                # used to answer it with a canned "yes, continue" whenever the reply
+                # ended in '?', matched a confirmation phrase, or was short, so
+                # the model confirmed its own questions.
                 break
 
             # ---- Shared: announce + run tools ---------------------------

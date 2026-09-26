@@ -214,7 +214,9 @@ dashboard), `device.html` (1,239 — per-device page), and
   rejecting things, which is the habit that makes an approval queue worthless.
 - **Connection pool:** Netmiko SSH connections reused via `modules/connection.py`;
   background ping worker tracks online/offline
-- **Auto-continue:** the AI agent loops tool calls until the task completes
+- **No auto-continue** (P.3 step 8): the agent loops tool calls until the task completes, and a
+  question it asks is for a person. It used to answer its own confirmation questions with a canned
+  "yes, continue"; only the continuation of a reply the token limit cut off remains
 - **telnetlib shim:** `telnetlib.py` in root — Python 3.13 removed it from stdlib
 
 ### NetBox write safety (Phase 0)
@@ -936,6 +938,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_job_health.py` (C28 rows) | a guard-gating setting empty on this install is an `unset_guard` row naming what it gates; unreadable settings is one `unknown` row; the real scan covers the four the erasure blanked |
 | `test_p3_secrets_write_only.py` | P.3 step 6 (B11): all 86 argument-free GETs swept for planted secrets; an empty secret field saves nothing; B16: no GET-only view sends request-supplied text to a device, and `/run_command` is a gated POST; C29: HTTP errors keep their status |
 | `test_terminal_audit.py` | P.3 step 7: every open, failed open, close (page or dropped browser) and refusal of the terminal is a row with actor, device, peer and time; keystrokes never; 0600; a recorder failure is counted and never breaks the terminal |
+| `test_p3_agent_tools.py` | P.3 step 8: 24 tools gone from the list and the dispatch; the `execute_*` tools refuse everything but read-only verbs, before connecting; no reply is auto-answered |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -4478,8 +4481,18 @@ design so the tool library describes a finished system.
   layer — not because anything checks what the agent may do. Stage 8.3 makes
   the allowlist real in code (no credential rotation, no template approval,
   no remote push, no baseline re-apply, no deploy apply).
-- **The unguarded golden replay was reachable from TWO GUI buttons, not only the AI** (register D5). **Fixed by P.3 step 3**: both buttons open the guarded restore preview at HEAD, and the two routes are gone. The AI's tool of the same name remains until step 8.
-- **`restore_golden_config` is a fourth config-push path**: whole golden
+  **P.3 step 8 (2026-09-26) removed what it could reach meanwhile.**
+  - **24 tools are removed from the list AND the dispatch:** device push,
+    restore and replay, commits, self-modification, self-writing knowledge
+    and the CCIE base, report files, and writes to the tool's own settings.
+  - **The three `execute_*` tools run only read-only verbs**
+    (`_read_only_refusal`: show, ping, traceroute, dir, more). Config mode,
+    every other verb and a line break are refused, checked before any
+    session opens.
+  - The Jenkins tools are P.4's. The prompt still names the removed tools 77
+    times (C30, Stage 8.5).
+- **The unguarded golden replay was reachable from TWO GUI buttons, not only the AI** (register D5). **Fixed by P.3 step 3**: both buttons open the guarded restore preview at HEAD, and the two routes are gone. The AI's tool of the same name was removed by step 8.
+- **(REMOVED by P.3 step 8.)** `restore_golden_config` was a fourth config-push path: whole golden
   replayed in config mode with no confirm hash, no merge-only check, no ASCII
   guard, no dangerous-line authorisation, no snapshot, no rollback, no
   breaker, and `device_ips: ["all"]` targets the fleet. The same shape was

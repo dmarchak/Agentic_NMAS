@@ -2944,6 +2944,39 @@ one NMAS uses (register B17).
 
    It keeps its read tools until Stage 8 rebuilds the library (decision 1).
    The 19 CI tools go in P.4.
+
+   **BUILT 2026-09-26.** 73 tools become 49.
+   - **Removed from the tool list AND the dispatch (24):**
+     - `restore_golden_config`, `restore_pre_change_snapshot`;
+     - the three Ansible tools;
+     - `save_golden_config`, `finalize_verified_config_change`, `log_change`;
+     - `read_app_file`, `patch_app_file`, `restart_server`, `git_commit`;
+     - the self-writing knowledge tools and `query_ccie_kb` (decision 6);
+     - the four report tools (decision 6);
+     - **beyond the step's list, under decision 1's "never settings or
+       gates"**: `set_variable`, `delete_variable`,
+       `update_compliance_policy` and `set_collector_ip`.
+   - **Six writers left with no caller were deleted:** the change-log,
+     lab-note, KB and playbook writers.
+   - **The three `execute_*` tools became READ-ONLY, not just
+     config-mode-free.** Exec mode is not a read (reload, delete, copy,
+     clear), so `_read_only_refusal()` allows `show` (and `sh`, `sho`),
+     `ping`, `traceroute`, `dir` and `more`, and refuses config mode, any
+     other verb and a line break. It is the first statement of each branch,
+     before any session opens. The `mode` parameter is gone from their
+     schemas.
+   - **The auto-continue is removed.** A question the model asks is for a
+     person. The continuation of a reply the token limit CUT OFF is kept,
+     since that answers a truncation, not a question.
+   - **None of the 24 had a test.** `tests/test_p3_agent_tools.py` pins their
+     absence, the read-only rule both ways, the check's position, and the
+     auto-continue's absence (parsed, not grepped, since a comment explaining
+     the removal quotes it). Two controls.
+   - **Left, and recorded:** the Jenkins tools (P.4); the prompt naming the
+     removed tools 77 times (C30, Stage 8.5); and no pre-execution
+     allowlist, which is 8.3.
+   - 3897 passed, 0 failed, 0 errors.
+
 9. **CLAUDE.md's B12 correction** is replaced by the enforced statement, with
    the measurement that proves it.
 10. **D10 (decided 2026-09-26): every commit says whether its actor was
