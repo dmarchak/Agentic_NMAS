@@ -1652,7 +1652,7 @@ of an existing one.
   NSOT_STAGE7_GUI.md section 7 says "Nothing here starts before Stage 6
   closes"**, so the two documents disagree. Undecided (flagged 2026-09-25);
   if the GUI doc holds, 6.2's per-consumer accounts come before 7.0.
-- **Before 7.0 (the operator's decision, 2026-09-26): C1 alone**
+- **Before 7.0 (the operator's decision, 2026-09-26): C1 alone, CLEARED 2026-09-26** (not reproduced in one controlled run; see the register)
   (`nmas-deploy` unconfirmed, one measurement). P.2 is done except its
   unattended watch. Every Stage 7 step is verified on the host, so a deploy
   that can report "already current" while behind would make each of those

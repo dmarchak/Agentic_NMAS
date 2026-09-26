@@ -1043,6 +1043,88 @@ here starts before Stage 6 closes.
 
 ---
 
+### 7.0 specified, 2026-09-26 (the gate is clear)
+
+**Re-measured first** (`app.url_map`, which is the only authority for a
+blueprint route's full path): **226 routes, 131 with a mutating method; 54
+unreachable** by section 1.2's method, up from 48 on 2026-09-23. **The list
+grew by six with nothing to stop it growing**, which is why this step comes
+first. The six: `/clab/sync_targets` and `/freshness/gate` (which have
+SCRIPT callers, the clab-sync sanitiser), `/freshness/authorise`,
+`/templates/seed_status`, `/templatize/bulk/*` and `/jobs/health`.
+
+**7.0 is two checks and one mechanism. It moves no control.**
+
+**(1) Per-route reachability.** Each route in `app.url_map` is classified
+into exactly one of three states:
+- **reachable from a page**: its path appears as a path literal in the
+  RENDERED page with its loaded scripts (`tests/js_source.py`), matched at a
+  quote or slash boundary, not as a bare substring of prose;
+- **non-GUI by design**: named with its consumer (the webhook, the CLI
+  script, the sanitiser), and the test checks that the named consumer really
+  references the route, so the reason cannot go stale unnoticed;
+- **unreachable, allowlisted**: each entry carries its section 1.2 group
+  (a to d) and a reason.
+
+The allowlist is compared **exactly, in both directions**. A new
+unreachable route fails, and so does an allowlisted route that has become
+reachable (no ghosts). A **ceiling** equal to its size is pinned, so adding
+an entry is a visible edit that raises a number. **Anchors:** a route known
+to be reachable must be classified reachable, and a route known to be
+unreachable (`/templatize/rolled-back/<host>/retry`) must not. A floor on the
+population (at least 220 routes) guards the scan finding nothing.
+**Limitation, stated:** reachability is per PATH, not per method. A page
+that GETs `/list/variables` does not prove a control exists for its POST.
+Paths with both a read and a mutating method are listed so later steps can
+split them.
+
+**(2) The invalidation map (section 6b).**
+- Every mutating route **declares** what it invalidates, from a finite
+  vocabulary of data keys (`inventory`, `goldens`, `drift`, `approvals`,
+  `pending`, `templates`, `netbox`, `jobs`, and so on), or `nothing` with a
+  reason. **All 131 are declared in 7.0**, so from 7.0 on no mutating route
+  can be added without one.
+- The route's JSON response carries `invalidates`. The client re-fetches
+  **on that response**, never on a timer (6b point 3).
+- Panels **subscribe** to keys. A failed re-fetch marks the panel stale,
+  with the time of the value it still shows (6b point 2).
+- The check is a set difference **in both directions, with floors**: every
+  declared key has a subscriber or sits in a second shrinking allowlist
+  ("declared, not yet subscribed"); every subscription names a declared key;
+  both sets are non-empty.
+
+**(3) The proof on the three measured cases**, the ones that made the rule:
+the device list after onboarding's Verify and promote, the Remote card
+after a commit, and the drift badge after a run. Each is wired through the
+mechanism, and each is a panel that showed a stale value on the host.
+
+**What 7.0 produces:** a per-route reachability test with its allowlist
+(54 at most, shrinking from here); an invalidation declaration for each of
+the 131 mutating routes; a client subscription mechanism with stale
+marking; the three cases wired; and the second allowlist of declared keys
+nobody subscribes to yet.
+
+**Acceptance:**
+1. The reachability test is in the suite and passes, with its anchors and
+   floor, and its allowlist exactly equals the unreachable set at a ceiling
+   of 54 or fewer.
+2. Every non-GUI route names a consumer that is shown to reference it.
+3. All 131 mutating routes declare an invalidation or `nothing` with a
+   reason, and a test fails on an undeclared one. **Control:** add an
+   undeclared mutating route and the suite fails.
+4. The both-directions check passes, with floors. **Controls:** a declared
+   key with no subscriber and outside the allowlist fails; a subscription to
+   an undeclared key fails.
+5. The shipped client code, executed in duktape against real responses: a
+   response carrying `invalidates` triggers the subscribed panel's
+   re-fetch, and a failed re-fetch renders the stale marker with the time
+   of the value shown.
+6. **On the host**: the three cases update without a reload. After
+   onboarding promotes a device, the device list shows it. After a commit,
+   the Remote card shows the new push. After a drift run, the badge shows it.
+7. No control moved, and no route's behaviour changed apart from the added
+   `invalidates` field.
+
 ## 8. Acceptance
 
 - **Per-route reachability**: the allowlist is strictly smaller after each
