@@ -684,11 +684,10 @@ def unmet_preconditions(netbox_plan=()) -> list:
 def _template_for(repo: str, hostname: str, platform: str):
     """``(template, approved)`` for a platform with no device bound yet.
 
-    Approval is a claim about the **template against its bound devices**, and
-    the device being onboarded is not one of them — it does not exist. So the
-    question is whether the template is approved as it stands, which is what
-    `is_approved()` answers: `binding_fingerprint()` reads the bound set from
-    the repo and ignores any host_vars passed to it.
+    Approval is a claim about the **template** (scheme 3, P.5): its closure
+    hash and who approved it. So the question is whether the template is
+    approved as it stands, which is what `is_approved()` answers. Onboarding
+    no longer moves it, because no device is part of the fingerprint.
     """
     if not platform:
         return "", False

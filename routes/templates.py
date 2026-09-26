@@ -129,11 +129,9 @@ def artifact_for(hostname, capture, repo, platform, template, host_vars=None):
     that had revoked itself overnight.
 
     **Approval is not asked about this device's host_vars, and must not be.**
-    `binding_fingerprint()` accepts `host_vars_by_device` and deliberately
-    ignores it -- that ignoring IS the scheme-2 correction. The bound set is
-    read from the repo, so the verdict is a statement about the template
-    against every device it covers, and an edit to one device's intent cannot
-    move it. Nothing is passed here, because this caller does not have the
+    `template_fingerprint()` accepts `host_vars_by_device` and deliberately
+    ignores it. Under scheme 3 the verdict is a statement about the template
+    alone, so an edit to one device's intent cannot move it. Nothing is passed here, because this caller does not have the
     bound set and inventing a one-device stand-in would be a wrong value kept
     alive by the fact that nothing currently reads it.
     """
@@ -473,7 +471,15 @@ def approval_status(rel_path):
 
 @bp.route("/approve/<path:rel_path>", methods=["POST"])
 def approve(rel_path):
-    """Approve a template — only if it round-trips against every bound device."""
+    """Approve a template (scheme 3): it must round-trip against AT LEAST ONE
+    bound device, and every bound device's result is recorded as evidence.
+
+    A bound device with no captured config is recorded as NOT VALIDATED
+    instead of refusing the whole approval. Under scheme 2 the refusal was
+    load-bearing, because the stored fingerprint covered the device set. Under
+    scheme 3 it covers only the template, and the device is checked at its own
+    deploy, so the refusal only kept a never-reached device's whole platform
+    offline (D2)."""
     from modules.nsot import approval, repo as repo_service, templates_repo
 
     data = request.get_json(silent=True) or {}
@@ -481,23 +487,18 @@ def approve(rel_path):
     repo = _repo_for(list_name)
 
     devices = []
-    missing = []
+    not_validated = []
     for entry in templates_repo.devices_for_template(repo, rel_path):
         golden, _ = _captured_golden(entry["device"], list_name)
         if not golden:
-            missing.append(entry["device"])
+            not_validated.append({"device": entry["device"],
+                                  "reason": "no captured config yet"})
             continue
         devices.append({"device": entry["device"], "platform": entry["platform"],
                         "running_config": golden})
 
-    if missing:
-        return jsonify({"ok": False, "error": (
-            f"{len(missing)} bound device(s) have no captured config: "
-            f"{', '.join(missing)}. A template cannot be approved against a "
-            "device it has never been validated on.")}), 400
-
     result = approval.approve(repo, rel_path, devices,
-                              actor=request_actor())
+                              actor=request_actor(), not_validated=not_validated)
     if result["ok"]:
         repo_service.save_templates(list_name, [".approvals.json"],
                                     actor=request_actor(),

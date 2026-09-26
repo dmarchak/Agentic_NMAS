@@ -3437,6 +3437,34 @@ property of the inventory, not of the template.
 changes how a gate behaves, and 7.6 draws the badge, so the behaviour must
 exist before the screen that explains it.
 
+**BUILT 2026-09-26.**
+- **The premise was measured before anything changed:**
+  `RenderArtifact.template_report` is computed on every plan, unconditionally,
+  from the capture's own parse, and `blocking_reasons` refuses a device with
+  missing, invented or reordered lines whatever approval says. So a device
+  the template cannot reproduce was already blocked alone.
+- `approval.template_fingerprint()` is the template's closure hash, and no
+  device. `approve()` needs at least one bound device to round-trip and
+  records every device's result as evidence; `approval_status()` carries
+  `covers` and `does_not_cover`, and the template library draws both, the
+  evidence and the approver.
+- The approve route records a bound device with no capture as not validated
+  instead of answering 400 (D2's deadlock), and `nsot_reapprove_templates.py`
+  does the same, recording the OS user as the actor instead of "operator".
+- The deploy plan no longer renders every bound device to feed the
+  fingerprint: `_bound_host_vars` built a full artifact for each, on every
+  plan, for a hash that no longer reads them.
+- Ten scheme-2 pins rewritten as scheme-3 claims, the D2 pins flipped with
+  the reason. Controls, run confined, each failing its target: every device
+  required again; the device set back in the fingerprint; a scheme-2 record
+  honoured; the badge without what it does not cover; the route refusing a
+  device with no capture.
+- **Operator's step after deploying it:** every existing approval reads
+  "approved under fingerprint scheme 2" and deploys stop until each template
+  is re-approved, by design. From the Templates tab (Approve), or on the host:
+  `python3 scripts/nsot_reapprove_templates.py <list>` (dry run), then with
+  `--apply`.
+
 ### P.6 — ZTP as a third address source (DECIDED 2026-09-26; after P.5, before Stage 7's onboarding step 7.4)
 
 The course's Labs 8 and 9 (ZTP, then ZTP + IaC) land on Phase 2's

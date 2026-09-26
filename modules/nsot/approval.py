@@ -1,21 +1,32 @@
 """nsot/approval.py
 
-Template approval: a template may not be marked approved until it round-trips
-cleanly against **every device currently bound to it**.
+Template approval, **scheme 3** (NSOT_PLAN P.5, register D11; decided
+2026-09-26): an approval is **the template's closure hash and the person who
+approved it**. It is a claim about the TEMPLATE.
 
-Approval is keyed on a **binding fingerprint**, not just the template's path and
-content:
+What it does NOT claim is that every bound device renders faithfully. That is
+checked where it already runs, live, per device, on every plan:
+``RenderArtifact.template_report`` renders the capture's own parse and
+``blocking_reasons`` refuses a device the template cannot reproduce, naming
+the lines, whatever approval says (measured in code before this scheme was
+built). So a device the template cannot reproduce is blocked ALONE, at its own
+deploy, instead of blocking every other device on its platform.
 
-* the template's content hash, and
-* the sorted set of bound device identities, and
-* a hash of each bound device's ``host_vars``
+History, because each scheme was a correction:
 
-Any of those changing invalidates the approval. Editing the template changes the
-content hash; onboarding a device in Phase 4 changes the device set; a
-``host_vars`` edit changes that device's hash. Without the device half, a newly
-onboarded device would silently inherit an approval for a template it was never
-validated against — the approval would say "validated" about a device that had
-never been looked at.
+* scheme 1 hashed each device's host_vars, so the deploy an approval
+  authorised revoked it;
+* scheme 2 hashed the bound device SET, so onboarding one device revoked the
+  approval for every device on its platform, and one device the template could
+  not reproduce blocked all the others: a property of the inventory keyed into
+  a claim about the template (D11), and the reason a never-reached device took
+  its platform's deploy path offline (D2).
+
+Approving still validates against the bound set and records the result per
+device, as EVIDENCE; it requires at least one validated device, not all. A
+template edit changes the hash and so revokes every approval over it. A
+record written under an older scheme is never honoured silently: moving to
+scheme 3 is an explicit re-approval.
 
 The approval record is committed to git, so it is reviewable and its history is
 visible. It is not a UI toggle.
@@ -49,7 +60,16 @@ def content_hash(text: str) -> str:
 #: older scheme is not silently honoured: its number says it was answering a
 #: different question, and accepting it would be a gate that passes because
 #: nobody updated it.
-FINGERPRINT_SCHEME = 2
+FINGERPRINT_SCHEME = 3
+
+#: What an approval covers and what it does not, in the words every surface
+#: shows (the operator: without the second sentence scheme 3 reads as WEAKER
+#: than scheme 2 to anyone who does not know why).
+COVERS = ("This approval covers the template itself: its text and every macro file it "
+          "imports, as they are now.")
+DOES_NOT_COVER = ("It does not say every device renders faithfully. Each device is "
+                  "validated at its own deploy, and a device this template cannot "
+                  "reproduce is blocked there alone, with the lines named.")
 
 
 #: Jinja tags that pull another file into a template's rendered output.
@@ -99,50 +119,27 @@ def template_closure_text(repo: str, rel_path: str) -> str:
     return "\n".join(parts)
 
 
-def binding_fingerprint(repo: str, rel_path: str,
-                        host_vars_by_device: dict = None) -> dict:
-    """Everything an approval is bound to: the template, and the devices it covers.
+def template_fingerprint(repo: str, rel_path: str,
+                         host_vars_by_device: dict = None) -> dict:
+    """What an approval is bound to under scheme 3: the template's closure.
 
-    Approval claims **"this template was validated against this device set"**.
-    It does not claim anything about those devices' current configuration —
-    that is ``template_report``, computed live on every plan, per device, and
-    gating there.
+    The full import closure, not just this file. A template IS ``base.j2``
+    plus every macro file it imports; hashing only ``base.j2`` meant an edit
+    to the shared ``_common.j2`` left every approval standing while the
+    render changed underneath it.
 
-    Scheme 1 also hashed each bound device's parsed host_vars. That keyed the
-    gate on the *result of the work*: a successful deploy changes the device's
-    captured config, so the hash moves and the approval is revoked — by the
-    very change it authorised. On a four-device template, deploying to one
-    revoked approval for the other three, which had received nothing. It is
-    the rule recorded in NSOT_PLAN.md ("gate on template fidelity, never on
-    intent drift") broken in its own implementation, and the only visible
-    symptom is a gate that is red so routinely it teaches you to clear it.
+    No device appears here, deliberately (see the module docstring). The
+    bound devices at the moment of approval are recorded beside the
+    fingerprint as evidence, never inside it, so onboarding, retiring or
+    re-capturing a device cannot move it.
 
     *host_vars_by_device* is accepted and ignored, so callers that have it
-    need not change; it is no longer part of the hash.
+    need not change.
     """
-    from modules.nsot import templates_repo
-
-    # The full import closure, not just this file. A template IS base.j2 plus
-    # every macro file it imports; hashing only base.j2 meant an edit to the
-    # shared `_common.j2` — where every routing, interface and service macro
-    # lives — left every approval standing while the render changed underneath
-    # it. Found while fixing the BGP macro: that edit would have kept
-    # cisco_ios/base.j2 approved for s1-s4 on the strength of a hash that never
-    # looked at the file being changed. Same shape as the round-trip metric —
-    # a gate measuring less than its claim.
-    template_text = template_closure_text(repo, rel_path)
-    bound = templates_repo.devices_for_template(repo, rel_path)
-    # Stable identities, not names: a rename is the same device, onboarding is
-    # not. Falls back to the name when a device has no manifest identity.
-    identities = sorted(entry.get("identity") or entry["device"]
-                        for entry in bound)
-
     payload = {
         "scheme": FINGERPRINT_SCHEME,
         "template": rel_path,
-        "template_hash": content_hash(template_text),
-        "devices": sorted(entry["device"] for entry in bound),
-        "device_identities": identities,
+        "template_hash": content_hash(template_closure_text(repo, rel_path)),
     }
     payload["fingerprint"] = hashlib.sha256(
         json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
@@ -175,7 +172,7 @@ def _save(repo: str, data: dict) -> None:
 
 
 def is_approved(repo: str, rel_path: str, host_vars_by_device: dict = None) -> bool:
-    """True only if a stored approval matches the current binding fingerprint.
+    """True only if a stored scheme-3 approval matches the template as it is now.
 
     A record written under an older scheme is **not** accepted. Its fingerprint
     answered a different question, and honouring it would be a gate that passes
@@ -195,58 +192,47 @@ def is_approved(repo: str, rel_path: str, host_vars_by_device: dict = None) -> b
                     "current is %s — treating as unapproved until re-approved",
                     rel_path, record.get("scheme", 1), FINGERPRINT_SCHEME)
         return False
-    current = binding_fingerprint(repo, rel_path, host_vars_by_device)
-    return record.get("fingerprint") == current["fingerprint"]
+    return record.get("fingerprint") == template_fingerprint(repo, rel_path)["fingerprint"]
 
 
-def approval_status(repo: str, rel_path: str, host_vars_by_device: dict) -> dict:
-    """Approval state plus, when stale, precisely what changed."""
+def approval_status(repo: str, rel_path: str, host_vars_by_device: dict = None) -> dict:
+    """Approval state, what it covers and does not, and when stale, what changed."""
     record = _load(repo).get(rel_path)
-    current = binding_fingerprint(repo, rel_path, host_vars_by_device)
+    current = template_fingerprint(repo, rel_path)
+    scope = {"covers": COVERS, "does_not_cover": DOES_NOT_COVER}
 
     if not record:
         return {"approved": False, "reason": "never approved",
-                "fingerprint": current["fingerprint"], "changes": []}
+                "fingerprint": current["fingerprint"], "changes": [], **scope}
     if record.get("revoked"):
         return {"approved": False, "revoked": True,
                 "reason": f"REVOKED: {record.get('reason', '')}",
                 "revoked_at": record.get("revoked_at"),
                 "actor": record.get("actor"),
                 "fingerprint": current["fingerprint"],
-                "changes": ["re-approval must validate against every bound "
-                            "device before this template can deploy again"],
-                "previously_approved_at": record.get("previously_approved_at")}
+                "changes": ["re-approval must validate the template against at least "
+                            "one bound device before it can deploy again"],
+                "previously_approved_at": record.get("previously_approved_at"), **scope}
     if record.get("scheme") != FINGERPRINT_SCHEME:
+        old = record.get("scheme", 1)
         return {"approved": False,
-                "reason": (f"approved under fingerprint scheme "
-                           f"{record.get('scheme', 1)}, current is "
+                "reason": (f"approved under fingerprint scheme {old}, current is "
                            f"{FINGERPRINT_SCHEME}"),
                 "fingerprint": current["fingerprint"],
-                "changes": ["the approval scheme changed — re-approve once, "
-                            "explicitly, so the record says what it now means"],
-                "previously_approved_at": record.get("approved_at")}
+                "changes": [(f"scheme {old} bound the approval to the device set; scheme "
+                             f"{FINGERPRINT_SCHEME} approves the template alone, and each "
+                             "device is checked at its own deploy — re-approve once, "
+                             "explicitly, so the record says what it now means")],
+                "previously_approved_at": record.get("approved_at"), **scope}
     if record.get("fingerprint") == current["fingerprint"]:
         return {"approved": True, "approved_at": record.get("approved_at"),
                 "actor": record.get("actor"),
-                "devices": record.get("devices", []),
-                "fingerprint": current["fingerprint"], "changes": []}
-
-    changes = []
-    if record.get("template_hash") != current["template_hash"]:
-        changes.append("the template was edited")
-    old_devices = set(record.get("devices", []))
-    new_devices = set(current["devices"])
-    for added in sorted(new_devices - old_devices):
-        changes.append(f"device '{added}' is now bound to this template")
-    for removed in sorted(old_devices - new_devices):
-        changes.append(f"device '{removed}' is no longer bound")
-    # Deliberately no per-device config comparison here. A device's
-    # configuration changing is not an approval question — it is answered live
-    # by template_report on every plan, per device, with the lines named.
-
+                "evidence": record.get("evidence", {}),
+                "fingerprint": current["fingerprint"], "changes": [], **scope}
     return {"approved": False, "reason": "approval is stale",
-            "fingerprint": current["fingerprint"], "changes": changes,
-            "previously_approved_at": record.get("approved_at")}
+            "fingerprint": current["fingerprint"],
+            "changes": ["the template was edited (it, or a macro file it imports)"],
+            "previously_approved_at": record.get("approved_at"), **scope}
 
 
 # ---------------------------------------------------------------------------
@@ -303,30 +289,60 @@ def validate_template(repo: str, rel_path: str, devices: list) -> dict:
             "device_count": len(results)}
 
 
-def approve(repo: str, rel_path: str, devices: list, actor: str = "user") -> dict:
-    """Approve *rel_path* — only if it validates against every bound device."""
+def approve(repo: str, rel_path: str, devices: list, actor: str = "user",
+            not_validated: list = None) -> dict:
+    """Approve *rel_path* when it validates against AT LEAST ONE bound device.
+
+    Every device's result is recorded as evidence: the ones that validated,
+    and the ones that did not with the reason. A device that does not
+    round-trip is not a reason to withhold the approval from the template,
+    because that device is blocked at its own deploy regardless (scheme 3).
+    *not_validated*: bound devices the caller could not validate at all
+    (``{"device", "reason"}``, e.g. no captured config yet), recorded as such.
+    """
     if not devices:
         return {"ok": False,
-                "error": "no devices are bound to this template, so there is "
-                         "nothing to validate it against"}
+                "error": "no bound device has a captured config, so there is nothing "
+                         "to validate this template against; at least one is required",
+                "not_validated": list(not_validated or [])}
 
     validation = validate_template(repo, rel_path, devices)
-    if not validation["ok"]:
-        failed = [r for r in validation["results"] if not r["ok"]]
+    passed = [r["device"] for r in validation["results"] if r["ok"]]
+    failed = [{"device": r["device"],
+               "reason": r.get("error") or _summary(r)} for r in validation["results"]
+              if not r["ok"]]
+    skipped = list(not_validated or [])
+    if not passed:
         return {"ok": False, "error": (
-            f"{len(failed)} of {validation['device_count']} bound device(s) "
-            "do not round-trip cleanly"), "validation": validation}
+            f"none of the {validation['device_count']} bound device(s) with a capture "
+            "round-trips cleanly; at least one must, or nothing shows the template "
+            "reproduces a real device"), "validation": validation,
+            "not_validated": skipped}
 
-    fingerprint = binding_fingerprint(repo, rel_path)
+    fingerprint = template_fingerprint(repo, rel_path)
+    evidence = {"validated": sorted(passed), "failed": failed, "not_validated": skipped,
+                "bound": len(passed) + len(failed) + len(skipped)}
     data = _load(repo)
     data[rel_path] = {**fingerprint,
                       "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                      "actor": actor}
+                      "actor": actor, "evidence": evidence}
     _save(repo, data)
-    log.info("approval: '%s' approved by %s against %d device(s)",
-             rel_path, actor, validation["device_count"])
+    log.info("approval: '%s' approved by %s; validated %d of %d bound device(s)",
+             rel_path, actor, len(passed), evidence["bound"])
     return {"ok": True, "template": rel_path, "validation": validation,
-            "fingerprint": fingerprint["fingerprint"]}
+            "fingerprint": fingerprint["fingerprint"], "evidence": evidence,
+            "covers": COVERS, "does_not_cover": DOES_NOT_COVER}
+
+
+def _summary(result: dict) -> str:
+    parts = []
+    for key, words in (("missing", "line(s) not reproduced"), ("extra", "line(s) invented"),
+                       ("reordered", "section(s) reordered")):
+        if result.get(key):
+            parts.append(f"{result[key]} {words}")
+    if result.get("unmodeled") and not result.get("unmodeled_acknowledged"):
+        parts.append(f"{result['unmodeled']} unmodelled line(s) not acknowledged")
+    return "; ".join(parts) or "does not round-trip"
 
 
 def approved_templates(repo: str) -> list:
@@ -366,7 +382,7 @@ def revoke(repo: str, rel_path: str, reason: str = "", actor: str = "") -> dict:
         "previous_fingerprint": previous.get("fingerprint", ""),
         "previously_approved_at": previous.get("approved_at", ""),
         "previously_approved_by": previous.get("actor", ""),
-        "previous_devices": previous.get("devices", []),
+        "previous_evidence": previous.get("evidence", {}),
     }
     _save(repo, data)
     log.warning("approval: '%s' REVOKED by %s — %s", rel_path,

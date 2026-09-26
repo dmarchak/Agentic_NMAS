@@ -611,14 +611,13 @@ def rolled_back():
     list_name = _active_list()
     repo = _repo_for(list_name)
     applies, stale = {}, {}
-    cache = {}
 
     for hostname in hostvars.list_committed(repo):
         raw = hostvars.rolled_back_note(repo, hostname)
         if not raw:
             continue
         try:
-            built, error = _artifact_for(list_name, hostname, cache)
+            built, error = _artifact_for(list_name, hostname)
             program = _current_program(built[0], built[1]) if built else None
         except Exception as exc:              # noqa: BLE001
             log.warning("templatize: could not compute %s's program to test "

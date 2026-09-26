@@ -11,6 +11,7 @@ duktape against the payloads the routes return.
 """
 
 import json
+import os
 
 import pytest
 
@@ -18,7 +19,7 @@ from tests.js_source import with_loaded_scripts
 
 dukpy = pytest.importorskip("dukpy")
 
-NAMES = ("_tEsc", "templateRowHtml", "approvalCellHtml", "saveToastText")
+NAMES = ("_tEsc", "templateRowHtml", "approvalEvidenceText", "approvalCellHtml", "saveToastText")
 
 
 @pytest.fixture(scope="module")
@@ -128,3 +129,46 @@ def test_the_listing_route_marks_shared_files(tmp_path, monkeypatch):
     assert "shared" not in by_path["cisco_ios/base.j2"]
     assert all("approved" not in t for t in body["templates"]), \
         "approval is answered by /templates/approval/<path> only"
+
+
+class TestTheBadgeSaysWhatItCoversAndWhatItDoesNot:
+    """P.5, the operator's addition, executed against the ROUTE's real payload
+    (never a hand-built one: a renderer test fed by hand passed while a real
+    payload's shape differed, P.3 step 4)."""
+
+    def _payload(self, tmp_path, monkeypatch):
+        import app as nmas
+        from modules.nsot import approval, manifest, templates_repo
+        from routes import templates as troutes
+        from tests.js_source import read_shipped
+
+        repo = str(tmp_path / "config_repo")
+        os.makedirs(repo)
+        templates_repo.seed_templates(repo)
+        fleet = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
+        for n in ("s1", "s2"):
+            manifest.upsert_device(repo, f"uid:{n}", n, f"203.0.113.2{n[1]}", platform="cisco-ios")
+        devices = [{"device": n, "platform": "cisco_ios",
+                    "running_config": read_shipped(os.path.join(fleet, f"{n}.cfg"))} for n in ("s1", "s2")]
+        devices[1]["running_config"] += "\nsome construct no template models 42\n"
+        approval.approve(repo, "cisco_ios/base.j2", devices, actor="dustin@example.invalid")
+        monkeypatch.setattr(troutes, "_active_list", lambda *a: "Lab")
+        monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
+        monkeypatch.setattr(troutes, "_captured_golden", lambda *a, **k: (None, None))
+        return nmas.app.test_client().get("/templates/approval/cisco_ios/base.j2").get_json()
+
+    def test_an_approved_badge_draws_both_sentences_and_the_evidence(self, js, tmp_path, monkeypatch):
+        payload = self._payload(tmp_path, monkeypatch)
+        assert payload["approved"] is True, payload
+        html = _call(js, "approvalCellHtml", payload)
+        assert "covers the template itself" in html
+        assert "blocked there alone" in html
+        assert "validated on 1 of 2 bound device(s)" in html and "s2 did not round-trip" in html
+        assert "dustin@example.invalid" in html
+
+    def test_the_footnote_no_longer_states_the_scheme_2_rule(self):
+        from tests.js_source import read_shipped
+        src = read_shipped(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                        "static", "js", "gen", "partials__template_editor.1.js"))
+        assert "binding a new" not in src and "<strong>every</strong> device bound" not in src
+        assert "<strong>at least one</strong> to round-trip" in src

@@ -1,10 +1,12 @@
 """Template library, bindings, and the approval gate.
 
-Approval is keyed on a **binding fingerprint**: the template's content plus the
-set of bound devices plus a hash of each device's host_vars. Without the device
-half, a device onboarded in Phase 4 would silently inherit an approval for a
-template it had never been validated against — the record would claim
-"validated" about a device nobody had looked at.
+Approval is **scheme 3** (NSOT_PLAN P.5, D11): the template's closure hash and
+the person who approved it, a claim about the TEMPLATE. Whether a device is
+reproduced faithfully is its own plan's ``template_report``, gating per device
+with the lines named, so a device the template cannot reproduce is blocked
+alone and no longer blocks every other device on its platform. Approving
+records each bound device's result as evidence and needs at least one to
+validate.
 """
 
 import os
@@ -113,13 +115,46 @@ class TestApprovalGate:
         assert result["ok"], result.get("error")
         assert result["validation"]["device_count"] == 3
 
-    def test_refuses_when_one_device_fails(self, repo):
+    def test_refuses_when_no_device_round_trips(self, repo):
         templates_repo.write_template(repo, "cisco_ios/base.j2",
                                       "hostname {{ vars.hostname }}\nend\n")
         result = approval.approve(repo, "cisco_ios/base.j2",
                                   _devices(["s1", "s2", "s3"]))
         assert result["ok"] is False
-        assert "do not round-trip cleanly" in result["error"]
+        assert "at least one must" in result["error"]
+
+    def test_one_failing_device_does_not_block_the_template(self, repo):
+        """Scheme 3's point: s3 is blocked at ITS OWN deploy (template_report),
+        so it is evidence here, not a veto over s1 and s2."""
+        devices = _devices(["s1", "s2", "s3"])
+        devices[2]["running_config"] += "\nsome construct no template models 42\n"
+        result = approval.approve(repo, "cisco_ios/base.j2", devices, actor="dustin")
+        assert result["ok"], result.get("error")
+        evidence = result["evidence"]
+        assert evidence["validated"] == ["s1", "s2"]
+        assert [f["device"] for f in evidence["failed"]] == ["s3"]
+        assert evidence["failed"][0]["reason"]
+        assert approval._load(repo)["cisco_ios/base.j2"]["evidence"] == evidence
+
+    def test_a_device_that_could_not_be_validated_is_recorded_not_a_veto(self, repo):
+        """A bound device with no capture (a pending onboarding) used to keep
+        its whole platform unapprovable (D2)."""
+        result = approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]),
+                                  actor="dustin",
+                                  not_validated=[{"device": "s9", "reason": "no captured config yet"}])
+        assert result["ok"]
+        assert result["evidence"]["not_validated"] == [
+            {"device": "s9", "reason": "no captured config yet"}]
+        assert result["evidence"]["bound"] == 2
+
+    def test_the_result_says_what_it_covers_and_what_it_does_not(self, repo):
+        """The operator's addition: without the second sentence scheme 3 reads
+        as weaker than scheme 2 to anyone who does not know why."""
+        result = approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]))
+        assert "covers the template itself" in result["covers"]
+        assert "blocked there alone" in result["does_not_cover"]
+        status = approval.approval_status(repo, "cisco_ios/base.j2")
+        assert status["approved"] and status["covers"] and status["does_not_cover"]
 
     def test_failure_names_the_device_and_lines(self, repo):
         templates_repo.write_template(repo, "cisco_ios/base.j2",
@@ -133,104 +168,93 @@ class TestApprovalGate:
     def test_refuses_with_no_bound_devices(self, repo):
         result = approval.approve(repo, "cisco_iosxe/base.j2", [])
         assert result["ok"] is False
-        assert "nothing to validate it against" in result["error"]
+        assert "nothing to validate" in result["error"]
 
 
-class TestBindingFingerprint:
-    """Template hash + bound device set. Scheme 2.
+class TestTemplateFingerprint:
+    """Scheme 3: the template's closure hash, and no device.
 
-    Scheme 1 added a hash of each bound device's parsed host_vars. That is what
-    a template was validated *against*, so freezing it looked right — and it
-    keyed the gate on the result of the work, revoking approval every time a
-    deploy succeeded. The division is now explicit:
+    * scheme 1 hashed each device's host_vars: a deploy revoked its own
+      approval;
+    * scheme 2 hashed the bound device set: onboarding one device revoked the
+      approval for every device on its platform (D11, D2).
 
-    * **approval** — validated against this device set; revoked by a template
-      edit or a change to the set
-    * **template_report** — reproduces this device now; live, per device, every
-      plan, gating there
+    Now **approval** is a claim about the template, revoked by an edit to it
+    or to a macro file it imports; **template_report** is the per-device
+    claim, live on every plan, gating there.
     """
 
     def test_a_template_edit_revokes(self, repo):
-        before = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        before = approval.template_fingerprint(repo, "cisco_ios/base.j2")
         templates_repo.write_template(repo, "cisco_ios/base.j2", "{# edited #}\n")
-        after = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        after = approval.template_fingerprint(repo, "cisco_ios/base.j2")
         assert before["fingerprint"] != after["fingerprint"]
 
-    def test_onboarding_a_device_revokes(self, repo):
+    def test_onboarding_a_device_does_NOT_revoke(self, repo):
+        """D2, resolved: a device joining the platform used to take the
+        approval, and with it every other device's deploy path, offline."""
         approval._save(repo, {"cisco_ios/base.j2":
-                              approval.binding_fingerprint(repo, "cisco_ios/base.j2")})
+                              approval.template_fingerprint(repo, "cisco_ios/base.j2")})
+        assert approval.is_approved(repo, "cisco_ios/base.j2")
+        manifest.upsert_device(repo, "uid:s9", "s9", "203.0.113.29", platform="cisco-ios")
         assert approval.is_approved(repo, "cisco_ios/base.j2")
 
-        manifest.upsert_device(repo, "uid:s9", "s9", "203.0.113.29",
-                               platform="cisco-ios")
-        assert not approval.is_approved(repo, "cisco_ios/base.j2")
-
-    def test_removing_a_device_revokes(self, repo):
-        before = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+    def test_removing_a_device_does_not_revoke(self, repo):
+        before = approval.template_fingerprint(repo, "cisco_ios/base.j2")
         data = manifest.load(repo)
         data["devices"].pop("uid:s3")
         manifest.save(repo, data)
-        after = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
-        assert before["fingerprint"] != after["fingerprint"]
+        assert approval.template_fingerprint(repo, "cisco_ios/base.j2")["fingerprint"] == \
+            before["fingerprint"]
 
     def test_a_devices_config_changing_does_not_revoke(self, repo):
-        """The correction. A deploy is not an approval question."""
+        """A deploy is not an approval question."""
         approval._save(repo, {"cisco_ios/base.j2":
-                              approval.binding_fingerprint(repo, "cisco_ios/base.j2")})
+                              approval.template_fingerprint(repo, "cisco_ios/base.j2")})
         assert approval.is_approved(
             repo, "cisco_ios/base.j2",
             {"s1": {"hostname": "s1", "totally": "different"}})
 
-    def test_the_fingerprint_covers_template_and_device_set(self, repo):
-        payload = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
-        assert payload["template_hash"]
-        assert payload["devices"] == ["s1", "s2", "s3"]
-        assert payload["device_identities"] == ["uid:s1", "uid:s2", "uid:s3"]
-        assert "device_hashes" not in payload
-
-    def test_identities_not_names_define_the_set(self, repo):
-        """A rename is the same device; onboarding is not."""
-        payload = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
-        assert all(i.startswith("uid:") for i in payload["device_identities"])
+    def test_the_fingerprint_covers_the_template_only(self, repo):
+        payload = approval.template_fingerprint(repo, "cisco_ios/base.j2")
+        assert payload["template_hash"] and payload["scheme"] == 3
+        assert set(payload) == {"scheme", "template", "template_hash", "fingerprint"}
 
 
 class TestFingerprintSchemeMigration:
-    """A v1 record is not silently honoured.
+    """A scheme-2 record is not honoured silently: it bound the approval to a
+    device set, a different claim. Moving to scheme 3 is an explicit
+    re-approval, so the record says what it now means."""
 
-    Its fingerprint answered a different question. Accepting it would be a gate
-    that passes because nobody migrated it — which is the same failure as a
-    check positioned where it cannot fail, arrived at by leaving old data in
-    place.
-    """
+    def _scheme2(self, repo):
+        current = approval.template_fingerprint(repo, "cisco_ios/base.j2")
+        return {**current, "scheme": 2, "devices": ["s1", "s2", "s3"],
+                "device_identities": ["uid:s1", "uid:s2", "uid:s3"],
+                "approved_at": "2026-09-20T00:00:00Z", "actor": "dustin"}
 
-    def test_a_v1_record_is_not_valid_under_v2(self, repo):
-        current = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
-        approval._save(repo, {"cisco_ios/base.j2": {
-            **current, "scheme": 1, "device_hashes": {"s1": "abc"}}})
+    def test_a_scheme_2_record_is_not_valid_under_3(self, repo):
+        approval._save(repo, {"cisco_ios/base.j2": self._scheme2(repo)})
         assert not approval.is_approved(repo, "cisco_ios/base.j2")
 
     def test_a_record_with_no_scheme_at_all_is_not_valid(self, repo):
-        current = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        current = approval.template_fingerprint(repo, "cisco_ios/base.j2")
         record = {k: v for k, v in current.items() if k != "scheme"}
         approval._save(repo, {"cisco_ios/base.j2": record})
         assert not approval.is_approved(repo, "cisco_ios/base.j2")
 
     def test_the_status_explains_the_scheme_change(self, repo):
-        current = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
-        approval._save(repo, {"cisco_ios/base.j2": {**current, "scheme": 1}})
-        status = approval.approval_status(repo, "cisco_ios/base.j2", {})
+        approval._save(repo, {"cisco_ios/base.j2": self._scheme2(repo)})
+        status = approval.approval_status(repo, "cisco_ios/base.j2")
         assert status["approved"] is False
-        assert "scheme" in status["reason"]
-        assert any("re-approve" in c for c in status["changes"])
+        assert "scheme 2" in status["reason"]
+        assert any("re-approve" in c and "device set" in c for c in status["changes"])
 
     def test_re_approving_writes_the_current_scheme(self, repo):
-        approval._save(repo, {"cisco_ios/base.j2": {
-            **approval.binding_fingerprint(repo, "cisco_ios/base.j2"), "scheme": 1}})
+        approval._save(repo, {"cisco_ios/base.j2": self._scheme2(repo)})
         result = approval.approve(repo, "cisco_ios/base.j2",
                                   _devices(["s1", "s2", "s3"]), actor="dustin")
         assert result["ok"] is True
-        assert approval._load(repo)["cisco_ios/base.j2"]["scheme"] == \
-            approval.FINGERPRINT_SCHEME
+        assert approval._load(repo)["cisco_ios/base.j2"]["scheme"] == 3
         assert approval.is_approved(repo, "cisco_ios/base.j2")
 
 
@@ -460,7 +484,7 @@ class TestRevocationIsARecordedFinding:
         rel = "cisco_ios/base.j2"
         approval._save(repo, {rel: {
             "fingerprint": "abc123", "scheme": approval.FINGERPRINT_SCHEME,
-            "template_hash": "t", "devices": ["s1", "s2"],
+            "template_hash": "t", "evidence": {"validated": ["s1", "s2"]},
             "approved_at": "2026-09-20T00:00:00Z", "actor": "dustin"}})
         return repo, rel
 
@@ -488,7 +512,7 @@ class TestRevocationIsARecordedFinding:
         # What was withdrawn, not merely that something was.
         assert record["previous_fingerprint"] == "abc123"
         assert record["previously_approved_by"] == "dustin"
-        assert record["previous_devices"] == ["s1", "s2"]
+        assert record["previous_evidence"] == {"validated": ["s1", "s2"]}
 
     def test_a_revoked_template_is_not_approved(self, tmp_path):
         from modules.nsot import approval
@@ -510,10 +534,9 @@ class TestRevocationIsARecordedFinding:
         approval.revoke(repo, rel, reason=self.REASON)
 
         # Force every other check to agree that this template is fine.
-        monkeypatch.setattr(approval, "binding_fingerprint",
+        monkeypatch.setattr(approval, "template_fingerprint",
                             lambda *a, **k: {"fingerprint": "abc123",
                                              "template_hash": "t",
-                                             "devices": ["s1", "s2"],
                                              "scheme": approval.FINGERPRINT_SCHEME})
         record = approval._load(repo)
         record[rel]["fingerprint"] = "abc123"
@@ -543,9 +566,8 @@ class TestRevocationIsARecordedFinding:
         monkeypatch.setattr(approval, "validate_template",
                             lambda *a, **k: {"ok": True, "device_count": 1,
                                              "results": [{"device": "s1", "ok": True}]})
-        monkeypatch.setattr(approval, "binding_fingerprint",
+        monkeypatch.setattr(approval, "template_fingerprint",
                             lambda *a, **k: {"fingerprint": "new", "template_hash": "t",
-                                             "devices": ["s1"],
                                              "scheme": approval.FINGERPRINT_SCHEME})
         result = approval.approve(repo, rel, [{"device": "s1"}], actor="dustin")
 
@@ -587,11 +609,11 @@ class TestApprovalCoversTheImportClosure:
         from modules.nsot import approval, templates_repo
         repo = self._repo(tmp_path)
 
-        before = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        before = approval.template_fingerprint(repo, "cisco_ios/base.j2")
         text = templates_repo.read_template(repo, "_common.j2")
         templates_repo.write_template(repo, "_common.j2",
                                       text + "\n{# an edit #}\n")
-        after = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        after = approval.template_fingerprint(repo, "cisco_ios/base.j2")
 
         assert before["fingerprint"] != after["fingerprint"], (
             "an edit to the imported macros must move the fingerprint of every "
@@ -602,25 +624,25 @@ class TestApprovalCoversTheImportClosure:
         from modules.nsot import approval, templates_repo
         repo = self._repo(tmp_path)
 
-        before = {p: approval.binding_fingerprint(repo, p)["fingerprint"]
+        before = {p: approval.template_fingerprint(repo, p)["fingerprint"]
                   for p in ("cisco_ios/base.j2", "cisco_iosxe/base.j2")}
         text = templates_repo.read_template(repo, "_common.j2")
         templates_repo.write_template(repo, "_common.j2", text + "\n{# edit #}\n")
 
         for path, old in before.items():
-            assert approval.binding_fingerprint(repo, path)["fingerprint"] != old, path
+            assert approval.template_fingerprint(repo, path)["fingerprint"] != old, path
 
     def test_editing_one_platform_does_not_move_the_other(self, tmp_path):
         """The closure must not over-reach either."""
         from modules.nsot import approval, templates_repo
         repo = self._repo(tmp_path)
 
-        untouched = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
+        untouched = approval.template_fingerprint(repo, "cisco_ios/base.j2")
         text = templates_repo.read_template(repo, "cisco_iosxe/base.j2")
         templates_repo.write_template(repo, "cisco_iosxe/base.j2",
                                       text + "\n! an edit\n")
 
-        assert approval.binding_fingerprint(
+        assert approval.template_fingerprint(
             repo, "cisco_ios/base.j2")["fingerprint"] == untouched["fingerprint"]
 
     def test_moving_a_macro_between_files_changes_the_hash(self, tmp_path):
@@ -654,37 +676,23 @@ class TestApprovalCoversTheImportClosure:
         assert "gone.j2" in approval.template_closure(repo, "x.j2")
 
 
-class TestOnboardingRevokesItsPlatformsApproval:
-    """**A new device changes the set, so the approval is no longer true.**
+class TestOnboardingNoLongerRevokesItsPlatformsApproval:
+    """**D2, resolved by scheme 3 (P.5).**
 
-    Scheme 2 keys the fingerprint on *template hash + sorted bound
-    identities*, and `devices_for_template()` computes the bound set from
-    the **manifest, every time** — never from a stored list, because a
-    stored list drifts and then the two disagree silently.
+    Under scheme 2 the fingerprint covered the bound device set, and
+    `devices_for_template()` computes that set from the manifest with no
+    pending filter, so a device that had never answered SSH revoked its
+    platform's approval the moment Create wrote it into the manifest, and
+    re-approval was refused until it had a capture: the platform's deploy
+    path stayed offline until phase 2 completed or the device was abandoned.
 
-    Confirmed rather than assumed, because the alternative — approval
-    surviving a new binding — would be the gate not noticing its own
-    population changed, in the one place that would be most dangerous.
-
-    **Three things it confirms that were not obvious:**
-
-    1. **It happens at Create, not at Verify.** `commit_step` writes the
-       device into the manifest in phase 1, and `devices_for_template()`
-       applies **no pending filter** — so a device that has never answered
-       SSH is bound the moment Create succeeds.
-    2. **Re-approval is refused, naming the new device**, because it has no
-       captured config yet. `routes/templates.py::approve` collects those
-       and returns 400 rather than validating against the subset it can
-       build. Had it skipped them, `approve()` would have validated five
-       devices and stored a fingerprint covering six — the gate passing
-       because its two halves counted different populations.
-    3. **So onboarding takes its platform cohort's deploy path offline**
-       until the new device has a golden. The exits are completing phase 2
-       or abandoning the device; there is no third.
+    Now no device is part of the fingerprint. The bound set is still
+    computed live, for the EVIDENCE an approval records, and a bound device
+    with no capture is recorded as not validated instead of refusing.
     """
 
     def test_the_bound_set_comes_from_the_manifest_every_time(self):
-        """Never a stored list. That is what makes the population live."""
+        """Never a stored list: the evidence describes the population as it is."""
         import inspect
 
         from modules.nsot import templates_repo
@@ -694,67 +702,57 @@ class TestOnboardingRevokesItsPlatformsApproval:
         assert "Never persisted" in inspect.getdoc(
             templates_repo.devices_for_template)
 
-    def test_a_PENDING_device_is_bound_like_any_other(self):
-        """**The sharp part.** Nothing filters `pending`, so the revocation
-        lands at Create rather than at promotion. Pinned because it is a
-        consequence of two correct decisions meeting, and whichever way it
-        is later decided, it should be decided rather than discovered."""
-        import inspect
-
-        from modules.nsot import templates_repo
-
-        src = inspect.getsource(templates_repo.devices_for_template)
-        assert "pending" not in src, (
-            "devices_for_template now filters pending devices — if that is "
-            "deliberate, this test should assert the filter and the runbook "
-            "note about the deploy window needs revisiting")
-
     def test_the_fingerprint_is_recomputed_not_stored(self):
         import inspect
 
         from modules.nsot import approval
 
         src = inspect.getsource(approval.is_approved)
-        assert "binding_fingerprint(repo, rel_path" in src
-        assert "record.get(\"fingerprint\") == current[\"fingerprint\"]" in src
+        assert "template_fingerprint(repo, rel_path)" in src
 
-    def test_adding_a_device_changes_the_fingerprint(self, tmp_path):
-        """The property itself, computed rather than inspected."""
-        import hashlib
-        import json
+    def test_a_pending_device_leaves_the_approval_standing(self, tmp_path):
+        """The property, computed: a device written to the manifest by Create
+        and never reached."""
+        repo = str(tmp_path / "config_repo")
+        os.makedirs(repo)
+        templates_repo.seed_templates(repo)
+        manifest.upsert_device(repo, "uid:s1", "s1", "203.0.113.21", platform="cisco-ios")
+        approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]), actor="dustin")
+        assert approval.is_approved(repo, "cisco_ios/base.j2")
+        manifest.upsert_device(repo, "uid:new", "brand-new", "203.0.113.99",
+                               platform="cisco-ios")
+        assert "brand-new" in [e["device"] for e in
+                               templates_repo.devices_for_template(repo, "cisco_ios/base.j2")]
+        assert approval.is_approved(repo, "cisco_ios/base.j2")
 
-        # The payload shape `binding_fingerprint` hashes: template text plus
-        # the sorted bound identities.
-        def fp(identities):
-            payload = {"template": "TEXT", "devices": sorted(identities)}
-            return hashlib.sha256(
-                json.dumps(payload, sort_keys=True).encode()).hexdigest()
-
-        five = ["uid:1", "uid:2", "uid:3", "uid:4", "uid:5"]
-        assert fp(five) != fp(five + ["uid:6"]), \
-            "adding a bound device left the fingerprint unchanged"
-        assert fp(five) == fp(list(reversed(five))), \
-            "the fingerprint depends on ORDER, so a reordering would revoke"
-
-    def test_approval_refuses_a_bound_device_with_no_capture(self):
-        """Rather than validating against the subset it can build. The
-        refusal names them, so 'not approved' is actionable."""
+    def test_a_bound_device_with_no_capture_is_evidence_not_a_refusal(self):
+        """The route records it as not validated; it never answers 400 for it."""
         import inspect
 
         from routes import templates
 
         src = inspect.getsource(templates.approve)
-        assert "missing.append" in src
-        assert "have no captured config" in src
-        # The refusal comes BEFORE approval.approve() is reached.
-        assert src.index("if missing:") < src.index("approval.approve(")
+        assert "not_validated.append" in src
+        assert "no captured config yet" in src
+        assert "if missing:" not in src
 
-    def test_abandoning_the_device_is_the_other_exit(self):
-        """`manifest.release()` removes the entry, so the bound set reverts
-        and the previous approval's fingerprint matches again."""
-        import inspect
 
-        from modules.nsot import manifest
+class TestTheApproveRouteRecordsWhatItCouldNotValidate:
+    def test_a_bound_device_with_no_capture_does_not_refuse(self, repo, monkeypatch):
+        """Through the route: s1 has a capture, s2 and s3 have none (say, mid-
+        onboarding). Scheme 2 answered 400 naming them; scheme 3 approves on s1
+        and records the others as not validated."""
+        import app as nmas
+        from routes import templates as troutes
 
-        assert hasattr(manifest, "release")
-        assert "devices" in inspect.getsource(manifest.release)
+        monkeypatch.setattr(troutes, "_active_list", lambda *a: "Lab")
+        monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
+        monkeypatch.setattr(troutes, "_captured_golden",
+                            lambda name, *_a, **_k: (_config(name), None) if name == "s1" else (None, None))
+        monkeypatch.setattr("modules.nsot.repo.save_templates", lambda *a, **k: {"ok": True})
+        r = nmas.app.test_client().post("/templates/approve/cisco_ios/base.j2", json={})
+        body = r.get_json()
+        assert r.status_code == 200, body
+        assert body["evidence"]["validated"] == ["s1"]
+        assert [d["device"] for d in body["evidence"]["not_validated"]] == ["s2", "s3"]
+        assert approval.is_approved(repo, "cisco_ios/base.j2")

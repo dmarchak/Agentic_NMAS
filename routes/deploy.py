@@ -65,45 +65,7 @@ def _captured_config(repo: str, hostname: str) -> str:
     return _load_golden_config_file(legacy["device_ip"]) or ""
 
 
-def _bound_host_vars(repo: str, template: str, platform: str, cache: dict) -> dict:
-    """host_vars for **every** device bound to *template*.
-
-    What ``binding_fingerprint()`` requires, and what the deploy path was not
-    supplying. The fingerprint hashes the whole bound device set by design —
-    onboarding a device must revoke approval — so a device it is not given
-    hashes to the literal string ``"unknown"``. Passing only the device being
-    deployed therefore produced a fingerprint that could never equal the one
-    approval stored, and ``is_approved()`` returned False for every template
-    bound to more than one device. Fail-closed, so nothing unsafe shipped; the
-    deploy path was simply unreachable.
-
-    Cached per request: a plan over nine devices would otherwise reparse each
-    bound set once per device.
-    """
-    from modules.nsot import templates_repo
-    from modules.nsot.render_artifact import build_artifact
-
-    if template in cache:
-        return cache[template]
-
-    host_vars = {}
-    for entry in templates_repo.devices_for_template(repo, template):
-        name = entry["device"]
-        captured = _captured_config(repo, name)
-        if not captured:
-            log.warning("deploy: %s is bound to %s but has no captured config",
-                        name, template)
-            continue
-        host_vars[name] = build_artifact(
-            name, captured, entry.get("platform") or platform,
-            template=template,
-            template_root=templates_repo.templates_dir(repo)).host_vars
-
-    cache[template] = host_vars
-    return host_vars
-
-
-def _artifact_for(list_name: str, hostname: str, cache: dict = None):
+def _artifact_for(list_name: str, hostname: str):
     """Build the render artifact for one device.
 
     **Intent comes from committed host_vars, and from nowhere else.** Deriving
@@ -114,10 +76,10 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
     its status quo as its goal is how a tool confidently pushes nothing and
     reports success.
 
-    Template approval stays keyed on host_vars parsed from each bound device's
-    **capture**. Approval is a statement about the template — that it faithfully
-    reproduces every bound device — and editing one device's intent must not
-    silently revoke it.
+    Template approval is a statement about the TEMPLATE (scheme 3, P.5): its
+    closure hash. Whether this device is reproduced faithfully is this plan's
+    own ``template_report``, which gates here, per device, with the lines
+    named; editing one device's intent cannot revoke the template.
     """
     from modules.device import get_current_device_list, load_saved_devices
     from modules.nsot import approval, hostvars, templates_repo
@@ -142,9 +104,11 @@ def _artifact_for(list_name: str, hostname: str, cache: dict = None):
     intent = (None if bootstrap else
               hostvars.hydrate_secrets(committed, hostname, list_name))
 
-    bound = _bound_host_vars(repo, template, platform,
-                             cache if cache is not None else {})
-    approved = approval.is_approved(repo, template, bound)
+    # Scheme 3 (P.5): approval is the template's closure hash alone, so no
+    # bound device's host_vars are needed here. Building them was a full
+    # render of EVERY device bound to the template on every plan, for a
+    # fingerprint that no longer reads them.
+    approved = approval.is_approved(repo, template)
 
     common = dict(template=template, template_approved=approved,
                   host_vars=intent, bootstrap=bootstrap,
@@ -267,9 +231,8 @@ def plan():
         return jsonify({"ok": False, "error": "No devices selected"}), 400
 
     devices = []
-    cache = {}
     for hostname in hostnames:
-        built, error = _artifact_for(list_name, hostname, cache)
+        built, error = _artifact_for(list_name, hostname)
         if built is None:
             devices.append({"device": hostname, "deployable": False,
                             "blocking_reasons": [error], "to_add": [],
@@ -353,9 +316,8 @@ def apply():
 
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused = []
-    cache = {}
     for hostname in confirmations:
-        built, error = _artifact_for(list_name, hostname, cache)
+        built, error = _artifact_for(list_name, hostname)
         if built is None:
             # Register C24: this was `log.warning(); continue`, so a confirmed
             # device that could not be built vanished from the report, and the

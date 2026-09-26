@@ -187,25 +187,21 @@ def _repo_with_templates(tmp_path, devices=("s1", "s2")):
     return repo
 
 
-class TestApprovalCoversTheDeviceSetNotItsConfig:
-    """Approval claims "validated against this device set" and nothing more.
-
-    Scheme 1 also hashed each bound device's parsed host_vars, which keyed the
-    gate on the *result of the work*: deploying to one device changed its
-    captured config, moved its hash, and revoked approval for every device
-    bound to that template — including three that had received nothing. The
-    rule in NSOT_PLAN.md, broken in its own implementation.
-
-    Whether the template still reproduces a device *now* is ``template_report``,
-    computed live on every plan, per device, gating there with the lines named.
+class TestApprovalIsTheTemplateNotItsDevices:
+    """Scheme 3: approval claims "this template, as it is now" and nothing
+    about any device. Scheme 1 hashed each device's host_vars, so deploying to
+    one device revoked the approval for every device bound to the template;
+    scheme 2 hashed the device set, so onboarding did. Whether the template
+    reproduces a device NOW is ``template_report``, live on every plan, per
+    device, gating there with the lines named.
     """
 
     def test_a_devices_config_changing_does_not_move_the_fingerprint(self, tmp_path):
         from modules.nsot import approval
 
         repo = _repo_with_templates(tmp_path, devices=("s1", "s2"))
-        before = approval.binding_fingerprint(repo, "cisco_ios/base.j2")
-        after = approval.binding_fingerprint(
+        before = approval.template_fingerprint(repo, "cisco_ios/base.j2")
+        after = approval.template_fingerprint(
             repo, "cisco_ios/base.j2",
             {"s1": {"hostname": "s1", "changed": True}})
         assert before["fingerprint"] == after["fingerprint"]
@@ -215,27 +211,24 @@ class TestApprovalCoversTheDeviceSetNotItsConfig:
         from modules.nsot import approval
 
         repo = _repo_with_templates(tmp_path, devices=("s1", "s2"))
-        assert (approval.binding_fingerprint(repo, "cisco_ios/base.j2")["fingerprint"]
-                == approval.binding_fingerprint(repo, "cisco_ios/base.j2",
-                                                {"s1": {"anything": 1}})["fingerprint"])
+        assert (approval.template_fingerprint(repo, "cisco_ios/base.j2")["fingerprint"]
+                == approval.template_fingerprint(repo, "cisco_ios/base.j2",
+                                                 {"s1": {"anything": 1}})["fingerprint"])
 
     def test_the_fingerprint_records_its_scheme(self, tmp_path):
         from modules.nsot import approval
 
         repo = _repo_with_templates(tmp_path, devices=("s1",))
-        assert (approval.binding_fingerprint(repo, "cisco_ios/base.j2")["scheme"]
-                == approval.FINGERPRINT_SCHEME)
+        assert (approval.template_fingerprint(repo, "cisco_ios/base.j2")["scheme"]
+                == approval.FINGERPRINT_SCHEME == 3)
 
     def test_an_approval_survives_a_deploy_to_one_bound_device(self, tmp_path):
         """The case that blocked run 3A at step 2."""
         from modules.nsot import approval
 
         repo = _repo_with_templates(tmp_path, devices=("s1", "s2"))
-        approval._save(repo, {"cisco_ios/base.j2": approval.binding_fingerprint(
+        approval._save(repo, {"cisco_ios/base.j2": approval.template_fingerprint(
             repo, "cisco_ios/base.j2")})
-
-        # s1 is deployed to; its captured config, and therefore its parsed
-        # host_vars, are now different.
         assert approval.is_approved(repo, "cisco_ios/base.j2",
                                     {"s1": {"hostname": "s1", "deployed": True},
                                      "s2": {"hostname": "s2"}})

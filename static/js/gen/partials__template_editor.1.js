@@ -45,10 +45,31 @@ function templateRowHtml(t) {
 // a `changes` entry, and drawing `changes` in preference to `reason` meant
 // the reason ("REVOKED: '_common.j2' was edited...") reached the browser and
 // was drawn nowhere.
+//
+// Scheme 3 (P.5): an approval covers the TEMPLATE. The badge says what it
+// covers AND what it does not (the operator: without the second sentence
+// scheme 3 reads as weaker than scheme 2 to anyone who does not know why),
+// and the evidence it was granted on: how many bound devices validated, and
+// which did not, since those are blocked at their own deploy.
+function approvalEvidenceText(ev) {
+  if (!ev || ev.bound === undefined) return '';
+  const ok = (ev.validated || []).length;
+  const bad = (ev.failed || []).map(f => f.device);
+  const unchecked = (ev.not_validated || []).map(f => f.device);
+  let text = `validated on ${ok} of ${ev.bound} bound device(s)`;
+  if (bad.length) text += `; ${bad.join(', ')} did not round-trip`;
+  if (unchecked.length) text += `; ${unchecked.join(', ')} not validated`;
+  return text;
+}
+
 function approvalCellHtml(d) {
   if (d.approved) {
+    const ev = approvalEvidenceText(d.evidence);
     return `<span class="badge bg-success">approved</span>
-        <span class="text-muted ms-1">${_tEsc(d.approved_at || '')}</span>`;
+        <span class="text-muted ms-1">${_tEsc(d.approved_at || '')}${d.actor ? ' by ' + _tEsc(d.actor) : ''}</span>
+        ${ev ? `<div class="text-muted small">${_tEsc(ev)}</div>` : ''}
+        <div class="small">${_tEsc(d.covers || '')}</div>
+        <div class="small text-muted">${_tEsc(d.does_not_cover || '')}</div>`;
   }
   const lines = [d.reason].concat(d.changes || []).filter(Boolean);
   return `<span class="badge bg-secondary">not approved</span>
@@ -82,9 +103,11 @@ async function loadTemplateLibrary() {
             <tbody>${d.templates.map(templateRowHtml).join('')}</tbody>
           </table></div>
           <div class="form-text mb-0">
-            A template can only be approved once it round-trips cleanly against
-            <strong>every</strong> device bound to it. Editing it, or binding a new
-            device, revokes approval automatically.
+            Approving checks the template against its bound devices and needs
+            <strong>at least one</strong> to round-trip; every device's result is
+            recorded. Editing the template, or a macro file it imports, revokes
+            approval. A device the template cannot reproduce is blocked at its own
+            deploy, with the lines named.
           </div>
         </div>
       </div>`;
@@ -176,7 +199,9 @@ async function validateTemplate(path) {
       `${r.ok ? '✓' : '✗'} ${r.device}: ${r.missing} missing, ${r.extra} extra, `
       + `${r.reordered} reordered, ${r.unmodeled} unmodelled`
       + (r.unmodeled_acknowledged ? '' : ' (unacknowledged)'));
-    alert(`${path}\n\n${d.ok ? 'PASSES on all bound devices' : 'FAILS'}\n\n`
+    alert(`${path}\n\n${d.ok ? 'Round-trips on every bound device'
+          : 'Does not round-trip on every bound device. Approval needs at least one; '
+            + 'the others are blocked at their own deploy.'}\n\n`
           + lines.join('\n'));
   } catch (e) { showToast('Error: ' + e.message, 'danger'); }
 }
@@ -188,7 +213,7 @@ async function approveTemplate(path) {
       body: JSON.stringify({}),
     })).json();
     if (d.ok) {
-      showToast(`Approved against ${d.validation.device_count} device(s)`, 'success');
+      showToast(`Approved: ${approvalEvidenceText(d.evidence)}`, 'success');
     } else {
       const detail = (d.validation ? d.validation.results.filter(r => !r.ok)
         .map(r => `  ${r.device}: ${r.missing} missing, ${r.extra} extra`).join('\n') : '');

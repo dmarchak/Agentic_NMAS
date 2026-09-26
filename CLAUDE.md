@@ -95,7 +95,7 @@ tracked in git.
 - **[modules/nsot/templates_repo.py](modules/nsot/templates_repo.py)** — the
   per-network template library and bindings
 - **[modules/nsot/approval.py](modules/nsot/approval.py)** — template approval
-  keyed on a binding fingerprint
+  keyed on the template's closure hash (scheme 3, P.5)
 - **[modules/nsot/deploy.py](modules/nsot/deploy.py)** — the deploy contract,
   merge-only diff, transport, circuit breaker, batch orchestration
 - **[modules/nsot/convergence.py](modules/nsot/convergence.py)** — per-protocol
@@ -489,19 +489,27 @@ exception.
 - **Unmodelled constructs can be acknowledged**, not dismissed: `unmodeled_ack`
   in `host_vars` must list the exact lines, is committed to git, and is
   invalidated by any new or removed unmodelled line.
-- **Approval requires a clean round-trip against every bound device**, keyed on
-  a binding fingerprint of **template hash + sorted bound identities**
-  (scheme 2). The template hash covers the **whole import closure** — a
-  template is `base.j2` plus every macro file it imports, and `_common.j2`
-  holds the routing, interface and service macros for both platforms. Hashing
-  only `base.j2` meant an edit to the shared macros changed what every template
-  rendered while every approval stayed valid. Editing any file revokes every
-  approval whose closure contains it. Revoked by a template edit or a change to the device set —
-  onboarding or removal. A device's *configuration* changing does not revoke
-  it: that is `template_report`, live on every plan, per device, gating there
-  with the lines named. Scheme 1 also hashed each device's host_vars, which
-  meant a successful deploy revoked its own template's approval. Records carry
-  a `scheme`; an older one is never silently honoured.
+- **Approval is the TEMPLATE: its closure hash and who approved it (scheme 3,
+  P.5, built 2026-09-26).** A claim about the template, never about a device:
+  whether a device is reproduced faithfully is its own plan's
+  `template_report`, gating in `blocking_reasons` per device with the lines
+  named, so a device the template cannot reproduce is blocked ALONE instead
+  of blocking every other device on its platform. Approving validates against
+  the bound devices, needs **at least one** to round-trip, and records every
+  device's result as evidence (validated, failed with the reason, not
+  validated for want of a capture). The hash covers the **whole import
+  closure** — a template is `base.j2` plus every macro file it imports, and
+  `_common.j2` holds the routing, interface and service macros for both
+  platforms, so editing any file revokes every approval whose closure
+  contains it. The badge says what an approval **covers and what it does
+  not** (`approval.COVERS` / `DOES_NOT_COVER`), because without the second
+  sentence scheme 3 reads as weaker than scheme 2 to anyone who does not know
+  why. History, each a correction: scheme 1 hashed each device's host_vars,
+  so a deploy revoked its own approval; scheme 2 hashed the bound device set,
+  so onboarding one device revoked every approval on its platform and one
+  device the template could not reproduce blocked all the others (D11, D2).
+  Records carry a `scheme`; an older one is never silently honoured, so the
+  move to scheme 3 is an explicit re-approval.
 - **Revocation is a recorded finding, not a deletion.** `approval.revoke()`
   requires a reason and writes a tombstone carrying it, the actor, and what was
   withdrawn. Popping the record made a withdrawal indistinguishable from "never
@@ -906,7 +914,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_fleet_coverage.py` | all nine devices; enforces the decision rule |
 | `test_unmodeled_path.py` | the fallback path: unknown constructs, no invented lines |
 | `test_render_artifact.py` | deployability gate, masking, unmodelled acknowledgement |
-| `test_template_approval.py` | template library, bindings, binding fingerprint |
+| `test_template_approval.py` | template library, bindings; scheme 3: the fingerprint is the template alone; one validated device approves and the rest are evidence; onboarding and removal do not revoke; a scheme-2 record is not honoured; the approve route records a device with no capture |
 | `test_codemirror_assets.py` | vendored asset paths, load order, no CDN |
 | `test_deploy_contract.py` | refuse → real secrets → mask check, before any socket; route→wire seam |
 | `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
@@ -1466,7 +1474,7 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   2. Approval scheme 1 hashed each device's host_vars, so the deploy it
      authorised revoked it.
   3. Scheme 2 keyed on the bound device set, so onboarding one device revoked
-     every approval on its platform (D11; scheme 3 decided).
+     every approval on its platform (D11; scheme 3 built in P.5).
   4. **`not_already_type_9`** (register B13, 2026-09-26) was written to stop
      re-running the password-to-type-9 MIGRATION. It also refused every
      ROTATION, because after Stage 2 every device holds `secret 9`: the path
@@ -2506,24 +2514,18 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   artefact genuinely is the population, but state no coverage. A fourth
   instance is recorded unfixed: `routes/templatize.py`'s fleet report drops
   a device with an unreadable golden through a bare `continue`.
-- **Onboarding revokes its platform's template approval at CREATE, not at
-  promotion, and takes the cohort's deploy path offline until the new device
-  has a capture.** `devices_for_template()` computes the bound set from the
-  **manifest, every time** — never a stored list, which would drift — and
-  applies **no `pending` filter**, while `commit_step` writes the device
-  into the manifest in phase 1. So a device that has never answered SSH is
-  bound the moment Create succeeds, the fingerprint changes, and
-  `is_approved()` goes false for every other device on that platform. It
-  **cannot be cleared by re-approving**: `POST /templates/approve` collects
-  bound devices with no captured config and returns **400 naming them**, and
-  that refusal is load-bearing — skipping them would validate five devices
-  and store a fingerprint covering six, the gate passing because its two
-  halves counted different populations. Two exits only: complete phase 2, or
-  abandon the device (`manifest.release()` reverts the bound set). Whether a
-  never-reached device should bind at all is a real question left open
-  deliberately — binding on the manifest entry is exactly what makes the
-  gate notice its population changed, and a test pins the current behaviour
-  so a later change is a decision rather than a discovery.
+- **Onboarding no longer revokes its platform's template approval (D2,
+  resolved by scheme 3, P.5).** Until 2026-09-26 it did, at CREATE:
+  `devices_for_template()` computes the bound set from the manifest with no
+  `pending` filter, the scheme-2 fingerprint covered that set, so a device
+  that had never answered SSH revoked the approval for every other device on
+  its platform, and re-approval was refused (400) until it had a capture.
+  That refusal was load-bearing only because the fingerprint covered the
+  device set. Now no device is in the fingerprint, the bound set is still
+  computed live but only for the EVIDENCE an approval records, and a bound
+  device with no capture is recorded as not validated rather than refusing.
+  Kept here because the reasoning is what stops the device set being put
+  back into the key.
 - **The edge caches HTML and not JSON, so fresh data beside a stale page is
   NOT a rendering defect.** The app is behind a Cloudflare tunnel; a page
   can be hours old while every endpoint it fetches is current, and **a
@@ -4581,7 +4583,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **35 open at 2026-09-26**, counted from the rows: 30 recorded only in
+present when each was recorded. **34 open at 2026-09-26**, counted from the rows: 29 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
