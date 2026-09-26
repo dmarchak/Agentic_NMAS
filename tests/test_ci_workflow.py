@@ -96,3 +96,16 @@ def test_superseded_runs_are_cancelled_and_docs_are_skipped(path):
     assert (doc.get("concurrency") or {}).get("cancel-in-progress") is True
     triggers = doc.get(True) or doc.get("on")      # YAML 1.1 reads `on` as True
     assert "docs/**" in (triggers.get("push") or {}).get("paths-ignore", [])
+
+
+@pytest.mark.parametrize("path", WORKFLOWS)
+def test_the_suite_runs_confined_and_never_unconfined(path):
+    """C46: CI runs the suite through scripts/nmas-test, which requires the
+    network namespace it creates. Parsed values, not the raw text."""
+    doc, _ = _load(path)
+    runs = [str(s.get("run", "")) for s in _steps(doc)]
+    suite = [r for r in runs if "pytest" in r or "nmas-test" in r]
+    assert suite, "no step runs the suite"
+    for run in suite:
+        assert run.lstrip().startswith("scripts/nmas-test"), run
+        assert "--allow-unconfined" not in run, run

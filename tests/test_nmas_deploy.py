@@ -279,6 +279,41 @@ class TestOffline:
         assert os.path.realpath(seen["cwd"]) != os.path.realpath(world.host)
         assert _head(world) == world.base, "testing the target must not move the host"
 
+    def test_it_runs_the_targets_own_runner_and_reports_its_network_line(self, world):
+        """C46: through scripts/nmas-test when the target has it, allowed to
+        run unconfined on a machine that cannot confine, and SAYING which."""
+        sha = world.advance({"app.py": "v = 2\n", "scripts/nmas-test": "#!/bin/sh\n"})
+        _fetch_from_real_origin(world)
+        _git(world.host, "fetch", "-q", "origin")
+        seen = {}
+
+        def spy(argv, cwd=None, **_kw):
+            seen["argv"] = argv
+
+            class Out:
+                returncode = 0
+                stdout = ("nmas-test: network: NOT CONFINED: no network namespace here (x)\n"
+                          "3986 passed")
+            return Out()
+        code, message = _script().offline_verdict(world.host, sha, run=spy)
+        assert code == 0
+        assert seen["argv"][0].endswith(os.path.join("scripts", "nmas-test"))
+        assert "--allow-unconfined" in seen["argv"]
+        assert "network: NOT CONFINED" in message and "3986 passed" in message
+
+    def test_a_target_without_the_runner_is_reported_unconfined(self, world):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _fetch_from_real_origin(world)
+        _git(world.host, "fetch", "-q", "origin")
+
+        def spy(argv, cwd=None, **_kw):
+            class Out:
+                returncode, stdout = 1, "1 failed"
+            return Out()
+        code, message = _script().offline_verdict(world.host, sha, run=spy)
+        assert code == 3
+        assert "NOT CONFINED (the target has no scripts/nmas-test)" in message
+
     def test_a_passing_suite_here_deploys_without_asking_github(self, world):
         sha = world.advance({"app.py": "v = 2\n"})
         code, _, calls = _run(world, {}, offline=True, suite_rc=0)

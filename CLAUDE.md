@@ -876,6 +876,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 ## Tests
 
 ```bash
+scripts/nmas-test         # the suite, confined to loopback (C46); args go to pytest
 pytest                    # 756 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
@@ -947,6 +948,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_harness_isolation.py` | C32/C36/C42: the suite runs on a temporary store; the store guard's controls hold on this machine's clock and on a simulated ext4 at 1 ms (the host) and 1 s; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
+| `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
 | `test_ci_workflow.py` | P.4 step 3: the workflow reads only this repository (no `repository:`, no secret, read-only token, token not persisted), installs the lock, never gates on coverage, cancels superseded runs; parsed values, not raw text |
 | (overview) | **[docs/TESTING.md](docs/TESTING.md)**: what the suite checks, the 180 controls that run every time against the ~330 that ran once, and what it cannot reach |
 | `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed, and success is decided by IDENTITY (MainPID changed, `/health` answers from it, target commit loaded), never by time; the no-run rule is read from a green commit and a workflow change is never ignorable; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
@@ -990,7 +992,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_settings_file_integrity.py` | absent vs unreadable; a write on defaults refused; the save is atomic |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
-All HTTP and SSH is mocked in-process; **no test touches a live network**, and that is NOT enforced for a process a test starts: one test's subprocess asked the live NMAS for its map on every host run until 2026-09-26 (C46). And **no test touches the live store**:
+All HTTP and SSH is mocked; **no test touches a live network, enforced in two layers** (C46): the test process refuses any non-loopback connect (`tests/network_guard.py`), and **`scripts/nmas-test` runs the suite in a loopback-only network namespace**, which covers every process a test starts. Every run's header states which it got (`network: CONFINED` / `NOT CONFINED`), measured by a route lookup, never assumed. CI requires it. Plain `pytest` still runs, and says it is not confined. The deployment host cannot make a namespace (AppArmor), so `--offline` there says `NOT CONFINED` in its verdict. One test's subprocess asked the live NMAS for its map on every host run until 2026-09-26. And **no test touches the live store**:
 conftest points `NMAS_DATA_DIR` at a fresh temporary directory before anything imports, and fails the
 run if the checkout's `data/` changed at all (C32). Importing `app` starts no service (C36).
 
@@ -1430,6 +1432,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   - *An absence after an action proves the action only if the action was
     shown to happen.* This is the vacuous-pass rule, applied to a live test
     rather than a unit test.
+
+  **Its inverse: a gate that always REFUSES is the same defect as one that
+  always passes** (P.4 step 4, 2026-09-26; the operator's framing). `nmas-deploy
+  --offline` tested a `git archive`, where `/health`'s test fails on every
+  commit, so it could not pass at all. Its exit 3 on the red commit was
+  recorded as the acceptance passing, because refusal was the expected
+  answer. A test of a gate needs one case of each: the red commit must
+  refuse, and a green one must pass and proceed. Otherwise the result cannot
+  distinguish a working gate from a closed one. Found only by reading WHICH
+  tests failed (2, where the probe accounts for 1).
 - **A marker is not a match: count the line's exact FORM** (C21,
   2026-09-25). The heartbeat query matched any line containing
   `NMAS-HEARTBEAT`. Removing the applet's timer logs an error that NAMES the

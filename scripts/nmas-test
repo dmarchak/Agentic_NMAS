@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Run the test suite where NO process it starts can reach a network (C46).
+#
+#   scripts/nmas-test [pytest arguments]           confined, or refuse
+#   scripts/nmas-test --allow-unconfined [args]    confined if possible; if
+#                                                  not, run anyway and SAY so
+#
+# Why: "no test touches a live network" held for the test process and for
+# nothing it started. A test ran the clab sync script with its default URL,
+# which on the deployment host IS the NMAS, and the live app logged the
+# request on every host run (2026-09-26). Only the kernel covers every child,
+# in any language, so the suite runs in a network namespace holding loopback
+# alone. The conftest then MEASURES the confinement (a route lookup, no
+# packet) and, because this script sets NMAS_REQUIRE_NETWORK_CONFINEMENT=1,
+# stops if it does not hold.
+#
+# How: an unprivileged user namespace mapped to root, only long enough to
+# bring loopback up, then a nested one mapped back to your own uid and gid. A
+# test running as root would pass every "refuses an unreadable file" check,
+# because root reads anything.
+#
+# Where it cannot run: Ubuntu 24.04 restricts unprivileged user namespaces
+# through AppArmor (kernel.apparmor_restrict_unprivileged_userns=1), and the
+# deployment host refuses them. There this script REFUSES, naming the reason,
+# unless --allow-unconfined is given; then the run is unconfined and the
+# first line says so. It never claims a confinement it did not get.
+
+set -u
+
+allow=0
+args=()
+for a in "$@"; do
+  case "$a" in
+    --allow-unconfined) allow=1 ;;
+    *) args+=("$a") ;;
+  esac
+done
+PY="${PYTHON:-python3}"
+
+why="$(unshare -rn true 2>&1)"
+if [ $? -eq 0 ]; then
+  echo "nmas-test: network: CONFINED (a loopback-only network namespace, as uid $(id -u))"
+  exec unshare -rn sh -c '
+    ip link set lo up || { echo "nmas-test: could not bring loopback up" >&2; exit 2; }
+    uid="$1"; gid="$2"; py="$3"; shift 3
+    exec unshare --map-user="$uid" --map-group="$gid" \
+      env NMAS_REQUIRE_NETWORK_CONFINEMENT=1 "$py" -m pytest "$@"
+  ' nmas-test "$(id -u)" "$(id -g)" "$PY" "${args[@]}"
+fi
+
+why="${why:-unshare failed with no message}"
+if [ "$allow" -eq 1 ]; then
+  echo "nmas-test: network: NOT CONFINED: no network namespace here ($why). Processes the suite starts CAN reach the network; the test process itself still refuses non-loopback connects."
+  exec "$PY" -m pytest "${args[@]}"
+fi
+echo "nmas-test: REFUSED: no network namespace can be made here: $why" >&2
+echo "  Processes the suite starts could reach the network. To run anyway, and" >&2
+echo "  have the run say so: scripts/nmas-test --allow-unconfined ..." >&2
+exit 2

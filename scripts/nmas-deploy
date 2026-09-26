@@ -205,12 +205,22 @@ def offline_verdict(repo, target, run=subprocess.run):
                        check=True, capture_output=True)
         subprocess.run(["git", "-C", tree, "checkout", "-q", "--detach", target],
                        check=True, capture_output=True)
-        out = run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
-                  cwd=tree, capture_output=True, text=True)
-    tail = (out.stdout or "").strip().splitlines()[-1:] or ["(no output)"]
+        runner = os.path.join(tree, "scripts", "nmas-test")
+        if os.path.exists(runner):
+            # C46: confined when this machine can make a network namespace,
+            # and SAID when it cannot (the deployment host cannot: AppArmor).
+            argv = [runner, "--allow-unconfined", "-q", "-p", "no:cacheprovider"]
+        else:
+            argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+        out = run(argv, cwd=tree, capture_output=True, text=True)
+    lines = (out.stdout or "").strip().splitlines()
+    tail = lines[-1:] or ["(no output)"]
+    network = next((ln[len("nmas-test: "):] for ln in lines if ln.startswith("nmas-test: network:")),
+                   "network: NOT CONFINED (the target has no scripts/nmas-test)")
     if out.returncode == 0:
-        return OK, f"the suite passed HERE against {target[:10]}: {tail[0]}"
-    return OFFLINE_FAILED, f"the suite FAILED here against {target[:10]}: {tail[0]}. Refused."
+        return OK, f"the suite passed HERE against {target[:10]}: {tail[0]}; {network}"
+    return OFFLINE_FAILED, (f"the suite FAILED here against {target[:10]}: {tail[0]}; "
+                            f"{network}. Refused.")
 
 
 # ---------------------------------------------------------------------------

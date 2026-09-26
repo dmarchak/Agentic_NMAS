@@ -57,9 +57,18 @@ jobs:
       - name: Where PyPI's metadata disagrees with the host (information, not a gate)
         run: python -m pip check || true
 
-      - name: Tests (R1, R4), coverage reported
+      # C46: the suite runs where no process it starts can reach a network.
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor;
+      # this runner is an ephemeral VM, so lifting the restriction here
+      # changes nothing that outlives the job. nmas-test REQUIRES the
+      # confinement (the conftest measures it), so a runner that cannot give
+      # it fails the run rather than passing unconfined.
+      - name: Allow a network namespace for the suite (this VM only)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Tests (R1, R4), confined to loopback, coverage reported
         run: >
-          python -m pytest -q -p no:cacheprovider
+          scripts/nmas-test -q -p no:cacheprovider
           --cov=modules --cov=routes --cov=app --cov-report=term
 
       - name: No removed definition is still called (R2)

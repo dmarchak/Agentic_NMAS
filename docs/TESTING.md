@@ -152,6 +152,20 @@ Until then "N passed" had partly been a statement about one machine. The fixes:
 Two product defects surfaced the same way: a deploy PLAN and an onboarding
 PLAN, both reads, were creating directories.
 
+## Running it
+
+```bash
+scripts/nmas-test                 # confined: no process the suite starts can reach a network
+scripts/nmas-test tests/test_x.py -k name
+```
+
+`scripts/nmas-test` runs pytest in a loopback-only network namespace (C46).
+The first line says `network: CONFINED`, and the run stops if that is not
+measured to hold. Plain `pytest` still works: its header says `NOT CONFINED`,
+and the test process itself still refuses any non-loopback connect. The
+deployment host cannot make the namespace (AppArmor), so `--offline` there
+runs unconfined and says so in its verdict.
+
 ## Reproducing these numbers
 
 ```bash

@@ -45,8 +45,25 @@ else:
 
 from tests.store_guard import data_tree, tree_changes  # noqa: E402
 
+# ---------------------------------------------------------------------------
+# NO TEST TOUCHES A NETWORK, and a run says whether that covers what it starts
+# ---------------------------------------------------------------------------
+# Installed at import, before anything imports the program. See
+# tests/network_guard.py for the two layers and why each exists (C46).
+from tests import network_guard  # noqa: E402
+
+network_guard.install()
+_NETWORK_STATE = network_guard.confinement()
+
+
+def pytest_report_header(config):
+    return network_guard.report_line(_NETWORK_STATE)
+
 
 def pytest_sessionstart(session):
+    if os.environ.get(network_guard.REQUIRE_ENV) == "1" and _NETWORK_STATE[0] is not True:
+        pytest.exit(f"{network_guard.REQUIRE_ENV}=1 and this run is not confined: "
+                    f"{network_guard.report_line(_NETWORK_STATE)}", returncode=2)
     session.nmas_checkout_data_before = data_tree(_CHECKOUT_DATA_DIR)
 
 
