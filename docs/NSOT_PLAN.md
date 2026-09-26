@@ -2614,6 +2614,23 @@ a version bump would seed a `require_*` key.
 
 ### STAGE 7 — the interface, redesigned
 
+**Written first, 2026-09-26, and governing the GUI plan** (the operator's
+order: the CI design and the feature audit, then the tasks, then the GUI):
+- [NSOT_CI.md](NSOT_CI.md): what CI checks and where, what each check can
+  stop, cutting Jenkins, and CI as state beside its trigger. Proposed as
+  **P.4**.
+- [NSOT_FEATURE_AUDIT.md](NSOT_FEATURE_AUDIT.md): every tab, feature and
+  agent tool, classified KEEP / ABSORB / CUT / UNDECIDED, with six decisions
+  left to the operator.
+- [NSOT_TASKS.md](NSOT_TASKS.md): who the interface is for, what it must
+  teach, and the task list the GUI is organised around.
+- **Proposed P.3, before 7.0**: B12 (the identity gate is not enforced on
+  deploy, restore or approval), B11 (secrets returned by `GET /settings`),
+  D5 (the unguarded golden replay behind two buttons), D4 (the confirm
+  screen shows the diff, not the program) and C23 (the restore preview's
+  coverage fix is not wired in). Stage 7 moves controls, and must not
+  re-home one whose guard does not exist.
+
 **Scope changed 2026-09-23: this is a GUI redesign, not a tab cleanup.**
 Written up in full as **[NSOT_STAGE7_GUI.md](NSOT_STAGE7_GUI.md)**, posted
 early so that Stages 3.2 and 4-6 can land in the new structure rather than be
