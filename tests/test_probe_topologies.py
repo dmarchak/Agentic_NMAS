@@ -452,3 +452,19 @@ def test_the_reserved_list_is_not_empty_and_says_why():
     for subnet, why in RESERVED_MGMT_SUBNETS.items():
         assert "/" in subnet, subnet
         assert len(why) > 20, f"{subnet} has no usable reason: {why!r}"
+
+
+def test_the_ztp_probe_pair_matches_its_runbook():
+    """P.6: the MAC and the address are written in the topology and the
+    runbook; a mismatch is silence on the wire, which looks like a Kea problem."""
+    topology = open(os.path.join(PROBE_DIR, "nmas-ztp-a.clab.yml"), encoding="utf-8").read()
+    runbook = open(os.path.join(os.path.dirname(PROBE_DIR), "P6_ZTP_PROBE.md"),
+                   encoding="utf-8").read()
+    import re
+    pair = re.compile(r"aa:bb:cc:00:02:50\s*->\s*10\.255\.0\.50")
+    assert pair.search(topology) and pair.search(runbook)
+    pinned = [e.get("mac") for link in yaml.safe_load(topology)["topology"]["links"]
+              for e in link.get("endpoints", []) if isinstance(e, dict) and e.get("node") == "bp-ztp-a"]
+    assert pinned == ["aa:bb:cc:00:02:50"], pinned
+    assert "startup-config" not in yaml.safe_load(topology)["topology"]["nodes"]["bp-ztp-a"], \
+        "the ZTP probe must boot with no startup config"

@@ -3508,6 +3508,15 @@ decisions for the operator (how a reservation is written, how the config is
 served, where the server's address comes from) and five measurements the
 throwaway must make before anything is built, each with its prediction.
 
+**DECIDED 2026-09-26 (operator): D1, D2 and D3 as recommended.** Runbook:
+[P6_ZTP_PROBE.md](P6_ZTP_PROBE.md), measurement 1 ready to run. Prediction 1
+held BY READING before any boot: vrnetlab always attaches a CVAC config ISO,
+and its watchdog restarts a VM after 300 quiet console spins, so the probe
+binds a configless variant (`patch-configless.py`, tested against the real
+script). If the node asks only because the probe removed that config, Lab 8
+demonstrates the TOOL's half against a persuaded node, and the write-up says
+so.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported

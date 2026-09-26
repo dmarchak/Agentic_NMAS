@@ -1,0 +1,71 @@
+name: nmas-ztp-a
+
+# ---------------------------------------------------------------------------
+# P.6 PROBE - measurement 1: does a C8000v with NO day-0 config ask for one?
+# Runbook: docs/P6_ZTP_PROBE.md   Scope: docs/P6_ZTP.md
+#
+# NO startup-config, and that is the point. vrnetlab normally gives every
+# C8000v a day-0 config through a CVAC ISO, even with no startup file (its own
+# user and Gi1 address), and IOS-XE runs AutoInstall/PnP only with NO startup
+# config. So an unmodified node cannot show whether it would ask. Read from
+# the adopted launch script before anything booted (P6_ZTP.md, prediction 1).
+#
+# THE BIND IS THIS PROBE'S OWN CONFIGLESS COPY, made by
+# patches/patch-configless.py from the adopted copy (runbook step 1). It keeps
+# smp="2" and the user-skip, and changes four things:
+#   - no config ISO at run time;
+#   - the console wait accepts IOS-XE's own prompt;
+#   - that prompt marks the VM running and releases the console;
+#   - the watchdog NEVER restarts a quiet VM, which would silently interrupt
+#     the very attempt being observed.
+#
+# THE MAC IS PINNED, AND ITS ADDRESS IS PAIRED FOR LATER MEASUREMENTS.
+#   aa:bb:cc:00:02:50  ->  10.255.0.50
+# Measurement 1 reserves NOTHING: an unreserved MAC on the pool-less
+# 10.255.0.0/24 gets silence from Kea, which is fine, because M1 asks only
+# whether the node SENDS. The pair is written now so M3-M5 reuse it.
+#
+# Gi1 IS NOT QUIET. vrnetlab puts Gi1 on qemu's user-mode network, which runs
+# its OWN DHCP server and a TFTP server on /tftpboot (read from /vrnetlab.py
+# inside a running node, 2026-09-26). A configless node asking on every
+# interface is answered on Gi1 first. That is a prediction to measure (M2),
+# not a defect of this file.
+#
+# br-mgmt is a PREREQUISITE, not something this file creates.
+#   Verify first:  ip -br link show master br-mgmt
+# ---------------------------------------------------------------------------
+
+mgmt:
+  # 172.30.80.0/24: not used by any probe in this repository, and not a
+  # docker network on the lab host (measured 2026-09-26: clab 172.20.20.0/24,
+  # clab-r6 172.30.50.0/24, bridge 172.17.0.0/16).
+  network: clab-ztp-probe
+  ipv4-subnet: 172.30.80.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a      # identical to r1-r5 and r6
+
+  nodes:
+    bp-ztp-a:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.80.11
+      # Deliberately NO startup-config.
+      binds:
+        - patches/c8000v-launch-configless.py:/launch.py   # smp=2, user-skip, configless
+
+    br-mgmt:
+      kind: bridge
+
+  links:
+    # Extended format: the only one with a per-endpoint `mac:`. Gi2, never
+    # Gi1 (vrnetlab owns Gi1). `ztpa-mgmt` is unique on br-mgmt (which holds
+    # enp6s19, s3-mgmt and r6-mgmt, measured 2026-09-26) and names what it is.
+    - type: veth
+      endpoints:
+        - node: bp-ztp-a
+          interface: Gi2
+          mac: aa:bb:cc:00:02:50
+        - node: br-mgmt
+          interface: ztpa-mgmt
