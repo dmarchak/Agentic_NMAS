@@ -509,7 +509,13 @@ exception.
   so onboarding one device revoked every approval on its platform and one
   device the template could not reproduce blocked all the others (D11, D2).
   Records carry a `scheme`; an older one is never silently honoured, so the
-  move to scheme 3 is an explicit re-approval.
+  move to scheme 3 is an explicit re-approval. **Observed on the host
+  2026-09-26:** after the deploy every deploy refused until a person
+  re-approved both templates (`be60f59`, all nine devices round-tripping). By
+  design, and the operator's reading of it is the rule: an older fingerprint
+  answered a different question, so honouring it would be a gate that passes
+  because nobody migrated it. The cost is one deliberate act; the alternative
+  is a gate nobody can tell is stale.
 - **Revocation is a recorded finding, not a deletion.** `approval.revoke()`
   requires a reason and writes a tombstone carrying it, the actor, and what was
   withdrawn. Popping the record made a withdrawal indistinguishable from "never
