@@ -72,50 +72,108 @@ def _mark_stale(lab, ips):
         encoding="utf-8")
 
 
-class TestPlanRestore:
-    def test_all_devices_restorable_when_none_are_stale(self, lab, monkeypatch):
-        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
-        plan = restore.plan_restore("Lab", lab["baseline"])
-        assert plan["ok"]
-        assert {d["hostname"] for d in plan["restorable"]} == {"R1", "R2", "R7"}
-        assert plan["skipped"] == []
+R9 = {"hostname": "R9", "ip": "203.0.113.9", "device_type": "cisco_ios",
+      "username": "u", "password": "p", "secret": "s", "role": "router"}
+
+
+def _targets(lab, monkeypatch, devices=None, stale=(), inventory=None, ref=None):
+    """build_targets() on the REAL repo. The lab commits goldens and no intent,
+    so every device is passed as un-onboard to become a target; what is under
+    test here is the POPULATION, not intent handling."""
+    monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": ip in stale)
+    monkeypatch.setattr("modules.inventory.stale_message", lambda ip, ln="": "R7 is no longer in NetBox")
+    monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "")
+    if inventory is not None:
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda p=None: inventory)
+    return restore.build_targets("Lab", ref or lab["baseline"], devices,
+                                 un_onboard=["R1", "R2", "R7", "R9"])
+
+
+class TestBuildTargetsNamesEveryDevice:
+    """Ported from `plan_restore()`, deleted by P.3 step 5 (register C23): the
+    preview and the apply both call build_targets(), so that is where the
+    population rules are tested."""
+
+    def test_all_devices_are_targets_when_none_are_stale(self, lab, monkeypatch):
+        targets, skipped = _targets(lab, monkeypatch)
+        assert {t.device for t in targets} == {"R1", "R2", "R7"}
+        assert skipped == []
 
     def test_stale_devices_are_skipped_and_named(self, lab, monkeypatch):
-        monkeypatch.setattr("modules.inventory.is_stale",
-                            lambda ip, ln="": ip == "203.0.113.7")
-        monkeypatch.setattr("modules.inventory.stale_message",
-                            lambda ip, ln="": "R7 is no longer in NetBox")
-        plan = restore.plan_restore("Lab", lab["baseline"])
-        assert {d["hostname"] for d in plan["restorable"]} == {"R1", "R2"}
-        assert [s["hostname"] for s in plan["skipped"]] == ["R7"]
-        assert "no longer in NetBox" in plan["skipped"][0]["reason"]
-
-    def test_summary_names_the_skipped_devices(self, lab, monkeypatch):
-        """No silent partial restore: the count and the names are both shown."""
-        monkeypatch.setattr("modules.inventory.is_stale",
-                            lambda ip, ln="": ip in ("203.0.113.7", "203.0.113.2"))
-        monkeypatch.setattr("modules.inventory.stale_message", lambda ip, ln="": "gone")
-        summary = restore.plan_restore("Lab", lab["baseline"])["summary"]
-        assert "Restoring 1 of 3" in summary
-        assert "R2" in summary and "R7" in summary
+        targets, skipped = _targets(lab, monkeypatch, stale=("203.0.113.7",))
+        assert {t.device for t in targets} == {"R1", "R2"}
+        assert [s["hostname"] for s in skipped] == ["R7"]
+        assert "no longer in NetBox" in skipped[0]["reason"]
 
     def test_device_not_in_list_is_skipped(self, lab, monkeypatch):
-        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
-        monkeypatch.setattr("modules.device.load_saved_devices", lambda p=None: DEVICES[:1])
-        plan = restore.plan_restore("Lab", lab["baseline"])
-        assert {s["hostname"] for s in plan["skipped"]} == {"R2", "R7"}
-        assert all("not in the current device list" in s["reason"]
-                   for s in plan["skipped"])
+        _t, skipped = _targets(lab, monkeypatch, inventory=DEVICES[:1])
+        assert {s["hostname"] for s in skipped} == {"R2", "R7"}
+        assert all("not in the current device list" in s["reason"] for s in skipped)
 
     def test_subset_restore(self, lab, monkeypatch):
-        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
-        plan = restore.plan_restore("Lab", lab["baseline"], devices=["R1"])
-        assert [d["hostname"] for d in plan["restorable"]] == ["R1"]
+        targets, _s = _targets(lab, monkeypatch, devices=["R1"])
+        assert [t.device for t in targets] == ["R1"]
 
     def test_unknown_ref_fails_cleanly(self, lab, monkeypatch):
+        targets, skipped = _targets(lab, monkeypatch, ref="baseline/does-not-exist")
+        assert targets == [] and "no golden configs" in skipped[0]["reason"]
+
+
+class TestTheInventoryIsThePopulation:
+    """Register C23. A device the ref PREDATES must be named, and the
+    denominator is the inventory. The fix lived in `plan_restore()`, which no
+    route called; the preview iterated the ref."""
+
+    def test_a_device_the_ref_predates_is_named_with_what_will_happen(self, lab, monkeypatch):
+        _t, skipped = _targets(lab, monkeypatch, inventory=DEVICES + [R9])
+        row = next(s for s in skipped if s["hostname"] == "R9")
+        assert row["reason"] == "not in this baseline" and row["not_at_ref"] is True
+        assert "predates" in row["detail"] and "exactly as it is" in row["detail"]
+
+    def test_the_denominator_is_the_inventory_and_the_ref_is_partial(self, lab, monkeypatch):
+        _t, skipped = _targets(lab, monkeypatch, inventory=DEVICES + [R9])
+        cov = restore.coverage("Lab", None, skipped)
+        assert cov["denominator"] == 4 and cov["partial"] is True
+
+    def test_a_ref_covering_the_whole_fleet_is_not_partial(self, lab, monkeypatch):
+        """The floor: a preview that always said partial would pass the above."""
+        _t, skipped = _targets(lab, monkeypatch)
+        cov = restore.coverage("Lab", None, skipped)
+        assert cov["partial"] is False and cov["denominator"] == 3
+        assert not [s for s in skipped if s.get("not_at_ref")]
+
+    def test_a_scoped_restore_names_a_requested_device_the_ref_lacks(self, lab, monkeypatch):
+        """Asking for one device is not a claim about the fleet, but a device
+        you ASKED for and the ref does not hold must not vanish either."""
+        _t, skipped = _targets(lab, monkeypatch, devices=["R1", "R9"],
+                               inventory=DEVICES + [R9])
+        assert [s["hostname"] for s in skipped] == ["R9"]
+        assert "no golden config at" in skipped[0]["reason"]
+        cov = restore.coverage("Lab", ["R1", "R9"], skipped)
+        assert cov["partial"] is False and cov["denominator"] == 2
+
+    def test_the_route_says_n_of_the_inventory_and_names_the_device(self, lab, monkeypatch):
+        """What the operator READS. Control for C23: this is the sentence that
+        read '3 of 3' while the inventory held 4."""
+        import flask
+
+        import routes.golden as golden
+
         monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
-        plan = restore.plan_restore("Lab", "baseline/does-not-exist")
-        assert plan["ok"] is False and "No golden configs" in plan["error"]
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda p=None: DEVICES + [R9])
+        monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "hostname x\n")
+        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
+        monkeypatch.setattr(golden, "_intent_preview", lambda ln, t: {"action": "none"})
+        monkeypatch.setattr("modules.nsot.deploy.prepare_restore",
+                            lambda target: {"config": target.target_config})
+        app = flask.Flask(__name__)
+        app.register_blueprint(golden.bp)
+        body = app.test_client().post("/golden/restore/preview", json={
+            "ref": lab["baseline"], "un_onboard": ["R1", "R2", "R7"]}).get_json()
+        assert body["ok"], body
+        assert "of 4 device(s) in this list" in body["summary"], body["summary"]
+        assert "PARTIAL" in body["summary"] and "R9" in body["summary"]
+        assert body["inventory_size"] == 4 and body["partial"] is True
 
 
 class TestRestoreGoesThroughTheConfirmedPath:
@@ -219,7 +277,8 @@ class TestBaselineCoverage:
         monkeypatch.setattr("modules.inventory.is_stale",
                             lambda ip, ln="": ip == "203.0.113.7")
         monkeypatch.setattr("modules.inventory.stale_message", lambda ip, ln="": "gone")
-        restore.plan_restore("Lab", lab["baseline"])
+        monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "")
+        restore.build_targets("Lab", lab["baseline"])
         assert R.golden_at(lab["repo"], "R7", lab["baseline"]) is not None
 
 
@@ -395,7 +454,7 @@ class TestIntentCommitsWithTheDevice:
 class TestRestoreUsesTheListItWasGiven:
     """Audit finding C: repo from the argument, inventory from a global.
 
-    ``plan_restore()`` and ``build_targets()`` both take ``list_name``, used it
+    ``plan_restore()`` (since deleted, C23) and ``build_targets()`` both took ``list_name``, used it
     to resolve the repo, then read the devices from
     ``get_current_device_list()``. Pass a list that is not the active one — which
     the signature invites, since why else take the parameter — and you get list
@@ -405,29 +464,6 @@ class TestRestoreUsesTheListItWasGiven:
     Latent, because every caller happened to pass the active list. The more
     dangerous of the two shapes, because nothing looks wrong at the call site.
     """
-
-    def test_devices_come_from_the_named_list_not_the_active_one(
-            self, lab, monkeypatch, tmp_path):
-        from modules.nsot import restore
-
-        other = tmp_path / "other_list"
-        (other / "config_repo").mkdir(parents=True)
-        (other / "devices.csv").write_text(
-            "hostname,ip,device_type,username,password,secret\n"
-            "R1,198.51.100.99,cisco_ios,u,p,s\n", encoding="utf-8")
-
-        # The ACTIVE list is the other one; the caller asks for "Lab".
-        monkeypatch.setattr("modules.device.get_current_device_list",
-                            lambda: ("Other", str(other / "devices.csv")))
-        monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
-
-        result = restore.plan_restore("Lab", lab["baseline"])
-
-        addresses = {entry["ip"] for entry in result["restorable"]}
-        assert "198.51.100.99" not in addresses, (
-            "restore resolved device addresses from the ACTIVE list instead of "
-            f"the list it was given: {addresses}")
-        assert addresses <= {"203.0.113.1", "203.0.113.2", "203.0.113.7"}
 
     def test_build_targets_uses_the_named_list(self, lab, monkeypatch, tmp_path):
         from modules.nsot import restore
@@ -707,6 +743,14 @@ class TestTheQueuedDiffNeverReachesADevice:
             raise AssertionError("mark_done called without an approval_id")
         monkeypatch.setattr("modules.approval_queue.mark_done", _boom)
         monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
+        # build_targets is stubbed with a made-up list, so coverage() is too: it
+        # reads that list's inventory, and resolving a list that does not exist
+        # creates it (get_list_data_dir). Coverage is tested on a real repo in
+        # TestTheInventoryIsThePopulation.
+        monkeypatch.setattr("modules.nsot.restore.coverage",
+                            lambda ln, devices=None, skipped=None: {
+                                "inventory_size": 0, "partial": False,
+                                "denominator": 0, "scope_words": "in this list"})
         monkeypatch.setattr("modules.nsot.restore.invalidate_queued_restores",
                             lambda: {"rejected": []})
         monkeypatch.setattr("modules.nsot.restore.build_targets",
@@ -738,6 +782,14 @@ class TestTheHandoffScopesToOneDevice:
             return [], []
 
         monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
+        # build_targets is stubbed with a made-up list, so coverage() is too: it
+        # reads that list's inventory, and resolving a list that does not exist
+        # creates it (get_list_data_dir). Coverage is tested on a real repo in
+        # TestTheInventoryIsThePopulation.
+        monkeypatch.setattr("modules.nsot.restore.coverage",
+                            lambda ln, devices=None, skipped=None: {
+                                "inventory_size": 0, "partial": False,
+                                "denominator": 0, "scope_words": "in this list"})
         monkeypatch.setattr("modules.nsot.restore.build_targets", _build)
 
         app = flask.Flask(__name__)

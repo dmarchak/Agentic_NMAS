@@ -228,6 +228,14 @@ class TestTheRestorePathCanAuthorise:
         t.captured = CAPTURE
         t.target_config = INTENT
         monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
+        # build_targets is stubbed with a made-up list, so coverage() is too: it
+        # reads that list's inventory, and resolving a list that does not exist
+        # creates it (get_list_data_dir). Coverage is tested on a real repo in
+        # TestTheInventoryIsThePopulation.
+        monkeypatch.setattr("modules.nsot.restore.coverage",
+                            lambda ln, devices=None, skipped=None: {
+                                "inventory_size": 0, "partial": False,
+                                "denominator": 0, "scope_words": "in this list"})
         monkeypatch.setattr(golden, "_intent_preview", lambda ln, x: {"action": "none"})
         monkeypatch.setattr("modules.nsot.deploy.prepare_restore",
                             lambda target: {"config": target.target_config})

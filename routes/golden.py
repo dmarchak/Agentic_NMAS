@@ -260,6 +260,8 @@ def restore_preview():
                           "error": str(exc)})
         devices.append(entry)
 
+    from modules.nsot.restore import coverage
+    cov = coverage(list_name, data.get("devices"), skipped)
     residue_total = sum(len(d.get("residue") or []) for d in devices)
     excluded_total = sum(len(d.get("excluded_unrenderable") or [])
                          for d in devices)
@@ -279,9 +281,18 @@ def restore_preview():
                   "one unit per device, one commit. Never templates, bindings "
                   "or approvals: those are code, and rolling them back to fix "
                   "a network would silently revert template fixes."),
+        # C23: the denominator is the INVENTORY for a whole restore and the
+        # selection for a scoped one, never "whatever the ref happened to
+        # hold". A device the ref predates is named in `skipped`.
+        "inventory_size": cov["inventory_size"],
+        "partial": cov["partial"],
         "summary": (
             f"Re-applying stored configuration to {len(devices)} of "
-            f"{len(devices) + len(skipped)} device(s)."
+            f"{cov['denominator']} device(s) {cov['scope_words']}."
+            + (" This ref is a PARTIAL restore point: it predates "
+               + ", ".join(s["hostname"] for s in skipped if s.get("not_at_ref"))
+               + ", which will be left exactly as they are."
+               if cov["partial"] else "")
             + (f" {residue_total} line(s) present on devices are absent from "
                "this ref and will NOT be removed." if residue_total else "")
             + (f" {excluded_total} block(s) cannot be re-applied at all "

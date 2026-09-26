@@ -2832,6 +2832,34 @@ doing it now.
    from the ref are named with what will happen to them, and the denominator
    counts the inventory. That is `plan_restore()`'s logic, now called by the
    route.
+
+   **BUILT 2026-09-26.**
+   - **The population rule is in `build_targets()`**, which the preview AND
+     the apply call:
+     - a whole-baseline restore names every inventory device the ref
+       predates (*"not in this baseline"*, with what will happen to it:
+       left exactly as it is);
+     - a scoped restore names a requested device the ref holds no golden for.
+       Before, it vanished too: the loop iterated the ref and skipped anything
+       not asked for, from the ref's side.
+   - **`restore.coverage()` gives the denominator**: the inventory for a whole
+     restore, the selection for a scoped one. The route's summary reads
+     *"N of M device(s) in this list"* and says PARTIAL, naming the devices.
+   - **`plan_restore()` is deleted.** It held the correct rule and nothing the
+     operator reads called it. Its tests were rewritten against
+     `build_targets()`, `coverage()` and the route, on a real repository
+     rather than a mocked `devices_at`.
+   - **Found on the way:** routing `coverage()` through the preview made a test
+     that stubs the list name create `data/lists/lab/` in the checkout
+     (`get_list_data_dir()` creates on read). The harness guard caught it. In
+     production the list is the active one and exists, so those tests stub
+     `coverage()` the way they already stubbed `build_targets()`.
+   - **Controls.** The first "revert to iterating the ref" control fired by
+     CRASHING (`set(None)` in the scoped branch). It was redone so the
+     whole-restore branch does nothing, and then exactly the three population
+     tests fail.
+   - 3838 passed, 0 failed, 0 errors.
+
 6. **B11.** `GET /settings` returns `*_set` flags for every secret and never a
    value. `POST /settings` treats an empty secret field as "unchanged". The
    Anthropic key is write-only in the form, like NetBox's token.

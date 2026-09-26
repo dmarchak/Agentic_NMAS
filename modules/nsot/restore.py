@@ -42,94 +42,6 @@ def _devices_of(list_name: str) -> list:
                                            "devices.csv"))
 
 
-def plan_restore(list_name: str, ref: str, devices: list = None) -> dict:
-    """Report what a restore to *ref* would do. Reads only.
-
-    Returns ``restorable`` and ``skipped``; the confirm dialog shows both
-    *before* anything is queued.
-    """
-    from modules.inventory import is_stale, stale_message
-
-    repo = _repo_for(list_name)
-    if not os.path.isdir(os.path.join(repo, ".git")):
-        return {"ok": False, "error": "This list has no configuration repository yet."}
-
-    at_ref = _repo.devices_at(repo, ref)
-    if not at_ref:
-        return {"ok": False, "error": f"No golden configs found at '{ref}'."}
-
-    wanted = set(devices) if devices else set(at_ref)
-    restorable, skipped = [], []
-
-    inventory = _devices_of(list_name)
-    ip_by_host = {d.get("hostname", ""): d.get("ip", "")
-                  for d in inventory}
-
-    # THE INVENTORY IS THE POPULATION, and this loop's is the ref.
-    #
-    # A device onboarded after *ref* has no golden there, so iterating
-    # `at_ref` alone left it **absent from the preview entirely** -- not an
-    # error, not a skip, not named -- and the summary read "Restoring 9 of
-    # 9" over a ten-device fleet. Textually the drift checker's "all 9
-    # device(s) clean" over a ten-device inventory, which this project has
-    # already corrected once.
-    #
-    # `_baseline_earned()` was right about this all along and names the
-    # device when it denies the tag; the preview the operator reads before
-    # confirming did not. The tag decision and the preview disagreed about
-    # the population.
-    if not devices:                     # a whole-baseline restore
-        for name in sorted(set(ip_by_host) - set(at_ref)):
-            skipped.append({
-                "hostname": name, "ip": ip_by_host.get(name, ""),
-                "reason": "not in this baseline",
-                "detail": (f"'{ref}' predates this device, so it holds no "
-                           "golden config for it. Restoring will leave it "
-                           "exactly as it is -- which is correct, and is "
-                           "why this baseline is a PARTIAL restore point "
-                           "for the current fleet."),
-                "not_at_ref": True})
-
-    for hostname in sorted(at_ref):
-        if hostname not in wanted:
-            continue
-        mgmt_ip = ip_by_host.get(hostname, "")
-
-        if not mgmt_ip:
-            skipped.append({"hostname": hostname, "reason":
-                            "not in the current device list"})
-            continue
-        if is_stale(mgmt_ip, list_name):
-            skipped.append({"hostname": hostname, "ip": mgmt_ip,
-                            "reason": "no longer in NetBox for this list",
-                            "detail": stale_message(mgmt_ip, list_name)})
-            continue
-
-        content = _repo.golden_at(repo, hostname, ref)
-        if content is None:
-            skipped.append({"hostname": hostname, "ip": mgmt_ip,
-                            "reason": f"no golden config at {ref}"})
-            continue
-        restorable.append({"hostname": hostname, "ip": mgmt_ip,
-                           "bytes": len(content)})
-
-    return {
-        "ok": True, "ref": ref, "list": list_name,
-        "restorable": restorable, "skipped": skipped,
-        "inventory_size": len(ip_by_host),
-        "partial": bool([s for s in skipped if s.get("not_at_ref")]),
-        # "N of M device(s) in this list" -- M is the INVENTORY, so a number
-        # that reads as complete cannot be produced by a ref that covers
-        # only part of the fleet.
-        "summary": (
-            f"Restoring {len(restorable)} of {len(ip_by_host)} device(s) "
-            f"in this list."
-            + (f" Skipped: {', '.join(s['hostname'] for s in skipped)}."
-               if skipped else "")
-        ),
-    }
-
-
 def build_targets(list_name: str, ref: str, devices: list = None,
                   un_onboard: list = None) -> tuple:
     """``(targets, skipped)`` for a re-apply of *ref*. Reads only.
@@ -164,6 +76,35 @@ def build_targets(list_name: str, ref: str, devices: list = None,
     rows = {d.get("hostname", ""): d for d in _devices_of(list_name)}
 
     targets, skipped = [], []
+
+    # THE INVENTORY IS THE POPULATION (register C23). This lived in
+    # `plan_restore()`, which no route called, while the preview the operator
+    # confirms from iterated the REF: a device onboarded after the tag was
+    # absent from it entirely, not skipped and not named, and the summary read
+    # "9 of 9" over a ten-device fleet. It is here now because this is what
+    # the preview and the apply both call; `plan_restore()` is gone, so there
+    # is one computation rather than a correct one nobody reads.
+    if not devices:                   # a whole-baseline restore
+        for name in sorted(set(rows) - set(at_ref)):
+            skipped.append({
+                "hostname": name, "ip": rows[name].get("ip", ""),
+                "reason": "not in this baseline",
+                "detail": (f"'{ref}' predates this device, so it holds no "
+                           "golden config for it. Restoring will leave it "
+                           "exactly as it is, which is correct, and is why "
+                           "this baseline is a PARTIAL restore point for the "
+                           "current fleet."),
+                "not_at_ref": True})
+    else:                             # a scoped restore: name what was asked
+        for name in sorted(set(devices) - set(at_ref)):
+            skipped.append({
+                "hostname": name, "ip": rows.get(name, {}).get("ip", ""),
+                "reason": f"no golden config at {ref}",
+                "detail": ("You asked for this device and the ref holds no "
+                           "golden config for it, so nothing will be sent to "
+                           "it."),
+                "not_at_ref": True})
+
     for hostname in sorted(at_ref):
         if hostname not in wanted:
             continue
@@ -227,6 +168,24 @@ def build_targets(list_name: str, ref: str, devices: list = None,
             un_onboard=(ref_intent is None)))
 
     return targets, skipped
+
+
+def coverage(list_name: str, devices: list = None, skipped: list = None) -> dict:
+    """The denominator a restore preview states, and whether the ref is partial.
+
+    A whole-baseline restore is a claim about the FLEET, so its denominator is
+    the inventory. A scoped restore is a claim about the devices selected, so
+    the others are not "missing" from it.
+    """
+    inventory = _devices_of(list_name)
+    if devices:
+        return {"inventory_size": len(inventory), "partial": False,
+                "denominator": len(set(devices)),
+                "scope_words": "you selected"}
+    return {"inventory_size": len(inventory),
+            "partial": any(s.get("not_at_ref") for s in (skipped or [])),
+            "denominator": len(inventory),
+            "scope_words": "in this list"}
 
 
 def intent_at(source, hostname: str):

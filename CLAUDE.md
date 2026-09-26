@@ -1419,6 +1419,13 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The gate in front of it was correct, and the thing behind it had never
   been examined.** Gating a path is not reviewing it. A credential is sent
   only in answer to the prompt that asks for it.
+- **A negative control that fires by CRASHING proves nothing.** Twice on
+  2026-09-26 a mutation broke the file (a syntax error), or sent execution
+  down a branch that raised (`set(None)`), and the suite went red for that
+  reason rather than because the property was gone. Read WHICH tests failed:
+  a control is valid only when the failures are the tests aimed at the
+  property, and a count far above that is the tell. Redo it as the smallest
+  change that removes the property and leaves the code running.
 - **A dangerous line and its authorisation are STRIPPED strings; the program
   keeps its indentation** (P.3 step 4). `dangerous_in()` returns `shutdown`
   where `commands` holds ` shutdown`, and the server strips each
@@ -2262,8 +2269,9 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   own identity field, which is correct. Pinned with a floor and a positive
   anchor, since "no offenders" is also what a scan that could not run
   produces.
-- **(Register C23, 2026-09-26: the fix below lives in `plan_restore()`, which no route calls. The live
-  preview uses `build_targets()` over the ref. The paragraph describes the fix, not the running code.)**
+- **(Register C23: FIXED by P.3 step 5, 2026-09-26. The rule below now lives in `build_targets()`, which
+  the preview and the apply both call, with `restore.coverage()` giving the denominator; `plan_restore()`,
+  where it used to live and which no route called, is deleted.)**
 - **The inventory is the population for a RESTORE PREVIEW, not the ref.**
   `plan_restore()` iterated `devices_at(ref)`, so a device onboarded after
   the tag was **absent from the preview entirely** — not an error, not a

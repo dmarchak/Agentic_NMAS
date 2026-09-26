@@ -28,70 +28,11 @@ from tests.js_source import read_shipped
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-@pytest.fixture
-def world(monkeypatch, tmp_path):
-    """A ref holding nine goldens, an inventory holding ten."""
-    from modules.nsot import restore
-
-    nine = [f"r{i}" for i in range(1, 6)] + [f"s{i}" for i in range(1, 5)]
-    monkeypatch.setattr(restore._repo, "devices_at", lambda repo, ref: list(nine))
-    monkeypatch.setattr(restore, "_repo_for", lambda ln: str(tmp_path))
-    os.makedirs(tmp_path / ".git", exist_ok=True)
-    monkeypatch.setattr(
-        restore, "_devices_of",
-        lambda ln: [{"hostname": h, "ip": f"10.255.1.{i + 10}"}
-                    for i, h in enumerate(nine + ["r6"])])
-    monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln: False)
-    return {"nine": nine, "restore": restore}
-
-
-class TestADeviceTheRefPredatesIsNamed:
-    def test_it_appears_in_the_preview_at_all(self, world):
-        out = world["restore"].plan_restore("Default", "baseline/2026")
-
-        named = {s["hostname"] for s in out["skipped"]}
-        assert "r6" in named, "the tenth device is absent from the preview"
-
-    def test_with_a_reason_that_says_what_will_happen_to_it(self, world):
-        out = world["restore"].plan_restore("Default", "baseline/2026")
-
-        row = next(s for s in out["skipped"] if s["hostname"] == "r6")
-        assert row["reason"] == "not in this baseline"
-        assert "predates" in row["detail"]
-        assert "leave it exactly as it is" in row["detail"]
-        assert row["not_at_ref"] is True
-
-    def test_the_summary_denominator_is_the_INVENTORY(self, world):
-        """*"Restoring 9 of 9"* reads as complete. It was, of the ref."""
-        out = world["restore"].plan_restore("Default", "baseline/2026")
-
-        assert "of 10 device(s)" in out["summary"], out["summary"]
-        assert out["inventory_size"] == 10
-
-    def test_the_ref_is_flagged_partial(self, world):
-        out = world["restore"].plan_restore("Default", "baseline/2026")
-        assert out["partial"] is True
-
-    def test_a_ref_covering_the_WHOLE_fleet_is_not_partial(
-            self, world, monkeypatch):
-        """**The floor.** A preview that always said "partial" would satisfy
-        every assertion above and mean nothing."""
-        from modules.nsot import restore
-
-        monkeypatch.setattr(restore._repo, "devices_at",
-                            lambda repo, ref: world["nine"] + ["r6"])
-
-        out = restore.plan_restore("Default", "baseline/2026")
-        assert out["partial"] is False
-        assert not [s for s in out["skipped"] if s.get("not_at_ref")]
-        assert "of 10 device(s)" in out["summary"]
-
-    def test_a_single_device_restore_does_not_report_the_others(self, world):
-        """Asking for one device is not a claim about the fleet, so the
-        other nine are not "missing" from it."""
-        out = world["restore"].plan_restore("Default", "baseline/2026",
-                                            devices=["r1"])
-        assert not [s for s in out["skipped"] if s.get("not_at_ref")]
+# The population tests (a device the ref predates is named; the denominator is
+# the inventory) moved to tests/test_golden_restore.py,
+# TestTheInventoryIsThePopulation, when P.3 step 5 (register C23) put the rule
+# into build_targets() and deleted plan_restore(): no route called it, so the
+# tests here were testing a function the operator's preview never ran.
 
 
 class TestTheSurvey:
@@ -103,7 +44,8 @@ class TestTheSurvey:
 
     * `drift_check` — corrected in Phase 3.3, every device in exactly one
       bucket;
-    * `restore.plan_restore()` — this file;
+    * the restore preview: fixed in `restore.plan_restore()`, which no route
+      called (C23), and fixed for real in `build_targets()` by P.3 step 5;
     * `routes/golden.py`'s Baselines panel — `device_count` came from
       `devices_at()` with no reference to the inventory, so an older
       baseline read *9* and a newer one *10* with nothing saying the first
