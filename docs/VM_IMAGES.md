@@ -170,7 +170,38 @@ Inside the restored VM, it **passes** when:
    must print the fingerprint `nmas-breakglass verify` printed on the laptop.
    (`key_fingerprint()` is that same computation.)
 4. The app starts: `curl -s -o /dev/null -w '%{http_code}' localhost:5000/`
-   prints 200.
+   prints 200. This is the path `nmas-deploy` checks (`/`). There is no
+   `/health` route: it answers 404. `GET /jobs/health` is the scheduled-job
+   report, not the app's liveness.
+
+**PASSED 2026-09-25 on the real image** (operator): `qmrestore` of VM 102's
+image to 9102 in 123 s, with `--unique 1` (new MACs, which mattered: the
+originals would have collided with the live NMAS on both bridges), and both
+interfaces `link_down=1` before start. Inside the clone: `flask-app` active,
+the NetBox containers up, postgres `ready to accept connections` (so a
+frozen-filesystem image recovers cleanly), HTTP 200 on `/`, and `key.key`'s
+fingerprint equal to the escrowed `f42bddcea15442c2`. The clone was destroyed
+with no orphaned volumes.
+
+**Two things the first attempt taught:**
+- **It failed on "out of space", with an 8.2 GiB image, because of the
+  TARGET's reservation.** A restore allocates the VM's full PROVISIONED disk
+  (296 G for VM 102), and a non-sparse ZFS storage reserves a zvol's whole
+  `volsize` up front (`refreservation`), written or not. So a restore onto
+  `vmdata` needs 296 G of UNRESERVED space, not 8.2 G. Fixed on the host with
+  `zfs set refreservation=none vmdata/vm-102-disk-1` and
+  `pvesm set vmdata --sparse 1`, which freed 311 G and took `pvesm`'s figure
+  from 85 % to 52 %. `--sparse 1` applies to volumes created from now on;
+  each existing zvol keeps its reservation until it is changed like that.
+  **The trade:** a sparse pool can now OVERCOMMIT, and a full ZFS pool
+  pauses or fails the writes of every VM on it. `job_health` watches
+  LVM-thin pools only, so nothing watches `vmdata`'s real allocation
+  (register **B7**). Restoring to `local-lvm`, as the command above does,
+  avoids the reservation, because the thin pool allocates on write.
+- **A restored clone boots slowly, and that is expected.** `logrotate` sat
+  at 1 min 24 s because every link is down, and anything resolving a
+  hostname waits out a DNS timeout. A slow boot on a link-down restore is
+  not a failed restore. Judge it by the four checks above, not by boot time.
 
 Then `qm stop 9102 && qm destroy 9102 --purge`. VM 100 (the clab host) gets
 the same restore with VMID 9100. Its pass is that `~/labs/*` are present and
