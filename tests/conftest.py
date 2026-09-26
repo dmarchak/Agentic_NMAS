@@ -83,6 +83,17 @@ def _a_verified_person_by_default(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _rotation_record_goes_to_a_temp_file(monkeypatch, tmp_path):
+    """Every rotate() and persist() appends to the rotation record (P.3 step
+    12), and in the suite DATA_DIR is this checkout's data/: a test run would
+    write fixture rotations where a person reads real ones (C26's rule)."""
+    from modules.nsot import credential_rotation
+    monkeypatch.setattr(credential_rotation, "_rotation_record_path",
+                        lambda: str(tmp_path / "rotation_audit.jsonl"))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _fresh_redaction_cache():
     from modules import redact
 

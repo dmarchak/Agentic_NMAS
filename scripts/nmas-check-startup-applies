@@ -77,35 +77,11 @@ def check_one(list_name: str, hostname: str) -> dict:
     # The ordering is therefore reproduced here rather than relied upon
     # elsewhere, and **"the file does not carry the credential NMAS holds"
     # outranks "the form would apply"**.
-    carries = cr.verify_startup_carries_current(
-        hostname, username=username, list_name=ref.name)
-    applies = cr.verify_startup_applies(hostname, platform=platform,
-                                        username=username,
-                                        list_name=ref.name)
-
-    out = {"platform": platform, "carries": carries, "applies": applies,
-           "kind": carries.get("kind") or applies.get("kind", ""),
-           "lab": carries.get("lab") or applies.get("lab", ""),
-           "file": carries.get("file") or applies.get("file", ""),
-           "startup_line": carries.get("startup_line", "")}
-
-    if not carries.get("ok"):
-        out["ok"] = False
-        out["verdict"] = ("INCONCLUSIVE" if carries.get("inconclusive")
-                          else "NOT SAFE")
-        out["reason"] = carries.get("reason") or carries.get("error", "")
-        # Named even when it loses, so nobody reads the composite as a
-        # verdict on applicability it never reached.
-        if applies.get("ok"):
-            out["reason"] += (" (the form WOULD apply on boot — that is a "
-                              "true statement about a different question)")
-        return out
-
-    out["ok"] = bool(applies.get("ok"))
-    out["verdict"] = "SAFE" if out["ok"] else "WILL NOT APPLY"
-    out["reason"] = applies.get("reason") or applies.get("error", "")
-    return out
-
+    # ONE verdict function (register B15): the persistence chain's last stage
+    # calls the same one, so a rotation reports success only when this reads
+    # SAFE.
+    return cr.startup_safety(hostname, platform=platform, username=username,
+                             list_name=ref.name)
 
 def main() -> int:
     parser = argparse.ArgumentParser(

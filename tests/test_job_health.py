@@ -88,9 +88,11 @@ def test_the_headline_counts_and_names():
     journal = _ok(NOW - 60)
     # images=[] and settings=[]: this test is about the systemd jobs' count;
     # the Proxmox image rows and the settings rows have their own tests.
-    h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[])
+    h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
+                 rotations=[], owner=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
-    h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[])
+    h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[],
+                 rotations=[], owner=[])
     assert h["headline"].startswith("0 of") and "clab-sync" in h["headline"]
 
 
@@ -375,7 +377,7 @@ class TestTheZfsPoolThatHoldsEveryVm:
 def test_health_carries_the_image_rows_in_its_headline():
     h = J.health(NOW, _runner(LOADED, _ok(NOW - 60)),
                  images=J.image_jobs(NOW, FakeProxmox(storage={"active": 0})),
-                 settings=[])
+                 settings=[], rotations=[], owner=[])
     assert "vm-images-storage:vzdump-sda" in h["not_ok"]
 
 
@@ -424,6 +426,7 @@ def test_the_real_scan_covers_the_four_the_erasure_blanked():
 
 def test_health_carries_the_settings_rows():
     h = J.health(NOW, _runner(LOADED, _ok(NOW - 60)), images=[],
-                 settings=J.settings_rows(GUARDS, load=lambda: {}))
+                 settings=J.settings_rows(GUARDS, load=lambda: {}),
+                 rotations=[], owner=[])
     assert "setting:clab_sync_script" in h["not_ok"]
     assert "setting:clab_host" in h["not_ok"]

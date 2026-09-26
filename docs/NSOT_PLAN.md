@@ -3074,6 +3074,39 @@ examined.**
       after `nmas-check-startup-applies` reads SAFE. Controls: a success path
       that skips the SAFE check must fail the suite.
 
+    **BUILT 2026-09-26.**
+    - **One verdict function.** `credential_rotation.startup_safety()` is the
+      checker's composite: carries-current first, then applies.
+      `nmas-check-startup-applies` calls it, and the chain's new last stage,
+      `startup_safe`, requires it. So a rotation reaches `ROTATED_PERSISTED`
+      only when the checker would read SAFE. The old last check (the new
+      hash present) was a second check of one property.
+    - **The message leads with the danger**: *"s1: NOT SAFE TO REBOOT OR
+      REDEPLOY. Its startup config does not hold the new password: persistence
+      FAILED at clab_sync. …"*. The success words follow it.
+    - **The record.** `rotate()` and `persist()` are thin wrappers around
+      `_rotate()` and `_persist()` (signatures kept with `functools.wraps`),
+      and they append one row to `data/rotation_audit.jsonl` on every exit.
+      Each row holds the state, the failed stage, and every stage's name,
+      outcome and reason, redacted and capped. Never a credential; 0600; a
+      failure to record never breaks the rotation. The secret-storage checker
+      lists it. The test harness sends it to a temp file.
+    - **Job health reads it.** One row per device from its latest record:
+      `not_safe_to_reboot` names the failed stage or "persistence NOT
+      ATTEMPTED", and `revert_failed` flags a possible lockout. A later persist
+      reaching SAFE clears it (`nmas-persist-credential` records one).
+    - **One owner for the sync script:** a `clab-sync-owner` row compares
+      `clab_sync_script` with the timer unit's `ExecStart`, and reads
+      `unset_guard`, `mismatch` (both named) or `ok`.
+    - **Both CLIs carry the list into `persist()`**, so its lab and its SAFE
+      verdict are the list's, not the active one's.
+    - **Tests.** The acceptance is tested on the case that happened: the sync
+      stage broken, then fixed. Four structural tests followed the code into
+      `_persist` and `startup_safety`. Six mutation controls; one was silent
+      first (nothing asserted that `health()` includes the rotation rows,
+      which was a missing test) and fires now.
+    - 3929 passed, 0 failed, 0 errors.
+
 **P.3 ACCEPTANCE** (each item observed, each with a control that must fail):
 1. **Every mutating endpoint is classified**, and the classification test has
    a floor (at least 131 mutating rules) and anchors: `/deploy/apply` must be

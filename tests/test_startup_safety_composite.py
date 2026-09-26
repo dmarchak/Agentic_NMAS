@@ -49,10 +49,15 @@ class TestPresenceOutranksApplicability:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-        tree = ast.parse(textwrap.dedent(inspect.getsource(mod.check_one)))
-        order = [n.func.attr for n in ast.walk(tree)
-                 if isinstance(n, ast.Call)
-                 and getattr(n.func, "attr", "").startswith("verify_startup")]
+        # The composite moved into credential_rotation.startup_safety() (P.3
+        # step 12, B15) so the persistence chain and this checker share ONE
+        # verdict; the script now calls it.
+        assert "cr.startup_safety(" in inspect.getsource(mod.check_one)
+        from modules.nsot import credential_rotation as _cr
+        tree = ast.parse(textwrap.dedent(inspect.getsource(_cr.startup_safety)))
+        order = [n.func.id for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                 and n.func.id.startswith("verify_startup")]
 
         assert order, "the parse found neither call"
         assert order[0] == "verify_startup_carries_current", \
@@ -168,9 +173,9 @@ class TestTheFormIsAlwaysNamed:
         never reached."""
         import os
 
-        src = open(os.path.join(ROOT, "scripts",
-                                "nmas-check-startup-applies"),
-                   encoding="utf-8").read()
+        import inspect
+        from modules.nsot import credential_rotation as _cr
+        src = inspect.getsource(_cr.startup_safety)
         assert "true statement about a different question" in src
 
 

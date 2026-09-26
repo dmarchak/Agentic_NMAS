@@ -1412,6 +1412,8 @@ class TestTheChainMakesOxidizedRereadRouterDb:
         monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file",
                             lambda *a, **k: {"ok": True, "matches": 1})
+        monkeypatch.setattr(cr, "verify_startup_carries_current",
+                            lambda *a, **k: {"ok": True})
 
         cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []},
                    **self.BASE)
@@ -1553,6 +1555,8 @@ class TestEveryPersistStageIsIdempotent:
         monkeypatch.setattr(cr, "verify_startup_file",
                             lambda *a, **k: calls.__setitem__("startup", calls["startup"] + 1)
                             or {"ok": True, "matches": 1})
+        monkeypatch.setattr(cr, "verify_startup_carries_current",
+                            lambda *a, **k: {"ok": True})
         return {"db": db, "calls": calls}
 
     def _run(self):
@@ -1711,7 +1715,8 @@ class TestNoFailureWordingDuringASuccessfulRun:
                                                  "mechanism": "rest_reload"}),
                             ("confirm_fetch", {"ok": True, "end": "x"}),
                             ("run_sync", {"ok": True}),
-                            ("verify_startup_file", {"ok": True, "matches": 1})):
+                            ("verify_startup_file", {"ok": True, "matches": 1}),
+                            ("verify_startup_carries_current", {"ok": True})):
             monkeypatch.setattr(cr, name, (lambda v: (lambda *a, **k: v))(value))
 
         out = cr.persist({"device": "r2", "state": cr.ROTATED_PENDING_PERSIST,
@@ -2234,6 +2239,8 @@ class TestPersistenceNeverReverts:
         monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file",
                             lambda *a, **k: {"ok": True, "matches": 1})
+        monkeypatch.setattr(cr, "verify_startup_carries_current",
+                            lambda *a, **k: {"ok": True})
         out = cr.persist(self._result(), **self.BASE)
 
         assert out["state"] == cr.ROTATED_PERSISTED
@@ -2242,7 +2249,7 @@ class TestPersistenceNeverReverts:
     def test_persist_never_touches_the_device(self):
         """Structural: nothing in the chain can send a command."""
         import inspect
-        source = inspect.getsource(cr.persist)
+        source = inspect.getsource(cr._persist)
         for forbidden in ("push_rotation", "_revert", "open_original_session",
                           "send_config_set"):
             assert forbidden not in source, forbidden
@@ -2611,7 +2618,7 @@ class TestThePersistenceChainFailsClosedOnAHalfDeploy:
 
         import modules.nsot.credential_rotation as cr
 
-        src = inspect.getsource(cr.persist)
+        src = inspect.getsource(cr._persist)
         return src
 
     def test_presence_is_checked_before_applicability(self):

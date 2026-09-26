@@ -461,14 +461,19 @@ def summarise(result: dict) -> str:
         # and nothing is retrying. A terminal message that describes work
         # which is not happening is worse than no message — it tells the
         # operator to wait for an outcome that will never arrive.
+        # THE DANGER FIRST (register B15). This began "ROTATED and
+        # committed", the success words, and s1's operator read it as success
+        # while the boot file held the exposed password. A message whose first
+        # words are good news is read as good news.
         ROTATED_UNVERIFIED: (
-            f"{device}: ROTATED and committed — the new credential is live and "
-            "recorded, and the device is NOT reverted for this. Persistence to "
-            f"the startup config FAILED at "
-            f"{_failed_stage(result) or 'the persistence chain'}. Nothing is "
-            "retrying. A redeploy would boot the OLD password, so do not "
-            "redeploy until this is finished: fix the cause, then run "
-            f"`scripts/nmas-persist-credential {device}`."),
+            f"{device}: NOT SAFE TO REBOOT OR REDEPLOY. Its startup config does "
+            "not hold the new password: persistence FAILED at "
+            f"{_failed_stage(result) or 'the persistence chain'}. The device IS "
+            "ROTATED and committed, the new credential is live and recorded, "
+            "and it is NOT reverted for this. Nothing is retrying. A redeploy "
+            "would boot the OLD password: fix the cause, then run "
+            f"`scripts/nmas-persist-credential {device}`, which succeeds only "
+            "when nmas-check-startup-applies would read SAFE."),
         REVERTED: (
             f"{device}: the new credential did not verify, so the original was "
             "restored and proven. The device is unchanged."),
@@ -1193,7 +1198,7 @@ def _yang_push_consumer(mgmt_ip: str) -> dict:
             "action": "NOT updated — its default target is another device"}
 
 
-def rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
+def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
            actor: str = "", actor_kind: str = "", device: dict = None,
            capture: str = "", record: str = "csv") -> dict:
     """Rotate one device. Returns one of the five states.
@@ -2373,6 +2378,107 @@ def _active_list_name() -> str:
     return get_current_device_list()[0]
 
 
+def startup_safety(hostname: str, *, platform: str, username: str = "admin",
+                   list_name: str = "", clab: str = "", remote_dir: str = "",
+                   launch_patch: str = "") -> dict:
+    """``nmas-check-startup-applies``'s verdict, in ONE place (register B15).
+
+    Presence first, then applicability, and "the file does not carry the
+    credential the device has" outranks "the form would apply". The checker
+    script and the persistence chain's last stage both call this, so a rotation
+    can report success only when the checker would read SAFE: two checks of
+    one property diverge, and the rotation's own check (the new hash present)
+    was a second one.
+    """
+    carries = verify_startup_carries_current(
+        hostname, username=username, list_name=list_name, clab=clab,
+        remote_dir=remote_dir)
+    applies = verify_startup_applies(
+        hostname, platform=platform, username=username, list_name=list_name,
+        clab=clab, remote_dir=remote_dir, launch_patch=launch_patch)
+    out = {"platform": platform, "carries": carries, "applies": applies,
+           "kind": carries.get("kind") or applies.get("kind", ""),
+           "lab": carries.get("lab") or applies.get("lab", ""),
+           "file": carries.get("file") or applies.get("file", ""),
+           "startup_line": carries.get("startup_line", "")}
+    if not carries.get("ok"):
+        out["ok"] = False
+        out["verdict"] = "INCONCLUSIVE" if carries.get("inconclusive") else "NOT SAFE"
+        out["reason"] = carries.get("reason") or carries.get("error", "")
+        if applies.get("ok"):
+            out["reason"] += (" (the form WOULD apply on boot — that is a "
+                              "true statement about a different question)")
+        return out
+    out["ok"] = bool(applies.get("ok"))
+    out["verdict"] = "SAFE" if out["ok"] else "WILL NOT APPLY"
+    out["reason"] = applies.get("reason") or applies.get("error", "")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The rotation record (registers B2 and B15)
+# ---------------------------------------------------------------------------
+
+def _rotation_record_path() -> str:
+    import os
+    from modules.config import DATA_DIR
+    return os.path.join(DATA_DIR, "rotation_audit.jsonl")
+
+
+def record_outcome(phase: str, result: dict) -> None:
+    """One durable row per rotate() or persist(): the state and every stage's
+    name, outcome and reason. NEVER a credential: the reasons pass through
+    redaction and are capped. s1's rotation of an exposed credential left its
+    stage outcomes only in a terminal's scrollback, twice unrecoverable in one
+    incident (B2). Never raises; a failure is logged at ERROR."""
+    import json
+    import time
+    try:
+        from modules import redact
+        from modules.config import open_secure
+
+        def _reason(entry):
+            text = str(entry.get("error") or entry.get("reason")
+                       or entry.get("detail") or "")
+            try:
+                text = redact.redact_text(text)
+            except Exception:                         # noqa: BLE001
+                text = "(reason withheld: redaction failed)"
+            return text[:200]
+
+        stages = [{"name": e.get("name", ""), "ok": bool(e.get("ok")),
+                   "reason": _reason(e)}
+                  for e in (result.get("persistence") if phase == "persist"
+                            else result.get("steps")) or []]
+        row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+               "phase": phase, "device": result.get("device", ""),
+               "state": result.get("state", ""),
+               "failed_stage": next((st["name"] for st in stages if not st["ok"]), ""),
+               "actor": result.get("actor", ""), "stages": stages}
+        with open_secure(_rotation_record_path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    except Exception as exc:                          # noqa: BLE001
+        log.error("rotation record: COULD NOT RECORD %s of %s (%s)", phase,
+                  result.get("device", "?"), exc)
+
+
+def rotation_records() -> list:
+    """Every recorded row, oldest first; unreadable lines are skipped."""
+    import json
+    import os
+    path = _rotation_record_path()
+    if not os.path.exists(path):
+        return []
+    out = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+    return out
+
+
 def verify_startup_applies(hostname: str, *, platform: str, username: str,
                            clab: str = "", remote_dir: str = "",
                            launch_patch: str = "", list_name: str = "") -> dict:
@@ -2531,7 +2637,7 @@ def verify_startup_applies(hostname: str, *, platform: str, username: str,
                 f"and rotate after boot. Read: {where}")}
 
 
-def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
+def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
             hostname: str, new_hash: str, after_iso: str, platform: str,
             **kw) -> dict:
     """The persistence chain. **Never reverts the device.**
@@ -2659,8 +2765,41 @@ def persist(result: dict, *, mgmt_ip: str, username: str, password: str,
                                             ("clab", "remote_dir", "launch_patch")
                                             if k in kw})):
         return result
+    # SUCCESS MEANS THE CHECKER'S VERDICT (register B15): the same function
+    # nmas-check-startup-applies uses, so the two cannot disagree.
+    if not _stage("startup_safe",
+                  startup_safety(hostname, platform=platform, username=username,
+                                 list_name=kw.get("list_name", ""),
+                                 **{k: kw[k] for k in
+                                    ("clab", "remote_dir", "launch_patch")
+                                    if k in kw})):
+        return result
 
     result["state"] = ROTATED_PERSISTED
     result["reason"] = ("rotated, committed, present in the startup config, "
-                        "and that file applies on boot")
+                        "that file applies on boot, and "
+                        "nmas-check-startup-applies reads SAFE")
     return result
+
+
+import functools as _functools
+
+
+@_functools.wraps(_rotate)
+def rotate(list_name: str, hostname: str, **kw) -> dict:
+    """Rotate one device (see :func:`_rotate`), and RECORD the outcome (B2)."""
+    result = _rotate(list_name, hostname, **kw)
+    result.setdefault("device", hostname)
+    record_outcome("rotate", result)
+    return result
+
+
+@_functools.wraps(_persist)
+def persist(result: dict, **kw) -> dict:
+    """The persistence chain (see :func:`_persist`), and RECORD it (B2, B15).
+    The record is what job_health reads to keep a device that did not persist
+    in front of an operator until a later persist reaches SAFE."""
+    out = _persist(result, **kw)
+    out.setdefault("device", kw.get("hostname", ""))
+    record_outcome("persist", out)
+    return out

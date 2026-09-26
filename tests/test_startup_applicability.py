@@ -240,12 +240,16 @@ class TestItIsWiredIntoTheChain:
                             lambda *a, **k: order.append("presence") or {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_applies",
                             lambda *a, **k: order.append("applies") or {"ok": True})
+        monkeypatch.setattr(cr, "verify_startup_carries_current",
+                            lambda *a, **k: order.append("carries") or {"ok": True})
 
         cr.persist({"device": "r1", "steps": []}, mgmt_ip="203.0.113.1",
                    username="admin", password="pw", hostname="r1",
                    new_hash="9 $9$s$h", after_iso=cr.utc_now(),
                    platform="cisco_iosxe")
-        assert order == ["presence", "applies"]
+        # Presence, applicability, and then (P.3 step 12, B15) the checker's
+        # own verdict: carries-current first, applicability second.
+        assert order == ["presence", "applies", "carries", "applies"]
 
     def test_a_file_that_will_not_apply_denies_persisted(self, monkeypatch):
         """The state must not claim redeploy survival the boot would refuse."""
@@ -265,7 +269,8 @@ class TestItIsWiredIntoTheChain:
     def test_the_success_wording_claims_applicability_not_presence(self,
                                                                    monkeypatch):
         for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch",
-                     "run_sync", "verify_startup_file", "verify_startup_applies"):
+                     "run_sync", "verify_startup_file", "verify_startup_applies",
+                     "verify_startup_carries_current"):
             monkeypatch.setattr(cr, name, lambda *a, **k: {"ok": True})
 
         out = cr.persist({"device": "r1", "steps": []}, mgmt_ip="203.0.113.1",

@@ -125,7 +125,7 @@ class TestAnUndescribedLabIsRefusedNotDefaulted:
 
         from modules.nsot import credential_rotation as cr
 
-        src = inspect.getsource(cr.persist)
+        src = inspect.getsource(cr._persist)
         assert src.index("clab_target_for") < src.index('"clab_sync"')
         assert "Refusing rather than falling back to the default" in src
 
@@ -320,7 +320,7 @@ class TestTheHelperRefusesRatherThanGuessing:
 
         from modules.nsot import credential_rotation as cr
 
-        src = inspect.getsource(cr.persist)
+        src = inspect.getsource(cr._persist)
         assert '("configs_dir", "launch_patch")' in src
         assert "not the one booting this device" in src
 

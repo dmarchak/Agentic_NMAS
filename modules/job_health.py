@@ -566,12 +566,98 @@ def settings_rows(guards: dict = None, load=None) -> list:
     return out
 
 
-def health(now: float = None, run=None, images=None, settings=None) -> dict:
+# ---------------------------------------------------------------------------
+# Credential rotations whose boot file is not known SAFE (register B15)
+# ---------------------------------------------------------------------------
+
+_ROTATION_WHAT = ("a device's credential rotation; until a persist reads SAFE, "
+                  "a reboot or redeploy may bring back the previous password (B15)")
+
+
+def rotation_rows(records: list = None) -> list:
+    """One row per device with a recorded rotation, from its LATEST record.
+
+    s1's rotation of an exposed credential left its boot file holding that
+    credential, and the only report was a terminal message that is gone. So a
+    device stays in front of an operator until a later persist is recorded
+    reaching SAFE (`nmas-persist-credential` records one)."""
+    from modules.nsot import credential_rotation as cr
+
+    records = cr.rotation_records() if records is None else records
+    latest = {}
+    for rec in records:
+        if rec.get("device"):
+            latest[rec["device"]] = rec
+    rows = []
+    for device, rec in sorted(latest.items()):
+        state, stage, at = rec.get("state", ""), rec.get("failed_stage", ""), rec.get("at", "")
+        if state == cr.ROTATED_PERSISTED:
+            st, detail = "ok", f"persisted and read SAFE at {at}"
+        elif state in (cr.REVERTED, cr.NOT_STARTED):
+            st, detail = "ok", f"unchanged: the last rotation ended {state} at {at}"
+        elif state == cr.ROTATED_UNVERIFIED:
+            st, detail = ("not_safe_to_reboot",
+                          f"rotated at {at}; persistence FAILED at {stage or 'the chain'}. "
+                          f"Fix it, then run nmas-persist-credential {device}")
+        elif state == cr.ROTATED_PENDING_PERSIST:
+            st, detail = ("not_safe_to_reboot",
+                          f"rotated at {at}; persistence NOT ATTEMPTED. Run "
+                          f"nmas-persist-credential {device} to verify the boot file")
+        elif state == cr.REVERT_FAILED:
+            st, detail = "revert_failed", (f"the new credential did not verify and the "
+                                           f"revert failed at {at}: the device may be "
+                                           "locked out; recover on the console")
+        else:
+            st, detail = "unknown", f"last recorded state {state or '(none)'} at {at}"
+        rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
+                     "state": st, "detail": detail, "max_age_minutes": 0})
+    return rows
+
+
+def sync_owner_rows(run=None, get=None) -> list:
+    """`clab_sync_script` must name what the clab-sync timer runs (B15).
+
+    Two owners of one fact: the rotation's persistence chain reads the setting,
+    the timer's unit names the script itself. The setting was empty for three
+    days while the timer worked, so every rotation's chain stopped at its sync
+    stage and a timer closed the window instead."""
+    from modules.settings_schema import get_setting
+
+    run = run or _run
+    get = get or get_setting
+    row = {"unit": "clab-sync-owner", "max_age_minutes": 0,
+           "what": "the persistence chain's sync script is the one the timer runs (B15)"}
+    rc, out = run(["systemctl", "show", "clab-sync.service", "-p", "LoadState",
+                   "-p", "ExecStart"])
+    props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l) if rc == 0 else {}
+    if not props:
+        return [{**row, "state": "unknown",
+                 "detail": "systemctl could not be asked -- not the same as ok"}]
+    if props.get("LoadState") == "not-found":
+        return [{**row, "state": "not_installed",
+                 "detail": "clab-sync.service is not installed here"}]
+    import re as _re
+    m = _re.search(r"path=(\S+)", props.get("ExecStart", ""))
+    unit_path = m.group(1) if m else ""
+    setting = (get("clab_sync_script", "") or "").strip()
+    if not setting:
+        return [{**row, "state": "unset_guard",
+                 "detail": f"clab_sync_script is EMPTY; the timer runs {unit_path or '?'}"}]
+    if unit_path and setting != unit_path:
+        return [{**row, "state": "mismatch",
+                 "detail": f"clab_sync_script is {setting} but the timer runs {unit_path}"}]
+    return [{**row, "state": "ok", "detail": f"both name {setting}"}]
+
+
+def health(now: float = None, run=None, images=None, settings=None,
+           rotations=None, owner=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
-    are read from Proxmox. *settings*: the settings rows, likewise."""
+    are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
     jobs += image_jobs(now) if images is None else list(images)
     jobs += settings_rows() if settings is None else list(settings)
+    jobs += rotation_rows() if rotations is None else list(rotations)
+    jobs += sync_owner_rows(run) if owner is None else list(owner)
     bad = [j["unit"] for j in jobs if j["state"] != "ok"]
     return {"ok": True, "jobs": jobs, "not_ok": bad,
             "headline": (f"{len(jobs) - len(bad)} of {len(jobs)} job(s) ok"

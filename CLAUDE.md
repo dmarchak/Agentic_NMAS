@@ -940,6 +940,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_terminal_audit.py` | P.3 step 7: every open, failed open, close (page or dropped browser) and refusal of the terminal is a row with actor, device, peer and time; keystrokes never; 0600; a recorder failure is counted and never breaks the terminal |
 | `test_p3_agent_tools.py` | P.3 step 8: 24 tools gone from the list and the dispatch; the `execute_*` tools refuse everything but read-only verbs, before connecting; no reply is auto-answered |
 | `test_credential_single_copy.py` | P.3 step 11 (B14): an empty secret falls back to the password; rotation writes no copy; break-glass reports only a distinct enable secret; the dedupe script's dry run writes nothing, prints no value, and refuses an unparseable store |
+| `test_rotation_reports_the_boot_file.py` | P.3 step 12 (B15): success is the checker's SAFE verdict from one shared function; a broken sync stage is named and never success; the message leads with the danger; every outcome is recorded (never a credential) and a not-SAFE rotation is a job-health row until a later persist reads SAFE; the sync script has one owner |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -4429,7 +4430,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
+present when each was recorded. **27 open at 2026-09-26**, counted from the rows: 22 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
