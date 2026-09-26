@@ -81,6 +81,8 @@ GATES = {
                          "onboard_verify"),
     "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
                           "onboard_abandon"),
+    "run_command": _g(C, "runs an exec-mode command a person typed on one device; exec mode "
+                         "can copy, delete, reload and clear (B16: it was an ungated GET)"),
     "bulk_execute": _g(C, "sends ENABLE-mode commands to many devices (config mode cut in P.3 step 2); enable mode can still copy, delete, reload and erase"),
     "bulk_reload": _g(C, "reloads devices"),
     "bulk_tftp_upload": _g(C, "copies a file ONTO devices' flash (copy tftp: flash:)"),

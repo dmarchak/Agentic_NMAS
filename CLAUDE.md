@@ -934,6 +934,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_terminal_privilege.py` | B13: the terminal sends the enable secret ONLY in answer to a password prompt, once; a device at `#` receives nothing; the page states the terminal is break-glass and unmasked by design |
 | `test_p3_wizard_draws_the_program.py` | P.3 step 4 (D4): the wizard draws every line of the program, with one authorise box per dangerous line that re-plans the device; an authorised `shutdown` deploys end to end and a changed authorisation is refused; restore can authorise; C24's unbuildable device is named |
 | `test_job_health.py` (C28 rows) | a guard-gating setting empty on this install is an `unset_guard` row naming what it gates; unreadable settings is one `unknown` row; the real scan covers the four the erasure blanked |
+| `test_p3_secrets_write_only.py` | P.3 step 6 (B11): all 86 argument-free GETs swept for planted secrets; an empty secret field saves nothing; B16: no GET-only view sends request-supplied text to a device, and `/run_command` is a gated POST; C29: HTTP errors keep their status |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1420,6 +1421,14 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   **The gate in front of it was correct, and the thing behind it had never
   been examined.** Gating a path is not reviewing it. A credential is sent
   only in answer to the prompt that asks for it.
+- **A GATE TABLE KEYED ON HTTP METHOD MISSES A GET THAT CHANGES A DEVICE**
+  (register B16). P.3 step 1 declared every POST, PUT and DELETE endpoint,
+  and `/run_command/<ip>` ran any exec-mode command from a GET, outside the
+  table and link-triggerable. The table's population was chosen by the
+  PROTOCOL's idea of mutation, while the property is "reaches a device". Now a
+  test asserts no GET-only view sends request-supplied text to a device. Ask
+  of any population: is it defined by the property, or by something that
+  usually coincides with it?
 - **A CHECK OF THE CODE IS NOT A CHECK OF THE INSTALL** (register C28).
   `discover_empty_default_guards()` derived, from the code, every setting
   whose emptiness silently switches off a guard, and only tests called it. So

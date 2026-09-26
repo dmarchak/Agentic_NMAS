@@ -423,7 +423,22 @@ def internal_error(error):
 
 @app.errorhandler(Exception)
 def handle_exception(error):
-    """Handle all uncaught exceptions."""
+    """Handle all uncaught exceptions.
+
+    An HTTP error is NOT an unexpected exception, and keeps its own status
+    (register C29, 2026-09-26). Only 404 had a handler, so every 405, 400,
+    413 and 415 reached this one and went out as a 500 "An unexpected error
+    occurred. Please check the logs", with an ERROR line in the log a person
+    reads. A request with the wrong method read as a server crash. Found when
+    `/run_command` became POST-only (B16) and a GET to it answered 500.
+    """
+    from werkzeug.exceptions import HTTPException
+
+    if isinstance(error, HTTPException):
+        app.logger.warning("HTTP %s for %s %s", error.code, request.method,
+                           request.path)
+        return _error_response(error, error.code or 500,
+                               error.description or error.name)
     app.logger.error(f'Unhandled Exception: {error}', exc_info=True)
     return _error_response(error, 500,
                            'An unexpected error occurred. Please check the logs.')
@@ -685,11 +700,17 @@ def manage_device(ip):
 
 
 # Run command (temporary connection)
-@app.route("/run_command/<ip>")
+@app.route("/run_command/<ip>", methods=["POST"])
 def run_command(ip):
-    # Run a command on the device and show output
-    command = request.args.get("command")
-    filesystem = request.args.get("filesystem")
+    # Run a command on the device and show output.
+    #
+    # POST, and gated `confirm` (register B16, 2026-09-26). It was a GET: any
+    # exec-mode command (reload, delete, copy, clear) from a URL, with no
+    # identity check, because the gate table covers mutating METHODS, and a
+    # link an operator logged in to Access followed would have run it. The
+    # Access cookie is not sent on a cross-site POST, so a link cannot.
+    command = request.form.get("command")
+    filesystem = request.form.get("filesystem")
 
     _, current_list_file = get_current_device_list()
     devices = load_saved_devices(current_list_file)
@@ -1408,12 +1429,16 @@ def get_settings():
     from modules.netbox_client import get_netbox_config as _get_nb_cfg
     jcfg  = _jr.load_config()
     nbcfg = _get_nb_cfg()
+    # SECRETS ARE WRITE-ONLY: a flag, never the value (register B11, P.3
+    # step 6). This returned the Anthropic key and both Jenkins secrets in
+    # cleartext, ungated, to every opening of the Settings modal since
+    # e729267 (2026-04-12). The NetBox token beside them was always a flag.
     payload = {
-        "anthropic_api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
+        "anthropic_api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY", "")),
         "jenkins_url":       jcfg.get("jenkins_url", ""),
         "jenkins_user":      jcfg.get("jenkins_user", ""),
-        "jenkins_api_key":   jcfg.get("jenkins_api_key", ""),
-        "jenkins_token":     jcfg.get("jenkins_token", ""),
+        "jenkins_api_key_set": bool(jcfg.get("jenkins_api_key", "")),
+        "jenkins_token_set":   bool(jcfg.get("jenkins_token", "")),
         "tftp_server_ip":    TFTP_SERVER_IP,
         # NetBox — token never returned in cleartext; UI uses token_set flag.
         "netbox_url":         nbcfg.get("url", ""),
@@ -1479,7 +1504,14 @@ def save_settings():
             jcfg = _jr.load_config()
             for field in jenkins_fields:
                 if field in data:
-                    jcfg[field] = data[field].strip()
+                    value = (data[field] or "").strip()
+                    # A secret field left EMPTY means "unchanged". The form
+                    # no longer receives the stored value, so an empty field
+                    # is the normal case, and treating it as a value would
+                    # erase the stored secret on every save.
+                    if field in ("jenkins_api_key", "jenkins_token") and not value:
+                        continue
+                    jcfg[field] = value
             _jr.save_config(jcfg)
         except Exception as exc:
             errors.append(f"Jenkins settings failed: {exc}")

@@ -139,8 +139,9 @@
       {% for action in quick_actions %}
       <div class="col quick-action" data-command="{{ action.command }}" data-label="{{ action.label }}">
         <div class="position-relative d-inline-block w-100">
-          <a href="{{ url_for('run_command', ip=device['ip'], command=action.command, filesystem=selected_fs) }}"
-             class="btn btn-outline-primary w-100 quick-action-btn">{{ action.label }}</a>
+          <button type="button" class="btn btn-outline-primary w-100 quick-action-btn"
+                  data-url="{{ url_for('run_command', ip=device['ip']) }}"
+                  data-command="{{ action.command }}" data-filesystem="{{ selected_fs }}">{{ action.label }}</button>
           <span class="delete-action" title="Delete quick action" aria-label="Delete">&times;</span>
         </div>
       </div>
@@ -151,7 +152,7 @@
     <hr>
     <h4>Send a custom command</h4>
     <p class="text-muted">Enter any IOS command to run directly on {{ device["hostname"] }}.</p>
-    <form method="get"
+    <form method="post"
           action="{{ url_for('run_command', ip=device['ip']) }}"
           class="row g-3 mb-4"
           id="customCommandForm">
@@ -303,8 +304,13 @@
     const btn = e.target.closest('.quick-action-btn');
     if (!btn) return;
     e.preventDefault();
-    const url = btn.getAttribute('href');
+    const url = btn.dataset.url;
     if (!url) return;
+    // POST (B16): a command reaches a device only through a request a link
+    // cannot make, and the gate requires a person.
+    const form = new FormData();
+    form.append('command', btn.dataset.command || '');
+    form.append('filesystem', btn.dataset.filesystem || '');
 
     // Simple spinner state
     const origText = btn.innerHTML;
@@ -312,7 +318,8 @@
     btn.disabled = true;
 
     fetch(url, {
-      method: 'GET',
+      method: 'POST',
+      body: form,
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
       credentials: 'same-origin',
     })
@@ -778,14 +785,17 @@ document.addEventListener("DOMContentLoaded", () => {
           col.setAttribute("data-command", cmd);
           col.setAttribute("data-label", label);
 
-          const href = `${ "{{ url_for('run_command', ip=device['ip']) }}" }?command=${encodeURIComponent(cmd)}&filesystem=${encodeURIComponent(selectedFs)}`;
-
           col.innerHTML = `
             <div class="position-relative d-inline-block w-100">
-              <a href="${href}" class="btn btn-outline-primary w-100 quick-action-btn">${label}</a>
+              <button type="button" class="btn btn-outline-primary w-100 quick-action-btn"></button>
               <span class="delete-action" title="Delete quick action" aria-label="Delete">&times;</span>
             </div>
           `;
+          const qa = col.querySelector('.quick-action-btn');
+          qa.textContent = label;
+          qa.dataset.url = "{{ url_for('run_command', ip=device['ip']) }}";
+          qa.dataset.command = cmd;
+          qa.dataset.filesystem = selectedFs;
           container.appendChild(col);
           attachDeleteHandler(col);
         } else {

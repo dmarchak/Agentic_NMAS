@@ -2863,6 +2863,38 @@ doing it now.
 6. **B11.** `GET /settings` returns `*_set` flags for every secret and never a
    value. `POST /settings` treats an empty secret field as "unchanged". The
    Anthropic key is write-only in the form, like NetBox's token.
+
+   **BUILT 2026-09-26.**
+   - **`GET /settings` returns `anthropic_api_key_set`, `jenkins_api_key_set`
+     and `jenkins_token_set`**, never the values.
+   - **`POST /settings` treats an empty Jenkins secret as unchanged.** Without
+     that, the write-only form would have erased the stored secret on every
+     save, because it filled those fields from the values.
+   - **The modal shows set/unset placeholders and sends a secret only if
+     typed**, so neither end alone can erase one.
+   - **Acceptance 4 is a sweep.** Planted secrets (the Anthropic key, both
+     Jenkins secrets, the NetBox token), no network, and settings in a temp
+     file; all 86 argument-free GET routes are called, and none carries a
+     planted value. A floor of 80, and a control that finds one returned.
+   - **Found by the sweep's survey: B16.** `/run_command/<ip>` was a GET that
+     ran ANY exec-mode command (reload, delete, copy, clear) from a URL, with
+     no identity check. The gate table's population was defined by HTTP
+     method, so a GET that changes a device was outside it, and a link an
+     operator logged in to Access followed would have run it. It is now a
+     POST, gated `confirm`, like `/bulk_execute`'s enable mode; the Access
+     cookie is not sent on a cross-site POST. Quick actions became buttons
+     carrying their command. A test asserts no GET-only view sends text taken
+     from the request to a device; the other nine GET views that connect send
+     fixed `show` commands.
+   - **Found by B16's test: C29.** Only 404 had an error handler, so every
+     405, 400, 413 and 415 went out as a 500 "unexpected error, check the
+     logs", with an ERROR log line. HTTP errors now keep their status.
+   - Seven negative controls.
+   - 3855 passed, 0 failed, 0 errors.
+   - **Still P.3's first item, not confirmed in this record: the Anthropic
+     key's rotation.** The fix stops future exposure. Only rotation retires
+     the key that went out.
+
 7. **The terminal is the break-glass path** (decision 3):
    - opening it requires a person (`break_glass`);
    - `data/terminal_audit.jsonl` records who opened it, for which device,

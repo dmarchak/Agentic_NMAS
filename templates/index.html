@@ -2992,16 +2992,22 @@ window.openSettingsModal = function() {
       // API key: show placeholder if already set, leave blank otherwise
       const keyInput = document.getElementById('settingsAnthropicKey');
       keyInput.value = '';
-      keyInput.placeholder = s.anthropic_api_key ? '••••••••  (already set — enter new key to change)' : 'sk-ant-api03-…';
+      keyInput.placeholder = s.anthropic_api_key_set ? '••••••••  (already set — enter new key to change)' : 'sk-ant-api03-…';
       document.getElementById('settingsKeyStatus').textContent =
-        s.anthropic_api_key ? '✓ API key is configured' : '⚠ No API key set — AI features will not work';
+        s.anthropic_api_key_set ? '✓ API key is configured' : '⚠ No API key set — AI features will not work';
       document.getElementById('settingsKeyStatus').className =
-        'form-text ' + (s.anthropic_api_key ? 'text-success' : 'text-warning');
+        'form-text ' + (s.anthropic_api_key_set ? 'text-success' : 'text-warning');
 
       document.getElementById('settingsJenkinsUrl').value     = s.jenkins_url     || '';
       document.getElementById('settingsJenkinsUser').value    = s.jenkins_user    || '';
-      document.getElementById('settingsJenkinsApiKey').value  = s.jenkins_api_key || '';
-      document.getElementById('settingsJenkinsToken').value   = s.jenkins_token   || '';
+      // Write-only, like the NetBox token: the server returns a flag, never
+      // the value (B11), and an empty field is sent as "unchanged".
+      [['settingsJenkinsApiKey', s.jenkins_api_key_set], ['settingsJenkinsToken', s.jenkins_token_set]]
+        .forEach(([id, isSet]) => {
+          const el = document.getElementById(id);
+          el.value = '';
+          el.placeholder = isSet ? '••••••••  (already set — enter a new value to change)' : '';
+        });
       document.getElementById('settingsTftpIp').value         = s.tftp_server_ip  || '';
 
       // NetBox
@@ -3107,8 +3113,6 @@ window.saveSettings = function() {
       document.getElementById('settingsBackgroundAgentEnabled').checked,
     jenkins_url:           document.getElementById('settingsJenkinsUrl').value.trim(),
     jenkins_user:          document.getElementById('settingsJenkinsUser').value.trim(),
-    jenkins_api_key:       document.getElementById('settingsJenkinsApiKey').value.trim(),
-    jenkins_token:         document.getElementById('settingsJenkinsToken').value.trim(),
     tftp_server_ip:        document.getElementById('settingsTftpIp').value.trim(),
     wf_read_first:         document.getElementById('wfReadFirst').checked,
     wf_auto_backup:        document.getElementById('wfAutoBackup').checked,
@@ -3121,6 +3125,11 @@ window.saveSettings = function() {
   // Only send the API key if the user actually typed something
   const apiKeyVal = document.getElementById('settingsAnthropicKey').value.trim();
   if (apiKeyVal) payload.anthropic_api_key = apiKeyVal;
+  // The same for the Jenkins secrets: only what the user typed is sent.
+  const jApi = document.getElementById('settingsJenkinsApiKey').value.trim();
+  if (jApi) payload.jenkins_api_key = jApi;
+  const jTok = document.getElementById('settingsJenkinsToken').value.trim();
+  if (jTok) payload.jenkins_token = jTok;
 
   // NetBox — URL + TLS always sent; token only if user typed one
   payload.netbox_url        = document.getElementById('settingsNetboxUrl').value.trim();
