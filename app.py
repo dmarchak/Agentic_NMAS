@@ -489,29 +489,52 @@ def _terminal_audit(event, ip, reason=""):
                           peer=_ident.peer_address(request), reason=reason)
 
 
+def _term_key(ip: str) -> str:
+    """A shell per CONNECTION, never per device (register D12, 2026-09-26).
+
+    Sessions were keyed by device address and output went to a room named by
+    it, so everyone with a device's terminal open shared ONE shell: each saw
+    the other's typing and output, a credential included (B13's exposure by
+    another route), and one person closing it ended it for the other.
+    """
+    return f"{request.sid}|{ip}"
+
+
+def _close_shell(key: str) -> None:
+    sess = terminal_sessions.pop(key, None)
+    if sess:
+        try:
+            if sess.get("chan"):
+                sess["chan"].close()
+            if sess.get("ssh"):
+                sess["ssh"].close()
+        except Exception:
+            pass
+
+
 @socketio.on("connect_terminal")
 @route_gates.socket_gated("connect_terminal")
 def socket_connect_terminal(data):
     ip = data.get("ip")
     if not ip:
         return
+    key, me = _term_key(ip), request.sid
     try:
-        join_room(ip)
-
-        # Ensure session is alive or recreate
-        ensure_terminal_session(ip, terminal_sessions)
-        _terminal_open_by_sid.setdefault(request.sid, set()).add(ip)
+        # This connection's own shell, and output to this connection only:
+        # each Socket.IO connection is a room of its own.
+        ensure_terminal_session(ip, terminal_sessions, key=key)
+        _terminal_open_by_sid.setdefault(me, set()).add(ip)
         _terminal_audit("opened", ip)
-        start_terminal_reader(ip, terminal_sessions, socketio)
+        start_terminal_reader(ip, terminal_sessions, socketio, key=key, room=me)
 
         socketio.emit(
-            "terminal_output", {"output": f"\r\n[connected to {ip}]\r\n"}, room=ip
+            "terminal_output", {"output": f"\r\n[connected to {ip}]\r\n"}, room=me
         )
     except Exception as e:
-        if ip not in _terminal_open_by_sid.get(request.sid, set()):
+        if ip not in _terminal_open_by_sid.get(me, set()):
             _terminal_audit("open_failed", ip, reason=type(e).__name__)
         socketio.emit(
-            "terminal_output", {"output": f"\r\n[terminal error: {e}]\r\n"}, room=ip
+            "terminal_output", {"output": f"\r\n[terminal error: {e}]\r\n"}, room=me
         )
 
 
@@ -522,25 +545,27 @@ def socket_terminal_input(data):
     raw = data.get("input", "")
     if not ip:
         return
+    key = _term_key(ip)
     try:
-        sess = terminal_sessions.get(ip)
+        sess = terminal_sessions.get(key)
         if not sess:
-            ensure_terminal_session(ip, terminal_sessions)
-            sess = terminal_sessions.get(ip)
+            ensure_terminal_session(ip, terminal_sessions, key=key)
+            sess = terminal_sessions.get(key)
         if raw and sess and sess.get("chan"):
             sess["chan"].sendall(raw)
     except Exception as e:
         socketio.emit(
-            "terminal_output", {"output": f"\r\n[input error: {e}]\r\n"}, room=ip
+            "terminal_output", {"output": f"\r\n[input error: {e}]\r\n"},
+            room=request.sid
         )
 
 
 @socketio.on("disconnect")
 def socket_disconnected(*_args):
-    """A closed tab or a dropped connection: record the close of every
-    terminal this connection had open. The shell itself is left as it was
-    (it is shared by device, see register D12), so only the record changes."""
+    """A closed tab or a dropped connection: close THIS connection's shells
+    and record each close. Nobody else's shell is touched (D12)."""
     for ip in sorted(_terminal_open_by_sid.pop(request.sid, set())):
+        _close_shell(_term_key(ip))
         _terminal_audit("closed", ip, reason="browser disconnected")
 
 
@@ -550,21 +575,10 @@ def socket_disconnect_terminal(data):
     if ip in _terminal_open_by_sid.get(request.sid, set()):
         _terminal_open_by_sid[request.sid].discard(ip)
         _terminal_audit("closed", ip, reason="closed from the page")
-    try:
-        leave_room(ip)
-    except Exception:
-        pass
-    sess = terminal_sessions.pop(ip, None)
-    if sess:
-        try:
-            if sess.get("chan"):
-                sess["chan"].close()
-            if sess.get("ssh"):
-                sess["ssh"].close()
-        except Exception:
-            pass
+    _close_shell(_term_key(ip))
     socketio.emit(
-        "terminal_output", {"output": f"\r\n[disconnected from {ip}]\r\n"}, room=ip
+        "terminal_output", {"output": f"\r\n[disconnected from {ip}]\r\n"},
+        room=request.sid
     )
 
 
@@ -1091,17 +1105,10 @@ def delete_device(ip):
         device_module.delete_device(ip, current_list_file)
         # Also close any persistent connection for this IP (status-only pool)
         close_persistent_connection(ip, connections, lock)
-        # Close any live terminal session (Paramiko)
-        sess = terminal_sessions.get(ip)
-        if sess:
-            try:
-                if sess.get("chan"):
-                    sess["chan"].close()
-                if sess.get("ssh"):
-                    sess["ssh"].close()
-            except Exception as e:
-                app.logger.warning(f'Error closing terminal session for {ip}: {e}')
-            terminal_sessions.pop(ip, None)
+        # Close EVERY connection's shell to this device: it is leaving the
+        # inventory (shells are per connection since D12).
+        for key in [k for k in list(terminal_sessions) if k.endswith(f"|{ip}")]:
+            _close_shell(key)
         # Purge the deleted device from the cached topologies so it stops
         # appearing in the topology map without needing a full rediscovery.
         try:
@@ -1849,22 +1856,6 @@ def delete_quick_action():
     return jsonify({"status": "success"})
 
 
-# Disconnect persistent session when leaving device page (only terminal)
-@app.route("/disconnect/<ip>", methods=["POST"])
-def disconnect(ip):
-    # Close the live terminal session for the device
-    # Only close the live terminal session
-    sess = terminal_sessions.get(ip)
-    if sess:
-        try:
-            if sess.get("chan"):
-                sess["chan"].close()
-            if sess.get("ssh"):
-                sess["ssh"].close()
-        except Exception:
-            pass
-        terminal_sessions.pop(ip, None)
-    return jsonify({"status": "disconnected"})
 
 
 @app.route("/connection_status/<ip>")

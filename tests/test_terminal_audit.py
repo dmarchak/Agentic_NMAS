@@ -24,7 +24,7 @@ def term(monkeypatch, tmp_path):
     monkeypatch.setattr(C, "DATA_DIR", str(tmp_path))
     opened = []
     monkeypatch.setattr(A, "ensure_terminal_session",
-                        lambda ip, sessions: opened.append(ip))
+                        lambda ip, sessions, key="": opened.append(ip))
     monkeypatch.setattr(A, "start_terminal_reader", lambda *a, **k: None)
     monkeypatch.setattr(A, "get_current_device_list", lambda: ("Lab", "x.csv"))
     monkeypatch.setattr(A, "load_saved_devices",
@@ -96,7 +96,7 @@ def test_a_refused_attempt_is_recorded_and_opens_nothing(term):
 def test_a_failed_open_is_recorded_with_its_cause_class(term, monkeypatch):
     import app as A
 
-    def _fail(ip, sessions):
+    def _fail(ip, sessions, key=""):
         raise RuntimeError("Authentication failed for 192.0.2.21")
     monkeypatch.setattr(A, "ensure_terminal_session", _fail)
     term["client"].emit("connect_terminal", {"ip": "192.0.2.21"})
@@ -137,3 +137,80 @@ def test_the_secret_storage_checker_knows_the_file():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     src = open(os.path.join(here, "scripts", "nmas-check-secret-storage"), encoding="utf-8").read()
     assert '("terminal_audit.jsonl", "no-secret")' in src
+
+
+
+# ---------------------------------------------------------------------------
+# Register D12: a shell per CONNECTION, never per device
+# ---------------------------------------------------------------------------
+
+class _Chan:
+    def __init__(self):
+        self.sent, self.closed = [], False
+
+    def sendall(self, data):
+        self.sent.append(data)
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def two(monkeypatch, tmp_path):
+    """Two people with the same device's terminal open."""
+    import app as A
+    import modules.config as C
+    monkeypatch.setattr(C, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(A, "start_terminal_reader", lambda *a, **k: None)
+    monkeypatch.setattr(A, "get_current_device_list", lambda: ("Lab", "x.csv"))
+    monkeypatch.setattr(A, "load_saved_devices", lambda p: [])
+    chans = {}
+
+    def _ensure(ip, sessions, key=""):
+        chans[key] = sessions[key] = {"chan": _Chan(), "ssh": _Chan()}
+    monkeypatch.setattr(A, "ensure_terminal_session", _ensure)
+    monkeypatch.setattr(A, "terminal_sessions", {})
+    a, b = A.socketio.test_client(A.app), A.socketio.test_client(A.app)
+    a.emit("connect_terminal", {"ip": "192.0.2.21"})
+    b.emit("connect_terminal", {"ip": "192.0.2.21"})
+    return {"a": a, "b": b, "chans": chans, "A": A, "path": tmp_path / "terminal_audit.jsonl"}
+
+
+def test_two_connections_get_two_shells(two):
+    assert len(two["chans"]) == 2, two["chans"].keys()
+    assert all(k.endswith("|192.0.2.21") for k in two["chans"])
+
+
+def test_what_one_types_reaches_only_their_own_shell(two):
+    two["a"].emit("terminal_input", {"ip": "192.0.2.21", "input": "show clock\r"})
+    sent = {k: c["chan"].sent for k, c in two["chans"].items()}
+    assert sorted(len(v) for v in sent.values()) == [0, 1], sent
+
+
+def test_one_closing_leaves_the_other_open(two):
+    two["a"].emit("disconnect_terminal", {"ip": "192.0.2.21"})
+    open_ = [k for k, c in two["chans"].items() if not c["chan"].closed]
+    assert len(open_) == 1
+    assert list(two["A"].terminal_sessions) == open_
+
+
+def test_a_closed_tab_closes_only_that_connections_shell(two):
+    two["b"].disconnect()
+    assert sorted(c["chan"].closed for c in two["chans"].values()) == [False, True]
+
+
+def test_the_record_has_one_row_per_connection(two):
+    rows = [json.loads(l) for l in two["path"].read_text().splitlines()]
+    opened = [r for r in rows if r["event"] == "opened"]
+    assert len(opened) == 2 and len({r["session"] for r in opened}) == 2
+
+
+def test_output_goes_to_the_owning_connection_only():
+    """The reader emits to the room it is given: the owning connection's."""
+    import inspect
+    from modules import terminal
+    src = inspect.getsource(terminal.start_terminal_reader)
+    assert "room=room" in src and "room=ip" not in src
+    import app as A
+    handler = inspect.getsource(A.socket_connect_terminal)
+    assert "room=me" in handler and "join_room" not in handler

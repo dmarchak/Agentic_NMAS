@@ -21,18 +21,25 @@ from modules.config import SSH_PORT, SSH_TIMEOUT
 logger = logging.getLogger(__name__)
 
 
-def ensure_terminal_session(ip: str, terminal_sessions: dict) -> paramiko.Channel:
-    """Ensures a live Paramiko SSH session/channel exists for the device IP."""
+def ensure_terminal_session(ip: str, terminal_sessions: dict,
+                            key: str = "") -> paramiko.Channel:
+    """Ensures a live Paramiko SSH session/channel exists for *key*.
+
+    *key* identifies ONE connection's shell (the caller passes
+    ``"<socket sid>|<ip>"``, register D12); it defaults to the address for a
+    caller that has no connection.
+    """
+    key = key or ip
     # Reuse an existing channel if present and healthy; otherwise create
     # a new Paramiko SSH connection and shell channel and store it in
     # the `terminal_sessions` mapping for later reuse (and cleanup).
-    sess = terminal_sessions.get(ip)
+    sess = terminal_sessions.get(key)
     if sess and sess.get("chan") and not sess["chan"].closed:
         logger.debug(f"Reusing existing terminal session for {ip}")
         return sess["chan"]
 
     # Clean up any stale session
-    terminal_sessions.pop(ip, None)
+    terminal_sessions.pop(key, None)
 
     # Get the current device list file and load devices from it
     _, current_list_file = get_current_device_list()
@@ -78,7 +85,7 @@ def ensure_terminal_session(ip: str, terminal_sessions: dict) -> paramiko.Channe
 
     chan = ssh.invoke_shell()
     chan.setblocking(0)
-    terminal_sessions[ip] = {"ssh": ssh, "chan": chan, "reader_running": False}
+    terminal_sessions[key] = {"ssh": ssh, "chan": chan, "reader_running": False}
 
     # Send, READ, decide (register B13). This used to send `enable`, the
     # secret and a newline on fixed 0.3 s sleeps without reading anything, so
@@ -88,7 +95,7 @@ def ensure_terminal_session(ip: str, terminal_sessions: dict) -> paramiko.Channe
     # host. The stored secret is the login password, so every terminal ever
     # opened put the device's login credential on screen.
     preamble, outcome = privilege_step(chan, enable_secret)
-    terminal_sessions[ip]["preamble"] = preamble
+    terminal_sessions[key]["preamble"] = preamble
     logger.info("Terminal session ready for %s (privilege: %s)", ip, outcome)
     return chan
 
@@ -169,9 +176,13 @@ def privilege_step(chan, enable_secret: str, timeout: float = 10.0) -> tuple:
                   else "secret_not_accepted")
 
 
-def start_terminal_reader(ip: str, terminal_sessions: dict, socketio: SocketIO) -> None:
-    """Starts a background thread to read device terminal output and emit to Socket.IO client."""
-    sess = terminal_sessions.get(ip)
+def start_terminal_reader(ip: str, terminal_sessions: dict, socketio: SocketIO,
+                          key: str = "", room: str = "") -> None:
+    """Starts a background thread reading ONE shell's output and emitting it to
+    ONE room: the connection that owns the shell (D12). Both default to the
+    address for a caller with no connection."""
+    room = room or ip
+    sess = terminal_sessions.get(key or ip)
     if not sess or not sess.get("chan"):
         return
     if sess.get("reader_running") and not sess["chan"].closed:
@@ -184,7 +195,7 @@ def start_terminal_reader(ip: str, terminal_sessions: dict, socketio: SocketIO) 
         # session; without this the browser would open on a blank screen.
         preamble = sess.pop("preamble", "")
         if preamble:
-            socketio.emit("terminal_output", {"output": preamble}, room=ip)
+            socketio.emit("terminal_output", {"output": preamble}, room=room)
         while not chan.closed:
             try:
                 if chan.recv_ready():
@@ -192,7 +203,7 @@ def start_terminal_reader(ip: str, terminal_sessions: dict, socketio: SocketIO) 
                     # Emit data read from the remote shell to any clients
                     # currently subscribed to the terminal room; clients
                     # handle streaming output in the browser UI.
-                    socketio.emit("terminal_output", {"output": data}, room=ip)
+                    socketio.emit("terminal_output", {"output": data}, room=room)
                 time.sleep(0.05)
             except Exception:
                 logger.exception("Terminal reader error for %s", ip)

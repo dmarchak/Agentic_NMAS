@@ -26,7 +26,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MUTATING_FLOOR = 122     # 131 measured; steps 2-3 cut ten; B16 made run_command a POST
+MUTATING_FLOOR = 121     # 131 measured; steps 2-3 cut ten; B16 +1; D12 removed /disconnect
 
 
 def _app():
@@ -253,7 +253,7 @@ class TestTheTerminal:
         import app as A
         opened = []
         monkeypatch.setattr(A, "ensure_terminal_session",
-                            lambda ip, sessions: opened.append(ip))
+                            lambda ip, sessions, key="": opened.append(ip))
         monkeypatch.setattr(A, "start_terminal_reader", lambda *a, **k: None)
         return A.socketio.test_client(A.app), opened
 

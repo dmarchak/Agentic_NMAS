@@ -200,7 +200,6 @@ GATES = {
     "backup_config": _g(N, "reads a device into a new local backup"),
     "compare_backups_route": _g(N, "compares two backups"),
     "refresh_files": _g(N, "lists a device's flash"),
-    "disconnect": _g(N, "closes a pooled session"),
     "discover_subnet": _g(N, "probes a subnet and writes nothing; adding what it finds is gated"),
     "monitoring_snmp_poll": _g(N, "an SNMP read"),
     "jenkins_run": _g(N, "runs verification checks, which read (P.4 removes it)"),

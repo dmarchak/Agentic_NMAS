@@ -1439,6 +1439,18 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   - the restore preview iterated the ref, not the inventory (C23);
   - the gate table was keyed on the HTTP method, not on reaching a device
     (B16).
+
+  **The corollary (the operator's): a proxy population is a dependency on
+  something staying true that nobody is watching.** Every member was correct
+  WHEN WRITTEN and stopped being correct when something else moved:
+  - the golden store stopped being written to;
+  - NetBox gained assignments;
+  - onboarding started adding devices;
+  - baselines aged past the inventory;
+  - a GET route started changing a device.
+
+  So the sixth is found by listing what each population ASSUMES stays true,
+  and asking what would move it.
 - **A CHECK OF THE CODE IS NOT A CHECK OF THE INSTALL** (register C28).
   `discover_empty_default_guards()` derived, from the code, every setting
   whose emptiness silently switches off a guard, and only tests called it. So
@@ -4401,7 +4413,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **29 open at 2026-09-26**, counted from the rows: 24 recorded only in
+present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
