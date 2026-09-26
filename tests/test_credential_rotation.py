@@ -2460,6 +2460,56 @@ class TestTheOnboardingParameterisationGoesBothWays:
         assert "username admin" in out["capture"]
 
 
+class TestARotatedDeviceCanBeRotatedAgain:
+    """Register B13, 2026-09-26. `not_already_type_9` refused every ROTATION of
+    a device already holding `secret 9`, and after Stage 2 that is every
+    device, so the path that retires an exposed credential worked once per
+    device, ever. Found while s1's password was exposed. A rotation changes a
+    credential already in the right form; nothing about that state is a
+    reason to refuse it."""
+
+    @staticmethod
+    def _preflight(monkeypatch, kind_line):
+        from modules.nsot import credential_rotation as cr
+
+        monkeypatch.setattr("modules.config.LISTS_DIR", "/tmp/nmas-nonexistent")
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda p: [])
+        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
+        monkeypatch.setattr(cr, "live_user_line",
+                            lambda dev, user: {"ok": True, "line": kind_line,
+                                               "kind": cr.entry_kind(kind_line)})
+        return cr.preflight("probe", "s1",
+                            device={"ip": "203.0.113.21", "hostname": "s1",
+                                    "username": "admin"},
+                            capture=f"hostname s1\n{kind_line}\n!\nend\n")
+
+    @staticmethod
+    def _failing(out):
+        return sorted(c["name"] for c in out["checks"] if not c["ok"])
+
+    def test_the_credential_form_changes_no_check(self, monkeypatch):
+        """The fixture has no manifest, so `identity_in_manifest` fails for
+        BOTH forms. What matters is that the form adds no refusal: a type-9
+        line and a password line produce the identical set."""
+        hashed = self._preflight(
+            monkeypatch, "username admin privilege 15 secret 9 $9$saltsalt$hashhash")
+        plain = self._preflight(
+            monkeypatch, "username admin privilege 15 password 0 boot")
+        assert self._failing(hashed) == self._failing(plain) == ["identity_in_manifest"], (
+            self._failing(hashed), self._failing(plain))
+        assert hashed["already_hashed"] is True, "the fact is still recorded"
+        assert plain["already_hashed"] is False
+
+    def test_its_program_is_the_single_measured_command(self, monkeypatch):
+        from modules.nsot import credential_rotation as cr
+        line = "username admin privilege 15 secret 9 $9$saltsalt$hashhash"
+        out = self._preflight(monkeypatch, line)
+        program = cr.masked_commands("admin", out["privilege"], out["entry_kind"]
+                                     if "entry_kind" in out else cr.entry_kind(line))
+        assert program == ["username admin privilege 15 algorithm-type scrypt "
+                           "secret <generated>"], program
+
+
 class TestSelfConfirmationAtItsOwnSite:
     """**`SELF_CONFIRMED`, tested where `rotate()` reads it.**
 

@@ -9,9 +9,10 @@ the channel and emits data to the SocketIO room for that device IP, feeding the
 xterm.js terminal in the browser in real time.
 """
 
-import time
-import threading
 import logging
+import re
+import threading
+import time
 import paramiko
 from flask_socketio import SocketIO
 from modules.device import decrypt_field, load_saved_devices, get_current_device_list
@@ -41,7 +42,13 @@ def ensure_terminal_session(ip: str, terminal_sessions: dict) -> paramiko.Channe
 
     username = dev["username"]
     password = decrypt_field(dev["password"])
-    secret = decrypt_field(dev["secret"])
+    # Netmiko's semantics: the enable secret, or the login password when none
+    # is stored. It is sent ONLY in answer to a password prompt (below).
+    try:
+        secret = decrypt_field(dev["secret"]) if dev.get("secret") else ""
+    except Exception:                                  # noqa: BLE001
+        secret = ""
+    enable_secret = secret or password
 
     logger.info(f"Creating new terminal session for {ip} (user: {username})")
 
@@ -73,15 +80,93 @@ def ensure_terminal_session(ip: str, terminal_sessions: dict) -> paramiko.Channe
     chan.setblocking(0)
     terminal_sessions[ip] = {"ssh": ssh, "chan": chan, "reader_running": False}
 
-    # Send enable command and secret
-    chan.send("enable\n")
-    time.sleep(0.3)
-    chan.send(secret + "\n")
-    time.sleep(0.3)
-    chan.send("\n")
-
-    logger.info(f"Terminal session ready for {ip}")
+    # Send, READ, decide (register B13). This used to send `enable`, the
+    # secret and a newline on fixed 0.3 s sleeps without reading anything, so
+    # on a device already at `#` (every device here: no enable secret is
+    # configured and a privilege-15 user lands privileged) the secret arrived
+    # as a COMMAND, was echoed to the browser, and was rejected as an unknown
+    # host. The stored secret is the login password, so every terminal ever
+    # opened put the device's login credential on screen.
+    preamble, outcome = privilege_step(chan, enable_secret)
+    terminal_sessions[ip]["preamble"] = preamble
+    logger.info("Terminal session ready for %s (privilege: %s)", ip, outcome)
     return chan
+
+
+#: The last line of the buffer, as IOS draws a prompt: `s1>`, `r1#`,
+#: `r1(config)#`. Anchored to the WHOLE last line: a banner can contain `#`.
+_PROMPT = re.compile(r"^[\w.\-/:()]+([>#])\s*$")
+_PASSWORD_PROMPT = re.compile(r"(?i)password:\s*$")
+
+
+def _last_line(text: str) -> str:
+    lines = text.replace("\r", "\n").rstrip().split("\n")
+    return lines[-1].strip() if lines else ""
+
+
+def _read_until(chan, want, timeout: float) -> tuple:
+    """Read until *want* (a function of the last line) is true, or time out.
+
+    Returns (text, matched). Reads as it goes, so a slow device is waited for
+    and a fast one is not: the fixed sleeps this replaced were a guess about a
+    network.
+    """
+    buf, deadline = "", time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if chan.recv_ready():
+            buf += chan.recv(4096).decode("utf-8", errors="ignore")
+            if want(_last_line(buf)):
+                return buf, True
+        else:
+            time.sleep(0.05)
+    return buf, False
+
+
+def privilege_step(chan, enable_secret: str, timeout: float = 10.0) -> tuple:
+    """Bring the shell to privileged EXEC, sending the secret ONLY if asked.
+
+    Returns (everything read, outcome). Outcomes, all safe to log:
+
+    - ``already_privileged``: a `#` prompt; NOTHING is sent;
+    - ``enabled_without_prompt``: `enable` was sent and `#` came back;
+    - ``enabled_with_secret``: a password prompt came back and the secret was
+      sent, once;
+    - ``secret_not_accepted``: sent once, and the device did not reach `#`;
+      nothing more is sent, and the person sees the device's answer;
+    - ``prompt_not_seen`` / ``enable_unanswered``: no recognisable prompt;
+      nothing more is sent.
+
+    The secret is never sent in any other state. A device that does not ask
+    for it does not receive it.
+    """
+    is_prompt = lambda line: bool(_PROMPT.match(line))
+    text, ok = _read_until(chan, is_prompt, timeout)
+    if not ok:
+        return text, "prompt_not_seen"
+    if _PROMPT.match(_last_line(text)).group(1) == "#":
+        return text, "already_privileged"
+
+    chan.send("enable\n")
+    more, ok = _read_until(
+        chan, lambda line: bool(_PASSWORD_PROMPT.search(line) or _PROMPT.match(line)),
+        timeout)
+    text += more
+    if not ok:
+        return text, "enable_unanswered"
+    last = _last_line(more)
+    if not _PASSWORD_PROMPT.search(last):
+        m = _PROMPT.match(last)
+        return text, ("enabled_without_prompt" if m and m.group(1) == "#"
+                      else "enable_unanswered")
+
+    chan.send(enable_secret + "\n")
+    more, ok = _read_until(
+        chan, lambda line: bool(_PASSWORD_PROMPT.search(line) or _PROMPT.match(line)),
+        timeout)
+    text += more
+    m = _PROMPT.match(_last_line(more)) if ok else None
+    return text, ("enabled_with_secret" if m and m.group(1) == "#"
+                  else "secret_not_accepted")
 
 
 def start_terminal_reader(ip: str, terminal_sessions: dict, socketio: SocketIO) -> None:
@@ -95,6 +180,11 @@ def start_terminal_reader(ip: str, terminal_sessions: dict, socketio: SocketIO) 
 
     def reader_loop():
         chan = sess["chan"]
+        # What the privilege step read (banner, prompt) is the start of the
+        # session; without this the browser would open on a blank screen.
+        preamble = sess.pop("preamble", "")
+        if preamble:
+            socketio.emit("terminal_output", {"output": preamble}, room=ip)
         while not chan.closed:
             try:
                 if chan.recv_ready():

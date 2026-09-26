@@ -1005,10 +1005,19 @@ def preflight(list_name: str, hostname: str, *, device: dict = None,
         import re
         m = re.search(r"privilege\s+(\d+)", line)
         out["privilege"] = m.group(1) if m else ""
+        # A FACT about the current form, shown on the confirm screen. It is
+        # NOT a refusal. It used to be (`not_already_type_9`), which stopped
+        # re-running the password -> type-9 MIGRATION and also stopped every
+        # ROTATION: after Stage 2 every device holds `secret 9`, so the path
+        # that retires an exposed credential worked exactly once per device.
+        # Found 2026-09-26 while s1's password was exposed (register B13). A
+        # rotation changes a credential that is already in the right form;
+        # `rotation_commands()` sends the one-command program for it, measured
+        # on vIOS-L2 15.2 (a secret over a secret replaces cleanly).
+        # CLAUDE.md, "a gate keyed on something that moves for reasons
+        # unrelated to what it protects", fourth instance.
         out["already_hashed"] = bool(
             re.search(r"\bsecret\s+9\s", line))
-        _check("not_already_type_9", not out["already_hashed"],
-               "already a type-9 secret" if out["already_hashed"] else "")
 
     out["ok"] = all(c["ok"] for c in out["checks"])
     return out
