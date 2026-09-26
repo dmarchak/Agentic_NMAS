@@ -78,6 +78,9 @@ Status: **open** unless stated. Last reviewed 2026-09-25.
 |---|---|---|---|
 | D1 | **`domain` is read by `_plan_args()` and no form sends it.** Recorded as *a gap under exemption* by `test_server_reads_nothing_the_form_cannot_send.py` rather than a clean pass — unlike `secret` and `source_kind`, there is no reason a person could not set it. | build | CLAUDE.md, *"the server may read nothing the form cannot send"* |
 | D2 | **Whether a never-reached device should bind to a template is undecided.** Binding on the manifest entry is what makes the approval gate notice its population changed; it also takes a platform's deploy path offline until phase 2 completes. A test pins current behaviour so a change is a decision rather than a discovery. | decide | CLAUDE.md, *"Onboarding revokes its platform's template approval at CREATE"* |
+| D4 | **The deploy wizard shows the operator the DIFF, not the PROGRAM that the confirm hash covers, and it cannot deploy a dangerous line.** Measured in `static/js/gen/partials__deploy_wizard.1.js` (2026-09-26): `_deviceCard` draws `to_add` ("Will add"), the diff's leaves, never `commands`, which is the exact program with its ancestor chains and `exit`s that `command_hash` covers. It never draws `dangerous` or the `attribution` split (this edit vs pre-existing), and it never sends `authorise` (the requests carry `{devices}` and `{confirmations, command_hashes}` only). So the deploy path's central claim, *what the operator confirms is what is sent, byte for byte*, holds for the WIRE (the hash) and not for the SCREEN: every GUI deploy so far, P.1's and the branch site's included, was confirmed against a different rendering of the program. And any program containing `shutdown`, `no ip address` and the like is undeployable from the GUI, because the authorisation cannot be supplied. Section 1.3 of the Stage 7 doc lists all three as required. | build | this file, 2026-09-26 (task inventory) |
+| D5 | **Two GUI buttons push a golden config through the UNGUARDED line-by-line replay.** `POST /device/<ip>/restore_golden_config` (app.py:1687; the device page's form, `device.html:58`) and `POST /bulk_restore_golden_config` (app.py:4484; the bulk-ops button, `index.1.js:596`). Neither has a confirm hash, a merge-only check or PipelineRunner. The bulk docstring says so: "Same source as the AI restore_golden_config tool — pushes line-by-line via SSH". CLAUDE.md records only the AI tool as the unguarded fourth push path, and the approval queue's copy was removed. These are the same mechanism, one click from the operator, while the GUARDED single-device restore (`/golden/restore/preview` with `devices`) has no button at all. Replace, do not merely remove: the task (restore one device to its golden) is real. | build | this file, 2026-09-26 (task inventory) |
+| D6 | **`/configure/apply`'s docstring promises guards its body does not have.** It lists "Safety check — block genuinely dangerous commands", "Pre-backup" and "Golden config — saved immediately"; the body (app.py:4760-4964) contains none of them. It sends `configure terminal … end` and `write memory`, and triggers Jenkins after the push only when Jenkins is configured. A reader deciding whether the quick path is safe to keep would be told it is guarded. Stage 7's open question on `/configure/apply` must be decided against the code, not the docstring. | decide | this file, 2026-09-26 (Jenkins audit) |
 
 ## E. In the plan, but in no stage
 
@@ -94,13 +97,13 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
-**26 open** (counted from the rows, 2026-09-26): 22 recorded only in prose
-(A2–D2, with A4, B8, B9, B10, B11, C6–C10, C12–C14 and C17 added the same day; B4, B5, B6, B7, D3, C11, C15, C16, C18, C19, C20, C21 and C22 added and closed; C1 closed as not reproduced), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
+**29 open** (counted from the rows, 2026-09-26): 25 recorded only in prose
+(A2–D2, with A4, B8, B9, B10, B11, C6–C10, D4–D6, C12–C14 and C17 added the same day; B4, B5, B6, B7, D3, C11, C15, C16, C18, C19, C20, C21 and C22 added and closed; C1 closed as not reproduced), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
 tail). The previous figure, 15, was **off by one**: it was produced by
 adjusting an earlier count rather than counting rows, and the rows then held
 16. C5 is scheduled (6.5); A1 is closed by P.2, and C3 and C4 are closed.
 
-By kind, counted from the Kind column: **16 build**, **3 decide-then-build**, **4 decide**, **1 verify**, **2 operator's steps**. (The previous line said 15 build, which summed to 25 against 24 rows. It was adjusted rather than counted, the same error as the total's.)
+By kind, counted from the Kind column: **18 build**, **3 decide-then-build**, **5 decide**, **1 verify**, **2 operator's steps**. (The previous line said 15 build, which summed to 25 against 24 rows. It was adjusted rather than counted, the same error as the total's.)
 
 None of them blocks Stage 7 — the per-stage scope and the ordering
 constraints are in [NSOT_PLAN.md](NSOT_PLAN.md), *Scope of what remains*,

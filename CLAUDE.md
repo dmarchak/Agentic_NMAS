@@ -4273,7 +4273,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **26 open at 2026-09-26**, counted from the rows: 22 recorded only in
+present when each was recorded. **29 open at 2026-09-26**, counted from the rows: 25 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
@@ -4312,6 +4312,7 @@ design so the tool library describes a finished system.
   layer — not because anything checks what the agent may do. Stage 8.3 makes
   the allowlist real in code (no credential rotation, no template approval,
   no remote push, no baseline re-apply, no deploy apply).
+- **The unguarded golden replay is reachable from TWO GUI buttons, not only the AI** (register D5): `/device/<ip>/restore_golden_config` (device page) and `/bulk_restore_golden_config` (bulk ops) are the same line-by-line push.
 - **`restore_golden_config` is a fourth config-push path**: whole golden
   replayed in config mode with no confirm hash, no merge-only check, no ASCII
   guard, no dangerous-line authorisation, no snapshot, no rollback, no

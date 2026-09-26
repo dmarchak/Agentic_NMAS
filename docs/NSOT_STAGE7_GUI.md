@@ -1047,7 +1047,16 @@ here starts before Stage 6 closes.
 
 **Re-measured first** (`app.url_map`, which is the only authority for a
 blueprint route's full path): **226 routes, 131 with a mutating method; 54
-unreachable** by section 1.2's method, up from 48 on 2026-09-23. **The list
+unreachable** by section 1.2's method, up from 48 on 2026-09-23. **That
+method is wrong in BOTH directions** (task inventory, 2026-09-26). It
+searched for literal path stems, so it counts as unreachable four routes that
+`device.html` reaches through `url_for` (`/add_quick_action`,
+`/delete_quick_action`, `/run_script/<ip>`, `/connection_status/<ip>`). It
+misses routes whose stem appears only as the prefix of a sibling
+(`/templatize/committed/<h>/revert`). It cannot see fields a page never
+sends (`authorise` on `/deploy/*`, `?reveal=1`). **So 54 is not the ceiling.**
+7.0's own measurement (url_for-aware, boundary-anchored, per method where
+a path mixes a read and a write) sets it. **The list
 grew by six with nothing to stop it growing**, which is why this step comes
 first. The six: `/clab/sync_targets` and `/freshness/gate` (which have
 SCRIPT callers, the clab-sync sanitiser), `/freshness/authorise`,
