@@ -182,6 +182,12 @@ def commit_configs(list_name: str, message: str, pipeline_name: str) -> Optional
     repo = _repo_dir(list_name)
     init_config_repo(list_name)
 
+    # WHO, and how that was established (D10): the Git tab's commits named
+    # nobody. The route is gated `approve`, so the actor is the verified one.
+    from modules.identity import request_actor
+    from modules.nsot.repo import with_actor_verification
+    message = with_actor_verification(
+        f"{message.rstrip()}\n\nSource: manual\nActor: {request_actor()}\n")
     rc, _, err = _git(repo, "commit", "-m", message)
     if rc != 0:
         log.error("config_git: commit failed: %s", err)

@@ -138,8 +138,29 @@ def ensure_repo_hygiene(repo: str) -> None:
     _ensure_gitignore(repo, list(GITIGNORE_RULES))
 
 
+def with_actor_verification(message: str) -> str:
+    """Add ``Actor-Verified:`` to a commit message that names an ``Actor:``.
+
+    Every NSoT commit goes through :func:`git`, so the trailer is added HERE,
+    once, rather than at each of the places a message is built: a writer that
+    forgets it is the population-by-proxy failure all over again (D10, P.3
+    step 10). A message that already says, or names no actor, is unchanged.
+    """
+    import re as _re
+    m = _re.search(r"^Actor: (.+)$", message or "", _re.M)
+    if not m or "\nActor-Verified:" in message:
+        return message
+    from modules.identity import actor_verification
+    line = f"Actor-Verified: {actor_verification(m.group(1).strip())}"
+    return message + (line + "\n" if message.endswith("\n") else "\n" + line)
+
+
 def git(repo: str, *args) -> tuple:
     """Run a git command in *repo*. Returns ``(rc, stdout, stderr)``."""
+    if "commit" in args and "-m" in args:
+        i = args.index("-m")
+        if i + 1 < len(args):
+            args = args[:i + 1] + (with_actor_verification(args[i + 1]),) + args[i + 2:]
     _clear_stale_lock(repo)
     ensure_repo_hygiene(repo)
     try:

@@ -371,6 +371,32 @@ GATED_ACTIONS = ("reveal", "approve", "confirm", "publish_remote",
                  "configure", "break_glass")
 
 
+def actor_verification(actor: str) -> str:
+    """How *actor* on a commit was established (register D10, P.3 step 10).
+
+    - ``access``: inside a request whose gate VERIFIED this same actor;
+    - ``host-shell``: a CLI on the host, where SSH to the host is the
+      authentication (the process never installed the gate);
+    - ``none``: anything else, including the app's background threads and a
+      request whose recorded actor is not the one the gate verified.
+
+    Decided by what the code knows at the moment of the commit, never by date:
+    the host ran old code after c5a34c1 was pushed, so a commit's date does not
+    say which code wrote it.
+    """
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            ident = getattr(g, "nmas_identity", None)
+            ok = (ident is not None and ident.is_identified and actor
+                  and actor != UNAUTHENTICATED and ident.actor == actor)
+            return "access" if ok else "none"
+    except Exception:                                   # noqa: BLE001
+        return "none"
+    from modules import route_gates
+    return "none" if route_gates.installed() else "host-shell"
+
+
 def request_actor() -> str:
     """The VERIFIED actor of the current request, never one the client named.
 

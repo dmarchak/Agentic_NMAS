@@ -303,5 +303,17 @@ def socket_gated(event: str):
     return wrap
 
 
+#: True once the gate is installed on an app, i.e. in the APP process. A CLI
+#: on the host never installs it, which is how `identity.actor_verification`
+#: tells a host shell from the app's own background threads.
+_installed = False
+
+
+def installed() -> bool:
+    return _installed
+
+
 def install(app) -> None:
+    global _installed
     app.before_request(enforce)
+    _installed = True

@@ -320,6 +320,13 @@ tools refuse to act on it, and its pooled SSH session is closed.
   enum would have to be edited before any new workflow could commit. The
   first repair commit carries `Actor: description-repair` and predates this;
   it is left alone, and is why the convention is written down.
+- **`Actor-Verified:` says how the `Actor:` was established** (D10, P.3 step
+  10): `access` (a request whose gate verified that same actor), `host-shell`
+  (a CLI on the host) or `none`. It is written in ONE place, `repo.git()`,
+  for any message carrying `Actor:`, so no writer has to remember it. It is
+  decided by the code at the moment of the commit, never by date: the host
+  ran old code after `c5a34c1` was pushed. A commit without it predates P.3,
+  and its `Actor:` is a claim.
 - **Identity, not filename.** The manifest keys on `nb:<netbox_id>` or
   `uid:<uuid4>`. A rename is a `git mv` committed **alone**, which is what keeps
   `git log --follow` working across it.
@@ -941,6 +948,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_p3_agent_tools.py` | P.3 step 8: 24 tools gone from the list and the dispatch; the `execute_*` tools refuse everything but read-only verbs, before connecting; no reply is auto-answered |
 | `test_credential_single_copy.py` | P.3 step 11 (B14): an empty secret falls back to the password; rotation writes no copy; break-glass reports only a distinct enable secret; the dedupe script's dry run writes nothing, prints no value, and refuses an unparseable store |
 | `test_rotation_reports_the_boot_file.py` | P.3 step 12 (B15): success is the checker's SAFE verdict from one shared function; a broken sync stage is named and never success; the message leads with the danger; every outcome is recorded (never a credential) and a not-SAFE rotation is a job-health row until a later persist reads SAFE; the sync script has one owner |
+| `test_actor_verified_trailer.py` | P.3 step 10 (D10): `access` only for the actor the gate verified, `host-shell` for a CLI, `none` for the app's threads; written once at `repo.git()`; every git commit in the tree goes through it or is named; a gated route in the real app commits `access` |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1487,6 +1495,14 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   a control is valid only when the failures are the tests aimed at the
   property, and a count far above that is the tell. Redo it as the smallest
   change that removes the property and leaves the code running.
+- **Restore a control's mutation from a COPY of the file, never from
+  git.** A control harness ran `git checkout -- <file>` after each mutation,
+  and the files held the step's own uncommitted work: all five reverted to
+  HEAD (P.3 step 10, 2026-09-26). The work was recovered from the session
+  transcript, which showed nothing else had touched those files since the
+  last commit. `cp` to scratch before the mutation, `cp` back after it. `git
+  checkout` is a restore only when the file's committed state IS the state
+  you want.
 - **A dangerous line and its authorisation are STRIPPED strings; the program
   keeps its indentation** (P.3 step 4). `dangerous_in()` returns `shutdown`
   where `commands` holds ` shutdown`, and the server strips each

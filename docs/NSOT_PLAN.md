@@ -2991,6 +2991,36 @@ one NMAS uses (register B17).
     for 95% of the history, and a muted style alone would not say that. It is
     a denominator, as drift's *"checked 7 of 9"* is.
 
+    **BUILT 2026-09-26** (the trailer; the count and the marks stay 7.5's).
+    - **One place writes it.** `repo.git()` adds `Actor-Verified:` to any
+      commit message carrying an `Actor:` line, so every NSoT writer
+      (`save_golden`, `save_templates`, `save_host_vars`, a rename, `retire`,
+      the manifest dedupe script) gets it without being edited. A writer that
+      has to remember is the proxy-population failure again.
+    - **`identity.actor_verification(actor)`** decides it from what the code
+      knows at that moment. In a request, `access` only when the gate verified
+      THIS actor (`g.nmas_identity.actor == actor`), so a name that differs
+      from the verified one is `none`. Outside a request, `host-shell` for a
+      CLI and `none` for the app's own threads, told apart by
+      `route_gates.installed()`: only the app process installs the gate.
+    - **Measured, not assumed: every gated commit runs on the request
+      thread.** The deploy pool defers its golden to the batch commit in the
+      route (`defer_golden`), and the NetBox import threads never commit to
+      git. The pipeline's non-deferred path names `Actor: pipeline`, so it
+      records `none`, which is true.
+    - **Two writers named nobody.** `abandon_onboarding` held the actor and
+      committed without it; it now writes `Source`/`Actor`. The legacy Git
+      tab (`config_git.commit_configs`) commits through its own transport;
+      it now writes the verified `request_actor()` and the trailer itself.
+    - **A scan keeps it that way**: every git `commit` call in `modules/` and
+      `scripts/` goes through `repo.git()` or is a named exemption (the Git
+      tab, and its repository's empty first commit), with a floor and a
+      no-ghosts check.
+    - Tests: `test_actor_verified_trailer.py`, including one driven through
+      the real app, whose gated route writes `access`. Seven negative
+      controls, all failing on the targeted assertions.
+    - 3948 passed, 0 failed, 0 errors.
+
 **B13, found 2026-09-26 while verifying step 1, fixed out of sequence.**
 Opening the terminal through the tunnel to check the gate put 27 of s1's 32
 password characters on screen: `modules/terminal.py` sent `enable`, the

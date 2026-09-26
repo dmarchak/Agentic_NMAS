@@ -1508,7 +1508,8 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                 rc, _out, err = _repo.git(
                     repo, "-c", "user.email=nmas@local",
                     "-c", "user.name=NMAS", "commit", "-m",
-                    f"abandon: {hostname} - onboarding withdrawn")
+                    f"abandon: {hostname} - onboarding withdrawn\n\n"
+                    f"Source: onboarding\nActor: {actor or 'unknown'}\n")
             if rc != 0:
                 raise RuntimeError(err or f"git exited {rc}")
             _step("intent", True, f"removed {rel} and committed the removal")
