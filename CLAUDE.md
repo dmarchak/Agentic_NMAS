@@ -269,7 +269,7 @@ pre-existing list uses) or `netbox`, set per list in
   rehydrate.
 - **Identity is read-only.** CSV writers refuse, and the UI disables Add Device,
   Delete, Discover→Add and Refresh Hostnames with an "Edit in NetBox" tooltip.
-  Drag-and-drop ordering still works, stored in `source.json`.
+  Drag-and-drop ordering is supposed to be stored in `source.json`, and it is NOT wired: `/reorder` refuses on a NetBox-sourced list and the source.json route has no caller (register D7).
 
 **Credential resolution** (`modules/credentials.py`), first match wins: device
 override → the list's *designated* `credential_list` (one list, never a scan) →
@@ -1041,6 +1041,13 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   `X-Forwarded-For` is never consulted and `ProxyFix` is never installed, both
   pinned by tests. Nothing logs a value: only header presence, the validation
   outcome, and the actor **kind**.
+- **CORRECTION, measured 2026-09-26 (register B12): the gates below are ENFORCED only on
+  onboarding, the golden reveal, the remote publish routes and posture ratify.** `/deploy/apply`,
+  `/golden/restore/apply` and `/ai/approvals/<id>/approve` never call `identity.require()`:
+  called with no identity they reach their own input checks (400, 400, 404), where `/onboard/create`
+  answers 403. Neither does any legacy device route. The paragraphs that follow describe the gate's
+  DESIGN; its call sites are the gap. What has stood in for it is the network (the Access-protected
+  tunnel, and port 5000 firewalled from the LAN).
 - **Reveal, approve and confirm all require a verified identity** by default.
   Reveal exposes a secret; approve and confirm put configuration on a device.
   **There is no localhost exemption** — an exemption for requests from the box
@@ -2176,6 +2183,8 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   own identity field, which is correct. Pinned with a floor and a positive
   anchor, since "no offenders" is also what a scan that could not run
   produces.
+- **(Register C23, 2026-09-26: the fix below lives in `plan_restore()`, which no route calls. The live
+  preview uses `build_targets()` over the ref. The paragraph describes the fix, not the running code.)**
 - **The inventory is the population for a RESTORE PREVIEW, not the ref.**
   `plan_restore()` iterated `devices_at(ref)`, so a device onboarded after
   the tag was **absent from the preview entirely** — not an error, not a
@@ -4273,7 +4282,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **29 open at 2026-09-26**, counted from the rows: 25 recorded only in
+present when each was recorded. **33 open at 2026-09-26**, counted from the rows: 29 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
