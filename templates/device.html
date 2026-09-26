@@ -462,8 +462,10 @@
       one cannot, so anything the device prints, including a secret you type, appears here.
       <br>On connect the tool sends <code>enable</code> only if the device is not already
       privileged, and the enable secret only if the device asks for it.
-      <br>Opening it requires a verified person. A per-session record of who opened it,
-      when and for which device is not written yet (P.3 step 7).
+      <br><strong>Its use is recorded.</strong> Opening it requires a verified person, and
+      each session writes who opened it, for which device, from where, and when it
+      opened and closed (<code>data/terminal_audit.jsonl</code>). Refused attempts are
+      recorded too. What you type is never recorded.
     </div>
     <div id="terminal-container" class="terminal-box"></div>
   </div>

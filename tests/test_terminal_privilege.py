@@ -138,7 +138,7 @@ def test_the_session_uses_the_step_and_sends_nothing_itself():
 def test_the_page_states_what_the_terminal_is_and_is_not():
     """Register B13 F: an unmasked stream is correct for break-glass, and it
     is STATED beside the terminal rather than left as an omission. The
-    record sentence must say it is not written yet until step 7 writes it."""
+    record sentence says it is recorded, which P.3 step 7 made true."""
     import os
     page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "templates", "device.html"), encoding="utf-8").read()
@@ -147,4 +147,5 @@ def test_the_page_states_what_the_terminal_is_and_is_not():
     assert "break-glass path" in note
     assert "unmasked, by design" in note
     assert "only if the device asks for it" in note
-    assert "not written yet" in note
+    assert "Its use is recorded" in note and "never recorded" in note
+    assert "not written yet" not in note, "true since P.3 step 7"

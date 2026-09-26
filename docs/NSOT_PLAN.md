@@ -2632,8 +2632,12 @@ has returned the key in cleartext to anyone who could reach the route, and
 that exposure has already happened. Until the key is rotated, the old one is
 valid wherever it went. The window is **the route's whole life**: it has
 returned `anthropic_api_key` since `e729267` (2026-04-12). It is not the time
-P.3 takes. Nothing in P.3 retires it; only rotation does. The operator is
-doing it now.
+P.3 takes. Nothing in P.3 retires it; only rotation does.
+**DONE (operator, confirmed 2026-09-26).** Rotation supersedes a key, and does
+not revoke the ones before it. Every key that sat in `.env` since 2026-04-12
+went out through the route and stays valid at Anthropic until deleted. So the
+earlier keys are revoked in the Console, in every workspace, keeping only the
+one NMAS uses (register B17).
 
 **Steps**
 
@@ -2902,6 +2906,33 @@ doing it now.
      trail that copies what it records becomes a second place secrets live;
    - the page says: *"This is the break-glass path. Its use is recorded."*
      and *"A change made here is drift until it is captured into intent."*
+
+   **BUILT 2026-09-26.** `modules/terminal_audit.py` writes
+   `data/terminal_audit.jsonl`, 0600 at creation, one line per event.
+   - **The events:** `opened`, `open_failed` (with the exception's class),
+     `closed` (from the page, or when the browser disconnected) and
+     `refused` (at the gate).
+   - **Each row carries** the verified actor and kind, the device's address
+     and hostname, the socket session, the peer, and the time.
+   - **Never a keystroke or any output.** A test asserts the input handler
+     never touches the record.
+   - **A closed tab is a close.** There was no handler for the socket
+     disconnecting, so a session ending that way would never have been closed
+     in the record. The new handler records every terminal that connection had
+     open, and leaves the shell as it was.
+   - **A failed write never breaks the terminal.** It is logged at ERROR and
+     counted in `terminal_audit.health()`.
+   - **The secret-storage checker lists the file** as a no-secret store.
+   - **The page now says "Its use is recorded"**, which is true, and that
+     what is typed is never recorded.
+   - **Found: a device's terminal is ONE SHELL shared by everyone who opens
+     it** (register D12). Sessions are keyed by device address and output goes
+     to a room named by the address, so two people see each other's typing
+     and output, and one closing ends it for both. The record shows both
+     opens; whether that should stay is a decision.
+   - Five negative controls.
+   - 3866 passed, 0 failed, 0 errors.
+
 8. **The agent loses every tool that sends to a device, commits, or edits
    code**:
    - three `execute_*` tools in config mode;

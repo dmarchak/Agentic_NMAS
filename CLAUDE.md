@@ -935,6 +935,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_p3_wizard_draws_the_program.py` | P.3 step 4 (D4): the wizard draws every line of the program, with one authorise box per dangerous line that re-plans the device; an authorised `shutdown` deploys end to end and a changed authorisation is refused; restore can authorise; C24's unbuildable device is named |
 | `test_job_health.py` (C28 rows) | a guard-gating setting empty on this install is an `unset_guard` row naming what it gates; unreadable settings is one `unknown` row; the real scan covers the four the erasure blanked |
 | `test_p3_secrets_write_only.py` | P.3 step 6 (B11): all 86 argument-free GETs swept for planted secrets; an empty secret field saves nothing; B16: no GET-only view sends request-supplied text to a device, and `/run_command` is a gated POST; C29: HTTP errors keep their status |
+| `test_terminal_audit.py` | P.3 step 7: every open, failed open, close (page or dropped browser) and refusal of the terminal is a row with actor, device, peer and time; keystrokes never; 0600; a recorder failure is counted and never breaks the terminal |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1429,6 +1430,15 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   test asserts no GET-only view sends request-supplied text to a device. Ask
   of any population: is it defined by the property, or by something that
   usually coincides with it?
+  **Members, one shape each time** (the operator's list, 2026-09-26):
+  - the drift checker enumerated the legacy golden store, not the inventory
+    (3.3);
+  - the census compared identity (`id:display`), not assignment, so a moved
+    address read as unchanged;
+  - approval scheme 2 keyed on the bound device set, not the template (D11);
+  - the restore preview iterated the ref, not the inventory (C23);
+  - the gate table was keyed on the HTTP method, not on reaching a device
+    (B16).
 - **A CHECK OF THE CODE IS NOT A CHECK OF THE INSTALL** (register C28).
   `discover_empty_default_guards()` derived, from the code, every setting
   whose emptiness silently switches off a guard, and only tests called it. So
@@ -4391,7 +4401,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **27 open at 2026-09-26**, counted from the rows: 22 recorded only in
+present when each was recorded. **29 open at 2026-09-26**, counted from the rows: 24 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

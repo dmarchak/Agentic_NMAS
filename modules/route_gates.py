@@ -283,6 +283,18 @@ def socket_gated(event: str):
                 if refusal is not None:
                     log.info("route_gates: refused socket %s (%s): %s", event,
                              gate.kind, refusal.get("outcome"))
+                    if gate.kind == "break_glass":
+                        # An attempt on the break-glass path is a fact too.
+                        from modules import terminal_audit
+                        payload = args[0] if args and isinstance(args[0], dict) else {}
+                        terminal_audit.record(
+                            terminal_audit.REFUSED,
+                            device_ip=str(payload.get("ip", "")),
+                            actor=getattr(ident, "actor", ""),
+                            kind=getattr(ident, "kind", ""),
+                            sid=getattr(request, "sid", ""),
+                            peer=identity.peer_address(request),
+                            reason=str(refusal.get("outcome", "")))
                     emit("terminal_output",
                          {"output": f"\r\n[refused: {refusal.get('error')}]\r\n"})
                     return None

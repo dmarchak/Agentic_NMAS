@@ -462,6 +462,33 @@ _device_lock = get_device_send_lock  # serialises SSH commands per device
 # ---------------------------------------------------------------------------
 
 
+#: Which devices each browser connection has a terminal open to, so a closed
+#: tab (a socket disconnect with no `disconnect_terminal`) still records its
+#: close (P.3 step 7).
+_terminal_open_by_sid = {}
+
+
+def _terminal_audit(event, ip, reason=""):
+    """One break-glass audit row for THIS connection. Never keystrokes."""
+    from flask import g
+    from modules import identity as _ident
+    from modules import terminal_audit
+
+    ident = getattr(g, "nmas_identity", None)
+    hostname = ""
+    try:
+        _, _csv = get_current_device_list()
+        hostname = next((d.get("hostname", "") for d in load_saved_devices(_csv)
+                         if d.get("ip") == ip), "")
+    except Exception:                                   # noqa: BLE001
+        pass
+    terminal_audit.record(event, device_ip=ip, hostname=hostname,
+                          actor=getattr(ident, "actor", ""),
+                          kind=getattr(ident, "kind", ""),
+                          sid=getattr(request, "sid", ""),
+                          peer=_ident.peer_address(request), reason=reason)
+
+
 @socketio.on("connect_terminal")
 @route_gates.socket_gated("connect_terminal")
 def socket_connect_terminal(data):
@@ -473,12 +500,16 @@ def socket_connect_terminal(data):
 
         # Ensure session is alive or recreate
         ensure_terminal_session(ip, terminal_sessions)
+        _terminal_open_by_sid.setdefault(request.sid, set()).add(ip)
+        _terminal_audit("opened", ip)
         start_terminal_reader(ip, terminal_sessions, socketio)
 
         socketio.emit(
             "terminal_output", {"output": f"\r\n[connected to {ip}]\r\n"}, room=ip
         )
     except Exception as e:
+        if ip not in _terminal_open_by_sid.get(request.sid, set()):
+            _terminal_audit("open_failed", ip, reason=type(e).__name__)
         socketio.emit(
             "terminal_output", {"output": f"\r\n[terminal error: {e}]\r\n"}, room=ip
         )
@@ -504,9 +535,21 @@ def socket_terminal_input(data):
         )
 
 
+@socketio.on("disconnect")
+def socket_disconnected(*_args):
+    """A closed tab or a dropped connection: record the close of every
+    terminal this connection had open. The shell itself is left as it was
+    (it is shared by device, see register D12), so only the record changes."""
+    for ip in sorted(_terminal_open_by_sid.pop(request.sid, set())):
+        _terminal_audit("closed", ip, reason="browser disconnected")
+
+
 @socketio.on("disconnect_terminal")
 def socket_disconnect_terminal(data):
     ip = data.get("ip")
+    if ip in _terminal_open_by_sid.get(request.sid, set()):
+        _terminal_open_by_sid[request.sid].discard(ip)
+        _terminal_audit("closed", ip, reason="closed from the page")
     try:
         leave_room(ip)
     except Exception:
