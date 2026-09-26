@@ -394,7 +394,7 @@ first.**
 | **7.1** | The preview-then-confirm component, retrofitted to deploy (absorbing P.3's wizard fix), restore, onboarding, bulk intent and NetBox import/remove |
 | **7.2** | The status bar, and **Needs attention** with every source in section 1a |
 | **7.3** | The Device page: the Grafana iframe test FIRST, then Overview, Monitoring, Neighbours, History and Actions, including seed intent, revert, retry, rotate, retire and the terminal last |
-| **7.4** | Fleet: the bounded list and selection, batch deploy, bulk intent, onboard, adopt and retire, networks, and the inventory source |
+| **7.4** | Fleet: the bounded list and selection, batch deploy, bulk intent, onboard, adopt and retire, networks, and the inventory source. **Onboarding is designed for N address sources** (static, dhcp, ztp: P.6 lands first): the source choice is a LIST, not a toggle, and the pending-device row carries a per-source PROGRESS column (for ZTP: reservation written, config fetched, first seen). Cheap to design now, expensive to retrofit. |
 | **7.5** | Versions: commits by actor and source (stating once *"N of M commits carry a verified identity"*, with the rest marked *"recorded, not verified"*: D10, P.3 step 10), baselines with their reasons, re-applying one, the remote with connect |
 | **7.6** | Source of truth: templates (the scheme-3 approval badge saying what it covers and what it does not, P.5; revoke, bindings, coverage, seed status), NetBox, credentials, freshness authorisations |
 | **7.7** | Settings split, file-only settings listed, diagnostics |

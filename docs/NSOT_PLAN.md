@@ -3331,6 +3331,65 @@ property of the inventory, not of the template.
 changes how a gate behaves, and 7.6 draws the badge, so the behaviour must
 exist before the screen that explains it.
 
+### P.6 — ZTP as a third address source (DECIDED 2026-09-26; after P.5, before Stage 7's onboarding step 7.4)
+
+The course's Labs 8 and 9 (ZTP, then ZTP + IaC) land on Phase 2's
+foundation. ZTP fits the onboarding design as another address SOURCE, beside
+`static` and `dhcp`.
+
+**What exists:** reading Kea reservations and leases (Phase 2); the bootstrap
+artefact re-derived from committed intent (`bootstrap_artifact()`); the
+device-to-lab map.
+
+**What does not:**
+- writing Kea reservations;
+- DHCP option 67 (the config file name);
+- a config server that serves the bootstrap artefact;
+- `ztp` as a source in `build_plan()`;
+- assigning a device to a containerlab lab from the tool.
+
+**Ordering, and why.** Build the BACKEND before Stage 7 designs onboarding.
+Today's interface gets only one more option in the existing source selector.
+- **Before 7.4:** a screen designed around states nobody has observed
+  encodes guesses, and a path that has never carried anything fails on first
+  use. The ZTP states (reservation written, config fetched, first seen) have
+  to be measured before 7.4 draws them.
+- **Not inside today's interface beyond one option:** Stage 7 re-homes
+  onboarding, so more UI now is UI thrown away.
+- **Proven on a throwaway first**, the way Phase 2 was proven on
+  `bp-dhcp-a`.
+
+Lab 9 (ZTP + IaC) is onboarding phase 1, then phase 2, then an intent
+deploy: the shape that already exists.
+
+**Timing:** the lab due dates are not known. If one is tight, the operator
+pulls this forward.
+
+### Course labs against the plan (decided 2026-09-26)
+
+- **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
+  in CI, never a threshold, because a threshold invites tests written to
+  move the number. Report it with its breakdown, because the shape of the
+  number is the finding. At 2026-09-26 it was 57% of lines overall:
+  `modules/nsot` 87.8%, while the low figures sit in code being cut or
+  rebuilt (`ai_assistant` 15%, `configure` 5%, `topology` 6%, the
+  collectors). The negative-controls ledger is the stronger artefact:
+  coverage says code ran, and a control says the test would notice if the
+  property disappeared.
+- **Labs 8 and 9, ZTP:** P.6.
+- **Lab 10, troubleshooting:** demonstrated with what already works:
+  - drift with its coverage;
+  - the freshness gate;
+  - job health naming causes;
+  - the heartbeat alert firing on a silenced device;
+  - the rotation and persistence chain;
+  - C38's adjacency alerting, if it has landed.
+
+  **Stage 8 is NOT moved up for it** (operator): the agent has never made a
+  tool call and its library is being rebuilt, and putting an untested agent
+  on the network to meet a deadline is the shape P.3 spent a day removing.
+  If Stage 8 lands first, its triage report is the closing act.
+
 ### AUTHZ — Roles and separation of duties (DECIDED 2026-09-26; built later, unscheduled)
 
 The decision and its reasoning are in
