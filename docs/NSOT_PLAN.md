@@ -2833,6 +2833,36 @@ doing it now.
     for 95% of the history, and a muted style alone would not say that. It is
     a denominator, as drift's *"checked 7 of 9"* is.
 
+**B13, found 2026-09-26 while verifying step 1, fixed out of sequence.**
+Opening the terminal through the tunnel to check the gate put 27 of s1's 32
+password characters on screen: `modules/terminal.py` sent `enable`, the
+stored secret and a newline on fixed sleeps without reading, and every device
+is already at `#`. **The gate was fine; the thing behind it had never been
+examined.**
+- The terminal is fixed (send, read, decide).
+- `not_already_type_9`, which blocked every rotation of an already-rotated
+  device, is fixed.
+- The page states what the terminal is.
+- Measured: the value is in neither the syslog files nor Loki.
+- s1's password is rotated by the operator with the ordinary tool
+  (register B13).
+
+11. **One stored copy of a credential (register B14, the operator's point E).**
+    The CSV `secret` column holds a second copy of the login password on every
+    device, written deliberately by rotation (`credential_rotation.py`, the
+    CSV branch) and by onboarding's override (`set_device_override(ip, user,
+    pw, pw)`). No device has an enable secret, and Netmiko sends `secret=` only
+    in answer to an enable prompt, so the copy does nothing the password does
+    not. It is also why sending it looked harmless.
+
+    The fix: store an enable secret only when a device has one. Otherwise the
+    field is empty, and the connection falls back to the password at connect
+    time (Netmiko's own semantics). Make that fallback explicit in
+    `connection.py` and `enable_secret()`, rewrite the stored rows once, and
+    correct the break-glass record's `has_enable_secret`, which reads the
+    duplicate and claims every device has one. **A credential stored twice is
+    a credential that leaks twice.**
+
 **P.3 ACCEPTANCE** (each item observed, each with a control that must fail):
 1. **Every mutating endpoint is classified**, and the classification test has
    a floor (at least 131 mutating rules) and anchors: `/deploy/apply` must be
@@ -2887,7 +2917,7 @@ Still **UNDECIDED** inside P.4: scheduled protocol regression (N13), and
 config-repo checks (R5-R10) as a post-commit job on the NMAS. Neither blocks
 Stage 7.
 
-### P.5 — Template approval, scheme 3 (D11; decided 2026-09-26, placement proposed)
+### P.5 — Template approval, scheme 3 (D11; decided 2026-09-26, placed after P.4)
 
 **Approval becomes the template closure hash and the person who approved
 it.** Per-device fidelity stays where it already runs, live, in
@@ -2908,8 +2938,9 @@ property of the inventory, not of the template.
   anyone who does not know why.
 - **It resolves D2**, and onboarding stops revoking its platform's approval.
 
-**Placement, proposed:** after P.4 and before 7.0. It changes a gate's
-behaviour, and Stage 7 does not, while 7.6 draws the badge.
+**Placement: APPROVED 2026-09-26 (operator)**, after P.4 and before 7.0. It
+changes how a gate behaves, and 7.6 draws the badge, so the behaviour must
+exist before the screen that explains it.
 
 ### AUTHZ — Roles and separation of duties (DECIDED 2026-09-26; built later, unscheduled)
 

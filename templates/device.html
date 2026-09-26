@@ -446,6 +446,18 @@
     <hr>
     <h4>🖥️ Live terminal</h4>
     <p class="text-muted">Interactive SSH session with {{ device["hostname"] }}.</p>
+    <div class="alert alert-warning small" data-break-glass-note>
+      <strong>This is the break-glass path.</strong> What you type goes straight to the
+      device: no plan, no confirm hash, no rollback. A change made here is drift until
+      it is captured into intent.
+      <br><strong>Output is shown unmasked, by design:</strong> this is the device's own
+      terminal, and you need to see what it says. Every other screen masks secrets; this
+      one cannot, so anything the device prints, including a secret you type, appears here.
+      <br>On connect the tool sends <code>enable</code> only if the device is not already
+      privileged, and the enable secret only if the device asks for it.
+      <br>Opening it requires a verified person. A per-session record of who opened it,
+      when and for which device is not written yet (P.3 step 7).
+    </div>
     <div id="terminal-container" class="terminal-box"></div>
   </div>
 

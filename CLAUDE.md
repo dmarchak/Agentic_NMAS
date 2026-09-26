@@ -931,6 +931,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_p3_cuts.py` | P.3 step 2: the eight direct-push routes answer 404 and nothing shipped names them; bulk config mode and chat playbook replay refused by name; the Configure forms send nothing |
 | `test_harness_leaves_the_app_log_alone.py` | the suite never writes into the app log of the checkout it runs in (C26) |
 | `test_p3_restore_is_guarded.py` | P.3 step 3 (D5): both Restore Golden Config buttons open the guarded preview at HEAD; the preview draws every line it will send, executed against the route's real payload |
+| `test_terminal_privilege.py` | B13: the terminal sends the enable secret ONLY in answer to a password prompt, once; a device at `#` receives nothing; the page states the terminal is break-glass and unmasked by design |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1396,10 +1397,35 @@ All HTTP and SSH is mocked; **no test touches a live network.**
      authorised revoked it.
   3. Scheme 2 keyed on the bound device set, so onboarding one device revoked
      every approval on its platform (D11; scheme 3 decided).
+  4. **`not_already_type_9`** (register B13, 2026-09-26) was written to stop
+     re-running the password-to-type-9 MIGRATION. It also refused every
+     ROTATION, because after Stage 2 every device holds `secret 9`: the path
+     that retires an exposed credential worked once per device, ever. It was
+     found while a live credential was exposed. **The lesson of the fourth: a
+     gate like this does not merely block routine work, it can disable the
+     remedy exactly when the remedy is needed.** Ask of every refusal on a
+     recovery path: what else will this refuse, and when?
 
-  **Each was found the same way: something was revoked that nobody had
-  changed.** Treat that symptom as the signature. Before keying a gate, ask
+  **Each was found the same way: something was revoked, or refused, that
+  nobody had changed.** Treat that symptom as the signature. Before keying a gate, ask
   what ELSE moves the key, and whether any of it is the gate's business.
+- **SEND, READ, DECIDE. Never send a secret into a session on a timer**
+  (register B13, 2026-09-26). The terminal sent `enable`, then the stored
+  secret, then a newline, on fixed sleeps without reading. Every device was
+  already privileged, so the secret arrived as a COMMAND and was echoed to a
+  browser: 27 of s1's 32 password characters. Netmiko reads the prompt first
+  everywhere else in this tool, and the one hand-rolled session did not.
+  **The gate in front of it was correct, and the thing behind it had never
+  been examined.** Gating a path is not reviewing it. A credential is sent
+  only in answer to the prompt that asks for it.
+- **A credential stored twice is a credential that leaks twice** (the
+  operator, B14). The `secret` column duplicates the password on every device
+  for no function, and that is what made sending it look harmless.
+- **A harness must not write where a person reads** (C26, the narrow form,
+  kept as its own rule). The count was clean. The cost was about 2,600
+  fixture lines in the app log, where a fixture refusal looks exactly like a
+  real one. Only a person can mistake them, and a person is who reads that
+  file.
 - **An investigation's instrument can be the variable** (C20, 2026-09-25).
   A settings test failed in streaks, eight in a row and then clean at the
   same SHA, which reads as a race. It was file-order dependent and fully
@@ -4326,7 +4352,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **28 open at 2026-09-26**, counted from the rows: 23 recorded only in
+present when each was recorded. **29 open at 2026-09-26**, counted from the rows: 24 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

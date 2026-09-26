@@ -284,12 +284,14 @@ that can appear in English needs an anchor*).
 
 ## 5. "If a payload carries it, the screen shows it", made mechanical
 
-Three instances of one failure are recorded:
+Four instances of one failure are recorded:
 - **D4:** the wizard dropped `commands`, `dangerous` and `attribution`;
 - the pending banner dropped its `list_name`;
-- `/jobs/health` had no view at all.
+- `/jobs/health` had no view at all;
+- **C27:** the restore preview computed and carried `commands` and never drew
+  the lines to be added, while the confirm hash covered them.
 
-The check that catches the fourth before it ships is modelled on
+The check that catches the fifth before it ships is modelled on
 `test_server_reads_nothing_the_form_cannot_send.py`.
 - **Each renderer declares the payload it renders**, in one registry:
   `RENDERS = {"/deploy/plan": "_renderDeployPlan", …}`. A renderer with no
@@ -306,9 +308,11 @@ The check that catches the fourth before it ships is modelled on
 - **Exemptions are named, reasoned and capped** (at most ten), exactly as the
   form check does, and a commented-out read does not count.
 - **Floors**: at least 20 declared renderers, at least 150 payload keys.
-- **Anchors:** `commands`, `dangerous` and `attribution` on `/deploy/plan`,
-  and `list_name` on `/onboard/pending`, must be read. Removing one fails
-  the test.
+- **Anchors:** `commands`, `dangerous` and `attribution` on `/deploy/plan`;
+  `list_name` on `/onboard/pending`; and `commands` on
+  `/golden/restore/preview` (C27; the operator's fourth anchor, 2026-09-26).
+  Each must be read, and removing one fails the test. Four recorded
+  instances are what make the floors not arbitrary.
 
 ## 6. Every task's home
 
