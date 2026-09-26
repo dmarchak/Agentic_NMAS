@@ -990,7 +990,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_settings_file_integrity.py` | absent vs unreadable; a write on defaults refused; the save is atomic |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
-All HTTP and SSH is mocked; **no test touches a live network.** And **no test touches the live store**:
+All HTTP and SSH is mocked in-process; **no test touches a live network**, and that is NOT enforced for a process a test starts: one test's subprocess asked the live NMAS for its map on every host run until 2026-09-26 (C46). And **no test touches the live store**:
 conftest points `NMAS_DATA_DIR` at a fresh temporary directory before anything imports, and fails the
 run if the checkout's `data/` changed at all (C32). Importing `app` starts no service (C36).
 
@@ -4547,7 +4547,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **35 open at 2026-09-26**, counted from the rows: 30 recorded only in
+present when each was recorded. **36 open at 2026-09-26**, counted from the rows: 31 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

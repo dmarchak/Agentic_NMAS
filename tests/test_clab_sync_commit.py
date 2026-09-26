@@ -253,6 +253,11 @@ def test_reconcile_runs_before_the_early_exit_and_before_the_copy():
     assert TEXT.index("\nreconcile\n") < TEXT.index("# Back up, copy, verify, commit")
 
 
+#: Port 9 (discard) on loopback: nothing listens, so a connection is refused
+#: at once. Never the script's default, which is the live NMAS.
+CLOSED_PORT_URL = "http://127.0.0.1:9"
+
+
 class TestHelpersResolveBesideTheScriptNotThroughPath:
     """72 runs failed with `nmas-clab-targets: command not found` because the
     helper was on a login shell's PATH and not systemd's."""
@@ -269,10 +274,25 @@ class TestHelpersResolveBesideTheScriptNotThroughPath:
         assert f"helper not found or not executable: {tmp_path}/nmas-clab-targets" in r.stdout
 
     def test_a_symlink_to_the_repo_copy_finds_its_helpers(self, tmp_path):
+        """The helper must be FOUND and RUN, and must reach no NMAS.
+
+        `NMAS_URL` is a closed local port. Left at the script's default it
+        asked the LIVE NMAS for its map: from the laptop that address is
+        firewalled and the test waited 15 s for a timeout; on the host it IS
+        the NMAS, and the live app logged each run's GET (2026-09-26). What
+        stopped it going further was only this test's `REPO`, which names
+        nothing. A refused connection is also immediate, and it proves the
+        helper ran, where "no error text" alone does not."""
         link = tmp_path / "oxidized-to-config.sh"
         link.symlink_to(SCRIPT)
+        env = {**self.ENV, "REPO": str(tmp_path / "none"), "NMAS_URL": CLOSED_PORT_URL}
         r = subprocess.run(["bash", str(link), "--yes"], capture_output=True,
-                           text=True, env={**self.ENV, "REPO": str(tmp_path / "none")},
-                           cwd=str(tmp_path), timeout=60)
+                           text=True, env=env, cwd=str(tmp_path), timeout=60)
         assert "helper not found" not in r.stdout, r.stdout
         assert "command not found" not in r.stdout + r.stderr
+        assert "the NMAS could not be asked" in r.stdout, r.stdout
+        # REFUSED, the closed port's own answer. The live NMAS gives "timed
+        # out" from the laptop and a map on the host, so this is what fails if
+        # the override is lost, on either machine.
+        assert "Connection refused" in r.stderr, r.stderr   # the helper's own reason
+        assert r.returncode == 2
