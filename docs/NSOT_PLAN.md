@@ -1648,7 +1648,21 @@ of an existing one.
   every day it waits is a day of switch logs that do not exist. P.2 is what
   makes the Stage 7 work recoverable if it damages NetBox. It is the one
   store NMAS writes to that has no restore path.
-- Stage 6 blocks nothing and is blocked by nothing.
+- Stage 6 blocks nothing and is blocked by nothing. **But
+  NSOT_STAGE7_GUI.md section 7 says "Nothing here starts before Stage 6
+  closes"**, so the two documents disagree. Undecided (flagged 2026-09-25);
+  if the GUI doc holds, 6.2's per-consumer accounts come before 7.0.
+- **Before 7.0 (the operator's decision, 2026-09-26): C1 alone**
+  (`nmas-deploy` unconfirmed, one measurement). P.2 is done except its
+  unattended watch. Every Stage 7 step is verified on the host, so a deploy
+  that can report "already current" while behind would make each of those
+  verifications suspect. **Gates on later steps**, proposed 2026-09-25 by
+  the triage *which findings would make Stage 7's work untrustworthy or
+  wasted*, and not yet confirmed: B3 before 7.1; C17 before 7.2; B1 and C2
+  before 7.3; C10 before whichever step first makes a batch deploy a
+  multi-select; C8 before 7.5's NetBox summary; E4 before 7.6; C7 before
+  7.7. The other open findings are carried into Stage 7 with conditions
+  (register).
 
 **The overlap worth knowing: Stage 5 and Stage 7.5 are the same screens.**
 Stage 5's per-device Prometheus / Loki / Oxidized / lease views and Stage 7.5's
@@ -2418,6 +2432,33 @@ and no acceptance). Every item is observed, not inferred:
 6. **`--status` exits 0** with every configured destination fresh.
 7. **The vzdump question answered** from `/etc/pve/jobs.cfg`: is the NMAS
    VM itself in a scheduled backup?
+
+**P.2 ACCEPTANCE STATUS, 2026-09-26** (from the operator's reports; items not
+reported are marked pending, not inferred):
+1. Timer backs up on its own, twice in a row: **PENDING**, the unattended
+   watch after 05:00 UTC (next backup 03:01, restore test 04:30).
+2. Installed restore test passes: **MET**. The unit ran PASS, 198 tables and
+   3,143 rows identical, in 20 s.
+3. Proxmox copy write-only: **half MET**. `.tar.gpg` files land (two
+   hourlies, 363,799 and 363,796 bytes, under `/mnt/vzdump/nmas-netbox`,
+   the `sda` volume, not `/srv`). The refusal half (a read or delete from
+   the VM over the push key is refused, runbook 2d) is **not reported**.
+4. Off-box copy decrypts only where the key lives: **MET**. Fetched with the
+   read key, decrypted on the laptop, and the NMAS answers `No secret key`
+   (runbook 6f).
+5. A failed destination is visible: **MET** (step 8). `nmas-jobs` read
+   `failing` with `SHIP TO PROXMOX FAILED: rsync exited 255: … Permission
+   denied (publickey,password)`, the local backup was written before the
+   ship failed, and it recovered to `ok`.
+6. `--status` exits 0 with every destination fresh: **not reported**
+   (`nmas-jobs` 9 of 9 ok is a different check). Confirm with the watch.
+7. The vzdump question: **MET**. There were no jobs; `nmas-nightly` now
+   images VMs 100 and 102 (B6).
+
+**Open beside it, not part of the acceptance:** B9 (the write key can hide;
+Object Lock after tomorrow's lifecycle measurement), B10 (the
+lock/lifecycle check, built after the lock exists) and B8 (the decryption
+key is on one laptop).
 
 **Proposal (2026-09-25):** `pg_dump -Fc` **hourly** (retain ~24), promoted
 to **daily** (retain ~14). Each backup is one directory: the dump, a media

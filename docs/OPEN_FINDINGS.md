@@ -98,7 +98,7 @@ These have acceptance criteria written and no stage owning them.
 (A2–D2, with A4, B8, B9, B10, C6–C10, C12–C14 and C17 added the same day; B4, B5, B6, B7, D3, C11, C15, C16, C18, C19, C20, C21 and C22 added and closed), 4 in the plan without a stage (E1–E4, one of which is Stage 3.3's
 tail). The previous figure, 15, was **off by one**: it was produced by
 adjusting an earlier count rather than counting rows, and the rows then held
-16. A1 and C5 are now scheduled (P.2, 6.5), and C3 and C4 are closed.
+16. C5 is scheduled (6.5); A1 is closed by P.2, and C3 and C4 are closed.
 
 By kind, counted from the Kind column: **15 build**, **3 decide-then-build**, **4 decide**, **2 verify**, **2 operator's steps**. (The previous line said 15 build, which summed to 25 against 24 rows. It was adjusted rather than counted, the same error as the total's.)
 
@@ -121,13 +121,13 @@ register makes a finding easier to find, and easier to reach for.
 
 | # | Finding | Scheduled | Where |
 |---|---|---|---|
-| A1 | Nothing backs up NetBox. | 2026-09-25 | [NSOT_PLAN.md](NSOT_PLAN.md) **P.2**, before Stage 7. Sized: `pg_dump` (30 MB) + media (empty), with a tested `pg_restore` into a scratch instance. That closes the core. Config secrets, an off-host copy, version records and a staleness signal are part of P.2, not left over. |
 | C5 | The documented deployment is not the one running. | 2026-09-25 | **Corrected, then scheduled.** First recorded as "no unit". The unit exists as `flask-app.service` (enabled, `Restart=always`, journal), but the journal carries only the start-up banner. The log channel is fixed (docs and CLI name and read `logs/device_manager.log`). What remains is hardening, `NMAS_HOST`, and versioning the unit plus `nmas-deploy`: [NSOT_PLAN.md](NSOT_PLAN.md) **6.5**. |
 
 ## Closed
 
 | # | Finding | Closed | Reason |
 |---|---|---|---|
+| A1 | Nothing backed up NetBox. | 2026-09-26 | **Closed on evidence (P.2).** Hourly `pg_dump` on an exported snapshot, with media, env and configuration, kept plain on the VM, gpg-encrypted to the Proxmox host (rrsync write-only, forced command in two places) and daily to B2. Three copies of 363,799 bytes. Restore test PASS (198 tables, 3,143 rows). The off-box copy was fetched with the read key and decrypted on the laptop. A broken destination is named by `nmas-jobs`. Timers enabled. Pending in the acceptance: the unattended watch, the rrsync refusal half, and a `--status` exit 0 (NSOT_PLAN P.2). Open beside it: B8, B9, B10. |
 | C22 | rclone's exit code proved neither permission nor transfer, and the off-box push trusted it. | 2026-09-26 | **Fixed.** Measured by the operator: a refused read was retried ten times (`401`), then rclone printed `There was nothing to transfer` and exited 0, with the 401 visible only at `-vv`. The push path did not read, so it was unaffected on the day. But it confirmed its upload by exit code alone, and so would anything added later. Now every push is confirmed by LISTING `daily/` (a directory listing, which needs only `listFiles`; a single-file path would HEAD and need `readFiles`) and requiring the object at the artefact's exact size. An enabled prune is confirmed by listing too. The real `lsjson` shape was measured on the host before relying on it. Four controls. |
 | B7 | `vmdata` became thin-provisioned and nothing watched its real allocation. | 2026-09-25 | **Built and live.** `job_health` reads `disks/zfs` (ALLOC/SIZE, what `zpool list` prints; readable by the auditor token, measured) and reports each pool: `pool_degrading` at 80 % (a convention, named as one), `pool_will_pause` when the headroom above ZFS's write reserve (1/32 of the pool, capped at 128 GiB) falls under 5 % of the pool, and `pool_unhealthy` for any health but ONLINE. An empty answer is `unknown`, never "no pools". Live: `vmdata 8.6% allocated (79.4 GiB of 928.0 GiB), frag 27%, ONLINE; 819.6 GiB before ZFS refuses writes`. Four negative controls, including substituting Proxmox's reservation percentage for ALLOC/SIZE. The thresholds come from OpenZFS and QEMU defaults, not from measuring a pool filling here. |
 | B5 | `data/key.key` was a single copy. | 2026-09-25 | **Closed on evidence.** The key is escrowed in the break-glass record (`nmas-breakglass` export with the key; `verify --live` decrypts the stored values with the ESCROWED key). A copy of `data/` exists in B6's nightly image. The two were tied together by the restore test: the fingerprint of `key.key` inside the restored clone equals the escrowed `f42bddcea15442c2`, and the clone's app started on it. |
