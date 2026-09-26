@@ -2626,6 +2626,15 @@ removed.**
 audit cut; the terminal's audit trail; and the agent's push, commit and
 self-modification tools, which are a push path no person gate can cover.
 
+**DO THIS FIRST (the operator, 2026-09-26): rotate the Anthropic key.** It
+was acceptance item 11 and is not a final step. B11 means `GET /settings`
+has returned the key in cleartext to anyone who could reach the route, and
+that exposure has already happened. Until the key is rotated, the old one is
+valid wherever it went. The window is **the route's whole life**: it has
+returned `anthropic_api_key` since `e729267` (2026-04-12). It is not the time
+P.3 takes. Nothing in P.3 retires it; only rotation does. The operator is
+doing it now.
+
 **Steps**
 
 1. **One gate, declared per endpoint.** `modules/identity.py` gains a table
@@ -2641,6 +2650,46 @@ self-modification tools, which are a push path no person gate can cover.
    terminal enforces `break_glass` at `connect_terminal` and on each
    `terminal_input`. **A mutating endpoint missing from the table fails the
    suite.** No route can be added without declaring what it is.
+
+   **BUILT 2026-09-26** (`modules/route_gates.py`, `tests/test_route_gates.py`).
+   - **All 131 mutating endpoints and all three terminal events** are declared,
+     each with a kind and a reason. The kinds are defined once at the top of
+     the module.
+   - **The table lives in its own module, not in `identity.py`**, which stays
+     about identity. `identity.GATED_ACTIONS` gains `configure` and
+     `break_glass`, each with `require_identity_for_*` and `require_person_for_*`
+     defaulting ON (read through the defaults, not seeded).
+   - **The hook is installed by `register_blueprints`**, outside its
+     try-block: an app that starts without it serves every route ungated, and a
+     crash is the better outcome.
+   - **An undeclared endpoint is REFUSED at run time** (`outcome: unclassified`)
+     as well as failing the suite.
+   - **The test checks the population in both directions with floors** (131 and
+     3), anchors, and the table against all 11 in-view `require()` calls, kind
+     and operation both. It checks refusal before input on eight routes, that
+     a person passes and a service does not, and the terminal refused and
+     then opened. Six negative controls were shown firing.
+   - **Ratify moved from `approve` to `configure`**, since it acts on a gate.
+   - **The audit now records the VERIFIED actor.** Fourteen routes recorded
+     `data.get("actor", "user")`, a name the client typed. The deploy's golden
+     commit recorded `Actor: pipeline`, and Save All `actor="user"`. All now
+     use `identity.request_actor()`. One named exemption: template seeding's
+     `actor="nmas"`, which no person caused.
+   - **The harness supplies a verified person by default**
+     (`tests/conftest.py`). Tests about identity opt out with
+     `@pytest.mark.real_identity`. 3781 passed, 0 failed, 0 errors.
+   - **Consequences for the host.** `nmas-bulk-intent` POSTed to the app and
+     would now be refused, so it runs in-process like `nmas-retire`. The
+     `curl` that `nmas-oxidized-freshness` printed as a remedy was always
+     refused from the host (register D9), and it now says what is needed.
+     **The clab sync keeps working**: it reads `/clab/sync_targets` (a GET)
+     and posts to `/freshness/gate` (`not_device`).
+   - **Not yet measured: acceptance item 2's host half** (a `curl` from the
+     host gets 403, a real deploy through the tunnel succeeds), and **the
+     terminal through the tunnel**. Whether Access sends
+     `Cf-Access-Jwt-Assertion` on the Socket.IO handshake is unmeasured. If it
+     does not, a person is refused the terminal, and that shows up as a
+     refusal, not an open shell.
 2. **Cut the direct-push paths the audit cut** (docs/NSOT_FEATURE_AUDIT.md):
    - `/execute_command`;
    - `/run_script/<ip>` and the Scripts tab;
@@ -2725,8 +2774,8 @@ self-modification tools, which are a push path no person gate can cover.
    page carries both sentences.
 10. **The agent's tool list contains none of the removed tools**, with a test
     pinning the names, and no reply is auto-answered.
-11. **Operator: the Anthropic key is rotated.** B11's exposure has already
-    happened, and only rotation retires it.
+*(Item 11, the Anthropic key's rotation, moved to "Do this first" above,
+2026-09-26.)*
 
 ### P.4 — Cut Jenkins (before Stage 7)
 
@@ -2746,6 +2795,26 @@ config-repo checks (R5-R10) as a post-commit job on the NMAS. Neither blocks
 Stage 7.
 
 ---
+
+### AFTER STAGE 7 — adoption at scale (PROPOSED 2026-09-26, not decided)
+
+Raised by the operator. Analysed in
+[NSOT_FEATURE_AUDIT.md](NSOT_FEATURE_AUDIT.md) section 8. In short:
+- the wizard is for the exception, and the bulk path is a JOB;
+- a reconcile job reads, then a one-shot commit creates, with devices in
+  buckets and a bucket re-run as the retry;
+- adoption is phase 2 of onboarding behind its own plan constructor, plus an
+  extract-and-commit step;
+- it records what is there, and brings a device to the baseline through the
+  ordinary deploy path.
+
+It is a build, so it is its own item and not part of a stage that moves
+controls. **It changes Stage 7 in two places**, both undecided:
+- 7.4 lists "adopt" as a GUI home for a capability that does not exist;
+- 7.8 must not remove Add Device and Discover Subnet before it lands.
+
+A scale finding rides with it: template approval is all-or-nothing per
+platform.
 
 ### STAGE 7 — the interface, redesigned
 

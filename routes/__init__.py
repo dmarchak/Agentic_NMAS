@@ -22,6 +22,12 @@ def register_blueprints(app) -> list:
     """
     registered = []
 
+    # The gate table's hook goes on first, and is NOT inside the try below:
+    # an app that started without it would serve every route ungated, which
+    # is the failure P.3 exists to end. A crash here is the right outcome.
+    from modules import route_gates
+    route_gates.install(app)
+
     from routes.settings_integrations import bp as integrations_bp
     from routes.netbox_safety import bp as netbox_safety_bp
     from routes.inventory import bp as inventory_bp

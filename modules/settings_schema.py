@@ -240,6 +240,12 @@ DEFAULTS: dict = {
     # remote. Its own kind so the audit says "published", and so a service
     # grant written for one operation cannot reach this one.
     "require_identity_for_publish_remote": True,
+    # P.3 (2026-09-26): the gate table's two new kinds. `configure` is the
+    # tool's own settings, gates, inventory and records; `break_glass` is the
+    # terminal. Not seeded (SEEDS_BY_VERSION is a whitelist), so they read
+    # through these defaults until somebody ratifies them.
+    "require_identity_for_configure": True,
+    "require_identity_for_break_glass": True,
     #: A verified SERVICE is still not a person. Approve and confirm are the
     #: points where a human is supposed to have looked at an exact command list
     #: before it reaches a device; the confirm hash is only worth something
@@ -255,6 +261,8 @@ DEFAULTS: dict = {
     "require_person_for_approve": True,
     "require_person_for_confirm": True,
     "require_person_for_publish_remote": True,
+    "require_person_for_configure": True,
+    "require_person_for_break_glass": True,
     #: The narrow exception: operation kinds a *service* may approve/confirm
     #: despite the two settings above. **Starts empty**, so the exception grants
     #: nothing until somebody names something. Part 2 adds
@@ -662,10 +670,14 @@ SCHEMA: dict = {
         "require_identity_for_approve": _BOOL,
         "require_identity_for_confirm": _BOOL,
         "require_identity_for_publish_remote": _BOOL,
+        "require_identity_for_configure": _BOOL,
+        "require_identity_for_break_glass": _BOOL,
         "require_person_for_reveal": _BOOL,
         "require_person_for_approve": _BOOL,
         "require_person_for_confirm": _BOOL,
         "require_person_for_publish_remote": _BOOL,
+        "require_person_for_configure": _BOOL,
+        "require_person_for_break_glass": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
         "netbox_excluded_vrfs": {"type": "array", "items": _STR},
         "clab_declared_unmapped": {"type": "object"},

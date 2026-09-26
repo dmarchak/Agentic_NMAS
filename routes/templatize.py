@@ -10,6 +10,8 @@ import os
 
 from flask import Blueprint, jsonify, request
 
+from modules.identity import request_actor
+
 log = logging.getLogger(__name__)
 
 bp = Blueprint("templatize", __name__, url_prefix="/templatize")
@@ -261,7 +263,7 @@ def commit_extraction(hostname):
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     result = repo_service.save_host_vars(
-        list_name, [hostname], actor=data.get("actor", "user"),
+        list_name, [hostname], actor=request_actor(),
         message=f"host_vars: {hostname} commit reviewed extraction")
     return jsonify({"ok": result.get("ok", False),
                     "hostname": hostname,
@@ -501,7 +503,7 @@ def edit_committed(hostname):
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     result = repo_service.save_host_vars(
-        list_name, [hostname], actor=data.get("actor", "user"),
+        list_name, [hostname], actor=request_actor(),
         message=f"host_vars: {hostname} {summary}")
     return jsonify({"ok": result.get("ok", False), "hostname": hostname,
                     "commit": result.get("commit", ""),
@@ -543,7 +545,7 @@ def revert_committed(hostname):
 
     target = outcome["target"]
     result = repo_service.save_host_vars(
-        list_name, [hostname], actor=data.get("actor", "user"),
+        list_name, [hostname], actor=request_actor(),
         message=f"host_vars: {hostname} revert {target[:8]}")
     cleared = hostvars.clear_rolled_back(repo, hostname)
 
@@ -576,7 +578,7 @@ def retry_rolled_back(hostname):
 
     repo = _repo_for(_active_list(data))
     result = hostvars.authorise_retry(repo, hostname,
-                                      actor=data.get("actor", "user"),
+                                      actor=request_actor(),
                                       reason=reason)
     return jsonify(result), (200 if result.get("ok") else 404)
 
@@ -770,5 +772,5 @@ def bulk_apply():
                                str(data.get("confirmed_hash") or ""),
                                render=render, eligible=eligible,
                                summary=data.get("summary", ""),
-                               actor=data.get("actor", "user"))
+                               actor=request_actor())
     return jsonify(result), (200 if result.get("ok") else 409)

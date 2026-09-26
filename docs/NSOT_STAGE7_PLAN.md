@@ -322,7 +322,10 @@ into a state that only curl can take it out of, so each gets an entry point:
 - **retire** (Device and Fleet);
 - **bulk intent** (Fleet);
 - **credential rotation** (Device);
-- **adopt an existing device** (Fleet);
+- **adopt an existing device** (Fleet). **No capability exists to give a
+  home to** (no adopt CLI, no adopt function; measured 2026-09-26). Proposed
+  as its own item after Stage 7 ([NSOT_FEATURE_AUDIT.md](NSOT_FEATURE_AUDIT.md)
+  section 8). Undecided;
 - **seed intent** (Device).
 
 Each goes through the preview-then-confirm pattern, and the CLI stays as the

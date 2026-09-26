@@ -13,6 +13,8 @@ import os
 
 from flask import Blueprint, jsonify, request
 
+from modules.identity import request_actor
+
 log = logging.getLogger(__name__)
 
 bp = Blueprint("templates", __name__, url_prefix="/templates")
@@ -299,11 +301,11 @@ def write_template(rel_path):
                 reason=(f"'{rel_path}' was edited, and this template imports "
                         "it; re-approval must validate the new content "
                         "against every bound device"),
-                actor=data.get("actor", "user"))
+                actor=request_actor())
             revoked.append(stored_path)
 
     commit = repo_service.save_templates(
-        list_name, [rel_path], actor=data.get("actor", "user"),
+        list_name, [rel_path], actor=request_actor(),
         message=data.get("message", ""))
     return jsonify({"ok": True, "path": rel_path, "commit": commit.get("commit", ""),
                     "approval_revoked": bool(revoked), "revoked": revoked})
@@ -325,12 +327,12 @@ def revoke_approval(rel_path):
     reason = (data.get("reason") or "").strip()
 
     result = approval.revoke(repo, rel_path, reason=reason,
-                             actor=data.get("actor", "user"))
+                             actor=request_actor())
     if not result.get("ok"):
         return jsonify(result), 400
 
     commit = repo_service.save_templates(
-        list_name, [".approvals.json"], actor=data.get("actor", "user"),
+        list_name, [".approvals.json"], actor=request_actor(),
         message=f"template: revoke approval for {rel_path}",
         paths=[os.path.join("templates", ".approvals.json")])
     return jsonify({**result, "commit": commit.get("commit", "")})
@@ -345,7 +347,7 @@ def save_bindings():
     repo = _repo_for(list_name)
     templates_repo.save_bindings(repo, data)
     commit = repo_service.save_templates(list_name, ["bindings.yml"],
-                                         actor=data.get("actor", "user"),
+                                         actor=request_actor(),
                                          message="template: update bindings")
     return jsonify({"ok": True, "commit": commit.get("commit", ""),
                     "bindings": templates_repo.load_bindings(repo)})
@@ -495,10 +497,10 @@ def approve(rel_path):
             "device it has never been validated on.")}), 400
 
     result = approval.approve(repo, rel_path, devices,
-                              actor=data.get("actor", "user"))
+                              actor=request_actor())
     if result["ok"]:
         repo_service.save_templates(list_name, [".approvals.json"],
-                                    actor=data.get("actor", "user"),
+                                    actor=request_actor(),
                                     message=f"template: approve {rel_path}")
     return jsonify(result), (200 if result["ok"] else 400)
 

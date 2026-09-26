@@ -16,6 +16,10 @@ import time
 
 import pytest
 
+# Every test here is about the identity layer itself (P.3: the harness
+# otherwise supplies a verified person; tests/conftest.py).
+pytestmark = pytest.mark.real_identity
+
 from modules import identity
 
 TEAM = "example-team.cloudflareaccess.com"

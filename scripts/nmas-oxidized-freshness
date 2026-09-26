@@ -180,10 +180,14 @@ def main() -> int:
         print(f"\nBLOCKED: {', '.join(body['blocked'])}", file=sys.stderr)
         print("Either save a golden for what is on the device, or authorise "
               "this exact divergence:", file=sys.stderr)
-        print(f"  curl -X POST {base}/freshness/authorise -H 'Content-Type: "
-              "application/json' \\", file=sys.stderr)
-        print("       -d '{\"device\":\"<host>\",\"fingerprint\":\"<from "
-              "above>\",\"reason\":\"...\"}'", file=sys.stderr)
+        # An authorisation needs a verified PERSON (POST /freshness/authorise,
+        # gated `approve`). A curl from this host has no Access assertion and is
+        # refused, and no screen calls that route yet (register D9). So this
+        # names what is needed rather than a command that cannot succeed.
+        print("  POST /freshness/authorise {device, fingerprint, reason} as a "
+              "verified person, through the tunnel.", file=sys.stderr)
+        print("  A curl from the NMAS host is refused (no Access assertion), and "
+              "there is no screen for it yet (register D9).", file=sys.stderr)
         return EXIT_BLOCKED
     return EXIT_OK
 

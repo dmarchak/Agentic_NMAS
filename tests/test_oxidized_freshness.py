@@ -523,6 +523,8 @@ class TestTheRoutesOverHttp:
             "the line was dropped rather than masked — the operator can no "
             "longer see WHAT differs, which is the whole report")
 
+    @pytest.mark.real_identity
+
     def test_authorise_requires_an_identity(self, client):
         """403 before 400: identity ahead of input validation."""
         resp = client.post("/freshness/authorise", json={})

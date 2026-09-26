@@ -173,6 +173,8 @@ class TestAccessValuesAreNotHandedToAnyone:
     """`routes/identity.py` has refused to echo the team domain and the AUD
     since it was written: they are what an assertion is validated against."""
 
+    @pytest.mark.real_identity
+
     def test_an_unverified_caller_gets_no_values(self, client, settings):
         settings(cf_access_team_domain="example.cloudflareaccess.com",
                  cf_access_aud="a" * 64)

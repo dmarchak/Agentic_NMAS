@@ -266,6 +266,8 @@ class TestTheRoutes:
         assert blocked, "cisco_ios should be listed and disabled"
         assert all(p["reason"] for p in blocked)
 
+    @pytest.mark.real_identity
+
     def test_create_requires_a_person(self, client):
         assert client.post("/onboard/create", json={}).status_code == 403
 
@@ -442,6 +444,8 @@ class TestTheTargetListIsCarriedNeverDerived:
                                          "platform": "cisco-ios-xe"})
         assert r.status_code == 400, r.status_code
         assert "target list" in (r.get_json() or {}).get("error", "").lower()
+
+    @pytest.mark.real_identity
 
     def test_create_refuses_before_it_even_looks_at_the_list(self):
         """**403, not 400, and that ordering is correct.**

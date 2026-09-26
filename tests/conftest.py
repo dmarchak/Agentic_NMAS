@@ -35,6 +35,37 @@ def _import_the_application_first():
     import app  # noqa: F401
 
 
+#: The person every test is, unless it asks for the real identity layer.
+TEST_PERSON = "test-person@example.invalid"
+
+
+@pytest.fixture(autouse=True)
+def _a_verified_person_by_default(request, monkeypatch):
+    """Every request in a test comes from a verified PERSON, by default.
+
+    P.3 put one identity gate in front of every mutating route
+    (`modules/route_gates.py`). Before it, most of the suite POSTed to routes
+    with no identity at all and passed only because those routes had no gate,
+    which is register B12 seen from the test side. So the harness now says
+    who is asking, and a test that is ABOUT identity opts out with
+    ``@pytest.mark.real_identity`` and meets the real ``identify()``.
+
+    This patches ``identify`` and nothing below it, so ``may()``, the service
+    rules and the refusal shapes still run for real on every gated request.
+    """
+    if request.node.get_closest_marker("real_identity"):
+        yield
+        return
+    from modules import identity
+
+    person = identity.Identity(actor=TEST_PERSON, email=TEST_PERSON,
+                               kind="person", verified=True, outcome="ok",
+                               peer="198.51.100.7", peer_trusted=True,
+                               header_present=True)
+    monkeypatch.setattr(identity, "identify", lambda _request: person)
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _fresh_redaction_cache():
     from modules import redact

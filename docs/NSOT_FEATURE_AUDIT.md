@@ -89,7 +89,7 @@ control whose guard does not exist.
 | Feature | Class | Reason |
 |---|---|---|
 | Onboarding wizard (plan, create, verify, abandon, bootstrap download) | KEEP | The model's way in. |
-| Add device form, Discover subnet then Add | **ABSORB** into onboarding as **"adopt an existing device"** | Bringing in an already-configured (brownfield) device is a real task. Today it adds a CSV row and nothing else: no manifest identity, no intent, no golden. Adoption should capture, extract intent, commit, and promote. |
+| Add device form, Discover subnet then Add | **ABSORB** into onboarding as **"adopt an existing device"**; the shape and its scale are **section 8** | Bringing in an already-configured (brownfield) device is a real task. **Corrected 2026-09-26, measured:** `/add` mints an identity and writes the manifest, then a CSV row, with no capture, intent or golden. It is `/add_discovered_devices` that writes a CSV row and nothing else, and one such device stops Save All for the whole list (C25). Adoption should capture, extract intent, commit, and promote. |
 | Retire (`nmas-retire`) | KEEP, and ADD GUI | The whole exit, CLI-only today. |
 | Device lists (networks): create, switch, delete | KEEP | |
 | Refresh hostnames | ABSORB into inventory refresh | |
@@ -293,6 +293,15 @@ hold**:
 **What makes the autonomous class different from the rest:** it contains
 only actions whose worst outcome is **"it happened earlier than scheduled"**.
 
+**THAT PHRASE IS THE TEST (the operator, 2026-09-26).** A future proposal to
+let the agent do something without a person has to pass it: *is the worst
+outcome of this action that it happened earlier than scheduled?* If the
+honest answer is anything else, the action is proposed, never taken. The two
+exclusions are what make the class credible. Re-sending a confirmed deploy
+is an empty class (either there is nothing to add or the hash refuses).
+Restarting a collector is excluded because it destroys the evidence: it
+would have turned clab-sync's 72 named failures into silence.
+
 ### 2. The Configure tab: absorb, phased
 
 - The direct push is **CUT now**, in P.3: every use makes intent drift.
@@ -353,3 +362,205 @@ prompt layer**, the same concern as `patch_app_file`, one level up.
 **If the operator wants the knowledge base back as it was**, the trade is
 this: an assistant whose standing rules nobody reviewed, against an
 assistant with no memory until curated notes exist.
+
+**AGREED (the operator, 2026-09-26)**, as changed above:
+- the self-writing tools and the CCIE base are cut;
+- curated notes live in git, and the agent can only PROPOSE to them;
+- the triage report is kept as a record.
+
+The operator named the part they had not seen: *a rule the model writes for
+itself and must then apply immediately is self-editing at the prompt level.*
+
+## 8. Adoption at scale (raised by the operator 2026-09-26; PROPOSED, not decided)
+
+The operator's framing, kept because it sets the shape: **the wizard is for
+the EXCEPTION** (one device, done carefully, when something is unusual), and
+**the bulk path is a job with a preview, buckets and retries**. Brownfield
+comes from an AUTHORITATIVE source (a CMDB, NetBox, an export) and is
+reconciled, not scanned for. Greenfield is ZTP. Two mechanisms on purpose.
+
+Everything below is measured from the code on 2026-09-26 (file:line in the
+register rows it cites).
+
+### 8a. What exists today
+
+- **`/add` mints an identity and writes the manifest, then the CSV row.** It
+  captures nothing and writes no intent and no golden. (Correcting section 4's
+  row, which said it adds a CSV row and nothing else.) On a NetBox-sourced
+  list the CSV write refuses AFTER the manifest write, leaving an entry with
+  no row. It hard-codes `device_type: cisco_ios` (C25).
+- **`/add_discovered_devices` writes CSV rows only**, with no identity. And
+  one identity-less device makes Save All commit NOTHING for the whole list,
+  because `save_golden(allow_new=False)` returns from inside its loop (C25).
+  So Discover Subnet, then Add, does not half-manage a device. It stops the
+  list's golden captures.
+- **Onboarding phase 1** (credentials, commit, render) is new-device-only
+  throughout: a minted one-time credential, wizard-supplied intent, a
+  bootstrap config.
+- **Onboarding phase 2** (verify, capture, rotate, remove RW, golden, NetBox,
+  promote) is mostly generic. Capture, rotate (`record=` already exists), RW
+  removal, the first golden and the NetBox record would all work on an
+  existing device. What makes it new-device-only: its entry refuses a device
+  that is not pending, and promote refuses one that was never pending.
+  **Phase 2 has no extract-and-commit-intent step**, because onboarding's
+  intent comes from the wizard.
+- **Extract and commit are per device only** (`/templatize/extract/<h>`,
+  `/commit/<h>`). No fleet extract exists. The fleet round-trip report drops
+  an unreadable golden with a bare `continue` (C2).
+- **Bulk intent is compare-and-set over EXISTING committed files.** It
+  refuses a device with no committed intent, so it cannot create intent. Its
+  grouping (devices with an identical render delta form one group) is the
+  right idea for an adoption report. The module is not the right tool.
+- **Batch deploy has the bucket shape**: six outcomes, every device accounted
+  for, the breaker. It has **no retry of the failed subset** (the operator
+  re-plans by hand), and one real gap: a confirmed device whose artifact
+  cannot be built is dropped from the report (C24). It runs **synchronously
+  inside the request**, which does not survive 500 devices.
+- **No job abstraction exists.** `bulk_manager` is a hard-coded chain of CLI
+  modes. Discovery is an in-memory dict. Nothing survives a restart, and
+  nothing retries a subset.
+- **A NetBox-sourced list already reads the authoritative inventory.** On
+  refresh, nothing mints an identity, captures, or writes intent for a device
+  it has not seen. `migrate.apply` did exactly this for the reference nine
+  once, and refuses to run again.
+- **ZTP (Stage 7 GUI section 6a) is unbuilt.** Phase 2 covers the
+  ADDRESSING half, and only its read side: `reservation_for` and `lease_for`
+  are read-only (no `reservation-add`, no `option-data`). Nothing serves a
+  config: no option 67 or bootfile, no HTTP or TFTP serving.
+
+### 8b. Question A: how adoption relates to onboarding
+
+**Neither (a) nor (b) as posed: the shared part is phase 2, not phase 1.**
+Adoption is a different FRONT on the same BACK:
+
+- **Its own plan constructor** (`build_adoption_plan`). It needs no bootstrap
+  config, no minted credential and no wizard intent. It needs the address,
+  the credential the operator already holds (staged as the override, keyed
+  on the management address, exactly where `resolve()` looks), and a
+  platform.
+- **Then phase 2, generalised.** Its entry accepts `adopting` as well as
+  `pending`, and it gains one step, **extract and commit intent from the
+  capture**, after the golden and before promote. The RW and rotation steps
+  become policy-driven (below).
+- **One wizard with a branch at the start** for the single-device case, as
+  (a) describes, because the screens after the first are the same phase-2
+  report.
+
+The seam to watch is the one this project keeps finding: two constructors
+feeding one step sequence. The server may read nothing the form cannot send,
+for both branches.
+
+**The guarantees.** The rule to hold: **adoption RECORDS what is there, and
+bringing a device to the baseline is a change through the ordinary deploy
+path.** Otherwise adoption becomes a second, unpreviewed config-push path,
+which P.3 is removing everywhere else.
+
+- **Credential.** Rotate: yes, for the operator's reason (nobody knows who
+  else holds it). But not necessarily INLINE. Rotation is the one write, and
+  the one lockout risk, in an otherwise read-only step. At scale it is swept
+  in waves (section 8c). **The guarantee is not "rotated at adoption". It is
+  that "managed on a credential of unknown distribution" is a NAMED state,
+  shown in Needs attention**, until rotation clears it. The single-device
+  wizard offers inline rotation. The bulk job does not. Rotation also needs a
+  current break-glass record first, as retire does, and 6.2's per-consumer
+  accounts change what "rotate" touches (Oxidized uses the same account).
+- **The P.1 syslog block**: not pushed by adoption. The extracted intent says
+  what the device has. The block then arrives as ONE bulk-intent change over
+  the adopted set plus a batch deploy, which is how it reached seven devices
+  on 2026-09-25. Until then, "missing the baseline block" is a named state.
+  The same goes for an RW community: **reported and proposed, not removed**.
+  On a device nobody provisioned, an RW community may be somebody's
+  deliberate config. Onboarding removes it because vrnetlab injected it.
+- **Template approval**: adoption does not need to add this guarantee,
+  because the deploy path already enforces it per device. An adopted device
+  with no approved template, or whose template cannot reproduce it
+  (`template_report`), is not deployable, and says so. **But see the scale
+  finding in 8c: approval is all-or-nothing per platform.**
+
+### 8c. Question B: scale on the way in
+
+**Bulk adoption is the batch-deploy shape with different steps, split in
+two.**
+
+1. **A reconcile JOB (reads only).** For each device the authoritative source
+   names, it reaches it, captures, parses and extracts to staging. It
+   records one bucket per device:
+   - adopted-ready;
+   - unreachable;
+   - credential refused;
+   - capture empty;
+   - platform unmapped;
+   - does not parse;
+   - template cannot reproduce it (the unmodelled lines named);
+   - already managed;
+   - the source and the device disagree (hostname or address).
+
+   Partial success is the normal outcome. **Re-running targets a bucket**,
+   and staged successes are not redone. Credentials are tried in the
+   operator's named order.
+2. **A commit step (approve, one-shot).** The preview hash covers the staged
+   files. One commit for the ready set: identities, goldens and intent, with
+   `Devices:`, `Refused:` and bucket trailers. This is the bulk-intent pattern
+   applied to creation, which bulk intent itself cannot do.
+
+The report groups identical outcomes and SURFACES divergence. At 500
+devices, "the exact program" is replaced by
+- the counts per bucket, with every device named once;
+- for "template cannot reproduce", the unmodelled constructs RANKED by how
+  many devices carry them (`rank_unmodeled` exists), because one missing
+  template feature failing 200 devices is one fix, not 200.
+
+**Against the operator's list:**
+- *Same shape as batch deploy?* Yes: buckets, every device accounted for (with
+  C24's gap closed), plus the retry-a-bucket that batch deploy also lacks.
+- *Reuse bulk intent?* The pattern (one-shot hash, one commit, grouping), not
+  the module. It cannot create intent.
+- *"Adopt everything in this NetBox list"*: **mostly wiring, not
+  invention.** The source is read, and every per-device step exists. The
+  build is the job runner, the extract step in phase 2, the bucket report,
+  and the one-commit creation. It is "bring the model up to date with an
+  inventory I already have", and `migrate.apply` is the precedent that did it
+  once.
+- *Partial failure*: the buckets above. Neither stopping nor skipping.
+- *ZTP*: phase 2 is the read side of addressing. The missing half is writing
+  reservations, option 67 plus a config server, and the check-in (phase 2's
+  verify is its analogue). Keyed on a serial or MAC known before the device
+  exists: at scale, a purchase or inventory record, which is again an
+  authoritative source.
+
+**A scale finding that is not about adoption at all: template approval is
+all-or-nothing per platform.** `approval.approve()` refuses unless the
+template validates against EVERY bound device (`approval.py:314-317`), and
+every device joining the set revokes the approval. At ten devices this is
+the right strictness. At 500, one adopted device the template cannot
+reproduce blocks deploys to the other 499 on that platform, and every
+adoption wave revokes the approval for everyone. The honest options:
+- adopt the unreproducible devices UNBOUND (managed, captured and
+  drift-checked, but not deployable), as a bucket;
+- or scope approval narrower than the platform.
+
+**Undecided.** Recorded here so the bulk path is designed against it rather
+than discovering it at wave two.
+
+### 8d. Where it belongs
+
+**Its own item, after Stage 7. Not inside it.** It is a build: a job runner,
+a plan constructor, an extract step in phase 2, a bucket report, a creation
+commit. Stage 7's rule is that it moves controls and adds entry points.
+
+**But Stage 7 already schedules it, wrongly.** NSOT_STAGE7_PLAN lists
+"adopt an existing device" among the CLI-only tasks the GUI owns (7.4).
+There is no adopt CLI and no adopt function, so that is an entry point to
+nothing. Two consequences for Stage 7, proposed:
+1. **7.4 drops "adopt"**, and it moves to the new item. Add Device and
+   Discover Subnet are **not removed in 7.8** until that item lands, or bulk
+   adoption goes from broken to impossible. C25's cause (discovered devices
+   with no identity) is fixed where it is, in the meantime.
+2. **Stage 7 builds the job component** that section 0a already requires
+   ("every fleet-wide operation is a job with progress and a targetable
+   subset"), in a shape adoption can use: persisted, per-device outcome,
+   retry a bucket. Batch deploy needs the same at 500 devices, since it runs
+   inside one request today.
+
+ZTP stays where section 6a put it, **after** adoption: it shares the job,
+the buckets and the check-in, and adds the serving half.

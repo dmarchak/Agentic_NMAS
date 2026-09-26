@@ -5,6 +5,8 @@ import os
 
 from flask import Blueprint, jsonify, request
 
+from modules.identity import request_actor
+
 log = logging.getLogger(__name__)
 
 bp = Blueprint("golden", __name__, url_prefix="/golden")
@@ -403,7 +405,7 @@ def migrate_apply():
                         "error": "Review the dry-run report and confirm first."}), 400
     try:
         result = apply_migration(_active_list(data),
-                                 actor=data.get("actor", "user"))
+                                 actor=request_actor())
         # A refused re-run is a conflict, not a server error and not a success.
         # The body carries the marker, so the UI can say when it happened.
         return jsonify(result), (409 if result.get("already_migrated") else 200)
@@ -427,7 +429,7 @@ def sync_renames():
     data = request.get_json(silent=True) or {}
     try:
         return jsonify(sync_device_names_to_repo(_active_list(data),
-                                                 actor=data.get("actor", "user")))
+                                                 actor=request_actor()))
     except Exception as exc:                  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500
 

@@ -927,6 +927,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_job_health.py` | a failing timer is visible: the cause line and the streak; not-installed is never ok; could-not-ask is unknown; the Proxmox images: stale when the job STOPPED, failing names the task's own status, a multi-VM failure does not condemn the VM that succeeded, `will_not_fit` asks about the next run (1.2 × the largest image), never a percentage |
 | `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_breakglass.py` | the record is independent of the key it escrows; `verify --live` tests the ESCROWED key against the stored values (a right key on disk cannot pass a wrong copy); zero values is unproven; restore never replaces a key |
+| `test_route_gates.py` | P.3: every mutating endpoint and terminal event declared, both directions with floors; the table agrees with every in-route gate; refused before input; a person passes and a service does not; the actor is the verified one |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
@@ -1048,6 +1049,16 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   answers 403. Neither does any legacy device route. The paragraphs that follow describe the gate's
   DESIGN; its call sites are the gap. What has stood in for it is the network (the Access-protected
   tunnel, and port 5000 firewalled from the LAN).
+  **P.3 step 1, 2026-09-26: the gate is a TABLE now, enforced in code.** `modules/route_gates.py`
+  declares every mutating endpoint (131) and the three terminal events, each with a kind and a
+  reason, and one `before_request` hook enforces it ahead of input validation. An undeclared
+  endpoint is refused at run time and fails `tests/test_route_gates.py`. **A new mutating route must
+  be declared there**, and that is a code change, not a setting. Two kinds were added: `configure`
+  (the tool's own settings, gates, inventory and records) and `break_glass` (the terminal). Routes
+  record `identity.request_actor()`, the VERIFIED person, never an actor from the request body. The
+  test harness is a verified person by default; a test about identity uses
+  `@pytest.mark.real_identity`. **Not yet measured on the host** (P.3 acceptance 2), so this
+  correction stays until step 9.
 - **Reveal, approve and confirm all require a verified identity** by default.
   Reveal exposes a secret; approve and confirm put configuration on a device.
   **There is no localhost exemption** — an exemption for requests from the box
@@ -4282,7 +4293,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **24 open at 2026-09-26**, counted from the rows: 20 recorded only in
+present when each was recorded. **27 open at 2026-09-26**, counted from the rows: 23 recorded only in
 prose, 4 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

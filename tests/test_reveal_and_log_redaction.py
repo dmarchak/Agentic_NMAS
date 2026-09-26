@@ -117,6 +117,9 @@ class TestConfigIsMaskedByDefault:
         assert "community public" not in body["config"]
 
 
+@pytest.mark.real_identity
+
+
 class TestRevealRequiresAPersonAndIsAudited:
     def test_an_unidentified_reveal_is_refused_and_still_masked(self, client):
         response = client.get("/golden/version/r1?reveal=1",

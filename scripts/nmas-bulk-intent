@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Apply one structured change to N devices' committed intent, as ONE commit.
 
-NSOT_PLAN.md P.1b. Drives the app's own routes (/templatize/bulk/preview and
-/apply), so there is one code path, not two.
+NSOT_PLAN.md P.1b. Runs IN-PROCESS on the host, through the same helpers the
+routes use (`routes.templatize._bulk_inputs`, `_bulk_render_and_eligible`)
+and the same `modules.nsot.bulk_intent.plan` / `apply`, so there is still one
+code path. It used to POST to the app, and from P.3 the app refuses an
+unidentified commit of intent: a shell on the host has no Access assertion.
+Shell access to the host is the authentication here, as for `nmas-retire`,
+and `--actor` names the person accountable (CLAUDE.md, ACTOR_CONVENTION).
 
     nmas-bulk-intent --list Default --devices s1,s2,r1 \\
         --change deploy/intent-changes/p1-syslog-block.json
@@ -11,28 +16,37 @@ NSOT_PLAN.md P.1b. Drives the app's own routes (/templatize/bulk/preview and
 
     nmas-bulk-intent ... --apply <HASH> --actor you@example.com
 
-Exit 0 previewed / committed, 1 refused (nothing written), 2 could not ask.
+Exit 0 previewed / committed, 1 refused (nothing written), 2 could not run.
 Read the headline before applying: more than one group means the same change
 does something different on some device.
 """
 
 import argparse
 import json
+import os
 import sys
-import urllib.error
-import urllib.request
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 
-def _post(url: str, body: dict) -> tuple:
-    req = urllib.request.Request(url, data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json",
-                                          "Accept": "application/json",
-                                          "User-Agent": "nmas-automation/1.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            return r.status, json.loads(r.read())
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read() or b"{}")
+def _run(body: dict, confirmed_hash: str = "", actor: str = "") -> tuple:
+    """(status, payload) with the routes' own shapes, computed in-process."""
+    from modules.nsot import bulk_intent
+    from routes.templatize import _bulk_inputs, _bulk_render_and_eligible
+
+    list_name, repo, devices, steps, error = _bulk_inputs(body)
+    if error:
+        return 400, {"ok": False, "error": error}
+    render, eligible = _bulk_render_and_eligible(list_name, repo)
+    if confirmed_hash:
+        out = bulk_intent.apply(list_name, repo, devices, steps, confirmed_hash,
+                                render=render, eligible=eligible,
+                                summary=body.get("summary", ""), actor=actor)
+        return (200 if out.get("ok") else 409), out
+    out = bulk_intent.plan(repo, devices, steps, render=render,
+                           eligible=eligible, summary=body.get("summary", ""))
+    return (200 if out.get("ok") else 400), out
 
 
 def main() -> int:
@@ -43,7 +57,6 @@ def main() -> int:
     ap.add_argument("--change", required=True, help="JSON: summary + steps")
     ap.add_argument("--apply", default="", help="the preview hash to commit")
     ap.add_argument("--actor", default="")
-    ap.add_argument("--url", default="http://127.0.0.1:5000")
     args = ap.parse_args()
 
     with open(args.change, encoding="utf-8") as fh:
@@ -56,9 +69,7 @@ def main() -> int:
             if not args.actor:
                 print("REFUSED: --actor is required to commit (who is accountable)")
                 return 1
-            code, out = _post(args.url + "/templatize/bulk/apply",
-                              {**body, "confirmed_hash": args.apply,
-                               "actor": args.actor})
+            code, out = _run(body, args.apply, args.actor)
             if not out.get("ok"):
                 print(f"REFUSED ({code}): {out.get('error')}")
                 return 1
@@ -67,9 +78,9 @@ def main() -> int:
             if out.get("refused"):
                 print(f"  refused (untouched): {', '.join(out['refused'])}")
             return 0
-        code, out = _post(args.url + "/templatize/bulk/preview", body)
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        print(f"UNPROVEN: could not ask the app at {args.url}: {exc}")
+        code, out = _run(body)
+    except Exception as exc:                           # noqa: BLE001
+        print(f"UNPROVEN: could not run the preview: {type(exc).__name__}: {exc}")
         return 2
     if not out.get("ok"):
         print(f"REFUSED ({code}): {out.get('error')}")

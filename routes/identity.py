@@ -151,13 +151,14 @@ def ratify_setting():
     ratification with nobody behind it is a seeded default wearing a better
     name, which is exactly what `migrate()` was stopped from doing.
 
-    `approve` is the action kind: this is a person putting their name to a
-    setting, which is what approving is.
+    `configure` is the action kind (P.3, 2026-09-26): the tool's own settings
+    and gates. It was `approve` until `configure` existed, and a service grant
+    written for approving an approval-queue item should not reach a gate.
     """
     from modules import identity as ident_mod
     from modules.settings_schema import ratify
 
-    ident, refusal = ident_mod.require(request, action="approve",
+    ident, refusal = ident_mod.require(request, action="configure",
                                        operation="ratify_setting")
     if refusal:
         return jsonify(refusal), 403

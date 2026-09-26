@@ -70,6 +70,8 @@ from modules.config import (
 )
 from modules.connection import ping_worker, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
 from modules.terminal import ensure_terminal_session, start_terminal_reader
+from modules import route_gates
+from modules.identity import request_actor
 from modules.quick_actions import load_quick_actions, save_quick_actions
 from modules.utils import make_device_filename
 from modules.commands import run_device_command
@@ -446,6 +448,7 @@ _device_lock = get_device_send_lock  # serialises SSH commands per device
 
 
 @socketio.on("connect_terminal")
+@route_gates.socket_gated("connect_terminal")
 def socket_connect_terminal(data):
     ip = data.get("ip")
     if not ip:
@@ -467,6 +470,7 @@ def socket_connect_terminal(data):
 
 
 @socketio.on("terminal_input")
+@route_gates.socket_gated("terminal_input")
 def socket_terminal_input(data):
     ip = data.get("ip")
     raw = data.get("input", "")
@@ -5312,7 +5316,7 @@ def golden_configs_save_all():
     # answer to "when was this device onboarded" was "whenever someone next
     # pressed Save All".
     commit_result = save_golden(list_name, items, source="save_all",
-                                actor="user", inventory_size=len(devices),
+                                actor=request_actor(), inventory_size=len(devices),
                                 skipped=failed, allow_new=False)
     if not commit_result.get("ok"):
         return jsonify({"ok": False, "saved": [], "failed": failed,

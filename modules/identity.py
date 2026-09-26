@@ -361,7 +361,34 @@ def service_may(operation: str) -> bool:
 #: run Part 2's credential rotation would also let it publish a network's
 #: history to a remote. A grant should not reach further than the thing it
 #: was written for.
-GATED_ACTIONS = ("reveal", "approve", "confirm", "publish_remote")
+#:
+#: `configure` and `break_glass` were added by P.3 (2026-09-26), when the gate
+#: became a table (`modules/route_gates.py`). `configure` covers the tool's own
+#: settings, gates, inventory and records. `break_glass` is the terminal, kept
+#: distinct from `confirm` because typing into a device shell and confirming a
+#: previewed program mean different things about what happened.
+GATED_ACTIONS = ("reveal", "approve", "confirm", "publish_remote",
+                 "configure", "break_glass")
+
+
+def request_actor() -> str:
+    """The VERIFIED actor of the current request, never one the client named.
+
+    The gate (`route_gates.enforce`) puts the identity it verified on
+    ``flask.g``. Fourteen routes used to record ``data.get("actor", "user")``,
+    a name the client typed, beside a gate that had just verified a different
+    one; the audit then says whatever the request body said. Outside a gated
+    request this answers ``unauthenticated``, which is what it was.
+    """
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            ident = getattr(g, "nmas_identity", None)
+            if ident is not None and ident.is_identified:
+                return ident.actor
+    except Exception:                                   # noqa: BLE001
+        pass
+    return UNAUTHENTICATED
 
 
 def may(ident: "Identity", action: str, operation: str = "") -> tuple:

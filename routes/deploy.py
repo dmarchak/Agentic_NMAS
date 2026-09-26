@@ -16,6 +16,8 @@ import os
 
 from flask import Blueprint, jsonify, request
 
+from modules.identity import request_actor
+
 log = logging.getLogger(__name__)
 
 bp = Blueprint("deploy", __name__, url_prefix="/deploy")
@@ -832,7 +834,7 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     items = [GoldenItem(p["hostname"], p["config_text"], p["mgmt_ip"],
                         netbox_id=p["netbox_id"], device_uid=p["device_uid"])
              for p in pending]
-    result = save_golden(list_name, items, source="pipeline", actor="pipeline",
+    result = save_golden(list_name, items, source="pipeline", actor=request_actor(),
                          message=subject, pipeline_id=batch_id,
                          baseline=earned["baseline"], allow_new=False,
                          extra_trailers=trailers, extra_paths=extra_paths)
