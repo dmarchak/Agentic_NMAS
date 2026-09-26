@@ -14,6 +14,7 @@ at the moment of the commit:
   recorded actor is not the verified one).
 """
 
+from tests import source_index
 import ast
 import pathlib
 import subprocess
@@ -139,8 +140,7 @@ class TestEveryCommitThroughTheChokePoint:
 
 def _commit_calls(path):
     """(function name, call) for every ``*git(..., "commit", ...)`` in a file."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    for fn in ast.walk(tree):
+    for fn in source_index.nodes(path):        # one parse per file per run (C45)
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for call in ast.walk(fn):

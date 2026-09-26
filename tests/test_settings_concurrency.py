@@ -13,6 +13,7 @@ survived. A test that only checked the lock is taken would pass a lock
 taken around the wrong span.
 """
 
+from tests import source_index
 import json
 import os
 import subprocess
@@ -163,9 +164,7 @@ class TestEveryReadModifyWriteHoldsTheLock:
                 paths += [os.path.join(root, f) for f in files if f.endswith(".py")]
         for path in paths:
             full = path if os.path.isabs(path) else os.path.join(REPO, path)
-            with open(full, encoding="utf-8") as handle:
-                tree = ast.parse(handle.read())
-            for node in ast.walk(tree):
+            for node in source_index.nodes(full):  # one parse per file per run (C45)
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     found[(os.path.relpath(full, REPO), node.name)] = node
         return found

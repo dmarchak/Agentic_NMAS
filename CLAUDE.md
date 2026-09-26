@@ -877,6 +877,7 @@ from the UI Settings panel — no restart needed except for bind host/port.
 
 ```bash
 scripts/nmas-test         # the suite, confined to loopback (C46); args go to pytest
+scripts/nmas-test -n auto # the same, in parallel (pytest-xdist; C45)
 pytest                    # 756 tests
 pytest tests/test_netbox_write_gate.py -v
 ```
@@ -945,7 +946,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_rotation_reports_the_boot_file.py` | P.3 step 12 (B15): success is the checker's SAFE verdict from one shared function; a broken sync stage is named and never success; the message leads with the danger; every outcome is recorded (never a credential) and a not-SAFE rotation is a job-health row until a later persist reads SAFE; the sync script has one owner |
 | `test_actor_verified_trailer.py` | P.3 step 10 (D10): `access` only for the actor the gate verified, `host-shell` for a CLI, `none` for the app's threads; written once at `repo.git()`; every git commit in the tree goes through it or is named; a gated route in the real app commits `access` |
 | `test_setting_not_applicable.py` | C31: a declaration carries who, when and why, and refuses a missing reason or a set key; job health tells `not_applicable` from `unset_guard`, and set-and-declared is a `contradiction`; a declared consumer leaves the rotation's list |
-| `test_harness_isolation.py` | C32/C36/C42: the suite runs on a temporary store; the store guard's controls hold on this machine's clock and on a simulated ext4 at 1 ms (the host) and 1 s; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
+| `test_harness_isolation.py` | C32/C36/C42/C43: the suite runs on a temporary store, initialised once before any test (a file that errored alone passes alone); the store guard's controls hold on this machine's clock and on a simulated ext4 at 1 ms (the host) and 1 s; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -4559,7 +4560,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **36 open at 2026-09-26**, counted from the rows: 31 recorded only in
+present when each was recorded. **35 open at 2026-09-26**, counted from the rows: 30 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

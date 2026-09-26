@@ -3,3 +3,7 @@
 # never gated (NSOT_PLAN, course labs).
 pytest-cov==7.1.0
 coverage==7.16.1
+# Parallel test runs (C45). Measured with pytest 9.1.1 (the lock's): 4 workers,
+# 3,986 passed in 24.5 s on the laptop against 64 s serial.
+pytest-xdist==3.8.0
+execnet==2.1.2

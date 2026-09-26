@@ -163,3 +163,19 @@ class TestImportingStartsNothing:
                     and "__main__" in ast.unparse(n.test))
         called = [getattr(n.func, "id", "") for n in ast.walk(main) if isinstance(n, ast.Call)]
         assert "_start_background_daemons" in called
+
+
+class TestTheStoreIsInitialisedBeforeAnyTest:
+    """C43: a result must not depend on which test ran first."""
+
+    def test_the_file_that_errored_alone_passes_alone(self):
+        done = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+             "tests/test_golden_migration.py::TestDuplicateDetection::test_newest_content_wins"],
+            capture_output=True, text=True, cwd=ROOT, timeout=120,
+            env={k: v for k, v in os.environ.items() if k != "NMAS_TEST_STORE_OWNER"})
+        assert done.returncode == 0, done.stdout[-800:]
+
+    def test_the_default_list_exists_before_this_test(self):
+        from modules import config
+        assert os.path.isdir(os.path.join(config.DATA_DIR, "lists", "default"))

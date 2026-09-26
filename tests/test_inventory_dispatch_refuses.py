@@ -11,6 +11,7 @@ With ~87 call sites the blast radius is the point. Every downstream count is
 *honestly* zero, which is the hardest kind of wrong to notice.
 """
 
+from tests import source_index
 import os
 
 import pytest
@@ -116,10 +117,10 @@ class TestTheSurveyThatJustifiedTheRefusal:
                     continue
                 path = os.path.join(dirpath, name)
                 try:
-                    tree = ast.parse(open(path, encoding="utf-8").read())
+                    walked = source_index.nodes(path)   # one parse per file per run (C45)
                 except (OSError, SyntaxError, ValueError):
                     continue
-                for node in ast.walk(tree):
+                for node in walked:
                     if not isinstance(node, ast.Call):
                         continue
                     label = (getattr(node.func, "id", None)

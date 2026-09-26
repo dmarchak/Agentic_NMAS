@@ -40,6 +40,7 @@ how the target was verified, the verdict and the exit code.
 """
 
 import argparse
+import datetime
 import getpass
 import json
 import os
@@ -187,6 +188,42 @@ def ci_verdict(repo, target, get=github_get):
     return COULD_NOT_ASK, f"no CI run for {short} and no passing ancestor within 100 commits. Refused."
 
 
+def parallel_available():
+    """pytest-xdist importable by THIS interpreter (the one that runs the suite)."""
+    import importlib.util
+    return importlib.util.find_spec("xdist") is not None
+
+
+def offline_forecast(repo):
+    """What --offline is about to cost, said BEFORE it runs (C45): the full
+    suite takes minutes on the host, and that is worth knowing rather than
+    discovering at the wrong moment. The figure is this machine's own last
+    --offline run, from the audit rows; never a constant, which would go
+    stale silently."""
+    how = (f"in parallel on {os.cpu_count()} cores" if parallel_available()
+           else "serially (pytest-xdist is not installed here)")
+    last = None
+    try:
+        with open(os.path.join(repo, "data", "deploy_audit.jsonl"), encoding="utf-8") as fh:
+            for line in fh:
+                row = json.loads(line)
+                if row.get("gate") == "offline" and row.get("started_at") and row.get("ended_at"):
+                    last = row
+    except (OSError, ValueError):
+        pass
+    if last is None:
+        seen = "No earlier --offline run is recorded here."
+    else:
+        took = (_parse_iso(last["ended_at"]) - _parse_iso(last["started_at"])).total_seconds()
+        seen = (f"The last one here took {int(took // 60)}m{int(took % 60):02d}s "
+                f"({last['started_at']}, {'parallel' if last.get('parallel') else 'serial'}).")
+    return f"--offline: running the FULL suite here, {how}. {seen}"
+
+
+def _parse_iso(text):
+    return datetime.datetime.strptime(text, "%Y-%m-%dT%H:%M:%S.%fZ")
+
+
 def offline_verdict(repo, target, run=subprocess.run):
     """Run the whole suite on THIS machine against the target, not HEAD, in a
     CHECKOUT of the target: the shape of what is deployed.
@@ -199,6 +236,7 @@ def offline_verdict(repo, target, run=subprocess.run):
     nothing had ever run the suite inside an archive. `--shared` borrows the
     repository's objects and writes nothing into it.
     """
+    print(offline_forecast(repo), flush=True)
     with tempfile.TemporaryDirectory(prefix="nmas-deploy-") as tmp:
         tree = os.path.join(tmp, "tree")
         subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", repo, tree],
@@ -212,6 +250,8 @@ def offline_verdict(repo, target, run=subprocess.run):
             argv = [runner, "--allow-unconfined", "-q", "-p", "no:cacheprovider"]
         else:
             argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+        if parallel_available():
+            argv += ["-n", "auto"]
         out = run(argv, cwd=tree, capture_output=True, text=True)
     lines = (out.stdout or "").strip().splitlines()
     tail = lines[-1:] or ["(no output)"]
@@ -312,6 +352,8 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     # instants, millisecond resolution, so neither can be read as the other.
     row = {"started_at": iso_ms(clock()), "user": getpass.getuser(),
            "gate": "offline" if args.offline else "ci"}
+    if args.offline:
+        row["parallel"] = parallel_available()
 
     def finish(code, message):
         print(message, file=sys.stderr if code else sys.stdout)

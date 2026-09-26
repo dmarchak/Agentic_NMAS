@@ -68,7 +68,7 @@ jobs:
 
       - name: Tests (R1, R4), confined to loopback, coverage reported
         run: >
-          scripts/nmas-test -q -p no:cacheprovider
+          scripts/nmas-test -q -p no:cacheprovider -n auto
           --cov=modules --cov=routes --cov=app --cov-report=term
 
       - name: No removed definition is still called (R2)

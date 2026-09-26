@@ -25,6 +25,7 @@ invoked at its own definition site, and counting it as uncalled is the
 matcher being wrong rather than the code.
 """
 
+import collections
 import re
 
 import pytest
@@ -90,24 +91,41 @@ def _inline_scripts(html):
 def _definitions(scripts):
     """`function NAME(` sites, excluding named IIFEs.
 
-    A definition preceded by `(` is being invoked where it is written.
+    A definition preceded by `(` is being invoked where it is written. The
+    character before it is found by walking back over whitespace, not by
+    slicing the whole prefix: that copy per match cost O(n^2) (C45).
     """
     found = set()
     for match in re.finditer(r"(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(",
                              scripts):
-        before = scripts[:match.start()].rstrip()
-        if before.endswith("("):
+        i = match.start() - 1
+        while i >= 0 and scripts[i].isspace():
+            i -= 1
+        if i >= 0 and scripts[i] == "(":
             continue
         found.add(match.group(1))
     return found
 
 
 def _unreferenced(html, scripts):
+    """Every definition whose name appears nowhere but its own definition.
+
+    Counted in ONE pass over the page (C45): for a name made only of word
+    characters, `\\bNAME\\b` matches exactly a maximal run of word characters
+    equal to NAME, which is what a Counter over `\\w+` counts, and likewise for
+    `function\\s+NAME\\b`. It ran two regular expressions over the whole
+    rendered page per name, about 3,000 scans a run. A name containing `$`
+    keeps the per-name expressions, since `$` is not a word character.
+    """
+    words = collections.Counter(re.findall(r"\w+", html))
+    defined = collections.Counter(re.findall(r"function\s+(\w+)", html))
     dead = []
     for name in sorted(_definitions(scripts)):
-        pattern = r"\b" + re.escape(name) + r"\b"
-        references = len(re.findall(pattern, html))
-        definitions = len(re.findall(r"function\s+" + re.escape(name) + r"\b", html))
+        if re.fullmatch(r"\w+", name):
+            references, definitions = words[name], defined[name]
+        else:
+            references = len(re.findall(r"\b" + re.escape(name) + r"\b", html))
+            definitions = len(re.findall(r"function\s+" + re.escape(name) + r"\b", html))
         if references - definitions <= 0:
             dead.append(name)
     return dead

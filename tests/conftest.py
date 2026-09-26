@@ -127,6 +127,16 @@ def _import_the_application_first(_the_store_is_the_test_store):
     import logging
     import app  # noqa: F401
 
+    # **And it initialises the store, as the first page load does** (C43,
+    # C45). The first read of the device-list config creates the default
+    # list, so whichever test happened to run first was charged with it by
+    # the per-test store guard: `test_newest_content_wins` errored when its
+    # file ran alone and passed in the full suite, and under 4 xdist workers
+    # 83 and 107 tests were charged with it (2026-09-26). A real install is
+    # initialised before anybody uses it; so is the harness, once.
+    from modules import device
+    device._load_device_lists_config()
+
     root = logging.getLogger()
     for handler in list(root.handlers):
         if getattr(handler, "baseFilename", "").endswith("device_manager.log"):

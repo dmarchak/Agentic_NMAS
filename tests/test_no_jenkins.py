@@ -7,6 +7,7 @@ check runner hardcoded `cisco_ios` and read a CSV a NetBox list does not have.
 Removing it lost nothing that worked.
 """
 
+from tests import source_index
 import ast
 import os
 
@@ -33,9 +34,7 @@ def _python_files():
 
 
 def _imports(path):
-    with open(path, encoding="utf-8") as fh:
-        tree = ast.parse(fh.read())
-    for node in ast.walk(tree):
+    for node in source_index.nodes(path):      # one parse per file per run (C45)
         if isinstance(node, ast.Import):
             for a in node.names:
                 yield a.name

@@ -23,8 +23,10 @@ CONFIG = ("hostname r1\n"
           " description mgmt\n")
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def keys():
+    """One 2048-bit key per module: generating one per test cost 21.5 s of
+    the host's suite time (C45). The key is only ever used to sign."""
     from cryptography.hazmat.primitives.asymmetric import rsa
     return rsa.generate_private_key(public_exponent=65537, key_size=2048)
 

@@ -314,6 +314,33 @@ class TestOffline:
         assert code == 3
         assert "NOT CONFINED (the target has no scripts/nmas-test)" in message
 
+    def test_it_says_what_it_will_cost_before_it_runs(self, world, capsys):
+        """C45: the forecast is printed BEFORE the suite runs, from this
+        machine's own last --offline row, never a constant."""
+        with open(os.path.join(world.host, "data", "deploy_audit.jsonl"), "w") as fh:
+            fh.write(json.dumps({"gate": "ci", "started_at": "2026-09-26T20:00:00.000Z",
+                                 "ended_at": "2026-09-26T20:00:01.000Z"}) + "\n")
+            fh.write(json.dumps({"gate": "offline", "started_at": "2026-09-26T21:15:55.343Z",
+                                 "ended_at": "2026-09-26T21:21:41.376Z"}) + "\n")
+        sha = world.advance({"app.py": "v = 2\n"})
+        _fetch_from_real_origin(world)
+        _git(world.host, "fetch", "-q", "origin")
+        order = []
+
+        def spy(argv, cwd=None, **_kw):
+            order.append(("suite", capsys.readouterr().out))
+
+            class Out:
+                returncode, stdout = 0, "1 passed"
+            return Out()
+        _script().offline_verdict(world.host, sha, run=spy)
+        (what, printed), = order
+        assert "running the FULL suite here" in printed, "not said before the run"
+        assert "took 5m46s" in printed and "2026-09-26T21:15:55.343Z" in printed
+
+    def test_with_no_earlier_run_it_says_so_rather_than_guessing(self, world):
+        assert "No earlier --offline run is recorded here." in _script().offline_forecast(world.host)
+
     def test_a_passing_suite_here_deploys_without_asking_github(self, world):
         sha = world.advance({"app.py": "v = 2\n"})
         code, _, calls = _run(world, {}, offline=True, suite_rc=0)
