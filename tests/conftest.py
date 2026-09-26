@@ -44,6 +44,12 @@ else:
 
 
 from tests.store_guard import data_tree, tree_changes  # noqa: E402
+from tests import store_guard  # noqa: E402
+
+# Every write the test process makes under the checkout's data/ is SEEN (an
+# audit hook), so a change there can be attributed rather than assumed.
+if getattr(store_guard, "_watch", None) is None:
+    store_guard._watch = store_guard.install_write_watch(_CHECKOUT_DATA_DIR)
 
 # ---------------------------------------------------------------------------
 # NO TEST TOUCHES A NETWORK, and a run says whether that covers what it starts
@@ -64,7 +70,24 @@ if network_guard.spawn_guard() is None:
 @pytest.fixture(scope="session", autouse=True)
 def _fakes_live_under_pytests_temporary_tree(tmp_path_factory):
     network_guard.spawn_guard().fakes_under = os.path.realpath(str(tmp_path_factory.getbasetemp()))
+    network_guard.spawn_guard().checkout_data = os.path.realpath(_CHECKOUT_DATA_DIR)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_test_writes_into_the_checkout_data(request):
+    """A write the test process made into the checkout's data/ fails the test
+    that made it, by name (seen by an audit hook, not inferred from a
+    directory that the running app also writes)."""
+    watch = store_guard._watch
+    watch.current = request.node.nodeid
+    start = len(watch.writes)
+    yield
+    watch.current = ""
+    mine = watch.writes[start:]
+    if mine:
+        pytest.fail(f"this test wrote into the checkout's data/: {[(e, p) for _t, e, p in mine][:5]}",
+                    pytrace=False)
 
 
 @pytest.fixture(autouse=True)
@@ -79,8 +102,9 @@ def _no_spawned_process_reaches_a_network(request, _fakes_live_under_pytests_tem
     _, tried = guard.attempts(guard.offset)
     guard.current = ""
     if tried:
-        pytest.fail("a process this test started tried to reach a network (C46), and "
-                    f"the harness refused it: {tried[:5]}", pytrace=False)
+        pytest.fail("a process this test started did something no test may do (a "
+                    "network, C46; or a write into the checkout's data/), and the harness "
+                    f"recorded it: {tried[:5]}", pytrace=False)
 
 
 def pytest_report_header(config):
@@ -95,19 +119,24 @@ def pytest_sessionstart(session):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """The live store must be byte-for-byte what it was. Any change fails the
-    run, naming the paths, even if every test passed."""
+    """The checkout's data/ must hold nothing a TEST wrote. A change no test
+    made is judged against a measured fact, not an assumption: on the
+    deployment host the app runs from this checkout and writes its own data/
+    while the suite runs (its approval queue, measured 2026-09-26), and the
+    suite reads only its own store, so that change is reported and does not
+    fail the run. With no app process running from here, an unexplained
+    change still fails it."""
+    import sys
     changed = tree_changes(getattr(session, "nmas_checkout_data_before", {}),
                            data_tree(_CHECKOUT_DATA_DIR))
     shutil.rmtree(_TEST_DATA_DIR, ignore_errors=True)
     shutil.rmtree(network_guard.spawn_guard().root, ignore_errors=True)
-    if changed:
-        import sys
-        sys.stderr.write(
-            f"\nTHE SUITE CHANGED THE CHECKOUT'S data/ ({_CHECKOUT_DATA_DIR}): "
-            f"{len(changed)} path(s), first {changed[:10]}. The suite must "
-            "write only under NMAS_DATA_DIR. (Or another process wrote there "
-            "during the run; the app is not meant to run on this machine.)\n")
+    fail, message = store_guard.judge(
+        changed, store_guard._watch.writes, _CHECKOUT_DATA_DIR,
+        lambda: store_guard.processes_running_from(os.path.dirname(_CHECKOUT_DATA_DIR)))
+    if message:
+        sys.stderr.write("\n" + message + "\n")
+    if fail:
         session.exitstatus = 1
 
 

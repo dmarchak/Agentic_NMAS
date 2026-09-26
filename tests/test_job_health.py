@@ -1,6 +1,8 @@
 """A failing timer must be visible (modules/job_health.py). The shapes below
 are what systemd and the journal return, measured on the NMAS host."""
 
+import os
+
 import pytest
 
 from modules import job_health as J
@@ -430,3 +432,32 @@ def test_health_carries_the_settings_rows():
                  rotations=[], owner=[])
     assert "setting:clab_sync_script" in h["not_ok"]
     assert "setting:clab_host" in h["not_ok"]
+
+
+def test_an_ok_row_states_the_window_it_was_judged_against():
+    """"last success 1104 min ago" on a DAILY timer was read as a missed run,
+    with nothing on the row to judge it by (2026-09-26). The row says why it
+    is ok."""
+    daily = {**JOB, "max_age_minutes": 50 * 60}
+    s = J.job_status(daily, NOW, _runner(LOADED, _ok(NOW - 1104 * 60)))
+    assert s["state"] == "ok"
+    assert "(stale after 50 h)" in s["detail"], s["detail"]
+
+
+def test_the_tls_fact_is_on_the_proxmox_rows_not_above_them():
+    client = FakeProxmox()
+    client.verify_tls = False
+    rows = J.image_jobs(NOW, client)
+    assert rows and all("TLS not verified" in r["detail"] for r in rows)
+    verified = FakeProxmox()
+    verified.verify_tls = True
+    assert not any("TLS not verified" in r["detail"] for r in J.image_jobs(NOW, verified))
+
+
+def test_nmas_jobs_quiets_only_the_proxmox_logger():
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "scripts", "nmas-jobs"), encoding="utf-8").read()
+    assert re.search(r'^\s+logging\.getLogger\("modules\.integrations\.proxmox"\)\.setLevel\(logging\.ERROR\)',
+                     src, re.M)
+    assert "basicConfig" not in src and "logging.disable" not in src

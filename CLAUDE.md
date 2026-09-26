@@ -946,7 +946,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_rotation_reports_the_boot_file.py` | P.3 step 12 (B15): success is the checker's SAFE verdict from one shared function; a broken sync stage is named and never success; the message leads with the danger; every outcome is recorded (never a credential) and a not-SAFE rotation is a job-health row until a later persist reads SAFE; the sync script has one owner |
 | `test_actor_verified_trailer.py` | P.3 step 10 (D10): `access` only for the actor the gate verified, `host-shell` for a CLI, `none` for the app's threads; written once at `repo.git()`; every git commit in the tree goes through it or is named; a gated route in the real app commits `access` |
 | `test_setting_not_applicable.py` | C31: a declaration carries who, when and why, and refuses a missing reason or a set key; job health tells `not_applicable` from `unset_guard`, and set-and-declared is a `contradiction`; a declared consumer leaves the rotation's list |
-| `test_harness_isolation.py` | C32/C36/C42/C43: the suite runs on a temporary store, initialised once before any test (a file that errored alone passes alone); the store guard's controls hold on this machine's clock and on a simulated ext4 at 1 ms (the host) and 1 s; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
+| `test_harness_isolation.py` | C32/C36/C42/C43: the suite runs on a temporary store, initialised once before any test (a file that errored alone passes alone); a write into the checkout's `data/` is attributed (the test process by an audit hook, a child by its sitecustomize) and a change no test made is the running app's only when `/proc` shows it; children get the test store; the store guard's controls hold on this machine's clock and on a simulated ext4 at 1 ms (the host) and 1 s; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -1551,6 +1551,27 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   from the lock through a resolver, is an environment nothing has tested. Rebuild
   with apt on the same release, or `pip install --no-deps -r requirements.lock`
   (docs/DEPLOY_LINUX.md).
+- **A guard must ATTRIBUTE a change, never assume who else is on the
+  machine** (2026-09-26, the operator's host run). The session guard saw the
+  checkout's `data/` change and blamed the suite, with a parenthetical saying
+  the app does not run there. On the deployment host it does, from the same
+  checkout, and its approval queue wrote mid-run. Now the test process's own
+  writes are SEEN (an audit hook) and fail the test that made them; a child
+  gets the test store by construction and its writes are recorded the same
+  way; and a change no test made is judged against a MEASURED fact (an app
+  process in `/proc` whose argv names this checkout's `app.py`). The app's
+  writes are a note naming its pid, since the suite reads only its own
+  store; an unexplained change still fails.
+  **Its first run found a false positive in itself**: `shutil.rmtree`
+  removes entries as `os.rmdir(name, dir_fd=...)`, and resolving that name
+  against the cwd (the checkout root) reported a temp directory's own `data`
+  subdirectory as the checkout's `data/`. A `dir_fd`-relative path is resolved
+  through `/proc/self/fd`, and one that cannot be resolved is not attributed.
+- **A row that is true must say why it is true.** `last success 1104 min ago`
+  on a DAILY timer was read as a missed run, with nothing on the row to judge
+  it by. Each timer row now states its window (`stale after 50 h`), and a
+  fact about a group of rows (Proxmox TLS off) sits on those rows, not as a
+  warning above the headline.
 - **A timestamp with millisecond digits is not a millisecond measurement**
   (the operator, 2026-09-26). psutil's process start on Linux is
   `/proc/stat`'s boot time, whole seconds and truncated, plus ticks, so

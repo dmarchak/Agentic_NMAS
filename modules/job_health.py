@@ -141,7 +141,12 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
         state = "stale"
     else:
         state = "ok"
-    detail = (f"last success {ago(last_ok)}"
+    # The row states its own window: "last success 1104 min ago" was read as
+    # a missed run on a DAILY timer, and the reader had nothing on the row to
+    # judge it against (2026-09-26). A true "ok" must say why it is ok.
+    window = job["max_age_minutes"]
+    window_text = f"{window // 60} h" if window % 60 == 0 else f"{window} min"
+    detail = (f"last success {ago(last_ok)} (stale after {window_text})"
               + (f"; {streak} consecutive failure(s), last {ago(last_fail)}"
                  if failed_last else "")
               + (f"; last error: {last_error}" if failed_last and last_error else ""))
@@ -490,6 +495,12 @@ def image_jobs(now: float = None, client=None) -> list:
                         if filling else "; ".join(parts)))
 
     rows += zfs_rows(client.zfs_pools())
+    # The TLS fact belongs to the rows it concerns (the operator, 2026-09-26):
+    # printed as a warning above the headline, on every run, it was correct
+    # and it was noise, and it pushed the summary line off the top.
+    if getattr(client, "verify_tls", True) is False:
+        for r in rows:
+            r["detail"] += "; TLS not verified (proxmox_verify_tls is off)"
     return rows
 
 

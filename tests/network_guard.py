@@ -211,6 +211,50 @@ def _guarded_getaddrinfo(host, *a, **k):
 
 
 _socket._nmas_real_connect, _socket._nmas_real_connect_ex = _connect, _connect_ex
+
+# A write into the checkout's data/ by a process a test started is recorded
+# like a network attempt, and fails that test by name.
+_forbidden = _os.environ.get("NMAS_TEST_CHECKOUT_DATA")
+if _forbidden:
+    import sys as _sys
+    _forbidden = _os.path.realpath(_forbidden)
+    _W = _os.O_WRONLY | _os.O_RDWR | _os.O_CREAT | _os.O_TRUNC | _os.O_APPEND
+    # (path argument, its dir_fd argument): a dir_fd-relative path is resolved
+    # through /proc/self/fd, never against the cwd (tests/store_guard.py).
+    _EV = {"os.mkdir": ((0, 2),), "os.rmdir": ((0, 1),), "os.remove": ((0, 1),),
+           "os.rename": ((0, 2), (1, 3)), "os.chmod": ((0, 2),), "os.utime": ((0, 3),),
+           "shutil.rmtree": ((0, 1),)}
+
+    def _inside(p, fd=None):
+        try:
+            if isinstance(p, int):
+                return None
+            p = _os.fsdecode(p)
+            if isinstance(fd, int) and fd >= 0 and not _os.path.isabs(p):
+                p = _os.path.join(_os.readlink("/proc/self/fd/%d" % fd), p)
+            full = _os.path.realpath(p)
+        except (TypeError, ValueError, OSError):
+            return None
+        return full if full == _forbidden or full.startswith(_forbidden + _os.sep) else None
+
+    def _write_hook(event, args):
+        try:
+            hits = []
+            if event == "open":
+                a = list(args) + [None, None, None]
+                if (isinstance(a[1], str) and any(c in a[1] for c in "wax+")) or \
+                        (isinstance(a[2], int) and a[2] != -1 and a[2] & _W):
+                    hits = [_inside(a[0])]
+            elif event in _EV:
+                hits = [_inside(args[i], args[f] if f < len(args) else None)
+                        for i, f in _EV[event] if i < len(args)]
+            for h in hits:
+                if h:
+                    _record("write %s %s" % (event, h))
+        except Exception:
+            pass
+
+    _sys.addaudithook(_write_hook)
 _socket.socket.connect = _guarded_connect
 _socket.socket.connect_ex = _guarded_connect_ex
 _socket.getaddrinfo = _guarded_getaddrinfo
@@ -228,6 +272,7 @@ class SpawnGuard:
         self.current = ""
         self.spawned = 0
         self.fakes_under = ""          # pytest's basetemp, set at session start
+        self.checkout_data = ""        # the checkout's data/, which no child may write
         os.makedirs(self.shims, exist_ok=True)
         os.makedirs(self.site, exist_ok=True)
         for tool in SHIMMED:
@@ -253,6 +298,13 @@ class SpawnGuard:
         env["GIT_ALLOW_PROTOCOL"] = "file"
         env[LOG_ENV] = self.log
         env[NODE_ENV] = self.current
+        # A child uses the TEST store unless the test chose one: an explicit
+        # env of PATH and HOME would otherwise send a child that imports the
+        # program to the checkout's data/.
+        if os.environ.get("NMAS_DATA_DIR"):
+            env.setdefault("NMAS_DATA_DIR", os.environ["NMAS_DATA_DIR"])
+        if self.checkout_data:
+            env["NMAS_TEST_CHECKOUT_DATA"] = self.checkout_data
         if self.fakes_under:
             env["NMAS_TEST_FAKES_UNDER"] = self.fakes_under
         return env

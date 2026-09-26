@@ -17,8 +17,14 @@ sys.path.insert(0, ROOT)
 
 
 def main() -> int:
+    import logging
+
     from modules.job_health import health
 
+    # The Proxmox client logs "TLS verification is OFF" once per process. It is
+    # true, and in THIS output it is on the Proxmox rows themselves, so here
+    # it would only push the headline down. The app log keeps it.
+    logging.getLogger("modules.integrations.proxmox").setLevel(logging.ERROR)
     h = health()
     print(h["headline"])
     for j in h["jobs"]:

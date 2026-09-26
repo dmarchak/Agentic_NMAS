@@ -252,4 +252,4 @@ class TestAnAttemptFailsTheTestThatMadeIt:
                               capture_output=True, text=True, cwd=ROOT, env=env, timeout=120)
         network_guard.spawn_guard().take()
         assert done.returncode == 1, done.stdout[-1500:]
-        assert "tried to reach a network (C46)" in done.stdout and "10.0.0.211" in done.stdout, done.stdout[-1500:]
+        assert "did something no test may do" in done.stdout and "10.0.0.211" in done.stdout, done.stdout[-1500:]

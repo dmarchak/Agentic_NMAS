@@ -179,3 +179,142 @@ class TestTheStoreIsInitialisedBeforeAnyTest:
     def test_the_default_list_exists_before_this_test(self):
         from modules import config
         assert os.path.isdir(os.path.join(config.DATA_DIR, "lists", "default"))
+
+
+class TestAChangeIsAttributedNotAssumed:
+    """On the deployment host the app runs from the checkout the suite runs
+    in, and its approval queue wrote while the suite ran; the guard reported
+    that as the suite's write and asserted the app does not run there
+    (2026-09-26). The guard now attributes."""
+
+    _watch = None
+
+    @classmethod
+    def _extra_watch(cls, root):
+        """One extra audit hook for this class (hooks cannot be removed), on a
+        directory of its own, never the checkout's data/."""
+        from tests import store_guard
+        if cls._watch is None:
+            cls._watch = store_guard.install_write_watch(root)
+        return cls._watch
+
+    def test_the_test_processs_own_writes_are_seen(self, tmp_path_factory):
+        import shutil
+        root = tmp_path_factory.getbasetemp() / "attribution-root"
+        root.mkdir(exist_ok=True)
+        watch = self._extra_watch(str(root))
+        watch.current, start = "this-test", len(watch.writes)
+        (root / "a.json").write_text("{}")                   # open for writing
+        os.mkdir(root / "d")
+        os.replace(root / "a.json", root / "d" / "b.json")   # rename
+        shutil.rmtree(root / "d")
+        (tmp_path_factory.getbasetemp() / "outside.json").write_text("{}")  # not under root
+        seen = [(e, os.path.basename(p)) for _t, e, p in watch.writes[start:]]
+        watch.current = ""
+        assert ("open", "a.json") in seen and ("os.mkdir", "d") in seen
+        assert ("os.rename", "b.json") in seen and ("shutil.rmtree", "d") in seen
+        assert not any(p == "outside.json" for _e, p in seen)
+
+    def test_a_read_is_not_a_write(self, tmp_path_factory):
+        root = tmp_path_factory.getbasetemp() / "attribution-root"
+        root.mkdir(exist_ok=True)
+        (root / "r.json").write_text("{}")
+        watch = self._extra_watch(str(root))
+        start = len(watch.writes)
+        (root / "r.json").read_text()
+        os.stat(root / "r.json")
+        assert watch.writes[start:] == []
+
+    def test_the_app_is_found_by_its_argv_in_proc(self, tmp_path):
+        from tests import store_guard
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        (checkout / "app.py").write_text("")
+        proc = tmp_path / "proc"
+        for pid, argv, cwd in (("4242", [b"/usr/bin/python3", str(checkout / "app.py").encode()], "/"),
+                               ("4343", [b"python3", b"app.py"], str(checkout)),
+                               ("4444", [b"python3", b"-m", b"pytest"], str(checkout)),
+                               ("4545", [b"python3", b"app.py"], str(tmp_path))):
+            (proc / pid).mkdir(parents=True)
+            (proc / pid / "cmdline").write_bytes(b"\0".join(argv) + b"\0")
+            os.symlink(cwd, proc / pid / "cwd")
+        found = sorted(pid for pid, _argv in store_guard.processes_running_from(str(checkout), str(proc)))
+        assert found == [4242, 4343], found
+        assert store_guard.processes_running_from(str(checkout), str(tmp_path / "no-proc")) == []
+
+    def _judge(self, changed, writes, apps=None):
+        from tests import store_guard
+
+        def find_apps():
+            if apps is None:
+                raise AssertionError("asked for the app when nothing needed explaining")
+            return apps
+        return store_guard.judge(changed, writes, "/c/data", find_apps)
+
+    def test_a_write_by_a_test_fails_naming_the_test(self):
+        fail, msg = self._judge(["lists", "lists/x.json"],
+                                [("tests/test_x.py::t", "open", "/c/data/lists/x.json")])
+        assert fail and "tests/test_x.py::t" in msg
+
+    def test_the_apps_write_is_a_note_naming_the_app(self):
+        fail, msg = self._judge(["lists/default/approval_queue.json"], [],
+                                apps=[(361070, "/usr/bin/python3 /c/app.py")])
+        assert not fail and msg.startswith("note:") and "361070" in msg
+
+    def test_an_unexplained_change_still_fails(self):
+        fail, msg = self._judge(["lists/default/approval_queue.json"], [], apps=[])
+        assert fail and "no app process is running" in msg
+
+    def test_nothing_changed_is_silent(self):
+        assert self._judge([], []) == (False, "")
+
+
+class TestAChildIsGivenTheTestStore:
+    def test_an_explicit_env_still_gets_the_test_store(self):
+        from modules import config
+        out = subprocess.run([sys.executable, "-c", "import os; print(os.environ.get('NMAS_DATA_DIR'))"],
+                             capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}, timeout=30)
+        assert os.path.realpath(out.stdout.strip()) == os.path.realpath(config.DATA_DIR)
+
+    def test_a_child_that_writes_into_the_forbidden_data_is_recorded(self, tmp_path, monkeypatch):
+        from tests import network_guard
+        guard = network_guard.spawn_guard()
+        forbidden = tmp_path / "checkout-data"
+        forbidden.mkdir()
+        monkeypatch.setattr(guard, "checkout_data", str(forbidden))
+        subprocess.run([sys.executable, "-c", f"open({str(forbidden / 'x.json')!r}, 'w').write('{{}}')"],
+                       env={"PATH": "/usr/bin:/bin"}, timeout=30)
+        tried = guard.take()
+        assert len(tried) == 1 and "write open" in tried[0] and "x.json" in tried[0], tried
+
+
+class TestADirFdPathIsResolvedThroughItsDirectory:
+    """`shutil.rmtree` removes entries as `os.rmdir(name, dir_fd=...)`. Resolved
+    against the cwd (the checkout root), a temp directory's own `data`
+    subdirectory was reported as the checkout's data/ (2026-09-26)."""
+
+    def test_a_directory_named_data_elsewhere_is_not_the_checkouts(self, tmp_path):
+        import shutil
+        from tests import store_guard
+        victim = tmp_path / "scratch" / "data" / "inner"
+        victim.mkdir(parents=True)
+        start = len(store_guard._watch.writes)
+        shutil.rmtree(tmp_path / "scratch")
+        assert store_guard._watch.writes[start:] == []
+
+    def test_the_resolution_itself(self, tmp_path):
+        from tests import store_guard
+        fd = os.open(str(tmp_path), os.O_RDONLY)
+        try:
+            assert store_guard.resolve("data", fd) == os.path.realpath(str(tmp_path / "data"))
+        finally:
+            os.close(fd)
+        assert store_guard.resolve("data", None) == os.path.realpath("data")
+        assert store_guard.resolve(5, None) is None
+
+    def test_a_child_removing_a_tree_elsewhere_records_nothing(self, tmp_path):
+        from tests import network_guard
+        (tmp_path / "t" / "data" / "x").mkdir(parents=True)
+        subprocess.run([sys.executable, "-c", f"import shutil; shutil.rmtree({str(tmp_path / 't')!r})"],
+                       cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), timeout=30)
+        assert network_guard.spawn_guard().take() == []
