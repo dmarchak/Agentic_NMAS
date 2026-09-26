@@ -11,7 +11,7 @@ a claim, and this one was wrong.)
 | Secret | Store | At rest | Protected by |
 |---|---|---|---|
 | `netbox_token`, `prometheus_password`, `grafana_token`, `loki_*`, `oxidized_password`, `kea_password`, `topology_service_token`, `nsot_git_token`, `s3_*`, `proxmox_token_secret` | `data/user_settings.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
-| `jenkins_api_key`, `jenkins_token` | `data/jenkins_checks.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
+| `jenkins_api_key`, `jenkins_token` | `data/jenkins_checks.json` | **RETIRED store** (P.4): nothing reads or writes it. Encrypted if it was ever written after 2026-09-23 | the key + file mode; the checker names it until it is deleted |
 | `ANTHROPIC_API_KEY` | `.env` | **plaintext, by design** | file mode, and nothing else |
 | Device credentials | `data/lists/<slug>/devices.csv` | **encrypted** (raw Fernet fields) | the key + file mode |
 | The Fernet key itself | `data/key.key` | — | file mode, and nothing else |
@@ -47,7 +47,13 @@ stays exposed after a `chmod`, because anything that read it still has it.
 Tightening the mode fixes the next three weeks; rotating fixes the last
 three. Both, in that order.
 
-## Why the Jenkins credentials *are* encrypted
+## Why the Jenkins credentials *were* encrypted
+
+**Retired in P.4 (2026-09-26):** Jenkins was removed, and nothing reads or
+writes `data/jenkins_checks.json` now. A credential left in a store nothing
+reads has no owner, so `nmas-check-secret-storage` reports the file as a
+finding until it is deleted. The history below is kept for why the store
+was encrypted while it lived.
 
 Opposite conclusion, for a concrete reason: they were in a store that
 encrypted nothing.
@@ -143,7 +149,6 @@ Fixing modes by hand fixes one install. The creation sites fix every install,
 which is why `config.open_secure()` exists and why the callers are:
 
 - `config.save_user_settings()` → `user_settings.json`
-- `jenkins_runner.save_config()` → `jenkins_checks.json`
 - `secrets_store._get_fernet()` and `device.load_key()` → `key.key`
 - `app.save_settings()` → `.env`
 

@@ -102,14 +102,6 @@ class TestEveryStoreCreatesItsFileOwnerOnly:
         config.save_user_settings({"tftp_root": "/srv/tftp"})
         assert _mode(data_dir / "user_settings.json") == 0o600
 
-    def test_jenkins_config(self, data_dir, monkeypatch):
-        from modules import jenkins_runner as jr
-
-        monkeypatch.setattr(jr, "_CONFIG_FILE",
-                            str(data_dir / "jenkins_checks.json"))
-        jr.save_config({"jenkins_url": "http://x"})
-        assert _mode(data_dir / "jenkins_checks.json") == 0o600
-
     def test_the_mode_is_applied_before_the_write(self, tmp_path):
         """Creating 0644 and chmod-ing after leaves a window in which the
         secret is on disk and world-readable -- the defect in miniature."""
@@ -134,67 +126,37 @@ class TestEveryStoreCreatesItsFileOwnerOnly:
         assert _no_group_or_other(path)
 
 
-class TestJenkinsCredentialsAreEncryptedAtRest:
-    """They were in a store that encrypted nothing. Unset on the live install,
-    which is luck rather than design: the next person to fill the field would
-    have landed in a store with none of the other store's guarantees."""
+def _checker():
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
 
-    @pytest.fixture
-    def store(self, data_dir, monkeypatch):
-        from modules import jenkins_runner as jr
+    path = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "scripts", "nmas-check-secret-storage")
+    spec = importlib.util.spec_from_file_location(
+        "chk", path, loader=SourceFileLoader("chk", path))
+    chk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(chk)
+    return chk
 
-        path = data_dir / "jenkins_checks.json"
-        monkeypatch.setattr(jr, "_CONFIG_FILE", str(path))
-        return path
 
-    def test_the_value_does_not_reach_the_disk(self, store):
-        from modules import jenkins_runner as jr
+class TestTheRetiredJenkinsStore:
+    """P.4: nothing reads `jenkins_checks.json` any more, so a credential left
+    in it has no owner. The checker names it until it is deleted."""
 
-        jr.save_config({"jenkins_api_key": "SECRETVALUE1234",
-                        "jenkins_token": "TOKENVALUE5678"})
-        raw = store.read_text()
-        assert "SECRETVALUE1234" not in raw
-        assert "TOKENVALUE5678" not in raw
+    def _run(self, data_dir, capsys):
+        os.makedirs(data_dir, mode=0o700, exist_ok=True)
+        _checker().main()
+        return capsys.readouterr().out
 
-    def test_it_is_stored_in_the_at_rest_format(self, store):
-        from modules import jenkins_runner as jr
-        from modules.secrets_store import is_encrypted
+    def test_a_present_file_is_named_as_retired(self, data_dir, capsys):
+        data_dir.mkdir(mode=0o700)
+        (data_dir / "jenkins_checks.json").write_text("{}")
+        os.chmod(data_dir / "jenkins_checks.json", 0o600)
+        assert "jenkins_checks.json is a RETIRED store" in self._run(data_dir, capsys)
 
-        jr.save_config({"jenkins_api_key": "SECRETVALUE1234"})
-        assert is_encrypted(json.loads(store.read_text())["jenkins_api_key"])
-
-    def test_it_round_trips(self, store):
-        from modules import jenkins_runner as jr
-
-        jr.save_config({"jenkins_api_key": "SECRETVALUE1234",
-                        "jenkins_url": "http://x"})
-        back = jr.load_config()
-        assert back["jenkins_api_key"] == "SECRETVALUE1234"
-        assert back["jenkins_url"] == "http://x", "non-secrets are untouched"
-
-    def test_legacy_plaintext_still_reads(self, store):
-        """A file written by an older build keeps working."""
-        from modules import jenkins_runner as jr
-
-        store.parent.mkdir(parents=True, exist_ok=True)
-        store.write_text(json.dumps({"jenkins_api_key": "LEGACYPLAIN"}))
-        assert jr.load_config()["jenkins_api_key"] == "LEGACYPLAIN"
-
-    def test_legacy_plaintext_is_upgraded_on_the_next_save(self, store):
-        from modules import jenkins_runner as jr
-        from modules.secrets_store import is_encrypted
-
-        store.parent.mkdir(parents=True, exist_ok=True)
-        store.write_text(json.dumps({"jenkins_api_key": "LEGACYPLAIN"}))
-        jr.save_config(jr.load_config())
-        assert is_encrypted(json.loads(store.read_text())["jenkins_api_key"])
-
-    def test_an_empty_field_stays_empty(self, store):
-        """Empty means unset, and an encrypted empty string would not."""
-        from modules import jenkins_runner as jr
-
-        jr.save_config({"jenkins_api_key": ""})
-        assert json.loads(store.read_text())["jenkins_api_key"] == ""
+    def test_an_absent_file_is_not(self, data_dir, capsys):
+        """The floor: the finding is about the file, not printed regardless."""
+        assert "RETIRED store" not in self._run(data_dir, capsys)
 
 
 class TestTheCheckerGradesModes:

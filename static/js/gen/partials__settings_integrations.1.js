@@ -203,7 +203,6 @@ async function testIntegration(name) {
 const _GENERAL_MAP = {
   flask_host: 'settingsFlaskHost', flask_port: 'settingsFlaskPort',
   auto_open_browser: 'settingsAutoOpenBrowser', tftp_root: 'settingsTftpRoot',
-  jenkins_step_shell: 'settingsJenkinsStepShell',
   collector_trap_enabled: 'settingsCollectorTrap',
   collector_netflow_enabled: 'settingsCollectorNetflow',
   collector_syslog_enabled: 'settingsCollectorSyslog',

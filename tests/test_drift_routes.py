@@ -143,8 +143,6 @@ class TestTheRunReportsItsCoverageEveryTime:
                             lambda p: list(devices))
         monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
                             lambda ip: "hostname x\n!\nend\n")
-        monkeypatch.setattr("modules.jenkins_runner.is_jenkins_building",
-                            lambda: False)
         monkeypatch.setattr("modules.connection.get_persistent_connection",
                             lambda d, p, l: d["ip"])
         monkeypatch.setattr("modules.commands.run_device_command",

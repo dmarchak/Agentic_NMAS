@@ -8,8 +8,8 @@ a single-host management tool — not a multi-tenant SaaS — so there is no bui
 auth system.
 
 **Stack:** Python 3.10+, Flask, Flask-SocketIO, Netmiko/Paramiko (SSH), Anthropic
-Claude API (AI agent), vis.js (topology), Bootstrap 5, Jenkins CI integration,
-NetBox (source of truth).
+Claude API (AI agent), vis.js (topology), Bootstrap 5, NetBox (source of
+truth). Jenkins was removed in P.4 (docs/NSOT_CI.md).
 
 The project is mid-way through a planned conversion into a Network Source of
 Truth (NSoT) framework. **[docs/NSOT_PLAN.md](docs/NSOT_PLAN.md) is the governing
@@ -32,8 +32,6 @@ tracked in git.
   IPAM/DCIM client. Reads freely; **writes are gated** (see below)
 - **[modules/topology.py](modules/topology.py)** (1,207) — CDP/OSPF/BGP/DMVPN
   discovery; vis.js graph with hub/spoke labels
-- **[modules/jenkins_runner.py](modules/jenkins_runner.py)** (1,196) — Jenkins
-  pipeline create/trigger/poll/diagnose
 - **[modules/pipeline.py](modules/pipeline.py)** (1,159) — 9-stage
   `PipelineRunner` (NetBox query → render → CI gate → snapshot → diff → deploy →
   snapshot → verify/rollback → audit). **Wired in**: `routes/deploy.py`
@@ -44,16 +42,12 @@ tracked in git.
   so (P.4 step 2). The Jenkins status read and the "syntax check" it used to
   claim were removed with Jenkins.
 - **[modules/configure.py](modules/configure.py)** (1,093) — IOS config generator
-  for 10 feature types; also generates Jenkins verification scripts and pipeline XML
-- **[modules/pipeline_builder.py](modules/pipeline_builder.py)** (745) — Jenkins
-  pipeline XML builder for per-function verification
+  for 10 feature types (its Jenkins script and XML generators went in P.4)
 
 ### Collectors and checks
 - **[modules/snmp_collector.py](modules/snmp_collector.py)** (763) — SNMP v1/v2c
   trap receiver + OID polling
 - **[modules/netflow_collector.py](modules/netflow_collector.py)** (381)
-- **[modules/check_runner.py](modules/check_runner.py)** (618) — standalone
-  verification entry point invoked by Jenkins
 - **[modules/drift_check.py](modules/drift_check.py)** (415) — drift checker
   needing no Claude API; diffs against golden config
 - **[modules/collector_config.py](modules/collector_config.py)** (238) — per-list
@@ -66,8 +60,6 @@ tracked in git.
   gate, dry-run preview, and created-object provenance
 - **[modules/secrets_store.py](modules/secrets_store.py)** (150) — Fernet
   encryption-at-rest for settings secrets
-- **[modules/jenkins_shell.py](modules/jenkins_shell.py)** (61) — `bat` vs `sh`
-  step selection for generated pipelines
 - **[modules/netbox_authz.py](modules/netbox_authz.py)** — one-shot write
   authorization: plan hashing and single-use tokens
 - **[modules/inventory/](modules/inventory/)** — per-list inventory source, the
@@ -133,7 +125,7 @@ dashboard), `device.html` (1,239 — per-device page), and
 
 - **Data storage:** `data/lists/{slug}/` per device list — devices.csv
   (Fernet-encrypted creds), variables.json, golden_configs/, backups/,
-  approval_queue.json, jenkins_pipelines.json, config_repo/
+  approval_queue.json, config_repo/
 - **Migration is one-directional and runs once.** `config_repo/golden/` is the
   golden store; `golden_configs/` survives as a deprecated **read-only**
   fallback, consulted by `_find_golden_config_file()` only when the manifest has
@@ -186,8 +178,11 @@ dashboard), `device.html` (1,239 — per-device page), and
   `device.decrypt_field` (raw Fernet), **not** `secrets_store.decrypt_value`,
   which returns anything unprefixed unchanged — using it collected 100-char
   ciphertext that no device would ever echo.
-- **Config push workflow:** backup → push → Jenkins CI → save golden → update
-  variables. CI pass = auto-approve.
+- **Config push workflow:** the confirmed deploy path, and nothing else
+  (P.3): plan, confirm by hash, then the pipeline snapshots, pushes
+  merge-only, verifies and saves the golden. The older "push, then Jenkins
+  CI, and a CI pass auto-approves" described a Jenkins nothing configured,
+  and P.4 removed it.
 - **Approval queue:** destructive AI actions go through `approval_queue.py`.
   **Nothing resolves an item without a human**: the only callers of `resolve()`
   are three HTTP routes, expiry marks items `expired` and never executes, and
@@ -741,15 +736,16 @@ rejected one. Eight keys the Settings form had always written
 now in the schema; every default reproduces the value the code fell back to
 before.
 
-**Secrets are in three stores, not one** — see [docs/SECRETS.md](docs/SECRETS.md).
-`user_settings.json` holds the ones `secrets_store.SECRET_KEYS` covers;
-`data/jenkins_checks.json` holds the Jenkins credentials, now encrypted via
-`jenkins_runner.SECRET_FIELDS` (**a second store needs a second mechanism** —
-adding them to `SECRET_KEYS` would encrypt nothing while making it look
-covered); `.env` holds `ANTHROPIC_API_KEY` in **plaintext by design**, since
+**Secrets are in more than one store** — see [docs/SECRETS.md](docs/SECRETS.md),
+whose table is the claim. `user_settings.json` holds the ones
+`secrets_store.SECRET_KEYS` covers (**a second store needs a second
+mechanism**: a name in that tuple encrypts only what is in that file);
+`.env` holds `ANTHROPIC_API_KEY` in **plaintext by design**, since
 encrypting it would have the app decrypt its own key at startup using a key
-in the same directory with the same mode. `scripts/nmas-check-secret-storage`
-reports all three by name and never by value. `scripts/nmas-settings-diff` lists
+in the same directory with the same mode. `data/jenkins_checks.json` is a
+**retired** store (P.4): nothing reads it, and `nmas-check-secret-storage`
+names it as a finding until it is deleted. The checker reports every store
+by name and never by value. `scripts/nmas-settings-diff` lists
 what in the file **differs from its default** — the only surviving signal for "what somebody chose" once a re-seed has written every key, since
 `origin_of()` then answers `file` for all of them. Names only; a secret reads
 `set`, and re-entering one means going back to the system that issued it.
@@ -862,7 +858,6 @@ Development is Windows 11; the deployment target is headless Ubuntu. See
 | Port | `NMAS_PORT` | `5000` |
 | Auto-open browser | `NMAS_HEADLESS=1` disables | on |
 | TFTP root | `NMAS_TFTP_ROOT` | `C:/TFTP-Root` on Windows, `/srv/tftp` elsewhere |
-| Jenkins step shell | — | `bat` |
 
 `config.py` no longer creates the TFTP root at import time. Call
 `config.ensure_tftp_root()` at the point of use instead.
@@ -875,7 +870,7 @@ python app.py                      # opens http://127.0.0.1:5000
 NMAS_HEADLESS=1 python app.py      # headless (no browser)
 ```
 
-Settings (API key, integrations, Jenkins, TFTP, server bind) are all configurable
+Settings (API key, integrations, TFTP, server bind) are all configurable
 from the UI Settings panel — no restart needed except for bind host/port.
 
 ## Tests
@@ -891,7 +886,6 @@ from the repo root. (Before Phase 0 only the latter did.)
 | File | Covers |
 |---|---|
 | `test_pipeline.py` | 9-stage pipeline, stage ordering, CI gate |
-| `test_pipeline_builder.py` | Jenkins pipeline XML generation |
 | `test_netbox_write_gate.py` | write gate, dry run, provenance-based removal |
 | `test_netbox_authz.py` | one-shot tokens, plan hashing, stale-plan abort |
 | `test_netbox_preview_fidelity.py` | preview counts == executed counts; tag scope |
@@ -957,7 +951,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |
 | `test_integrations_base.py` | optional-integration behaviour, secret masking |
-| `test_portability.py` | Jenkins step shell, TFTP root, env overrides |
+| `test_portability.py` | TFTP root, env overrides |
 | `test_no_ip_literals.py` | fails if an IPv4 literal appears in the new packages |
 | `test_golden_enumeration.py` | one enumerator; repo-only devices; commit time not mtime; legacy retirement condition |
 | `test_drift_population.py` | the inventory is the population; every device in exactly one bucket |
@@ -966,7 +960,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_drift_routes.py` | the routes exercised over HTTP; a crash is JSON+500, never 302; wrapper signatures |
 | `test_security_posture.py` | effective value vs origin; Access values withheld; the recorded posture still holds |
 | `test_settings_write_path.py` | positive seed declaration; unknown keys refused; ratify-never-change |
-| `test_secret_file_modes.py` | every secret file created 0600 by its creator; Jenkins credentials encrypted at rest |
+| `test_secret_file_modes.py` | every secret file created 0600 by its creator; the retired `jenkins_checks.json` is named while it exists |
+| `test_no_jenkins.py` | P.4: no file imports a removed Jenkins module (floor and a positive anchor), the modules and the `Jenkinsfile` are gone, no route serves Jenkins |
 | `test_agent_failure_surfaces.py` | failure streak, same-error, ERROR log, red badge; the stale trigger stays fixed |
 | `test_disabled_is_a_state.py` | a disabled read still carries its history; every degraded GET classified |
 | `test_agent_panel_renders.py` | the shipped JS executed in duktape: what RENDERS while disabled, not what the endpoint carries |
@@ -1027,6 +1022,16 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   now counts only when `X` is its own module: the dotted path, `import m as
   A`, `from pkg import m`, or a relative import. A check people routinely
   override stops being a check.
+- **A name that SURVIVES elsewhere is mentioned by strings for the survivor**
+  (`check_removed_definitions.py`, P.4 step 1c). Deleting
+  `jenkins_runner.save_config` was flagged by `url_for('save_config')` and the
+  gate table's `"save_config"` key, both about app.py's own view. When the
+  name is still defined at top level in another file, only an import from the
+  removed module counts. The same commit fixed its reading of a deleted file:
+  `+++ /dev/null` had left the previous file's path in place, so four
+  deleted modules' definitions were listed under `configure.py`. The hook
+  refused the commit; the refusal was a checker defect, and fixing the checker
+  was the answer, not `--no-verify`.
 - **A filename is a mention** (`check_removed_definitions.py`, P.4 step 1).
   `"jenkins_results.json"` has the dotted shape of `mod.attr`, so removing the
   view `jenkins_results` was flagged by a module writing a file of that name.
@@ -1070,9 +1075,6 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   the helper actually called — because its first version searched for the
   helper's *name* and passed while the property was false.
 
-- Jenkins pipelines default to Windows `bat` steps; switch to `sh` in Settings for
-  a Linux Jenkins agent. Generated XML is byte-identical to pre-Phase-0 output
-  while the default is unchanged.
 - `telnetlib.py` shim must stay in the root for Python 3.13+ compatibility
 - The app has no auth layer of its own. It sits behind a Cloudflare tunnel, and
   **identity comes from a verified assertion, never from a header**
@@ -4464,8 +4466,9 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   file.*
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
-- `modules/pipeline.py` and `modules/pipeline_builder.py` are real, tested, and
-  mostly unused. Don't mistake them for dead code — Phase 3 depends on them.
+- `modules/pipeline.py` is real, tested and WIRED: every deploy and every
+  restore runs it. `pipeline_builder.py` generated Jenkins pipeline XML and
+  went with Jenkins in P.4.
 
 ## Open findings register
 
@@ -4508,7 +4511,8 @@ written against the feature audit
 path guarded or gone (B12, B11, D5, D4, C23); **accepted 2026-09-26** at
 `5b087c4`, every item observed and all eleven controls firing, and
 **COMPLETE** once the operator's tunnel deploy committed with `Actor-Verified:
-access` on two paths. **P.4** cuts Jenkins. The
+access` on two paths. **P.4** cuts Jenkins: steps 1 and 2 are built
+(2026-09-26); steps 3 and 4 (GitHub Actions, `nmas-deploy` gating) are next. The
 agent becomes an on-call responder (Stage 8): it triages autonomously,
 PROPOSES fixes as ordinary plans, and never confirms its own.
 

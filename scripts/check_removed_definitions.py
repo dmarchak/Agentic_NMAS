@@ -144,9 +144,50 @@ def _referenced_elsewhere(name: str, path: str, rev: str = "") -> list:
         args.append(rev)
     out = _git(*args, name, "--", "*.py", "*.html")
     files = [l.split(":", 1)[-1] if rev else l for l in out.splitlines()]
-    return sorted(f for f in files
-                  if f and f != path and name not in _defined_now(f, rev)
-                  and _code_mentions(name, f, rev, defined_in=path))
+    callers = sorted(f for f in files
+                     if f and f != path and name not in _defined_now(f, rev)
+                     and _code_mentions(name, f, rev, defined_in=path))
+    # THE NAME SURVIVES ELSEWHERE (P.4 step 1c, 2026-09-26). Deleting
+    # `jenkins_runner.save_config` was flagged by `url_for('save_config')` and
+    # the gate table's "save_config" key, both about app.py's own view of
+    # that name. When another file still defines the name at top level, a
+    # string or bare mention is a mention of the SURVIVOR as much as of the
+    # removed one, so only an import from the removed module counts.
+    survivors = [f for f in _top_level_definers(name, rev) if f != path]
+    if survivors:
+        callers = [f for f in callers if _imports_from(f, _module_of(path), name, rev)]
+    return callers
+
+
+def _top_level_definers(name: str, rev: str = "") -> list:
+    """Files that still define *name* at column 0 (a module-level name)."""
+    args = ["grep", "-l", "-E", rf"^(async )?(def|class) {re.escape(name)}\b"]
+    if rev:
+        args.append(rev)
+    out = _git(*args, "--", "*.py")
+    return [l.split(":", 1)[-1] if rev else l for l in out.splitlines() if l]
+
+
+def _imports_from(path: str, module: str, name: str, rev: str = "") -> bool:
+    """Does *path* take *name* from *module*: `from module import name`, or
+    `module.name` through any alias of the module?"""
+    import ast
+
+    if not path.endswith(".py"):
+        return False
+    try:
+        tree = ast.parse(_read_at(path, rev))
+    except (SyntaxError, ValueError):
+        return True                      # cannot tell: count it, as elsewhere
+    aliases = _module_aliases(tree, module)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == module:
+            if any(a.name == name for a in node.names):
+                return True
+        if (isinstance(node, ast.Attribute) and node.attr == name
+                and ast.unparse(node.value) in aliases):
+            return True
+    return False
 
 
 #: ``hasattr(mod, "name")`` / ``getattr(...)``: an EXISTENCE PROBE, not a use.
@@ -290,6 +331,37 @@ def _is_reference_shaped(text: str) -> bool:
     return not ("." in text and text.rsplit(".", 1)[1].lower() in _FILE_EXTENSIONS)
 
 
+def _removed_from_diff(diff: str) -> list:
+    """``(path, kind, name, indent)`` for each removed definition.
+
+    A DELETED file's header is ``--- a/<path>`` then ``+++ /dev/null``, so a
+    parser reading only ``+++ b/`` kept the PREVIOUS file's path, and every
+    definition of four deleted modules was reported under ``configure.py``
+    (P.4 step 1c).
+    """
+    path, old, removed = "", "", []
+    for line in diff.splitlines():
+        if line.startswith("--- a/"):
+            old = line[6:]
+            continue
+        if line.startswith("--- /dev/null"):
+            old = ""
+            continue
+        if line.startswith("+++ b/"):
+            path = line[6:]
+            continue
+        if line.startswith("+++ /dev/null"):
+            path = old
+            continue
+        if not path.endswith(".py"):
+            continue
+        match = REMOVED.match(line)
+        if match:
+            removed.append((path, match.group(2), match.group(3),
+                            len(match.group(1))))
+    return removed
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -302,17 +374,7 @@ def main() -> int:
         print("no changes to scan")
         return 0
 
-    path, removed = "", []
-    for line in diff.splitlines():
-        if line.startswith("+++ b/"):
-            path = line[6:]
-            continue
-        if not path.endswith(".py"):
-            continue
-        match = REMOVED.match(line)
-        if match:
-            removed.append((path, match.group(2), match.group(3),
-                            len(match.group(1))))
+    removed = _removed_from_diff(diff)
 
     if not removed:
         print("no definitions removed by this diff")

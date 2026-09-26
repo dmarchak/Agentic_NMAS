@@ -1,6 +1,6 @@
 """Portability: Windows development, headless Linux deployment.
 
-Constraint 5. Covers the Jenkins step shell, the TFTP root, and the fact that
+Constraint 5. Covers the TFTP root and the fact that
 importing a config module must not create directories.
 """
 
@@ -11,56 +11,6 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-
-class TestJenkinsStepShell:
-    def test_defaults_to_bat(self, monkeypatch):
-        """Existing pipelines must regenerate unchanged."""
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda key, default=None: default)
-        from modules import jenkins_shell
-        assert jenkins_shell.step_shell() == "bat"
-        assert jenkins_shell.null_device() == "NUL"
-
-    def test_default_install_step_is_byte_identical(self, monkeypatch):
-        """This is the exact string every generator used to hardcode."""
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda key, default=None: default)
-        from modules import jenkins_shell
-        assert jenkins_shell.install_deps_step() == (
-            "bat 'pip install netmiko --quiet 2>NUL || echo netmiko already installed'"
-        )
-
-    def test_default_python_step_is_byte_identical(self, monkeypatch):
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda key, default=None: default)
-        from modules import jenkins_shell
-        assert jenkins_shell.python_step(
-            "modules/check_runner.py", "--validate-all --list-slug lab"
-        ) == "bat 'python modules\\\\check_runner.py --validate-all --list-slug lab'"
-
-    def test_sh_mode_emits_posix(self, monkeypatch):
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda key, default=None: "sh")
-        from modules import jenkins_shell
-        assert jenkins_shell.step_shell() == "sh"
-        assert jenkins_shell.null_device() == "/dev/null"
-        assert jenkins_shell.script_path("modules/check_runner.py") == "modules/check_runner.py"
-        assert "2>/dev/null" in jenkins_shell.install_deps_step()
-
-    def test_invalid_setting_falls_back_to_bat(self, monkeypatch):
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda key, default=None: "powershell")
-        from modules import jenkins_shell
-        assert jenkins_shell.step_shell() == "bat"
-
-    def test_settings_failure_falls_back_to_bat(self, monkeypatch):
-        """Pipeline generation must never break because settings are unreadable."""
-        def boom(*a, **kw):
-            raise RuntimeError("settings unavailable")
-        monkeypatch.setattr("modules.settings_schema.get_setting", boom)
-        from modules import jenkins_shell
-        assert jenkins_shell.step_shell() == "bat"
 
 
 class TestTftpRoot:

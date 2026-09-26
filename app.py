@@ -1276,37 +1276,6 @@ def delete_device_list_route(list_name):
     except Exception as exc:
         app.logger.warning("list delete: dependent check failed: %s", exc)
 
-    # ── 1. Delete Jenkins pipelines ────────────────────────────────────────
-    try:
-        from modules.config import get_list_data_dir
-        from modules.jenkins_runner import load_config as _jcfg, delete_jenkins_job
-
-        list_dir       = get_list_data_dir(list_name)
-        pipelines_path = os.path.join(list_dir, "jenkins_pipelines.json")
-        job_names: list = []
-        if os.path.exists(pipelines_path):
-            with open(pipelines_path, encoding="utf-8") as _fh:
-                job_names = json.load(_fh).get("pipelines", [])
-
-        if job_names:
-            jcfg = _jcfg()
-            deleted_jobs, failed_jobs = [], []
-            for job in job_names:
-                try:
-                    delete_jenkins_job(jcfg, job)
-                    deleted_jobs.append(job)
-                    app.logger.info("list delete: removed Jenkins job '%s'", job)
-                except Exception as exc:
-                    failed_jobs.append(job)
-                    app.logger.warning("list delete: could not remove Jenkins job '%s': %s", job, exc)
-            msg = f"Jenkins: deleted {len(deleted_jobs)} job(s)"
-            if failed_jobs:
-                msg += f", {len(failed_jobs)} could not be reached ({', '.join(failed_jobs)})"
-            cleanup_log.append(msg)
-    except Exception as exc:
-        app.logger.warning("list delete: Jenkins cleanup failed: %s", exc)
-        cleanup_log.append(f"Jenkins cleanup skipped: {exc}")
-
     # ── 2. Remove from NetBox (opt-in) ─────────────────────────────────────
     # This cascade used to run silently on every list delete and removed the
     # site, region, VRF and every device in the site — including records NMAS
@@ -1502,7 +1471,6 @@ def save_settings():
     """Save all global settings submitted from the Settings modal."""
     global TFTP_SERVER_IP
     import modules.config as config_module
-    import modules.jenkins_runner as _jr
 
     data = request.get_json(silent=True) or {}
     errors = []
@@ -4030,7 +3998,7 @@ def configure_kb_schema():
 
 @app.route("/configure/audit_latest", methods=["GET"])
 def configure_audit_latest():
-    """Return the most recent pipeline audit entry (used by Jenkinsfile stage 4 health check)."""
+    """Return the most recent pipeline audit entry."""
     from modules.pipeline import list_audit_entries
     entries = list_audit_entries(limit=1)
     if not entries:

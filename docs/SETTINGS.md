@@ -40,7 +40,7 @@ So each setting is in one of three states, visible in the posture panel:
 |---|---|
 | `netbox_*` | Settings → NetBox |
 | `prometheus_*`, `grafana_*`, `loki_*`, `oxidized_*`, `kea_*`, `topology_service_*`, `s3_*`, `nsot_git_*`, `proxmox_*` | Settings → Integrations |
-| `flask_host`, `flask_port`, `auto_open_browser`, `tftp_root`, `tftp_server_ip`, `jenkins_step_shell` | Settings → Server |
+| `flask_host`, `flask_port`, `auto_open_browser`, `tftp_root`, `tftp_server_ip` | Settings → Server |
 | `collector_*`, `monitoring_*`, `promql_*` | Settings → Monitoring |
 | `ai_enabled`, **`background_agent_enabled`**, `wf_*` | Settings → AI |
 | `require_identity_for_*`, `require_person_for_*`, `service_allowed_operations`, `cf_access_*` | Settings → Security posture (**read-only**, see below) |
@@ -89,6 +89,7 @@ Each with a reason. These are settable by editing
 | `oxidized_rest_url` | **DEPRECATED and read by nothing, and it gates nothing.** It named the same fact as `oxidized_url` — the oxidized-web base URL, which both used to fetch `nodes.json` from. `oxidized_url` is the one key; it has a form under Settings > Integrations. A value left here is not adopted: the persistence chain refuses and names the move, because a settings write nobody asked for would hide the rename. Kept only because schema keys are never deleted. |
 | `clab_host`, `clab_configs_dir`, `clab_sync_script`, `clab_launch_patch` | Containerlab paths on the lab host, used by the redeploy tooling. They describe a machine, not a preference. |
 | `yang_push_script` | Path to the telemetry helper; same. **Its script was retired on 2026-09-26 (C31)**, so on the deployment host it is declared not applicable rather than left empty. |
+| `jenkins_step_shell` | **DEPRECATED and read by nothing** (P.4 removed Jenkins, and with it the pipeline generators that chose `bat` or `sh`). Its control is gone from Settings → Server; kept only because schema keys are never deleted. |
 | `wf_run_jenkins`, `wf_save_golden` | **DEPRECATED and read by nothing but the agent's prompt text** (P.4 removed Jenkins). They told the agent whether to run Jenkins after a push and whether to save a golden after CI passed. Their switches are gone from the form; kept only because schema keys are never deleted. Stage 8.5 removes them from the prompt. |
 | `settings_not_applicable` | Guard-gating settings declared NOT APPLICABLE on this host, with who, when and why (C31). **Written only by `scripts/nmas-setting-not-applicable`**, on the host, like the identity gates: a declaration changes what a check means, so a browser session must not be able to make one. Job health reads it as `not_applicable`; a key both set and declared is a `contradiction`. |
 | `netbox_excluded_vrfs` | VRFs whose **addresses** the NetBox import does not model, default `["clab-mgmt"]`. It describes the emulator, not a preference — every containerlab node answers on the same internal management address, and NetBox enforces global uniqueness, so importing them is not representable rather than merely untidy (measured: one created, four refused with *"Duplicate IP address found in global table"*). A setting rather than a constant because another lab will name its management VRF something else. Belongs in a future "lab host" section with the `clab_*` group rather than as a field of its own. |
@@ -135,7 +136,8 @@ in-memory `next_ts`, where state that looked persistent was not.
 
 ## Settings that are not in the schema at all
 
-`anthropic_api_key` (`.env`) and the four `jenkins_*` fields
-(`data/jenkins_checks.json`) are written by `/settings` into **other stores**.
+`anthropic_api_key` (`.env`) is written by `/settings` into **another
+store**. The four `jenkins_*` fields used to be written to
+`data/jenkins_checks.json`; since P.4 `/settings` refuses them by name.
 They are not schema keys, `write_settings()` does not touch them, and
 `SECRET_KEYS` deliberately does not list them — see [SECRETS.md](SECRETS.md).

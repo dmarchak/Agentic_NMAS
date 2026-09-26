@@ -3265,6 +3265,47 @@ Still **UNDECIDED** inside P.4: scheduled protocol regression (N13), and
 config-repo checks (R5-R10) as a post-commit job on the NMAS. Neither blocks
 Stage 7.
 
+**Steps 1 and 2 BUILT (2026-09-26)**, in three commits:
+- **1a, the app surface:**
+  - the tab, badge, wizard, settings section and both workflow switches;
+  - 14 routes. Six were mutating, so the gate table's floor went from 121 to
+    115. One was the unauthenticated webhook that satisfied `/git/commit`'s
+    "pipeline passed" check, which now refuses a `pipeline_name` by name
+    (410);
+  - Save All's validation pipeline, and its false "Jenkins not configured"
+    line;
+  - `event_monitor`'s sync and its timer;
+  - `agent_runner`'s `jenkins_failure` task;
+  - the `is_jenkins_building` deferrals;
+  - `PipelineContext.check_devices`: decrypted credentials that nothing read.
+
+  A page older than the server that still posts Jenkins fields is told they
+  were removed.
+- **1b, the agent:** the 19 CI tools (the tool list is 30, was 49); the
+  prompt builder's Jenkins code; and the system prompt's Jenkins section.
+  17 scattered mentions remain, on C30, for 8.5.
+- **1c, the modules:**
+  - deleted: `jenkins_runner`, `check_runner`, `jenkins_shell`,
+    `pipeline_builder`, the stale `Jenkinsfile` and its test;
+  - `configure.py`'s script, XML and job-metadata generators;
+  - list deletion's job cleanup;
+  - the step-shell control. `jenkins_step_shell`, `wf_run_jenkins` and
+    `wf_save_golden` stay in the schema, read by nothing, because keys are
+    never deleted;
+  - `data/jenkins_checks.json` is a RETIRED store: the secret checker names it
+    until it is deleted.
+- **Step 2:** `_stage_ci_gate` is a local dangerous-command check, and says
+  so. An unauthorised dangerous line is refused by name. A clean program passes
+  with no "no check registered" warning.
+- **Acceptance 1 and 2 observed:** `test_no_jenkins.py` (no file imports a
+  removed module, with a floor and an anchor) fails when one import is re-added.
+  `check_removed_definitions.py` reports nothing still called. It learned on the
+  way that a filename (`"jenkins_results.json"`) is a mention.
+- **Operator's step:** delete `data/jenkins_checks.json` on the host. Measured
+  2026-09-26, by field state only: all four fields are EMPTY and no per-list
+  Jenkins file exists, so it holds no credential and deleting it is
+  housekeeping. `nmas-check-secret-storage` names it until then.
+
 ### P.5 — Template approval, scheme 3 (D11; decided 2026-09-26, placed after P.4)
 
 **Approval becomes the template closure hash and the person who approved

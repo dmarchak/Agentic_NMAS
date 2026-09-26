@@ -35,11 +35,10 @@ _PREFIX = "enc:v1:"
 # Settings keys holding secrets. migrate_plaintext() upgrades these in place and
 # the settings API masks them on read. Add new secret-bearing keys here.
 SECRET_KEYS = (
-    # NOT jenkins_api_key / jenkins_token: `/settings` routes those to
-    # `data/jenkins_checks.json`, not here, so listing them would encrypt
-    # nothing while making it LOOK covered. `jenkins_runner.SECRET_FIELDS`
-    # is where they are handled -- a second store needs a second mechanism,
-    # and a name in this tuple is not one. See docs/SECRETS.md.
+    # NOT jenkins_api_key / jenkins_token: they lived in
+    # `data/jenkins_checks.json`, a store retired with Jenkins in P.4. Listing
+    # them here would have encrypted nothing while making it LOOK covered (a
+    # second store needs a second mechanism). See docs/SECRETS.md.
     #
     # NOT anthropic_api_key either: it lives in `.env`, plaintext by design,
     # and its file mode is the whole control.

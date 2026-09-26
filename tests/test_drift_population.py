@@ -43,8 +43,6 @@ def fleet(monkeypatch):
                         lambda path: list(devices))
     monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
                         lambda ip: golden.get(ip))
-    monkeypatch.setattr("modules.jenkins_runner.is_jenkins_building",
-                        lambda: False)
     monkeypatch.setattr("modules.connection.get_persistent_connection",
                         lambda dev, pool, lock: dev["ip"])
     monkeypatch.setattr("modules.commands.run_device_command",

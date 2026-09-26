@@ -45,12 +45,9 @@ def _secret_keys() -> set:
         keys |= set(SECRET_KEYS)
     except Exception:                          # noqa: BLE001
         pass
-    try:
-        from modules.jenkins_runner import SECRET_FIELDS
-
-        keys |= set(SECRET_FIELDS)
-    except Exception:                          # noqa: BLE001
-        pass
+    # The Jenkins credentials, named literally: their module was removed in
+    # P.4, and an old settings file may still carry either key.
+    keys |= {"jenkins_api_key", "jenkins_token"}
     # Belt and braces: anything that reads like a credential, because a new
     # secret key added to DEFAULTS and not to SECRET_KEYS would otherwise be
     # printed in full the first time somebody runs this.
