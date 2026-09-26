@@ -40,9 +40,9 @@ tracked in git.
   `_deploy_one` runs it for every NSoT deploy AND every restore. (This line
   said "built but not wired into the UI" until 2026-09-26, long after Phase 3
   wired it: a document asserting a property the code no longer had.) Its
-  "CI gate" is mostly LOCAL (a dangerous-command check); its only Jenkins
-  part reads the last result of already-registered jobs and is skipped
-  silently when Jenkins is unconfigured.
+  `ci_gate` stage is a LOCAL dangerous-command check and its docstring says
+  so (P.4 step 2). The Jenkins status read and the "syntax check" it used to
+  claim were removed with Jenkins.
 - **[modules/configure.py](modules/configure.py)** (1,093) — IOS config generator
   for 10 feature types; also generates Jenkins verification scripts and pipeline XML
 - **[modules/pipeline_builder.py](modules/pipeline_builder.py)** (745) — Jenkins
@@ -1027,6 +1027,10 @@ All HTTP and SSH is mocked; **no test touches a live network.**
   now counts only when `X` is its own module: the dotted path, `import m as
   A`, `from pkg import m`, or a relative import. A check people routinely
   override stops being a check.
+- **A filename is a mention** (`check_removed_definitions.py`, P.4 step 1).
+  `"jenkins_results.json"` has the dotted shape of `mod.attr`, so removing the
+  view `jenkins_results` was flagged by a module writing a file of that name.
+  A module path never ends in a file extension.
 - **A string is a use only when it is shaped like a reference**
   (`check_removed_definitions.py`, P.3 step 2): a name, a dotted path, or
   `pkg.mod:attr`. A URL path in a 404 test and a sentence in a prompt are

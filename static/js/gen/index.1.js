@@ -244,9 +244,6 @@ document.addEventListener('DOMContentLoaded', () => {
       saveBtn.disabled = false;
 
       if (data.ok) {
-        const pipeMsg = data.pipeline
-          ? ` Pipeline <strong>${data.pipeline}</strong> triggered — commit from the Git tab once it passes.`
-          : '';
         // The same summary the server logs. A toast that says "saved" while
         // the run produced no commit and no baseline is how an operator ends
         // up reading git to find out what happened.
@@ -268,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // No commit AND no baseline means this run left no restore point.
         const level = (s.baseline && s.baseline !== 'none') ? 'success'
                     : (skipped.length ? 'warning' : 'warning');
-        showToast(`${data.message}${pipeMsg}<hr class="my-1">${detail}`, level);
+        showToast(`${data.message}<hr class="my-1">${detail}`, level);
         // Refresh git tab if open
         if (document.getElementById('gitPane') &&
             !document.getElementById('gitPane').classList.contains('d-none')) {

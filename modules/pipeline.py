@@ -150,7 +150,6 @@ class PipelineContext:
     params:           dict                   # shared params (used when ip_params_map empty)
     ip_params_map:    dict                   # per-device param overrides: {ip: params}
     selected_devices: list[dict]             # raw device dicts from the device list
-    check_devices:    list[dict]             # decrypted-cred dicts for Jenkins scripts
     connections_pool: dict
     pool_lock:        Any
     config_id:        str
@@ -568,28 +567,25 @@ def _render_jinja2(tpl_path: str, params: dict, nb_device: dict,
 # ---------------------------------------------------------------------------
 
 def _stage_ci_gate(ctx: PipelineContext) -> None:
-    """
-    Validate the rendered config before any SSH connection is opened.
+    """A DANGEROUS-COMMAND check, before any SSH connection is opened.
 
-    Checks (all must pass before Stage 4 is allowed to open any SSH connection):
-      1. Rendered command lists are non-empty for every target device.
-      2. No dangerous IOS patterns (shutdown, no router X, reload, …) unless
-         whitelisted in ``params["allowed_dangerous"]``.
-      3. The check_runner module syntax check — verifies the check function for
-         this config type is importable and callable.
-      4. Jenkins pipeline status — if Jenkins is configured and pipelines are
-         registered for this list, NONE of them may be in FAILURE state.
-         A failing pipeline means the network is not in a known-good state;
-         deploying on top of a broken network makes diagnosis impossible.
-         If no pipelines have been created yet (first-time setup) a warning is
-         logged but the gate still passes so initial bootstrapping is not blocked.
-    """
-    import py_compile, tempfile
-    from modules.configure import generate_check_script
+    The stage keeps its historical name, `ci_gate`, and is local: it checks
+    that every target device has commands, and that no command matches
+    `_DANGEROUS_PATTERNS` unless that exact line is authorised in
+    ``params["allowed_dangerous"]``.
 
+    It used to claim two more checks (P.4, docs/NSOT_CI.md):
+    - a "syntax check", which only looked up a name in `check_runner.CHECKS`
+      and logged "no check registered" on every deploy;
+    - the last result of Jenkins jobs registered to the ACTIVE list, skipped
+      silently when Jenkins was unconfigured (it always was), fail-open on any
+      error, and keyed on the wrong list.
+
+    Both were removed with Jenkins. A gate that describes a check it does not
+    make is the wrong-and-looks-right state.
+    """
     allowed: set[str] = set(ctx.params.get("allowed_dangerous", []))
 
-    # ── Check 1 & 2 — command presence and dangerous-pattern check ──────────
     for ip, cmds in ctx.rendered_commands.items():
         hostname = next((d.get("hostname", ip) for d in ctx.selected_devices
                          if d["ip"] == ip), ip)
@@ -603,52 +599,10 @@ def _stage_ci_gate(ctx: PipelineContext) -> None:
                         f"Add the exact command string to params['allowed_dangerous'] to override."
                     )
 
-    # ── Check 3 — verify check_runner has a function for this config type ───
-    try:
-        from modules.check_runner import CHECKS as _checks
-        if ctx.config_type not in _checks:
-            log.warning(
-                "pipeline[3/ci_gate]: no check function registered for '%s' in "
-                "check_runner.CHECKS — post-deploy verification will be skipped",
-                ctx.config_type,
-            )
-    except ImportError:
-        log.warning("pipeline[3/ci_gate]: check_runner not importable — skipping check 3")
-
-    # ── Check 4 — Jenkins pipeline status (fast read, no blocking) ──────────
-    # Only block if a pipeline is actively FAILING — meaning the network is
-    # in a known bad state.  Never trigger builds or wait here; CI is advisory.
-    try:
-        from modules.jenkins_runner import (
-            load_config as _jlc,
-            get_current_list_pipeline_status as _jpstatus,
-        )
-        jcfg = _jlc()
-        if jcfg.get("jenkins_url", "").strip():
-            info    = _jpstatus(jcfg)
-            rows    = info.get("registered", [])
-            failing = [
-                r["job_name"] for r in rows
-                if r.get("last_result") == "FAILURE" and r.get("exists_on_server")
-            ]
-            if failing:
-                raise PipelineStageError(
-                    f"CI gate: {len(failing)} pipeline(s) are currently FAILING — "
-                    f"deploy blocked:\n"
-                    + "\n".join(f"  • {j}" for j in failing)
-                    + "\nFix the failures or investigate before applying new config."
-                )
-            if rows:
-                log.info("pipeline[3/ci_gate]: %d pipeline(s) — all passing", len(rows))
-    except PipelineStageError:
-        raise
-    except Exception as exc:
-        log.warning("pipeline[3/ci_gate]: pipeline status check failed: %s", exc)
-
     ctx.ci_passed = True
     log.info(
-        "pipeline[3/ci_gate]: passed — %d device(s), no dangerous commands",
-        len(ctx.rendered_commands),
+        "pipeline[3/ci_gate]: passed — %d device(s), no unauthorised dangerous "
+        "commands", len(ctx.rendered_commands),
     )
 
 

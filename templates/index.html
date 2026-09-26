@@ -56,12 +56,6 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="jenkins-tab" data-bs-toggle="tab" data-bs-target="#jenkinsPane"
-            type="button" role="tab" aria-controls="jenkinsPane" aria-selected="false">
-      Jenkins
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
     <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#historyPane"
             type="button" role="tab" aria-controls="historyPane" aria-selected="false">
       History
@@ -724,52 +718,6 @@
 </div><!-- end Ansible tab pane -->
 
 <!-- ================================================================== -->
-<!-- JENKINS TAB -->
-<!-- ================================================================== -->
-<div class="tab-pane fade" id="jenkinsPane" role="tabpanel" aria-labelledby="jenkins-tab">
-
-<!-- Header row: title + pipeline selector + run button -->
-<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-  <h2 class="text-primary mb-0 me-auto">CI Pipeline</h2>
-  <select id="jenkinsPipelineSelect" class="form-select form-select-sm" style="width:auto;min-width:200px">
-    <option value="">All pipelines</option>
-  </select>
-  <button class="btn btn-outline-secondary btn-sm" onclick="loadJenkinsTab()">Refresh</button>
-  <button class="btn btn-primary btn-sm" id="runChecksBtn" onclick="runJenkinsChecks()" disabled>
-    <span class="btn-text">Run</span>
-    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
-  </button>
-</div>
-
-<!-- Latest results for current list -->
-<div id="jenkinsResultsPanel">
-  <div class="text-center text-muted py-4">
-    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-    Loading&hellip;
-  </div>
-</div>
-
-<!-- Build history -->
-<div id="jenkinsBuildHistory" class="mt-4"></div>
-
-<!-- ── Pipeline Schedules ──────────────────────────────────────────── -->
-<div class="mt-4">
-  <div class="d-flex align-items-center gap-2 mb-2">
-    <h5 class="text-primary mb-0 me-auto">Pipeline Schedules</h5>
-    <button class="btn btn-outline-secondary btn-sm" onclick="loadJenkinsSchedules()">Refresh</button>
-  </div>
-  <p class="text-muted small mb-2">
-    Schedules run pipelines automatically — no browser needed. The agent monitors results and
-    auto-diagnoses failures. Use <strong>H</strong> instead of a fixed minute to stagger builds.
-  </p>
-  <div id="jenkinsSchedulesPanel">
-    <div class="text-muted small py-2">Loading schedules…</div>
-  </div>
-</div>
-
-</div><!-- end Jenkins tab pane -->
-
-<!-- ================================================================== -->
 
 <!-- ================================================================== -->
 <!-- HISTORY TAB -->
@@ -900,7 +848,7 @@
 
 <p class="text-muted small mb-3">
   Tasks the AI agent has executed autonomously in the background — without any browser interaction.
-  Jenkins failures, missing golden configs, and config drift are handled automatically.
+  Missing golden configs and config drift are handled automatically.
 </p>
 
 <!-- Agent Timer Configuration -->
@@ -1240,7 +1188,6 @@
     <span class="auto-golden-text">Auto-Create Golden Configs</span>
     <span class="spinner-border spinner-border-sm d-none ms-1 auto-golden-spin" role="status"></span>
   </button>
-  <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#jenkinsWizardModal">Jenkins Wizard</button>
   <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#ansibleWizardModal">Ansible Wizard</button>
 </div>
 
@@ -1986,81 +1933,6 @@
 </div><!-- end Configure pane -->
 
 <!-- ================================================================== -->
-<!-- JENKINS WIZARD MODAL -->
-<!-- ================================================================== -->
-<div class="modal fade" id="jenkinsWizardModal" tabindex="-1" aria-labelledby="jenkinsWizardLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content" style="background:var(--bs-body-bg,#1e293b);border:1px solid #334155">
-      <div class="modal-header py-2">
-        <h5 class="modal-title" id="jenkinsWizardLabel">Jenkins Pipeline Wizard</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-2 mb-2">
-          <div class="col-md-6">
-            <label class="form-label small mb-1">Pipeline Type</label>
-            <select id="jw_type" class="form-select form-select-sm" onchange="jwTypeChange()">
-              <option value="config_verify">Configuration Verification</option>
-              <option value="health_check">Device Health Check</option>
-              <option value="backup">Configuration Backup</option>
-              <option value="custom">Custom Python Script</option>
-            </select>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label small mb-1">Job Name</label>
-            <input id="jw_job_name" class="form-control form-control-sm" placeholder="nmas-verify-ospf">
-          </div>
-        </div>
-        <div class="row g-2 mb-2">
-          <div class="col-md-6">
-            <label class="form-label small mb-1">Notification Email <em class="text-muted">(optional)</em></label>
-            <input id="jw_email" class="form-control form-control-sm" placeholder="admin@example.com">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label small mb-1">Schedule (cron) <em class="text-muted">(optional)</em></label>
-            <input id="jw_schedule" class="form-control form-control-sm" placeholder="H 2 * * * (daily at 2am)">
-          </div>
-        </div>
-        <div id="jw_health_fields" class="d-none">
-          <div class="row g-2 mb-2">
-            <div class="col-md-6">
-              <label class="form-label small mb-1">Check Type</label>
-              <select id="jw_health_check_type" class="form-select form-select-sm">
-                <option value="reachability">Reachability (ping)</option>
-                <option value="ospf_neighbors">OSPF Neighbor State</option>
-                <option value="bgp_sessions">BGP Session State</option>
-                <option value="interface_status">Interface Up/Down</option>
-                <option value="cpu_memory">CPU & Memory Thresholds</option>
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label small mb-1">Threshold / Parameter</label>
-              <input id="jw_health_param" class="form-control form-control-sm" placeholder="e.g. CPU < 80%">
-            </div>
-          </div>
-        </div>
-        <div id="jw_custom_fields" class="d-none">
-          <label class="form-label small mb-1">Python Script</label>
-          <textarea id="jw_custom_script" class="form-control form-control-sm font-monospace" rows="8" placeholder="import sys&#10;# Your verification script here&#10;# Exit 0 = pass, Exit 1 = fail&#10;sys.exit(0)"></textarea>
-        </div>
-        <div class="mt-3">
-          <button type="button" class="btn btn-primary btn-sm" onclick="jwGenerate()">
-            <span class="jw-btn-text">Generate Pipeline XML</span>
-            <span class="spinner-border spinner-border-sm d-none ms-1 jw-spin" role="status"></span>
-          </button>
-          <button type="button" class="btn btn-outline-success btn-sm ms-2" id="jwCreateBtn" onclick="jwCreate()" disabled>Create Jenkins Job</button>
-        </div>
-        <div id="jwResult" class="mt-3 d-none">
-          <label class="form-label small mb-1">Generated Pipeline XML:</label>
-          <pre id="jwXmlOutput" class="bg-dark text-light p-2 rounded small" style="max-height:300px;overflow-y:auto;white-space:pre-wrap"></pre>
-        </div>
-        <div id="jwStatus" class="mt-2"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ================================================================== -->
 <!-- ANSIBLE WIZARD MODAL -->
 <!-- ================================================================== -->
 <div class="modal fade" id="ansibleWizardModal" tabindex="-1" aria-labelledby="ansibleWizardLabel" aria-hidden="true">
@@ -2312,10 +2184,9 @@
   with per-device <code>golden/&lt;device&gt;/&lt;timestamp&gt;</code> tags and a
   <code>baseline/&lt;timestamp&gt;</code> when it covers the inventory. Nothing is left
   staged, and a device whose config has not changed produces no commit but is still
-  reported. If Jenkins is configured, a validation pipeline is created when the save
-  actually produced a commit.
+  reported.
   Commit <em>here</em> for <code>infra/</code> files and anything else you version by
-  hand — with a passing pipeline selected to attach CI evidence to that commit.
+  hand.
 </p>
 
 <!-- Status bar -->
@@ -2331,13 +2202,6 @@
       <div class="col-12">
         <label class="form-label small mb-1">Commit Message <span class="text-danger">*</span></label>
         <input id="gitCommitMsg" class="form-control form-control-sm" placeholder="e.g. Configure OSPF on all PE routers">
-      </div>
-      <div class="col-12">
-        <label class="form-label small mb-1">Validation Pipeline <span class="text-danger">*</span></label>
-        <select id="gitPipelineSelect" class="form-select form-select-sm">
-          <option value="">— select pipeline —</option>
-        </select>
-        <div class="form-text" id="gitPipelineHint"></div>
       </div>
       <div class="col-12">
         <button class="btn btn-success btn-sm" onclick="gitDoCommit()" id="gitCommitBtn">
@@ -2357,8 +2221,7 @@
       <tr>
         <th style="width:6em">Hash</th>
         <th>Message</th>
-        <th style="width:10em">Pipeline</th>
-        <th style="width:7em">Status</th>
+        <th style="width:10em">Pipeline (before P.4)</th>
         <th style="width:12em">Date</th>
       </tr>
     </thead>
@@ -2695,7 +2558,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <nav class="mb-3 small" aria-label="Settings sections">
           <span class="text-muted me-1">Jump to:</span>
           <a class="me-2" href="#setAiProvider">AI</a>
-          <a class="me-2" href="#setJenkins">Jenkins</a>
           <a class="me-2" href="#setNetwork">Network</a>
           <a class="me-2" href="#setNetbox">NetBox</a>
           <a class="me-2" href="#setIntegrations">Integrations</a>
@@ -2779,40 +2641,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <hr>
 
-        <!-- Jenkins -->
-        <h6 id="setJenkins" class="text-primary fw-semibold mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/><path d="M6.854 4.646a.5.5 0 0 1 0 .708L4.207 8l2.647 2.646a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 0 1 .708 0m2.292 0a.5.5 0 0 0 0 .708L11.793 8l-2.647 2.646a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708 0"/></svg>
-          Jenkins CI
-        </h6>
-        <div class="row g-3 mb-4">
-          <div class="col-md-8">
-            <label class="form-label fw-semibold">Jenkins URL</label>
-            <input type="url" class="form-control" id="settingsJenkinsUrl"
-                   placeholder="http://localhost:8080">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Username</label>
-            <input type="text" class="form-control" id="settingsJenkinsUser"
-                   placeholder="admin" autocomplete="off">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label fw-semibold">API Key
-              <span class="text-muted fw-normal small ms-1">(for build triggers)</span>
-            </label>
-            <input type="password" class="form-control" id="settingsJenkinsApiKey"
-                   placeholder="11ee08ae…" autocomplete="off">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label fw-semibold">Webhook Token
-              <span class="text-muted fw-normal small ms-1">(optional)</span>
-            </label>
-            <input type="password" class="form-control" id="settingsJenkinsToken"
-                   placeholder="token" autocomplete="off">
-          </div>
-        </div>
-
-        <hr>
-
         <!-- Network -->
         <h6 id="setNetwork" class="text-primary fw-semibold mb-3">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M14.763.075A.5.5 0 0 1 15 .5v15a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5V14h-1v1.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V10a.5.5 0 0 1 .342-.474L6 7.64V4.5a.5.5 0 0 1 .276-.447l8-4a.5.5 0 0 1 .487.022M6 8.694 1 10.36V15h5zM7 15h2v-1.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5V15h1V1.309z"/></svg>
@@ -2887,7 +2715,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div>
               <div class="fw-semibold small">Background agent</div>
               <div class="text-muted" style="font-size:.8rem;">
-                Autonomous monitoring: watches Jenkins failures, SNMP traps, and config drift.
+                Autonomous monitoring: watches SNMP traps and config drift.
                 Disable to eliminate background API calls completely. Chat still works normally.
               </div>
             </div>
@@ -2913,26 +2741,6 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
             <div class="form-check form-switch flex-shrink-0 mt-1">
               <input class="form-check-input" type="checkbox" id="wfAutoBackup" role="switch">
-            </div>
-          </div>
-
-          <div class="d-flex align-items-start justify-content-between gap-3">
-            <div>
-              <div class="fw-semibold small">Run Jenkins CI after config push</div>
-              <div class="text-muted" style="font-size:.8rem;">Trigger the Jenkins pipeline to validate changes after pushing.</div>
-            </div>
-            <div class="form-check form-switch flex-shrink-0 mt-1">
-              <input class="form-check-input" type="checkbox" id="wfRunJenkins" role="switch">
-            </div>
-          </div>
-
-          <div class="d-flex align-items-start justify-content-between gap-3">
-            <div>
-              <div class="fw-semibold small">Save golden config after CI pass</div>
-              <div class="text-muted" style="font-size:.8rem;">Update the golden config baseline when Jenkins CI passes.</div>
-            </div>
-            <div class="form-check form-switch flex-shrink-0 mt-1">
-              <input class="form-check-input" type="checkbox" id="wfSaveGolden" role="switch">
             </div>
           </div>
 
@@ -2998,18 +2806,6 @@ window.openSettingsModal = function() {
       document.getElementById('settingsKeyStatus').className =
         'form-text ' + (s.anthropic_api_key_set ? 'text-success' : 'text-warning');
 
-      document.getElementById('settingsJenkinsUrl').value     = s.jenkins_url     || '';
-      document.getElementById('settingsJenkinsUser').value    = s.jenkins_user    || '';
-      // Write-only, like the NetBox token: the server returns a flag, never
-      // the value (B11), and an empty field is sent as "unchanged".
-      [['settingsJenkinsApiKey', s.jenkins_api_key_set], ['settingsJenkinsToken', s.jenkins_token_set]]
-        .forEach(([id, isSet]) => {
-          const el = document.getElementById(id);
-          el.value = '';
-          el.placeholder = isSet ? '••••••••  (already set — enter a new value to change)' : '';
-        });
-      document.getElementById('settingsTftpIp').value         = s.tftp_server_ip  || '';
-
       // NetBox
       document.getElementById('settingsNetboxUrl').value = s.netbox_url || '';
       const nbTokInput = document.getElementById('settingsNetboxToken');
@@ -3036,8 +2832,6 @@ window.openSettingsModal = function() {
       // Workflow toggles (default true except wf_require_approval)
       document.getElementById('wfReadFirst').checked       = s.wf_read_first       !== false;
       document.getElementById('wfAutoBackup').checked      = s.wf_auto_backup      !== false;
-      document.getElementById('wfRunJenkins').checked      = s.wf_run_jenkins      !== false;
-      document.getElementById('wfSaveGolden').checked      = s.wf_save_golden      !== false;
       document.getElementById('wfUpdateVars').checked      = s.wf_update_vars      !== false;
       document.getElementById('wfRequireApproval').checked = s.wf_require_approval === true;
     })
@@ -3111,13 +2905,9 @@ window.saveSettings = function() {
     ai_enabled:            document.getElementById('settingsAiEnabled').checked,
     background_agent_enabled:
       document.getElementById('settingsBackgroundAgentEnabled').checked,
-    jenkins_url:           document.getElementById('settingsJenkinsUrl').value.trim(),
-    jenkins_user:          document.getElementById('settingsJenkinsUser').value.trim(),
     tftp_server_ip:        document.getElementById('settingsTftpIp').value.trim(),
     wf_read_first:         document.getElementById('wfReadFirst').checked,
     wf_auto_backup:        document.getElementById('wfAutoBackup').checked,
-    wf_run_jenkins:        document.getElementById('wfRunJenkins').checked,
-    wf_save_golden:        document.getElementById('wfSaveGolden').checked,
     wf_update_vars:        document.getElementById('wfUpdateVars').checked,
     wf_require_approval:   document.getElementById('wfRequireApproval').checked,
   };
@@ -3125,11 +2915,6 @@ window.saveSettings = function() {
   // Only send the API key if the user actually typed something
   const apiKeyVal = document.getElementById('settingsAnthropicKey').value.trim();
   if (apiKeyVal) payload.anthropic_api_key = apiKeyVal;
-  // The same for the Jenkins secrets: only what the user typed is sent.
-  const jApi = document.getElementById('settingsJenkinsApiKey').value.trim();
-  if (jApi) payload.jenkins_api_key = jApi;
-  const jTok = document.getElementById('settingsJenkinsToken').value.trim();
-  if (jTok) payload.jenkins_token = jTok;
 
   // NetBox — URL + TLS always sent; token only if user typed one
   payload.netbox_url        = document.getElementById('settingsNetboxUrl').value.trim();
@@ -4258,82 +4043,6 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
     panel.innerHTML = `<div class="alert ${cls[level] || 'alert-secondary'} mt-2">${html}</div>`;
   }
 
-  /* ---- Jenkins Wizard ---- */
-  let _jwXml = '';
-  window.jwTypeChange = function() {
-    const t = document.getElementById('jw_type').value;
-    document.getElementById('jw_health_fields').classList.toggle('d-none', t !== 'health_check');
-    document.getElementById('jw_custom_fields').classList.toggle('d-none', t !== 'custom');
-  };
-  window.jwGenerate = function() {
-    const type     = document.getElementById('jw_type').value;
-    const jobName  = document.getElementById('jw_job_name').value || 'nmas-pipeline';
-    const email    = document.getElementById('jw_email').value;
-    const schedule = document.getElementById('jw_schedule').value;
-    let stageScript = '';
-    if (type === 'config_verify') {
-      stageScript = `sh 'pip3 install netmiko --quiet 2>/dev/null || true'\n            sh 'python3 verify.py'`;
-    } else if (type === 'health_check') {
-      const chk   = document.getElementById('jw_health_check_type').value;
-      const param = document.getElementById('jw_health_param').value;
-      stageScript = `echo "Health check: ${chk} — ${param}"\n            sh 'python3 health_check.py'`;
-    } else if (type === 'backup') {
-      stageScript = `sh 'pip3 install netmiko --quiet 2>/dev/null || true'\n            sh 'python3 backup.py'`;
-    } else {
-      const script = document.getElementById('jw_custom_script').value.replace(/'/g, "\\'");
-      stageScript = `writeFile file: 'custom.py', text: '${script}'\n            sh 'python3 custom.py'`;
-    }
-    const triggers = schedule ? `\n    triggers { cron('${schedule}') }` : '';
-    const notify   = email ? `\n        failure { mail to: '${email}', subject: "FAILED: ${jobName}", body: "Pipeline failed." }` : '';
-    // Build script tag strings via concatenation to avoid triggering HTML parser
-    const _scOpen = '<scr' + 'ipt>', _scClose = '<' + '/script>';
-    _jwXml = `<?xml version='1.1' encoding='UTF-8'?>
-<flow-definition plugin="workflow-job">
-  <description>${jobName} — generated by NMAS Jenkins Wizard</description>
-  <definition class="org.jenkinsci.plugins.workflow.csd.CpsFlowDefinition" plugin="workflow-csd">
-    ${_scOpen}pipeline {
-    agent any${triggers}
-    stages {
-        stage('Run') {
-            steps {
-                script {
-                    ${stageScript}
-                }
-            }
-        }
-    }
-    post {${notify}
-        always { cleanWs() }
-    }
-}
-${_scClose}
-    <sandbox>true</sandbox>
-  </definition>
-  <disabled>false</disabled>
-</flow-definition>`;
-    document.getElementById('jwXmlOutput').textContent = _jwXml;
-    document.getElementById('jwResult').classList.remove('d-none');
-    document.getElementById('jwCreateBtn').disabled = false;
-  };
-  window.jwCreate = function() {
-    const jobName = document.getElementById('jw_job_name').value || 'nmas-pipeline';
-    if (!_jwXml) { return; }
-    const statusEl = document.getElementById('jwStatus');
-    statusEl.innerHTML = '<span class="text-info small">Creating job…</span>';
-    fetch('/jenkins/create_job', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job_name: jobName, pipeline_xml: _jwXml }),
-    })
-    .then(r => r.json())
-    .then(d => {
-      statusEl.innerHTML = d.ok
-        ? `<span class="text-success small">Job <strong>${jobName}</strong> created successfully.</span>`
-        : `<span class="text-danger small">Failed: ${d.error}</span>`;
-    })
-    .catch(e => { statusEl.innerHTML = `<span class="text-danger small">Error: ${e}</span>`; });
-  };
-
   /* ---- Ansible Wizard ---- */
   let _awYaml = '';
   window.awTypeChange = function() {
@@ -4482,18 +4191,16 @@ ${tasks}
     // rejection, nothing rendered) -- from the UI that looked exactly like
     // "the Refresh button does nothing". Surface it instead.
     try {
-      const [statusResp, logResp, pipesResp] = await Promise.all([
+      const [statusResp, logResp] = await Promise.all([
         fetch('/git/status',              { cache: 'no-store' }),
         fetch('/git/log?limit=40',        { cache: 'no-store' }),
-        fetch('/git/available_pipelines', { cache: 'no-store' }),
       ]);
-      const [status, logData, pipesData] = await Promise.all([
-        statusResp.json(), logResp.json(), pipesResp.json(),
+      const [status, logData] = await Promise.all([
+        statusResp.json(), logResp.json(),
       ]);
 
       _renderGitStatus(status);
       _renderGitLog(logData.commits || []);
-      _renderPipelineDropdown(pipesData.pipelines || [], status);
     } catch (e) {
       if (typeof showToast === 'function') {
         showToast('Could not load Git tab: ' + e.message, 'danger');
@@ -4528,48 +4235,6 @@ ${tasks}
     }
   }
 
-  // ── pipeline dropdown ──────────────────────────────────────────────────────
-  function _renderPipelineDropdown(pipes, status) {
-    const sel   = document.getElementById('gitPipelineSelect');
-    const hint  = document.getElementById('gitPipelineHint');
-    const btn   = document.getElementById('gitCommitBtn');
-    if (!sel) return;
-
-    // Committing without a pipeline is always allowed — Jenkins is optional,
-    // used as verification when available, never a hard requirement to commit.
-    sel.innerHTML = '<option value="">— no pipeline (commit directly) —</option>';
-    if (btn) btn.disabled = false;
-
-    if (pipes.length === 0) {
-      if (hint) hint.innerHTML = '<span class="text-muted">No pending validation pipelines — committing directly.</span>';
-      return;
-    }
-
-    pipes.forEach(p => {
-      const opt    = document.createElement('option');
-      opt.value    = p.pipeline_name;
-      const result = p.last_result || 'not run';
-      const ok     = p.jenkins_ok;
-      opt.disabled = !ok;   // can't select a non-passing pipeline
-      opt.textContent = `${p.pipeline_name}  [${result}]  ${p.created_at ? '• ' + p.created_at.slice(0,16) : ''}`;
-      sel.appendChild(opt);
-    });
-
-    sel.onchange = () => {
-      if (!sel.value) {
-        if (hint) hint.innerHTML = '<span class="text-muted">Committing without a pipeline.</span>';
-        return;
-      }
-      const chosen = pipes.find(p => p.pipeline_name === sel.value);
-      if (!chosen) { if (hint) hint.textContent = ''; return; }
-      if (!chosen.jenkins_ok) {
-        if (hint) hint.innerHTML = `<span class="text-danger">Pipeline last run: <strong>${chosen.last_result || 'not run'}</strong>. Fix failures before committing, or switch back to "no pipeline" to commit directly.</span>`;
-      } else {
-        if (hint) hint.innerHTML = `<span class="text-success">Pipeline passed ✓ — safe to commit.</span>`;
-      }
-    };
-  }
-
   // ── commit log table ───────────────────────────────────────────────────────
   function _renderGitLog(commits) {
     const placeholder = document.getElementById('gitLogPlaceholder');
@@ -4586,11 +4251,6 @@ ${tasks}
     if (table)       table.style.display = '';
 
     tbody.innerHTML = commits.map(c => {
-      const ok      = c.pipeline_ok;
-      const result  = c.pipeline_result || '—';
-      const badge   = ok === null ? '' :
-                      ok ? `<span class="badge bg-success">PASS</span>` :
-                           `<span class="badge bg-danger">${escHtml(result)}</span>`;
       const pipe    = c.pipeline
         ? `<span class="text-muted" style="font-size:.75rem">${escHtml(c.pipeline.slice(-18))}</span>`
         : '<span class="text-muted">—</span>';
@@ -4598,7 +4258,6 @@ ${tasks}
         <td><code>${escHtml(c.short_hash)}</code></td>
         <td>${escHtml(c.message)}</td>
         <td>${pipe}</td>
-        <td>${badge}</td>
         <td class="text-muted">${escHtml((c.date || '').slice(0,16))}</td>
       </tr>`;
     }).join('');
@@ -4649,7 +4308,6 @@ ${tasks}
   // ── perform commit ─────────────────────────────────────────────────────────
   window.gitDoCommit = async function () {
     const msg  = (document.getElementById('gitCommitMsg')?.value  || '').trim();
-    const pipe = (document.getElementById('gitPipelineSelect')?.value || '').trim();
     const errEl = document.getElementById('gitCommitError');
     const btn   = document.getElementById('gitCommitBtn');
     if (errEl) errEl.textContent = '';
@@ -4659,7 +4317,6 @@ ${tasks}
     if (btn) btn.disabled = true;
     try {
       const body = { message: msg };
-      if (pipe) body.pipeline_name = pipe;
       const resp = await fetch('/git/commit', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },

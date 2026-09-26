@@ -46,8 +46,6 @@ def _ctx(**overrides) -> PipelineContext:
         params           = {"interface": "GigabitEthernet0/0"},
         ip_params_map    = {},
         selected_devices = [{"ip": "10.0.0.1", "hostname": "R1"}],
-        check_devices    = [{"ip": "10.0.0.1", "hostname": "R1",
-                             "username": "admin", "password": "cisco"}],
         connections_pool = {},
         pool_lock        = threading.Lock(),
         config_id        = "test-cfg-001",
@@ -224,112 +222,44 @@ class TestCIGateInvariant:
             runner._assert_order(STAGE_NAMES.index("deploy"))
 
 
-class TestCIGateJenkinsBlock:
-    """
-    CI gate reads last stored pipeline status — fast, no blocking.
-    Blocks only when a pipeline is actively FAILING.  Never triggers builds.
-    """
+class TestTheCIGateSaysWhatItChecks:
+    """P.4 step 2 (docs/NSOT_CI.md acceptance 2). The stage is a dangerous-
+    command check and says so. It used to claim a "syntax check" (a name
+    lookup that warned on every deploy) and a Jenkins status read that was
+    skipped silently when Jenkins was unconfigured, which it always was."""
 
-    def _run_ci_gate(self, monkeypatch,
-                     rows: list[dict],
-                     jenkins_url: str = "http://jenkins:8080"):
-        """Patch jenkins_runner.get_current_list_pipeline_status and run the gate."""
+    def _run(self, cmds, allowed=()):
         from modules.pipeline import _stage_ci_gate
-        import sys, types
+        ctx = _ctx(params={"allowed_dangerous": list(allowed)})
+        ctx.rendered_commands = {"10.0.0.1": list(cmds)}
+        _stage_ci_gate(ctx)
+        return ctx
 
-        fake_jr = types.ModuleType("modules.jenkins_runner")
-        fake_jr.load_config = lambda: {"jenkins_url": jenkins_url}
-        fake_jr.get_current_list_pipeline_status = lambda _cfg: {
-            "registered": rows, "list_name": "testlist"
-        }
-        sys.modules["modules.jenkins_runner"] = fake_jr
-
-        fake_cr = types.ModuleType("modules.check_runner")
-        fake_cr.CHECKS = {"interface": lambda c, d: None}
-        sys.modules["modules.check_runner"] = fake_cr
-
-        ctx = _ctx()
-        ctx.rendered_commands = {"10.0.0.1": ["interface GigabitEthernet0/0"]}
-        try:
-            _stage_ci_gate(ctx)
-            return ctx
-        finally:
-            sys.modules.pop("modules.jenkins_runner", None)
-            sys.modules.pop("modules.check_runner", None)
-
-    # ── Core behaviour ───────────────────────────────────────────────────
-
-    def test_failing_pipeline_blocks_deploy(self, monkeypatch):
+    def test_an_unauthorised_dangerous_line_is_refused_by_name(self):
         from modules.pipeline import PipelineStageError
-        rows = [{"job_name": "nmas-list-ospf", "last_result": "FAILURE",
-                 "exists_on_server": True}]
-        with pytest.raises(PipelineStageError, match="FAILING"):
-            self._run_ci_gate(monkeypatch, rows)
+        with pytest.raises(PipelineStageError, match="' shutdown'|shutdown"):
+            self._run(["interface GigabitEthernet0/0", " shutdown"])
 
-    def test_failing_pipeline_names_the_job(self, monkeypatch):
-        from modules.pipeline import PipelineStageError
-        rows = [{"job_name": "nmas-list-bgp", "last_result": "FAILURE",
-                 "exists_on_server": True}]
-        with pytest.raises(PipelineStageError, match="nmas-list-bgp"):
-            self._run_ci_gate(monkeypatch, rows)
+    def test_the_authorised_line_passes(self):
+        assert self._run(["interface GigabitEthernet0/0", " shutdown"],
+                         allowed=["shutdown"]).ci_passed is True
 
-    def test_multiple_failing_pipelines_all_named(self, monkeypatch):
-        from modules.pipeline import PipelineStageError
-        rows = [
-            {"job_name": "nmas-list-ospf", "last_result": "FAILURE", "exists_on_server": True},
-            {"job_name": "nmas-list-bgp",  "last_result": "FAILURE", "exists_on_server": True},
-        ]
-        with pytest.raises(PipelineStageError) as exc_info:
-            self._run_ci_gate(monkeypatch, rows)
-        msg = str(exc_info.value)
-        assert "nmas-list-ospf" in msg
-        assert "nmas-list-bgp" in msg
+    def test_a_clean_program_passes_with_no_check_registered_warning(self, caplog):
+        caplog.set_level("DEBUG")
+        assert self._run(["interface GigabitEthernet0/0", " description x"]).ci_passed
+        text = " ".join(r.getMessage() for r in caplog.records)
+        assert "no check" not in text and "check_runner" not in text
+        assert "Jenkins" not in text
 
-    def test_all_passing_allows_deploy(self, monkeypatch):
-        rows = [{"job_name": "nmas-list-ospf", "last_result": "SUCCESS",
-                 "exists_on_server": True}]
-        ctx = self._run_ci_gate(monkeypatch, rows)
-        assert ctx.ci_passed is True
-
-    def test_no_pipelines_registered_passes(self, monkeypatch):
-        ctx = self._run_ci_gate(monkeypatch, rows=[])
-        assert ctx.ci_passed is True
-
-    def test_jenkins_not_configured_passes(self, monkeypatch):
-        ctx = self._run_ci_gate(monkeypatch, rows=[], jenkins_url="")
-        assert ctx.ci_passed is True
-
-    def test_failed_job_not_on_server_not_blocking(self, monkeypatch):
-        """Job registered locally but missing from Jenkins server is not a blocker."""
-        rows = [{"job_name": "nmas-list-ospf", "last_result": "FAILURE",
-                 "exists_on_server": False}]
-        ctx = self._run_ci_gate(monkeypatch, rows)
-        assert ctx.ci_passed is True
-
-    def test_gate_does_not_call_run_checks(self, monkeypatch):
-        """Gate must read status only — never trigger builds."""
+    def test_the_stage_reads_nothing_about_ci_it_does_not_check(self):
+        import inspect
         from modules.pipeline import _stage_ci_gate
-        import sys, types
+        src = inspect.getsource(_stage_ci_gate)
+        code = src.split('"""', 2)[2]          # the body, not the docstring
+        assert "jenkins_runner" not in code and "check_runner" not in code
+        assert "DANGEROUS-COMMAND check" in _stage_ci_gate.__doc__
 
-        triggered = []
-        fake_jr = types.ModuleType("modules.jenkins_runner")
-        fake_jr.load_config = lambda: {"jenkins_url": "http://j:8080"}
-        fake_jr.get_current_list_pipeline_status = lambda _cfg: {"registered": []}
-        fake_jr.run_checks = lambda: triggered.append("BAD") or {}
-        sys.modules["modules.jenkins_runner"] = fake_jr
-        fake_cr = types.ModuleType("modules.check_runner")
-        fake_cr.CHECKS = {}
-        sys.modules["modules.check_runner"] = fake_cr
 
-        ctx = _ctx()
-        ctx.rendered_commands = {"10.0.0.1": ["interface GigabitEthernet0/0"]}
-        try:
-            _stage_ci_gate(ctx)
-        finally:
-            sys.modules.pop("modules.jenkins_runner", None)
-            sys.modules.pop("modules.check_runner", None)
-
-        assert not triggered, "run_checks() must NOT be called in the CI gate"
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +605,7 @@ class TestPreRenderedCommandsAreNotOverwritten:
         base = dict(config_type="template", device_ips=["203.0.113.24"],
                     params={}, ip_params_map={},
                     selected_devices=[{"ip": "203.0.113.24", "hostname": "s4"}],
-                    check_devices=[], connections_pool={},
+                    connections_pool={},
                     pool_lock=threading.Lock(), config_id="tpl-s4")
         base.update(kw)
         return PipelineContext(**base)

@@ -97,7 +97,7 @@ _USER_IDLE_SECONDS  = 90   # wait this long after last user message before start
 # and do NOT go through this set. Drift lives in `modules/drift_check.py`
 # (this module's own copy was removed in Stage 3.3); variable discovery is
 # `_run_variable_discovery` below.
-AUTO_HANDLE = {"jenkins_failure", "missing_golden_configs"}
+AUTO_HANDLE = {"missing_golden_configs"}
 
 
 # ---------------------------------------------------------------------------
@@ -578,44 +578,6 @@ def _build_task_prompt(event: dict) -> Optional[str]:
     etype = event.get("type")
     meta  = event.get("metadata", {})
 
-    if etype == "jenkins_failure":
-        job = meta.get("job", "unknown")
-        num = meta.get("build_number", "?")
-
-        # Before dispatching, check whether the pipeline has already recovered.
-        # If the most recent build on record is a SUCCESS with a build number
-        # >= the failed build, the failure is stale — no action needed.
-        try:
-            from modules.jenkins_runner import _results_file
-            with open(_results_file(), encoding="utf-8") as _fh:
-                _rdata = json.load(_fh)
-            _current = _rdata.get("pipelines", _rdata).get(job, {})
-            _latest_result = _current.get("jenkins_result", "")
-            _latest_build  = _current.get("jenkins_build", 0)
-            _failed_build  = int(num) if str(num).isdigit() else 0
-            if _latest_result == "SUCCESS" and _latest_build >= _failed_build:
-                log.info(
-                    "agent_runner: jenkins_failure for '%s' build #%s is stale — "
-                    "most recent build #%s already succeeded, skipping",
-                    job, num, _latest_build,
-                )
-                return None
-        except Exception as _exc:
-            log.debug("agent_runner: could not check latest build state for '%s': %s", job, _exc)
-
-        return (
-            f'[AUTONOMOUS TASK] The Jenkins pipeline "{job}" build #{num} has FAILED. '
-            f"Retrieve the console log, identify the root cause, and fix it. "
-            f"If it is a pipeline/Groovy bug: update the job XML. "
-            f"If it is an application code bug: patch and restart the server. "
-            f'After fixing, call run_jenkins_job with job_name="{job}" — '
-            f"CRITICAL: use run_jenkins_job NOT run_jenkins_checks. "
-            f"run_jenkins_checks triggers ALL pipelines; run_jenkins_job triggers only '{job}'. "
-            f"Then call jenkins_wait_for_result to confirm it passes. "
-            f"Update the network KB with what was broken and what fixed it. "
-            f"Do not ask for permission — proceed autonomously."
-        )
-
     if etype == "missing_golden_configs":
         ips = meta.get("missing_ips", [])
         if not ips:
@@ -759,13 +721,6 @@ def _run_variable_discovery() -> None:
     """
     if not _devices_loader:
         return
-    try:
-        from modules.jenkins_runner import is_jenkins_building
-        if is_jenkins_building():
-            log.info("agent_runner: variable discovery deferred — Jenkins build in progress")
-            return
-    except Exception:
-        pass
     try:
         from modules.variable_discovery import discover_variables_for_list
         devices = _devices_loader()

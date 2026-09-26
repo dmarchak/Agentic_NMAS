@@ -116,9 +116,6 @@ GATES = {
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),
     "netbox_safety.apply_import_all": _g(A, "writes to NetBox"),
     "netbox_safety.apply_removal": _g(A, "deletes from NetBox"),
-    "jenkins_webhook": _g(A, "records a CI result that the pipeline's CI stage consults; "
-                             "unauthenticated, it could record a pass (P.4 removes it)"),
-    "configure_pipeline_success": _g(A, "marks a change verified (Jenkins callback; P.4 removes it)"),
 
     # ---- configure: the tool's own settings, gates, inventory, records ---
     "save_settings": _g(K, "writes settings, secrets included"),
@@ -159,9 +156,6 @@ GATES = {
     "delete_quick_action": _g(K, "deletes a canned command"),
     "golden.migrate_apply": _g(K, "one-shot migration of the golden store"),
     "golden.sync_renames": _g(K, "commits pending renames"),
-    "jenkins_create_job_route": _g(K, "creates a Jenkins job (P.4 removes it)"),
-    "jenkins_schedule_set": _g(K, "schedules a Jenkins job (P.4 removes it)"),
-    "configure_build_pipelines": _g(K, "creates Jenkins pipelines (P.4 removes it)"),
 
     # ---- reveal: device configuration or secrets leave the device --------
     "bulk_tftp_download": _g(R, "copies files OFF devices to a TFTP server the form names"),
@@ -202,7 +196,6 @@ GATES = {
     "refresh_files": _g(N, "lists a device's flash"),
     "discover_subnet": _g(N, "probes a subnet and writes nothing; adding what it finds is gated"),
     "monitoring_snmp_poll": _g(N, "an SNMP read"),
-    "jenkins_run": _g(N, "runs verification checks, which read (P.4 removes it)"),
     "bulk_clear": _g(N, "clears a finished operation's on-screen result"),
     "ai_stop": _g(N, "stops a running request; refusing a stop is the unsafe direction"),
     "ai_clear": _g(N, "clears the caller's chat history"),

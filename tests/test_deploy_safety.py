@@ -734,7 +734,7 @@ def _ctx(**overrides):
     base = dict(config_type="template", device_ips=["10.0.0.1"],
                 params={}, ip_params_map={},
                 selected_devices=[{"ip": "10.0.0.1", "hostname": "R1"}],
-                check_devices=[], connections_pool={},
+                connections_pool={},
                 pool_lock=threading.Lock(), config_id="t",
                 settle_sleep=lambda _s: None)
     base.update(overrides)

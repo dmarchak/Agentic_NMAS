@@ -26,7 +26,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MUTATING_FLOOR = 121     # 131 measured; steps 2-3 cut ten; B16 +1; D12 removed /disconnect
+MUTATING_FLOOR = 115     # 131 measured; steps 2-3 cut ten; B16 +1; D12 removed /disconnect; P.4 cut six Jenkins routes
 
 
 def _app():

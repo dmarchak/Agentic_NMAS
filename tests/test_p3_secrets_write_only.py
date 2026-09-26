@@ -3,7 +3,8 @@ field saves nothing. And register B16: no GET runs a command a request named.
 
 B11: `GET /settings` returned the Anthropic key and both Jenkins secrets in
 cleartext, ungated, on every opening of the Settings modal since e729267
-(2026-04-12). The NetBox token beside them was always a `*_set` flag.
+(2026-04-12). The NetBox token beside them was always a `*_set` flag. P.4
+removed Jenkins, so its fields are now refused by name rather than stored.
 
 B16, found while sweeping the GET routes for this step: `/run_command/<ip>`
 ran any exec-mode command (reload, delete, copy, clear) from a URL. The gate
@@ -20,8 +21,6 @@ import pytest
 
 PLANTED = {
     "anthropic": "sk-ant-PLANTED-a1b2c3d4e5f6",
-    "jenkins_api_key": "JENKINS-PLANTED-9f8e7d6c",
-    "jenkins_token": "JTOKEN-PLANTED-1a2b3c4d",
     "netbox": "nbt_PLANTED_5e6f7a8b9c0d",
 }
 
@@ -37,15 +36,8 @@ def planted(monkeypatch, tmp_path):
     monkeypatch.setattr(socket.socket, "connect", _no_network)
     import modules.config as C
     monkeypatch.setattr(C, "USER_SETTINGS_FILE", str(tmp_path / "user_settings.json"))
-    import modules.jenkins_runner as J
-    store = {"jenkins_url": "", "jenkins_user": "",
-             "jenkins_api_key": PLANTED["jenkins_api_key"],
-             "jenkins_token": PLANTED["jenkins_token"]}
-    monkeypatch.setattr(J, "load_config", lambda: dict(store))
-    monkeypatch.setattr(J, "save_config", lambda cfg: store.update(cfg))
     import modules.netbox_client as NB
     monkeypatch.setattr(NB, "get_netbox_config", lambda: {"url": "", "token": PLANTED["netbox"]})
-    return store
 
 
 def _sweep(app) -> tuple:
@@ -83,34 +75,34 @@ class TestNoGetReturnsASecret:
         import app as A
         body = A.app.test_client().get("/settings").get_json()
         assert body["anthropic_api_key_set"] is True
-        assert body["jenkins_api_key_set"] is True and body["jenkins_token_set"] is True
-        assert "anthropic_api_key" not in body and "jenkins_api_key" not in body
+        assert "anthropic_api_key" not in body
+        assert not [k for k in body if k.startswith("jenkins")], "Jenkins is gone (P.4)"
 
 
-class TestAnEmptySecretFieldSavesNothing:
-    def test_empty_jenkins_secrets_leave_the_stored_values(self, planted):
+class TestTheSettingsFormAfterJenkins:
+    """P.4: the Jenkins fields are gone from the form, and a page older than
+    the server that still sends them is told why nothing was stored."""
+
+    def test_jenkins_fields_are_refused_by_name(self, planted):
         import app as A
-        A.app.test_client().post("/settings", json={
-            "jenkins_url": "https://ci.example.invalid",
-            "jenkins_api_key": "", "jenkins_token": ""})
-        assert planted["jenkins_api_key"] == PLANTED["jenkins_api_key"]
-        assert planted["jenkins_token"] == PLANTED["jenkins_token"]
-        assert planted["jenkins_url"] == "https://ci.example.invalid", "the rest still saves"
+        r = A.app.test_client().post("/settings", json={
+            "jenkins_url": "https://ci.example.invalid", "jenkins_token": "x"})
+        body = r.get_json()
+        assert r.status_code == 207
+        assert any("Jenkins was removed" in e for e in body["errors"]), body
 
-    def test_a_typed_secret_is_saved(self, planted):
-        """Control: 'empty is unchanged' is not 'never saved'."""
+    def test_a_form_without_them_is_not_refused(self, planted):
+        """The floor: the refusal is about the Jenkins fields, not every save."""
         import app as A
-        A.app.test_client().post("/settings", json={"jenkins_token": "NEW-VALUE-123456"})
-        assert planted["jenkins_token"] == "NEW-VALUE-123456"
+        r = A.app.test_client().post("/settings", json={"wf_read_first": True})
+        assert r.status_code == 200, r.get_json()
 
     def test_the_modal_sends_a_secret_only_if_typed(self):
         from tests.js_source import read_shipped
         page = read_shipped("templates/index.html")
-        for field in ("s.anthropic_api_key ", "s.jenkins_api_key ", "s.jenkins_token "):
-            assert field not in page and field.strip() + ")" not in page, field
-        assert "if (jApi) payload.jenkins_api_key = jApi;" in page
-        assert "if (jTok) payload.jenkins_token = jTok;" in page
-        assert "jenkins_api_key:       document.getElementById" not in page
+        assert "s.anthropic_api_key " not in page and "s.anthropic_api_key)" not in page
+        assert "if (apiKeyVal) payload.anthropic_api_key = apiKeyVal;" in page
+        assert "settingsJenkins" not in page and "payload.jenkins_" not in page
 
 
 # ---------------------------------------------------------------------------

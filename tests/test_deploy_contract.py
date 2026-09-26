@@ -397,7 +397,7 @@ class TestTheConfirmedListReachesTheTransport:
             device_ips=["203.0.113.24"],
             params={}, ip_params_map={},
             selected_devices=[{"ip": "203.0.113.24", "hostname": "s4"}],
-            check_devices=[], connections_pool={},
+            connections_pool={},
             pool_lock=threading.Lock(), config_id="tpl-s4",
             settle_sleep=lambda _s: None,
         )

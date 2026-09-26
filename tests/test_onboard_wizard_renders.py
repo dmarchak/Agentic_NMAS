@@ -205,7 +205,8 @@ class TestItIsAToolbarActionNotATab:
     def test_no_new_tab_pane_was_added(self, page):
         panes = re.findall(r'data-bs-target="#(\w+Pane)"', page)
         assert "onboardPane" not in panes
-        assert len(set(panes)) == 12, sorted(set(panes))
+        # 12 until P.4 removed the Jenkins tab.
+        assert len(set(panes)) == 11, sorted(set(panes))
 
     def test_the_toolbar_button_exists(self, page):
         assert 'onclick="openOnboardWizard()"' in page

@@ -3,8 +3,8 @@
 Background event monitor for the autonomous AI agent.
 
 Runs a daemon thread that polls for actionable events on a configurable
-interval: Jenkins build completions across all registered pipelines, passive
-config-drift checks (running vs golden), and compliance failures post-CI.
+interval: devices with no golden config, and lists with empty variables.
+(Jenkins build polling was removed in P.4.)
 Events are written to a 50-entry in-memory ring buffer; the Flask API exposes
 GET /ai/events so the frontend can acknowledge events and prompt the AI to
 investigate when the user is idle.
@@ -20,7 +20,7 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 MAX_EVENTS = 50
-_POLL_INTERVAL = 15   # seconds between Jenkins result polls
+_POLL_INTERVAL = 15   # seconds between loop wakes
 _DRIFT_INTERVAL = 300  # seconds between passive drift checks (5 min)
 
 # Shared in-memory event queue — thread-safe via _lock
@@ -30,7 +30,6 @@ _monitor_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
 
 # Track the last known build state per job so we only fire on transitions
-_last_build_state: dict = {}   # job_name → {"build_number": N, "result": "SUCCESS"|"FAILURE"|"RUNNING"}
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +53,6 @@ def clear_events() -> None:
     """Remove all events (called on list switch or session clear)."""
     with _lock:
         _events.clear()
-        _last_build_state.clear()
 
 
 def start_monitor() -> None:
@@ -99,17 +97,6 @@ def _push_event(event_type: str, title: str, detail: str, severity: str = "info"
     log.debug("event_monitor: pushed [%s] %s", event_type, title)
 
 
-def _load_jenkins_results() -> dict:
-    """Load results from the current list's jenkins_results.json."""
-    try:
-        from modules.jenkins_runner import _results_file
-        path = _results_file()
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except Exception:
-        return {}
-
-
 def _load_golden_configs() -> list:
     """Load golden config metadata for the current list."""
     try:
@@ -117,56 +104,6 @@ def _load_golden_configs() -> list:
         return _list_golden_configs()
     except Exception:
         return []
-
-
-def _check_jenkins_results() -> None:
-    """
-    First sync the latest build results from the Jenkins API (so scheduled/cron
-    builds are visible), then compare against last known state and push events on change.
-    """
-    try:
-        from modules.jenkins_runner import sync_scheduled_build_results
-        sync_scheduled_build_results()
-    except Exception as exc:
-        log.debug("event_monitor: jenkins sync error: %s", exc)
-
-    results = _load_jenkins_results()
-    for job, info in results.items():
-        if not isinstance(info, dict):
-            continue
-        build_num = info.get("build_number")
-        result    = info.get("result", "UNKNOWN")
-        key       = job
-
-        prev = _last_build_state.get(key, {})
-        if prev.get("build_number") == build_num and prev.get("result") == result:
-            continue  # No change
-
-        _last_build_state[key] = {"build_number": build_num, "result": result}
-
-        if result == "FAILURE":
-            _push_event(
-                event_type="jenkins_failure",
-                title=f"Jenkins pipeline FAILED: {job}",
-                detail=(
-                    f"Build #{build_num} failed. The agent should diagnose the console "
-                    f"and fix the root cause automatically."
-                ),
-                severity="error",
-                metadata={"job": job, "build_number": build_num},
-            )
-        elif result == "SUCCESS" and prev.get("result") == "FAILURE":
-            # Recovered from failure — possibly golden config should be saved
-            _push_event(
-                event_type="jenkins_recovered",
-                title=f"Jenkins pipeline recovered: {job}",
-                detail=(
-                    f"Build #{build_num} passed after a previous failure. "
-                    f"Consider saving golden configs for any recently modified devices."
-                ),
-                severity="info",
-                metadata={"job": job, "build_number": build_num},
-            )
 
 
 def _check_missing_golden_configs() -> None:
@@ -264,7 +201,7 @@ def _check_empty_variables() -> None:
 
 
 def _monitor_loop() -> None:
-    """Main daemon loop — polls Jenkins and checks golden configs on a schedule.
+    """Main daemon loop — checks golden configs and variables on a schedule.
     Timer intervals are read from agent_timers each cycle so changes take effect
     without restarting the server."""
     last_periodic_check = 0.0
@@ -272,16 +209,9 @@ def _monitor_loop() -> None:
     while not _stop_event.is_set():
         try:
             from modules.agent_timers import get as _get_timer
-            poll_interval  = _get_timer("jenkins_poll_interval")
             event_interval = _get_timer("event_check_interval")
         except Exception:
-            poll_interval  = _POLL_INTERVAL
             event_interval = _DRIFT_INTERVAL
-
-        try:
-            _check_jenkins_results()
-        except Exception as exc:
-            log.debug("event_monitor: jenkins check error: %s", exc)
 
         now = time.time()
         if now - last_periodic_check >= event_interval:
@@ -295,6 +225,6 @@ def _monitor_loop() -> None:
                 log.debug("event_monitor: empty variables check error: %s", exc)
             last_periodic_check = now
 
-        _stop_event.wait(timeout=poll_interval)
+        _stop_event.wait(timeout=_POLL_INTERVAL)
 
     log.info("event_monitor: stopped")

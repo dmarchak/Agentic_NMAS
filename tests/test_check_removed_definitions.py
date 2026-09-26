@@ -124,6 +124,17 @@ class TestOnlyAReferenceShapedStringIsAUse:
         p = source('for n in ["_gone"]:\n    getattr(mod, n)()\n')
         assert CHECK._code_mentions("_gone", p) is True
 
+    def test_a_filename_is_not_a_use(self, source):
+        """P.4 step 1: removing the view `_gone` was flagged by a module that
+        wrote a file NAMED after it."""
+        p = source('path = os.path.join(d, "_gone.json")\n')
+        assert CHECK._code_mentions("_gone", p) is False
+
+    def test_a_dotted_path_is_still_a_use(self, source):
+        """Control: an extension rule must not swallow `mod._gone`."""
+        p = source('monkeypatch.setattr("modules.x._gone", None)\n')
+        assert CHECK._code_mentions("_gone", p) is True
+
     def test_an_entry_point_string_is_still_a_use(self, source):
         p = source('ep = "pkg.mod:_gone"\n')
         assert CHECK._code_mentions("_gone", p) is True

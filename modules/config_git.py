@@ -11,16 +11,11 @@ Workflow
 --------
 1. Configs are saved (Save All Configs / AI save).
 2. Each config is written to the repo and staged (git add).
-3. If Jenkins is configured, a comprehensive validation pipeline is created.
-4. The user can commit with a message at any time — selecting a pending
-   pipeline that has passed records it against the commit as CI evidence,
-   but Jenkins is never required to commit; it's verification when
-   available, not a gate on the feature itself.
-5. If a pipeline is selected, the commit records its name so that git
-   commit has a corresponding Jenkins pipeline run on file.
+3. The user can commit with a message at any time.
 
-A pipeline can only be linked to ONE commit.  Attempting to reuse a
-pipeline that is already linked to a commit is prevented.
+Jenkins validation pipelines were removed in P.4 (docs/NSOT_CI.md). The
+per-list `pipeline_commits.json` is still READ, so a commit linked to a
+pipeline before then keeps showing that name in the log; nothing writes it.
 """
 
 from __future__ import annotations
@@ -165,20 +160,8 @@ def get_staged_stat(list_name: str) -> str:
     return out
 
 
-def commit_configs(list_name: str, message: str, pipeline_name: str) -> Optional[str]:
-    """
-    Commit all staged changes and record the pipeline↔commit link.
-    Returns the short commit hash on success, None on failure.
-    """
-    # pipeline_name is "" when the user commits without selecting one (always
-    # allowed -- Jenkins is optional verification, not a gate). Only a named
-    # pipeline can be "already linked to a commit"; skip the check entirely
-    # for the no-pipeline case, otherwise the first no-pipeline commit
-    # permanently occupies pipeline_name="" and every commit after it fails.
-    if pipeline_name and not is_pipeline_available(list_name, pipeline_name):
-        log.warning("config_git: pipeline '%s' already linked to a commit", pipeline_name)
-        return None
-
+def commit_configs(list_name: str, message: str) -> Optional[str]:
+    """Commit all staged changes. Returns the short hash, or None on failure."""
     repo = _repo_dir(list_name)
     init_config_repo(list_name)
 
@@ -196,21 +179,7 @@ def commit_configs(list_name: str, message: str, pipeline_name: str) -> Optional
     rc2, hash_out, _ = _git(repo, "rev-parse", "--short", "HEAD")
     short_hash = hash_out.strip() if rc2 == 0 else "unknown"
 
-    # Record the link
-    pc = _load_pc(list_name)
-    now = time.strftime("%Y-%m-%d %H:%M:%S")
-    if pipeline_name:
-        pc["pipelines"].setdefault(pipeline_name, {})["status"]       = "committed"
-        pc["pipelines"][pipeline_name]["commit_hash"]  = short_hash
-        pc["pipelines"][pipeline_name]["committed_at"] = now
-        pc["pipelines"][pipeline_name]["message"]      = message
-    pc["commits"][short_hash] = {
-        "pipeline":     pipeline_name or None,
-        "message":      message,
-        "committed_at": now,
-    }
-    _save_pc(list_name, pc)
-    log.info("config_git: committed %s (pipeline: %s)", short_hash, pipeline_name or "none")
+    log.info("config_git: committed %s", short_hash)
     return short_hash
 
 
@@ -226,86 +195,12 @@ def _load_pc(list_name: str) -> dict:
         return {"pipelines": {}, "commits": {}}
 
 
-def _save_pc(list_name: str, data: dict) -> None:
-    path = _pc_path(list_name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp  = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    os.replace(tmp, path)
-
-
-def register_pending_pipeline(list_name: str, pipeline_name: str,
-                               description: str = "") -> None:
-    """Record a new pipeline as 'pending commit' after a config save batch."""
-    pc = _load_pc(list_name)
-    if pipeline_name not in pc["pipelines"]:
-        pc["pipelines"][pipeline_name] = {
-            "status":      "pending",
-            "commit_hash": None,
-            "created_at":  time.strftime("%Y-%m-%d %H:%M:%S"),
-            "description": description,
-        }
-        _save_pc(list_name, pc)
-
-
-def is_pipeline_available(list_name: str, pipeline_name: str) -> bool:
-    """True if the pipeline has NOT already been linked to a commit.
-
-    No pipeline selected ("") is always available -- it isn't a real
-    pipeline identity, just "commit without one", which is unrestricted.
-    """
-    if not pipeline_name:
-        return True
-    pc    = _load_pc(list_name)
-    used  = {v.get("pipeline") for v in pc["commits"].values()}
-    entry = pc["pipelines"].get(pipeline_name, {})
-    return pipeline_name not in used and entry.get("status") != "committed"
-
-
-def get_available_pipelines(list_name: str) -> list[dict]:
-    """
-    Return pipelines registered for this list that have not been committed yet.
-    Each entry is enriched with the pipeline's last Jenkins result.
-    """
-    pc   = _load_pc(list_name)
-    used = {v.get("pipeline") for v in pc["commits"].values()}
-
-    available = []
-    for name, meta in pc["pipelines"].items():
-        if name in used or meta.get("status") == "committed":
-            continue
-        available.append({
-            "pipeline_name": name,
-            "created_at":    meta.get("created_at", ""),
-            "description":   meta.get("description", ""),
-            "status":        meta.get("status", "pending"),
-            "last_result":   None,
-            "jenkins_ok":    False,
-        })
-
-    # Enrich with Jenkins last result
-    try:
-        from modules.jenkins_runner import load_results
-        results = load_results() or {}
-        pipes   = results.get("pipelines", {})
-        for item in available:
-            p = pipes.get(item["pipeline_name"], {})
-            item["last_result"] = p.get("jenkins_result")
-            item["last_build"]  = p.get("jenkins_build")
-            item["jenkins_ok"]  = bool(p.get("jenkins_ok", False))
-    except Exception:
-        pass
-
-    return sorted(available, key=lambda x: x["created_at"], reverse=True)
-
-
 # ---------------------------------------------------------------------------
 # Git log / status
 # ---------------------------------------------------------------------------
 
 def get_commit_log(list_name: str, limit: int = 40) -> list[dict]:
-    """Return recent git commits enriched with pipeline status."""
+    """Return recent git commits, with any pipeline linked before P.4."""
     repo = _repo_dir(list_name)
     if not os.path.isdir(os.path.join(repo, ".git")):
         return []
@@ -331,23 +226,9 @@ def get_commit_log(list_name: str, limit: int = 40) -> list[dict]:
             "message":         subject,
             "date":            date,
             "author":          author,
+            # A pipeline linked before P.4 removed Jenkins: history, not state.
             "pipeline":        meta.get("pipeline", ""),
-            "pipeline_result": None,
-            "pipeline_ok":     None,
         })
-
-    # Enrich with Jenkins results
-    try:
-        from modules.jenkins_runner import load_results
-        results = load_results() or {}
-        pipes   = results.get("pipelines", {})
-        for entry in entries:
-            pname = entry.get("pipeline")
-            if pname and pname in pipes:
-                entry["pipeline_result"] = pipes[pname].get("jenkins_result")
-                entry["pipeline_ok"]     = pipes[pname].get("jenkins_ok")
-    except Exception:
-        pass
 
     return entries
 
@@ -397,80 +278,3 @@ def get_repo_status(list_name: str) -> dict:
         "staged_stat":  staged_stat,
         "last_commit":  last_commit,
     }
-
-
-# ---------------------------------------------------------------------------
-# Validation pipeline creation
-# ---------------------------------------------------------------------------
-
-def create_validation_pipeline(list_name: str, jenkins_cfg: dict,
-                                description: str = "") -> Optional[str]:
-    """
-    Create a one-time comprehensive validation Jenkins pipeline for the
-    current batch of staged config changes.  Returns the job name.
-    """
-    from modules.config     import list_slug
-    from modules.jenkins_runner import create_jenkins_job
-
-    slug      = list_slug(list_name)
-    timestamp = int(time.time())
-    job_name  = f"nmas-{slug}-validation-{timestamp}"
-
-    import xml.sax.saxutils as _sax
-    from modules.jenkins_shell import (
-        install_deps_step as _install_deps_step,
-        python_step as _python_step,
-        step_shell as _step_shell,
-    )
-    import textwrap
-
-    groovy = textwrap.dedent(f"""\
-        pipeline {{
-            agent any
-            options {{
-                timeout(time: 20, unit: 'MINUTES')
-                timestamps()
-            }}
-            stages {{
-                stage('Install deps') {{
-                    steps {{
-                        {_install_deps_step()}
-                    }}
-                }}
-                stage('Validate All Configs') {{
-                    steps {{
-                        {_python_step('modules/check_runner.py', '--validate-all --list-slug ' + _sax.escape(slug))}
-                    }}
-                }}
-            }}
-            post {{
-                success {{ echo 'Config validation PASSED - safe to commit.' }}
-                failure {{ echo 'Config validation FAILED - fix issues before committing.' }}
-                always  {{ echo "Result: ${{currentBuild.currentResult}}" }}
-            }}
-        }}
-        """)
-
-    xml_cfg = textwrap.dedent(f"""\
-        <?xml version='1.1' encoding='UTF-8'?>
-        <flow-definition plugin="workflow-job">
-          <description>{_sax.escape(description or f"Config validation for {list_name}")}</description>
-          <keepDependencies>false</keepDependencies>
-          <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition"
-                       plugin="workflow-cps">
-            <script>{_sax.escape(groovy)}</script>
-            <sandbox>true</sandbox>
-          </definition>
-          <triggers/>
-          <disabled>false</disabled>
-        </flow-definition>
-        """)
-
-    try:
-        create_jenkins_job(jenkins_cfg, job_name, xml_cfg)
-        register_pending_pipeline(list_name, job_name, description)
-        log.info("config_git: created validation pipeline '%s'", job_name)
-        return job_name
-    except Exception as exc:
-        log.error("config_git: failed to create validation pipeline: %s", exc)
-        return None

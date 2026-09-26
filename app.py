@@ -1449,8 +1449,6 @@ def save_tftp_server():
 _WF_DEFAULTS = {
     "wf_read_first":       True,
     "wf_auto_backup":      True,
-    "wf_run_jenkins":      True,
-    "wf_save_golden":      True,
     "wf_update_vars":      True,
     "wf_require_approval": False,
 }
@@ -1475,9 +1473,7 @@ def _inject_ai_enabled():
 @app.route("/settings", methods=["GET"])
 def get_settings():
     """Return all configurable global settings in one payload."""
-    import modules.jenkins_runner as _jr
     from modules.netbox_client import get_netbox_config as _get_nb_cfg
-    jcfg  = _jr.load_config()
     nbcfg = _get_nb_cfg()
     # SECRETS ARE WRITE-ONLY: a flag, never the value (register B11, P.3
     # step 6). This returned the Anthropic key and both Jenkins secrets in
@@ -1485,10 +1481,6 @@ def get_settings():
     # e729267 (2026-04-12). The NetBox token beside them was always a flag.
     payload = {
         "anthropic_api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY", "")),
-        "jenkins_url":       jcfg.get("jenkins_url", ""),
-        "jenkins_user":      jcfg.get("jenkins_user", ""),
-        "jenkins_api_key_set": bool(jcfg.get("jenkins_api_key", "")),
-        "jenkins_token_set":   bool(jcfg.get("jenkins_token", "")),
         "tftp_server_ip":    TFTP_SERVER_IP,
         # NetBox — token never returned in cleartext; UI uses token_set flag.
         "netbox_url":         nbcfg.get("url", ""),
@@ -1547,24 +1539,13 @@ def save_settings():
         except Exception as exc:
             errors.append(f"API key saved to env but .env write failed: {exc}")
 
-    # ── Jenkins settings ──────────────────────────────────────────────────
-    jenkins_fields = ("jenkins_url", "jenkins_user", "jenkins_api_key", "jenkins_token")
-    if any(k in data for k in jenkins_fields):
-        try:
-            jcfg = _jr.load_config()
-            for field in jenkins_fields:
-                if field in data:
-                    value = (data[field] or "").strip()
-                    # A secret field left EMPTY means "unchanged". The form
-                    # no longer receives the stored value, so an empty field
-                    # is the normal case, and treating it as a value would
-                    # erase the stored secret on every save.
-                    if field in ("jenkins_api_key", "jenkins_token") and not value:
-                        continue
-                    jcfg[field] = value
-            _jr.save_config(jcfg)
-        except Exception as exc:
-            errors.append(f"Jenkins settings failed: {exc}")
+    # ── Jenkins: REMOVED (P.4) ────────────────────────────────────────────
+    # A page older than the server (the edge caches HTML) can still send these.
+    # Refused by name rather than dropped, so the save says why nothing stored.
+    if any(k in data for k in ("jenkins_url", "jenkins_user",
+                               "jenkins_api_key", "jenkins_token")):
+        errors.append("Jenkins was removed (P.4, docs/NSOT_CI.md); its settings "
+                      "are no longer stored. Reload the page.")
 
     # ── TFTP server IP ────────────────────────────────────────────────────
     tftp = data.get("tftp_server_ip", "").strip()
@@ -3534,37 +3515,6 @@ def drift_settings_post():
     return jsonify({"ok": True, **saved})
 
 
-@app.route("/jenkins/results")
-def jenkins_results():
-    """Return the latest local CI check results."""
-    from modules.jenkins_runner import load_results
-    results = load_results()
-    if results is None:
-        return jsonify({"ok": None, "message": "No checks have been run yet."})
-    return jsonify(results)
-
-
-@app.route("/jenkins/sync")
-def jenkins_sync():
-    """Fetch the current build status of all registered pipelines from Jenkins,
-    prune any pipelines deleted from Jenkins, and update the local cache.
-    No AI required — pure Jenkins API calls."""
-    from modules.jenkins_runner import (
-        sync_scheduled_build_results, prune_deleted_pipelines, load_results
-    )
-    try:
-        pruned  = prune_deleted_pipelines()
-        updated = sync_scheduled_build_results()
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
-    results = load_results()
-    if results is None:
-        results = {"ok": None, "message": "No data yet"}
-    results["_synced"]  = updated
-    results["_pruned"]  = pruned
-    return jsonify(results)
-
-
 @app.route("/session/pending-restart")
 def session_pending_restart():
     """
@@ -3596,263 +3546,6 @@ def server_restart():
         _os._exit(3)   # exit code 3 → launcher.py restarts the subprocess
     threading.Thread(target=_do, daemon=True).start()
     return jsonify({"status": "restarting", "message": "Server will restart in ~1 second."})
-
-
-@app.route("/jenkins/pipelines")
-def jenkins_pipelines():
-    """Return the pipelines registered to the current device list."""
-    from modules.jenkins_runner import load_list_pipelines
-    return jsonify({"pipelines": load_list_pipelines()})
-
-
-@app.route("/jenkins/history/<job_name>")
-def jenkins_job_history(job_name):
-    """Return recent build history for a specific Jenkins job."""
-    from modules.jenkins_runner import load_config, get_job_builds
-    try:
-        cfg    = load_config()
-        limit  = int(request.args.get("limit", 20))
-        builds = get_job_builds(cfg, job_name, limit=limit)
-        return jsonify({"job_name": job_name, "builds": builds})
-    except Exception as exc:
-        return jsonify({"error": str(exc), "builds": []}), 200
-
-
-@app.route("/jenkins/run", methods=["POST"])
-def jenkins_run():
-    """Trigger a Jenkins build — one specific job or all jobs for this list."""
-    data      = request.get_json(silent=True) or {}
-    delay     = float(data.get("startup_delay", 0))
-    job_name  = (data.get("job_name") or "").strip()
-    from modules.jenkins_runner import run_checks, load_config, _trigger_jenkins, load_results
-    if job_name:
-        # Trigger a single specific pipeline
-        try:
-            cfg = load_config()
-            _trigger_jenkins(cfg, job_name)
-            return jsonify({"triggered": True, "job": job_name})
-        except Exception as exc:
-            return jsonify({"triggered": False, "error": str(exc)}), 200
-    summary = run_checks(startup_delay=delay)
-    return jsonify(summary)
-
-
-@app.route("/jenkins/schedules")
-def jenkins_schedules_get():
-    """
-    Return the current cron schedule for every pipeline registered to this list.
-    Merges the locally stored schedules with live data from Jenkins when available.
-    Response: {"schedules": {"job_name": {"cron": "H 6 * * *", "description": "Daily at ~6am"}}}
-    """
-    from modules.jenkins_runner import (
-        load_list_pipelines, load_pipeline_schedules,
-        load_config as _jcfg, get_job_config, extract_schedule_from_xml,
-        save_pipeline_schedule,
-    )
-    jobs      = load_list_pipelines()
-    local_sch = load_pipeline_schedules()
-    result    = {}
-
-    # Try to enrich with live Jenkins data; fall back to local cache on error.
-    # IMPORTANT: only overwrite local cache when Jenkins returns a non-empty schedule.
-    # An empty live result (e.g. trigger not yet applied, or a new job) must never
-    # wipe a schedule that was just saved locally — that would cause the UI to show
-    # "Not scheduled" immediately after a successful save.
-    try:
-        cfg = _jcfg()
-        for job in jobs:
-            try:
-                xml  = get_job_config(cfg, job)
-                cron = extract_schedule_from_xml(xml)
-                if cron:
-                    # Jenkins has an authoritative schedule — sync it locally
-                    save_pipeline_schedule(job, cron)
-                    local_sch[job] = cron
-                # If cron is empty, keep whatever is in local_sch (user's last save)
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    for job in jobs:
-        cron = local_sch.get(job, "")
-        result[job] = {
-            "cron":        cron,
-            "description": _describe_cron(cron),
-        }
-
-    return jsonify({"schedules": result})
-
-
-@app.route("/jenkins/schedules/<path:job_name>", methods=["POST"])
-def jenkins_schedule_set(job_name: str):
-    """
-    Set or clear the cron schedule for a pipeline.
-    Body: {"cron": "H/30 * * * *"}   — set schedule
-    Body: {"cron": ""}                — remove schedule
-    """
-    from modules.jenkins_runner import (
-        load_config as _jcfg, get_job_config, update_jenkins_job,
-        save_pipeline_schedule, extract_schedule_from_xml,
-    )
-    import re as _re
-    data = request.get_json(silent=True) or {}
-    cron = data.get("cron", "").strip()
-
-    try:
-        cfg     = _jcfg()
-        xml_str = get_job_config(cfg, job_name)
-    except Exception as exc:
-        return jsonify({"error": f"Could not fetch job config: {exc}"}), 500
-
-    if cron:
-        new_triggers = (
-            "<triggers>\n"
-            "  <hudson.triggers.TimerTrigger>\n"
-            f"    <spec>{cron}</spec>\n"
-            "  </hudson.triggers.TimerTrigger>\n"
-            "</triggers>"
-        )
-    else:
-        new_triggers = "<triggers/>"
-
-    # ── Targeted XML trigger replacement ──────────────────────────────────
-    # Jenkins pipeline config.xml can contain <triggers> in three places:
-    #   1. Inside <DeclarativeJobPropertyTrackerAction> — DO NOT touch (declarative syntax)
-    #   2. Inside <PipelineTriggersJobProperty>        — update this one
-    #   3. Root-level, after </definition>             — update this one
-    # Replacing all occurrences blindly corrupts the declarative action block
-    # and causes Jenkins to return HTTP 500.
-
-    _TRIG_PAT = r"<triggers\s*/>|<triggers>[\s\S]*?</triggers>"
-
-    # Update PipelineTriggersJobProperty triggers specifically
-    xml_updated = _re.sub(
-        r"(<org\.jenkinsci\.plugins\.workflow\.job\.properties\.PipelineTriggersJobProperty>\s*)"
-        r"(?:<triggers\s*/>|<triggers>[\s\S]*?</triggers>)",
-        lambda m: m.group(1) + new_triggers,
-        xml_str,
-    )
-
-    # Update root-level triggers: it's the <triggers> block that comes after </definition>
-    # (i.e. the last occurrence in the document, outside <properties>).
-    all_matches = list(_re.finditer(_TRIG_PAT, xml_updated))
-    # Filter out any match that sits inside a known declarative-action element by
-    # checking whether there is a <DeclarativeJobPropertyTrackerAction> open tag
-    # between the start of the document and the match that has no corresponding
-    # close tag before the match.
-    _declarative_open  = r"<org\.jenkinsci\.plugins\.pipeline\.modeldefinition\.action\.DeclarativeJobPropertyTrackerAction"
-    _declarative_close = r"</org\.jenkinsci\.plugins\.pipeline\.modeldefinition\.action\.DeclarativeJobPropertyTrackerAction>"
-    root_match = None
-    for m in reversed(all_matches):
-        before = xml_updated[:m.start()]
-        opens  = len(_re.findall(_declarative_open, before))
-        closes = len(_re.findall(_declarative_close, before))
-        if opens == closes:   # not inside declarative action
-            root_match = m
-            break
-
-    if root_match:
-        xml_updated = (
-            xml_updated[:root_match.start()]
-            + new_triggers
-            + xml_updated[root_match.end():]
-        )
-    else:
-        # No root-level triggers block found — insert one before the closing root tag
-        root_close = _re.search(r"</[a-zA-Z][\w.-]*>\s*$", xml_updated)
-        if root_close:
-            xml_updated = xml_updated[:root_close.start()] + new_triggers + "\n" + xml_updated[root_close.start():]
-        else:
-            xml_updated = xml_updated.rstrip() + "\n" + new_triggers
-
-    try:
-        update_jenkins_job(cfg, job_name, xml_updated)
-    except Exception as exc:
-        app.logger.error("jenkins_schedule_set: %s", exc)
-        return jsonify({"error": str(exc)}), 500
-
-    # Verify the schedule is actually present in Jenkins now
-    verified = False
-    try:
-        live_xml  = get_job_config(cfg, job_name)
-        live_cron = extract_schedule_from_xml(live_xml)
-        # Jenkins may wrap cron in CDATA; strip it for comparison
-        import re as _re
-        live_cron = _re.sub(r"<!\[CDATA\[(.*?)]]>", r"\1", live_cron).strip()
-        verified = (live_cron == cron) or (not cron and not live_cron)
-    except Exception:
-        pass  # Verification is best-effort; don't block the response
-
-    # Persist locally regardless — the schedule was accepted by Jenkins even if
-    # the round-trip parse is ambiguous (CDATA, whitespace, etc.)
-    save_pipeline_schedule(job_name, cron)
-
-    if not verified and cron:
-        app.logger.warning(
-            "jenkins_schedule_set: schedule '%s' saved for '%s' but could not verify "
-            "it is live in Jenkins (live_cron=%r)", cron, job_name, live_cron if 'live_cron' in dir() else '?'
-        )
-        return jsonify({
-            "ok":          True,
-            "job":         job_name,
-            "cron":        cron,
-            "description": _describe_cron(cron),
-            "warning":     "Schedule saved but could not confirm Jenkins applied it. Try saving again.",
-        })
-
-    return jsonify({
-        "ok":          True,
-        "job":         job_name,
-        "cron":        cron,
-        "description": _describe_cron(cron),
-    })
-
-
-def _describe_cron(cron: str) -> str:
-    """Return a human-readable description of a Jenkins cron expression."""
-    if not cron:
-        return "Not scheduled (manual only)"
-    presets = {
-        "H/5 * * * *":   "Every 5 minutes",
-        "H/15 * * * *":  "Every 15 minutes",
-        "H/30 * * * *":  "Every 30 minutes",
-        "H * * * *":     "Hourly",
-        "H H/4 * * *":   "Every 4 hours",
-        "H H/6 * * *":   "Every 6 hours",
-        "H H/12 * * *":  "Every 12 hours",
-        "H 0 * * *":     "Daily at midnight",
-        "H 6 * * *":     "Daily at ~6am",
-        "H 8 * * *":     "Daily at ~8am",
-        "H 0 * * 1":     "Weekly on Monday",
-        "H 0 * * 0":     "Weekly on Sunday",
-    }
-    return presets.get(cron, f"Custom: {cron}")
-
-
-@app.route("/jenkins/webhook", methods=["POST"])
-def jenkins_webhook():
-    """Receive a build result notification from a real Jenkins server."""
-    data = request.get_json(silent=True) or {}
-    # Merge Jenkins result with any local results on disk
-    from modules.jenkins_runner import load_results, _save_results, _recompute_summary
-    build  = data.get("build", {})
-    job    = data.get("name") or data.get("job") or "unknown"
-    result = build.get("status", "")
-    existing = load_results() or {}
-    existing.setdefault("pipelines", {})
-    existing["pipelines"][job] = {
-        "jenkins_build":   build.get("number"),
-        "jenkins_result":  result,
-        "jenkins_ok":      result == "SUCCESS",
-        "jenkins_pending": False,
-        "jenkins_url":     build.get("full_url"),
-        "jenkins_ran_at":  build.get("timestamp"),
-    }
-    _recompute_summary(existing)
-    _save_results(existing)
-    app.logger.info("Jenkins webhook received for '%s': %s", job, result)
-    return jsonify({"status": "received"})
 
 
 @app.route("/ai/playbooks")
@@ -3892,12 +3585,6 @@ def ai_download_report(filename):
         download_name=os.path.basename(filename),
         mimetype="text/markdown",
     )
-
-
-@app.route("/ci/appdir")
-def ci_appdir():
-    """Return the Flask application's BASE_DIR so Jenkins can cd into it for syntax checks."""
-    return jsonify({"appdir": BASE_DIR})
 
 
 # ---------------------------------------------------------------------------
@@ -4341,38 +4028,6 @@ def configure_kb_schema():
     return jsonify({"ok": True, "topic": topic, "subtopic": subtopic, "fields": fields})
 
 
-@app.route("/configure/build_pipelines", methods=["POST"])
-def configure_build_pipelines():
-    """
-    Bootstrap or refresh all persistent function pipelines for the current list.
-    Scans golden configs to detect active network functions and creates/updates
-    a verification pipeline for each one.  Safe to call repeatedly.
-    """
-    from modules.pipeline_builder import bootstrap_all_pipelines
-    from modules.device import load_saved_devices, decrypt_field
-    from modules.jenkins_runner import load_config as _jcfg
-
-    _, current_list_file = get_current_device_list()
-    all_devices = load_saved_devices(current_list_file)
-    check_devices = []
-    for dev in all_devices:
-        try:
-            pwd = decrypt_field(dev["password"])
-        except Exception:
-            pwd = dev.get("password", "")
-        check_devices.append({
-            "hostname": dev.get("hostname", dev["ip"]),
-            "ip":       dev["ip"],
-            "username": dev.get("username", ""),
-            "password": pwd,
-        })
-
-    jenkins_cfg = _jcfg()
-    nmas_base   = request.host_url.rstrip("/")
-    result      = bootstrap_all_pipelines(check_devices, jenkins_cfg, nmas_base)
-    return jsonify(result), (200 if result.get("ok") else 500)
-
-
 @app.route("/configure/audit_latest", methods=["GET"])
 def configure_audit_latest():
     """Return the most recent pipeline audit entry (used by Jenkinsfile stage 4 health check)."""
@@ -4391,37 +4046,6 @@ def configure_audit_entry(config_id: str):
     if not entry:
         return jsonify({"ok": False, "error": "not found"}), 404
     return jsonify({"ok": True, "entry": entry}), 200
-
-
-@app.route("/configure/pipeline_success", methods=["POST"])
-def configure_pipeline_success():
-    """
-    Called by Jenkins when a verification pipeline passes.
-
-    Golden configs are already saved at push time, so this callback simply
-    marks the job as verified.  No approval queue — the user already approved
-    the change by clicking Apply; the pipeline confirms the change worked.
-    """
-    from modules.configure import load_config_job, update_config_job
-
-    data      = request.get_json(silent=True) or {}
-    config_id = data.get("config_id", "")
-    token     = data.get("token", "")
-
-    job = load_config_job(config_id)
-    if not job:
-        return jsonify({"ok": False, "error": "config_id not found"}), 404
-    if job.get("token") != token:
-        return jsonify({"ok": False, "error": "invalid token"}), 403
-
-    update_config_job(config_id, status="verified",
-                      verified_at=time.strftime("%Y-%m-%d %H:%M:%S"))
-    devices = job.get("devices", [])
-    app.logger.info(
-        "configure: pipeline verified for %s — %s on %d device(s)",
-        config_id, job.get("config_type", "?"), len(devices),
-    )
-    return jsonify({"ok": True, "verified": len(devices)})
 
 
 @app.route("/configure/interfaces")
@@ -4477,27 +4101,6 @@ def configure_devices():
             "online":   bool(device_status_cache.get(ip, False)),
         })
     return jsonify({"devices": result})
-
-
-@app.route("/jenkins/create_job", methods=["POST"])
-def jenkins_create_job_route():
-    """Create a Jenkins job from the wizard-generated pipeline XML."""
-    from modules.jenkins_runner import load_config as _jcfg, create_jenkins_job, register_pipeline
-    data = request.get_json(silent=True) or {}
-    job_name     = data.get("job_name", "").strip()
-    pipeline_xml = data.get("pipeline_xml", "").strip()
-    if not job_name or not pipeline_xml:
-        return jsonify({"ok": False, "error": "job_name and pipeline_xml are required"}), 400
-    jenkins_cfg = _jcfg()
-    if not jenkins_cfg.get("jenkins_url"):
-        return jsonify({"ok": False, "error": "Jenkins not configured — set URL in Settings"}), 400
-    try:
-        create_jenkins_job(jenkins_cfg, job_name, pipeline_xml)
-        register_pipeline(job_name)
-        return jsonify({"ok": True, "job": job_name})
-    except Exception as exc:
-        app.logger.warning("jenkins_create_job: %s", exc)
-        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/configure/networks")
@@ -4627,11 +4230,7 @@ def golden_configs_save_all():
         _save_golden_config_file,
         _get_running_config_for_golden,
     )
-    from modules.config_git import (
-        create_validation_pipeline, register_pending_pipeline,
-    )
     from modules.device import load_saved_devices
-    from modules.jenkins_runner import load_config as _jcfg, _trigger_jenkins
 
     list_name, current_list_file = get_current_device_list()
     devices = load_saved_devices(current_list_file)
@@ -4685,26 +4284,6 @@ def golden_configs_save_all():
     for entry in saved:
         entry["changed"] = entry["hostname"] in commit_result.get("changed", [])
 
-    # Create a validation pipeline for this batch (async trigger)
-    pipeline_name = None
-    pipeline_error = None
-    # Golden saves now commit immediately, so there is never anything staged
-    # here — the trigger is "did this save produce a commit", not "is anything
-    # staged". Checking has_staged_changes() would silently stop creating
-    # validation pipelines.
-    if commit_result.get("commit"):
-        jenkins_cfg = _jcfg()
-        if jenkins_cfg.get("jenkins_url", "").strip():
-            desc = f"Validate configs for {len(saved)} device(s) in '{list_name}'"
-            pipeline_name = create_validation_pipeline(list_name, jenkins_cfg, desc)
-            if pipeline_name:
-                try:
-                    _trigger_jenkins(jenkins_cfg, pipeline_name)
-                    register_pending_pipeline(list_name, pipeline_name, desc)
-                except Exception as exc:
-                    pipeline_error = str(exc)
-                    app.logger.warning("save_all: pipeline trigger failed: %s", exc)
-
     # ---- say what actually happened -------------------------------------
     #
     # HTTP 200 means the request ended, not that it achieved what the operator
@@ -4734,14 +4313,13 @@ def golden_configs_save_all():
         "baseline":    baseline_tag or "none",
         "tags":        commit_result.get("tags", []),
         "renamed":     commit_result.get("renamed", []),
-        "pipeline":    pipeline_name or "none",
     }
     app.logger.info(
         "save_all[%s]: inventory=%d captured=%d changed=%d unchanged=%d "
-        "skipped=%d commit=%s baseline=%s pipeline=%s",
+        "skipped=%d commit=%s baseline=%s",
         list_name, summary["inventory"], summary["captured"],
         len(changed_names), len(unchanged_names), len(failed),
-        summary["commit"], summary["baseline"], summary["pipeline"])
+        summary["commit"], summary["baseline"])
     for entry in summary["skipped"]:
         app.logger.warning("save_all[%s]: SKIPPED %s (%s) — %s", list_name,
                            entry["hostname"], entry["ip"], entry["reason"])
@@ -4773,10 +4351,6 @@ def golden_configs_save_all():
             f"{f.get('hostname')} ({f.get('reason')})" for f in failed))
     parts.append(f"baseline {baseline_tag}" if baseline_tag
                  else "NO baseline — no whole-fleet restore point from this run")
-    if pipeline_name:
-        parts.append(f"validation pipeline '{pipeline_name}' triggered")
-    elif commit_sha:
-        parts.append("Jenkins not configured — committed without a CI pipeline")
     msg = ". ".join(parts) + "."
 
     return jsonify({
@@ -4788,8 +4362,6 @@ def golden_configs_save_all():
         "baseline":      baseline_tag,
         "unchanged":     commit_result.get("unchanged", []),
         "renamed":       commit_result.get("renamed", []),
-        "pipeline":      pipeline_name,
-        "pipeline_error": pipeline_error,
         "summary":       summary,
         "message":       msg,
     })
@@ -4816,14 +4388,6 @@ def git_log():
     return jsonify({"ok": True, "commits": get_commit_log(list_name, limit)})
 
 
-@app.route("/git/available_pipelines")
-def git_available_pipelines():
-    """Return pipelines registered for this list that are not yet committed."""
-    from modules.config_git import get_available_pipelines
-    list_name, _ = get_current_device_list()
-    return jsonify({"ok": True, "pipelines": get_available_pipelines(list_name)})
-
-
 @app.route("/git/commit/<commit_hash>")
 def git_commit_diff(commit_hash):
     """Return the changed-file list and full diff for one commit."""
@@ -4843,20 +4407,11 @@ def git_commit():
     Requires:
       - message: commit message (non-empty)
 
-    Optional:
-      - pipeline_name: a registered pending Jenkins pipeline. If given, it
-                       must have passed CI and not already be linked to
-                       another commit — this is how CI verification gets
-                       recorded when Jenkins is configured and used. If
-                       omitted (Jenkins not configured, or the user chooses
-                       to commit without one), the commit proceeds directly;
-                       committing was never meant to hard-require Jenkins,
-                       only to use it as verification when available.
+    A ``pipeline_name`` is REFUSED by name: it named a Jenkins pipeline, and
+    Jenkins was removed (P.4). Its "passed CI" check was satisfiable by an
+    unauthenticated webhook POST, so it attested nothing anyway.
     """
-    from modules.config_git import (
-        commit_configs, is_pipeline_available, has_staged_changes,
-    )
-    from modules.jenkins_runner import load_results
+    from modules.config_git import commit_configs, has_staged_changes
 
     list_name, _ = get_current_device_list()
     data         = request.get_json(silent=True) or {}
@@ -4867,33 +4422,18 @@ def git_commit():
         return jsonify({"ok": False, "error": "Commit message is required"}), 400
 
     if pipeline:
-        # Validate pipeline availability
-        if not is_pipeline_available(list_name, pipeline):
-            return jsonify({
-                "ok":    False,
-                "error": f"Pipeline '{pipeline}' is already linked to a commit and cannot be reused.",
-            }), 400
-
-        # Validate pipeline has a passing last run
-        results = load_results() or {}
-        pipe_info = results.get("pipelines", {}).get(pipeline, {})
-        last_result = pipe_info.get("jenkins_result")
-        if not pipe_info.get("jenkins_ok", False) or last_result != "SUCCESS":
-            return jsonify({
-                "ok":    False,
-                "error": (
-                    f"Pipeline '{pipeline}' last run was {last_result or 'not yet run'}. "
-                    "The pipeline must pass before you can commit — or commit without "
-                    "selecting a pipeline."
-                ),
-            }), 400
+        return jsonify({
+            "ok": False,
+            "error": ("CI pipelines were removed with Jenkins (P.4). Commit "
+                      "without one; reload the page if it still offers one."),
+        }), 410
 
     # Check there are staged changes
     if not has_staged_changes(list_name):
         return jsonify({"ok": False, "error": "No staged changes to commit."}), 400
 
     # Commit
-    commit_hash = commit_configs(list_name, message, pipeline)
+    commit_hash = commit_configs(list_name, message)
     if not commit_hash:
         return jsonify({"ok": False, "error": "git commit failed — check server logs"}), 500
 

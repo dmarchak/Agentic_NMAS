@@ -222,7 +222,6 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
     from modules.device import get_current_device_list, load_saved_devices
     from modules.connection import get_persistent_connection
     from modules.commands import run_device_command
-    from modules.jenkins_runner import is_jenkins_building
 
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -233,14 +232,6 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
                 "timestamp": timestamp, "triggered_by": triggered_by}
         base.update(kw)
         return base
-
-    try:
-        if is_jenkins_building():
-            log.info("drift_check: deferred — Jenkins build in progress")
-            return _result(skipped_reason="Jenkins build in progress",
-                           summary="Deferred — Jenkins build in progress")
-    except Exception:
-        pass
 
     _, list_file = get_current_device_list()
     devices = load_saved_devices(list_file)

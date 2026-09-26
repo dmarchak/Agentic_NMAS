@@ -684,7 +684,6 @@
       </div>
       <div style="display:flex;align-items:center;gap:.4rem;flex:1;justify-content:flex-end;margin-right:.5rem">
         <div id="aiCostBadge" title="Estimated API cost this session" style="display:none;font-size:.7rem;color:rgba(255,255,255,.55);background:rgba(255,255,255,.08);border-radius:4px;padding:.15rem .4rem;white-space:nowrap;cursor:default"></div>
-        <div id="jenkinsBadge" title="CI check status — click to view" style="display:none;font-size:.7rem;font-weight:700;border-radius:4px;padding:.15rem .5rem;white-space:nowrap;cursor:pointer;letter-spacing:.04em"></div>
         <select id="aiProviderSelect" title="AI Provider" style="font-size:.72rem;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:5px;padding:.2rem .35rem;cursor:pointer;max-width:160px">
           <option value="">Loading…</option>
         </select>
@@ -1118,101 +1117,6 @@
         }
       } catch (e) { /* non-critical */ }
     });
-
-    /* ---- Jenkins CI badge ---------------------------------------------- */
-    (function () {
-      const badge = document.getElementById('jenkinsBadge');
-      if (!badge) return;
-
-      let _pollTimer   = null;
-      let _fastPolling = false;
-      let _lastData    = null;
-
-      function _setInterval(ms) {
-        if (_pollTimer) clearInterval(_pollTimer);
-        _pollTimer = setInterval(pollJenkins, ms);
-      }
-
-      function applyBadge(results) {
-        _lastData = results;
-        if (!results || results.ok === null || results.ok === undefined) {
-          badge.style.display = 'none';
-          return;
-        }
-
-        const jBuild   = results.jenkins_build;
-        const jPending = results.jenkins_pending;
-        const jUrl     = results.jenkins_url || '';
-        const buildTag = jBuild ? ` #${jBuild}` : '';
-
-        if (jPending) {
-          // Jenkins is actively building — show amber "BUILDING…" and poll fast
-          badge.textContent = `CI${buildTag} BUILDING\u2026`;
-          badge.style.background = 'rgba(251,191,36,.18)';
-          badge.style.color      = '#fbbf24';
-          badge.title = `Jenkins build${buildTag} in progress since ${results.jenkins_triggered_at || ''}`;
-          badge.style.display = '';
-          if (!_fastPolling) { _fastPolling = true; _setInterval(5000); }
-          return;
-        }
-
-        // Not building — slow poll
-        if (_fastPolling) { _fastPolling = false; _setInterval(30000); }
-
-        const passed = results.passed ?? 0;
-        const total  = results.total  ?? 0;
-        const failed = results.failed ?? 0;
-        // If Jenkins ran, prefer its result; else use local result
-        const ok = results.jenkins_ok !== undefined ? results.jenkins_ok : results.ok;
-
-        if (ok) {
-          badge.textContent = `CI${buildTag} ${passed}/${total} \u2713`;
-          badge.style.background = 'rgba(52,211,153,.2)';
-          badge.style.color      = '#34d399';
-          badge.title = `All ${total} checks passed${buildTag ? ' \u2014 Jenkins build' + buildTag : ''} \u2014 ${results.jenkins_ran_at || results.run_at || ''}`;
-        } else {
-          const jResult = results.jenkins_result;
-          const label   = jResult && jResult !== 'SUCCESS' ? jResult : `${failed} FAIL`;
-          badge.textContent = `CI${buildTag} ${label}`;
-          badge.style.background = 'rgba(248,113,113,.2)';
-          badge.style.color      = '#f87171';
-          const names  = (results.results || []).filter(r => !r.ok).map(r => r.name).join(', ');
-          const jLabel = jResult && jResult !== 'SUCCESS' ? `Jenkins: ${jResult}` : '';
-          badge.title  = [names, jLabel].filter(Boolean).join(' | ') || 'Check(s) failed';
-        }
-        badge.style.display = '';
-      }
-
-      async function pollJenkins() {
-        try {
-          const r = await fetch('/jenkins/results');
-          if (!r.ok) return;
-          applyBadge(await r.json());
-        } catch { /* non-critical */ }
-      }
-
-      // Click: open Jenkins build URL if available, else show local results
-      badge.addEventListener('click', async function () {
-        try {
-          const r = await fetch('/jenkins/results');
-          if (!r.ok) return;
-          const data = await r.json();
-          if (data.jenkins_url) {
-            window.open(data.jenkins_url, '_blank');
-            return;
-          }
-          let msg = `CI Results \u2014 ${data.run_at || ''}\n`;
-          (data.results || []).forEach(function (c) {
-            msg += `${c.ok ? '\u2713' : '\u2717'} ${c.name} (${c.duration_ms}ms)\n`;
-            if (!c.ok) msg += `  ${c.output}\n`;
-          });
-          alert(msg);
-        } catch { /* non-critical */ }
-      });
-
-      pollJenkins();
-      _pollTimer = setInterval(pollJenkins, 30000);
-    })();
 
     /* ---- Playbooks drawer ---------------------------------------------- */
     const playbooksBtn   = document.getElementById('aiPlaybooksBtn');
@@ -2267,22 +2171,9 @@
       } catch { /* history load is best-effort */ }
     })();
 
-    // Auto-troubleshoot Jenkins failures triggered from outside this closure
-    setInterval(function () {
-      if (!window._pendingJenkinsFix || busy) return;
-      if (window._aiEnabled === false) return;  // AI disabled — skip auto-troubleshoot
-      const fix = window._pendingJenkinsFix;
-      window._pendingJenkinsFix = null;
-      const buildNum = fix.buildNum ? ` (#${fix.buildNum})` : '';
-      const msg = `The Jenkins pipeline "${fix.jobName}"${buildNum} just failed. Please retrieve the console log and troubleshoot why it failed.`;
-      openPanel();
-      sendMessage(msg);
-    }, 1000);
-
     // Agent events are handled exclusively by the background agent runner.
     // The chat AI does NOT receive event injections — that was causing the chat
-    // to duplicate work the background agent was already doing and left it
-    // stuck waiting on Jenkins builds.
+    // to duplicate work the background agent was already doing.
 
   })();
   </script>

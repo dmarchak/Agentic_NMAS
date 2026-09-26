@@ -748,7 +748,7 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
             config_type="template", device_ips=["10.0.0.1"],
             params={}, ip_params_map={},
             selected_devices=[{"ip": "10.0.0.1", "hostname": "s4"}],
-            check_devices=[], connections_pool={},
+            connections_pool={},
             pool_lock=threading.Lock(), config_id="tpl-s4",
             settle_sleep=lambda _s: None)
         ctx.confirmed_commands = {"10.0.0.1": list(self.PUSHED)}
@@ -1430,7 +1430,7 @@ class TestTheCommitLandsInTheListTheDeployStartedIn:
             params={"skip_route_check": True}, ip_params_map={},
             selected_devices=[{"ip": self.IP, "hostname": "r1",
                                "device_uid": "r1-uid"}],
-            check_devices=[], connections_pool={},
+            connections_pool={},
             pool_lock=threading.Lock(), config_id="tpl-r1",
             list_name=list_name,
             settle_sleep=settle_hook,

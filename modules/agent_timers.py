@@ -17,7 +17,6 @@ log = logging.getLogger(__name__)
 _TIMERS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "agent_timers.json")
 
 DEFAULTS = {
-    "jenkins_poll_interval":  15,       # event_monitor: Jenkins sync
     "event_check_interval":   300,      # event_monitor: golden config / variable checks
     "event_drain_interval":   30,       # agent_runner:  event queue drain
     "drift_check_interval":   14400,    # agent_runner:  config drift (4 hours)
@@ -27,7 +26,6 @@ DEFAULTS = {
 
 # Human-readable labels for the UI
 LABELS = {
-    "jenkins_poll_interval":  ("Jenkins Sync",           "How often to poll Jenkins for new build results", "s"),
     "event_check_interval":   ("Event Monitor",          "How often to check for missing golden configs and empty variables", "s"),
     "event_drain_interval":   ("Agent Queue Drain",      "How often the background agent processes queued events", "s"),
     "drift_check_interval":   ("Config Drift Check",     "How often to compare running configs against golden configs", "s"),
@@ -37,7 +35,6 @@ LABELS = {
 
 # Min/max bounds to prevent accidental misconfiguration
 BOUNDS = {
-    "jenkins_poll_interval":  (5,    3600),
     "event_check_interval":   (30,   86400),
     "event_drain_interval":   (10,   3600),
     "drift_check_interval":   (300,  86400),

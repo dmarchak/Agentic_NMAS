@@ -257,7 +257,7 @@ def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "") ->
         if isinstance(node, ast.alias) and node.name.split(".")[-1] == name:
             return True
         if (isinstance(node, ast.Constant) and isinstance(node.value, str)
-                and _REFERENCE_SHAPED.fullmatch(node.value.strip())
+                and _is_reference_shaped(node.value.strip())
                 and word.search(node.value)
                 and id(node) not in docstrings and id(node) not in probed):
             return True
@@ -272,6 +272,22 @@ def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "") ->
 #: (`"/<route>/192.0.2.1"`), and the model's prompt names a removed route
 #: in a sentence. Counted as uses, both made the gate unsatisfiable.
 _REFERENCE_SHAPED = re.compile(r"[A-Za-z_][\w.]*(:[A-Za-z_][\w.]*)?")
+
+#: A FILENAME has the dotted shape too. P.4 step 1 (2026-09-26): removing the
+#: Flask views `jenkins_results` and `jenkins_pipelines` was flagged by
+#: `os.path.join(d, "jenkins_results.json")`, a file the removed module named.
+#: A module path never ends in a file extension, so one that does is a
+#: mention.
+_FILE_EXTENSIONS = frozenset((
+    "json", "jsonl", "csv", "yml", "yaml", "cfg", "conf", "ini", "txt", "md",
+    "html", "js", "css", "log", "xml", "key", "env", "j2", "lock", "tmp",
+    "bak", "sh", "py", "gz", "tar", "zip"))
+
+
+def _is_reference_shaped(text: str) -> bool:
+    if not _REFERENCE_SHAPED.fullmatch(text):
+        return False
+    return not ("." in text and text.rsplit(".", 1)[1].lower() in _FILE_EXTENSIONS)
 
 
 def main() -> int:

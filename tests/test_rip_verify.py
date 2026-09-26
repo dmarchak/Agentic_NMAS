@@ -117,7 +117,7 @@ class TestNoVacuousPass:
         ctx = PipelineContext(
             config_type="interface", device_ips=["203.0.113.1"], params={},
             ip_params_map={}, selected_devices=[{"ip": "203.0.113.1", "hostname": "S9"}],
-            check_devices=[], connections_pool={}, pool_lock=None,
+            connections_pool={}, pool_lock=None,
             config_id="t", settle_sleep=lambda _s: None)
         ctx.pre_snapshots = {"203.0.113.1": {"routing_neighbors": {"count": -1}}}
         ctx.post_snapshots = {"203.0.113.1": {"routing_neighbors": {"count": -1}}}
@@ -156,7 +156,7 @@ class TestConvergenceOutcomes:
             config_type="rip", device_ips=["203.0.113.21"], params={},
             ip_params_map={},
             selected_devices=[{"ip": "203.0.113.21", "hostname": "s1"}],
-            check_devices=[], connections_pool={}, pool_lock=None,
+            connections_pool={}, pool_lock=None,
             config_id="t", settle_sleep=lambda _s: None)
 
         iterator = iter(counts)
