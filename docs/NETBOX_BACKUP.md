@@ -510,6 +510,42 @@ rclone lsjson --files-only b2-read:nmas-netbox-dmarchak | grep readkey-probe   #
 Pass: `-vv` shows a refusal, and the probe is still in the normal listing.
 A `Deleted` line means the "read-only" key can hide, and it must not be kept.
 
+### 6f. MEASURED 2026-09-26 (operator): step 7 passes
+
+- **Retrievable and usable where the key lives.** Fetched with the read key
+  at 363,799 bytes, equal to all three destinations. Decrypted with the
+  laptop's cv25519 subkey `1FDBB1E129FA3C99`. The archive holds
+  `netbox.pgdump`, `media.tar`, `config/env/*.env` and the full NetBox
+  configuration. `manifest.json` carries a sha256 per file,
+  `netbox_image v4.6-5.0.2`, `netbox_version 4.6.9`,
+  `postgres_image 18-alpine` and the row counts, so a restore can verify
+  itself rather than trust the archive.
+- **The read key cannot destroy, and the refusal names the mechanism:**
+  `ERROR : b2probe3.txt: Couldn't delete: failed to HIDE "b2probe3.txt": Unknown 401 (401 unauthorized)`,
+  and the probe was still listed at 28 bytes afterwards. That is B9 from the
+  other side: the operation the write key performed, this key is refused,
+  and rclone calls it a hide both times.
+- **The read key's capabilities include `readBucketLifecycleRules`**, so
+  B10's lifecycle half is readable with it. Whether it can read the Object
+  Lock retention is unknown until the check is built against the real
+  response.
+
+### The probe files in the bucket are MEASUREMENTS, not litter
+
+No key held here can remove them (that is the property being tested), and
+none should be removed by hand. The lifecycle removes both, on its own
+schedule, which is itself the measurement. Neither is locked: Object Lock
+was not on when they were written, and a default retention applies only to
+new uploads.
+
+| Probe | State | Expected to disappear | What its disappearance proves |
+|---|---|---|---|
+| `b2probe.txt` | hidden (by the write key, B9), unlocked | about 1 day after the hide, 2026-09-27 | the lifecycle's hide-to-delete runs: B9 plan step 1, and the positive control for step 4 |
+| `b2probe3.txt` | visible (hide refused to the read key, 6e), unlocked | hidden at day 15, deleted at day 16, about 2026-10-12 | the lifecycle's upload-to-hide runs too |
+
+If either is still there well after its date, the lifecycle is not doing
+what this runbook assumes, and B9's lock design rests on that assumption.
+
 ## What this does not give
 
 - **Point-in-time recovery.** Up to an hour of hand edits to NetBox between
