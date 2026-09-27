@@ -237,9 +237,25 @@ def normalise_peer(peer: tuple) -> tuple:
     return str(host), (str(host), port), socket.AF_INET
 
 
-def handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decide,
-           audit=None) -> dict:
-    """One request, start to finish. Returns what happened, for the log."""
+def handle(packet: bytes, peer: tuple, **kw) -> dict:
+    """One request, start to finish, and it NEVER dies silently.
+
+    M4: a handler that raised on its own thread printed a traceback and the
+    device heard nothing, and a ZTP device does not retry for ever (IOS-XE
+    17.6 gave up after about 2.5 minutes and nine requests, "AUTOINSTALL:
+    script execution not successful"). So a failure is logged as
+    `handler FAILED`, the line job health counts, rather than left to the
+    thread's default hook."""
+    try:
+        return _handle(packet, peer, **kw)
+    except Exception as exc:                      # noqa: BLE001
+        log.error("ztp responder: handler FAILED for %s: %s: %s",
+                  (peer or ("?",))[0], type(exc).__name__, exc, exc_info=True)
+        return {"served": False, "reason": f"handler failed: {type(exc).__name__}: {exc}"}
+
+
+def _handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decide,
+            audit=None) -> dict:
     host, peer, family = normalise_peer(peer)
     make = transfer_socket or (lambda: socket.socket(family, socket.SOCK_DGRAM))
     sock = make()

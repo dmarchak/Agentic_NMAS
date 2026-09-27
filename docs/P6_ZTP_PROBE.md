@@ -250,8 +250,11 @@ NOT restarted, which is the variant working. Keep watching.
 docker exec -it clab-nmas-ztp-a-bp-ztp-a telnet 127.0.0.1 5000
 ```
 
-**Do not answer the configuration dialog.** On IOS-XE, answering it can end
-AutoInstall. For 15 minutes, only watch and copy what appears:
+**Touch nothing: not the dialog, not RETURN, not `en`.** On IOS-XE any input
+ends discovery. M4 measured `en` alone stopping PnP (`PnP Discovery stopped
+(Config Wizard)`), and the node says so itself: *"pnp-discovery can be
+monitored without entering enable mode. Entering enable mode will stop
+pnp-discovery."* For 15 minutes, only watch and copy what appears:
 
 - lines naming PnP (`%PNP-…`);
 - lines naming AutoInstall or TFTP (`network-confg`, `router-confg`,
@@ -605,7 +608,7 @@ tear down before the console. Then watch the log (terminal E):
 docker logs -f clab-nmas-ztp-a-bp-ztp-a
 ```
 
-Then the console, answering NOTHING for 15 minutes, as in M1 step 5.
+Then the console, TOUCHING NOTHING for 15 minutes, as in M1 step 5.
 
 ### Observed: M3's first run (2026-09-27), and why it does not count
 
@@ -819,8 +822,10 @@ after it.
    lease yet`.
 9. **Boot the probe fresh**, with the same consumer checks as M3 (the
    `/launch.py` hash and the three log lines) before the console. Watch it
-   and answer nothing until the config has been fetched: M3 showed
-   answering the dialog ends discovery.
+   and TOUCH NOTHING until the config has been fetched: not the dialog, not
+   RETURN, not `en`. M3 showed answering the dialog ends discovery, and M4
+   showed `en` alone does. The fetch has a bounded window (see M4's first
+   run), so a problem found while watching is a reload, not a fix mid-run.
 
 **Predictions, recorded before the run:**
 
@@ -881,6 +886,35 @@ is the gap measured.
 not displayed. The NMAS-side capture (terminal C) wrote nothing again, which
 the operator attributes to tcpdump's AppArmor profile. Recorded, not
 diagnosed. `dmesg | grep DENIED` beside the capture path would settle it.
+
+**AutoInstall's patience is bounded, and that is a property of ZTP (the
+operator's reading).** The console said `AUTOINSTALL: script execution not
+successful for Gi2` at 02:50:57, about 2.5 minutes and nine unanswered
+requests after the first, which is exactly the window the responder spent
+crashing. The `tools.cisco.com` queries that continued afterwards are Call
+Home, not AutoInstall. **So a responder that is down, crashing or firewalled
+during that window does not delay an onboarding: it FAILS one, and the
+device needs a reload to ask again.** Two consequences, built the same day:
+
+- the pending row has a stage of its own, `asked_not_served`: "it ASKED N
+  time(s) between … and was not served (last reason …)", with the
+  consequence stated. It matches an unattributed request (recorded as `?`)
+  by its address, because it is still this device asking;
+- the responder has a job-health row of its own, `nmas-ztp-responder`. It
+  reads `socket_down`, `not_installed`, or `failing` when its journal carries
+  `handler FAILED` since it last started, and the handler now logs exactly
+  that instead of dying on its thread.
+
+**Input ends discovery, and not only the dialog:** `en` at the console
+stopped PnP at 03:01:00 (`Config Wizard`), which the node had announced
+("Entering enable mode will stop pnp-discovery"). "Answer nothing" is "touch
+nothing" everywhere in this runbook now.
+
+**The reload for the second attempt:** a guest reload does not re-run the
+constructor, so the pristine base holds. Answer **`no`** to "System
+configuration has been modified. Save?": the running config holds `hostname
+bp-ztp-a` from the reservation, and saving it would create a startup config,
+which AutoInstall would then defer to.
 
 **Redeploying mid-run:** the responder is a long-running process, and it
 holds the code it started with. After deploying the fix,

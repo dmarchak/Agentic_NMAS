@@ -320,3 +320,27 @@ class TestTheSocketSystemdActuallyHandsOver:
         state["serve"] = False
         out = _fetch(addr)
         assert out["error"] == r.ERR_ACCESS and out["text"] == r.REFUSAL_TEXT
+
+
+def test_a_handler_that_raises_is_logged_as_failed_not_left_to_the_thread(caplog):
+    """M4: a handler raising on its own thread printed a traceback and the
+    device heard nothing. `handler FAILED` is the line job health counts."""
+    def boom(peer, filename):
+        raise RuntimeError("the manifests moved")
+
+    class _Sock:
+        def bind(self, a):
+            pass
+
+        def sendto(self, data, peer):
+            pass
+
+        def close(self):
+            pass
+
+    import logging
+    with caplog.at_level(logging.ERROR, logger="modules.nsot.ztp_responder"):
+        out = r.handle(_rrq(), ("::ffff:192.0.2.50", 1234, 0, 0), transfer_socket=_Sock,
+                       decide_fn=boom, audit=_Audit())
+    assert not out["served"] and "RuntimeError" in out["reason"]
+    assert any("handler FAILED" in rec.getMessage() for rec in caplog.records)

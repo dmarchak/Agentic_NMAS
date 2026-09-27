@@ -267,7 +267,7 @@ class TestThePendingRow:
         (_ProgressKea(reserved_to="192.0.2.77"), [], "reservation_missing"),
         (_ProgressKea(lease="none"), [], "reserved_not_leased"),
         (_ProgressKea(), [], "leased_not_fetched"),
-        (_ProgressKea(), [REFUSED], "leased_not_fetched"),
+        (_ProgressKea(), [REFUSED], "asked_not_served"),
         (_ProgressKea(), [SERVED, REFUSED], "fetched_not_reached"),
     ])
     def test_each_stage_is_derived_from_its_facts(self, kea, fetches, stage):
@@ -282,7 +282,7 @@ class TestThePendingRow:
     def test_a_refused_fetch_is_said_with_its_reason(self):
         from modules.nsot import ztp
         out = ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[REFUSED])
-        assert "REFUSED" in out["summary"] and "network-confg" in out["summary"]
+        assert "ASKED 1 time(s)" in out["summary"] and "network-confg" in out["summary"]
 
     def test_the_fetch_names_its_time_and_hash(self):
         from modules.nsot import ztp
@@ -453,3 +453,78 @@ class TestAbandon:
         step = [s for s in out["steps"] if s["step"] == "reservation"][0]
         assert not step["ok"] and "reserved outside the fragment" in step["detail"]
         assert not out["released"]
+
+
+class TestAskedAndNotServed:
+    """M4: a ZTP device's patience is finite (AutoInstall gave up after about
+    2.5 minutes and nine requests), so "it asked and we did not answer" is a
+    state of its own, and it names the consequence."""
+
+    UNATTRIBUTED = {"actor": "ztp:::ffff:192.0.2.50", "what": "bootstrap_config_refused",
+                    "target": "?", "peer": "::ffff:192.0.2.50", "at": "2026-09-27T02:50:00Z",
+                    "detail": "192.0.2.50 holds no reservation the tool wrote"}
+
+    def test_a_refusal_recorded_as_unattributed_is_still_this_device(self):
+        from modules.nsot import ztp
+        first = dict(self.UNATTRIBUTED, at="2026-09-27T02:48:23Z")
+        out = ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[self.UNATTRIBUTED, first])
+        assert out["stage"] == "asked_not_served", out
+        assert "ASKED 2 time(s) between 2026-09-27T02:48:23Z and 2026-09-27T02:50:00Z" in out["summary"]
+        assert "needs a reload" in out["summary"]
+
+    def test_a_request_from_another_address_is_not_this_device(self):
+        from modules.nsot import ztp
+        other = dict(self.UNATTRIBUTED, peer="192.0.2.99", actor="ztp:192.0.2.99")
+        out = ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[other])
+        assert out["stage"] == "leased_not_fetched"
+
+    def test_a_serve_after_refusals_is_fetched(self):
+        from modules.nsot import ztp
+        out = ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[SERVED, self.UNATTRIBUTED])
+        assert out["stage"] == "fetched_not_reached"
+
+
+class TestTheResponderRow:
+    """Its own job-health row: a responder that cannot serve fails an
+    onboarding rather than delaying it."""
+
+    def _run(self, socket_props, journal, journal_ok=True):
+        def run(cmd):
+            if cmd[:2] == ["systemctl", "show"]:
+                return (0, socket_props) if socket_props is not None else (1, "")
+            if cmd[0] == "journalctl":
+                return (0, journal) if journal_ok else (1, "")
+            raise AssertionError(cmd)
+        return run
+
+    def _rows(self, props, journal="", journal_ok=True, fragment="/etc/kea/nmas/r.json"):
+        from modules import job_health
+        return job_health.ztp_responder_rows(run=self._run(props, journal, journal_ok),
+                                             get=lambda k, d="": fragment)
+
+    ACTIVE = "LoadState=loaded\nActiveState=active\nListen=[::]:69 (Datagram)\n"
+
+    def test_nothing_while_ztp_is_not_configured(self):
+        assert self._rows(self.ACTIVE, fragment="") == []
+
+    def test_not_installed_and_socket_down(self):
+        assert self._rows("LoadState=not-found\n")[0]["state"] == "not_installed"
+        assert self._rows("LoadState=loaded\nActiveState=inactive\n")[0]["state"] == "socket_down"
+
+    def test_listening_and_never_started_is_ok_and_says_so(self):
+        row = self._rows(self.ACTIVE, "")[0]
+        assert row["state"] == "ok" and "not started yet" in row["detail"]
+
+    def test_a_handler_failure_since_the_last_start_is_failing(self):
+        journal = ("1000.0 host nmas-ztp-responder: INFO serving ZTP bootstrap configs on ('::', 69)\n"
+                   "1010.0 host nmas-ztp-responder: ERROR ztp responder: handler FAILED for 192.0.2.50\n")
+        row = self._rows(self.ACTIVE, journal)[0]
+        assert row["state"] == "failing" and "needs a reload" in row["detail"]
+
+    def test_failures_before_the_last_start_do_not_count(self):
+        journal = ("1000.0 host x: Exception in thread Thread-15 (handle):\n"
+                   "1100.0 host x: INFO serving ZTP bootstrap configs on ('::', 69)\n")
+        assert self._rows(self.ACTIVE, journal)[0]["state"] == "ok"
+
+    def test_an_unreadable_journal_is_unknown(self):
+        assert self._rows(self.ACTIVE, journal_ok=False)[0]["state"] == "unknown"

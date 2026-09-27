@@ -649,7 +649,25 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
 #: the facts below, never stored, so no stage can be claimed that its own
 #: source does not show (P6_ZTP.md section 2).
 STAGES = ("reservation_missing", "reserved_not_leased", "leased_not_fetched",
-          "fetched_not_reached")
+          "asked_not_served", "fetched_not_reached")
+
+#: What M4 measured about the device's patience, stated where a person reads
+#: the stage it explains: IOS-XE 17.6 AutoInstall gave up after about 2.5
+#: minutes and nine unanswered requests. A responder that cannot serve in that
+#: window FAILS the onboarding rather than delaying it.
+AUTOINSTALL_PATIENCE = ("AutoInstall gives up after a bounded window (measured on IOS-XE "
+                        "17.6: about 2.5 minutes, nine requests), and then the device "
+                        "needs a reload to ask again")
+
+
+def _peer_host(value: str) -> str:
+    """A recorded peer, with a v4-mapped form (rows written before M4's fix)
+    read as its IPv4 address."""
+    try:
+        ip = ipaddress.ip_address(str(value).split("%", 1)[0])
+    except ValueError:
+        return str(value)
+    return str(ip.ipv4_mapped) if ip.version == 6 and ip.ipv4_mapped else str(ip)
 
 
 def progress(entry: dict, *, kea=None, fetches=None) -> dict:
@@ -687,8 +705,15 @@ def progress(entry: dict, *, kea=None, fetches=None) -> dict:
     if fetches is None:
         from modules import reveal_audit
         fetches = reveal_audit.entries(limit=2000)
-    rows = [f for f in fetches if f.get("target") == name
-            and str(f.get("actor", "")).startswith("ztp:")]
+    # BY NAME OR BY ADDRESS. A request the responder could not attribute is
+    # recorded against "?" with the requesting address (M4: nine of them), and
+    # it is still this device asking.
+    # Only an UNATTRIBUTED row matches by address: a row naming another
+    # device is that device's, whatever address it came from.
+    rows = [f for f in fetches if str(f.get("actor", "")).startswith("ztp:")
+            and (f.get("target") == name
+                 or (f.get("target") in ("?", "", None)
+                     and _peer_host(f.get("peer", "")) == want))]
     served = [f for f in rows if f.get("what") == "bootstrap_config"]
     refused = [f for f in rows if f.get("what") == "bootstrap_config_refused"]
     if served:
@@ -698,7 +723,8 @@ def progress(entry: dict, *, kea=None, fetches=None) -> dict:
     elif refused:
         f = refused[0]
         out["fetch"] = {"state": "refused", "at": f.get("at"), "peer": f.get("peer"),
-                        "reason": f.get("detail", "")}
+                        "reason": f.get("detail", ""), "count": len(refused),
+                        "first": refused[-1].get("at")}
     else:
         out["fetch"] = {"state": "none"}
 
@@ -716,12 +742,18 @@ def progress(entry: dict, *, kea=None, fetches=None) -> dict:
         out["stage"] = "reserved_not_leased"
         out["summary"] = (f"reserved {mac} -> {want}; no lease yet: the device has "
                           "not asked, or has not booted")
+    elif fe == "refused":
+        # THE DEVICE ASKED AND WAS NOT SERVED, a different state from "has not
+        # asked yet", and the more urgent one: its patience is finite.
+        f = out["fetch"]
+        out["stage"] = "asked_not_served"
+        out["summary"] = (f"leased {out['lease']['address']}; it ASKED {f['count']} time(s) "
+                          f"between {f['first']} and {f['at']} and was not served "
+                          f"(last reason: {f['reason']}). {AUTOINSTALL_PATIENCE}")
     elif fe != "fetched":
         out["stage"] = "leased_not_fetched"
-        out["summary"] = (f"leased {out['lease']['address']}; it has not fetched its "
-                          "config" + (f" (the responder REFUSED it at {out['fetch']['at']}: "
-                                      f"{out['fetch']['reason']})" if fe == "refused" else
-                                      " (the responder has recorded nothing for it)"))
+        out["summary"] = (f"leased {out['lease']['address']}; it has not asked for its "
+                          "config yet (the responder has recorded nothing from it)")
     else:
         out["stage"] = "fetched_not_reached"
         out["summary"] = (f"fetched its config at {out['fetch']['at']} (sha256 "

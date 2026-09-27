@@ -680,6 +680,58 @@ def sync_owner_rows(run=None, get=None) -> list:
 OK_STATES = ("ok", "not_applicable")
 
 
+def ztp_responder_rows(run=None, get=None) -> list:
+    """The ZTP responder (P.6): listening, and not failing. None while ZTP is
+    not configured.
+
+    A responder that cannot serve does not delay an onboarding, it FAILS one:
+    M4 measured IOS-XE 17.6 AutoInstall giving up after about 2.5 minutes and
+    nine requests, and the device then needs a reload. So its failures are a
+    row of their own. The socket is systemd's (it starts the service on the
+    first request), and the service's journal carries `handler FAILED` for
+    every request a handler could not finish."""
+    from modules.settings_schema import get_setting
+
+    run = run or _run
+    get = get or get_setting
+    if not (get("kea_ztp_fragment", "") or "").strip():
+        return []
+    row = {"unit": "nmas-ztp-responder", "max_age_minutes": 0,
+           "what": "the ZTP responder is listening and not failing (a device's "
+                   "AutoInstall gives up after about 2.5 minutes)"}
+    rc, out = run(["systemctl", "show", "nmas-ztp-responder.socket", "-p", "LoadState",
+                   "-p", "ActiveState", "-p", "Listen"])
+    props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l) if rc == 0 else {}
+    if not props:
+        return [{**row, "state": "unknown",
+                 "detail": "systemctl could not be asked -- not the same as ok"}]
+    if props.get("LoadState") == "not-found":
+        return [{**row, "state": "not_installed",
+                 "detail": "nmas-ztp-responder.socket is not installed (docs/DEPLOY_LINUX.md)"}]
+    if props.get("ActiveState") != "active":
+        return [{**row, "state": "socket_down",
+                 "detail": f"the socket is {props.get('ActiveState') or '?'}: nothing answers udp/69"}]
+    ok, lines = _journal("nmas-ztp-responder.service", run)
+    if not ok:
+        return [{**row, "state": "unknown",
+                 "detail": "the responder's journal could not be read -- not the same as ok"}]
+    starts = [i for i, (_t, text) in enumerate(lines) if "serving ZTP bootstrap configs" in text]
+    since = lines[starts[-1] + 1:] if starts else []
+    failed = [t for t, text in since
+              if "handler FAILED" in text or "Exception in thread" in text]
+    listen = props.get("Listen", "")
+    if failed:
+        return [{**row, "state": "failing",
+                 "detail": (f"{len(failed)} request(s) the handler could not finish since the "
+                            f"responder last started, the latest at "
+                            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(failed[-1]))}. "
+                            "A device that asked then has probably given up and needs a reload")}]
+    return [{**row, "state": "ok",
+             "detail": (f"listening on {listen}; " + (
+                 "no handler failures since it last started" if starts else
+                 "not started yet (systemd starts it on the first request)"))}]
+
+
 def ztp_rows() -> list:
     """D4, checked where it could otherwise silently stop holding (P.6)."""
     from modules.nsot import ztp
@@ -693,7 +745,7 @@ def ztp_rows() -> list:
 
 
 def health(now: float = None, run=None, images=None, settings=None,
-           rotations=None, owner=None, ztp=None) -> dict:
+           rotations=None, owner=None, ztp=None, responder=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -702,6 +754,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += rotation_rows() if rotations is None else list(rotations)
     jobs += sync_owner_rows(run) if owner is None else list(owner)
     jobs += ztp_rows() if ztp is None else list(ztp)
+    jobs += ztp_responder_rows(run) if responder is None else list(responder)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     return {"ok": True, "jobs": jobs, "not_ok": bad,
