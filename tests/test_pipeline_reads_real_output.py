@@ -91,9 +91,10 @@ class TestCorrectOnRealOutput:
 
 class TestTheFindings:
     def test_c64_the_established_bgp_session_on_r3_is_counted(self, on):
+        """Both of r3's sessions, IPv4 and IPv6 (`show bgp all summary`)."""
         on("r3")
         got = pipeline._detect_routing_neighbors(None)
-        assert (got["protocol"], got["count"]) == ("bgp", 1)
+        assert (got["protocol"], got["count"]) == ("bgp", 2)
 
     def test_c64_a_down_session_is_configured_not_established(self):
         """r3's real row, with its last field replaced by a state word, is the
@@ -194,7 +195,7 @@ class TestVerifyComparesEveryProtocol:
         assert ctx.verify_result["x"]["ok"] is True
         # r3's real captures: BGP, OSPF and OSPFv3 (IPv6), each counted.
         assert ctx.verify_result["x"]["pre"]["routing_protocols"] == \
-            {"bgp": 1, "ospf": 6, "ospfv3": 4}
+            {"bgp": 2, "ospf": 6, "ospfv3": 4}
 
 
 class TestOneReader:

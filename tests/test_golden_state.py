@@ -66,8 +66,8 @@ class TestAFailureIsNamed:
     """Minimal edits of real output: the same device, one thing broken."""
 
     def test_a_bgp_peer_down(self, monkeypatch):
-        edit = lambda cmd, t: t.replace("4d13h           3", "never    Idle") \
-            if cmd == "show ip bgp summary" else t
+        edit = lambda cmd, t: t.replace("0 4d14h           3", "0 never    Idle", 1) \
+            if cmd == "show bgp all summary" else t
         judged = gs.judge_device(["bgp", "ospf", "ospfv3"], snapshot(monkeypatch, "r3", edit))
         assert judged["working"] is False
         assert any("198.51.100.1" in w for w in judged["why"])
@@ -274,3 +274,88 @@ class TestTheCli:
         code, saved = self._run(monkeypatch, [], unreachable=("s1",))
         out = capsys.readouterr().out
         assert code == 2 and "Claim: configured" in out and "s1: NOT working" in out
+
+
+def _fleet_configs(hosts):
+    return {h: open(os.path.join(FLEET, f"{h}.cfg"), encoding="utf-8").read() for h in hosts}
+
+
+MANAGED = ("r1", "r2", "r3", "r4", "s1", "s2", "s3", "s4")   # r5 retired
+
+
+class TestBothBgpFamiliesOnRealOutput:
+    def test_r3_and_r4_each_have_two_sessions_and_no_phantom(self):
+        from modules.topology import parse_bgp_summary
+
+        got = {h: [(p["neighbor"], p["address_family"], p["established"]) for p in
+                   parse_bgp_summary(open(os.path.join(OPS, f"{h}__show_bgp_all_summary.txt"))
+                                     .read())["peers"]] for h in ("r3", "r4")}
+        assert got == {
+            "r3": [("198.51.100.1", "IPv4 Unicast", True), ("2001:DB8:51::2", "IPv6 Unicast", True)],
+            # r4's IPv6 peer is a REAL wrapped row: the address alone on its line.
+            "r4": [("198.51.100.3", "IPv4 Unicast", True), ("2001:DB8:51:1::2", "IPv6 Unicast", True)]}
+
+
+    def test_the_row_rule_rejects_a_non_peer_line_inside_a_table(self):
+        """Real output cannot separate the parser's two guards (the per-family
+        reset and the address-and-version row rule): measured, removing
+        either alone left every real-capture test passing. So the row rule
+        is tested where the reset cannot help: r3's own "0 BGP route-map
+        cache entries using 0 bytes of memory" line (ten fields, a digit
+        first), placed inside a table after a real row."""
+        from modules.topology import parse_bgp_summary
+
+        text = open(os.path.join(OPS, "r3__show_ip_bgp_summary.txt")).read()
+        junk = "0 BGP route-map cache entries using 0 bytes of memory"
+        assert junk in text, "the junk line is r3's own"
+        inside = text.rstrip("\n") + "\n" + junk + "\n"
+        assert [p["neighbor"] for p in parse_bgp_summary(inside)["peers"]] == ["198.51.100.1"]
+
+
+class TestAPeerOutsideManagementIsNamed:
+    """The operator's point (2026-09-27): r3's and r4's only BGP peer is r5,
+    retired from management. "Established" is one side's report of a
+    two-sided fact, so the claim names the dependency rather than hiding it."""
+
+    def test_r3s_peers_are_named(self, monkeypatch):
+        amap = gs.managed_addresses(_fleet_configs(MANAGED))
+        per = snapshot(monkeypatch, "r3")["routing_neighbors"]["protocols"]
+        outside, _ = gs.outside_management(per, amap)
+        assert outside == ["bgp 198.51.100.1", "bgp 2001:DB8:51::2"], outside
+
+    def test_the_control_managing_r5_removes_the_dependency(self, monkeypatch):
+        amap = gs.managed_addresses(_fleet_configs(MANAGED + ("r5",)))
+        per = snapshot(monkeypatch, "r3")["routing_neighbors"]["protocols"]
+        assert gs.outside_management(per, amap)[0] == []
+
+    def test_ospf_neighbours_are_named_by_router_id_and_inside(self, monkeypatch):
+        """r3's OSPF neighbours are r1, r2, r4 by their loopbacks: inside."""
+        amap = gs.managed_addresses(_fleet_configs(MANAGED))
+        per = snapshot(monkeypatch, "r3")["routing_neighbors"]["protocols"]
+        outside, _ = gs.outside_management(per, amap)
+        assert not [o for o in outside if o.startswith("ospf")]
+
+    def test_ripng_next_hops_are_unattributed_not_guessed(self, monkeypatch):
+        amap = gs.managed_addresses(_fleet_configs(MANAGED))
+        per = snapshot(monkeypatch, "s1")["routing_neighbors"]["protocols"]
+        outside, unattributed = gs.outside_management(per, amap)
+        assert outside == [] and "link-local" in unattributed[0]
+
+    def test_the_claim_says_what_it_rests_on_and_its_limits(self, monkeypatch):
+        amap = gs.managed_addresses(_fleet_configs(MANAGED))
+        devices = [{"hostname": h} for h in ("r3", "s3")]
+        snap = gs.take(devices, lambda d: snapshot(monkeypatch, d["hostname"]), intent,
+                       address_map=amap)
+        lines = gs.claim_lines(snap)
+        assert snap["claim"] == gs.WORKING
+        assert lines[0].startswith("Claim: configured and working, resting on 2 routing peer(s)")
+        assert "Outside management: r3: bgp 198.51.100.1, bgp 2001:DB8:51::2" in lines
+        assert lines[-1].startswith("Limits: the tool sees what the managed devices report")
+
+    def test_no_snapshot_still_states_its_limits(self):
+        assert gs.claim_lines(None)[-1].startswith("Limits:")
+
+    def test_not_assessed_says_so(self, monkeypatch):
+        snap = gs.take([{"hostname": "s3"}], lambda d: snapshot(monkeypatch, "s3"), intent)
+        assert "Outside management: NOT assessed (no address map was supplied)" in \
+            gs.claim_lines(snap)

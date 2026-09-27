@@ -1792,7 +1792,9 @@ def _read_routing_protocols(conn) -> dict:
     found: dict = {}
 
     try:
-        out = run_device_command(conn, "show ip bgp summary")
+        # BOTH address families: r3's intent declares an IPv6 peer too, and
+        # `show ip bgp summary` lists IPv4 sessions only.
+        out = run_device_command(conn, "show bgp all summary")
         bgp = _parse_bgp_summary(out)
         if bgp is not None:
             found["bgp"] = {"count": bgp["established"], "configured": bgp["configured"],
@@ -1809,6 +1811,7 @@ def _read_routing_protocols(conn) -> dict:
             rows = _parse_ospf_neighbor_rows(out)
             found["ospf"] = {"count": len(rows),
                              "states": [r["state"] for r in rows],
+                             "neighbors": [r["neighbor_id"] for r in rows],
                              "output": out[:2000]}
     except Exception:
         pass
@@ -1837,6 +1840,7 @@ def _read_routing_protocols(conn) -> dict:
         if "Neighbor ID" in (out or ""):
             rows = _parse_ospf_neighbor_rows(out)
             found["ospfv3"] = {"count": len(rows), "states": [r["state"] for r in rows],
+                               "neighbors": [r["neighbor_id"] for r in rows],
                                "output": out[:2000]}
     except Exception:
         pass

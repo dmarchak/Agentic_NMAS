@@ -49,6 +49,58 @@ WORKING = "configured and working"
 NOT_READ = ["heartbeats: NMAS reads no alert state until 7.2's reader, so the "
             "syslog path is not part of this snapshot"]
 
+#: What any snapshot of this kind cannot see, carried in every tag (the
+#: operator, 2026-09-27; the census's honest-limits line is the precedent).
+LIMITS = ("the tool sees what the managed devices report about themselves. A peer "
+          "outside management, a link the emulator abstracts, and anything beyond "
+          "the managed fleet are invisible to it, and 'established' or 'FULL' is "
+          "ONE side's report of a two-sided relationship.")
+
+
+def managed_addresses(configs: dict) -> dict:
+    """``{address: hostname}`` from each managed device's configuration: every
+    `ip address` and `ipv6 address` (loopbacks too, since an OSPF neighbour
+    is named by its router ID). IPv6 is upper-cased without its length."""
+    import re
+
+    out = {}
+    for host, text in (configs or {}).items():
+        for line in (text or "").splitlines():
+            m = re.match(r"^\s+ip address\s+(\d+\.\d+\.\d+\.\d+)\s", line)
+            if m:
+                out[m.group(1)] = host
+            m = re.match(r"^\s+ipv6 address\s+([0-9A-Fa-f:]+)/\d+", line)
+            if m:
+                out[m.group(1).upper()] = host
+    return out
+
+
+def outside_management(protocols: dict, address_map: dict) -> tuple:
+    """``(outside, unattributed)`` for one device's protocols.
+
+    *outside* names every routing peer that is not an address of a managed
+    device: its state is observed only from this side. *unattributed* names
+    what cannot be tied to a device at all from configurations (RIPng next
+    hops are link-local), stated rather than guessed."""
+    outside, unattributed = [], []
+
+    def check(proto, peer):
+        if peer and peer.upper() not in address_map and peer not in address_map:
+            outside.append(f"{proto} {peer}")
+
+    for peer in (protocols.get("bgp") or {}).get("peers") or []:
+        check("bgp", peer.get("neighbor", ""))
+    for proto in ("ospf", "ospfv3"):
+        for rid in (protocols.get(proto) or {}).get("neighbors") or []:
+            check(proto, rid)
+    for source in (protocols.get("rip") or {}).get("sources") or []:
+        check("rip", source.get("gateway", ""))
+    hops = (protocols.get("ripng") or {}).get("next_hops") or []
+    if hops:
+        unattributed.append(f"ripng: {len(hops)} link-local next hop(s), not tied to a "
+                            "device from configurations")
+    return outside, unattributed
+
 #: The protocols this module can judge. A declared protocol outside this set
 #: is "declared, not measured", which is not working.
 MEASURED = ("ospf", "ospfv3", "bgp", "rip", "ripng")
@@ -123,7 +175,7 @@ def judge_device(declared: list, snapshot: dict, *, intent_known: bool = True) -
     return {"working": not why, "protocols": protocols, "why": why or why_ok}
 
 
-def take(devices: list, read, intent_for) -> dict:
+def take(devices: list, read, intent_for, address_map: dict = None) -> dict:
     """The fleet's operational snapshot and the claim it supports.
 
     *read(device)* returns `pipeline._capture_operational_snapshot`'s dict or
@@ -143,8 +195,15 @@ def take(devices: list, read, intent_for) -> dict:
             continue
         declared = declared_protocols(intent) if intent is not None else []
         judged = judge_device(declared, snap, intent_known=intent is not None)
+        per = (snap.get("routing_neighbors") or {}).get("protocols") or {}
+        if address_map is None:
+            outside, unattributed = None, []
+        else:
+            outside, unattributed = outside_management(per, address_map)
         rows[host] = {
             "read": True, "declared": declared, **judged,
+            "outside_management": outside,
+            "unattributed": unattributed,
             "interfaces_up": (snap.get("interfaces") or {}).get("up_count"),
             "routes": (snap.get("routes") or {}).get("total_count"),
         }
@@ -157,16 +216,35 @@ def take(devices: list, read, intent_for) -> dict:
         "unread": sorted(unread),
         "not_working": sorted(h for h, r in rows.items() if not r["working"]),
         "not_read": list(NOT_READ),
+        "outside_management": {h: r["outside_management"] for h, r in rows.items()
+                               if r.get("outside_management")},
+        "outside_assessed": address_map is not None,
+        "limits": LIMITS,
     }
 
 
 def claim_lines(snapshot: dict) -> list:
     """The lines a baseline tag's message carries, for a person reading it."""
     if not snapshot:
-        return [f"Claim: {CONFIGURED} (no operational snapshot was taken)"]
-    lines = [f"Claim: {snapshot['claim']}"]
+        return [f"Claim: {CONFIGURED} (no operational snapshot was taken)",
+                f"Limits: {LIMITS}"]
+    outside = snapshot.get("outside_management") or {}
+    count = sum(len(v) for v in outside.values())
+    claim = snapshot["claim"]
+    if claim == WORKING and count:
+        claim += (f", resting on {count} routing peer(s) outside management, whose "
+                  "state is observed from one side only (named below)")
+    lines = [f"Claim: {claim}"]
     for host, row in sorted(snapshot["devices"].items()):
         state = "working" if row["working"] else "NOT working"
         lines.append(f"  {host}: {state}: {'; '.join(row['why'])}")
+    for host, peers in sorted(outside.items()):
+        lines.append(f"Outside management: {host}: {', '.join(peers)}")
+    if not snapshot.get("outside_assessed", True):
+        lines.append("Outside management: NOT assessed (no address map was supplied)")
+    for host, row in sorted(snapshot["devices"].items()):
+        for note in row.get("unattributed") or []:
+            lines.append(f"Unattributed: {host}: {note}")
     lines += [f"Not read: {n}" for n in snapshot["not_read"]]
+    lines.append(f"Limits: {snapshot.get('limits', LIMITS)}")
     return lines

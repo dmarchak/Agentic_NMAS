@@ -824,7 +824,9 @@ def _baseline_message(first_line: str, operational: dict = None) -> str:
     if operational:
         compact = {"taken_at": operational.get("taken_at"),
                    "claim": operational.get("claim"),
+                   "outside_management": operational.get("outside_management"),
                    "devices": {h: {k: r.get(k) for k in ("working", "declared", "why",
+                                                         "outside_management",
                                                          "interfaces_up", "routes")}
                                for h, r in (operational.get("devices") or {}).items()}}
         message += "\n\nOperational: " + json.dumps(compact, sort_keys=True)

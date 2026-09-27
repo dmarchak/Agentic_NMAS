@@ -19,8 +19,11 @@ claim and the snapshot:
 **Dry-run by default.** Without `--commit` it reads and judges, prints the
 claim it WOULD make, and commits nothing, so looking costs nothing.
 
-**What it does not read, and says so:** heartbeats. NMAS reads no alert
-state until 7.2's reader.
+**What it does not read, and says so:** heartbeats (NMAS reads no alert
+state until 7.2's reader). And what NO snapshot of this kind can see: a peer
+outside management, a link the emulator abstracts, anything beyond the
+managed fleet. Each routing peer that is not an address of a managed device
+is NAMED in the claim, since its "established" is one side's report.
 
 **Reads only.** Every command is a `show` from the pipeline's readers, all of
 which pass the shared read-only allowlist. The commit is the one write, and
@@ -116,8 +119,11 @@ def main(argv=None) -> int:
                                "not read"))
         return snapshots[host]
 
+    # The managed fleet's own addresses, from the configs just read: a routing
+    # peer that is none of them is outside management, and named.
     snapshot = golden_state.take(devices, read,
-                                 intent_reader(os.path.join(list_dir, "config_repo")))
+                                 intent_reader(os.path.join(list_dir, "config_repo")),
+                                 address_map=golden_state.managed_addresses(captures))
     for line in golden_state.claim_lines(snapshot):
         print(line)
 

@@ -4920,6 +4920,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   person and per device, drawn where people look. It stands on the
   attribution work (D10, P.3), which now serves accountability as well as
   security.
+- **A claim names what it RESTS ON** (the operator, 2026-09-27). r3's and r4's
+  only BGP peer is r5, retired from management: no credential, no capture, no
+  heartbeat. "BGP established" reads as a two-sided fact, and the tool
+  observes only one side. So the golden state names every routing peer that
+  is not an address of a managed device, and every tag carries a limits
+  line, the census's precedent: the tool sees what the managed devices
+  report about themselves. The live claim reads "configured and working,
+  resting on 4 routing peer(s) outside management".
 - **"Configured" and "configured and working" are different claims, and a
   baseline states which it makes** (E7, 2026-09-27). A baseline records
   configuration, so a broken moment and a good one read the same. A golden
