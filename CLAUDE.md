@@ -5329,11 +5329,17 @@ Loki outage up to 536 s apart.
   and states WHAT WAS WATCHING (a job behind 7.1). No model is involved.
   Handing that history to the model is a later decision, and the test for
   it is whether a person learns anything from the last fifty rows.
-- **The terminal: the split is COMMITTED, in 7.3** (NSOT_FEATURE_AUDIT 3a): a
-  read-only lens and config mode cut, in 7.3, with the console runbook as
-  break-glass. The same allowlist goes on `/run_command` and
-  `bulk_execute`. It first needs C61 fixed: the allowlist checks only the
-  first word, so `| redirect` writes.
+- **The terminal is REMOVED, not split** (decided 2026-09-27,
+  NSOT_FEATURE_AUDIT 3b, superseding 3a's split). A source of truth has no
+  pane that goes to the device directly: whatever happens in it happens to
+  the network and not to the record, and even read-only the affordance
+  teaches the wrong habit. Its audit log showed it was never used for a
+  read, only for the one hand change that broke r2. It goes in 7.8 with its
+  routes, socket events, session code and tab; the Device page's allowlisted
+  command box (7.3) is the one way to ask a device a question; break-glass
+  is the console plus the break-glass record; the `break_glass` gate kind
+  retires with it. The C61 allowlist goes on `/run_command` and
+  `bulk_execute` as planned.
 Stage 6 does not close first. 6.1, a live exposure, is fixed on its own
 schedule, and 6.2 comes before Stage 8. NSOT_STAGE7_PLAN.md's numbering
 holds.

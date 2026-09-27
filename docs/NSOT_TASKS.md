@@ -70,7 +70,7 @@ the task.
 |---|---|---|
 | Open the device's page | GUI (only while it is online) | |
 | Run a show command or a saved quick action | GUI | |
-| Open a terminal | GUI | COMMITTED 2026-09-27, in 7.3: a read-only LENS, config mode cut; `/run_command` and `bulk_execute` get the same allowlist (NSOT_FEATURE_AUDIT 3a) |
+| Open a terminal | **REMOVED** (decided 2026-09-27, NSOT_FEATURE_AUDIT 3b): a source of truth has no pane that goes to the device directly. Asking a device a question is the Device page's allowlisted command box (7.3); break-glass is the console plus the break-glass record. The terminal and its routes, socket events and session code are removed in 7.8 |
 | See its golden history, a version, or a diff | GUI (masked); reveal is curl | |
 | See its committed intent | GUI | |
 | Preview its template render and coverage | GUI | |

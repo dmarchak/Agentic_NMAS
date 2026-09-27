@@ -1,0 +1,19 @@
+File Systems:
+
+     Size(b)     Free(b)      Type  Flags  Prefixes
+*   2142715904    2018598912      disk     rw   flash0: flash:
+           -           -      disk     rw   flash1:
+           -           -      disk     rw   flash2:
+           -           -      disk     rw   flash3:
+           -           -    opaque     rw   system:
+           -           -    opaque     rw   tmpsys:
+        262144        251357     nvram     rw   nvram:
+           -           -    opaque     rw   null:
+           -           -    opaque     ro   tar:
+           -           -   network     rw   tftp:
+           -           -    opaque     wo   syslog:
+           -           -   network     rw   rcp:
+           -           -   network     rw   http:
+           -           -   network     rw   ftp:
+           -           -   network     rw   scp:
+           -           -    opaque     ro   cns:

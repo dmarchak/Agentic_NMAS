@@ -281,18 +281,38 @@ def _sync_manifest_platforms(csv_path: str) -> None:
         logger.debug("device: manifest platform sync failed for %s: %s", csv_path, exc)
 
 
+def parse_file_systems(text: str) -> list:
+    """The filesystems `dir` can list, from ``show file systems``: rows of
+    type disk or nvram, each by its FIRST prefix (the rest are aliases, as
+    ``flash:`` is of ``bootflash:``), the device's default (starred) first.
+
+    It replaced ``dir ?``, which the read-only allowlist refuses: ``?`` is
+    the CLI's inline help and leaves a partial command at the prompt. The
+    read that lists filesystems has a proper form, so the question is asked
+    with it rather than the allowlist widened (C101). Parsed from real
+    captures of a C8000v and a vIOS (`tests/fixtures/operational/`)."""
+    starred, rest = [], []
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        star = parts[0] == "*"
+        cols = parts[1:] if star else parts
+        # size, free, type, flags, then one or more prefixes
+        if len(cols) < 5 or cols[2] not in ("disk", "nvram"):
+            continue
+        prefix = cols[4]
+        if prefix.endswith(":"):
+            (starred if star else rest).append(prefix)
+    return starred + rest
+
+
 def get_device_context(dev: dict, filesystem: str | None = None):
     #Use a temporary connection to build filesystems and file list for device.
 
     def execute(conn):
-        # Filesystems
-        fs_output = conn.send_command_timing("dir ?")
-        filesystems: list[str] = []
-        for line in fs_output.splitlines():
-            line = line.strip()
-            parts = line.split()
-            if parts and parts[0].endswith(":"):
-                filesystems.append(parts[0])
+        # Filesystems, the default first (C101: a read the allowlist knows).
+        filesystems = parse_file_systems(conn.send_command("show file systems"))
 
         # Default to first filesystem
         fs = filesystem or (filesystems[0] if filesystems else "")

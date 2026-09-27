@@ -121,6 +121,34 @@ class TestTheBudgetKeepsALineForAPerson:
         assert C._count_vty_lines("hostname x\n") == 0    # unknown, never generous
 
 
+def test_counting_a_device_s_vty_lines_writes_nothing_and_imports_no_agent():
+    """C97's budget read the golden through the agent's lookup, whose import
+    creates directories: every session from a read-only CLI touched the
+    store, and `nmas-capture-output`'s audit hook caught it on the host. Run
+    in a child with an audit hook, so the harness's own imports cannot hide
+    it."""
+    import subprocess
+    import sys
+
+    code = ("import sys, os\n"
+            f"sys.path.insert(0, {ROOT!r})\n"
+            "writes = []\n"
+            "def hook(event, args):\n"
+            "    if event in ('os.mkdir', 'os.rename', 'os.remove') or (\n"
+            "        event == 'open' and len(args) > 1 and args[1] and any(c in str(args[1]) for c in 'wax+')):\n"
+            "        writes.append((event, str(args[0])))\n"
+            "from modules import connection as C\n"
+            "sys.addaudithook(hook)\n"
+            "print(C.vty_lines('192.0.2.77'))\n"
+            "print('agent imported:', 'modules.ai_assistant' in sys.modules)\n"
+            "print('writes:', [w for w in writes if '/data' in w[1] or 'nmas-test-data' in w[1]])\n")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         env=dict(os.environ), timeout=60).stdout
+    assert "(5, 'IOS default: the golden does not say')" in out, out
+    assert "agent imported: False" in out, out
+    assert "writes: []" in out, out
+
+
 class TestOperationsCloseWhatTheyOpen:
     def test_the_capture_reader_closes_its_session(self):
         import routes.golden as rg
@@ -284,3 +312,38 @@ class TestJobHealthCountsThem:
         rows = J.ssh_session_rows({})
         assert rows == [{"unit": "ssh-sessions", "what": rows[0]["what"], "state": "ok",
                          "max_age_minutes": 0, "detail": "holds no SSH session now"}]
+
+
+class TestTheFlashListingIsARead:
+    """C101: it asked `dir ?`, which the read-only allowlist refuses (`?` is
+    inline help and leaves a partial command at the prompt). It now asks
+    `show file systems`, parsed from real C8000v and vIOS captures."""
+
+    def _read(self, host):
+        return open(os.path.join(ROOT, "tests", "fixtures", "operational",
+                                 f"{host}__show_file_systems.txt"), encoding="utf-8").read()
+
+    def test_the_default_filesystem_first_aliases_folded(self):
+        from modules.device import parse_file_systems
+
+        assert parse_file_systems(self._read("r1")) == ["bootflash:", "webui:", "nvram:"]
+        assert parse_file_systems(self._read("s1")) == ["flash0:", "flash1:", "flash2:",
+                                                        "flash3:", "nvram:"]
+
+    def test_every_command_it_sends_is_a_read(self, monkeypatch):
+        from modules import device
+        from modules.readonly_commands import refusal
+
+        sent = []
+
+        class Conn:
+            def send_command(self, cmd, **kw):
+                sent.append(cmd)
+                return self_read if cmd == "show file systems" else "Directory of bootflash:/\n"
+            send_command_timing = send_command
+        self_read = self._read("r1")
+        monkeypatch.setattr("modules.connection.with_temp_connection",
+                            lambda dev, func: func(Conn()))
+        fs, _files, chosen = device.get_device_context({"ip": "192.0.2.1"})
+        assert chosen == "bootflash:" and fs[0] == "bootflash:"
+        assert sent and all(refusal(c) == "" for c in sent), sent

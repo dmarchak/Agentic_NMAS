@@ -91,8 +91,11 @@ A person's permitted kinds are the union of their roles, plus their grants.
 | **approver** | `approve` | whoever signs off templates, queue items, exceptions |
 | **administrator** | `configure` | whoever runs the tool itself |
 
-**Grants, per named person, never part of a role:** `reveal`, `break_glass`,
-`publish_remote`.
+**Grants, per named person, never part of a role:** `reveal` and
+`publish_remote`. (`break_glass` RETIRES with the terminal, its only
+subject, decided 2026-09-27, NSOT_FEATURE_AUDIT 3b: break-glass is the
+console plus the break-glass record, outside the tool, and a gate kind with
+no members is one somebody wires a new feature into by mistake.)
 
 The reasoning:
 
@@ -117,8 +120,8 @@ The reasoning:
 - **reveal, break_glass and publish_remote are grants. (differs:
   `publish_remote` added; the sketch did not place it.)**
   - `reveal` exposes a secret, and its blast radius is the credential.
-  - `break_glass` bypasses every guard this tool has, and its use is an
-    incident.
+  - `break_glass` (retired with the terminal, 2026-09-27) bypassed every
+    guard this tool has; break-glass now happens outside the tool entirely.
   - `publish_remote` decides that a third party holds the network's history,
     credential hashes included. It is a trust decision about somewhere else.
 

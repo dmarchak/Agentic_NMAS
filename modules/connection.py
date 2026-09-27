@@ -192,6 +192,29 @@ def _count_vty_lines(config: str) -> int:
     return total
 
 
+def _golden_for_ip(ip: str):
+    """The golden file for *ip*, found through each list's manifest, READING
+    ONLY. Opening a session must not write: it used to go through the agent's
+    golden lookup, whose import creates directories and whose legacy path
+    makes one, so every session opened from a read-only CLI touched the
+    store (found by `nmas-capture-output`'s own audit hook, 2026-09-27)."""
+    from modules import config
+    from modules.nsot import manifest
+
+    if not os.path.isdir(config.LISTS_DIR):
+        return None
+    for slug in sorted(os.listdir(config.LISTS_DIR)):
+        repo = os.path.join(config.LISTS_DIR, slug, "config_repo")
+        if not os.path.exists(manifest.manifest_path(repo)):
+            continue
+        _identity, entry = manifest.find_by_ip(repo, ip)
+        if entry:
+            path = manifest.golden_path_for(repo, entry)
+            if os.path.exists(path):
+                return path
+    return None
+
+
 def vty_lines(ip: str) -> tuple:
     """``(lines, source)`` for a device, from its golden config."""
     now = time.time()
@@ -200,9 +223,7 @@ def vty_lines(ip: str) -> tuple:
         return cached[0], cached[1]
     lines, source = DEFAULT_VTY_LINES, "IOS default: the golden does not say"
     try:
-        from modules.ai_assistant import _find_golden_config_file
-
-        path = _find_golden_config_file(ip)
+        path = _golden_for_ip(ip)
         if path:
             with open(path, encoding="utf-8") as fh:
                 counted = _count_vty_lines(fh.read())

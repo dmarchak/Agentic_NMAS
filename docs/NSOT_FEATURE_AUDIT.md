@@ -320,6 +320,79 @@ and when (P.3 step 7). The page says two things: this is the break-glass path
 and its use is recorded; and a change made here is drift until it is captured
 into intent.
 
+### 3b. The terminal, decided 2026-09-27: REMOVE IT. It replaces 3a.
+
+**The operator's principle:** this is a source of truth, and a terminal is a
+hole in the claim. The claim is that the record describes the network, and
+every mechanism here keeps it honest: intent is the target, the golden is
+the record, drift is the check, the confirm hash is the promise, the
+receipts are the evidence. A terminal sits outside all of it by
+construction: whatever happens in it happened to the network and not to the
+record. Even read-only, it teaches the wrong habit: a pane that says "you
+can go to the device directly" is the behaviour the design replaces. The
+affordance is the problem, not only the capability. So it is removed with
+its routes, its socket events, its session code and its tab. The Device
+page's allowlisted command box is the one way to ask a device a question,
+and it goes through `open_ssh`, the allowlist, the session budget and the
+masking like everything else.
+
+**Its measured cost, all found on 2026-09-27:** a second SSH path outside
+`open_ssh` (C101, which made C97's "one opener" false); a raw PTY relay with
+no redaction while every other path masks; a held vty line on a device with
+five, counted by nothing; the hand-rolled session code behind B13's
+credential leak; and a pane that looks like somewhere to type config even
+once it refuses.
+
+**The four answers, recorded as the reasons:**
+
+1. **What it does that an allowlisted command box with history and good
+   rendering cannot:**
+   - output that streams as it arrives (a long `ping` or `traceroute`,
+     `terminal monitor`'s live log): the box returns at the end, so a long
+     read says it is running and since when (the standing rule), and live
+     logs already have their home in Loki and Grafana;
+   - `?` help across IOS's whole syntax (answer 3);
+   - interactive prompts (a `copy`, `reload` or `clear` confirmation,
+     extended ping): every one is a write or a dialogue the allowlist
+     refuses anyway, so each becomes a named, gated action or the console;
+   - state across commands in one session (a `cd`, `terminal` settings):
+     nothing the allowlist permits needs it;
+   - config mode: cut regardless.
+   Nothing real is lost that the box should not absorb: history, rendering,
+   a running state for long reads, and completion.
+2. **Does anything route a person to it? No, for reads or config.** The
+   runbooks and recovery texts name the console; the only references are
+   the page's own text, the task list row and this audit. Its audit log
+   (`data/terminal_audit.jsonl`, since P.3 step 7) holds five rows in its
+   whole life: one refusal, which was a measurement probe (2026-09-26), and
+   two opens on 2026-09-27 at 15:39, the hand change made in config mode to
+   break r2 for C70. **It was never used for a read.**
+3. **Is `?` completion worth a session? No.** It is the one thing a box
+   cannot do natively, and within what the box allows it is covered by
+   completion built on the client from the allowlist (verbs and filters)
+   and the fleet's own show-command tree. `?` beyond that completes commands
+   the box would refuse.
+4. **The break-glass story is unchanged: the console plus the break-glass
+   record.** containerlab `docker exec -it <node> telnet localhost 5000`,
+   Proxmox `qm terminal <vmid>`, a hardware serial port, and `nmas-breakglass`
+   for the credential. The terminal was never break-glass: it needs SSH and
+   the tool working, which is exactly when break-glass is not needed.
+
+**Consequences:**
+- **The `break_glass` gate kind RETIRES with the terminal.** Its only
+  members are the terminal's two socket events (`connect_terminal`,
+  `terminal_input`), and a gate kind with no members is a thing somebody
+  wires a new feature into by mistake. Its two settings
+  (`require_identity_for_break_glass`, `require_person_for_break_glass`)
+  stay in the schema, since keys are never deleted, and are marked as
+  governing nothing and taken off the posture panel's live gates, because a
+  posture row for a gate with no subject reads as protection.
+- **C97's session budget becomes true:** one opener, no exception.
+- **7.3 loses the terminal split** (the first reduction in scope found on
+  2026-09-27); **7.8 removes the terminal**; **7.3's command box absorbs**
+  history, rendering, a running state for long reads and completion, with
+  C61's allowlist on `/run_command` and `bulk_execute` as already planned.
+
 ### 3a. The terminal, revisited 2026-09-27: SPLIT IT. COMMITTED by the operator, in 7.3
 
 **Decided with it (the operator, 2026-09-27):**
