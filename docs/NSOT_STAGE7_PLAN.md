@@ -273,7 +273,7 @@ that can appear in English needs an anchor*).
 | `golden-is-a-record` | device History, Versions | *"A golden is an approved capture: a record of the device, not a target. The target is intent, rendered."* |
 | `merge-only` | the preview-confirm component (deploy) | residue drawn as *"on the device, not in intent: will NOT be removed"* |
 | `confirm-by-hash` | the preview-confirm component (every use) | *"You are confirming this exact program. If the device or intent moves first, it is refused."* |
-| `approval-binds-a-set` | Source of truth, Templates | the approval badge names the device set it covers, and a revocation shows its reason |
+| `approval-binds-the-template` | Source of truth, Templates | the approval badge states what an approval covers (the template and every file it imports) and what it does NOT (whether any one device is reproduced), and a revocation shows its reason. *Renamed 2026-09-27 from `approval-binds-a-set`, which described approval scheme 2: since P.5 an approval binds the template, never a device set, and the old text asked the screen to state something false.* |
 | `provenance-limits-remove` | NetBox remove preview | what will be skipped, and *"NMAS did not create it"* |
 | `pending-vs-promoted` | Fleet, and the device header | *"Created, not yet reached: not managed until verified"* |
 | `revert-is-forward` | revert-intent preview | what the revert will NOT undo, and that removal needs Mode B |
@@ -400,6 +400,50 @@ first.**
 | **7.7** | Settings split, file-only settings listed, diagnostics |
 | **7.8** | Removals, each with `check_removed_definitions.py` and a recorded reason, last so nothing goes before its replacement is on screen |
 | **7.9** | Configure forms: batch 1 (a parallel track, not blocking) |
+
+### 7.0 built, 2026-09-27 (awaiting the host check)
+
+The gates came first: B1 (a drifted deploy returned the device's
+configuration) and C51 (24 GETs created the list they were asked about,
+refused now at one boundary). Then the four checks. Each has its measured
+allowlist, pinned at a ceiling and compared exactly, so it only shrinks:
+
+| Check | Test | Measured | Allowlist |
+|---|---|---|---|
+| Per-route reachability | `test_route_reachability.py` | 212 routes, 218 (method, route) pairs; 5 non-GUI with a verified consumer | 54 unreachable, each with its group and home |
+| Invalidation | `test_invalidation_map.py` | 115 mutating endpoints, all declared, 32 data keys; three measured cases wired | 29 declared keys nobody subscribes to yet |
+| Payload to render | `test_payload_is_rendered.py` | 27 renderers against real responses; five anchors | 118 carried and undrawn, 18 reads on branches no fixture reaches |
+| Nine concepts | `test_concepts_are_taught.py` | 4 live, executed against real payloads | 5 pending, each naming its step |
+
+**What building them found**, each recorded where it belongs:
+- **The six `/netbox/query/*` routes were "the AI agent's", and nothing
+  calls them.** The consumer was claimed and never checked. Group (d),
+  removed in 7.8.
+- **Reachability first decided "mixed read/write" per RULE.** Its method-blind
+  control should have failed and did not, because `/drift/settings` is two
+  rules on one path. Per PATH, three more halves showed as unreached.
+- **The invalidation hook keyed on the endpoint alone**, so a READ of a panel
+  whose endpoint also writes announced an invalidation, and a refusal did
+  too. Both were found by the payload check's measurements, and fixed with
+  tests (`9264d97`, `dca1071`).
+- **C55: both SNMP communities on an argument-free GET**, the read-write one
+  drawn nowhere. B11's sweep planted secrets only in stores it knew about.
+  Registered, and not fixed here, because 7.0 changes no route's behaviour.
+- **The concept `approval-binds-a-set` described approval scheme 2**, so the
+  table asked the screen to state something false. Renamed
+  `approval-binds-the-template`. The harness now reads this table and fails
+  if the two disagree.
+- **The plan's anchor "list_name on /onboard/pending"** names the fact; the
+  key is `list`.
+
+**Floors restated from measurement:** the GUI doc's "at least 220 routes" and
+"131 mutating routes" predate P.3 and P.4's removals (212 and 115 now).
+
+**Acceptance 6 is the operator's, on the host.** Each of the three measured
+cases updates without a reload:
+- after onboarding's Verify promotes a device, the device list shows it;
+- after a commit, the Remote card shows the new push state;
+- after a drift run, the badge shows it.
 
 ## 9. Deferred, recorded rather than scoped
 

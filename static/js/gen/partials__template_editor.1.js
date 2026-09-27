@@ -68,8 +68,10 @@ function approvalCellHtml(d) {
     return `<span class="badge bg-success">approved</span>
         <span class="text-muted ms-1">${_tEsc(d.approved_at || '')}${d.actor ? ' by ' + _tEsc(d.actor) : ''}</span>
         ${ev ? `<div class="text-muted small">${_tEsc(ev)}</div>` : ''}
-        <div class="small">${_tEsc(d.covers || '')}</div>
-        <div class="small text-muted">${_tEsc(d.does_not_cover || '')}</div>`;
+        <div data-concept="approval-binds-the-template">
+          <div class="small">${_tEsc(d.covers || '')}</div>
+          <div class="small text-muted">${_tEsc(d.does_not_cover || '')}</div>
+        </div>`;
   }
   const lines = [d.reason].concat(d.changes || []).filter(Boolean);
   return `<span class="badge bg-secondary">not approved</span>

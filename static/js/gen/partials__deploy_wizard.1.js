@@ -72,6 +72,12 @@ function _programHtml(d) {
   return `
     <div class="mt-2">
       <div class="small fw-semibold">The program: exactly these ${cmds.length} line(s) will be sent, in this order</div>
+      <div class="small text-muted" data-concept="confirm-by-hash">You are
+        confirming this exact program. If the device or intent moves before you
+        apply, the apply is refused for this device and nothing is sent to it.</div>
+      <div class="small text-muted" data-concept="merge-only">Merge-only: lines
+        are added or replaced. A line on the device that intent does not
+        mention is never removed; it is listed below as not removed.</div>
       <div class="font-monospace small bg-body-tertiary p-2 rounded" style="max-height:280px;overflow:auto"
            data-program="${_dEsc(d.device)}">${rows}</div>
       ${d.authorisation_error

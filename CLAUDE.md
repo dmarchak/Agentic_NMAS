@@ -981,6 +981,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_route_reachability.py` | 7.0 (1): every (method, route) pair is reachable from a rendered page (both pages, with a device; `url_for` in template source counted), non-GUI with a consumer shown to reference it, or allowlisted with its group and home; per METHOD where a PATH mixes a read and a write (decided per path: `/drift/settings` is two rules); exact both ways, ceiling pinned at the measured 54; anchors each way. `tests/route_references.py` is the shared reader |
 | `test_invalidation_map.py` | 7.0 (2): every mutating route (115, from `url_map`) declares the data it changes or `Nothing` with a reason, and an undeclared one is found (a throwaway app is the built-in control); the response carries the keys (header always, `invalidates` in a JSON body) and is otherwise unchanged; subscriptions both directions with floors, and a shrinking list of declared keys nobody subscribes to yet; the shipped client EXECUTED in duktape against a real response's header, a failed re-fetch marking the panel with the time of the value shown; the device list redrawn from the index's own templates (the 0-to-1 case) |
 | `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 118, PHANTOM 18) compared exactly; anchors `commands`/`dangerous`/`attribution` on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
+| `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -4792,7 +4793,11 @@ PROPOSES fixes as ordinary plans, and never confirms its own.
 is demonstrated end to end** (ZTP: a reservation the tool wrote, a config
 the tool served, a device reached, rotated, saved, promoted, and reboot-safe;
 teardown clean). The ledger is in [docs/P6_ZTP.md](docs/P6_ZTP.md) section
-8. **Stage 7 is next, at 7.0.** Its gate list is **CONFIRMED 2026-09-27**
+8. **Stage 7.0 is BUILT (2026-09-27)**, awaiting its host check (the three
+panels updating live): reachability, invalidation, payload-to-render and
+the nine-concept harness, each with a measured allowlist that only shrinks
+([docs/NSOT_STAGE7_PLAN.md](docs/NSOT_STAGE7_PLAN.md), "7.0 built"). 7.1
+next. The gate list is **CONFIRMED 2026-09-27**
 ([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md), the Stage 7 dependency notes):
 - B1 before 7.0, with C51 inside 7.0's harness;
 - C8 before 7.1;

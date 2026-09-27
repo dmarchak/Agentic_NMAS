@@ -92,7 +92,7 @@ function pendingBannerHtml(data) {
       node boots with, from the staged credential — it is available only
       until that credential is rotated, because after rotation the device
       holds a different one and the old file would not log in.</div>
-    <div class="small mb-1">Their management interface is
+    <div class="small mb-1" data-concept="pending-vs-promoted">Their management interface is
       <strong>unverified</strong> until the tool reaches them — it was
       checked for spelling, never against the device. They are deliberately
       not in the inventory until then.</div>
