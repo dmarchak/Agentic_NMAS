@@ -80,6 +80,7 @@ def world(tmp_path, monkeypatch):
     return {"local": local, "bare": bare, "archive": archive, "saved": saved}
 
 
+@pytest.mark.usefixtures("intent_matches")
 class TestTheHookFiresOnTheNoCommitPath:
     """The cause that was real, and sufficient on its own."""
 

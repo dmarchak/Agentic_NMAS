@@ -1024,6 +1024,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_invalidation_map.py` | 7.0 (2): every mutating route (115, from `url_map`) declares the data it changes or `Nothing` with a reason, and an undeclared one is found (a throwaway app is the built-in control); the response carries the keys (header always, `invalidates` in a JSON body) and is otherwise unchanged; subscriptions both directions with floors, and a shrinking list of declared keys nobody subscribes to yet; the shipped client EXECUTED in duktape against a real response's header, a failed re-fetch marking the panel with the time of the value shown; the device list redrawn from the index's own templates (the 0-to-1 case) |
 | `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 99, PHANTOM 18) compared exactly; since 7.1 a server-side adapter's reads count, because it decides what reaches the screen; anchors `commands`/`dangerous`/`attribution` (read by the adapter) and `preview`/`lines`/`from_this_edit` (drawn) on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
 | `test_no_duplicate_dict_keys.py` | C90: no dict literal with constant keys repeats one, in the program, its scripts or its tests (4,530 scanned, floor 4,000); a duplicate keeps the later value silently, which dropped a `RENDERS` entry and would drop a gate from `route_gates.GATES` |
+| `test_intent_match.py` | C89 (c)/(d), C91: r2's REAL config and committed intent parsed from it, through the deploy plan's own comparison: the capture matches, the host's exact break differs by `+1 -1` naming both lines, no intent is `unknown`; through `save_golden`, a departing capture is committed with `Intent-Match: no: r2 (+1 -1)` and earns no baseline, a matching one earns it, and a committing Save All with a device skipped earns none (C91) |
 | `test_results_are_drawn.py` | 7.1 step 1: every action gated confirm, approve or publish_remote (41, the gate table) shows its result where it can be read again, or is placed: drawn by the component with a reader (deploy, restore; evidence from source), pending (31, measured, only shrinks) or no GUI (tied to the reachability list); a toast is never enough for this population, and the bar is shown refusing; colour is part of the result (`FALSE_GREEN`: Save All, the NetBox sync card, onboarding Create) and the first XSS-shaped finding is pinned (`UNESCAPED`) |
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
@@ -5057,6 +5058,30 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the NetBox sync card, and onboarding's Create. With C83 (every golden
   commit's subject says "baseline"), that is the word or the colour
   asserting more than the operation earned.
+- **A duplicate key in a dict literal silently keeps the later value, and
+  that can disable a security control with no error, no warning and a green
+  suite** (C90, the operator's emphasis, 2026-09-27). A new `RENDERS` entry
+  was dropped behind an older one, and 22 tests passed about a route they
+  were not examining. The same slip in `route_gates.GATES` would silently
+  drop a gate. The failure is invisible at every stage a person looks: the
+  source reads correctly, the tests pass, and the runtime behaves
+  consistently. Only a scan finds it, so `test_no_duplicate_dict_keys.py`
+  scans every dict literal with constant keys in the program, its scripts
+  and its tests (4,530), with a control that catches the exact shape. When
+  a language behaviour can remove a control without a trace, a mechanical
+  scan is the only review that works.
+- **A baseline asserts the network is at its committed INTENT, and every
+  capture path now says whether it is** (C89 (c) and (d), decided
+  2026-09-27). `save_golden()` is the one place every capture commits
+  (Save All, deploy, restore, an approval, the CLI), so it computes each
+  capture against committed intent with the deploy plan's own comparison
+  (`intent_match`). It writes a computed `Intent-Match:` trailer on every
+  golden commit, and it takes a baseline only with coverage AND every
+  capture matching. Against the golden the comparison would be empty by
+  construction, because the capture becomes the golden. **Writing it found
+  C91**: coverage was checked only when nothing changed, so a Save All that
+  committed took a baseline with a device skipped. Six tests had pinned
+  that, by seeding Save All baselines with no inventory size.
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
   The list covers a stored config at the ref, printable ASCII, and

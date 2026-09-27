@@ -379,3 +379,21 @@ def _no_test_writes_into_live_data(request):
         f"({LISTS_DIR}). Patch `modules.config.get_list_data_dir` BEFORE "
         f"anything that resolves a path through it — `get_list_data_dir()` "
         f"calls os.makedirs(), so merely resolving a path is enough.")
+
+
+@pytest.fixture
+def intent_matches(monkeypatch):
+    """Every capture reads as MATCHING its committed intent, for tests about
+    baseline MECHANICS (tags, hooks, coverage, messages).
+
+    Since 2026-09-27 a baseline needs every capture to match committed intent
+    (register C89 (c)), and a fixture device with no committed intent is
+    `unknown`, which correctly earns nothing. The comparison itself is tested
+    against real renders in `test_intent_match.py`. A test that uses this AND
+    asserts a denial on intent grounds would be testing nothing, so none does."""
+    from modules.nsot import intent_match as im
+
+    monkeypatch.setattr(im, "intent_match",
+                        lambda repo, list_name, hostname, config_text, platform="": {
+                            "state": "match", "adds": 0, "removes": 0, "reordered": 0,
+                            "lines": [], "why": ""})

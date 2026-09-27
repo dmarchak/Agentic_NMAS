@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def lab(tmp_path, monkeypatch):
+def lab(tmp_path, monkeypatch, intent_matches):
     """An isolated list directory with a settings stub."""
     monkeypatch.setattr("modules.settings_schema.get_setting",
                         lambda key, default=None: {
@@ -48,6 +48,11 @@ def _seed(list_name, items, **kw):
     exercise resolution or refusal call `R.save_golden` directly.
     """
     kw.setdefault("allow_new", True)
+    # A Save All here captures the test's whole fleet, which is the items it
+    # passes: coverage is stated, because a Save All that committed without it
+    # took a baseline with devices skipped (C91), and these tests had pinned it.
+    if kw.get("source") == "save_all":
+        kw.setdefault("inventory_size", len(items))
     return R.save_golden(list_name, items, **kw)
 
 def _item(name="R1", body="hostname R1\n", ip="203.0.113.1", nb_id=42):

@@ -38,10 +38,15 @@ def _seed(list_name, items, **kw):
     exercise resolution or refusal call `R.save_golden` directly.
     """
     kw.setdefault("allow_new", True)
+    # A Save All here captures the test's whole fleet, which is the items it
+    # passes: coverage is stated, because a Save All that committed without it
+    # took a baseline with devices skipped (C91), and these tests had pinned it.
+    if kw.get("source") == "save_all":
+        kw.setdefault("inventory_size", len(items))
     return R.save_golden(list_name, items, **kw)
 
 @pytest.fixture
-def lab(tmp_path, monkeypatch):
+def lab(tmp_path, monkeypatch, intent_matches):
     monkeypatch.setattr("modules.settings_schema.get_setting",
                         lambda key, default=None: {
                             "nsot_git_author_name": "NMAS",

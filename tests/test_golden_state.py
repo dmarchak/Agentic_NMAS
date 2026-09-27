@@ -149,8 +149,9 @@ def lab(tmp_path, monkeypatch):
 
 def _save(operational, name="R1"):
     item = R.GoldenItem(name, f"hostname {name}\n", "203.0.113.1", netbox_id=42)
+    # The test's fleet is this one device: coverage stated (C91).
     return R.save_golden("Lab", [item], source="save_all", allow_new=True,
-                         operational=operational)
+                         operational=operational, inventory_size=1)
 
 
 WORKING_SNAP = {"taken_at": "t", "claim": gs.WORKING, "working": True,
@@ -161,6 +162,7 @@ WORKING_SNAP = {"taken_at": "t", "claim": gs.WORKING, "working": True,
 
 
 @pytestmark_git
+@pytest.mark.usefixtures("intent_matches")
 class TestTheTagCarriesTheClaim:
     def test_working_earns_a_golden_state_tag_and_says_so(self, lab):
         result = _save(WORKING_SNAP)

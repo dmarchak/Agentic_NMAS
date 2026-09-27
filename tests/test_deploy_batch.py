@@ -958,6 +958,7 @@ class TestTheNotesListingEvaluatesApplicability:
         assert body["blocking_count"] == 1
 
 
+@pytest.mark.usefixtures("intent_matches")
 class TestABatchCommitsOnceAndLeavesABaseline:
     """A batch is an event, and the record should say so.
 

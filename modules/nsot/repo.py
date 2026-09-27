@@ -43,7 +43,10 @@ _repo_locks: dict = {}
 _locks_guard = threading.Lock()
 
 VALID_SOURCES = ("manual", "save_all", "pipeline", "approval", "ai",
-                 "onboarding", "migration", "rename", "template", "extraction")
+                 "onboarding", "migration", "rename", "template", "extraction",
+                 # `golden_state` was coerced to "manual" until 2026-09-27, so
+                 # nmas-golden-state's commits named the wrong workflow.
+                 "golden_state", "capture")
 
 
 class GoldenItem:
@@ -566,6 +569,35 @@ def _baseline_wanted(baseline, source: str, changed_count: int) -> bool:
     return source in ("save_all", "migration") or changed_count > 1
 
 
+def _baseline_decision(baseline, source: str, changed_count: int, measured: list,
+                       inventory_size: int, skipped, intent: dict,
+                       require_coverage: bool) -> tuple:
+    """``(earned, reasons)``: ONE decision for both of save_golden's paths.
+
+    A baseline asserts the network is at its committed intent (register C89
+    (c), decided 2026-09-27), so beyond being wanted it needs coverage and
+    every capture MATCHING COMMITTED INTENT. Against the golden it would be
+    empty by construction, because the capture becomes the golden.
+
+    Coverage is checked whenever the caller did not decide it (C91: a Save
+    All that CHANGED a device took a baseline with another device skipped,
+    because coverage was checked only on the no-change path). A caller that
+    passes ``baseline=True`` has measured coverage itself (the deploy and
+    restore paths' `_baseline_earned`)."""
+    if not _baseline_wanted(baseline, source, changed_count):
+        return False, []
+    from modules.nsot.intent_match import baseline_denial
+
+    reasons = []
+    if require_coverage and not _covers_inventory(measured, inventory_size, skipped):
+        named = ", ".join(sorted(s.get("hostname", "?") for s in (skipped or [])))
+        reasons.append("not every inventory device was captured"
+                       + (f" ({named} skipped)" if named else
+                          f" ({len(measured)} of {inventory_size or 'an unstated number'})"))
+    reasons += baseline_denial(intent)
+    return not reasons, reasons
+
+
 def _covers_inventory(measured: list, inventory_size: int, skipped) -> bool:
     """Was EVERY device in the inventory actually measured?
 
@@ -653,6 +685,13 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                     "unchanged": unchanged, "tags": [],
                     "renamed": rename_result["renamed"]}
 
+        # Every capture in this save against its COMMITTED INTENT, computed
+        # once, read by the trailer and the baseline decision alike (C89).
+        from modules.nsot.intent_match import intent_match, trailer as _intent_trailer
+        intent = {item.hostname: intent_match(repo, list_name, item.hostname,
+                                               item.config_text, item.platform or "")
+                  for item in items}
+
         for item, identity, rel, abs_path, content in pending:
             with open(abs_path, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(content)
@@ -694,8 +733,10 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             # empty commit to hang a tag on would be a false record of a
             # change, and the commit is not what the baseline is about.
             tags, baseline_tag = [], ""
-            if _baseline_wanted(baseline, source, 0) and _covers_inventory(
-                    unchanged, inventory_size, skipped):
+            earned, denied = _baseline_decision(baseline, source, 0, unchanged,
+                                                inventory_size, skipped, intent,
+                                                require_coverage=True)
+            if earned:
                 _rc, head, _err = git(repo, "rev-parse", "HEAD")
                 head = (head or "").strip()
                 if _rc == 0 and head:
@@ -732,7 +773,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                                  "tags": tags, "devices": []})
             return {"ok": True, "commit": "", "changed": [],
                     "unchanged": unchanged, "tags": tags,
-                    "baseline": baseline_tag,
+                    "baseline": baseline_tag, "baseline_denied": denied,
+                    "intent": intent,
                     "renamed": rename_result["renamed"],
                     "message": ("No content changed — no commit created."
                                 + (f" Baseline {baseline_tag} tagged at the "
@@ -755,6 +797,9 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             trailers.append(f"Device-Name: {c['hostname']}")
         if pipeline_id:
             trailers.append(f"Pipeline-Id: {pipeline_id}")
+        # COMPUTED, whatever the path (C89 (d)): which captures enshrined a
+        # state that departs from committed intent, answerable from git.
+        trailers.append(_intent_trailer(intent))
         trailers.extend(extra_trailers or [])
 
         commit_message = f"{subject}\n\n" + "\n".join(trailers) + "\n"
@@ -783,7 +828,10 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         # it. Without this a single-device deploy left no reference to restore
         # the network to — the change was recorded and the moment was not.
         baseline_tag = ""
-        if _baseline_wanted(baseline, source, len(changed)):
+        earned, denied = _baseline_decision(
+            baseline, source, len(changed), [c["hostname"] for c in changed] + unchanged,
+            inventory_size, skipped, intent, require_coverage=baseline is None)
+        if earned:
             baseline_tag = _unique_tag(repo, f"baseline/{stamp}", sha)
             if git(repo, "tag", "-a", baseline_tag, "-m",
                    _baseline_message(f"network baseline — {len(changed)} device(s) "
@@ -808,6 +856,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
     # to find out whether a restore point exists.
     return {"ok": True, "commit": sha, "changed": [c["hostname"] for c in changed],
             "unchanged": unchanged, "tags": tags, "baseline": baseline_tag,
+            "baseline_denied": denied, "intent": intent,
             "renamed": rename_result["renamed"], "error": ""}
 
 
