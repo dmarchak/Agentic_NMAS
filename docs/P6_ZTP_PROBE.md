@@ -102,6 +102,7 @@ a stock vrnetlab node bootstrapped itself.
 | P-M2a | Is Gi1 answered? | Yes, by qemu's DHCP, within seconds. If AutoInstall runs, it may try TFTP against qemu's server on Gi1 and find nothing |
 | P-M2b | Does a DHCPDISCOVER from `aa:bb:cc:00:02:50` appear on `br-mgmt`? | Yes, and it gets no offer (the MAC is unreserved on a pool-less subnet) |
 | P-M2c | Does Gi1's answer stop discovery before Gi2 is tried? | Unknown. This is the measurement most likely to decide the lab |
+| P-M2d | (added after the re-run, with `CLAB_MGMT_PASSTHROUGH`) Is Gi1 left unanswered? | Yes: Gi1's DISCOVERs appear on the probe's docker bridge and go unanswered, AutoInstall keeps asking on both interfaces, and no `Acquired IPv4 address … GigabitEthernet1` line appears |
 
 ### Observed: M1, run 2026-09-26 with the FOUR-edit variant (before the disk edits)
 
@@ -177,7 +178,12 @@ python3 -m py_compile /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless
 python3 /home/dmarchak/labs/ztp-a/patches/patch-configless.py /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py
 ```
 
-The last line must be `REFUSED: already patched`.
+The last line must be `REFUSED: already patched`, and the patched file's
+sha256 must be `258c163304e66a7a…` (computed from the fixture by the
+six-edit patcher). **The patcher never upgrades an older configless copy:**
+a mark says "patched" and not with which edits, so re-staging starts from the
+adopted base (the `cp` above overwrites the copy) and the patcher applied to
+that. The base is unchanged at `e483dd2475b505bd…`; only the edits changed.
 
 ## Step 2 — confirm nothing collides (lab host, and the NMAS host)
 
@@ -320,10 +326,63 @@ tool to truncate the file in place, which is the mechanism that erased
 - subnet `id: 255` (`10.255.0.0/24`) in `kea-dhcp4.conf` gets
   `"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>`.
 
-Then `kea-dhcp4 -t /etc/kea/kea-dhcp4.conf` must pass (config-test, touching
-nothing). Whether the include is accepted inside a value is itself measured
-here, not assumed. Then restart Kea, and confirm the subnet reads back with
-an empty reservation list.
+**Measured before writing the commands (2026-09-26, read-only):**
+
+- Subnet 255's block holds `"reservations": []` at line 91, so the edit is
+  one line, a replacement.
+- Kea's AppArmor profiles (`usr.sbin.kea-dhcp4`, `usr.sbin.kea-ctrl-agent`)
+  allow reads of `/etc/kea/**`. So the fragment's directory must be UNDER
+  `/etc/kea`: a fragment anywhere else would be refused by the profile
+  whatever its mode. `/etc/kea/nmas/` satisfies both constraints.
+- The tool already reads Kea through the Control Agent: `config-get` is ok,
+  subnet 255 shows `reservations: []` and no option data, and
+  `reservation_for('aa:bb:cc:00:02:50')` answers `not_reserved`.
+
+**The commands (NMAS host, as the operator).** Each writes, then shows what
+it wrote.
+
+```bash
+sudo cp -a /etc/kea/kea-dhcp4.conf /etc/kea/kea-dhcp4.conf.bak-pre-d1
+ls -l /etc/kea/kea-dhcp4.conf.bak-pre-d1
+
+sudo install -d -o dmarchak -g _kea -m 0750 /etc/kea/nmas
+sudo install -o dmarchak -g _kea -m 0640 /dev/null /etc/kea/nmas/reservations-255.json
+printf '[]\n' > /etc/kea/nmas/reservations-255.json
+ls -ld /etc/kea/nmas && ls -l /etc/kea/nmas/reservations-255.json
+sudo -u _kea cat /etc/kea/nmas/reservations-255.json
+```
+
+Expect `drwxr-x--- dmarchak _kea`, `-rw-r----- dmarchak _kea`, and `[]` read
+back AS `_kea`. That last line is the check that Kea's own user can read
+it. The `printf` runs as `dmarchak` and writes into an existing file, so its
+owner, group and mode stay as `install` set them.
+
+Then the one-line edit. Line 91 changes from `"reservations": []` to
+`"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>`:
+
+```bash
+sudoedit /etc/kea/kea-dhcp4.conf
+diff /etc/kea/kea-dhcp4.conf.bak-pre-d1 /etc/kea/kea-dhcp4.conf
+sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
+```
+
+The `diff` must show exactly that one line and nothing else. `-t` parses
+without touching the running server; if it refuses the include inside a
+value, stop here, since the running server is untouched. Then:
+
+```bash
+sudo systemctl restart kea-dhcp4-server
+systemctl show -p ActiveState,SubState,MainPID,NRestarts kea-dhcp4-server
+journalctl -u kea-dhcp4-server -n 15 --no-pager
+```
+
+**What D1's readback can and cannot show.** An empty reservation list reads
+identically before and after the edit, so reading back `[]` cannot show that
+the include is live. It shows only that Kea started with the edited file.
+The include is proven live by M5 step 3, where a reservation written ONLY
+into the fragment appears in `config-get`. Rollback, if needed:
+`sudo cp -a /etc/kea/kea-dhcp4.conf.bak-pre-d1 /etc/kea/kea-dhcp4.conf`
+then the restart above.
 
 ### M5 — does a reservation survive a reload AND a restart (the operator's first requirement)
 

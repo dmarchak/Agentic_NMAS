@@ -468,3 +468,6 @@ def test_the_ztp_probe_pair_matches_its_runbook():
     assert pinned == ["aa:bb:cc:00:02:50"], pinned
     assert "startup-config" not in yaml.safe_load(topology)["topology"]["nodes"]["bp-ztp-a"], \
         "the ZTP probe must boot with no startup config"
+    env = yaml.safe_load(topology)["topology"]["nodes"]["bp-ztp-a"].get("env") or {}
+    assert env.get("CLAB_MGMT_PASSTHROUGH") == "true", \
+        "without passthrough qemu's DHCP answers Gi1 first and AutoInstall stops there (M1 re-run)"

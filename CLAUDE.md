@@ -4588,6 +4588,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   file sorts first. A probe that removes a precondition needs a row that
   checks the precondition is gone ON THE DEVICE (P-M0, `show
   startup-config`) before any later row means anything.
+- **A configless IOS-XE device phones Cisco before it finds anything
+  local** (P.6 M1 re-run, 2026-09-26; D4, decided). Given DNS and a route
+  out, PnP resolved `devicehelper.cisco.com` and sent a HELLO carrying its
+  UDI (product ID and serial). That is a property of ZTP, not of this lab: a
+  deployment that has not thought about it announces its inventory to a
+  third party during onboarding. So a ZTP reservation carries no route and no
+  resolver (options 3, 6, 33, 121), and that is a CHECK over the EFFECTIVE
+  options (global, shared-network, subnet, reservation), not a fact about
+  subnet 255 that holds because nobody has touched it.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every

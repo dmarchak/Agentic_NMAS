@@ -156,7 +156,7 @@ that fact is how `tftp_server_ip` came to name `192.168.0.30`. A per-list
 store beside `source.json` is the right shape when a second network needs a
 second segment, and P.6 does not need one.
 
-### D4. What a ZTP reservation offers (proposed; the operator's to decide)
+### D4. What a ZTP reservation offers (decided, the operator's, 2026-09-26)
 
 Measured in M1's re-run: a configless IOS-XE 17.6 node with DNS and a route
 out resolves `devicehelper.cisco.com` and sends it a PnP HELLO, carrying its
@@ -165,15 +165,32 @@ harmlessly. On a network with a way out, it discloses the device's identity
 to a third party. A 600 s PnP backoff followed; whether that delays local
 discovery was not measured.
 
-**Proposed:** a reservation the tool writes carries the address and the
+**This is a property of ZTP, not a lab setting**, and the operator's framing
+is the reason: every greenfield device on a network with a way out does this,
+so a deployment that has not thought about it announces its inventory to a
+third party during onboarding.
+
+**Decided:** a reservation the tool writes carries the address and the
 config-source options it needs (option 67, and 150 or 66 as M3 decides) and
 **never `routers` or `domain-name-servers`**. The node reaches the config
 server on its own `/24` (D3 derives that address from the interface Kea
-serves the subnet on), so it needs neither. Measured 2026-09-26: subnet 255
-carries no option data today, so this is the posture already in force. The
-build would pin it: the reservation writer refuses options 3 and 6, with a
-control showing an option-6 reservation refused. Subnets 10 and 20 do carry
-both, which matters only if ZTP is ever served there.
+serves the subnet on), so it needs neither.
+
+**A CHECK, not a happy accident** (the operator's requirement). Subnet 255
+carries no option data today (measured 2026-09-26), but that holds only
+because nobody has touched it, while subnets 10 and 20 hand out both. So the
+check computes the options a reservation in the ZTP subnet would EFFECTIVELY
+receive: global, shared-network, subnet and reservation `option-data`
+together. It refuses anything that gives a route or a resolver: `routers`
+(3), `domain-name-servers` (6), `static-routes` (33) and
+`classless-static-route` (121). Option 121 is on the list because a default
+route can arrive that way with no option 3 at all. It runs in two places:
+at plan time, where a `ztp` onboarding is refused while the check fails,
+and as a job-health row, so an option added to subnet 255 later is named
+the day it appears rather than at the next onboarding. Client classes can
+also carry options; if the config defines any, the check reports it
+could not rule them out, rather than passing. Built with the P.6
+reservation writer, with a control for each option code.
 
 ---
 
