@@ -4782,6 +4782,11 @@ teardown clean). The ledger is in [docs/P6_ZTP.md](docs/P6_ZTP.md) section
 - C10 before 7.4;
 - C2 and B3 within 7.6;
 - C7 before 7.7.
+Stage 8's triage trigger is decided as a READ, never an inbound push
+(NSOT_PLAN 8.6): one reader job caches Grafana's alert instances; the
+page and the agent both consume it; grouping is on the ONSET
+(`startsAt` minus the rule's window), because per-device windows fire one
+Loki outage up to 536 s apart.
 Stage 6 does not close first. 6.1, a live exposure, is fixed on its own
 schedule, and 6.2 comes before Stage 8. NSOT_STAGE7_PLAN.md's numbering
 holds.

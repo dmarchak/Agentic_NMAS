@@ -3853,9 +3853,186 @@ s1-s4, OSPF/BGP/RIP/DMVPN). An example is an instruction: examples naming a
 topology that does not exist teach the agent to look for devices that are
 not there.
 
+**8.6 How a Grafana alert reaches the agent's triage. DECIDED 2026-09-27,
+design only** (the operator's proposal, argued rather than accepted).
+
+**Grafana writes alert state, and NMAS reads it. There is no inbound
+route.** One reader JOB (a timer, declared in `job_health`) reads Grafana's
+alert state into a stored cache. Needs attention (7.2) renders that cache.
+The agent is triggered by a TRANSITION in the cache, and **never polls
+Grafana itself**. "The human and the agent look at the same thing" is only
+true by construction if there is ONE read: two readers of one question
+disagree, as the restore preview and `_baseline_earned()` did.
+
+**Why not a webhook, at its real strength:**
+- **Reason 1 is the weaker one.** A webhook contact point can carry
+  credentials, and could arrive through Access with a service token, so it
+  is not unauthenticated by nature. What P.4 cut in `/jenkins/webhook` was a
+  push whose BODY was trusted as a result. The agent could not trust an
+  alert payload either, and would re-read everything it says. So the push
+  carries one bit, "look now", and a poll gives that bit too.
+- **Reason 2 is the decisive one.** The correlation is the work, and it
+  needs the reads anyway.
+- **If a faster class ever appears, the fallback is a DOORBELL, not a
+  webhook.** A body-less POST, declared in the gate table as a service
+  kind, which runs the reader early and never reads the request. Nothing
+  needs one today.
+
+**Latency.** Measured from the repository:
+- The only rules NMAS generates are the heartbeat rules
+  (`nmas-heartbeat-rules`: `for: 0s`, per-device windows, 750-1286 s as
+  quoted). **Nothing here defines an adjacency or reachability alert.**
+- A 60 s reader adds at most 60 s, under 8% of the shortest window.
+- A webhook is not "seconds" end to end either: Alertmanager's
+  `group_wait` (30 s by default) sits in front of every notification. So the
+  comparison is about 60 s against about 30 s. This is predicted from
+  Grafana's defaults, and to be measured on the host.
+
+**No alert class needs faster, because this decision does not touch the
+path to a PERSON.**
+- Grafana's own contact point notifying a human stays, independent of
+  NMAS. It is also the only alert path that survives NMAS being down.
+- Triage is advice for a person who has already been notified. It is not
+  the page.
+
+**The latency risk that would matter is the evidence moving on, not the
+delay.** So triage reads are anchored at the instance's ONSET, never at
+"now". For a heartbeat alert the onset is `startsAt` minus the window: the
+rule fires one window after the silence began, and the rule's own
+`window_seconds` label carries the window. Loki, Prometheus and git keep
+history, so a report written 60 s late describes the same window. A report
+that queried "now" would describe the recovery and call it the incident.
+
+**Newly firing: a state machine keyed on the INSTANCE, not the rule.**
+- **An instance is the rule uid, the label fingerprint and `startsAt`.** A
+  re-fire after a resolve has a new `startsAt`, so it is a new instance, and
+  it is noticed rather than deduplicated.
+- **The flap is the report loop.** A re-fire of the same fingerprint within
+  a hold-down (proposed: 30 min after its last triage) does not call the
+  model. It attaches to the existing report as "fired again, Nth time since
+  HH:MM", and a flap count is a finding in itself. The limits:
+  - one model call per fingerprint per hold-down;
+  - a per-hour cap;
+  - a cap reached is a job-health row, never a silent stop.
+- **A triage that fails** (the model errored) is retried with backoff, and
+  the failure streak is a row. The background agent's 27 silent failures
+  had exactly this shape.
+- **The store: absent and unreadable are different facts, again.**
+  - **Absent** (a first run, a reset) must not triage everything already
+    firing as new, which would be a report storm on the first start. It
+    records the current set as *"firing when triage started; not
+    triaged"*, as one row.
+  - **Unreadable** refuses and is counted, and never writes over the
+    history. The settings erasure was exactly that write.
+- **A report is keyed on the instance it answers.** Shown against a later
+  instance of the same rule, it would be a correct report about a different
+  event: wrong, and looking right.
+
+**A burst: grouping is code, conclusions are the model's, and suppression
+is nobody's.**
+- **Grouping is deterministic, on the ONSET, never on `startsAt`.** This was
+  found while recording the decision. Per-device windows mean one silence
+  that began at one instant fires each device's rule up to 536 s apart. So a
+  `startsAt` window of any sensible width would split a single Loki outage
+  into several incidents. Instances whose onsets fall together form one
+  incident. Later, topology adjacency from stored neighbour data can join
+  them, also computed in code. **One incident, one model call, one report.**
+- **The model's judgement is confined to the report's TEXT:** which members
+  look like one cause, which look independent, and *"unexplained"* as an
+  allowed answer. That is unattended judgement, and it is acceptable only
+  because its output is advice, labelled as advice, and acts on nothing.
+- **The model may NOT suppress.** "This one is a duplicate, no report" is the
+  decision that must never be made unattended. Every firing instance belongs
+  to exactly one incident, and the report has a line for every member
+  ("every device accounted for", the batch rule). A wrong merge then costs a
+  wrong sentence, visible beside the member it misdescribes, and never a
+  missing event.
+- **The burst this fleet will produce first is not the adjacency case.**
+  - No adjacency rules exist, and a heartbeat breaks only when a failure
+    cuts a device's path to rsyslog.
+  - With `noDataState` and `execErrState` both Alerting, **a Loki or Alloy
+    outage fires EVERY heartbeat rule.** The rule's own description says
+    "the heartbeat cannot say which".
+  - So a deterministic check runs before any model call: is the pipeline
+    answering, and is ANY device's heartbeat arriving? Everything silent,
+    with the datasource erroring, is one incident whose subject is the
+    pipeline, not nine device reports.
+  - Whether Grafana marks an error-state instance distinctly is measured on
+    the host's version, not assumed.
+- **An alert for a device not in the inventory** (a retired device whose rule
+  was never regenerated: C54's shape, one store over) is named as that, and
+  not triaged as a device fault.
+
+**Grafana down: the reader has its own row, and "200" is not "evaluating".**
+- **The reader is a declared job**, and every read records its outcome:
+  - ok;
+  - unreachable;
+  - auth refused;
+  - stale (no successful read in three intervals).
+
+  A source that could not be read is a row saying so (Stage 7 §1a), never
+  "nothing firing".
+- **The wrong-and-looks-right state is a Grafana that answers and has
+  stopped evaluating**: 200, with nothing firing. That is the Proxmox
+  listing's 200 with 0 items, and it reads exactly like a healthy fleet. The
+  reader checks each rule's last evaluation time and reports stale
+  evaluation as its own state. That the rules API carries the evaluation
+  time is to be measured on the host's version.
+- **A floor on the population.** The reader expects at least as many
+  heartbeat rules as the generated rules file holds. Fewer is a permission
+  or provisioning gap (*a monitor's permissions can hide what it
+  monitors*), and reads UNPROVEN rather than clean. Which Grafana role can
+  read alert state is measured before 7.2, not assumed.
+- **When NMAS is down, NMAS watches nothing.** Grafana's person contact
+  point (above) is what remains. The pull design removes the push INTO NMAS,
+  and keeps the push to a person.
+
+**Where the report lands: ON the alert's row, never as a row of its own.**
+- **A report row beside the alert row is two rows about one event**, the
+  three-reports problem restated on the page. So Needs attention has one row
+  per INCIDENT, in §1a's shape:
+  - what;
+  - device(s);
+  - since;
+  - cause;
+  - operands;
+  - the ONE action.
+
+  The report attaches to that row as its triage, with the members listed.
+- **The report separates what it READ from what it CONCLUDES.**
+  - Each claim cites its query and time range.
+  - Each conclusion is labelled a hypothesis.
+
+  A guess that reads as a finding is the agent's version of *a message
+  whose first words are good news*.
+- **The action stays a person's.** If the agent proposed a fix, the row's
+  action is *"Review the proposed plan"*: an ordinary plan in 7.1's
+  preview-confirm component. The agent never confirms it, and that is
+  structural, not a prompt instruction. The agent's actor is `ai-agent`, and
+  `require_person_for_confirm` refuses anything that is not a verified
+  person.
+- **When the alert resolves, the row leaves Needs attention**, because it no
+  longer needs attention. The report stays reachable from the device page's
+  History with its instance identity and resolve time, because a report
+  that vanishes with its alert cannot be checked afterwards.
+
+**What Stage 7 must leave room for** (the reason to decide this now):
+- **7.2's Grafana source is a reader job writing a cache**, which §0a already
+  requires. It keeps each instance's identity (fingerprint and `startsAt`)
+  and its `window_seconds`, not a boolean "firing". A cache that stored only
+  "s3: firing" could not tell a re-fire from a continuation, or compute an
+  onset, and Stage 8 would have to rebuild the source.
+- **Needs attention rows are per incident, with a member list**, even while
+  every incident has one member.
+- **A row has a slot for an attached triage**, empty until Stage 8.
+
+The *proposed* numbers (hold-down, cap) are starting points, to be set from
+8.4's first real runs, the way the heartbeat windows came from measured
+arrivals. Not built.
+
 *Acceptance:* every one of the 73 tools is classified with a reason; the
 allowlist exists **in code** with a test that an unlisted tool is refused;
 no tool reaches a device outside the confirmed deploy path; the prompt
 examples name only devices in this lab; and the background agent is enabled
 **last**, with one real run observed and reported -- the same bar drift
-had to clear.
+had to clear; and triage is triggered as 8.6 decides (a read, never an inbound push).

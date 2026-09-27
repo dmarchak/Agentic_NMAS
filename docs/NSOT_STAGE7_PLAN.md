@@ -412,6 +412,14 @@ first.**
 - **The agent's triage-and-propose UI** (Stage 8): its reports attach to
   Needs attention rows, and its proposals arrive as ordinary plans in the
   preview-confirm component. Stage 7 leaves the place for them.
+  **How triage is triggered is decided** (NSOT_PLAN.md 8.6, 2026-09-27):
+  Grafana writes alert state and NMAS reads it; there is no inbound route.
+  That puts three constraints on 7.2, which are cheap now and expensive
+  later:
+  - the Grafana source is a reader job keeping each alert INSTANCE
+    (fingerprint, `startsAt`, `window_seconds`), not a boolean "firing";
+  - rows are per incident, with a member list;
+  - each row has an empty slot for a triage.
 
 ## 10. Stage 7 acceptance
 
