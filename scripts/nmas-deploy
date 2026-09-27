@@ -25,7 +25,12 @@ Exit codes. Each means one thing; none is "probably fine":
   4  refused by local state: edits in the checkout, root-owned files in .git,
      or origin/main is not a fast-forward
   5  moved (or already there), but NOT confirmed running: the restart failed,
-     or /health never reported the target from a freshly started process
+     or /health never reported the target from a freshly started process. The
+     verdict's FIRST line names a mixed version when the service still runs
+     another commit, with the command to run
+  6  cannot restart from here (sudo needs a password, and there is no
+     terminal to type it in): refused BEFORE the checkout moved, so no mixed
+     version exists. Run it in a terminal on the host
 
 "No run found" is exit 2, never a pass. That is the fail-open shape of the
 old Jenkins ci_gate, which was skipped silently whenever it could not ask
@@ -57,6 +62,29 @@ USER_AGENT = "nmas-automation/1.0"      # honest; Cloudflare-style checks reject
 WORKFLOW_PATH = ".github/workflows/ci.yml"
 
 OK, CI_REFUSED, COULD_NOT_ASK, OFFLINE_FAILED, LOCAL_REFUSED, UNHEALTHY = 0, 1, 2, 3, 4, 5
+CANNOT_RESTART = 6
+
+
+def can_restart(run=subprocess.run, isatty=None):
+    """``(ok, reason)``: can this run restart the service? Asked BEFORE the
+    checkout moves (the operator, 2026-09-27): "I can't finish this, so I
+    won't start it". Run over SSH with no terminal, the first version moved
+    the checkout and then failed at sudo's password prompt, leaving the
+    service on the old commit against the new checkout: a mixed version.
+
+    A cached or passwordless sudo passes as it is. With a terminal, `sudo -v`
+    asks for the password NOW, before anything moves. With neither, refused.
+    A passwordless rule was declined on purpose: CI gates what deploys, a
+    person gates when."""
+    isatty = sys.stdin.isatty if isatty is None else isatty
+    if run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
+        return True, "sudo already authorised"
+    if not isatty():
+        return False, ("sudo needs a password and there is no terminal to type it in "
+                       "(run over SSH without one)")
+    if run(["sudo", "-v"]).returncode == 0:
+        return True, "sudo authorised"
+    return False, "sudo was not authorised"
 
 
 def git(repo, *args, check=True):
@@ -357,7 +385,14 @@ def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90,
 
 
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
-         clock=time.time, sleep=time.sleep, unit=unit_state) -> int:
+         clock=time.time, sleep=time.sleep, unit=unit_state, ready=None) -> int:
+    # In the order it happened: over SSH stdout was block-buffered and the
+    # verdict (stderr) printed first, above the lines that led to it.
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(line_buffering=True)
+        except (ValueError, OSError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--offline", action="store_true",
@@ -402,6 +437,16 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     if code != OK:
         return finish(code, message)
 
+    # Can this run FINISH? Asked before anything moves, so a run that cannot
+    # restart leaves the checkout where it was and no mixed version exists.
+    able, why = (ready or can_restart)()
+    row.update(restart_ready=able, restart_ready_reason=why)
+    if not able:
+        return finish(CANNOT_RESTART,
+                      f"NOT DEPLOYED: cannot restart {SERVICE} from here ({why}). The "
+                      f"checkout was NOT moved: still at {head[:10]}, and the target "
+                      f"{target[:10]} passed CI. Run nmas-deploy in a terminal on the host.")
+
     if head != target:
         git(repo, "merge", "--ff-only", "--quiet", target)
         what = f"deployed {head[:10]} -> {target[:10]}"
@@ -419,7 +464,8 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                                             check=True, capture_output=True, text=True)))()
     except (subprocess.CalledProcessError, OSError) as exc:
         detail = getattr(exc, "stderr", "") or str(exc)
-        return finish(UNHEALTHY, f"{what}, NOT restarted: {str(detail).strip()}")
+        return finish(UNHEALTHY, _mixed_headline(health or _health, target)
+                      + f"{what}, NOT restarted: {str(detail).strip()}")
     ok, seen, reason = wait_for_running(target, before["MainPID"], health or _health,
                                         unit, clock, sleep)
     body = (seen or {}).get("health") or {}
@@ -428,9 +474,28 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                running_pid=body.get("pid"), running_commit=body.get("commit"),
                app_started_at=body.get("started_at"))
     if not ok:
-        return finish(UNHEALTHY, f"{what}, restart issued, but NOT confirmed running: {reason}")
+        return finish(UNHEALTHY, _mixed_headline(health or _health, target)
+                      + f"{what}, restart issued, but NOT confirmed running: {reason}")
     return finish(OK, f"{what}, restarted: pid {before['MainPID']} -> {state.get('MainPID')}, "
                       f"running {target[:10]} since {state.get('start')} (systemd). {message}")
+
+
+def _mixed_headline(health, target: str) -> str:
+    """The FIRST line of a failed verdict when the service runs another commit
+    than the checkout: what the state is and the one command that ends it
+    (the operator: exit 5 with a paragraph told nobody what to do)."""
+    try:
+        _status, body = health()
+    except Exception:                                  # noqa: BLE001
+        body = None
+    running = (body or {}).get("commit") or ""
+    if not running:
+        return (f"POSSIBLY MIXED VERSION: checkout at {target[:10]}, and /health did not say "
+                f"what the service runs -- run `sudo systemctl restart {SERVICE}`\n")
+    if running != target:
+        return (f"MIXED VERSION: checkout at {target[:10]}, service running {running[:10]} "
+                f"-- run `sudo systemctl restart {SERVICE}`\n")
+    return ""
 
 
 def _health():

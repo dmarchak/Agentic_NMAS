@@ -181,7 +181,8 @@ class TestTheRestoresOwnGates:
             "credential unchanged": "pass",
             "this ref's intent usable today": "not_applicable",
             "dangerous lines": "pass",
-            "capture unchanged since this preview": "at_apply"}
+            "capture unchanged since this preview": "at_apply",
+            "no other operation holds this device": "at_apply"}      # C99
 
     def test_a_device_with_no_stored_config_reached_nothing_else(self, monkeypatch):
         gates = _gates(_real_payload(monkeypatch), "r2")

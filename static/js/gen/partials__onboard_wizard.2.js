@@ -10,6 +10,7 @@
    value in hand, dropped on the way to the call. */
 async function onboardVerify(hostname, listName) {
   const list = listName || (document.getElementById('obList') || {}).value || '';
+  inFlightBusy(true);          // phase two runs for minutes: the panel says what runs (C99)
   try {
     const r = await fetch('/onboard/verify/' + encodeURIComponent(hostname), {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -27,6 +28,7 @@ async function onboardVerify(hostname, listName) {
       if (host) { host.innerHTML = verifyFailureHtml(hostname, d, list); return; }
     }
   } catch (e) { showToast('Verify failed: ' + e, 'danger'); }
+  finally { inFlightBusy(false); }
   loadOnboardPending(list);
 }
 

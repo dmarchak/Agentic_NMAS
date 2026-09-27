@@ -83,6 +83,14 @@ ROTATED_PERSISTED = "rotated_and_persisted"
 ROTATED_PENDING_PERSIST = "rotated_persistence_not_attempted"
 #: Persistence was ATTEMPTED and did not complete.
 ROTATED_UNVERIFIED = "rotated_persistence_unverified"
+#: The DEVICE holds the new password and the tool's record of it did not
+#: complete (2026-09-27, found by the half-completion survey). rotate() used
+#: to set ROTATED_PENDING_PERSIST ("rotated and committed") whatever `_commit`
+#: answered, and then DELETE the staging copy: when the credential store's
+#: write was the step that failed, the device held a password recorded
+#: nowhere, and the message said "live and recorded". The staging copy is
+#: kept now, and this state says so first.
+ROTATED_NOT_RECORDED = "rotated_not_recorded"
 REVERTED = "reverted"
 REVERT_FAILED = "revert_failed"
 #: Reverted, and the proof could not RUN — a local fault, not a device verdict.
@@ -433,7 +441,7 @@ def persistence_failed(result: dict) -> bool:
 
 def rotation_succeeded(result: dict) -> bool:
     """Is the device rotated, whatever became of the persistence chain?"""
-    return result.get("state") in (ROTATED_PENDING_PERSIST,
+    return result.get("state") in (ROTATED_PENDING_PERSIST, ROTATED_NOT_RECORDED,
                                    ROTATED_UNVERIFIED, ROTATED_PERSISTED)
 
 
@@ -474,6 +482,15 @@ def summarise(result: dict) -> str:
             "would boot the OLD password: fix the cause, then run "
             f"`scripts/nmas-persist-credential {device}`, which succeeds only "
             "when nmas-check-startup-applies would read SAFE."),
+        # THE DANGER FIRST, and the one certain copy named.
+        ROTATED_NOT_RECORDED: (
+            f"{device}: ROTATED ON THE DEVICE BUT NOT RECORDED. "
+            f"{result.get('reason', '')}. The device now accepts ONLY the new "
+            "password, and this tool may still hold the old one, so do NOT "
+            "rotate again and do NOT reboot. The new password is kept, "
+            f"encrypted, at {result.get('staged_at', 'the staging directory')}: "
+            "record it from there (staged_plaintext() decrypts it), and only "
+            "then remove that file."),
         REVERTED: (
             f"{device}: the new credential did not verify, so the original was "
             "restored and proven. The device is unchanged."),
@@ -1485,6 +1502,15 @@ def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     result["golden_updated"] = capture_ok
     _step("commit", commit["ok"], commit.get("error", commit.get("commit", "")))
     result["commit"] = commit
+    if not commit.get("ok"):
+        # The staging copy is the ONLY certain copy of the new password now:
+        # keep it. Deleting it here is how a failed store write became a
+        # device nobody could log into.
+        result["state"] = ROTATED_NOT_RECORDED
+        result["staged_at"] = f"{repo}/{STAGING_REL}/{hostname}.enc"
+        result["reason"] = ("rotated on the device, but recording it FAILED: "
+                            + (commit.get("error") or "the commit did not complete"))
+        return result
     result["state"] = ROTATED_PENDING_PERSIST
     result["reason"] = "rotated and committed; persistence not yet verified"
     clear_staged(repo, hostname)

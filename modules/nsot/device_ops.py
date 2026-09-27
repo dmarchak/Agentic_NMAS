@@ -102,6 +102,88 @@ def describe(holder: dict, now: float = None) -> str:
                    "queued, and nothing was sent to it.")
 
 
+#: What a holder is waiting on, by the progress step it noted: "what it waits
+#: on" is the half of an in-flight state a person needs most (C99). The
+#: pipeline's stage names come first; an unknown step is shown as it is.
+STEP_WORDS = {
+    "netbox_query": "reading NetBox",
+    "template_render": "rendering the program",
+    "ci_gate": "checking the program for dangerous lines",
+    "pre_snapshot": "reading the device before the change",
+    "config_diff": "computing the difference",
+    "deploy": "sending the program to the device",
+    "post_snapshot": "reading the device after the change",
+    "verify": ("verifying: routing protocols are given up to 90 s to settle, "
+               "and it waits for them"),
+    "save_golden": "recording the new golden",
+    "audit_log": "writing the audit record",
+}
+
+
+def busy_text(list_name: str, hostname: str) -> str:
+    """What holds *hostname* now, in words, or "" when nothing does: the
+    preview's gate says it BEFORE the confirm (C99), where it used to surface
+    only as the apply's refusal. It is checked again at apply, by the lock."""
+    found = holder(list_name, hostname)
+    if not found:
+        return ""
+    return describe(found).split(" One operation per device")[0]
+
+
+def held(list_name: str) -> list:
+    """Every device held in *list_name* now: its holder, newest first. A READ:
+    it lists the list's lock files and asks each; it creates nothing."""
+    from modules import config
+
+    out, seen = [], set()
+    with _mu:
+        for (lst, host), mine in _held.items():
+            if lst == list_name.lower():
+                out.append(dict(mine["holder"]))
+                seen.add(host)
+    folder = os.path.join(config.DATA_DIR, "device_ops", _safe(list_name.lower()))
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        names = []
+    for name in names:
+        if not name.endswith(".lock"):
+            continue
+        path = os.path.join(folder, name)
+        host = _read_holder_file(path, name[:-5]).get("device") or name[:-5]
+        if host in seen:
+            continue
+        found = holder(list_name, host)
+        if found:
+            out.append(found)
+    return sorted(out, key=lambda h: h.get("started", 0), reverse=True)
+
+
+def in_flight(list_name: str, now: float = None) -> list:
+    """What is running on *list_name*'s devices, in words (C99): who, what,
+    since when, and what it is waiting on. A fifty-second restore showed
+    nothing while it ran, and the silence caused a second change."""
+    now = time.time() if now is None else now
+    rows = []
+    for h in held(list_name):
+        progress = h.get("progress") or {}
+        started = h.get("started", 0) or 0
+        moved = progress.get("at", started) or started
+        step = progress.get("step", "")
+        rows.append({
+            "device": h.get("device", ""), "operation": h.get("operation", ""),
+            "words": OPERATION_WORDS.get(h.get("operation", ""), h.get("operation", "")),
+            "actor": h.get("actor", ""), "pid": h.get("pid"),
+            "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
+            "held_for_s": round(now - started),
+            "step": step, "step_words": STEP_WORDS.get(step, step),
+            "step_ago_s": round(now - moved),
+            "stalled": now - moved > STALL_AFTER_SECONDS,
+            "text": describe(h, now).split(" One operation per device")[0],
+        })
+    return rows
+
+
 _held: dict = {}            # key -> {"fd", "count", "thread", "holder"}
 _mu = threading.Lock()
 

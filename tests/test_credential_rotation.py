@@ -2826,3 +2826,47 @@ class TestOneOwnerForTheOxidizedConnection:
         fetch_out = cr.confirm_fetch("192.0.2.1", "2026-01-01T00:00:00Z")
         assert fetch_out["ok"] is False
         assert "oxidized_url" in fetch_out["error"]
+
+
+class TestAFailedRecordKeepsTheOnlyCopy:
+    """The half-completion survey (2026-09-27): rotate() set "rotated and
+    committed" whatever `_commit` answered, then deleted the staging copy. A
+    failed credential-store write left a device holding a password recorded
+    nowhere, reported as "live and recorded"."""
+
+    def test_the_state_says_not_recorded_and_the_copy_is_kept(self, wired):
+        import os
+
+        wired["commit_ok"] = False
+        staged = []
+        real = cr.stage_plaintext
+
+        def spy(repo, hostname, password):
+            staged.append(real(repo, hostname, password))
+            return staged[-1]
+        cr.stage_plaintext, restore = spy, real
+        try:
+            result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        finally:
+            cr.stage_plaintext = restore
+        assert result["state"] == cr.ROTATED_NOT_RECORDED
+        assert staged and os.path.exists(staged[0]), "the only copy was deleted"
+        assert cr.staged_plaintext(wired["repo"], "r2"), "the kept copy must decrypt"
+        summary = cr.summarise(result)
+        assert summary.startswith("r2: ROTATED ON THE DEVICE BUT NOT RECORDED")
+        assert "do NOT rotate again" in summary and staged[0] in summary
+        assert "live and recorded" not in summary
+        assert cr.rotation_succeeded(result) is True
+
+    def test_the_control_a_recorded_rotation_clears_the_copy(self, wired):
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
+        assert cr.staged_plaintext(wired["repo"], "r2") is None
+
+    def test_job_health_names_it(self):
+        from modules import job_health
+
+        rows = job_health.rotation_rows([{"device": "r2", "state": cr.ROTATED_NOT_RECORDED,
+                                          "at": "2026-09-27T23:00:00Z"}])
+        assert rows[0]["state"] == "not_recorded"
+        assert "not_recorded" not in job_health.OK_STATES

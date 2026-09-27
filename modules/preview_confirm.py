@@ -123,6 +123,20 @@ CAPTURE_GATE_DETAIL = ("the stored capture is re-read at apply, and a change to 
                        "here, so save its golden first")
 
 
+BUSY_GATE = "no other operation holds this device"
+
+
+def busy_gate(d: dict) -> dict:
+    """C99: another operation holding the device is said at the PREVIEW,
+    naming it, not first as the apply's refusal. It is checked again at
+    apply, where the lock is taken, so a free device reads `at_apply`."""
+    busy = d.get("busy") or ""
+    return (gate(BUSY_GATE, "fail", busy + " Preview again when it has finished.")
+            if busy else
+            gate(BUSY_GATE, "at_apply", "nothing holds it now; the apply takes the device "
+                                        "and refuses if another operation has it by then"))
+
+
 def _deploy_gates(d: dict, failed: str) -> list:
     """One gate per reason a deploy can be refused, by name: the same
     conditions `blocking_reasons` states as sentences, plus the two checked
@@ -134,6 +148,8 @@ def _deploy_gates(d: dict, failed: str) -> list:
             for n in ("template approved", "committed intent", "template reproduces the device",
                       "every line modelled or acknowledged", "printable ASCII",
                       "dangerous lines", "rollback block")]
+        # No busy gate: a device that cannot be built reaches no apply, so
+        # "the apply takes the device" would be a claim about nothing.
     gaps = d.get("template_gaps") or {}
     gap_words = [f"{n} {w}" for n, w in ((gaps.get("missing"), "line(s) not reproduced"),
                                          (gaps.get("extra"), "line(s) invented"),
@@ -180,6 +196,7 @@ def _deploy_gates(d: dict, failed: str) -> list:
     if failed:
         built.insert(0, gate("program built", "fail", failed))
     return built + [
+        busy_gate(d),
         gate(CAPTURE_GATE, "at_apply", CAPTURE_GATE_DETAIL),
         gate("credential unchanged", "at_apply",
              "compared with the capture at apply, before anything connects")]
@@ -245,7 +262,7 @@ def deploy_preview(devices: list, request) -> dict:
         ]
         targets.append({
             "name": name, "state": state,
-            "selectable": not (blocked or unauthorised or failed),
+            "selectable": not (blocked or unauthorised or failed or d.get("busy")),
             "select_data": {"hash": d.get("capture_hash") or "",
                             "command-hash": d.get("command_hash") or ""},
             "program": {"lines": commands, "dangerous": d.get("dangerous") or [],
@@ -310,7 +327,7 @@ def _restore_gates(d: dict, failed: str) -> list:
                                               or f"{len(dangerous)} authorised")))
     if failed and d.get("deployable"):
         out.insert(0, gate("program built", "fail", failed))
-    return out + [gate(CAPTURE_GATE, "at_apply", CAPTURE_GATE_DETAIL)]
+    return out + [busy_gate(d), gate(CAPTURE_GATE, "at_apply", CAPTURE_GATE_DETAIL)]
 
 
 def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
@@ -380,7 +397,7 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
         ]
         targets.append({
             "name": name, "state": state,
-            "selectable": not (blocked or unauthorised or failed),
+            "selectable": not (blocked or unauthorised or failed or d.get("busy")),
             "select_data": {"hash": d.get("capture_hash") or "",
                             "command-hash": d.get("command_hash") or ""},
             "program": {"lines": commands, "dangerous": d.get("dangerous") or [],
@@ -767,7 +784,7 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
             "name": name,
             "state": ("unread" if not e.get("read") else
                       "capturable" if e.get("changed") else "unchanged"),
-            "selectable": bool(e.get("read")),
+            "selectable": bool(e.get("read")) and not e.get("busy"),
             "select_data": {"hash": e.get("capture_hash") or ""},
             "program": {"lines": list(e.get("diff") or []) if e.get("read") else [],
                         "none": ("Nothing is recorded: it could not be read." if not e.get("read")
@@ -777,7 +794,8 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
                          {"name": "platform", "value": e.get("platform") or "unknown"},
                          {"name": "committed intent", "value": _intent_words(intent)}],
             "gates": ([gate("device read", "pass" if e.get("read") else "fail",
-                            "" if e.get("read") else (e.get("error") or "no answer"))]
+                            "" if e.get("read") else (e.get("error") or "no answer")),
+                       busy_gate(e)]
                       + ([gate("capture unchanged since this preview", "at_apply",
                                "the device IS re-read at apply, and one that moved is refused")]
                          if e.get("read") else [])),

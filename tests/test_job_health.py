@@ -90,12 +90,12 @@ def test_the_headline_counts_and_names():
     journal = _ok(NOW - 60)
     # images=[] and settings=[]: this test is about the systemd jobs' count;
     # the Proxmox image rows, the settings rows and the SSH-session rows
-    # (C97) have their own tests.
+    # (C97) and the running-version row have their own tests.
     h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
-                 rotations=[], owner=[], sessions=[])
+                 rotations=[], owner=[], sessions=[], version=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
     h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[],
-                 rotations=[], owner=[], sessions=[])
+                 rotations=[], owner=[], sessions=[], version=[])
     assert h["headline"].startswith("0 of") and "clab-sync" in h["headline"]
 
 
@@ -462,3 +462,34 @@ def test_nmas_jobs_quiets_only_the_proxmox_logger():
     assert re.search(r'^\s+logging\.getLogger\("modules\.integrations\.proxmox"\)\.setLevel\(logging\.ERROR\)',
                      src, re.M)
     assert "basicConfig" not in src and "logging.disable" not in src
+
+
+
+class TestTheRunningVersion:
+    """A mixed version (checkout moved, service not restarted) is a row, so it
+    cannot persist unnoticed (the operator, 2026-09-27)."""
+
+    def test_equal_is_ok(self):
+        from modules import job_health
+        row = job_health.version_rows(loaded="a" * 40, checkout="a" * 40)[0]
+        assert row["state"] == "ok"
+
+    def test_different_is_a_mixed_version_with_the_command(self):
+        from modules import job_health
+        row = job_health.version_rows(loaded="9" * 40, checkout="4" * 40)[0]
+        assert row["state"] == "mixed_version"
+        assert row["detail"].startswith("MIXED VERSION: checkout at 4444444444, "
+                                        "service running 9999999999")
+        assert "sudo systemctl restart flask-app.service" in row["detail"]
+
+    def test_unknown_is_not_ok(self):
+        from modules import job_health
+        row = job_health.version_rows(loaded="", checkout="4" * 40)[0]
+        assert row["state"] == "unknown" and "not the same as ok" in row["detail"]
+        assert "mixed_version" not in job_health.OK_STATES
+
+    def test_the_real_process_reads_its_own_commit(self):
+        from modules import job_health
+        row = job_health.version_rows()[0]
+        assert row["state"] in ("ok", "mixed_version", "unknown")
+        assert row["unit"] == "running-version"

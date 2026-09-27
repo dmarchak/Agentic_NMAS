@@ -296,6 +296,8 @@ def plan():
             entry["removal_warnings"] = []
             entry["error"] = str(exc)
 
+        from modules.nsot.device_ops import busy_text
+        entry["busy"] = busy_text(list_name, hostname)       # C99
         devices.append(entry)
 
     # The six parts, built ONCE by the shared contract (Stage 7.1); the

@@ -160,6 +160,16 @@ machine that cannot reach GitHub, `nmas-deploy --offline` runs the whole suite
 here against the target instead. There is no flag that deploys an unverified
 commit.
 
+**Run it in a terminal on the host.** The restart needs `sudo`, and the
+restart is deliberately a person's step (a passwordless rule was declined:
+CI gates what deploys, a person gates when). Before moving anything it checks
+it can restart: with a terminal it asks for the sudo password first; with no
+terminal and no cached credential it exits **6** and leaves the checkout
+exactly where it was. If a restart still fails after the move, the first line
+reads `MIXED VERSION: checkout at X, service running Y -- run sudo systemctl
+restart flask-app.service`, and job health's `running-version` row says the
+same until it is done.
+
 ## Back up the Fernet key
 
 `data/key.key` encrypts stored device credentials **and** settings secrets.

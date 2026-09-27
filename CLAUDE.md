@@ -171,7 +171,10 @@ tracked in git.
   `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`,
   `templates.py`, `deploy.py`, `freshness.py`, `devices_view.py` (the device
   list's regions, redrawn in place), `list_param.py` (a read of an unknown
-  list refused, C51)
+  list refused, C51), `operations.py` (C99: what is running on the list's
+  devices and what finished recently, drawn by
+  **[static/js/nmas_in_flight.js](static/js/nmas_in_flight.js)**, one panel
+  above every modal)
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -1119,6 +1122,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_page_requests_resolve.py` | The reverse of reachability: every literal request the rendered pages and their scripts make (143) reaches a route with its method; a `${}` placeholder is one segment and a concatenated string a prefix; the resolver shown saying no to two removed routes. A `fetch('/git/commit')` left behind was caught before only by a pin naming that route |
 | `test_record_exceptions.py` | C104: the eleven rotation commits recorded `Source: manual`, by full hash; a prefix is not a commit; golden history keeps the recorded source and draws the exception beside it |
 | `test_refresh_hostnames_renames.py` | C102: Refresh Hostnames records a PENDING rename and commits nothing (HEAD unmoved, the golden still under its old name); its message leads with what is left to do; syncing moves the golden alone (`R100` plus the manifest) and `git log --follow` keeps its history; nothing is recorded as `ai-agent`. Through the real route against a real repository |
+| `test_in_flight.py` | C99: the lock lists who holds each device, since when and the step it waits on in words (a stall named; nothing held creates nothing); the route returns running and the last 30 minutes' receipts, and a failed read is a 500, not an empty list; the SHIPPED panel executed in duktape (running, nothing, a finished one naming its receipt and hideable, escaped, and a failed read never drawn as nothing running); every long apply marked busy and unmarked in a `finally`; the panel above Bootstrap's modals; a held device fails the preview's gate naming the holder and cannot be confirmed |
 | `test_ssh_sessions.py` | C97: every NETMIKO session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers; the break-glass terminal's raw paramiko sessions are outside it, C101); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
@@ -1135,7 +1139,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
 | `test_ci_workflow.py` | P.4 step 3: the workflow reads only this repository (no `repository:`, no secret, read-only token, token not persisted), installs the lock, never gates on coverage, cancels superseded runs; parsed values, not raw text |
 | (overview) | **[docs/TESTING.md](docs/TESTING.md)**: what the suite checks, the 180 controls that run every time against the ~330 that ran once, and what it cannot reach |
-| `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed, and success is decided by IDENTITY (MainPID changed, `/health` answers from it, target commit loaded), never by time; the no-run rule is read from a green commit and a workflow change is never ignorable; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
+| `test_nmas_deploy.py` | P.4 step 4: the host moves only to a commit CI passed, and only if it can FINISH (C106: no restart possible is exit 6 with HEAD unmoved; a failed restart's first line names the MIXED VERSION and the command; `can_restart` never prompts without a terminal), and success is decided by IDENTITY (MainPID changed, `/health` answers from it, target commit loaded), never by time; the no-run rule is read from a green commit and a workflow change is never ignorable; no run, could-not-ask, failed, cancelled and running all refuse with HEAD unmoved; a docs-only push passes on the workflow's own paths-ignore; `--offline` runs the suite here; every run is an audit row |
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_configless_patch.py` | P.6 M1: the configless launch patch checked by AST against the REAL adopted script (a hash-pinned fixture): the base disk booted and the install overlay (which holds a saved startup config) removed, shown by EXECUTING the constructor on a fake root; no config ISO at run time, the console prompt marks the VM running, the watchdog never restarts it; refuses a missing or duplicated anchor, a re-patch, and a production lab's own file |
@@ -5275,6 +5279,30 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the page is the home for everything per-device, addressed by NAME (an
   address moves for a DHCP or ZTP device), and a Fleet row carries status
   and a link, no action.
+- **A tool that does part of an operation and stops has told the person
+  running it and nobody else** (the operator, 2026-09-27, register C106).
+  `nmas-deploy` over SSH fast-forwarded the checkout, then could not restart
+  (sudo needs a password), and the service ran the old commit against the
+  new checkout: a mixed version, reported as exit 5 and a paragraph. Three
+  answers, which are the rule for every multi-step tool: check what the
+  LATER step needs before the earlier step moves anything (it now refuses
+  with exit 6 and the checkout unmoved); when it stops half-way anyway, the
+  FIRST line names the state and the one command that ends it ("MIXED
+  VERSION: checkout at X, service running Y -- run ..."); and a job-health
+  row, so the state cannot persist unnoticed (`running-version`). The
+  survey it prompted found the worst case elsewhere: a credential rotation
+  whose record failed deleted the only copy of the new password and said
+  "live and recorded" (fixed; the rest are C106). **The restart stays a
+  person's step on purpose** (the operator: "CI gates WHAT deploys; I gate
+  WHEN"): a passwordless sudo rule was declined, and the fix is to make the
+  failure cheap and self-explaining, not to remove the human.
+- **Every running operation says so** (C99, fixed). A fifty-second restore
+  was silent, the silence read as "staged", and a second change followed on
+  the same device. One panel, above every modal on both pages, reads C98's
+  lock and the receipts: who holds each device, since when, the step it
+  waits on in words, a stall named, and what finished in the last 30
+  minutes, so a reload does not lose a result. Each preview gates on "no
+  other operation holds this device" before the confirm.
 - **A concurrency test that HANGS rather than fails reports nothing; the
   hard timeout is what turns it back into a measurement** (the operator,
   2026-09-27). C98's lock first deadlocked on a device another process held,

@@ -56,12 +56,13 @@ def register_blueprints(app) -> list:
     from routes.jobs import bp as jobs_bp
     from routes.health import bp as health_bp
     from routes.devices_view import bp as devices_view_bp
+    from routes.operations import bp as operations_bp
 
     for bp in (integrations_bp, netbox_safety_bp, inventory_bp, golden_bp,
                templatize_bp, templates_bp, deploy_bp, identity_bp,
                remote_bp, monitoring_stack_bp, topology_view_bp,
                onboard_bp, clab_bp, freshness_bp, jobs_bp, health_bp,
-               devices_view_bp):
+               devices_view_bp, operations_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

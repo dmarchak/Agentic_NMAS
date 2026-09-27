@@ -625,6 +625,7 @@ class TestTheVerifyFailureStaysOnScreen:
         function fetch(url, opts) { return {json: function () { return dukpy.payload; }}; }
         function showToast(t, k) { calls.push('toast:' + k); }
         function loadOnboardPending(l) { calls.push('reload:' + l); }
+        function inFlightBusy(on) { calls.push('busy:' + on); }
         """ + code + """
         onboardVerify('bp-ztp-a', 'ztp-a');
         ({calls: calls, html: banner.innerHTML})

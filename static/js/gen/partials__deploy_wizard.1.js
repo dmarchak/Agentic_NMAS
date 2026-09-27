@@ -117,6 +117,7 @@ async function applyDeploy() {
   btn.textContent = 'Deploying…';
   const body = document.getElementById('deployPlanBody');
 
+  inFlightBusy(true);          // the panel says what runs meanwhile (C99)
   try {
     const r = await fetch('/deploy/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -128,6 +129,7 @@ async function applyDeploy() {
   } catch (e) {
     body.innerHTML = `<div class="alert alert-danger mb-0">${_dEsc(e.message)}</div>`;
   } finally {
+    inFlightBusy(false);
     btn.textContent = 'Deploy confirmed devices';
   }
 }

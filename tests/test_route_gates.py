@@ -367,6 +367,10 @@ ACTOR_EXEMPTIONS = {
         "GET no gate covers: nobody decided it, so a person's name would be a "
         "claim. 'nmas' is not one of ACTOR_CONVENTION's three kinds either "
         "(recorded under B12)."),
+    ("routes/operations.py", "_recent"): (
+        "DISPLAYS the actor a receipt already recorded (who ran a finished "
+        "deploy or restore, for the in-flight panel, C99); it records nothing, "
+        "so no actor is taken from a request here."),
 }
 
 

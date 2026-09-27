@@ -88,7 +88,7 @@ def _fetch_from_real_origin(world):
 
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
-         reachable=True, restart_fails=False):
+         reachable=True, restart_fails=False, ready=(True, "test: sudo authorised")):
     mod = _script()
     calls = []
 
@@ -154,7 +154,8 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
 
     code = mod.main(["--repo", world.host] + (["--offline"] if offline else []),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
-                    health=fake_health, clock=clock, sleep=sleep, unit=unit)
+                    health=fake_health, clock=clock, sleep=sleep, unit=unit,
+                    ready=lambda: ready)
     return code, restarted, calls
 
 
@@ -512,3 +513,65 @@ def test_a_refusal_ends_in_one_full_stop(world):
         return Out()
     _, message = _script().offline_verdict(world.host, sha, run=spy)
     assert ".." not in message and message.endswith(". Refused."), message
+
+
+class TestItDoesNotStartWhatItCannotFinish:
+    """The operator, 2026-09-27: over SSH with no terminal, nmas-deploy moved
+    the checkout to 413f90b and then failed at sudo's password prompt, so the
+    service ran 912e3f1 against the new checkout, and the exit code told
+    nobody. It now refuses BEFORE the checkout moves, and a failure after the
+    move leads with one line saying what the state is and what to run."""
+
+    def test_no_restart_possible_means_the_checkout_does_not_move(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        before = _head(world)
+        code, restarted, _ = _run(world, {sha: _run_entry(sha)},
+                                  ready=(False, "sudo needs a password and there is no terminal"))
+        err = capsys.readouterr().err
+        assert code == 6 and restarted == []
+        assert _head(world) == before, "the checkout moved though it could not restart"
+        assert err.startswith("NOT DEPLOYED") and "was NOT moved" in err
+
+    def test_a_failed_restart_leads_with_the_mixed_version(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, restart_fails=True, health="stale")
+        first = capsys.readouterr().err.splitlines()[0]
+        assert code == 5
+        assert first.startswith(f"MIXED VERSION: checkout at {sha[:10]}, service running "
+                                f"{world.base[:10]}")
+        assert "sudo systemctl restart flask-app.service" in first
+
+    def test_the_control_a_restart_that_worked_names_no_mixed_version(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)})
+        out = capsys.readouterr()
+        assert code == 0 and "MIXED" not in out.out + out.err
+
+
+class TestCanRestart:
+    def _runner(self, results):
+        calls = []
+
+        def run(cmd, **kw):
+            calls.append(cmd)
+            return type("R", (), {"returncode": results.get(tuple(cmd[:2]), 1)})()
+        return run, calls
+
+    def test_cached_sudo_passes_without_asking(self):
+        mod = _script()
+        run, calls = self._runner({("sudo", "-n"): 0})
+        assert mod.can_restart(run=run, isatty=lambda: False)[0] is True
+        assert calls == [["sudo", "-n", "true"]]
+
+    def test_no_terminal_and_no_cache_refuses_and_says_why(self):
+        mod = _script()
+        run, calls = self._runner({})
+        ok, why = mod.can_restart(run=run, isatty=lambda: False)
+        assert ok is False and "no terminal" in why
+        assert ["sudo", "-v"] not in calls, "it must not prompt with no terminal"
+
+    def test_a_terminal_asks_for_the_password_before_anything_moves(self):
+        mod = _script()
+        run, calls = self._runner({("sudo", "-v"): 0})
+        assert mod.can_restart(run=run, isatty=lambda: True)[0] is True
+        assert calls[-1] == ["sudo", "-v"]

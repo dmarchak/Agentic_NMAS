@@ -636,6 +636,11 @@ def rotation_rows(records: list = None) -> list:
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence FAILED at {stage or 'the chain'}. "
                           f"Fix it, then run nmas-persist-credential {device}")
+        elif state == cr.ROTATED_NOT_RECORDED:
+            st, detail = ("not_recorded",
+                          f"rotated at {at} but NOT RECORDED: the device accepts only the "
+                          "new password and the tool may hold the old one. Do not rotate "
+                          "again or reboot; record it from the kept staging copy")
         elif state == cr.ROTATED_PENDING_PERSIST:
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence NOT ATTEMPTED. Run "
@@ -847,6 +852,49 @@ def ssh_session_rows(held: dict = None) -> list:
     return rows
 
 
+def version_rows(loaded=None, checkout=None) -> list:
+    """Is the RUNNING process the checkout's commit? (the operator, 2026-09-27)
+
+    `nmas-deploy` over SSH fast-forwarded the checkout and could not restart
+    (sudo needs a password), so the service ran 912e3f1 against a 413f90b
+    checkout. A mixed version: this code imports modules inside functions, so
+    anything not yet loaded would come from the new commit beside old callers.
+    It surfaced only because the tool running the deploy said so; the exit
+    code told nobody. *loaded*: what this process imported
+    (`routes.health`); *checkout*: the checkout's HEAD now."""
+    import subprocess as _sp
+
+    what = "the running process is the checkout's commit (a mixed version is named)"
+    try:
+        if loaded is None:
+            from routes import health as _h
+            loaded = _h._COMMIT
+        if checkout is None:
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            out = _sp.run(["git", "-C", root, "rev-parse", "HEAD"],
+                          capture_output=True, text=True, timeout=5)
+            checkout = out.stdout.strip() if out.returncode == 0 else None
+    except Exception as exc:                          # noqa: BLE001
+        return [{"unit": "running-version", "what": what, "state": "unknown",
+                 "max_age_minutes": 0,
+                 "detail": f"could not compare: {type(exc).__name__}: {exc} "
+                           "-- not the same as ok"}]
+    if not loaded or not checkout:
+        return [{"unit": "running-version", "what": what, "state": "unknown",
+                 "max_age_minutes": 0,
+                 "detail": ("the loaded commit is unknown" if not loaded else
+                            "the checkout's HEAD could not be read")
+                           + " -- not the same as ok"}]
+    if loaded != checkout:
+        return [{"unit": "running-version", "what": what, "state": "mixed_version",
+                 "max_age_minutes": 0,
+                 "detail": (f"MIXED VERSION: checkout at {checkout[:10]}, service running "
+                            f"{loaded[:10]}. Run `sudo systemctl restart flask-app.service` "
+                            "(or nmas-deploy in a terminal on the host).")}]
+    return [{"unit": "running-version", "what": what, "state": "ok", "max_age_minutes": 0,
+             "detail": f"running {loaded[:10]}, the checkout's commit"}]
+
+
 def ztp_rows() -> list:
     """D4, checked where it could otherwise silently stop holding (P.6)."""
     from modules.nsot import ztp
@@ -861,7 +909,7 @@ def ztp_rows() -> list:
 
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
-           startup=None, sessions=None) -> dict:
+           startup=None, sessions=None, version=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -873,6 +921,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += ztp_responder_rows(run) if responder is None else list(responder)
     jobs += startup_rows() if startup is None else list(startup)
     jobs += ssh_session_rows() if sessions is None else list(sessions)
+    jobs += version_rows() if version is None else list(version)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     return {"ok": True, "jobs": jobs, "not_ok": bad,

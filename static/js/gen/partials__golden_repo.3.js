@@ -289,14 +289,22 @@ async function previewBaselineRestore(tag, unOnboard, from) {
       return;
     }
 
-    const ar = await fetch('/golden/restore/apply', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ref: tag, confirmations, command_hashes: hashes,
-                            un_onboard: unOnboard,
-                            authorise: from.authorise || {},
-                            approval_id: from.approvalId || ''}),
-    });
-    const ad = await ar.json();
+    // The confirm closed the modal: without this, the fifty seconds this
+    // takes were silent, and the silence caused a second change (C99).
+    inFlightBusy(true);
+    let ad;
+    try {
+      const ar = await fetch('/golden/restore/apply', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ref: tag, confirmations, command_hashes: hashes,
+                              un_onboard: unOnboard,
+                              authorise: from.authorise || {},
+                              approval_id: from.approvalId || ''}),
+      });
+      ad = await ar.json();
+    } finally {
+      inFlightBusy(false);
+    }
     if (!ad.ok) {
       showToast(`Re-apply failed: ${ad.error || ''}`, 'danger');
     } else {

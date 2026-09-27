@@ -218,11 +218,15 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
     from modules.nsot.repo import golden_body
     from routes.deploy import _capture_hash, _captured_config
 
+    from modules.nsot.device_ops import busy_text
+
     host, ip = device.get("hostname", ""), device.get("ip", "")
     platform = platform_for_device(device)
+    busy = busy_text(list_name, host)                          # C99
     text, error = _read_running(device)
     if text is None:
-        return {"device": host, "read": False, "error": error, "platform": platform}, None
+        return {"device": host, "read": False, "error": error, "platform": platform,
+                "busy": busy}, None
     current = _captured_config(repo, host)
     incoming = golden_body(host, ip, text)
     diff = [l for l in difflib.unified_diff(current.splitlines(), incoming.splitlines(),
@@ -230,7 +234,8 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
             if not l.startswith(("---", "+++"))]
     return ({"device": host, "read": True, "error": "", "platform": platform,
              "capture_hash": _capture_hash(text), "changed": incoming != current,
-             "diff": diff, "intent": intent_match(repo, list_name, host, text, platform)},
+             "diff": diff, "intent": intent_match(repo, list_name, host, text, platform),
+             "busy": busy},
             text)
 
 
@@ -527,6 +532,9 @@ def restore_preview():
     # Stage 7.1: the six parts, from the one builder, drawn by the one
     # renderer. The fields below stay: the apply's confirmations are read
     # from them by the same client.
+    from modules.nsot.device_ops import busy_text
+    for d in devices:
+        d["busy"] = busy_text(list_name, d.get("device", ""))    # C99
     from modules.preview_confirm import restore_preview as _parts
     preview = _parts(devices, skipped, ref=ref, summary=summary, scope=scope,
                      request=request)

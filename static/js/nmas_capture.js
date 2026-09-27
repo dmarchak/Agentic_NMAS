@@ -105,6 +105,7 @@
       btn.disabled = true;
       btn.textContent = 'Recording…';
       var ad;
+      inFlightBusy(true);        // the panel says what runs meanwhile (C99)
       try {
         var ar = await fetch('/golden/capture/apply', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -116,6 +117,8 @@
         showToast('Recording failed: ' + e.message, 'danger');
         btn.disabled = false;
         return;
+      } finally {
+        inFlightBusy(false);
       }
       if (!ad.ok) { showToast(ad.error || 'Recording failed', 'danger'); btn.disabled = false; return; }
       body.innerHTML = previewConfirmResultHtml(ad.result, {});

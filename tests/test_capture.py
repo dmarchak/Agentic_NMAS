@@ -113,7 +113,9 @@ class TestThePreviewAsksWhatTheRestOfTheToolAsks:
         assert "Departs from its committed intent (+1 -1)" in part
         assert "No baseline tag: capturing part of the fleet never earns one" in part
         gates = {g["name"]: g["state"] for g in d["preview"]["targets"][0]["gates"]}
-        assert gates == {"device read": "pass", "capture unchanged since this preview": "at_apply"}
+        assert gates == {"device read": "pass", "capture unchanged since this preview": "at_apply",
+                         # C99: nothing holds it, and the apply takes it
+                         "no other operation holds this device": "at_apply"}
 
     def test_it_writes_nothing(self, cap):
         before = _last_message(cap["repo"])

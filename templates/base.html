@@ -13,6 +13,7 @@
   <!-- Capture as golden (7.1 step 4): an operation, previewed and confirmed. -->
   <script src="{{ url_for('static', filename='js/nmas_capture.js') }}"></script>
   <script src="{{ url_for('static', filename='js/nmas_restore_scope.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/nmas_in_flight.js') }}"></script>
   <style>
     /* ------------------------------------------------------------------ */
     /* Toast                                                                */
@@ -2187,5 +2188,7 @@
   </script>
 
   {% block extra_scripts %}{% endblock %}
+<!-- What is running on this list's devices, above every modal (C99). -->
+<div id="inFlightPanel" style="position:fixed;left:1rem;bottom:1rem;z-index:1090;max-width:36rem"></div>
 </body>
 </html>
