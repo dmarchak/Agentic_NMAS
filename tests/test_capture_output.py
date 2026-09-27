@@ -89,3 +89,40 @@ class TestItsFilesAreTheFixtures:
         src = open(os.path.join(ROOT, "scripts", "nmas-capture-output"), encoding="utf-8").read()
         body = src.split('"""', 2)[2]
         assert body.index("sys.dont_write_bytecode = True") < body.index("import argparse")
+
+
+class TestTheStoreIsWatched:
+    """The harness's method, in the tool: its own writes are SEEN, and a
+    change it did not make is attributed only on evidence."""
+
+    STORE = "/srv/nmas/data"
+
+    def test_an_open_for_writing_under_the_store_is_seen(self):
+        mod = _script()
+        path = self.STORE + "/lists/x.json"
+        assert mod.store_write("open", (path, "w", 0), self.STORE)
+        assert mod.store_write("open", (path, None, os.O_WRONLY | os.O_CREAT), self.STORE)
+        assert mod.store_write("os.replace", (path + ".tmp", path), self.STORE)
+
+    def test_a_read_or_a_write_elsewhere_is_not(self):
+        """The control."""
+        mod = _script()
+        assert not mod.store_write("open", (self.STORE + "/lists/x.json", "r", 0), self.STORE)
+        assert not mod.store_write("open", ("/tmp/captures/r3.txt", "w", 0), self.STORE)
+        assert not mod.store_write("open", (self.STORE + "-other/x", "w", 0), self.STORE)
+
+    def test_its_own_write_is_a_defect_whatever_else_happened(self):
+        code, lines = _script().store_report({}, {}, ["/srv/nmas/data/x"], [4242])
+        assert code == 3 and "DEFECT" in lines[0]
+
+    def test_a_change_with_the_app_running_is_named_as_the_apps(self):
+        code, lines = _script().store_report({"f": (1, 1)}, {"f": (2, 1)}, [], [4242])
+        assert code == 0 and "NONE by this process" in lines[0] and "4242" in lines[0]
+
+    def test_a_change_with_no_app_is_unexplained(self):
+        code, lines = _script().store_report({"f": (1, 1)}, {"f": (2, 1)}, [], [])
+        assert "UNEXPLAINED" in lines[0]
+
+    def test_nothing_changed_says_so(self):
+        code, lines = _script().store_report({"f": (1, 1)}, {"f": (1, 1)}, [], [])
+        assert code == 0 and "unchanged" in lines[0]

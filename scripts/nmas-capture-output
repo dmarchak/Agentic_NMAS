@@ -36,8 +36,17 @@ host, never from the live checkout, with `NMAS_DATA_DIR` pointing at the
 live store (which is only read), then check the checkout and `data/` are
 unchanged and delete the scratch copy. See `tests/fixtures/operational/`.
 
+**The store is WATCHED, the harness's method** (the operator's question,
+2026-09-27: the first probe saw `drift_state.json` change mid-run and it was
+attributed by hand). An audit hook records any write this process makes
+under the store, which must be none; and the store's files are compared
+before and after. A change this process did not make is attributed to the
+running app only when `/proc` shows an app process for this checkout, and
+reported as unexplained otherwise. Never assumed either way.
+
 Exit: 0 every capture taken; 1 a command refused or a device not in the
-inventory (nothing connected); 2 a device could not be reached.
+inventory (nothing connected); 2 a device could not be reached; 3 THIS
+process wrote to the store, which is a defect in the tool.
 """
 
 import sys
@@ -75,6 +84,84 @@ def out_dir_refusal(out: str) -> str:
     if target == store or target.startswith(store + os.sep):
         return f"--out {out} is inside the store ({store}); captures go elsewhere"
     return ""
+
+
+_WRITE_EVENTS = ("os.rename", "os.replace", "os.remove", "os.unlink",
+                 "os.mkdir", "os.rmdir", "os.chmod", "shutil.copyfile",
+                 "shutil.move", "shutil.rmtree")
+
+
+def store_write(event: str, args: tuple, store: str) -> str:
+    """PURE: the store path an audit event WRITES, or "". Tested directly,
+    so no test has to install a process-wide hook."""
+    paths = []
+    if event == "open" and args:
+        path, mode = args[0], args[1] if len(args) > 1 else None
+        flags = args[2] if len(args) > 2 else 0
+        writes = (isinstance(mode, str) and any(c in mode for c in "wax+")) or (
+            mode is None and isinstance(flags, int)
+            and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND))
+        if writes:
+            paths.append(path)
+    elif event in _WRITE_EVENTS:
+        paths.extend(args[:2])
+    for path in paths:
+        if isinstance(path, (str, bytes)):
+            real = os.path.realpath(os.fsdecode(path))
+            if real == store or real.startswith(store + os.sep):
+                return real
+    return ""
+
+
+def store_state(store: str) -> dict:
+    """``{path: (mtime_ns, size)}`` for every file under the store."""
+    state = {}
+    for dirpath, _dirs, files in os.walk(store):
+        for name in files:
+            path = os.path.join(dirpath, name)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            state[path] = (st.st_mtime_ns, st.st_size)
+    return state
+
+
+def app_pids(root: str) -> list:
+    """PIDs of an app process for THIS checkout, from /proc: argv names this
+    checkout's app.py, or `app.py` run with this checkout as its cwd."""
+    pids, target = [], os.path.join(root, "app.py")
+    for entry in os.listdir("/proc") if os.path.isdir("/proc") else []:
+        if not entry.isdigit():
+            continue
+        try:
+            argv = open(f"/proc/{entry}/cmdline", "rb").read().split(b"\0")
+            argv = [a.decode(errors="ignore") for a in argv if a]
+            cwd = os.path.realpath(f"/proc/{entry}/cwd")
+        except OSError:
+            continue
+        if target in argv or ("app.py" in argv and cwd == os.path.realpath(root)):
+            pids.append(int(entry))
+    return pids
+
+
+def store_report(before: dict, after: dict, own: list, pids: list) -> tuple:
+    """(exit code, lines) for what happened to the store during the run."""
+    changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
+    lines = []
+    if own:
+        lines.append(f"DEFECT: this process wrote to the store: {sorted(set(own))}")
+        return 3, lines
+    if not changed:
+        return 0, ["store: unchanged, and this process wrote nothing to it"]
+    if pids:
+        lines.append(f"store: {len(changed)} file(s) changed during the run, NONE by this "
+                     f"process; the app (pid {', '.join(map(str, pids))}) was running and "
+                     f"writes on its own schedule: {changed}")
+    else:
+        lines.append(f"store: UNEXPLAINED: {len(changed)} file(s) changed during the run, "
+                     f"none by this process and no app process found: {changed}")
+    return 0, lines
 
 
 def capture(dev: dict, commands: list, connect=None) -> dict:
@@ -131,6 +218,19 @@ def main(argv=None) -> int:
         print(f"REFUSED: not in the inventory ({csv}): {missing}. Nothing connected.")
         return 1
 
+    from modules import config
+
+    store = os.path.realpath(config.DATA_DIR)
+    own: list = []
+
+    def hook(event, hook_args):
+        path = store_write(event, hook_args, store)
+        if path:
+            own.append(path)
+
+    before = store_state(store)
+    sys.addaudithook(hook)
+
     code = 0
     for host in args.device:
         try:
@@ -150,7 +250,13 @@ def main(argv=None) -> int:
                 with open(path, "w", encoding="utf-8", newline="") as fh:
                     fh.write(r["text"])
                 print(f"   -> {path}")
-    return code
+    # The app that writes THIS store runs from the store's checkout, which is
+    # not this script's when the probe runs from a scratch copy.
+    store_code, lines = store_report(before, store_state(store), own,
+                                     app_pids(os.path.dirname(store)))
+    for line in lines:
+        print(line)
+    return store_code or code
 
 
 if __name__ == "__main__":

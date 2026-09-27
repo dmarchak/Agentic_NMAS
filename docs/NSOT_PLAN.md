@@ -1786,6 +1786,14 @@ under all three at once, and **no log anywhere can tell which of the three
 did something**. Separate accounts with separate passwords give most of what
 SSH keys would, namely attribution and revoking one consumer, without a key
 mode through every credential path and without 6.2b's SHA-1 question.
+**A dependency 6.2 inherits (the operator, 2026-09-27):** every reader of a
+device's `username` lines must match the account as a WHOLE WORD, because
+6.2 is exactly the change that puts a second account with a shared prefix
+on a device (`admin`, `admin-oxidized`). The rotation's live read matched a
+prefix until C69 (`credential_rotation.users_line`), latent only because
+every device held one account. Before 6.2 lands, sweep every other reader
+of `username` lines for the same shape. `onboard.startup_carries` compares
+whole lines and is already safe.
 
 **6.2b SSH keys for device access, behind 6.2** (option C of the
 2026-09-25 design review). With keys, a stolen credential store yields no

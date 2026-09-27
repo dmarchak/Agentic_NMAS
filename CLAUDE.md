@@ -4852,6 +4852,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   pipeline's own read and was corrected. The sweep for the shape
   found one more of the family (C63): the deploy's dangerous check is a list
   of forms, and misses `no router rip` on a fleet running RIP.
+- **When two places answer the same question about a device, one of them is
+  wrong, and you will not know which until both meet real output** (the
+  operator's, 2026-09-27). Three drift checkers, two golden enumerators, and
+  now two BGP readers: topology's was right all along, and the deploy's,
+  the one deciding whether to roll back, was wrong on the same output (C64,
+  C69). The correct implementation already existed; nobody had to write it,
+  only find it. The permanent fix is a test that fails when a second one
+  appears, not a comment asking people to reuse the first.
 - **A fixture that starts where the parser is supposed to end has assumed
   the thing under test** (the operator's wording, 2026-09-27). The RIP
   sample began at `Routing Protocol is "rip"`, so it could not exhibit a
@@ -4893,7 +4901,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **43 open at 2026-09-27**, counted from the rows: 36 recorded only in
+present when each was recorded. **44 open at 2026-09-27**, counted from the rows: 37 recorded only in
 prose, 7 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
