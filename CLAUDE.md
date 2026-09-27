@@ -366,9 +366,19 @@ tools refuse to act on it, and its pooled SSH session is closed.
   deploy plan DEPLOYED, and what the baseline's intent comparison, bulk
   intent's compare-and-set, rotation and the editor read.
   **Structural now, not incidental:** goldens are read as `HEAD:<rel>`
-  through `repo.committed_golden()` (one resolver, `_golden_record()`),
-  intent through `committed_at_head()`, and goldens are enumerated from
-  `git ls-tree HEAD`. A working file that differs is ignored and named in
+  through `repo.committed_golden_for()` (and `_golden_record()` for a device
+  by address), intent through `committed_at_head()`, and goldens are
+  enumerated from `git ls-tree HEAD`. **The first pass said "one resolver"
+  and was false**: six more functions resolved a golden's path and opened
+  it themselves, the deploy plan's capture among them (the diff it plans
+  from and the hash its confirm is bound to), plus rotation twice, the vty
+  count, extraction and Refresh Hostnames, and three scripts, two of them
+  producing template-approval evidence. The test that should have caught
+  them asserted "the resolver has one caller" over `modules/` and `routes/`
+  only: the wrong property, over too small a population (no `app.py`, no
+  scripts). The rule now checked is the property itself, across the
+  program and its scripts: a function that resolves a golden's or intent's
+  path never opens a file, with each exception named. A working file that differs is ignored and named in
   the log; a file nothing committed is refused by path; a golden whose last
   commit carries no `Source:` (the save path's trailer, on all nine on the
   host) is refused naming the path and the commit. So the next writer that
@@ -1084,7 +1094,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 99, PHANTOM 18) compared exactly; since 7.1 a server-side adapter's reads count, because it decides what reaches the screen; anchors `commands`/`dangerous`/`attribution` (read by the adapter) and `preview`/`lines`/`from_this_edit` (drawn) on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
 | `test_no_duplicate_dict_keys.py` | C90: no dict literal with constant keys repeats one, in the program, its scripts or its tests (4,530 scanned, floor 4,000); a duplicate keeps the later value silently, which dropped a `RENDERS` entry and would drop a gate from `route_gates.GATES` |
 | `test_intent_match.py` | C89 (c)/(d), C91: r2's REAL config and committed intent parsed from it, through the deploy plan's own comparison: the capture matches, the host's exact break differs by `+1 -1` naming both lines, no intent is `unknown`; through `save_golden`, a departing capture is committed with `Intent-Match: no: r2 (+1 -1)` and earns no baseline, a matching one earns it, and a committing Save All with a device skipped earns none (C91) |
-| `test_capture.py` | C82, C89 (7.1 step 4): capture on r2's REAL config with the host's exact break; the preview shows the diff against the golden and the departure from intent, sends no raw read, and writes nothing; apply records `Source: capture` as the verified person with `Intent-Match: no`, never green; a device that moved since the preview is refused and nothing commits; the whole fleet at intent earns the baseline and is green, with a departure it earns none and says why; Save All opens the fleet capture; the one-click route is gone |
+| `test_capture.py` | C82, C89 (7.1 step 4): capture on r2's REAL config with the host's exact break; the preview shows the diff against the golden and the departure from intent, sends no raw read, and writes nothing; apply records `Source: capture` as the verified person with `Intent-Match: no`, never green; a device that moved since the preview is refused and nothing commits; the whole fleet at intent earns the baseline and is green, with a departure it earns none and says why; Save All opens the fleet capture; the one-click route is gone; Auto-Create is the `no_golden` scope (chosen from git: an uncommitted file on disk is not a golden; only the devices without one are read and the rest named; nothing to capture says what was looked at; recorded as the person, never `ai-agent`) |
 | `test_restore_scope.py` | C80 (7.1 step 5), on a real repository (r2's real config, a baseline earned by a whole-fleet capture at intent): a device's restore points are its golden now, its own tags and the baselines that hold it, newest first, and a baseline without it is not one; a real rotation after the baseline reads `refused` and a renamed account `silent`, from the same real line, with no credential value in the response; the shipped chooser executed against the route (a row and a Preview per point, every value escaped, a failed read is not an empty list); the URL it builds reaches `previewBaselineRestore(ref, null, {devices})`; the Baselines scope offers every device with none ticked and the whole fleet as its own choice; re-apply asks the scope before the preview and names only the chosen devices |
 | `test_results_are_drawn.py` | 7.1 step 1: every action gated confirm, approve or publish_remote (41, the gate table) shows its result where it can be read again, or is placed: drawn by the component with a reader (deploy, restore; evidence from source), pending (31, measured, only shrinks) or no GUI (tied to the reachability list); a toast is never enough for this population, and the bar is shown refusing; colour is part of the result (`FALSE_GREEN`: Save All, the NetBox sync card, onboarding Create) and the first XSS-shaped finding is pinned (`UNESCAPED`) |
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
@@ -1094,7 +1104,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_session_write_guard.py` | C101: at the one opener, a write (config set, save, `write memory`, `reload`, `clear`) with no hold is refused and nothing is sent, a read needs none, holding the device allows it and holding ANOTHER does not, and the refusal names the verb, never the command; Save Device Config, `/run_command` and bulk exec each hold the device, refused BY THE LOCK with the holder named (asserted, since the guard would also stop the send), a read never waits; the refusal says how long, the last progress step and, past ten minutes, "may be stuck" with no force; progress reaches another process's view; the long holders note their steps |
 | `test_one_home_per_action.py` | Minimalism at the effect level (section 6a): every device-changing command (C101's scan, a local variable resolved to its text, keyed by EFFECT as IOS reads it: operand kinds, unique-prefix abbreviation, so `delete {fs}{f}` and `delete flash:{f}` are one effect and `write memory`, `wr` and `copy run start` are one save) has one implementation; the measured duplicates (`write memory` twice, and the page's and the selection's file upload, download, delete and typed command) in a list that only shrinks; an unresolvable send is a prompt's answer or DECLARED; anchors and a ghost check |
 | `test_no_second_commit_path.py` | C104: a save whose commit fails puts each golden back (or removes a new one) and stages nothing; a failed rename stays pending with its file and manifest back; the manual commit's route and request are gone; the Git tab's status names an uncommitted golden with its remedy, and the SHIPPED bar (with its own escaper) never says clean over one; `Source:` recorded as given (rotation), a malformed one refused before writing, every literal source a slug (AST, floor); abandon stages only its path |
-| `test_readers_use_what_is_committed.py` | C104's consumers: an uncommitted hand edit to a golden is ignored and named by the resolver, drift, the NetBox import, the agent's tool (through the real `run_chat()` loop) and the freshness gate; a file nothing committed is refused by path and not enumerated; a golden committed without `Source:` is refused naming path and commit; committed intent is read from HEAD by `read_committed()` and the editor; every direct use of the intent path outside `hostvars.py` is named; `_find_golden_config_file` has one caller. Expected values come from git directly, never from the reader under test |
+| `test_readers_use_what_is_committed.py` | C104's consumers (two passes): an uncommitted hand edit to a golden is ignored and named by the resolver, drift, the NetBox import, the agent's tool (through the real `run_chat()` loop) and the freshness gate; a file nothing committed is refused by path and not enumerated; a golden committed without `Source:` is refused naming path and commit; committed intent is read from HEAD by `read_committed()` and the editor; every direct use of the intent path outside `hostvars.py` is named; no function across the program AND its scripts resolves a golden's or intent's path and opens a file itself (each exception named: the legacy store, the migration verifier, one repair script); the deploy plan names a refused golden. Expected values come from git directly, never from the reader under test |
 | `test_page_requests_resolve.py` | The reverse of reachability: every literal request the rendered pages and their scripts make (143) reaches a route with its method; a `${}` placeholder is one segment and a concatenated string a prefix; the resolver shown saying no to two removed routes. A `fetch('/git/commit')` left behind was caught before only by a pin naming that route |
 | `test_record_exceptions.py` | C104: the eleven rotation commits recorded `Source: manual`, by full hash; a prefix is not a commit; golden history keeps the recorded source and draws the exception beside it |
 | `test_ssh_sessions.py` | C97: every NETMIKO session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers; the break-glass terminal's raw paramiko sessions are outside it, C101); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
@@ -1826,6 +1836,24 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   operator, B15). *"s1: ROTATED and committed"* opened a message whose point
   was that the boot file still held the old password. Lead with the state
   the reader must act on.
+- **A control must compute its expectation by a path INDEPENDENT of the
+  code it is breaking** (the operator, 2026-09-27, C104). The drift test
+  built its "running config" with `committed_golden()`, the reader under
+  test, so with the working-file read put back, both sides of the
+  comparison moved together and drift agreed with itself: the control
+  passed with the defect restored. It is the empty-by-construction family
+  (the masked render validated against itself, a golden compared with the
+  capture it was just made from, gating on intent drift) arriving inside a
+  CONTROL rather than a feature. Take the expected value from a different
+  mechanism (here `git show`), and when a control passes, ask first whether
+  its expectation shares a source with the thing it breaks.
+- **Intent was the target, and the deploy read it from a file nobody
+  committed** (C104, the operator's framing). The confirm hash held
+  perfectly, and what it hashed came from the working tree. Phase 3c's rule
+  ("a change is made by editing committed intent and committing it")
+  assumed COMMITTED meant what the deploy read, and it did not. A guarantee
+  about a value says nothing about where the value was read from: check the
+  read as well as the promise.
 - **A negative control that fires by CRASHING proves nothing.** Twice on
   2026-09-26 a mutation broke the file (a syntax error), or sent execution
   down a branch that raised (`set(None)`), and the suite went red for that

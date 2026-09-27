@@ -112,7 +112,6 @@ GATES = {
     # the old one-click route is gone, because nothing in it asked whether the
     # state being enshrined was the one intended.
     "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
-    "golden_configs_auto_create": _g(A, "commits captures as the approved goldens"),
     "refresh_hostnames": _g(A, "renames devices and rewrites their goldens"),
     "onboard.create": _g(A, "commits a new device's identity and intent", "onboard_device"),
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),

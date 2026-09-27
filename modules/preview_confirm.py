@@ -732,10 +732,19 @@ def _intent_words(i: dict) -> str:
     return words(i) if i else "not compared"
 
 
-def capture_preview(entries: list, *, fleet: bool, inventory: list, request) -> dict:
+def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
+                    not_read: list = None) -> dict:
     """*entries*: per device ``{device, read, error, capture_hash, diff,
-    changed, intent, platform}`` from reading it now."""
+    changed, intent, platform}`` from reading it now. *not_read*: devices a
+    scope left out (they already have a committed golden), named so the
+    preview never reads as the whole list."""
     targets, what_not = [], []
+    if not_read:
+        what_not.append({"target": "devices that already have a golden", "kind": "scope",
+                         "text": (f"{len(not_read)} device(s) already have a committed golden "
+                                  f"and are not read or recorded: " + ", ".join(sorted(not_read))
+                                  + "."),
+                         "lines": []})
     read = [e for e in entries if e.get("read")]
     for e in entries:
         name = e["device"]

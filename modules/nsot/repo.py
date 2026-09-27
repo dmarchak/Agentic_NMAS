@@ -1465,6 +1465,29 @@ def committed_golden(repo: str, rel: str) -> dict:
     return {"text": text, "commit": sha, "source": source, "refused": ""}
 
 
+def committed_golden_for(repo: str, entry) -> dict:
+    """:func:`committed_golden` for a manifest entry: THE way a reader that
+    holds an entry gets a golden. ``text`` is None with no ``refused`` when the
+    entry names no committed golden. A refusal is logged by path, once per
+    process, so a reader that only needs the text still leaves it visible.
+
+    Every function that resolves a golden's path must read it through here,
+    never `open()` it (tests/test_readers_use_what_is_committed.py). The first
+    version of C104's fix changed one resolver and left six readers opening
+    the file themselves, the deploy plan's capture among them."""
+    from modules.nsot import manifest as _mf
+
+    if not entry or not entry.get("golden"):
+        return {"text": None, "commit": "", "source": "", "refused": "", "path": ""}
+    rel = os.path.relpath(_mf.golden_path_for(repo, entry), repo).replace(os.sep, "/")
+    record = committed_golden(repo, rel)
+    record["path"] = rel
+    if record["refused"] and ("refused", rel) not in _WORKTREE_WARNED:
+        _WORKTREE_WARNED.add(("refused", rel))
+        log.warning("repo: golden refused: %s", record["refused"])
+    return record
+
+
 def _warn_if_worktree_differs(repo: str, rel: str, committed_text: str) -> None:
     path = os.path.join(repo, rel)
     try:

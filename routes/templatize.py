@@ -93,12 +93,14 @@ def _captured_config(repo: str, hostname: str):
     """
     from modules.nsot import manifest as _m
 
+    from modules.nsot.repo import committed_golden_for
+
     entry = _m.find_by_name(repo, hostname)[1]
-    if entry:
-        path = _m.golden_path_for(repo, entry)
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as fh:
-                return fh.read(), entry.get("mgmt_ip", "")
+    record = committed_golden_for(repo, entry)   # as COMMITTED (C104)
+    if record["text"] is not None:
+        return record["text"], entry.get("mgmt_ip", "")
+    if record["refused"]:
+        return "", entry.get("mgmt_ip", "")
 
     from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
     legacy = next((e for e in _list_golden_configs()

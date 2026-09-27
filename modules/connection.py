@@ -193,8 +193,8 @@ def _count_vty_lines(config: str) -> int:
 
 
 def _golden_for_ip(ip: str):
-    """The golden file for *ip*, found through each list's manifest, READING
-    ONLY. Opening a session must not write: it used to go through the agent's
+    """The committed golden TEXT for *ip*, found through each list's manifest,
+    READING ONLY. Opening a session must not write: it used to go through the agent's
     golden lookup, whose import creates directories and whose legacy path
     makes one, so every session opened from a read-only CLI touched the
     store (found by `nmas-capture-output`'s own audit hook, 2026-09-27)."""
@@ -209,9 +209,10 @@ def _golden_for_ip(ip: str):
             continue
         _identity, entry = manifest.find_by_ip(repo, ip)
         if entry:
-            path = manifest.golden_path_for(repo, entry)
-            if os.path.exists(path):
-                return path
+            from modules.nsot.repo import committed_golden_for
+            text = committed_golden_for(repo, entry)["text"]   # as COMMITTED (C104)
+            if text:
+                return text
     return None
 
 
@@ -223,10 +224,9 @@ def vty_lines(ip: str) -> tuple:
         return cached[0], cached[1]
     lines, source = DEFAULT_VTY_LINES, "IOS default: the golden does not say"
     try:
-        path = _golden_for_ip(ip)
-        if path:
-            with open(path, encoding="utf-8") as fh:
-                counted = _count_vty_lines(fh.read())
+        text = _golden_for_ip(ip)
+        if text:
+            counted = _count_vty_lines(text)
             if counted:
                 lines, source = counted, "its golden config"
     except Exception:                          # noqa: BLE001

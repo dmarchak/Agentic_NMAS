@@ -48,21 +48,28 @@ def _captured_config(repo: str, hostname: str) -> str:
     ``golden_configs/``, which the migration explicitly permits, would have
     reported "no golden config for this device" for every device that has one.
     """
+    return _captured_record(repo, hostname)["text"] or ""
+
+
+def _captured_record(repo: str, hostname: str) -> dict:
+    """The device's golden AS COMMITTED (C104), with why not: ``text`` None
+    and ``refused`` naming the path when a golden exists and is refused. The
+    deploy plan diffs against this and binds its capture hash to it, so it
+    read the working file until the second pass of C104's fix."""
     from modules.nsot import manifest as _m
+    from modules.nsot.repo import committed_golden_for
 
     entry = _m.find_by_name(repo, hostname)[1]
-    if entry:
-        path = _m.golden_path_for(repo, entry)
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as fh:
-                return fh.read()
+    record = committed_golden_for(repo, entry)
+    if record["text"] is not None or record["refused"]:
+        return record
 
-    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
+    from modules.ai_assistant import _golden_record, _list_golden_configs
     legacy = next((e for e in _list_golden_configs()
                    if e.get("hostname") == hostname), None)
     if legacy is None:
-        return ""
-    return _load_golden_config_file(legacy["device_ip"]) or ""
+        return record
+    return _golden_record(legacy["device_ip"])
 
 
 def _artifact_for(list_name: str, hostname: str):
@@ -86,9 +93,13 @@ def _artifact_for(list_name: str, hostname: str):
     from modules.nsot.render_artifact import build_artifact
 
     repo = _repo_for(list_name)
-    captured = _captured_config(repo, hostname)
+    record = _captured_record(repo, hostname)
+    captured = record["text"] or ""
     if not captured:
-        return None, "no golden config for this device"
+        # A refused golden is not "no golden": saying so would send the
+        # reader to save one that is already there.
+        return None, (f"golden refused: {record['refused']}" if record["refused"]
+                      else "no golden config for this device")
 
     _name, csv_path = get_current_device_list()
     device = next((d for d in load_saved_devices(csv_path)

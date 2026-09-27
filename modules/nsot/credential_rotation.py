@@ -626,11 +626,10 @@ def _current_golden(repo: str, hostname: str) -> str:
     from modules.nsot import manifest as _m
 
     try:
+        from modules.nsot.repo import committed_golden_for
+
         _identity, entry = _m.find_by_name(repo, hostname)
-        path = _m.golden_path_for(repo, entry) if entry else ""
-        if path and os.path.exists(path):
-            with open(path, encoding="utf-8") as fh:
-                return fh.read()
+        return committed_golden_for(repo, entry)["text"] or ""   # C104
     except Exception:                          # noqa: BLE001
         pass
     return ""
@@ -961,12 +960,14 @@ def preflight(list_name: str, hostname: str, *, device: dict = None,
 
     config = capture
     if not config:
-        path = _m.golden_path_for(repo, entry) if entry else ""
-        if path and os.path.exists(path):
-            with open(path, encoding="utf-8") as fh:
-                config = fh.read()
+        # As COMMITTED (C104): the rotation's program is built from this, and
+        # a working file nobody committed must not decide it.
+        from modules.nsot.repo import committed_golden_for
+        record = committed_golden_for(repo, entry)
+        config = record["text"] or ""
         out["capture"] = config
-        _check("golden_config_present", bool(config))
+        _check("golden_config_present", bool(config),
+               f"golden refused: {record['refused']}" if record["refused"] else "")
     else:
         out["capture"] = config
         _check("capture_supplied_by_caller", True,

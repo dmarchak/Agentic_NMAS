@@ -961,10 +961,6 @@
 
 <!-- Utility buttons row -->
 <div class="d-flex flex-wrap gap-2 mb-3">
-  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cfgAutoGolden()" title="Create golden config baseline for any device in this list that doesn't have one yet">
-    <span class="auto-golden-text">Auto-Create Golden Configs</span>
-    <span class="spinner-border spinner-border-sm d-none ms-1 auto-golden-spin" role="status"></span>
-  </button>
   <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#ansibleWizardModal">Ansible Wizard</button>
 </div>
 
@@ -3579,27 +3575,6 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
       + 'authoring. The parameters it collected are shown below. To change a device '
       + 'now, edit its committed intent and deploy a plan.');
   }
-
-  /* ---- auto-create golden configs ---- */
-  window.cfgAutoGolden = function() {
-    const btn  = document.querySelector('.auto-golden-text').closest('button');
-    const txt  = btn.querySelector('.auto-golden-text');
-    const spin = btn.querySelector('.auto-golden-spin');
-    btn.disabled = true; txt.textContent = 'Creating…'; spin.classList.remove('d-none');
-    fetch('/golden_configs/auto_create', { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      btn.disabled = false; txt.textContent = 'Auto-Create Golden Configs'; spin.classList.add('d-none');
-      const c = (data.created || []).length, f = (data.failed || []).length, s = (data.skipped || []).length;
-      showCfgResult(f > 0 ? 'warning' : 'success',
-        `Golden configs: <strong>${c} created</strong>, ${s} already existed, ${f} failed.` +
-        (data.failed || []).map(x => `<br><span class="text-danger small">${x.hostname}: ${x.reason}</span>`).join(''));
-    })
-    .catch(err => {
-      btn.disabled = false; txt.textContent = 'Auto-Create Golden Configs'; spin.classList.add('d-none');
-      showCfgResult('danger', 'Failed: ' + err);
-    });
-  };
 
   /* ---- discover networks for OSPF/EIGRP/BGP ---- */
 

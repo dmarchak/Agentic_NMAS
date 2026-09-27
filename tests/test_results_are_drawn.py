@@ -83,7 +83,6 @@ PENDING = {
     "delete_file": "the device page re-rendered",
     "upload_file": "the device page re-rendered",
     "ai_chat": "the chat stream (Stage 8 decides what the agent's record is)",
-    "golden_configs_auto_create": "a result panel, until the next action",
     "templatize.edit_committed": "the editor's status line names the commit",
     "remote.push": "the remote panel's output box",
     "remote.auto_push": "the remote panel's output box",
@@ -121,11 +120,12 @@ FALSE_GREEN = {
 
 #: (file, the unescaped interpolation) -> where. Only shrinks.
 UNESCAPED = {
-    ("templates/index.html", "${x.hostname}: ${x.reason}"):
-        "Auto-Create's result: hostnames and failure reasons into HTML",
+    # Auto-Create's result toast (hostnames and failure reasons into HTML)
+    # left with the route: it is a scope of the capture operation now, drawn
+    # by the component, which escapes every value (C102, 2026-09-27).
 }
 
-CEILINGS = {"PENDING": 28, "FALSE_GREEN": 1, "UNESCAPED": 1}
+CEILINGS = {"PENDING": 28, "FALSE_GREEN": 1, "UNESCAPED": 0}
 
 
 def _population():
@@ -152,7 +152,7 @@ def toast_refusals(toast_enough: dict) -> list:
 class TestEveryResultIsPlaced:
     def test_the_population_is_the_gate_table(self):
         pop = _population()
-        assert len(pop) >= 40, len(pop)           # measured 41 on 2026-09-27
+        assert len(pop) >= 39, len(pop)           # measured 41 on 2026-09-27; C104 removed the manual commit, C102 Auto-Create
         assert {GATES[e].kind for e in pop} == set(KINDS)
 
     def test_every_member_is_in_exactly_one_place(self):
@@ -213,9 +213,12 @@ class TestColourAndEscaping:
     def test_each_false_green_is_still_there(self, rel, literal):
         assert literal in _read(rel), f"fixed? remove it from FALSE_GREEN: {literal}"
 
-    @pytest.mark.parametrize("rel,literal", sorted(UNESCAPED))
-    def test_each_unescaped_interpolation_is_still_there(self, rel, literal):
-        assert literal in _read(rel), f"fixed? remove it from UNESCAPED: {literal}"
+    def test_each_unescaped_interpolation_is_still_there(self):
+        """A loop, not a parametrisation: with the list empty (the last entry
+        left with Auto-Create's route), pytest reported a SKIP, which reads as
+        something that did not run."""
+        gone = [lit for (rel, lit) in sorted(UNESCAPED) if lit not in _read(rel)]
+        assert not gone, f"fixed? remove it from UNESCAPED: {gone}"
 
 
 class TestTheComponentDrawsTheseResults:

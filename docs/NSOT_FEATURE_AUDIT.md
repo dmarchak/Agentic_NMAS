@@ -82,7 +82,7 @@ control whose guard does not exist.
 | Remove all static routes (bulk) | CUT | A lab-reset action with no engineer task behind it, bypassing intent. |
 | Reload devices (bulk) | KEEP, as preview-then-confirm, gated | A real operational action, and a dangerous one. |
 | Credential rotation and persistence | KEEP, and ADD GUI later | A real task, CLI-only today. |
-| Auto-Create Golden Configs | ABSORB into Save All | Overlaps it and commits separately. |
+| Auto-Create Golden Configs | ABSORB into Save All | Overlaps it and commits separately. **Done 2026-09-27:** a scope of the one capture operation (`scope: no_golden`), beside Save All; the route is removed (register C102). |
 
 ## 4. Devices in and out, records, the source of truth
 

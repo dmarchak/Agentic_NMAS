@@ -45,11 +45,8 @@ def main() -> int:
 
     for entry in sorted(devices.values(), key=lambda e: e.get("name", "")):
         name = entry.get("name", "?")
-        path = _m.golden_path_for(repo, entry)
-        config = ""
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as fh:
-                config = fh.read()
+        from modules.nsot.repo import committed_golden_for
+        config = committed_golden_for(repo, entry)["text"] or ""   # as COMMITTED (C104)
 
         running = [key for key, pattern in PROTOCOLS.items()
                    if pattern.search(config)]

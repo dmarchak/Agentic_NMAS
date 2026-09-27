@@ -549,6 +549,10 @@ class TestARequestReachesTheWire:
         with open(os.path.join(repo, "golden", f"{self.DEVICE}.cfg"), "w",
                   encoding="utf-8") as fh:
             fh.write(captured)
+        # COMMITTED: goldens are read from HEAD (C104); a file on disk that
+        # nothing committed is refused, which is what this fixture was.
+        from tests.intent_fixture import commit_paths
+        commit_paths(repo, ("golden", ".nsot"), "fixture: golden", source="capture")
 
         # Committed intent = the capture's own parse plus ONE edit, so the
         # program is exactly the lines that edit produces.

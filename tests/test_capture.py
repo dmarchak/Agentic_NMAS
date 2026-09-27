@@ -177,3 +177,84 @@ class TestTheScreensReachIt:
         rules = {r.rule for r in A.app.url_map.iter_rules()}
         assert "/golden_configs/save_all" not in rules
         assert {"/golden/capture/preview", "/golden/capture/apply"} <= rules
+
+
+class TestAutoCreateIsAScopeOfCapture:
+    """What Auto-Create was (one click, a first golden for every device
+    without one, no preview, recorded as `ai-agent`, decided from files on
+    disk) is a SCOPE of this one operation (minimalism, NSOT_STAGE7_PLAN 6a)."""
+
+    @pytest.fixture
+    def two(self, cap, monkeypatch):
+        """r2 has a committed golden; s9 is in the manifest and has none."""
+        from modules.nsot import manifest as M
+
+        M.upsert_device(cap["repo"], "uid:s9", "s9", "203.0.113.19", platform="cisco_iosxe")
+        devices = [{"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
+                    "platform": "cisco_iosxe"},
+                   {"hostname": "s9", "ip": "203.0.113.19", "device_type": "cisco_xe",
+                    "platform": "cisco_iosxe"}]
+        monkeypatch.setattr("modules.nsot.restore._devices_of",
+                            lambda ln: [dict(d) for d in devices])
+        cap["running"]["s9"] = cap["captured"].replace("hostname r2", "hostname s9")
+        return cap
+
+    def _scoped(self, cap):
+        r = cap["client"].post("/golden/capture/preview", json={"scope": "no_golden"})
+        assert r.status_code == 200, r.get_data(as_text=True)[:300]
+        return r.get_json()
+
+    def test_only_the_device_without_a_golden_is_read_and_the_rest_are_named(self, two):
+        read = []
+        import routes.golden as golden
+        real = golden._read_running
+        golden._read_running = lambda d: (read.append(d["hostname"]), real(d))[1]
+        try:
+            d = self._scoped(two)
+        finally:
+            golden._read_running = real
+        assert read == ["s9"], read
+        assert [t["name"] for t in d["preview"]["what"]["targets"]] == ["s9"]
+        scope = [w for w in d["preview"]["what_not"]["items"] if w["kind"] == "scope"]
+        assert any("r2" in w["text"] and "already have a committed golden" in w["text"]
+                   for w in scope), scope
+
+    def test_nothing_to_capture_says_what_was_looked_at(self, cap):
+        d = self._scoped(cap)
+        assert d["preview"] is None
+        assert "Every device in Lab has a committed golden" in d["nothing"]
+
+    def test_the_apply_records_the_person_never_the_agent(self, two):
+        d = self._scoped(two)
+        out = _apply(two, {"s9": _hash(d, "s9")})
+        assert out["ok"], out
+        from tests.conftest import TEST_PERSON
+        msg = _last_message(two["repo"])
+        assert "Source: capture" in msg and f"Actor: {TEST_PERSON}" in msg
+        assert "ai-agent" not in msg
+
+    def test_an_unknown_scope_is_refused(self, cap):
+        r = cap["client"].post("/golden/capture/preview", json={"scope": "everything"})
+        assert r.status_code == 400 and "unknown capture scope" in r.get_json()["error"]
+
+    def test_the_one_click_route_is_gone_and_the_button_opens_the_scope(self, cap):
+        from tests.js_source import read_shipped
+
+        rules = {r.rule for r in __import__("app").app.url_map.iter_rules()}
+        assert "/golden_configs/auto_create" not in rules
+        toolbar = read_shipped("templates/partials/device_toolbar.html")
+        assert "previewCapture([], {scope: 'no_golden'})" in toolbar
+        assert "cfgAutoGolden" not in read_shipped("templates/index.html")
+
+    def test_an_uncommitted_file_on_disk_is_not_a_golden(self, two):
+        """The scope is decided from git: s9 with a file on disk that nothing
+        committed (a failed save's residue) still has no golden."""
+        import os
+        from modules.nsot import manifest as M
+
+        with open(os.path.join(two["repo"], "golden", "s9.cfg"), "w") as fh:
+            fh.write("hostname s9\n")
+        M.upsert_device(two["repo"], "uid:s9", "s9", "203.0.113.19",
+                        platform="cisco_iosxe", golden="golden/s9.cfg")
+        d = self._scoped(two)
+        assert [t["name"] for t in d["preview"]["what"]["targets"]] == ["s9"]

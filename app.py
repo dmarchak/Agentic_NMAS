@@ -1570,7 +1570,7 @@ def refresh_hostnames():
                        for r in results if r["status"] == "updated"]
 
             from modules.ai_assistant import (
-                _find_golden_config_file, _save_golden_config_file,
+                _golden_record, _save_golden_config_file,
                 _load_variables, _save_variables,
             )
 
@@ -1579,10 +1579,10 @@ def refresh_hostnames():
                 # _save_golden_config_file removes the old hostname-named file
                 # and creates a new one with the updated header.
                 try:
-                    old_path = _find_golden_config_file(ip)
-                    if old_path and os.path.exists(old_path):
-                        with open(old_path, encoding="utf-8") as _f:
-                            raw = _f.read()
+                    # As COMMITTED (C104). The rest of this block is a second
+                    # rename path (register C102), awaiting a decision.
+                    raw = _golden_record(ip)["text"]
+                    if raw:
                         # Strip the 4-line NMAS header so _save_golden_config_file
                         # can prepend a fresh header with the new hostname.
                         stripped_lines = []
@@ -3999,42 +3999,12 @@ def configure_networks():
     return jsonify({"networks": networks})
 
 
-@app.route("/golden_configs/auto_create", methods=["POST"])
-def golden_configs_auto_create():
-    """For each device in the current list that has no golden config, fetch
-    show running-config and save it as the baseline golden config."""
-    from modules.ai_assistant import (
-        _find_golden_config_file, _save_golden_config_file,
-        _get_running_config_for_golden,
-    )
-    _, current_list_file = get_current_device_list()
-    from modules.device import load_saved_devices
-    devices = load_saved_devices(current_list_file)
-
-    created = []
-    skipped = []
-    failed  = []
-    for dev in devices:
-        ip       = dev.get("ip", "")
-        hostname = dev.get("hostname", ip)
-        if _find_golden_config_file(ip):
-            skipped.append({"ip": ip, "hostname": hostname, "reason": "already exists"})
-            continue
-        if not device_status_cache.get(ip, False):
-            failed.append({"ip": ip, "hostname": hostname, "reason": "offline"})
-            continue
-        try:
-            cfg = _get_running_config_for_golden(ip, hostname)
-            if cfg:
-                _save_golden_config_file(ip, hostname, cfg)
-                created.append({"ip": ip, "hostname": hostname})
-            else:
-                failed.append({"ip": ip, "hostname": hostname, "reason": "empty config"})
-        except Exception as exc:
-            app.logger.warning("auto_create golden config %s: %s", hostname, exc)
-            failed.append({"ip": ip, "hostname": hostname, "reason": str(exc)})
-
-    return jsonify({"ok": True, "created": created, "skipped": skipped, "failed": failed})
+# /golden_configs/auto_create was REMOVED (2026-09-27, register C102): one
+# click committed a first golden for every device without one, with no
+# preview, attributed to the agent (`Source: ai`, `Actor: ai-agent`), and it
+# decided "has a golden" from the working tree. It is now a SCOPE of the one
+# capture operation (`/golden/capture/preview` with `scope: no_golden`),
+# previewed, confirmed, and recorded as the person who confirmed it.
 
 
 # /golden_configs/save_all was REMOVED in 7.1 step 4 (register C89): one click

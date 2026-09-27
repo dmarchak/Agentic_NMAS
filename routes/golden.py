@@ -253,15 +253,43 @@ def capture_preview():
     unknown = sorted(set(wanted) - names)
     if unknown:
         return jsonify({"ok": False, "error": f"not in {list_name}: {', '.join(unknown)}"}), 404
-    fleet = not wanted
-    devices = [d for d in inventory if fleet or d.get("hostname") in set(wanted)]
     repo = _repo_for(list_name)
+    scope = data.get("scope") or ""
+    if scope and scope != "no_golden":
+        return jsonify({"ok": False, "error": f"unknown capture scope {scope!r}"}), 400
+    excluded = []
+    if scope == "no_golden":
+        # What Auto-Create was, as a scope of the ONE capture operation
+        # (minimalism, NSOT_STAGE7_PLAN section 6a): every device with no
+        # COMMITTED golden, or a refused one (a refusal's own remedy is to
+        # capture the device). Decided from git, never from files on disk.
+        from modules.nsot import manifest as _m
+        from modules.nsot.repo import committed_golden_for
+        devices = []
+        for d in inventory:
+            record = committed_golden_for(repo, _m.find_by_name(repo, d.get("hostname", ""))[1])
+            if record["text"] is None:
+                devices.append(d)
+            else:
+                excluded.append(d.get("hostname", ""))
+        if not devices:
+            return jsonify({"ok": True, "list": list_name, "fleet": False, "preview": None,
+                            "nothing": (f"Every device in {list_name} has a committed golden "
+                                        f"({len(excluded)} device(s)): nothing to capture, "
+                                        f"and nothing was read.")})
+        fleet = False
+    else:
+        fleet = not wanted
+        devices = [d for d in inventory if fleet or d.get("hostname") in set(wanted)]
     entries = [_capture_entry(list_name, repo, d)[0] for d in devices]
-    preview = _parts(entries, fleet=fleet, inventory=inventory, request=request)
+    preview = _parts(entries, fleet=fleet, inventory=inventory, request=request,
+                     not_read=excluded)
     # The preview alone: it draws each device's read, and its `select_data`
     # carries the hash the confirm is bound to. The raw reads are not sent.
+    # `nothing` is always carried (empty here): one payload shape whether or
+    # not a scope found anything, so the client reads a key that is there.
     return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
-                                 "preview": preview}))
+                                 "preview": preview, "nothing": ""}))
 
 
 @bp.route("/capture/apply", methods=["POST"])

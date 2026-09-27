@@ -98,7 +98,6 @@ DECLARED = {
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "golden.capture_apply": _COMMIT + ("baselines", "drift"),
-    "golden_configs_auto_create": _COMMIT,
     "golden.migrate_apply": _COMMIT,
     "golden.sync_renames": _COMMIT,
     "golden.restore_apply": ("device_state", "intent", "baselines", "drift",

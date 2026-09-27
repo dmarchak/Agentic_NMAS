@@ -225,57 +225,113 @@ class TestCommittedIntentIsWhatIsCommitted:
         assert body["ok"] and "HANDEDIT" not in body["yaml"], body
 
 
-class TestThePopulation:
-    """Nothing outside hostvars.py opens the intent file to READ it. The rule
-    covers readers not yet written, which the controls above cannot."""
+def _trees():
+    """{relative path: AST} over the program AND its scripts. The first version
+    scanned modules/ and routes/ only, and missed app.py's Auto-Create, the
+    deploy plan's capture (routes/deploy.py was in scope, but the rule was
+    "one caller of the resolver", which the deploy capture never called),
+    rotation, the vty count and three scripts: every one resolved a golden's
+    path and opened it itself."""
+    import ast
 
-    #: Direct uses of the intent path outside hostvars.py, each with its reason.
-    ALLOWED = {
-        "routes/deploy.py": "un-onboarding REMOVES the file (a write), then commits",
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = {}
+    paths = [os.path.join(d, f) for base in ("modules", "routes")
+             for d, _s, fs in os.walk(os.path.join(root, base)) for f in fs if f.endswith(".py")]
+    paths.append(os.path.join(root, "app.py"))
+    scripts = os.path.join(root, "scripts")
+    paths += [os.path.join(scripts, f) for f in os.listdir(scripts)
+              if os.path.isfile(os.path.join(scripts, f))]
+    for full in paths:
+        try:
+            out[os.path.relpath(full, root)] = ast.parse(open(full, encoding="utf-8").read())
+        except (SyntaxError, UnicodeDecodeError, ValueError):
+            continue                          # a shell script, not Python
+    return out
+
+
+def _functions_calling(names):
+    import ast
+
+    found = {}
+    for rel, tree in _trees().items():
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = {getattr(n.func, "attr", getattr(n.func, "id", ""))
+                     for n in ast.walk(fn) if isinstance(n, ast.Call)}
+            if calls & set(names):
+                found[(rel, fn.name)] = calls
+    return found
+
+
+class TestThePopulation:
+    """The RULE, over readers not yet written, which the controls above
+    cannot reach: a function that resolves a golden's path or the intent
+    file's path never opens a file itself; it reads through the committed
+    readers. Each exception is named with its reason."""
+
+    GOLDEN_OPENERS = {
+        ("modules/ai_assistant.py", "_golden_record"):
+            "opens only the LEGACY store's file (golden_configs/, outside git, "
+            "never written since the migration); repo goldens go through git",
+        ("scripts/nsot_verify_migration.py", "verify"):
+            "verifies the migration: reads the migration COMMIT through git and "
+            "compares it with the legacy file",
+    }
+    INTENT_OPENERS = {
+        ("scripts/nsot_fix_description_ifnames.py", "main"):
+            "a one-off repair run on the host by a person; it rewrites intent "
+            "and commits it",
     }
 
-    def _uses(self):
-        import ast
+    def test_the_scan_finds_the_resolvers(self):
+        found = _functions_calling({"golden_path_for", "_find_golden_config_file"})
+        # Measured 5 after the fix: the readers now call committed_golden_for,
+        # which is the one place that resolves a path to READ it.
+        assert len(found) >= 4, sorted(found)
+        assert ("modules/nsot/repo.py", "committed_golden_for") in found
+        assert ("modules/ai_assistant.py", "_golden_record") in found
 
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        found = {}
-        for base in ("modules", "routes"):
-            for d, _s, fs in os.walk(os.path.join(root, base)):
-                for f in fs:
-                    if f.endswith(".py"):
-                        full = os.path.join(d, f)
-                        found[os.path.relpath(full, root)] = ast.parse(open(full).read())
-        found["app.py"] = ast.parse(open(os.path.join(root, "app.py")).read())
-        return {rel for rel, tree in found.items() if rel != "modules/nsot/hostvars.py"
-                for n in ast.walk(tree) if isinstance(n, ast.Call)
-                and getattr(n.func, "attr", getattr(n.func, "id", "")) == "committed_path"}
+    def test_no_function_resolving_a_golden_opens_a_file(self):
+        found = _functions_calling({"golden_path_for", "_find_golden_config_file"})
+        opening = sorted(k for k, calls in found.items() if "open" in calls)
+        assert set(opening) <= set(self.GOLDEN_OPENERS), (
+            "resolves a golden's path and opens it itself; read it through "
+            f"repo.committed_golden_for(): {sorted(set(opening) - set(self.GOLDEN_OPENERS))}")
 
-    def test_every_direct_use_is_named(self):
-        uses = self._uses()
-        assert uses, "the scan found no use at all; it is not reading the tree"
-        assert uses <= set(self.ALLOWED), sorted(uses - set(self.ALLOWED))
+    def test_no_golden_exception_is_a_ghost(self):
+        found = _functions_calling({"golden_path_for", "_find_golden_config_file"})
+        opening = {k for k, calls in found.items() if "open" in calls}
+        assert set(self.GOLDEN_OPENERS) <= opening, set(self.GOLDEN_OPENERS) - opening
 
-    def test_no_ghosts(self):
-        assert set(self.ALLOWED) <= self._uses()
+    def test_no_function_resolving_the_intent_path_opens_it(self):
+        found = _functions_calling({"committed_path"})
+        opening = sorted(k for k, calls in found.items()
+                         if "open" in calls and k[0] != "modules/nsot/hostvars.py")
+        assert set(opening) <= set(self.INTENT_OPENERS), sorted(
+            set(opening) - set(self.INTENT_OPENERS))
+        assert set(self.INTENT_OPENERS) <= set(opening), "a ghost exception"
+        assert len(found) >= 5, sorted(found)
 
-    def test_one_resolver_reaches_the_legacy_store(self):
-        """`_find_golden_config_file` is called by `_golden_record` alone, so no
-        reader can get a working-tree path from it and open it itself."""
-        import ast
 
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        callers = set()
-        for base in ("modules", "routes"):
-            for d, _s, fs in os.walk(os.path.join(root, base)):
-                for f in fs:
-                    if not f.endswith(".py"):
-                        continue
-                    tree = ast.parse(open(os.path.join(d, f)).read())
-                    for fn in ast.walk(tree):
-                        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                            for n in ast.walk(fn):
-                                if (isinstance(n, ast.Call) and getattr(
-                                        n.func, "id", getattr(n.func, "attr", ""))
-                                        == "_find_golden_config_file"):
-                                    callers.add(fn.name)
-        assert callers == {"_golden_record"}, callers
+class TestTheDeployPlanNamesARefusal:
+    def test_a_hand_committed_golden_blocks_the_plan_by_name(self, lab, monkeypatch):
+        """The deploy plan diffs against the capture and binds its hash to it,
+        and it read the working file until the second pass of C104's fix. A
+        refused golden is said as refused, never as 'no golden config'."""
+        import routes.deploy as D
+
+        _hand_edit(lab["golden"])
+        assert R.git(lab["repo"], "commit", "-q", "-am", "hand edit")[0] == 0
+        monkeypatch.setattr(D, "_repo_for", lambda name: lab["repo"])
+        artifact, reason = D._artifact_for("lab", "r1")
+        assert artifact is None
+        assert reason.startswith("golden refused:") and "golden/r1.cfg" in reason, reason
+
+    def test_the_control_the_committed_golden_is_the_capture(self, lab, monkeypatch):
+        import routes.deploy as D
+
+        _hand_edit(lab["golden"])                       # uncommitted: ignored
+        head = R.git_raw(lab["repo"], "show", "HEAD:golden/r1.cfg")[1]
+        assert D._captured_config(lab["repo"], "r1") == head

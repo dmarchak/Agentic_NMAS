@@ -35,11 +35,10 @@ def _golden(repo, device):
     entry = _m.find_by_name(repo, device)[1]
     if not entry:
         return ""
-    path = _m.golden_path_for(repo, entry)
-    if not os.path.exists(path):
-        return ""
-    with open(path, encoding="utf-8") as fh:
-        return fh.read()
+    # As COMMITTED (C104): approval evidence from a file nobody committed
+    # would approve a template against a state that is not the record.
+    from modules.nsot.repo import committed_golden_for
+    return committed_golden_for(repo, entry)["text"] or ""
 
 
 def main() -> int:

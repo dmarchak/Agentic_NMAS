@@ -57,10 +57,16 @@
     btn.textContent = s.text;
   }
 
-  async function previewCapture(devices) {
+  // opts.scope 'no_golden': every device with no committed golden, chosen
+  // by the server from git (what Auto-Create was, as a scope of this one
+  // operation: NSOT_STAGE7_PLAN section 6a).
+  async function previewCapture(devices, opts) {
     devices = (devices || []).filter(Boolean);
-    state.fleet = !devices.length;
-    var el = modal(state.fleet ? 'Record every device as its golden' : 'Record as golden: ' + devices.join(', '));
+    var scope = (opts && opts.scope) || '';
+    state.fleet = !devices.length && !scope;
+    var el = modal(scope ? 'Record a first golden for every device without one'
+                   : state.fleet ? 'Record every device as its golden'
+                   : 'Record as golden: ' + devices.join(', '));
     var body = el.querySelector('[data-capture-body]');
     body.textContent = 'Reading the device' + (state.fleet ? 's' : '') + '…';
     var m = new bootstrap.Modal(el);
@@ -69,13 +75,19 @@
     try {
       var r = await fetch('/golden/capture/preview', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({devices: devices})});
+        body: JSON.stringify(scope ? {scope: scope} : {devices: devices})});
       d = await r.json();
     } catch (e) {
       body.textContent = 'The preview failed: ' + e.message;
       return;
     }
     if (!d.ok) { body.textContent = d.error || 'The preview failed'; return; }
+    // Nothing to capture is a result, and it says what was looked at.
+    if (!d.preview) {
+      body.textContent = d.nothing || 'Nothing to capture.';
+      el.querySelector('[data-capture-confirm]').classList.add('d-none');
+      return;
+    }
     state.preview = d.preview;
     // The component escapes every value it draws.
     body.innerHTML = previewConfirmHtml(d.preview, {selectable: true, onSelect: '_captureSelectionChanged'});

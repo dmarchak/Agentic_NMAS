@@ -8,6 +8,11 @@
       <span class="btn-text">Save All Configs</span>
       <span class="spinner-border spinner-border-sm d-none" role="status"></span>
     </button>
+    <button class="btn btn-outline-success btn-sm" id="captureNoGoldenBtn"
+            onclick="previewCapture([], {scope: 'no_golden'})"
+            title="Preview a first golden for every device in this list that has no committed golden; nothing is recorded until you confirm">
+      Capture devices with no golden
+    </button>
     <button class="btn btn-warning btn-sm" onclick="reloadSelectedDevices()" id="reloadDevicesBtn">
       <span class="btn-text">Reload Devices</span>
       <span class="spinner-border spinner-border-sm d-none" role="status"></span>
