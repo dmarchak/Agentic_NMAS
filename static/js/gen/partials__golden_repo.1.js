@@ -120,6 +120,18 @@ async function downloadGoldenVersion(hostname, ref) {
  * leaves that device untouched -- correct, and not what "restore the
  * network" sounds like.
  */
+/* WHICH CLAIM a baseline makes (register E7): "configured" (every device's
+   config captured, the only claim a baseline without an operational snapshot
+   can make) or "configured and working" (every protocol each device's intent
+   declares was up, read at the same moment). The weaker kind is drawn as
+   that, never implying the stronger. */
+function _gBaselineClaim(b) {
+  const working = b.claim === 'configured and working';
+  return `<span class="badge ${working ? 'bg-success' : 'bg-secondary-subtle text-secondary-emphasis'}"
+      data-baseline-claim="${working ? 'working' : 'configured'}"
+      title="${_gEsc(b.claim_detail || '')}">${_gEsc(b.claim || 'configured')}</span>`;
+}
+
 function _gBaselineCoverage(b) {
   const count = b.device_count;
   const total = b.inventory_size;

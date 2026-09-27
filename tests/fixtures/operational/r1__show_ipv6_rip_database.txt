@@ -1,0 +1,11 @@
+RIP process "RCN", local RIB
+ 2001:DB8:2:A::/64, metric 2
+     GigabitEthernet3/FE80::A8C1:ABFF:FEAC:D813, expires in 145 secs
+ 2001:DB8:2:C::/64, metric 3
+     GigabitEthernet3/FE80::A8C1:ABFF:FEAC:D813, expires in 145 secs
+ 2001:DB8:10::/64, metric 2
+     GigabitEthernet3/FE80::A8C1:ABFF:FEAC:D813, expires in 145 secs
+ 2001:DB8:20::/64, metric 2
+     GigabitEthernet3/FE80::A8C1:ABFF:FEAC:D813, expires in 145 secs
+ 2001:DB8:30::/64, metric 2
+     GigabitEthernet3/FE80::A8C1:ABFF:FEAC:D813, expires in 145 secs

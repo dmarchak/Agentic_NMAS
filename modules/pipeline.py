@@ -1745,9 +1745,37 @@ def _parse_route_total(route_summary: str) -> int:
     return int(m.group(1)) + int(m.group(2)) if m else -1
 
 
+def _parse_ospf_neighbor_rows(out: str) -> list:
+    """``[{"neighbor_id", "state"}]`` from `show ip ospf neighbor` or
+    `show ospfv3 neighbor`: both print Neighbor ID, Pri, State, ... and a
+    row starts with the neighbour's router ID (measured on r1 and r3,
+    tests/fixtures/operational/)."""
+    rows = []
+    for line in (out or "").splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and re.match(r"^\d+\.\d+\.\d+\.\d+$", fields[0]):
+            rows.append({"neighbor_id": fields[0], "state": fields[2]})
+    return rows
+
+
+def _parse_ripng_next_hops(out: str) -> list:
+    """RIPng's neighbours: `show ipv6 rip next-hops`, one row per next hop
+    (``FE80::…/GigabitEthernet3 [5 paths]``). RIPng has no adjacency table,
+    and "learned a route" is the wrong evidence: r1 hears s1 and installs
+    none, because OSPFv3 carries the same prefixes at a better distance
+    (measured 2026-09-27). The next hops are what it is hearing."""
+    hops = []
+    for line in (out or "").splitlines():
+        m = re.match(r"^\s*([0-9A-Fa-f:.]+)/(\S+)\s+\[(\d+) paths?\]", line)
+        if m:
+            hops.append({"address": m.group(1), "interface": m.group(2),
+                         "paths": int(m.group(3))})
+    return hops
+
+
 # Probe order decides only which protocol is PRIMARY, for callers that read
 # one name. Every protocol present is read and verified (C62).
-_PROTOCOL_ORDER = ("bgp", "ospf", "eigrp", "isis", "rip")
+_PROTOCOL_ORDER = ("bgp", "ospf", "eigrp", "isis", "rip", "ospfv3", "ripng")
 
 
 def _read_routing_protocols(conn) -> dict:
@@ -1778,10 +1806,9 @@ def _read_routing_protocols(conn) -> dict:
             # Counts adjacencies in any state: 2WAY between DROTHERs is a
             # steady state on a broadcast segment (r1 and s3 show three), so
             # counting only FULL would be wrong. The state is kept per row.
-            rows = [ln.split() for ln in out.splitlines()
-                    if re.match(r"\d+\.\d+\.\d+\.\d+", ln.strip())]
+            rows = _parse_ospf_neighbor_rows(out)
             found["ospf"] = {"count": len(rows),
-                             "states": [r[2] for r in rows if len(r) > 2],
+                             "states": [r["state"] for r in rows],
                              "output": out[:2000]}
     except Exception:
         pass
@@ -1802,6 +1829,23 @@ def _read_routing_protocols(conn) -> dict:
                     if ln.strip() and not ln.strip().startswith("System")
                     and not ln.strip().startswith("IS-IS")]
             found["isis"] = {"count": len(rows), "output": out[:2000]}
+    except Exception:
+        pass
+
+    try:
+        out = run_device_command(conn, "show ospfv3 neighbor")
+        if "Neighbor ID" in (out or ""):
+            rows = _parse_ospf_neighbor_rows(out)
+            found["ospfv3"] = {"count": len(rows), "states": [r["state"] for r in rows],
+                               "output": out[:2000]}
+    except Exception:
+        pass
+
+    try:
+        out = run_device_command(conn, "show ipv6 rip next-hops")
+        if "RIP process" in (out or ""):
+            hops = _parse_ripng_next_hops(out)
+            found["ripng"] = {"count": len(hops), "next_hops": hops, "output": out[:2000]}
     except Exception:
         pass
 

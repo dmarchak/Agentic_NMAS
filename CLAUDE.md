@@ -130,6 +130,13 @@ tracked in git.
   hash against the confirmed one, the actor, the checks that RAN (or why
   none did), rollback, and the commit. The follow-up window is not built,
   and each row says so
+- **[modules/nsot/golden_state.py](modules/nsot/golden_state.py)** — E7:
+  a baseline that is CONFIGURED AND WORKING. Every routing protocol a
+  device's committed intent declares is judged up from real output (OSPF and
+  OSPFv3 FULL or 2WAY, BGP established, RIP sources, RIPng next hops),
+  failing closed with reasons; the baseline tag carries the claim and the
+  snapshot, and `golden-state/<ts>` marks only a working fleet.
+  `scripts/nmas-golden-state` takes one (dry-run by default)
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
@@ -1020,6 +1027,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
 | `test_capture_output.py` | `nmas-capture-output`, the probe kept as a tool: a refused command connects to nothing; captures never land in the store; a capture redaction changed is marked and written `.masked.txt`; its names are the fixtures'; bytecode off before any import |
 | `test_deploy_receipts.py` | C60: a row per device (sent, failed or refused), the program masked and hashed against the confirmed hash, the checks that ran by name (r6's "no routing protocol" a real state; verify not reached says why), what is not built stated; `0600`, append-only, absent vs unreadable; /deploy/apply writes it after the commit by the verified person; the commit's `Program-Hash:` trailer; a failed write loud and never raising; the restore path writes them too; the shipped result renderer, executed against the real apply payload (a deployed row AND a refusal), names each device's checks and the receipt |
+| `test_golden_state.py` | E7: what intent declares, from the real fleet configs; the fleet judged WORKING on real captures (r3, r1, s1, s3); each failure named from a minimal edit of real output (a BGP peer down, an OSPF neighbour stuck, RIP hearing nobody, a declared protocol not running, one not measured, no committed intent); r6's "no routing protocol" a real state; one unread device makes the weak claim; the tag carries the claim and the snapshot, `golden-state/<ts>` only when working, an older baseline reads "configured"; the badge's renderer executed; the CLI dry-runs by default and carries the snapshot into the commit |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -4912,6 +4920,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   person and per device, drawn where people look. It stands on the
   attribution work (D10, P.3), which now serves accountability as well as
   security.
+- **"Configured" and "configured and working" are different claims, and a
+  baseline states which it makes** (E7, 2026-09-27). A baseline records
+  configuration, so a broken moment and a good one read the same. A golden
+  state is a baseline whose tag carries the operational snapshot, earned only
+  when every protocol each device's intent declares is up. Choosing the
+  evidence was a measurement. For RIPng, "learned a route" would have called
+  r1 broken: it hears s1 and installs nothing, because OSPFv3 wins on
+  distance. The next-hop table was the right evidence, found before building
+  rather than after a false alarm.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
@@ -4925,8 +4942,8 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **45 open at 2026-09-27**, counted from the rows: 38 recorded only in
-prose, 7 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
+present when each was recorded. **44 open at 2026-09-27**, counted from the rows: 38 recorded only in
+prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
 

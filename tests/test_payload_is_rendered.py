@@ -134,7 +134,8 @@ RENDERS = {
         (("partials__template_editor.1.js", "approvalCellHtml", "d"),)),
     "GET /golden/baselines": Render(
         _get("/golden/baselines"),
-        {GR3: ("loadGoldenRepoPanel",), GR1: ("_gBaselineCoverage", "_gCredWarning")},
+        {GR3: ("loadGoldenRepoPanel",), GR1: ("_gBaselineCoverage", "_gCredWarning",
+                                               "_gBaselineClaim")},
         ((GR3, "loadGoldenRepoPanel", "bRes"),)),
     "GET /golden/history/<host>": Render(
         _get("/golden/history/r1"),

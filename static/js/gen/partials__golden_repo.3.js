@@ -69,6 +69,7 @@ async function loadGoldenRepoPanel() {
                   <td class="font-monospace small">${_gEsc(b.tag)}</td>
                   <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
                   <td>${_gBaselineCoverage(b)}</td>
+                  <td>${_gBaselineClaim(b)}</td>
                   <td>${_gCredWarning(b)}</td>
                   <td class="text-end">
                     <button class="btn btn-outline-warning btn-sm"

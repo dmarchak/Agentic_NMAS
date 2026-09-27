@@ -1,0 +1,8 @@
+
+          OSPFv3 1 address-family ipv6 (router-id 10.255.1.13)
+
+Neighbor ID     Pri   State           Dead Time   Interface ID    Interface
+10.255.1.14       1   FULL/DR         00:00:38    10              GigabitEthernet4
+10.255.1.11       1   FULL/DROTHER    00:00:34    8               GigabitEthernet3
+10.255.1.12       1   FULL/DROTHER    00:00:38    8               GigabitEthernet3
+10.255.1.14       1   FULL/DR         00:00:37    9               GigabitEthernet3

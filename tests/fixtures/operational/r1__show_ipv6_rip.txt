@@ -1,0 +1,12 @@
+RIP process "RCN", port 521, multicast-group FF02::9, pid 722
+     Administrative distance is 120. Maximum paths is 16
+     Updates every 30 seconds, expire after 180
+     Holddown lasts 0 seconds, garbage collect after 120
+     Split horizon is on; poison reverse is off
+     Default routes are generated
+     Periodic updates 15221, trigger updates 1
+     Full Advertisement 1, Delayed Events 0
+  Interfaces:
+    GigabitEthernet3
+  Redistribution:
+    None

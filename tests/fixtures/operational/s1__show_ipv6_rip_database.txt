@@ -1,0 +1,21 @@
+RIP process "RCN", local RIB
+ 2001:DB8:2:A::/64, metric 2
+     GigabitEthernet0/2/FE80::A8C1:ABFF:FE56:B966, expires in 165 secs
+ 2001:DB8:2:C::/64, metric 2, installed
+     Vlan30/FE80::E00:66FF:FE09:801E, expires in 155 secs
+     Vlan20/FE80::E00:66FF:FE09:8014, expires in 155 secs
+     Vlan10/FE80::E00:66FF:FE09:800A, expires in 155 secs
+ 2001:DB8:10::/64, metric 2
+     Vlan30/FE80::E00:66FF:FE09:801E, expires in 155 secs
+     Vlan20/FE80::E00:66FF:FE09:8014, expires in 155 secs
+     Vlan10/FE80::E00:66FF:FE09:800A, expires in 155 secs
+ 2001:DB8:20::/64, metric 2
+     Vlan30/FE80::E00:66FF:FE09:801E, expires in 155 secs
+     Vlan10/FE80::E00:66FF:FE09:800A, expires in 155 secs
+     Vlan20/FE80::E00:66FF:FE09:8014, expires in 155 secs
+ 2001:DB8:30::/64, metric 2
+     Vlan10/FE80::E00:66FF:FE09:800A, expires in 155 secs
+     Vlan20/FE80::E00:66FF:FE09:8014, expires in 155 secs
+     Vlan30/FE80::E00:66FF:FE09:801E, expires in 155 secs
+ ::/0, metric 2, installed
+     GigabitEthernet0/2/FE80::A8C1:ABFF:FE56:B966, expires in 165 secs

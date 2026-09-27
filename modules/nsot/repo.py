@@ -586,7 +586,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 pipeline_id: str = None, baseline: bool = None,
                 extra_trailers: list = None, extra_paths: list = None,
                 acknowledge_structural_change: bool = False,
-                inventory_size: int = 0, skipped: list = None) -> dict:
+                inventory_size: int = 0, skipped: list = None,
+                operational: dict = None) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
     Returns ``{"ok", "commit", "changed", "unchanged", "tags", "renamed", "error"}``.
@@ -701,10 +702,12 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
                     baseline_tag = _unique_tag(repo, f"baseline/{stamp}", head)
                     if git(repo, "tag", "-a", baseline_tag, "-m",
-                           f"network baseline — no changes; all "
-                           f"{len(unchanged)} capture(s) verified equal to "
-                           f"HEAD, via {source}")[0] == 0:
+                           _baseline_message(
+                               f"network baseline — no changes; all "
+                               f"{len(unchanged)} capture(s) verified equal to "
+                               f"HEAD, via {source}", operational))[0] == 0:
                         tags.append(baseline_tag)
+                        tags += _golden_state_tag(repo, stamp, head, operational)
                         log.info("repo: baseline %s at existing HEAD %s "
                                  "(%d device(s) verified equal)",
                                  baseline_tag, head[:12], len(unchanged))
@@ -783,8 +786,10 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         if _baseline_wanted(baseline, source, len(changed)):
             baseline_tag = _unique_tag(repo, f"baseline/{stamp}", sha)
             if git(repo, "tag", "-a", baseline_tag, "-m",
-                   f"network baseline — {len(changed)} device(s) via {source}")[0] == 0:
+                   _baseline_message(f"network baseline — {len(changed)} device(s) "
+                                     f"via {source}", operational))[0] == 0:
                 tags.append(baseline_tag)
+                tags += _golden_state_tag(repo, stamp, sha, operational)
             else:
                 baseline_tag = ""
 
@@ -804,6 +809,42 @@ def save_golden(list_name: str, items: list, source: str = "manual",
     return {"ok": True, "commit": sha, "changed": [c["hostname"] for c in changed],
             "unchanged": unchanged, "tags": tags, "baseline": baseline_tag,
             "renamed": rename_result["renamed"], "error": ""}
+
+
+def _baseline_message(first_line: str, operational: dict = None) -> str:
+    """A baseline tag's message: what it captured, and WHICH CLAIM it makes
+    (register E7). Without a snapshot the claim is "configured", stated, so
+    nobody reads a config-only baseline as a working network."""
+    import json
+
+    from modules.nsot.golden_state import claim_lines
+
+    body = "\n".join(claim_lines(operational))
+    message = f"{first_line}\n\n{body}"
+    if operational:
+        compact = {"taken_at": operational.get("taken_at"),
+                   "claim": operational.get("claim"),
+                   "devices": {h: {k: r.get(k) for k in ("working", "declared", "why",
+                                                         "interfaces_up", "routes")}
+                               for h, r in (operational.get("devices") or {}).items()}}
+        message += "\n\nOperational: " + json.dumps(compact, sort_keys=True)
+    return message
+
+
+def _golden_state_tag(repo: str, stamp: str, sha: str, operational: dict = None) -> list:
+    """``golden-state/<stamp>`` at the same commit, ONLY when the snapshot says
+    every device is working. A listing of these tags is the list of moments
+    the network was known good; a baseline without one made the weaker claim."""
+    if not operational or not operational.get("working"):
+        return []
+    from modules.nsot.golden_state import claim_lines
+
+    tag = _unique_tag(repo, f"golden-state/{stamp}", sha)
+    if git(repo, "tag", "-a", tag, "-m",
+           "golden state — configured and working\n\n"
+           + "\n".join(claim_lines(operational)))[0] == 0:
+        return [tag]
+    return []
 
 
 def _unique_tag(repo: str, tag: str, sha: str) -> str:
@@ -1266,8 +1307,28 @@ def list_baselines(repo: str) -> list:
     for line in out.splitlines():
         parts = line.split(sep)
         if len(parts) >= 3:
-            baselines.append({"tag": parts[0], "created": parts[1], "subject": parts[2]})
+            baselines.append({"tag": parts[0], "created": parts[1], "subject": parts[2],
+                              **_baseline_claim(repo, parts[0])})
     return sorted(baselines, key=lambda b: b["created"], reverse=True)
+
+
+def _baseline_claim(repo: str, tag: str) -> dict:
+    """WHICH CLAIM a baseline makes (register E7), from its own message.
+
+    A baseline written before E7 carries no `Claim:` line and can only have
+    captured configuration, so it reads "configured": the weaker claim, drawn
+    as that, never implying the stronger. ``claim_detail`` says why."""
+    from modules.nsot.golden_state import CONFIGURED, WORKING
+
+    _rc, body, _ = git(repo, "tag", "-l", "--format=%(contents)", tag)
+    for line in (body or "").splitlines():
+        if line.startswith("Claim: "):
+            text = line[len("Claim: "):]
+            working = text.startswith(WORKING)
+            return {"claim": WORKING if working else CONFIGURED, "claim_detail": text}
+    return {"claim": CONFIGURED,
+            "claim_detail": "taken before baselines recorded an operational "
+                            "snapshot: configuration only"}
 
 
 def devices_at(repo: str, ref: str) -> list:

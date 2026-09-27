@@ -1,0 +1,13 @@
+IPv6 Routing Table - default - 12 entries
+Codes: C - Connected, L - Local, S - Static, U - Per-user Static route
+       B - BGP, R - RIP, I1 - ISIS L1, I2 - ISIS L2
+       IA - ISIS interarea, IS - ISIS summary, D - EIGRP, EX - EIGRP external
+       ND - ND Default, NDp - ND Prefix, DCE - Destination, NDr - Redirect
+       RL - RPL, la - LISP alt, lr - LISP site-registrations, ld - LISP dyn-eid
+       lA - LISP away, a - Application
+R   ::/0 [120/2]
+     via FE80::A8C1:ABFF:FE56:B966, GigabitEthernet0/2
+R   2001:DB8:2:C::/64 [120/2]
+     via FE80::E00:66FF:FE09:800A, Vlan10
+     via FE80::E00:66FF:FE09:8014, Vlan20
+     via FE80::E00:66FF:FE09:801E, Vlan30

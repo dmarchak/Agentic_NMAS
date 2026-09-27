@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Take a GOLDEN STATE: a baseline of the network configured AND working.
+
+    nmas-golden-state                  # read and judge; commits NOTHING
+    nmas-golden-state --commit         # take the baseline, with its claim
+    nmas-golden-state --list Lab --commit
+
+**What it is** (register E7). A `baseline/<ts>` tag records every device's
+configuration at one moment, and a broken moment and a good one read the
+same. This reads, in ONE session per device, its running config and its
+operational state, with the verify readers fixed against real output (C62,
+C64-C68). It judges every routing protocol the device's COMMITTED intent
+declares. Then it commits the configs as one baseline whose tag carries the
+claim and the snapshot:
+- **"configured and working"** when every declared protocol is up on every
+  device, with a `golden-state/<ts>` tag at the same commit;
+- **"configured"** otherwise, with each device's reason in the tag.
+
+**Dry-run by default.** Without `--commit` it reads and judges, prints the
+claim it WOULD make, and commits nothing, so looking costs nothing.
+
+**What it does not read, and says so:** heartbeats. NMAS reads no alert
+state until 7.2's reader.
+
+**Reads only.** Every command is a `show` from the pipeline's readers, all of
+which pass the shared read-only allowlist. The commit is the one write, and
+it goes through `save_golden()`, the single golden write path. Its `Actor:`
+is the person running this (the OS user, `Actor-Verified: host-shell`), and
+it names itself in a `Tool:` trailer.
+
+Exit: 0 every device read and working; 1 read, and the claim is only
+"configured" (each reason printed); 2 a device could not be read or the
+commit failed.
+"""
+
+import sys
+
+sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import getpass  # noqa: E402
+import os  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def read_fleet(devices: list, connect=None) -> tuple:
+    """``(captures, snapshots, failures)``: each device read in ONE session."""
+    from modules.commands import run_device_command
+    from modules.pipeline import _capture_operational_snapshot
+
+    if connect is None:
+        from modules.connection import with_temp_connection as connect
+    captures, snapshots, failures = {}, {}, []
+    for dev in devices:
+        host = dev.get("hostname", dev.get("ip", ""))
+
+        def work(conn, dev=dev, host=host):
+            return (run_device_command(conn, "show running-config"),
+                    _capture_operational_snapshot(conn, dev.get("ip", ""), host))
+        try:
+            captures[host], snapshots[host] = connect(dev, work)
+        except Exception as exc:              # noqa: BLE001
+            failures.append({"hostname": host, "reason": f"{type(exc).__name__}: {exc}"})
+    return captures, snapshots, failures
+
+
+def intent_reader(repo: str):
+    """Committed host_vars at HEAD for a device, or None (no committed
+    intent, which the judgement reports rather than guessing)."""
+    import yaml
+
+    from modules.nsot.hostvars import COMMITTED, committed_at_head
+
+    def read(host):
+        text, state = committed_at_head(repo, host)
+        return yaml.safe_load(text) if text and state == COMMITTED else None
+    return read
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--list", default="", help="device list (default: the active one)")
+    ap.add_argument("--commit", action="store_true",
+                    help="take the baseline (default: read and judge only)")
+    args = ap.parse_args(argv)
+
+    from modules.config import LISTS_DIR
+    from modules.device import get_current_device_list, get_device_lists, load_saved_devices
+    from modules.nsot import golden_state
+    from modules.nsot.repo import GoldenItem, save_golden
+
+    if args.list:
+        match = [l for l in get_device_lists() if l["name"] == args.list]
+        if not match:
+            print(f"REFUSED: no device list named {args.list!r}.")
+            return 2
+        list_name, slug = args.list, match[0]["filename"]
+    else:
+        list_name, csv = get_current_device_list()
+        slug = os.path.basename(os.path.dirname(csv))
+    list_dir = os.path.join(LISTS_DIR, slug)
+    devices = load_saved_devices(os.path.join(list_dir, "devices.csv"))
+    if not devices:
+        print(f"REFUSED: the list {list_name!r} has no devices; a golden state of "
+              "nothing is not one.")
+        return 2
+
+    captures, snapshots, failures = read_fleet(devices)
+
+    def read(dev):
+        host = dev.get("hostname", dev.get("ip", ""))
+        if host not in snapshots:
+            raise OSError(next((f["reason"] for f in failures if f["hostname"] == host),
+                               "not read"))
+        return snapshots[host]
+
+    snapshot = golden_state.take(devices, read,
+                                 intent_reader(os.path.join(list_dir, "config_repo")))
+    for line in golden_state.claim_lines(snapshot):
+        print(line)
+
+    if not args.commit:
+        print("\nDry run: nothing committed. --commit takes the baseline with this claim.")
+        return 2 if failures else (0 if snapshot["working"] else 1)
+
+    items = [GoldenItem(d.get("hostname"), captures[d.get("hostname")], d.get("ip", ""),
+                        netbox_id=d.get("_netbox_id"), device_uid=d.get("device_uid", ""))
+             for d in devices if d.get("hostname") in captures]
+    result = save_golden(list_name, items, source="golden_state", actor=getpass.getuser(),
+                         baseline=True, allow_new=False, inventory_size=len(devices),
+                         skipped=failures, operational=snapshot,
+                         extra_trailers=["Tool: nmas-golden-state"])
+    if not result.get("ok"):
+        print(f"COMMIT FAILED: {result.get('error')}")
+        return 2
+    print(f"\ncommit {result.get('commit') or '(none: nothing changed)'}; "
+          f"tags: {result.get('tags') or 'none'}")
+    if not any(t.startswith("baseline/") for t in result.get("tags") or []):
+        print("No baseline tag: a baseline needs EVERY inventory device captured "
+              "(see the reasons above).")
+    return 2 if failures else (0 if snapshot["working"] else 1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

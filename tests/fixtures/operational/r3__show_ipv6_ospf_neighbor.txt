@@ -1,0 +1,8 @@
+
+            OSPFv3 Router with ID (10.255.1.13) (Process ID 1)
+
+Neighbor ID     Pri   State           Dead Time   Interface ID    Interface
+10.255.1.14       1   FULL/DR         00:00:38    10              GigabitEthernet4
+10.255.1.11       1   FULL/DROTHER    00:00:33    8               GigabitEthernet3
+10.255.1.12       1   FULL/DROTHER    00:00:37    8               GigabitEthernet3
+10.255.1.14       1   FULL/DR         00:00:36    9               GigabitEthernet3

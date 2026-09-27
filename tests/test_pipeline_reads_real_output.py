@@ -177,7 +177,7 @@ class TestVerifyComparesEveryProtocol:
         monkeypatch.setattr("modules.connection.get_persistent_connection", lambda *a, **k: None)
         with pytest.raises(pipeline.PipelineStageError, match="ospf neighbors dropped"):
             pipeline._stage_verify(ctx)
-        assert ctx.verify_result["x"]["checked_protocols"] == ["bgp", "ospf"]
+        assert ctx.verify_result["x"]["checked_protocols"] == ["bgp", "ospf", "ospfv3"]
 
     def test_unchanged_passes_and_names_both(self, monkeypatch):
         """The control: the same captures before and after pass."""
@@ -192,7 +192,9 @@ class TestVerifyComparesEveryProtocol:
         ctx.post_snapshots = {"x": {"routing_neighbors": snap}}
         pipeline._stage_verify(ctx)
         assert ctx.verify_result["x"]["ok"] is True
-        assert ctx.verify_result["x"]["pre"]["routing_protocols"] == {"bgp": 1, "ospf": 6}
+        # r3's real captures: BGP, OSPF and OSPFv3 (IPv6), each counted.
+        assert ctx.verify_result["x"]["pre"]["routing_protocols"] == \
+            {"bgp": 1, "ospf": 6, "ospfv3": 4}
 
 
 class TestOneReader:
@@ -210,3 +212,24 @@ class TestOneReader:
                 commands.append(node.args[1].value)
         assert len(commands) >= 8, commands
         assert [c for c in commands if refusal(c)] == [], commands
+
+
+class TestTheIpv6ProtocolsOnRealOutput:
+    def test_ospfv3_rows_and_states(self):
+        rows = pipeline._parse_ospf_neighbor_rows(capture("r1", "show_ospfv3_neighbor"))
+        assert [r["state"] for r in rows] == ["2WAY/DROTHER", "FULL/BDR", "FULL/DR"]
+
+    def test_ripng_next_hops(self):
+        hops = pipeline._parse_ripng_next_hops(capture("s1", "show_ipv6_rip_next_hops"))
+        assert [(h["interface"], h["paths"]) for h in hops] == [
+            ("Vlan10", 4), ("Vlan20", 4), ("Vlan30", 4), ("GigabitEthernet0/2", 2)]
+
+    def test_r1_hears_ripng_though_it_installs_none(self):
+        """The measurement that chose the evidence: r1's RIPng table has no
+        installed route (OSPFv3 wins on distance) and one next hop."""
+        route = capture("r1", "show_ipv6_route_rip")
+        assert not [l for l in route.splitlines() if l.startswith("R ")]
+        assert len(pipeline._parse_ripng_next_hops(capture("r1", "show_ipv6_rip_next_hops"))) == 1
+
+    def test_a_device_not_running_ripng_has_none(self):
+        assert pipeline._parse_ripng_next_hops(capture("r3", "show_ipv6_rip_next_hops")) == []
