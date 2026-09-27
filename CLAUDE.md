@@ -4884,8 +4884,8 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **41 open at 2026-09-27**, counted from the rows: 35 recorded only in
-prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
+present when each was recorded. **42 open at 2026-09-27**, counted from the rows: 35 recorded only in
+prose, 7 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
 
