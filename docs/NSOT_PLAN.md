@@ -3980,6 +3980,81 @@ than scheduled.
   action, just slower, and the person most likely to click it at 3am is the
   one doing the repair.
 
+**What triage needs to know, and which store already answers it** (the
+operator's question, 2026-09-27: check what exists before building a
+collector). Most of it exists. The real gap is OPERATIONAL STATE, not
+configuration: the goldens say what a device is configured to do, not
+whether it is doing it.
+
+| Triage asks | Answered today by | Gap |
+|---|---|---|
+| What SHOULD this device be? | committed intent (`host_vars`) | none |
+| What was it last approved as? | the golden, and its commits | none |
+| When did its config change, and to what? | Oxidized's history (poll granularity) and golden commits; the immediate drift read gives NOW | none for WHAT; the time is bracketed, not exact |
+| Who changed it? | the deploy record for the tool's own changes (C60, not built); the terminal audit for sessions | everything else: nothing witnesses a console, RESTCONF or NETCONF write (8.7's checklist: `archive log config` to syslog) |
+| Identity, platform, addresses | the manifest, NetBox | none |
+| Sites, interfaces, IPs, VLANs | NetBox (imported from goldens) | none |
+| Which adjacencies SHOULD exist | intent and goldens (neighbour and network statements) | none |
+| When did an adjacency or a link change state? | **Loki**: at `notifications` (P.1), `%OSPF-5-ADJCHG`, `%BGP-5-ADJCHANGE`, `%LINK-3-UPDOWN` and `%LINEPROTO-5-UPDOWN` are all sent. This is the "4 neighbours an hour ago, 2 now" comparison, event-sourced, with timestamps, and no SSH | **Measure first** that each form reaches Loki from every device (the heartbeat's method: count the exact form, per device, with a floor). C38 (nothing ALERTS on an adjacency) is a separate question |
+| DHCP state | Kea leases, live through the API | none |
+| Is it alive? | the heartbeat (Loki, Grafana), the ping worker | none |
+| Metrics (CPU, counters) | Prometheus, but NMAS's client reads no device metric today (`test_connection` and `monitor` only); what it scrapes is listed on the host, not assumed | a read client, 5-a/7.3 |
+| **What is it DOING right now:** routing table, adjacency states, interface status | **nothing stored** | **a live read at triage time** |
+
+**Periodic or on-demand: ON-DEMAND, and no sweep now.** A periodic sweep is
+stale exactly when it matters, and triage already reads live when it runs.
+The two uses the operator separated each have a better source:
+- **For comparison ("what changed since known-good"), the baseline already
+  exists twice, with no new SSH:**
+  - Loki's state-change events above: continuous, timestamped, collected
+    anyway;
+  - the post-deploy snapshot, which the pipeline takes after every deploy.
+    It belongs in C60's receipt, so every deploy leaves a known-good
+    operational baseline for free.
+- **For context ("the network in general"),** the stores in the table
+  answer it better than a sweep would.
+
+A periodic snapshot is added only if those two prove insufficient on real
+incidents. That is measured, not assumed.
+
+**The live read reuses the pipeline's functions, and they are not ready to
+be reused (C62, measured 2026-09-27).** Section 7 says to expose
+`_capture_operational_snapshot` and `_detect_routing_neighbors` as
+standalone functions. Read first:
+- **It returns the FIRST protocol it finds** (BGP, then OSPF, EIGRP,
+  IS-IS, RIP). r3 and r4 run OSPF and BGP, and r1 and r2 run OSPF and RIP,
+  so each device is checked for one protocol only. OSPF is never read on
+  r3 or r4, and RIP never on r1 or r2.
+- **The BGP count's pattern matches no standard row.** It expects the
+  address plus six numbers and one token, and a real row has seven numbers,
+  Up/Down and State. Against a standard-format table it counts 0. So r3's
+  and r4's verify compares 0 with 0 and passes, having checked nothing.
+  Unconfirmed against r3's real output: nothing in the repository has ever
+  fed that branch real output.
+
+Exposing them as they are would carry both into triage. The standalone
+version reads EVERY protocol intent says the device runs (intent knows),
+reports each by name, and counts established sessions, not configured ones.
+
+**One reader, one allowlist.** The live read runs through the shared
+read-only allowlist (C61), the same function as the agent's tools and the
+lens. Its cost is bounded: the affected device and one hop, and nothing
+for a pipeline-subject burst.
+
+**What the model is given: a stored picture it QUERIES, never a dump.** A
+full config per device is a lot of context for a question about one
+interface. Reading everything on every alert costs more and reads worse.
+- **Triage computes the deterministic facts first, in code:**
+  - the drift lines against intent and the golden;
+  - the state-change events in the window;
+  - the receipts and reviews;
+  - the human-activity signals.
+
+  It hands the model those, small.
+- **The model asks for more through 8.2's read tools**, each answering a
+  narrow question: this interface's section, this neighbour's state, this
+  window's log lines. It gets the right thing, not everything.
+
 **What was deployed, and what the second reading said about it, is triage
 context** (the operator, 2026-09-27; 8.8 is the other half). When an
 instance lands, triage reads the deploy receipts (C60) for the device and
@@ -4333,7 +4408,8 @@ rather than re-fought.
 condition is checkable, and a future review reads this list instead of
 re-arguing the class:
 - [ ] **The device records every config change itself, and it reaches the
-      tool.** For example `archive` / `log config` with `notify syslog`, so
+      tool.** PULLED FORWARD by the operator, 2026-09-27 (register E6):
+      it closes the gap whatever writes to the device. For example `archive` / `log config` with `notify syslog`, so
       each command arrives with its user and line. No device has it today
       (measured). Its arrival from every device is measured with a floor,
       as the heartbeat is.

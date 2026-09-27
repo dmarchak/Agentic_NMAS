@@ -4829,8 +4829,8 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **40 open at 2026-09-27**, counted from the rows: 35 recorded only in
-prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
+present when each was recorded. **42 open at 2026-09-27**, counted from the rows: 36 recorded only in
+prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
 
@@ -4918,7 +4918,7 @@ Loki outage up to 536 s apart.
   and states WHAT WAS WATCHING (a job behind 7.1). No model is involved.
   Handing that history to the model is a later decision, and the test for
   it is whether a person learns anything from the last fifty rows.
-- **The terminal: a split is PROPOSED** (NSOT_FEATURE_AUDIT 3a): a
+- **The terminal: the split is COMMITTED, in 7.3** (NSOT_FEATURE_AUDIT 3a): a
   read-only lens and config mode cut, in 7.3, with the console runbook as
   break-glass. The same allowlist goes on `/run_command` and
   `bulk_execute`. It first needs C61 fixed: the allowlist checks only the

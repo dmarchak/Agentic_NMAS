@@ -320,7 +320,22 @@ and when (P.3 step 7). The page says two things: this is the break-glass path
 and its use is recorded; and a change made here is drift until it is captured
 into intent.
 
-### 3a. The terminal, revisited 2026-09-27: SPLIT IT. Proposed; the operator decides
+### 3a. The terminal, revisited 2026-09-27: SPLIT IT. COMMITTED by the operator, in 7.3
+
+**Decided with it (the operator, 2026-09-27):**
+- The same allowlist goes on `/run_command` and `bulk_execute`: "three
+  free-text paths to a device is three walk-arounds". One shared allowlist,
+  one reader.
+- The lost tab completion and `?` are accepted.
+- **`clear` and `debug` are NOT in the lens's allowlist.** Read-only and
+  "does not change anything" differ here:
+  - `clear ip ospf process` drops adjacencies;
+  - `clear counters` erases the error counters a 3am diagnosis reads (the
+    collector-restart exclusion's reason: it destroys evidence);
+  - `debug` loads the CPU of the device being diagnosed.
+
+  Each is a state change. One gets a named, gated action (as reload has)
+  when a task needs it, never a place in the lens.
 
 **The operator's position:** as built, the terminal makes every other gate
 optional. A gate you can walk around is not a gate, and this is the
