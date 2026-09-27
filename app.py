@@ -789,14 +789,29 @@ def run_command(ip):
 
     try:
         output = None
+        # A command that is not a read changes the device, so it holds the
+        # device first (C98, C101); a read never waits on another operation.
+        import contextlib as _contextlib
 
-        # Attempt persistent connection first
-        try:
-            conn = get_persistent_connection(dev, connections, lock)
-            output = run_device_command(conn, command)
-        except Exception:
-            # Fallback to temporary connection
-            output = with_temp_connection(dev, lambda conn: run_device_command(conn, command))
+        from modules import identity as _identity
+        from modules.nsot import device_ops as _device_ops
+        from modules.readonly_commands import refusal as _read_refusal
+        _list_name, _ = get_current_device_list()
+        _hold = (_device_ops.hold(_list_name, dev["hostname"], "command",
+                                  _identity.request_actor(),
+                                  detail=(command.split() or ["?"])[0], ip=ip)
+                 if _read_refusal(command) else _contextlib.nullcontext())
+
+        with _hold:
+            # Attempt persistent connection first
+            try:
+                conn = get_persistent_connection(dev, connections, lock)
+                output = run_device_command(conn, command)
+            except _device_ops.DeviceBusy:
+                raise
+            except Exception:
+                # Fallback to temporary connection
+                output = with_temp_connection(dev, lambda conn: run_device_command(conn, command))
 
         # Save output for download
         session["last_output"] = output
@@ -1168,7 +1183,15 @@ def save_config(ip):
                 output += conn.send_command_timing("\n")
             return output
 
-        output = with_temp_connection(dev, execute)
+        # `write memory` changes the device's startup config, so it holds the
+        # device like any other change (C98, C101): racing a deploy mid-push
+        # would save a half-applied config while both reported success.
+        from modules import identity as _identity
+        from modules.nsot import device_ops as _device_ops
+        _list_name, _ = get_current_device_list()
+        with _device_ops.hold(_list_name, dev["hostname"], "save",
+                              _identity.request_actor(), ip=dev["ip"]):
+            output = with_temp_connection(dev, execute)
 
         filename = make_device_filename(dev["hostname"])
         filesystems, file_list, selected_fs = get_device_context(dev)
@@ -2644,6 +2667,10 @@ def bulk_reload():
             return jsonify({"status": "error", "message": "No valid devices found"}), 400
 
         operation_id = f"reload_{int(__import__('time').time()*1000)}"
+        # Read here, in the request: the reload threads have no request.
+        from modules import identity as _identity
+        _actor = _identity.request_actor()
+        _list_name, _ = get_current_device_list()
         with lock:
             pass  # just ensure lock is available
 
@@ -2669,14 +2696,17 @@ def bulk_reload():
                 "error":    None,
             }
             try:
-                conn = get_persistent_connection(dev, connections, lock)
-                if conn is None:
-                    raise RuntimeError("Could not open SSH connection")
-                # Hold the per-device lock for the reload+confirm sequence so
-                # no concurrent command slips in between the two sends.
-                with _device_lock(dev["ip"]):
-                    conn.send_command_timing("reload", delay_factor=2)
-                    conn.send_command_timing("\n", delay_factor=1)
+                from modules.nsot import device_ops as _device_ops
+                with _device_ops.hold(_list_name, dev["hostname"], "reload", _actor,
+                                      ip=dev["ip"]):
+                    conn = get_persistent_connection(dev, connections, lock)
+                    if conn is None:
+                        raise RuntimeError("Could not open SSH connection")
+                    # Hold the per-device lock for the reload+confirm sequence so
+                    # no concurrent command slips in between the two sends.
+                    with _device_lock(dev["ip"]):
+                        conn.send_command_timing("reload", delay_factor=2)
+                        conn.send_command_timing("\n", delay_factor=1)
                 # Drop the connection immediately — the device is rebooting.
                 try:
                     conn.disconnect()

@@ -323,10 +323,15 @@ class PipelineRunner:
             _stage_verify,
             _stage_save_golden,
         ]
+        # Each stage is PROGRESS on the device this run holds (C98): a second
+        # operation refused meanwhile reads "last progress: verify, 20 s ago",
+        # and a stall past ten minutes reads as possibly stuck.
+        from modules.nsot import device_ops
         try:
             for idx, handler in enumerate(_handlers):
                 name, on_failure = _STAGE_TABLE[idx]
                 self._assert_order(idx)
+                device_ops.note(name)
                 try:
                     handler(self.ctx)
                     self.ctx.stages_completed.append(name)

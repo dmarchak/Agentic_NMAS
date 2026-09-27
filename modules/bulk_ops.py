@@ -118,6 +118,14 @@ class BulkOperationManager:
             str: Operation ID for tracking progress
         """
         operation_id = f"bulk_{int(time.time() * 1000)}"
+        # Who and which list, read HERE in the request: the workers have none.
+        # Each worker holds its device for anything that is not a read (C101).
+        try:
+            from modules import identity
+            from modules.config import get_current_list_name
+            self._holder = (get_current_list_name(), identity.request_actor())
+        except Exception:                      # noqa: BLE001
+            self._holder = ("", "unknown")
 
         # Initialize operation tracking
         with self.lock:
@@ -133,7 +141,8 @@ class BulkOperationManager:
         thread = threading.Thread(
             target=self._execute_worker,
             args=(operation_id, devices, command, connection_factory,
-                  connections_pool, pool_lock, max_workers, command_mode),
+                  connections_pool, pool_lock, max_workers, command_mode,
+                  self._holder),
             daemon=True
         )
         thread.start()
@@ -149,9 +158,18 @@ class BulkOperationManager:
         connections_pool: Dict,
         pool_lock: threading.Lock,
         max_workers: int,
-        command_mode: str = "enable"
+        command_mode: str = "enable",
+        holder: tuple = ("", "unknown"),
     ):
         """Background worker to execute commands on devices."""
+        import contextlib
+
+        from modules.nsot import device_ops
+        from modules.readonly_commands import refusal
+        list_name, actor = holder
+        # A read never waits on another operation; anything else holds its
+        # device (C98, C101), which the session guard now requires.
+        writes = command_mode != "enable" or bool(refusal(command))
         # Create work queue
         work_queue = Queue()
         for device in devices:
@@ -173,55 +191,59 @@ class BulkOperationManager:
                     "error": None
                 }
 
+                hold = (device_ops.hold(list_name, device["hostname"], "bulk", actor,
+                                        detail=command_mode, ip=device["ip"])
+                        if writes else contextlib.nullcontext())
                 try:
-                    # Get connection
-                    conn = connection_factory(device, connections_pool, pool_lock)
+                    with hold:
+                        # Get connection
+                        conn = connection_factory(device, connections_pool, pool_lock)
 
-                    # Execute command based on mode
-                    if command_mode == "config":
-                        # Parse commands - split by semicolon for multiple commands
-                        config_commands = [cmd.strip() for cmd in command.split(';') if cmd.strip()]
-                        output = conn.send_config_set(
-                            config_commands, read_timeout=60, cmd_verify=False
-                        )
-                    elif command_mode == "tftp_upload":
-                        # TFTP upload - handle interactive prompts
-                        # command format: "tftp_server|filename"
-                        parts = command.split("|")
-                        tftp_server = parts[0]
-                        filename = parts[1]
-                        output = self._execute_tftp_upload(conn, tftp_server, filename)
-                    elif command_mode == "tftp_download":
-                        # TFTP download - handle interactive prompts
-                        # command format: "tftp_server|filename|dest_filename"
-                        parts = command.split("|")
-                        tftp_server = parts[0]
-                        filename = parts[1]
-                        dest_filename = parts[2] if len(parts) > 2 else filename
-                        output = self._execute_tftp_download(conn, tftp_server, filename, dest_filename, device)
-                    elif command_mode == "config_download":
-                        # Config download - download startup or running config
-                        # command format: "tftp_server|config_type"
-                        parts = command.split("|")
-                        tftp_server = parts[0]
-                        config_type = parts[1]
-                        output = self._execute_config_download(conn, tftp_server, config_type, device)
-                    elif command_mode == "delete_file":
-                        # Delete file from flash:
-                        # command is just the filename
-                        output = self._execute_delete_file(conn, command)
-                    elif command_mode == "remove_static_routes":
-                        # Remove all non-VRF static routes
-                        output = self._execute_remove_static_routes(conn)
-                    else:
-                        # Enable mode - handles interactive prompts automatically
-                        output = _run_enable_command(conn, command)
+                        # Execute command based on mode
+                        if command_mode == "config":
+                            # Parse commands - split by semicolon for multiple commands
+                            config_commands = [cmd.strip() for cmd in command.split(';') if cmd.strip()]
+                            output = conn.send_config_set(
+                                config_commands, read_timeout=60, cmd_verify=False
+                            )
+                        elif command_mode == "tftp_upload":
+                            # TFTP upload - handle interactive prompts
+                            # command format: "tftp_server|filename"
+                            parts = command.split("|")
+                            tftp_server = parts[0]
+                            filename = parts[1]
+                            output = self._execute_tftp_upload(conn, tftp_server, filename)
+                        elif command_mode == "tftp_download":
+                            # TFTP download - handle interactive prompts
+                            # command format: "tftp_server|filename|dest_filename"
+                            parts = command.split("|")
+                            tftp_server = parts[0]
+                            filename = parts[1]
+                            dest_filename = parts[2] if len(parts) > 2 else filename
+                            output = self._execute_tftp_download(conn, tftp_server, filename, dest_filename, device)
+                        elif command_mode == "config_download":
+                            # Config download - download startup or running config
+                            # command format: "tftp_server|config_type"
+                            parts = command.split("|")
+                            tftp_server = parts[0]
+                            config_type = parts[1]
+                            output = self._execute_config_download(conn, tftp_server, config_type, device)
+                        elif command_mode == "delete_file":
+                            # Delete file from flash:
+                            # command is just the filename
+                            output = self._execute_delete_file(conn, command)
+                        elif command_mode == "remove_static_routes":
+                            # Remove all non-VRF static routes
+                            output = self._execute_remove_static_routes(conn)
+                        else:
+                            # Enable mode - handles interactive prompts automatically
+                            output = _run_enable_command(conn, command)
 
-                    result["status"] = "success"
-                    result["output"] = output
+                        result["status"] = "success"
+                        result["output"] = output
 
-                    with self.lock:
-                        self.active_operations[operation_id]["completed"] += 1
+                        with self.lock:
+                            self.active_operations[operation_id]["completed"] += 1
 
                 except Exception as e:
                     result["status"] = "failed"

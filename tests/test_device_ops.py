@@ -232,9 +232,11 @@ class TestEveryChangingPathHoldsIt:
         assert D.holder("Lab", "r1") is None
 
 
-#: Where the lock is taken, by function. A new path that changes a device
-#: must take it too; this list is the pin, and what it cannot see is stated
-#: in the register (C98): a changing path nobody added here.
+#: Where the lock is taken, by function. Since C101 the rule is enforced
+#: where the write HAPPENS (`connection._guard_writes`), so a new path that
+#: writes to a device and forgets fails on first use; this list pins the
+#: paths that change the RECORD of a device (capture, retirement) as well,
+#: which no session guard can see.
 HOLDERS = {
     "routes/deploy.py": ("apply", "run_targets"),
     "routes/golden.py": ("capture_apply",),

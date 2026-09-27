@@ -2669,10 +2669,13 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     result = {"ok": False, "device": hostname, "list": list_name,
               "steps": [], "remaining": [], "reason": "", "promoted": False}
 
+    from modules.nsot import device_ops
+
     def _step(name, ok, detail="", **extra):
         row = {"step": name, "ok": bool(ok), "detail": detail}
         row.update(extra)
         result["steps"].append(row)
+        device_ops.note(name)          # progress on the held device (C98)
         return bool(ok)
 
     def _finish():

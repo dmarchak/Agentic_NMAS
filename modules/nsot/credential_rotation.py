@@ -1258,8 +1258,11 @@ def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     result = {"device": hostname, "state": NOT_STARTED, "steps": [],
               "actor": actor, "actor_kind": actor_kind}
 
+    from modules.nsot import device_ops
+
     def _step(name, ok, detail=""):
         result["steps"].append({"name": name, "ok": bool(ok), "detail": detail})
+        device_ops.note(name)          # progress on the held device (C98)
         return bool(ok)
 
     # ---- preflight ------------------------------------------------------

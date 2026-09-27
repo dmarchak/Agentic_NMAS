@@ -301,10 +301,88 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
 
     conn.disconnect = _disconnect
     conn._nmas_session = (ip, sid)
+    _guard_writes(conn, ip)
     logger.info("ssh: opened %s for %s (%d of %d this tool may hold; %d vty line(s), "
                 "%d kept for a person)", ip, owner, count, budget["budget"],
                 budget["lines"], RESERVED_FOR_PEOPLE)
     return conn
+
+
+class UnheldDeviceWrite(RuntimeError):
+    """A write on a session whose thread does not hold the device (C101)."""
+
+
+#: Methods that change a device whatever their arguments.
+_WRITE_METHODS = ("send_config_set", "send_config_from_file", "save_config",
+                  "config_mode", "commit")
+#: Methods that change a device when the command is not a read.
+_COMMAND_METHODS = ("send_command", "send_command_timing", "send_command_expect")
+_MULTILINE_METHODS = ("send_multiline", "send_multiline_timing")
+
+
+def _guard_writes(conn, ip: str) -> None:
+    """The lock's population, enforced where the write HAPPENS (C101).
+
+    C98's lock was taken by a LIST of functions, so a new path that changed
+    a device and forgot it raced silently, and five pre-existing ones never
+    took it (Save Device Config's `write memory`, the bulk operations,
+    `/run_command`, bulk reload). Every session comes through this opener,
+    and the ONE read-only allowlist (C61) already says what a read is, so:
+    a command it refuses, or a config or save call, is sent only while this
+    thread holds the device. A path that forgets fails on first use, loudly.
+    The refusal names the verb, never the command: a command can carry a
+    secret (a rotation's password line)."""
+    from modules.nsot import device_ops
+    from modules.readonly_commands import refusal
+
+    def refuse(what):
+        raise UnheldDeviceWrite(
+            f"refusing to send {what} to {ip}: it is not a read, and this operation "
+            "does not hold the device (register C98, C101). Every change to a device "
+            "holds it from apply to commit; a path that does not is refused here, on "
+            "first use, rather than racing another operation.")
+
+    def verb(cmd) -> str:
+        words = str(cmd or "").split()
+        return repr(words[0]) if words else "an empty line"
+
+    def writing(name, original):
+        def guarded(*args, **kwargs):
+            if not device_ops.may_write(ip):
+                refuse(f"{name}()")
+            return original(*args, **kwargs)
+        return guarded
+
+    def commanding(original):
+        def guarded(*args, **kwargs):
+            cmd = args[0] if args else kwargs.get("command_string", "")
+            if refusal(cmd) and not device_ops.may_write(ip):
+                refuse(verb(cmd))
+            return original(*args, **kwargs)
+        return guarded
+
+    def multiline(original):
+        def guarded(*args, **kwargs):
+            cmds = args[0] if args else kwargs.get("commands", [])
+            for cmd in cmds or []:
+                cmd = cmd[0] if isinstance(cmd, (list, tuple)) else cmd
+                if refusal(cmd) and not device_ops.may_write(ip):
+                    refuse(verb(cmd))
+            return original(*args, **kwargs)
+        return guarded
+
+    for name in _WRITE_METHODS:
+        original = getattr(conn, name, None)
+        if callable(original):
+            setattr(conn, name, writing(name, original))
+    for name in _COMMAND_METHODS:
+        original = getattr(conn, name, None)
+        if callable(original):
+            setattr(conn, name, commanding(original))
+    for name in _MULTILINE_METHODS:
+        original = getattr(conn, name, None)
+        if callable(original):
+            setattr(conn, name, multiline(original))
 
 
 def _drop(ip: str, sid: int, why: str) -> None:

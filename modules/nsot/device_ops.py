@@ -43,7 +43,25 @@ OPERATION_WORDS = {
     "deploy": "deployed to", "restore": "restored", "capture": "captured",
     "rotate": "rotated", "onboard": "onboarded", "persist": "persisted",
     "retire": "retired",
+    "save": "saved (write memory)",
+    "command": "sent a command that is not a read",
+    "bulk": "changed by a bulk operation",
+    "reload": "reloaded",
 }
+
+#: No progress for this long and the refusal says the holder may be stuck.
+#: A pipeline's longest wait is a settle window (90 s) plus a read (120 s),
+#: so ten minutes without a step is past anything a working operation does.
+STALL_AFTER_SECONDS = 600
+
+
+def _for(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    if seconds < 90:
+        return f"{seconds} s"
+    if seconds < 5400:
+        return f"{seconds // 60} min"
+    return f"{seconds // 3600} h {seconds % 3600 // 60} min"
 
 
 class DeviceBusy(RuntimeError):
@@ -54,15 +72,33 @@ class DeviceBusy(RuntimeError):
         super().__init__(describe(holder))
 
 
-def describe(holder: dict) -> str:
-    """The refusal, in the words a person acts on."""
+def describe(holder: dict, now: float = None) -> str:
+    """The refusal, in the words a person acts on: who, what, since when, how
+    long, and whether it is still MOVING. A lock with no age is a lock people
+    force (the operator), so the refusal separates "wait" from "something is
+    stuck". There is no force: a hold ends when its operation finishes or its
+    process stops, and then the kernel releases it."""
+    now = time.time() if now is None else now
     word = OPERATION_WORDS.get(holder.get("operation", ""), holder.get("operation", "?"))
-    started = time.strftime("%H:%M:%S UTC", time.gmtime(holder.get("started", 0)))
+    started_at = holder.get("started", 0) or 0
+    started = time.strftime("%H:%M:%S UTC", time.gmtime(started_at))
     detail = holder.get("detail") or ""
-    return (f"{holder.get('device', '?')} is being {word} by {holder.get('actor') or 'unknown'}, "
+    progress = holder.get("progress") or {}
+    moved = progress.get("at", started_at) or started_at
+    text = (f"{holder.get('device', '?')} is being {word} by {holder.get('actor') or 'unknown'}, "
             f"started {started}" + (f" ({detail})" if detail else "")
-            + ". One operation per device at a time: this one was refused, not queued, "
-              "and nothing was sent to it.")
+            + f", held for {_for(now - started_at)}")
+    if progress.get("step"):
+        text += f"; last progress: {progress['step']}, {_for(now - moved)} ago"
+    if holder.get("pid"):
+        text += f" (process {holder['pid']})"
+    text += "."
+    if now - moved > STALL_AFTER_SECONDS:
+        text += (f" No progress for {_for(now - moved)}: it may be stuck. There is no "
+                 "force: the hold ends when that operation finishes or its process stops, "
+                 "and the kernel then releases it.")
+    return text + (" One operation per device at a time: this one was refused, not "
+                   "queued, and nothing was sent to it.")
 
 
 _held: dict = {}            # key -> {"fd", "count", "thread", "holder"}
@@ -122,13 +158,14 @@ def holder(list_name: str, hostname: str):
 
 
 def acquire(list_name: str, hostname: str, operation: str, actor: str,
-            detail: str = "") -> None:
+            detail: str = "", ip: str = "") -> None:
     """Hold *hostname* for *operation*, or raise :class:`DeviceBusy`."""
     key = (list_name.lower(), hostname)
     me = threading.get_ident()
+    now = time.time()
     info = {"device": hostname, "list": list_name, "operation": operation,
-            "actor": actor, "detail": detail, "started": time.time(),
-            "pid": os.getpid()}
+            "actor": actor, "detail": detail, "started": now, "ip": ip,
+            "pid": os.getpid(), "progress": {"step": "started", "at": now}}
     with _mu:
         mine = _held.get(key)
         if mine:
@@ -185,10 +222,39 @@ def release(list_name: str, hostname: str) -> None:
     log.info("device_ops: %s released after %s", hostname, mine["holder"]["operation"])
 
 
+def note(step: str) -> None:
+    """Record progress on every device THIS thread holds: the step it is on,
+    and when. It is what lets a refusal say "last progress: verify, 20 s ago"
+    rather than only when the hold began."""
+    me, now = threading.get_ident(), time.time()
+    with _mu:
+        mine = [info for info in _held.values() if info["thread"] == me]
+        for info in mine:
+            info["holder"]["progress"] = {"step": step, "at": now}
+            if info["fd"] is not None:
+                try:
+                    os.ftruncate(info["fd"], 0)
+                    os.pwrite(info["fd"], json.dumps(info["holder"]).encode("utf-8"), 0)
+                except OSError:
+                    log.debug("device_ops: progress not written", exc_info=True)
+
+
+def may_write(ip: str) -> bool:
+    """Whether THIS thread holds the device at *ip* (a hold that has not said
+    its address covers this thread's sessions: onboarding learns a DHCP
+    device's address inside its own hold)."""
+    me = threading.get_ident()
+    with _mu:
+        return any(info["thread"] == me and (not info["holder"].get("ip")
+                                             or info["holder"]["ip"] == ip)
+                   for info in _held.values())
+
+
 @contextlib.contextmanager
-def hold(list_name: str, hostname: str, operation: str, actor: str, detail: str = ""):
+def hold(list_name: str, hostname: str, operation: str, actor: str, detail: str = "",
+         ip: str = ""):
     """``with hold(...)``: the device for the block, released however it ends."""
-    acquire(list_name, hostname, operation, actor, detail)
+    acquire(list_name, hostname, operation, actor, detail, ip)
     try:
         yield
     finally:
@@ -196,14 +262,14 @@ def hold(list_name: str, hostname: str, operation: str, actor: str, detail: str 
 
 
 def acquire_many(list_name: str, hostnames: list, operation: str, actor: str,
-                 detail: str = "") -> tuple:
+                 detail: str = "", ips: dict = None) -> tuple:
     """Hold each device a batch targets. ``(held, refused)``: *refused* are
     batch rows naming the holder, so a busy device is refused ALONE and the
     rest proceed, the way a device whose program moved already is."""
     held, refused = [], []
     for host in hostnames:
         try:
-            acquire(list_name, host, operation, actor, detail)
+            acquire(list_name, host, operation, actor, detail, (ips or {}).get(host, ""))
             held.append(host)
         except DeviceBusy as exc:
             refused.append({"device": host, "outcome": "refused", "reason": str(exc),

@@ -311,7 +311,16 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
         if why:
             return {"ok": False, "plan": p, "error": "break-glass: " + why}
 
-    done = []
+    from modules.nsot import device_ops
+
+    class _Done(list):
+        """Each completed step is progress on the held device (C98)."""
+
+        def append(self, step):
+            device_ops.note(f"done: {step}")
+            super().append(step)
+
+    done = _Done()
 
     def fail(step, exc):
         remaining = [s["what"] for s in p["steps"]
