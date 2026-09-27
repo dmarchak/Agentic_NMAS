@@ -1,0 +1,23 @@
+# P.6 D2/D5/D6: serves a pending ZTP device its bootstrap config, read
+# requests only, on the socket nmas-ztp-responder.socket binds. Started by
+# that socket; never enabled on its own.
+[Unit]
+Description=NMAS: ZTP config responder (read-only TFTP)
+Requires=nmas-ztp-responder.socket
+After=nmas-ztp-responder.socket
+
+[Service]
+User=dmarchak
+Group=dmarchak
+WorkingDirectory=/home/dmarchak/python/Agentic_NMAS
+ExecStart=/home/dmarchak/python/Agentic_NMAS/scripts/nmas-ztp-responder
+# Nothing gains a capability: systemd holds the port.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+# The audit row is the only thing it writes.
+ReadWritePaths=/home/dmarchak/python/Agentic_NMAS/data
+RestrictAddressFamilies=AF_INET AF_UNIX

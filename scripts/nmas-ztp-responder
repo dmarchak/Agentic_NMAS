@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""The ZTP config responder (P.6 D2): serve a pending ZTP device its
+bootstrap config by TFTP, read requests only.
+
+Run by systemd socket activation (deploy/systemd/nmas-ztp-responder.socket
+binds udp/69 on the ZTP interface and hands the socket over as fd 3), so this
+process holds no capability at all. It refuses to start otherwise, unless
+--listen names an unprivileged address for a manual test:
+
+    scripts/nmas-ztp-responder --listen 127.0.0.1:6969
+
+What it serves, and to whom, is decided per request in
+modules/nsot/ztp_responder.py. Every fetch and every refusal is a row in
+data/reveal_audit.jsonl; the config itself is never written anywhere.
+"""
+
+import argparse
+import logging
+import os
+import socket
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--listen", default="",
+                        help="HOST:PORT for a manual run on an unprivileged port")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO,
+                        format="%(levelname)s %(name)s: %(message)s")
+    from modules import redact
+    from modules.nsot import ztp_responder as responder
+
+    # Redacted like the app's own log: a refusal reason can quote a path or a
+    # name, and this process's output is the systemd journal.
+    redact.redact_all_handlers()
+    redact.guard_new_handlers()
+
+    sock = responder.systemd_socket()
+    if sock is None:
+        if not args.listen:
+            print("REFUSED: not started by systemd socket activation, and no --listen "
+                  "given. Under systemd, nmas-ztp-responder.socket binds udp/69.",
+                  file=sys.stderr)
+            return 2
+        host, _, port = args.listen.rpartition(":")
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((host, int(port)))
+    logging.getLogger("nmas-ztp-responder").info(
+        "serving ZTP bootstrap configs on %s (read requests only)", sock.getsockname())
+    responder.serve(sock)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

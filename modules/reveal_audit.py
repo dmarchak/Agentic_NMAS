@@ -52,16 +52,22 @@ def record(*, actor: str, kind: str, what: str, target: str, detail: str = "",
     if extra:
         entry.update(extra)
 
+    recorded = False
     try:
         path = _path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with _lock, open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, sort_keys=True) + "\n")
+        recorded = True
     except Exception as exc:                  # noqa: BLE001
         log.error("reveal_audit: COULD NOT RECORD a reveal of %s/%s by %s (%s)",
                   what, target, entry["actor"], exc)
     log.info("reveal_audit: %s revealed %s for %s", entry["actor"], what, target)
-    return entry
+    # `recorded` is on the RETURN, never in the file. A caller that hands a
+    # secret to something no person is watching (the ZTP responder) serves
+    # only when the row exists; the browser reveal keeps failing open, for
+    # the reason in this function's docstring.
+    return dict(entry, recorded=recorded)
 
 
 def entries(limit: int = 200) -> list:

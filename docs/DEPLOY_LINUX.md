@@ -88,6 +88,44 @@ Three constraints decide the shape, each measured:
   `0640` works in production and breaks the offline syntax check. The file
   holds MAC-to-address reservations (inventory, not secrets).
 
+Then tell NMAS where it is: `kea_ztp_fragment` =
+`/etc/kea/nmas/reservations-255.json` in `data/user_settings.json`
+(`kea_dhcp4_config` defaults to `/etc/kea/kea-dhcp4.conf`). While
+`kea_ztp_fragment` is empty, job health shows it as an `unset_guard` row and
+a `ztp` plan refuses.
+
+### The ZTP config responder (P.6 D2, D5, D6)
+
+A read-only TFTP responder that serves a pending ZTP device its bootstrap
+config. **systemd binds udp/69, so the responder holds no capability**, and
+it binds the ZTP INTERFACE, not an address (D3). Install the two units from
+the repository and enable the SOCKET, never the service (the socket starts
+it):
+
+```bash
+sudo install -m 0644 deploy/systemd/nmas-ztp-responder.socket deploy/systemd/nmas-ztp-responder.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now nmas-ztp-responder.socket
+systemctl show -p ActiveState,Listen nmas-ztp-responder.socket
+```
+
+`BindToDevice=enp6s19` is the interface Kea listens on for the ZTP subnet
+(`interfaces-config` in `kea-dhcp4.conf`); edit it if that differs.
+
+**The firewall rule, the second layer** (the responder's "only the reserved
+address" is the first). Only the inbound request needs it: the transfer
+leaves from a new port and the device's ACKs return on that flow, which
+connection tracking already treats as established.
+
+```bash
+sudo ufw allow in on enp6s19 proto udp from 10.255.0.0/24 to any port 69 comment 'NMAS ZTP responder (P.6)'
+sudo ufw status numbered | grep -n 69
+```
+
+Every fetch and every refusal is a row in `data/reveal_audit.jsonl`
+(`actor: ztp:<address>`, `kind: device`), with the served config's sha256
+and never its text.
+
 Create `.env` with the Anthropic API key (mode `600`, owned by `nmas`):
 
 ```bash
