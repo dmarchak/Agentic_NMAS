@@ -425,7 +425,12 @@ def apply():
     report["golden"] = _commit_batch_golden(list_name, report)
     report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
                                          command_hashes)
-    return jsonify({"ok": True, "list": list_name, **report})
+    # Masked on the way out (C77's apply side, measured 2026-09-27: a planted
+    # community came back in `results[].commands`). The receipts and the
+    # golden commit are written above from the truthful report; nothing
+    # reads this response back into a confirm.
+    from modules.outbound import mask_payload
+    return jsonify(mask_payload({"ok": True, "list": list_name, **report}))
 
 
 def _write_receipts(list_name: str, report: dict, action: str, confirmations: dict,

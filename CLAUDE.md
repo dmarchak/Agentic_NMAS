@@ -1002,7 +1002,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_harness_leaves_the_app_log_alone.py` | the suite never writes into the app log of the checkout it runs in (C26) |
 | `test_p3_restore_is_guarded.py` | P.3 step 3 (D5): both Restore Golden Config buttons open the guarded preview at HEAD; 7.1: the preview is the shared component over REAL `RestoreTarget`s, every line sent drawn, residue under its section (C73), the restore's own gates and no template gate, the confirm covering exactly what the preview selects; C75: a restore that would rewrite a held credential is blocked at preview and apply, never printing the value |
 | `test_merge_is_keyed_on_the_section.py` | C76: the merge program keyed on (section, line): every child line the fleet shares between two stanzas (44, real configs, one real line removed from one real stanza) is sent to its own stanza; two new stanzas needing one child each get it; the consistency assertion names a skipped line |
-| `test_previews_mask_secrets.py` | C77: neither preview returns a planted secret (as residue or as a line the program adds), the line still drawn with its slot masked; the command hash is of the truthful program, and a masked plan driven into the apply is accepted while a wrong hash is refused |
+| `test_previews_mask_secrets.py` | C77: neither preview returns a planted secret (as residue or as a line the program adds), the line still drawn with its slot masked; the command hash is of the truthful program, and a masked plan driven into the apply is accepted while a wrong hash is refused; the apply responses are masked too (a planted community came back in `results[].commands`) |
 | `test_terminal_privilege.py` | B13: the terminal sends the enable secret ONLY in answer to a password prompt, once; a device at `#` receives nothing; the page states the terminal is break-glass and unmasked by design |
 | `test_p3_wizard_draws_the_program.py` | P.3 step 4 (D4): the wizard draws every line of the program, with one authorise box per dangerous line that re-plans the device; an authorised `shutdown` deploys end to end and a changed authorisation is refused; restore can authorise; C24's unbuildable device is named |
 | `test_job_health.py` (C28 rows) | a guard-gating setting empty on this install is an `unset_guard` row naming what it gates; unreadable settings is one `unknown` row; the real scan covers the four the erasure blanked |
@@ -1011,7 +1011,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_p3_agent_tools.py` | P.3 step 8: 24 tools gone from the list and the dispatch; the `execute_*` tools refuse everything but read-only verbs, before connecting; no reply is auto-answered |
 | `test_credential_single_copy.py` | P.3 step 11 (B14): an empty secret falls back to the password; rotation writes no copy; break-glass reports only a distinct enable secret; the dedupe script's dry run writes nothing, prints no value, and refuses an unparseable store |
 | `test_rotation_reports_the_boot_file.py` | P.3 step 12 (B15): success is the checker's SAFE verdict from one shared function; a broken sync stage is named and never success; the message leads with the danger; every outcome is recorded (never a credential) and a not-SAFE rotation is a job-health row until a later persist reads SAFE; the sync script has one owner |
-| `test_actor_verified_trailer.py` | P.3 step 10 (D10): `access` only for the actor the gate verified, `host-shell` for a CLI, `none` for the app's threads; written once at `repo.git()`; every git commit in the tree goes through it or is named; a gated route in the real app commits `access` |
+| `test_actor_verified_trailer.py` | P.3 step 10 (D10): `access` only for the actor the gate verified, `host-shell` for a CLI, `none` for the app's threads; written once at `repo.git()`; every git commit in the tree goes through it or is named; a gated route in the real app commits `access`; C81: approving a drift item commits its golden as the verified person with `Source: approval`, never `ai-agent`, and refuses with nobody behind it |
 | `test_setting_not_applicable.py` | C31: a declaration carries who, when and why, and refuses a missing reason or a set key; job health tells `not_applicable` from `unset_guard`, and set-and-declared is a `contradiction`; a declared consumer leaves the rotation's list |
 | `test_harness_isolation.py` | C32/C36/C42/C43: the suite runs on a temporary store, initialised once before any test (a file that errored alone passes alone); a write into the checkout's `data/` is attributed (the test process by an audit hook, a child by its sitecustomize) and a change no test made is the running app's only when `/proc` shows it; children get the test store; the store guard's controls hold on this machine's clock and on a simulated ext4 at 1 ms (the host) and 1 s; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
@@ -4991,6 +4991,20 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   if the same text sat under ANY section. Sending less than shown is the
   same promise broken, and only the loud direction had been looked for.
   When a guarantee is written after a failure, test it in both directions.
+- **A procedure written against an assumed control** (the operator's
+  name for it, 2026-09-27, C82). C70's step 2 said "Save r2", and no
+  per-device golden capture exists: not on the device row, not on Manage,
+  not as a curl-only route. It is the same shape as 7.4 listing "adopt" as
+  the home for a capability that did not exist. The break-glass runbook
+  assumes the same missing control ("captured into intent", and extraction
+  reads the golden). Before running a written procedure, resolve each step
+  to a control that exists: a route in `url_map` and a caller a person can
+  reach. A step with neither is a finding, not a wording problem. Asking the
+  question found three more things in one pass:
+  - the only per-device capture, a drift item's approval, committed as
+    `ai-agent` (C81, fixed);
+  - every golden commit's subject claims "baseline", tagged or not (C83);
+  - the restore's result is only a toast (C84).
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
   The list covers a stored config at the ref, printable ASCII, and
@@ -5030,7 +5044,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **47 open at 2026-09-27**, counted from the rows: 41 recorded only in
+present when each was recorded. **50 open at 2026-09-27**, counted from the rows: 44 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

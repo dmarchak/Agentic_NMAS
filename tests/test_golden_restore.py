@@ -557,15 +557,31 @@ class TestRevertHandsOffToTheConfirmedPath:
         monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
                             lambda ip, host: "hostname R1\n")
         monkeypatch.setattr("modules.ai_assistant._save_golden_config_file",
-                            lambda ip, host, text: called.setdefault("saved", host))
+                            lambda ip, host, text, source, actor: called.update(
+                                saved=host, source=source, actor=actor))
         monkeypatch.setattr("modules.ai_assistant._safe_device_name", lambda h: h)
         monkeypatch.setattr("modules.ai_assistant._get_golden_configs_dir",
                             lambda: "/tmp")
 
         result = approval_queue._exec_update_golden(
-            {"device_ip": "203.0.113.1", "device_hostname": "R1"})
+            {"device_ip": "203.0.113.1", "device_hostname": "R1"},
+            actor="ops@example.com")
         assert called.get("saved") == "R1"
         assert "error" not in result
+        # C81: the person who approved, never the helper's "ai-agent" default.
+        assert (called["source"], called["actor"]) == ("approval", "ops@example.com")
+
+    def test_an_approval_with_nobody_behind_it_saves_nothing(self, monkeypatch):
+        """C81: no actor refuses, rather than falling back to "ai-agent"."""
+        from modules import approval_queue
+
+        called = {}
+        monkeypatch.setattr("modules.ai_assistant._save_golden_config_file",
+                            lambda *a, **k: called.setdefault("saved", True))
+        result = approval_queue._exec_update_golden(
+            {"device_ip": "203.0.113.1", "device_hostname": "R1"})
+        assert "error" in result and "accountable" in result["error"]
+        assert called == {}
 
 
 class TestApproveAllSkipsConfirmEndingItems:
@@ -600,7 +616,7 @@ class TestApproveAllSkipsConfirmEndingItems:
         resolved = []
         monkeypatch.setattr(approval_queue, "get_pending", lambda: pending)
         monkeypatch.setattr(approval_queue, "resolve",
-                            lambda i, a: resolved.append(i) or {"ok": True})
+                            lambda i, a, actor="": resolved.append(i) or {"ok": True})
 
         with app_module.app.test_request_context(json={}):
             response = app_module.ai_approval_approve_all()

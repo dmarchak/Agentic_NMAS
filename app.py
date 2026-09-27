@@ -3966,7 +3966,9 @@ def ai_approval_approve(entry_id: str):
     Drift-check approvals execute via Python SSH — no AI needed.
     """
     from modules.approval_queue import resolve
-    result = resolve(entry_id, "approve")
+    from modules.identity import request_actor
+    # The VERIFIED person, so what the approval commits names them (C81).
+    result = resolve(entry_id, "approve", actor=request_actor())
     if not result.get("ok"):
         return jsonify(result), 404
     return jsonify(result)
@@ -3976,7 +3978,8 @@ def ai_approval_approve(entry_id: str):
 def ai_approval_reject(entry_id: str):
     """Reject a queued action without executing it."""
     from modules.approval_queue import resolve
-    result = resolve(entry_id, "reject")
+    from modules.identity import request_actor
+    result = resolve(entry_id, "reject", actor=request_actor())
     if not result.get("ok"):
         return jsonify(result), 404
     return jsonify(result)
@@ -3993,6 +3996,7 @@ def ai_approval_approve_all():
     modal per item on a single click.
     """
     from modules.approval_queue import get_pending, is_confirm_ending, resolve
+    from modules.identity import request_actor
 
     results, skipped = [], []
     for entry in get_pending():
@@ -4007,7 +4011,7 @@ def ai_approval_approve_all():
                            "be approved in bulk."),
             })
             continue
-        results.append(resolve(entry["id"], "approve"))
+        results.append(resolve(entry["id"], "approve", actor=request_actor()))
 
     ok_count   = sum(1 for r in results if r.get("ok"))
     fail_count = len(results) - ok_count

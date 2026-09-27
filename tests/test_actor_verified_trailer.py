@@ -234,3 +234,39 @@ class TestThroughTheApp:
         msg = _last_message(str(tmp_path / "t" / "config_repo"))
         assert f"Actor: {TEST_PERSON}" in msg, msg
         assert "Actor-Verified: access" in msg, msg
+
+
+class TestAnApprovalCommitsItsApprover:
+    """C81. Approving a drift item ("Update Golden Config") committed the
+    device's golden as `Actor: ai-agent`, `Source: ai`: the executor called
+    the save helper with its defaults. Through the real approve route now,
+    read back from git."""
+
+    def test_the_approve_route_commits_the_verified_person(self, tmp_path, monkeypatch):
+        import app as app_module
+        from modules import approval_queue
+        from modules.nsot.repo import GoldenItem, save_golden
+        from tests.conftest import TEST_PERSON
+
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(tmp_path / name))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "t")
+        (tmp_path / "t").mkdir()
+        ip = "203.0.113.12"
+        # The device exists (an approval never mints an identity).
+        assert save_golden("t", [GoldenItem("r2", "hostname r2\n", ip)],
+                           source="onboarding", actor="x", allow_new=True)["ok"]
+        monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
+                            lambda i, h: "hostname r2\ninterface Gi2\n load-interval 30\n")
+        entry = approval_queue.add_approval(
+            "update_golden_config", "drift on r2", ip, "r2", "", {}, "test")
+        entry_id = entry["id"] if isinstance(entry, dict) else entry
+
+        resp = app_module.app.test_client().post(f"/ai/approvals/{entry_id}/approve")
+        assert resp.status_code == 200, resp.get_data(as_text=True)[:300]
+        msg = _last_message(str(tmp_path / "t" / "config_repo"))
+        assert f"Actor: {TEST_PERSON}" in msg, msg
+        assert "Actor-Verified: access" in msg, msg
+        assert "Source: approval" in msg, msg
+        assert "ai-agent" not in msg, msg

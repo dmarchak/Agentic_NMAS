@@ -117,3 +117,33 @@ class TestTheHashIsStillOfWhatIsSent:
             "command_hashes": {"s4": "0" * 16},
             "authorise": {"s4": ["shutdown"]}}).get_json()
         assert "s4" in (body.get("by_outcome") or {}).get("refused", []), body.get("by_outcome")
+
+
+class TestTheApplyResponsesAreMaskedToo:
+    """C77's apply side, found tracing where C70's observation (b) is read:
+    `/deploy/apply` returned the planted community in `results[].commands`.
+    The restore apply returns through the same `run_targets`."""
+
+    def test_the_deploy_apply_response_carries_no_planted_value(self, monkeypatch):
+        from tests import payload_providers as P
+
+        plan, _intent, _capture = _deploy_plan(monkeypatch)
+        device = plan["devices"][0]
+        body = P._client().post("/deploy/apply", json={
+            "confirmations": {"s4": device["capture_hash"]},
+            "command_hashes": {"s4": device["command_hash"]},
+            "authorise": {"s4": ["shutdown"]}}).get_json()
+        rows = [r for r in body.get("results") or [] if r.get("device") == "s4"]
+        # Floor: the row that carried it is there, with its program drawn.
+        assert rows and any("snmp-server community <redacted" in c
+                            for c in rows[0].get("commands") or []), rows
+        assert ADDED not in json.dumps(body)
+
+    def test_the_restore_apply_masks_its_response(self):
+        """The same one line, pinned at the route (it shares `run_targets`)."""
+        import inspect
+
+        import routes.golden as golden
+
+        src = inspect.getsource(golden.restore_apply)
+        assert "mask_payload(" in src and src.count("jsonify(") >= 1

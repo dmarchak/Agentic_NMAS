@@ -374,7 +374,9 @@ break-glass record.**
   never could.
 - **The credential:** `nmas-breakglass`.
 - **After a break-glass change:** it is drift, and it is captured into
-  intent (extract, review, commit).
+  intent (extract, review, commit). Extraction reads the device's GOLDEN, and no
+  per-device capture exists yet (register C82, 2026-09-27): until it does,
+  this step needs Save All or a drift approval first.
 
 The terminal stops claiming a role it could not fill. The page's
 break-glass paragraph moves to a runbook section, *"When the tool cannot

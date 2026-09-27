@@ -150,7 +150,7 @@ def get_pending_count() -> int:
     return len(get_pending())
 
 
-def resolve(entry_id: str, action: str) -> dict:
+def resolve(entry_id: str, action: str, actor: str = "") -> dict:
     """
     Resolve an approval entry.
 
@@ -168,11 +168,14 @@ def resolve(entry_id: str, action: str) -> dict:
 
     entry["status"]      = "approved" if action == "approve" else "rejected"
     entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    # WHO decided, from the route's verified identity (C81). The executor
+    # attributes what it commits to this person.
+    entry["resolved_by"] = actor
     _save_queue(entries)
 
     execution = {}
     if action == "approve":
-        execution = _execute(entry)
+        execution = _execute(entry, actor=actor)
 
         # A confirm-ending action is not finished by approving it. Approving
         # opens the preview; the work happens when the operator confirms the
@@ -234,7 +237,7 @@ def mark_done(entry_id: str, note: str = "") -> dict:
     return {"ok": True, "entry": entry}
 
 
-def _execute(entry: dict) -> dict:
+def _execute(entry: dict, actor: str = "") -> dict:
     """Dispatch to the correct executor based on action_type."""
     atype = entry.get("action_type", "")
 
@@ -251,7 +254,7 @@ def _execute(entry: dict) -> dict:
 
     try:
         if atype == "update_golden_config":
-            return _exec_update_golden(entry)
+            return _exec_update_golden(entry, actor=actor)
         elif atype == "revert_to_golden":
             return _exec_revert_golden(entry)
         else:
@@ -261,8 +264,16 @@ def _execute(entry: dict) -> dict:
         return {"error": str(exc)}
 
 
-def _exec_update_golden(entry: dict) -> dict:
-    """Save the current running-config as the new golden config for a device."""
+def _exec_update_golden(entry: dict, actor: str = "") -> dict:
+    """Save the current running-config as the new golden config for a device.
+
+    Committed as ``Source: approval`` by the person who approved it (register
+    C81). It called `_save_golden_config_file()` with that helper's defaults,
+    ``source="ai", actor="ai-agent"``, so a person's approval was recorded as
+    the AI's decision, and `Actor-Verified: none` beside it. No actor
+    REFUSES rather than falls back, because the fallback is the defect: a
+    golden with nobody accountable behind it.
+    """
     from modules.ai_assistant import (
         _save_golden_config_file, _get_running_config_for_golden,
         _nsot_repo_dir,
@@ -271,6 +282,9 @@ def _exec_update_golden(entry: dict) -> dict:
     hostname  = entry.get("device_hostname", device_ip)
     if not device_ip:
         return {"error": "No device_ip in action_params"}
+    if not actor:
+        return {"error": "No approving person was recorded, so the golden is "
+                         "not saved: a golden needs somebody accountable behind it"}
 
     try:
         # Fetch current running config via SSH
@@ -279,7 +293,8 @@ def _exec_update_golden(entry: dict) -> dict:
             return {"error": f"Could not fetch running config for {hostname} ({device_ip})"}
 
         # Use the shared helper so hostname-based naming is applied consistently
-        _save_golden_config_file(device_ip, hostname, config_text)
+        _save_golden_config_file(device_ip, hostname, config_text,
+                                 source="approval", actor=actor)
 
         # The path reported is the one actually written. This used to build a
         # `golden_configs/<host>.cfg` path and report it as `saved`, while

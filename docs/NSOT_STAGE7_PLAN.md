@@ -555,6 +555,10 @@ C75-C78):
 Each gate drawn by name had to be traced to the line of code that makes it
 true, and three of them were not what they said.
 
+**Left behind by the restore retrofit, found running C70 (register):** the
+restore's RESULT is still a toast (C84, 7.1's), and there is no per-device
+golden capture (C82, a Device-page action for 7.3).
+
 **Next, in the approved order:** the C77 sweep (every `not_device` POST
 that computes, driven with every store planted; scheduled by the operator
 2026-09-27, first because the next retrofits each add such a POST), then
