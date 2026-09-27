@@ -5084,6 +5084,17 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   and its tests (4,530), with a control that catches the exact shape. When
   a language behaviour can remove a control without a trace, a mechanical
   scan is the only review that works.
+- **A fixture can fail to DISTINGUISH two states, not only fail to REACH
+  one** (the operator's distinction, 7.1 step 5, 2026-09-27). The fleet
+  fixture's r2 password equals its account name, so a test's "rotation"
+  that replaced the value everywhere on the line also renamed the account.
+  The route answered `silent` (an account added back), which was correct
+  for what it was given, and a looser assertion would have passed. It is
+  related to the empty-collection trap (C72) and not the same: there the
+  fixture cannot reach a state, and here its data makes two states look
+  alike. **The detection method differs too: print which state came back,
+  do not only assert the one you expected.** Asserting what you expect
+  hides it, and printing what happened reveals it.
 - **A baseline asserts the network is at its committed INTENT, and every
   capture path now says whether it is** (C89 (c) and (d), decided
   2026-09-27). `save_golden()` is the one place every capture commits
@@ -5152,7 +5163,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **51 open at 2026-09-27**, counted from the rows: 45 recorded only in
+present when each was recorded. **52 open at 2026-09-27**, counted from the rows: 46 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
