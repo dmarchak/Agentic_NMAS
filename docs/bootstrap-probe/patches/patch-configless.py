@@ -78,11 +78,17 @@ EDITS = (
         '            # the install overlay. Remove it from THIS container\'s writable\n'
         '            # layer (the image is untouched), so the overlay is created\n'
         '            # fresh from the pristine base.\n'
+        '            # Said in EVERY case: a line that appears only when something\n'
+        '            # is removed cannot tell "patch absent" from "nothing to remove".\n'
+        '            logger.warning("CONFIGLESS: booting the base disk %s", disk_image)\n'
         '            install_overlay = re.sub(r"(\\.qcow2)$", r"-overlay\\1", disk_image)\n'
         '            if os.path.exists(install_overlay):\n'
         '                logger.warning("CONFIGLESS: removing %s so the node boots from the pristine base",\n'
         '                               install_overlay)\n'
         '                os.remove(install_overlay)\n'
+        '            else:\n'
+        '                logger.warning("CONFIGLESS: no install overlay at %s; nothing to remove",\n'
+        '                               install_overlay)\n'
         '        super().__init__(username, password, disk_image=disk_image, ram=4096, smp="2")\n',
     ),
     (

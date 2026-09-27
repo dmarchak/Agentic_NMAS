@@ -179,8 +179,11 @@ python3 /home/dmarchak/labs/ztp-a/patches/patch-configless.py /home/dmarchak/lab
 ```
 
 The last line must be `REFUSED: already patched`, and the patched file's
-sha256 must be `258c163304e66a7a…` (computed from the fixture by the
-six-edit patcher). **The patcher never upgrades an older configless copy:**
+sha256 must be `972a0f72f1ee5847…` (computed from the fixture by the
+patcher at `a5f5b530…`, which also says which disk it boots). **A hash taken
+here is a hash of the staged file, not of the running one:** after the
+deploy, step 4 hashes `/launch.py` INSIDE the container, and that is the
+check that counts. **The patcher never upgrades an older configless copy:**
 a mark says "patched" and not with which edits, so re-staging starts from the
 adopted base (the `cp` above overwrites the copy) and the patcher applied to
 that. The base is unchanged at `e483dd2475b505bd…`; only the edits changed.
@@ -578,7 +581,25 @@ sudo tcpdump -ni "br-$(docker network inspect -f '{{.Id}}' clab-ztp-probe | cut 
 ```
 
 If the bridge name comes out as bare `br-`, the network does not exist and
-tcpdump says so: stop there. Then watch the container log (terminal E):
+tcpdump says so: stop there.
+
+**Before anything else, the file the container RUNS** (M3's first run was
+lost to a stale bind, found only by hashing inside the container):
+
+```bash
+docker exec clab-nmas-ztp-a-bp-ztp-a sha256sum /launch.py
+docker logs clab-nmas-ztp-a-bp-ztp-a 2>&1 | grep -E "CONFIGLESS|Creating overlay disk image"
+```
+
+Expect `972a0f72f1ee5847…`, then these three lines in this order:
+
+- `CONFIGLESS: booting the base disk /c8000v-universalk9_8G_serial.17.06.01a.qcow2`
+- `CONFIGLESS: removing /c8000v-universalk9_8G_serial.17.06.01a-overlay.qcow2 …`
+- `Creating overlay disk image: /c8000v-universalk9_8G_serial.17.06.01a-overlay.qcow2`
+
+That last name has ONE `-overlay`. `-overlay-overlay` means the install
+overlay was booted again. If the hash or any of the three lines differs,
+tear down before the console. Then watch the log (terminal E):
 
 ```bash
 docker logs -f clab-nmas-ztp-a-bp-ztp-a
@@ -586,11 +607,54 @@ docker logs -f clab-nmas-ztp-a-bp-ztp-a
 
 Then the console, answering NOTHING for 15 minutes, as in M1 step 5.
 
+### Observed: M3's first run (2026-09-27), and why it does not count
+
+**P-M0 failed, and the cause was the instrument: the container ran the OLD
+launch script.** Measured inside the running container and on the lab host:
+
+- `docker inspect` binds `/home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py`
+  to `/launch.py`.
+- That file, and `/launch.py` inside the container, hash to `5d0a4b73…`.
+  That is exactly the four-edit patcher's output from the base, recomputed
+  here from `fd85451`'s patcher. Its line 90 has no `-overlay` filter and
+  there is no removal block.
+- Its mtime is `2026-09-26 23:43:40`, the original staging, before the new
+  patcher arrived (`00:38:05`). So the re-staging's `cp` and `--write` did
+  not run against THIS path, whatever produced the `258c1633…` that was
+  read.
+- Everything the node did follows from that. The script handed vrnetlab the
+  install overlay, vrnetlab created `-overlay-overlay` on it (the log line
+  and `qemu-img info -U` agree), and the node booted the saved config:
+  `platform console serial`, and Gi2 in `shutdown`.
+
+**P-M2d: passthrough took effect.** The qemu line shows Gi1 as
+`-netdev tap,id=p00,ifname=tap0,script=/etc/tc-tap-mgmt-ifup`, not a user
+network. Whether its DISCOVERs went unanswered is for the Gi1 capture. P-M3
+was not reached: Gi2 was shut down by the saved config. The config ISO was
+generated (`/config.iso`, 01:05:13) and NOT attached (no `-cdrom` on the
+qemu line), so the ISO edit held.
+
+**Recorded, not explained:** `show startup-config` read `Last configuration
+change at 01:12:08` on this boot, 5 s before the console was released. So
+something re-saved NVRAM during a boot of the INSTALL overlay. The
+hypothesis that IOS-XE writes a startup config on a configless first boot
+is refuted by M1's re-run, where an erased NVRAM gave `No startup-config,
+starting autoinstall` and no config. What re-stamped an inherited config is
+open. The fresh-base boot will show whether any write happens with nothing
+inherited.
+
+**The instrument's own gap:** the removal was logged only when it removed
+something, so a missing line could not tell "patch absent" from "nothing to
+remove". The patch now says which disk it boots, and says "nothing to
+remove" when there is nothing, in every case (`TestItSaysWhatItDid`, two
+controls fired). The runbook reads the file the CONTAINER runs before
+anything else.
+
 **Predictions, recorded before the boot:**
 
 | # | What will be seen | Prediction |
 |---|---|---|
-| P-M0 | The disk fix, on a FRESH node | The container log says `CONFIGLESS: removing /c8000v-universalk9_8G_serial.17.06.01a-overlay.qcow2`; the console says `No startup-config, starting autoinstall/pnp/ztp`; `show startup-config` reports none. No hand erase this time |
+| P-M0 | The disk fix, on a FRESH node | `/launch.py` in the container is `972a0f72…` and the log carries the three lines above; the console says `No startup-config, starting autoinstall/pnp/ztp`; `show startup-config` reports none. No hand erase this time |
 | P-M2d | Passthrough | DISCOVERs from Gi1's MAC on the docker bridge (terminal D), none answered; no `Acquired IPv4 address … GigabitEthernet1` |
 | P-M3a | Gi2 is answered by Kea | DISCOVER, OFFER, REQUEST, ACK on `br-mgmt`; `Acquired IPv4 address 10.255.0.50 on Interface GigabitEthernet2` |
 | P-M3b | What it asks for, and how | A TFTP read request for `bp-ztp-a.cfg` to `10.255.0.10:69`, seen on terminals A and C. Nothing answers it. Whether AutoInstall then tries its default names (`network-confg`, `cisconet.cfg`, `router-confg`, `ciscortr.cfg`) is recorded, not predicted |

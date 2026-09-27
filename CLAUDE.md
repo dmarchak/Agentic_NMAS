@@ -4613,6 +4613,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   worked in production and made the config unvalidatable before a restart.
   `0644` was chosen because the file is inventory, not secrets. The recipe
   is in `docs/DEPLOY_LINUX.md` so a rebuild reproduces it.
+- **A hash of the file you staged is not a hash of the file that runs**
+  (P.6 M3's first run, 2026-09-27). The re-staged launch script was
+  reported at the right hash, and the container bound a different state of
+  that path: `/launch.py` inside the container hashed to the OLD patcher's
+  output, with an mtime from before the new patcher arrived. A whole boot
+  measured the old instrument, and its failure read at first as IOS-XE
+  writing its own config. Check at the CONSUMER (`docker exec … sha256sum
+  /launch.py`), the same rule as *a check of the code is not a check of the
+  install*. And an instrument that speaks only when it acts cannot tell
+  "absent" from "nothing to do": the patch now names its disk in every case.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every

@@ -154,11 +154,18 @@ def _construct(source, listing, install_mode):
         rename=lambda a, b: None,
         remove=lambda path: (removed.append(path), files.discard(path)),
         path=types.SimpleNamespace(isfile=lambda p: p in files, exists=lambda p: p in files))
+    said = []
+
+    class _Logger:
+        def __getattr__(self, level):
+            return lambda msg, *args: said.append(msg % args if args else msg)
+
     ns = {"vrnetlab": types.SimpleNamespace(VM=VM), "os": fake_os, "re": re,
-          "logging": logging, "logger": logging.getLogger("test_configless_patch")}
+          "logging": logging, "logger": _Logger()}
     exec(compile(ast.Module(body=cls, type_ignores=[]), "launch.py", "exec"), ns)
     with pytest.raises(_Reached) as reached:
         ns["C8000v_vm"]("bp-ztp-a", "admin", "admin", "scrapli", install_mode=install_mode)
+    _construct.said = said
     return reached.value.args[0], removed
 
 
@@ -186,6 +193,27 @@ class TestTheDiskItBootsFrom:
     def test_an_image_with_no_install_overlay_removes_nothing(self):
         disk, removed = _construct(_patcher().patch(_real()), ["bin", BASE], install_mode=False)
         assert disk == "/" + BASE and removed == []
+
+
+class TestItSaysWhatItDid:
+    """M3's first run could not tell "the patch is absent" from "there was
+    nothing to remove": the only line was printed on removal. So the choice
+    is said in every case, and the runbook reads it (and the hash of the
+    file the CONTAINER runs) before anything else."""
+
+    def test_it_names_the_disk_it_boots_every_time(self):
+        _construct(_patcher().patch(_real()), ["bin", BASE, INSTALL_OVERLAY], install_mode=False)
+        assert f"CONFIGLESS: booting the base disk /{BASE}" in _construct.said
+
+    def test_nothing_to_remove_is_said_not_implied(self):
+        _construct(_patcher().patch(_real()), ["bin", BASE], install_mode=False)
+        assert f"CONFIGLESS: booting the base disk /{BASE}" in _construct.said
+        assert any("nothing to remove" in m for m in _construct.said), _construct.said
+
+    def test_unpatched_it_says_none_of_it(self):
+        # Floor: the lines come from the patch, not from the harness.
+        _construct(_real(), ["bin", BASE, INSTALL_OVERLAY], install_mode=False)
+        assert not [m for m in _construct.said if "CONFIGLESS" in m]
 
 
 class TestItRefuses:
