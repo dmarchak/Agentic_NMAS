@@ -217,10 +217,18 @@ RENDERS = {
         _get("/monitoring/config"),
         {I4: ("loadMonitoringTab",)},
         ((I4, "loadMonitoringTab", "cfg"),)),
+    # A STORED PARTIAL IMPORT (C85). This entry used `_get("/netbox/status")`
+    # on a store with no import, so `status` was empty (declared "NetBox is
+    # not configured in the fixture") and the summary C8 filled with
+    # `write_failures`, `partial` and `complete` was never examined: the
+    # forward check would have named them as drawn nowhere, had the fixture
+    # reached them. C72's class, found by a positive control on 2026-09-27.
     "GET /netbox/status": Render(
-        _get("/netbox/status"),
-        {I4: ("loadNetboxTab",)},
-        ((I4, "loadNetboxTab", "nbs"),)),
+        lambda mp, tmp: P.netbox_status(mp, tmp),
+        {I4: ("loadNetboxTab",), PC: PC_RESULT_FNS},
+        ((I4, "loadNetboxTab", "nbs"),),
+        maps=("lists",),
+        adapters={"modules/preview_confirm.py": ("netbox_sync_result", "build_result")}),
 }
 
 #: Keys carried and correctly not drawn, EVERYWHERE, in both directions. At
@@ -288,7 +296,12 @@ UNDRAWN = {
         ("name", "the tool's key; the card is keyed by it at the call site")],
     "GET /netbox/status": [
         ("filename", "the list's legacy CSV name; nothing needs it on screen, "
-                     "and 7.8 removes the legacy lists API")],
+                     "and 7.8 removes the legacy lists API"),
+        ("config_template_id", "NetBox's internal id for the config template NMAS "
+                               "installs; the template is named in NetBox itself"),
+        ("last_sync", "the newest of the per-list timestamps, each drawn on its "
+                      "own list's badge"),
+        ("list", LIST)],
     "GET /onboard/pending": [
         ("counts total overdue stale thresholds",
          "the banner derives its counts from the rows; the server's counts "
@@ -413,7 +426,6 @@ EMPTY_IN_FIXTURE = {
     "GET /inventory/source/<list> config.device_order": (S_, _STRINGS),
     "GET /inventory/source/<list> stale_devices": (R_, "a local list has no stale "
                                                        "NetBox devices; a map of records"),
-    "GET /netbox/status status": (R_, "NetBox is not configured in the fixture"),
     "GET /templates bindings.overrides": (R_, "no binding override in the fixture"),
     "GET /templates templates[].bound_devices": (S_, _STRINGS),
     "GET /templates/approval/<path> changes": (S_, _STRINGS),
@@ -434,6 +446,7 @@ EMPTY_IN_FIXTURE = {
                                                      "drawn in test_preview_confirm "
                                                      "(deploy_plan_with_residue)"),
     "POST /golden/restore/preview devices[].blocking_reasons": (S_, _STRINGS),
+    "GET /netbox/status status.lists.Default.result.did_not.items[].lines": (S_, "the first did-not item is the device that was not imported (s9), which has no write lines; r2's partial item carries them"),
     "GET /deploy/receipts changes[].result.record.tags": (S_, "a receipt names the golden commit and not its tags, and the history's record statement says so"),
     "GET /deploy/receipts changes[].result.targets[].checks.issues": (S_, "the fixture's verify is clean; a failing check is drawn in test_preview_confirm (TestTheResultHalf)"),
     "GET /deploy/receipts changes[].result.targets[].checks.pending_convergence": (S_, "the fixture's verify converged; the renderer draws a pending line when one exists"),
@@ -450,7 +463,8 @@ EMPTY_IN_FIXTURE = {
     "POST /onboard/plan host_vars": (R_, "the plan carries no intent for a device "
                                          "not yet onboarded; drawn in 7.4"),
 }
-EMPTY_RECORDS_CEILING = 14
+# 14 -> 13: `GET /netbox/status status` is reached (a stored import, C85).
+EMPTY_RECORDS_CEILING = 13
 
 
 def _empty_paths(obj, path=""):
@@ -485,7 +499,10 @@ def _flat(table):
 # half (7.1 step 2), which draws eight keys the old renderer did not and
 # carries four of the old renderer's in another form (each declared);
 # a protocol name is a map key under `neighbours`, not an exemption.
-UNDRAWN_CEILING = 101
+# 101 -> 104, the permitted reason: `GET /netbox/status` could not reach a
+# stored import (C85's fixture), and reaching one showed three keys with
+# reasons, beside `notes` and `region`, which are now drawn.
+UNDRAWN_CEILING = 104
 PHANTOM_CEILING = 18
 
 

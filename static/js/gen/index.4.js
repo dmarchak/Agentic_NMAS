@@ -392,6 +392,12 @@ async function loadHistoryTab() {
 
 let _netboxPollTimer = null;
 
+// The sync card's badge colour comes from the import's RESULT level (C85):
+// it was green whenever `failed` was empty, while C8's `write_failures`,
+// `partial` and `complete` were read by nothing.
+const _NB_LEVEL_BADGE = {success: 'success', warning: 'warning text-dark',
+                         danger: 'danger', secondary: 'secondary'};
+
 async function loadNetboxTab() {
   const statusPanel = document.getElementById('netboxStatusPanel');
   if (!statusPanel) return;
@@ -453,7 +459,7 @@ async function loadNetboxTab() {
             const hdrBadge = isRunning
               ? '<span class="badge bg-info"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:.8rem;height:.8rem"></span>syncing…</span>'
               : (summary
-                  ? `<span class="badge bg-${summary.failed && summary.failed.length ? 'warning text-dark' : 'success'}">last sync ${_esc(summary.timestamp || '')}</span>`
+                  ? `<span class="badge bg-${_NB_LEVEL_BADGE[previewConfirmResultLevel(summary.result)] || 'secondary'}" data-nb-level="${_esc((summary.result || {}).level || '')}">last sync ${_esc(summary.timestamp || '')}</span>`
                   : '<span class="badge bg-secondary">never synced</span>');
             const fails = (summary && summary.failed) || [];
             const ipam = (summary && summary.ipam) || {};
@@ -492,6 +498,8 @@ async function loadNetboxTab() {
                     <span class="badge bg-secondary me-1">scanned ${summary.scanned || 0}/${summary.total || 0}</span>
                     ${fails.length ? `<span class="badge bg-warning text-dark">failed ${fails.length}</span>` : ''}
                   </div>
+                  <details class="small mt-1" data-nb-outcome><summary>Outcome of the last import</summary>
+                    ${previewConfirmResultHtml(summary.result, {})}</details>
                   <div class="small mt-1">
                     <span class="text-muted me-2">IPAM:</span>
                     <span class="badge bg-dark border border-secondary me-1">interfaces ${ipam.interfaces || 0}</span>

@@ -3501,6 +3501,20 @@ def load_sync_status() -> dict:
         return {}
 
 
+def sync_status_with_results() -> dict:
+    """The stored sync status, each list's summary carrying its RESULT
+    (`preview_confirm.netbox_sync_result`, C85), computed on read from the
+    stored facts. Not in `load_sync_status()`, which the write path reads and
+    would then persist."""
+    from modules.preview_confirm import netbox_sync_result
+
+    data = load_sync_status()
+    for summary in (data.get("lists") or {}).values():
+        if isinstance(summary, dict):
+            summary["result"] = netbox_sync_result(summary)
+    return data
+
+
 def set_sync_running(list_name: str, running: bool) -> None:
     """Mark a list's sync as in-progress or done (for UI spinner state)."""
     with _status_lock:

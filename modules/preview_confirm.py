@@ -478,8 +478,10 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
                          "targets": [{"name": t["name"], "outcome": t.get("outcome", ""),
                                       "words": t.get("words", "")} for t in targets]},
             "did_not": {"items": did_not, "none": "" if did_not else nothing_left_out},
+            # A rollback only where the operation has one: an import does not.
             "targets": [{"name": t["name"], "sent": t["sent"], "checks": t["checks"],
-                         "rollback": t.get("rollback") or {}, "stage": t.get("stage", ""),
+                         **({"rollback": t["rollback"]} if "rollback" in t else {}),
+                         "stage": t.get("stage", ""),
                          "reason": t.get("reason", ""), "outcome": t.get("outcome", "")}
                         for t in targets],
             "record": record, "not_watched": not_watched}
@@ -622,3 +624,78 @@ def receipt_history(rows: list, device: str = "") -> list:
                                                "deploy" if first.get("action") == "deploy"
                                                else "restore", from_receipt=meta)})
     return out
+
+
+def netbox_sync_result(summary: dict) -> dict:
+    """A NetBox import's outcome as a result (C85, 7.1 step 2).
+
+    The import runs on a thread, so its result is the stored summary, read
+    whenever the NetBox tab is. C8 put `write_failures`, `partial` and
+    `complete` into that summary so a partial import could not read as clean;
+    the card read `failed` and drew green, so the fix never reached the
+    screen. Here `complete` decides the level, every write that did not land
+    is named with its device, and a summary that predates C8's counting says
+    what landed is UNKNOWN rather than drawing green."""
+    s = summary or {}
+    failed = list(s.get("failed") or [])
+    partial = list(s.get("partial") or [])
+    write_failures = list(s.get("write_failures") or [])
+    counted = "complete" in s
+    targets, did_not = [], []
+    for f in failed:
+        name = f.get("hostname") or f.get("name") or "?"
+        targets.append({"name": name, "outcome": "failed", "words": "not imported",
+                        "sent": {"none": "Nothing was written for this device."},
+                        "checks": {"ran": False, "why": "an import writes NetBox and checks no device"}})
+        did_not.append({"target": name, "kind": "failed",
+                        "text": "Not imported: " + str(f.get("error") or f.get("reason") or "the upsert failed"),
+                        "lines": []})
+    for name in partial:
+        mine = [w for w in write_failures if w.get("device") == name]
+        targets.append({"name": name, "outcome": "partial",
+                        "words": f"partly written: {len(mine)} write(s) did not land",
+                        "sent": {"none": "Written to NetBox, except the writes named under what did not happen."},
+                        "checks": {"ran": False, "why": "an import writes NetBox and checks no device"}})
+        did_not.append({"target": name, "kind": "write_failed",
+                        "text": f"{len(mine)} write(s) did not land",
+                        "lines": [f"{w.get('write', '?')}: {w.get('error', '')}" for w in mine]})
+    loose = [w for w in write_failures if not w.get("device")]
+    if loose:
+        did_not.append({"target": "this import", "kind": "write_failed",
+                        "text": f"{len(loose)} write(s) with no device did not land",
+                        "lines": [f"{w.get('write', '?')}: {w.get('error', '')}" for w in loose]})
+    # The import's own refusals (a site it adopted and declined to re-parent,
+    # a definition it could not ensure). Collected into the summary "because
+    # a refusal nobody reads is the same as no refusal", and drawn nowhere
+    # until this (found by the fixture that could finally reach a summary).
+    for note in s.get("notes") or []:
+        did_not.append({"target": "this import", "kind": "declined", "text": str(note),
+                        "lines": []})
+    if not counted:
+        did_not.append({"target": "this import", "kind": "uncounted",
+                        "text": "This summary predates the counting of individual writes (C8), so "
+                                "what landed is unknown. Import again to find out.",
+                        "lines": []})
+    total, synced = s.get("total", 0), s.get("synced", 0)
+    if not total:
+        level = "nothing"
+    elif s.get("complete") is True:
+        level = "success"
+    elif synced == 0:
+        level = "failed"
+    else:
+        level = "partial"
+    summary_text = (f"{synced} of {total} device(s) imported into NetBox "
+                    f"({s.get('created', 0)} created, {s.get('updated', 0)} updated): "
+                    + ("everything landed." if s.get("complete") is True
+                       else f"{len(partial)} partly written, {len(failed)} not imported."
+                       if counted else "whether every write landed is unknown."))
+    return build_result(
+        action="netbox_import", level=level, summary=summary_text, targets=targets,
+        did_not=did_not, nothing_left_out="Nothing: every write landed.",
+        record={"statement": f"Stored as the last import of this list, at "
+                             f"{s.get('timestamp') or 'an unrecorded time'}, into region "
+                             f"{s.get('region') or '?'}, site {s.get('site') or '?'}."},
+        not_watched="Nothing re-reads NetBox after an import to check it against what was "
+                    "written; the census and the modification record are the checks that "
+                    "exist, and they are run by hand.")

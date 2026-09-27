@@ -149,3 +149,26 @@ def deploy_receipts(mp):
     # s4 and "what did not happen" has an item to examine. The Device page
     # filters by device; the filtered summary is tested in test_deploy_receipts.
     return _ok(_client().get("/deploy/receipts"))
+
+
+def netbox_status(mp, tmp):
+    """The NetBox tab's read, with a stored PARTIAL import (C85): one device
+    fully written, one with a write that did not land, one not imported."""
+    import json
+
+    from modules import netbox_client as nb
+
+    path = tmp / "netbox_sync_status.json"
+    path.write_text(json.dumps({"last_sync": "2026-09-27 12:00:00", "lists": {"Default": {
+        "ok": True, "list": "Default", "region": "rcn", "site": "lab", "total": 3, "synced": 2,
+        "created": 1, "updated": 1,
+        "failed": [{"hostname": "s9", "error": "400 bad request"}],
+        "write_failures": [{"device": "r2", "write": "cable Gi2 -> s4:Gi1/0", "error": "400"}],
+        "partial": ["r2"], "complete": False, "config_template_id": 7,
+        "ipam": {"interfaces": 12, "prefixes": 4, "ips": 9, "vrfs": 1, "vlans": 2,
+                 "cables": 3, "tunnels": 0},
+        "notes": ["site adopted, not re-parented"], "timestamp": "2026-09-27 12:00:00",
+        "netbox_url": "https://netbox.example.invalid/dcim/sites/1/",
+        "ipam_url": "https://netbox.example.invalid/ipam/prefixes/"}}}), encoding="utf-8")
+    mp.setattr(nb, "_SYNC_STATUS_FILE", str(path))
+    return _client().get("/netbox/status").get_json()

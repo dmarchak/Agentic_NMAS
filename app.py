@@ -3714,12 +3714,12 @@ def netbox_test_connection():
 @app.route("/netbox/status", methods=["GET"])
 def netbox_status():
     """Return the last-sync summary for every list (plus in-progress markers)."""
-    from modules.netbox_client import load_sync_status, get_netbox_config
+    from modules.netbox_client import sync_status_with_results, get_netbox_config
     cfg = get_netbox_config()
     return jsonify({
         "configured": bool(cfg["url"] and cfg["token"]),
         "url":        cfg["url"],
-        "status":     load_sync_status(),
+        "status":     sync_status_with_results(),
         "lists":      get_device_lists(),
     })
 

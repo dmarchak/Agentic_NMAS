@@ -193,3 +193,69 @@ class TestAFailedDeleteIsNotASkip:
             "a failed delete must not share the skip bucket"
         assert src.count('failed.append({"endpoint": endpoint, "id": obj_id,') == 2
         assert src.count('"failed": failed,') >= 2
+
+
+class TestTheOutcomeReachesTheScreen:
+    """C85. C8's fix landed in the stored summary and never reached the
+    screen: the sync card read `failed` and drew green. The import's outcome
+    is now a RESULT (7.1 step 2), levelled by `complete`, with every write
+    that did not land named."""
+
+    def _summary(self, **over):
+        s = {"total": 3, "synced": 3, "created": 1, "updated": 2, "site": "lab",
+             "timestamp": "2026-09-27 12:00:00", "failed": [], "write_failures": [],
+             "partial": [], "complete": True}
+        s.update(over)
+        return s
+
+    def test_a_complete_import_is_green(self):
+        from modules.preview_confirm import netbox_sync_result
+
+        assert netbox_sync_result(self._summary())["level"] == "success"
+
+    def test_a_partial_import_names_each_write_and_is_not_green(self):
+        from modules.preview_confirm import netbox_sync_result
+
+        wf = [{"device": "r2", "write": "cable Gi2 -> s4:Gi1/0", "error": "400 refused"},
+              {"device": "r2", "write": "primary_ip4", "error": "409"}]
+        r = netbox_sync_result(self._summary(write_failures=wf, partial=["r2"], complete=False))
+        assert r["level"] == "partial"
+        item = next(i for i in r["did_not"]["items"] if i["target"] == "r2")
+        assert item["lines"] == ["cable Gi2 -> s4:Gi1/0: 400 refused", "primary_ip4: 409"]
+
+    def test_a_summary_older_than_the_counting_is_unknown_never_green(self):
+        from modules.preview_confirm import netbox_sync_result
+
+        old = self._summary()
+        for k in ("write_failures", "partial", "complete"):
+            old.pop(k)
+        r = netbox_sync_result(old)
+        assert r["level"] != "success"
+        assert any(i["kind"] == "uncounted" for i in r["did_not"]["items"])
+
+    def test_the_status_route_carries_the_result(self, monkeypatch, tmp_path):
+        import json as _json
+
+        import app as A
+        from modules import netbox_client as nb
+
+        path = tmp_path / "netbox_sync_status.json"
+        path.write_text(_json.dumps({"lists": {"Default": self._summary(
+            write_failures=[{"device": "r2", "write": "vlan 100", "error": "x"}],
+            partial=["r2"], complete=False)}}), encoding="utf-8")
+        monkeypatch.setattr(nb, "_SYNC_STATUS_FILE", str(path))
+        body = A.app.test_client().get("/netbox/status").get_json()
+        result = body["status"]["lists"]["Default"]["result"]
+        assert result["level"] == "partial"
+        # The write path never persists a result: the file is unchanged.
+        assert "result" not in _json.loads(path.read_text())["lists"]["Default"]
+
+    def test_the_sync_card_takes_its_colour_from_the_result(self):
+        """The screen half of C85, from the shipped source: the badge is the
+        result's level and the outcome is drawn by the component."""
+        from tests.payload_render import lift, shipped
+
+        card = lift(shipped("index.4.js"), "loadNetboxTab")
+        assert "previewConfirmResultLevel(summary.result)" in card
+        assert "previewConfirmResultHtml(summary.result" in card
+        assert "summary.failed && summary.failed.length ? 'warning text-dark' : 'success'" not in card

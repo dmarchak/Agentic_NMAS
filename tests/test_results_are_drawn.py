@@ -58,6 +58,11 @@ RESULT_COMPONENT = {
                      "deploy.receipts_read"),
     "golden.restore_apply": ("static/js/gen/partials__golden_repo.3.js", "_showRestoreResult",
                              "deploy.receipts_read"),
+    # The import runs on a thread; its result is the stored summary, drawn on
+    # the sync card whenever the NetBox tab is read (C85).
+    "netbox_safety.apply_import": ("static/js/gen/index.4.js", "loadNetboxTab", "netbox_status"),
+    "netbox_safety.apply_import_all": ("static/js/gen/index.4.js", "loadNetboxTab",
+                                       "netbox_status"),
 }
 
 #: The bar: changes nothing durable AND has no operands worth re-reading.
@@ -91,8 +96,6 @@ PENDING = {
     "ai_approval_reject": "a toast",
     "ai_approval_approve_all": "a toast",
     "golden_configs_save_all": "a rich toast, green whenever a baseline tag was taken",
-    "netbox_safety.apply_import": "a toast 'Import started'; the outcome is drawn nowhere (C85)",
-    "netbox_safety.apply_import_all": "a toast 'Import started'; the outcome is drawn nowhere (C85)",
     "netbox_safety.apply_removal": "a toast with a count; what was removed is not shown",
     "refresh_hostnames": "a toast, then a page reload",
     "templates.approve": "a toast carrying the per-device evidence",
@@ -113,10 +116,6 @@ FALSE_GREEN = {
      "const level = (s.baseline && s.baseline !== 'none') ? 'success'"):
         "Save All: green whenever a baseline tag was taken, whatever the "
         "moment (a baseline of r2 deliberately broken read as success)",
-    ("static/js/gen/index.4.js",
-     "summary.failed && summary.failed.length ? 'warning text-dark' : 'success'"):
-        "the NetBox sync card: green when `failed` is empty, while C8's "
-        "`write_failures`, `partial` and `complete` are read by nothing (C85)",
     ("static/js/gen/partials__onboard_wizard.1.js",
      "showToast(d.ok ? 'Device onboarded.'"):
         "Create: a success toast asserting the outcome of phase 2, which "
@@ -131,7 +130,7 @@ UNESCAPED = {
         "Auto-Create's result: hostnames and failure reasons into HTML",
 }
 
-CEILINGS = {"PENDING": 31, "FALSE_GREEN": 3, "UNESCAPED": 2}
+CEILINGS = {"PENDING": 29, "FALSE_GREEN": 2, "UNESCAPED": 2}
 
 
 def _population():
