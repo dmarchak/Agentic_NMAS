@@ -70,7 +70,7 @@ def _expire_old(entries: list) -> list:
 #: auto-confirm programs nobody was shown — which is precisely what the confirm
 #: hash exists to prevent — or stack N modal dialogs on one click. Skipping and
 #: saying so is the only honest third option.
-CONFIRM_ENDING_ACTIONS = ("revert_to_golden",)
+CONFIRM_ENDING_ACTIONS = ("revert_to_golden", "update_golden_config")
 
 
 def is_confirm_ending(entry: dict) -> bool:
@@ -189,8 +189,9 @@ def resolve(entry_id: str, action: str, actor: str = "") -> dict:
                 "Awaiting confirmation: the command list is computed fresh and "
                 "must be confirmed before anything is sent.")
             _save_queue(entries)
-            log.info("approval_queue: %s handed to the confirmed restore path",
-                     entry.get("device_hostname", entry["id"]))
+            log.info("approval_queue: %s handed to its confirmed operation (%s)",
+                     entry.get("device_hostname", entry["id"]),
+                     "capture" if execution.get("capture") else "restore")
             return {"ok": True, "entry": entry, "execution": execution,
                     "needs_confirmation": True}
 
@@ -217,7 +218,8 @@ def resolve(entry_id: str, action: str, actor: str = "") -> dict:
 def mark_done(entry_id: str, note: str = "") -> dict:
     """Close an item whose work completed elsewhere.
 
-    A confirm-ending item is finished by the restore it handed off to, not by
+    A confirm-ending item is finished by the restore or capture it handed off
+    to, not by
     ``resolve()``. Without this the item stays pending for ever and the
     operator learns to clear the queue by rejecting things — which is the habit
     that makes an approval queue worthless.
@@ -231,7 +233,7 @@ def mark_done(entry_id: str, note: str = "") -> dict:
 
     entry["status"] = "approved"
     entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    entry["context"] = note or "Completed via the confirmed restore path"
+    entry["context"] = note or "Completed via its confirmed operation"
     _save_queue(entries)
     log.info("approval_queue: [%s] closed — %s", entry_id, entry["context"])
     return {"ok": True, "entry": entry}
@@ -265,53 +267,35 @@ def _execute(entry: dict, actor: str = "") -> dict:
 
 
 def _exec_update_golden(entry: dict, actor: str = "") -> dict:
-    """Save the current running-config as the new golden config for a device.
+    """Hand off to the capture operation. Reads nothing, records nothing.
 
-    Committed as ``Source: approval`` by the person who approved it (register
-    C81). It called `_save_golden_config_file()` with that helper's defaults,
-    ``source="ai", actor="ai-agent"``, so a person's approval was recorded as
-    the AI's decision, and `Actor-Verified: none` beside it. No actor
-    REFUSES rather than falls back, because the fallback is the defect: a
-    golden with nobody accountable behind it.
+    A drift item's "make the running config the golden" IS a capture of one
+    device, and the capture operation already implements it: the device is
+    read now, the diff against its golden and its departure from committed
+    intent are previewed, the confirm is bound to the capture's hash, the
+    device is held while it is recorded, and the commit names the verified
+    person (`Source: capture`).
+
+    This executor read the device and committed with NO preview, one click
+    per item: a second capture path inside the queue, and the least guarded
+    one, since drift queues an item for every drifted device (minimalism,
+    NSOT_STAGE7_PLAN section 6a; register C105). Its history: it committed
+    as `ai-agent` until C81, and required an approving person after.
+
+    The queued diff is what the drift check saw, when it saw it: context,
+    never an input, as for a revert.
     """
-    from modules.ai_assistant import (
-        _save_golden_config_file, _get_running_config_for_golden,
-        _nsot_repo_dir,
-    )
-    device_ip = entry.get("device_ip", "")
-    hostname  = entry.get("device_hostname", device_ip)
-    if not device_ip:
-        return {"error": "No device_ip in action_params"}
-    if not actor:
-        return {"error": "No approving person was recorded, so the golden is "
-                         "not saved: a golden needs somebody accountable behind it"}
-
-    try:
-        # Fetch current running config via SSH
-        config_text = _get_running_config_for_golden(device_ip, hostname)
-        if config_text is None:
-            return {"error": f"Could not fetch running config for {hostname} ({device_ip})"}
-
-        # Use the shared helper so hostname-based naming is applied consistently
-        _save_golden_config_file(device_ip, hostname, config_text,
-                                 source="approval", actor=actor)
-
-        # The path reported is the one actually written. This used to build a
-        # `golden_configs/<host>.cfg` path and report it as `saved`, while
-        # `_save_golden_config_file` had gone through `repo.save_golden()`
-        # since the migration -- so the result named a file that did not
-        # exist and had not been written since.
-        from modules.nsot import manifest as _m
-        repo = _nsot_repo_dir()
-        _ident, entry = _m.find_by_ip(repo, device_ip)
-        if entry is None:
-            _ident, entry = _m.find_by_name(repo, hostname)
-        fpath = _m.golden_path_for(repo, entry) if entry else ""
-
-        log.info("approval_queue: golden config updated for %s (%s)", hostname, device_ip)
-        return {"saved": fpath, "device": device_ip, "hostname": hostname}
-    except Exception as exc:
-        return {"error": str(exc)}
+    hostname = entry.get("device_hostname") or entry.get("device_ip", "")
+    if not hostname:
+        return {"error": "No device named in the approval item"}
+    return {
+        "needs_confirmation": True,
+        "capture": {"devices": [hostname],
+                    "approvals": {hostname: [entry.get("id", "")]}},
+        "advisory_diff": entry.get("diff", ""),
+        "message": (f"Opening the capture preview for {hostname}: its running config "
+                    "is read NOW and recorded only when you confirm it."),
+    }
 
 
 def _exec_revert_golden(entry: dict) -> dict:

@@ -257,6 +257,17 @@ dashboard), `device.html` (1,239 — per-device page), and
   HEAD** — a single-device revert *is* a Mode A re-apply of its HEAD golden —
   and the operator confirms a program computed **now**, from the device as it
   is now.
+- **Every queued kind now ends in a confirmation** (C105, 2026-09-27). A
+  drift item's "record the running config as the golden" read the device
+  and committed with NO preview on approve, one click per item, and drift
+  queues one for every drifted device: a second capture path inside the
+  queue, the least guarded one. It hands off to the capture operation now
+  (read now, previewed, confirmed by hash, recorded as the verified person
+  with `Source: capture`), and the capture closes the item only for a
+  device it recorded. **Approve-all approves nothing by itself**: it opens
+  ONE capture preview for every drift item's device and names reverts for
+  individual review. It is `not_device` in the gate table, because it
+  records nothing; the capture apply, gated `approve`, does.
 - **The queued diff never reaches a device.** It was computed when the drift
   was noticed, which is not when the operator is looking; a program the
   approver never read is what the confirm hash exists to prevent. It travels as
@@ -1107,6 +1118,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_readers_use_what_is_committed.py` | C104's consumers (two passes): an uncommitted hand edit to a golden is ignored and named by the resolver, drift, the NetBox import, the agent's tool (through the real `run_chat()` loop) and the freshness gate; a file nothing committed is refused by path and not enumerated; a golden committed without `Source:` is refused naming path and commit; committed intent is read from HEAD by `read_committed()` and the editor; every direct use of the intent path outside `hostvars.py` is named; no function across the program AND its scripts resolves a golden's or intent's path and opens a file itself (each exception named: the legacy store, the migration verifier, one repair script); the deploy plan names a refused golden. Expected values come from git directly, never from the reader under test |
 | `test_page_requests_resolve.py` | The reverse of reachability: every literal request the rendered pages and their scripts make (143) reaches a route with its method; a `${}` placeholder is one segment and a concatenated string a prefix; the resolver shown saying no to two removed routes. A `fetch('/git/commit')` left behind was caught before only by a pin naming that route |
 | `test_record_exceptions.py` | C104: the eleven rotation commits recorded `Source: manual`, by full hash; a prefix is not a commit; golden history keeps the recorded source and draws the exception beside it |
+| `test_refresh_hostnames_renames.py` | C102: Refresh Hostnames records a PENDING rename and commits nothing (HEAD unmoved, the golden still under its old name); its message leads with what is left to do; syncing moves the golden alone (`R100` plus the manifest) and `git log --follow` keeps its history; nothing is recorded as `ai-agent`. Through the real route against a real repository |
 | `test_ssh_sessions.py` | C97: every NETMIKO session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers; the break-glass terminal's raw paramiko sessions are outside it, C101); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |

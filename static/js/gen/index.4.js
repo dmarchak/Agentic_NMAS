@@ -1368,17 +1368,18 @@ async function loadApprovalsTab() {
 }
 
 async function approveAll() {
+  // Approves nothing by itself (C105): the drift items' devices go to ONE
+  // capture preview, each confirmed by its hash, and each item closes only
+  // when its device is recorded. Reverts are named for individual review.
   const btn = document.getElementById('approveAllBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
   try {
     const r = await fetch('/ai/approvals/approve_all', { method: 'POST' });
     const j = await r.json();
-    if (j.failed > 0) {
-      showToast(`Approved ${j.approved} — ${j.failed} failed`, 'warning');
-    } else {
-      showToast(`Approved all ${j.approved} pending action${j.approved !== 1 ? 's' : ''}`, 'success');
-    }
-    await loadApprovalsTab();
+    if (!j.ok) { showToast(j.error || 'Approve all failed', 'danger'); return; }
+    showToast(j.message, (j.individual || []).length ? 'warning' : 'info');
+    const cap = j.capture || {};
+    if ((cap.devices || []).length) previewCapture(cap.devices, {approvals: cap.approvals});
   } catch (err) {
     showToast('Approve all failed: ' + err, 'danger');
   } finally {
@@ -1473,6 +1474,14 @@ async function resolveApproval(id, action) {
       // as it is now, and the operator confirms that. The queued diff — what
       // the agent saw when the drift was detected — is passed along as
       // context and never reaches a device.
+      // A drift item's "record the running config as the golden" is a
+      // capture: the preview reads the device now, and the item closes only
+      // when that capture is recorded (C105).
+      if (exec.needs_confirmation && exec.capture) {
+        showToast(exec.message || 'Confirmation required', 'info');
+        loadApprovalsTab();
+        return previewCapture(exec.capture.devices, {approvals: exec.capture.approvals});
+      }
       if (exec.needs_confirmation && exec.restore) {
         showToast(exec.message || 'Confirmation required', 'info');
         loadApprovalsTab();

@@ -494,7 +494,7 @@ the file name and by mtime rather than a commit time (register C103).
 | The command box / the selection's bulk command | many versus one, **two implementations** | one implementation (7.3) |
 | Quick actions / the command box | **duplicate**: canned input to the same route | saved entries in the box's history (7.3) |
 | Playbook delete in the chat panel / in the AI tab | **duplicate**: two implementations | one; Stage 8 decides whether playbooks survive (P.3 refused replay) |
-| Approve / Approve all | many versus one | rebuilt as a previewed operation (next; Auto-Create is DONE as the capture operation's `no_golden` scope, 2026-09-27) |
+| Approve / Approve all | many versus one | **DONE 2026-09-27:** both hand off to the capture operation (one preview, per-device confirm; an item closes when its device is recorded); Auto-Create is the capture operation's `no_golden` scope |
 | The Configure forms / the intent editor | **duplicate task**, and the forms send nothing | section 7 revised: a form is an input MODE of the one intent editor; the tab goes in 7.8 |
 | The TFTP server field on both pages | the stored copy of a derivable fact | goes with C48 (derive) |
 

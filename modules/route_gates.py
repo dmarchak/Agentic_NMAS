@@ -96,7 +96,7 @@ GATES = {
 
     # ---- approve: a decision a later device change acts on ---------------
     "ai_approval_approve": _g(A, "resolves an approval-queue item"),
-    "ai_approval_approve_all": _g(A, "resolves every pending approval-queue item"),
+    "ai_approval_approve_all": _g(N, "builds a capture handoff for the drift items; records nothing (C105): the capture apply, gated approve, does"),
     "ai_approval_reject": _g(A, "resolves an approval-queue item; a refusal is a decision too"),
     "templates.approve": _g(A, "approves a template for deployment"),
     "templates.revoke_approval": _g(A, "withdraws a template approval, with a recorded reason"),
@@ -112,7 +112,7 @@ GATES = {
     # the old one-click route is gone, because nothing in it asked whether the
     # state being enshrined was the one intended.
     "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
-    "refresh_hostnames": _g(A, "renames devices and rewrites their goldens"),
+    "refresh_hostnames": _g(A, "renames devices and records a pending golden rename"),
     "onboard.create": _g(A, "commits a new device's identity and intent", "onboard_device"),
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),
     "netbox_safety.apply_import_all": _g(A, "writes to NetBox"),

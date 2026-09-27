@@ -1506,6 +1506,7 @@ def refresh_hostnames():
         updated_count = 0
         failed_count = 0
         results = []
+        pending_renames, rename_failures = [], []
 
         for dev in devices:
             ip = dev.get("ip")
@@ -1570,37 +1571,29 @@ def refresh_hostnames():
                        for r in results if r["status"] == "updated"]
 
             from modules.ai_assistant import (
-                _golden_record, _save_golden_config_file,
                 _load_variables, _save_variables,
+                _nsot_repo_dir as _nsot_repo_dir_for_rename,
             )
 
             for ip, old_hn, new_hn in changed:
-                # ── Golden config ──────────────────────────────────────────
-                # _save_golden_config_file removes the old hostname-named file
-                # and creates a new one with the updated header.
+                # ── Golden config: a PENDING RENAME, never a re-save ────────
+                # This re-saved the old golden under the new name through
+                # _save_golden_config_file (recorded as ai-agent), bypassing the
+                # designed rename, so the device's history broke at every rename
+                # through here (git log --follow). Removed 2026-09-27 (C102, the
+                # operator's decision). A rename has one home: the manifest
+                # records it, and the next save, or "Sync device names to repo"
+                # on the Git tab, commits the git mv ALONE.
                 try:
-                    # As COMMITTED (C104). The rest of this block is a second
-                    # rename path (register C102), awaiting a decision.
-                    raw = _golden_record(ip)["text"]
-                    if raw:
-                        # Strip the 4-line NMAS header so _save_golden_config_file
-                        # can prepend a fresh header with the new hostname.
-                        stripped_lines = []
-                        in_header = True
-                        for line in raw.splitlines():
-                            if in_header and (
-                                line.startswith("! Golden config")
-                                or line.startswith("! Saved:")
-                                or line.startswith("! Source:")
-                                or line == "!"
-                            ):
-                                continue
-                            in_header = False
-                            stripped_lines.append(line)
-                        _save_golden_config_file(ip, new_hn, "\n".join(stripped_lines))
-                        app.logger.info("Golden config renamed %s→%s (%s)", old_hn, new_hn, ip)
+                    from modules.nsot import manifest as _manifest
+                    _repo_dir = _nsot_repo_dir_for_rename()
+                    _ident, _entry = _manifest.find_by_ip(_repo_dir, ip)
+                    if _ident:
+                        _manifest.record_pending_rename(_repo_dir, _ident, new_hn)
+                        pending_renames.append(f"{old_hn} -> {new_hn}")
                 except Exception as exc:
-                    app.logger.warning("Could not rename golden config for %s: %s", ip, exc)
+                    app.logger.warning("Could not record the rename for %s: %s", ip, exc)
+                    rename_failures.append(f"{old_hn}: {exc}")
 
                 # ── Variable keys ──────────────────────────────────────────
                 # Keys are conventionally prefixed "{hostname}_*".  Rename any
@@ -1646,11 +1639,23 @@ def refresh_hostnames():
                 except Exception as exc:
                     app.logger.warning("Could not update NetBox name for %s: %s", ip, exc)
 
+        # What happened AND what is left to do (the standing rule): the golden
+        # keeps its old name until the rename is committed on its own.
+        message = f"Refreshed {updated_count} hostname(s), {failed_count} failed"
+        if pending_renames:
+            message = (f"{len(pending_renames)} golden rename(s) PENDING "
+                       f"({', '.join(pending_renames)}): commit them with "
+                       f"'Sync device names to repo' on the Git tab. " + message)
+        if rename_failures:
+            message = (f"{len(rename_failures)} rename(s) could not be recorded "
+                       f"({'; '.join(rename_failures)}). " + message)
         return jsonify({
-            "status": "success",
-            "message": f"Refreshed {updated_count} hostname(s), {failed_count} failed",
+            "status": "warning" if (rename_failures or failed_count) else "success",
+            "message": message,
             "updated": updated_count,
             "failed": failed_count,
+            "pending_renames": pending_renames,
+            "rename_failures": rename_failures,
             "results": results
         })
 
@@ -3796,42 +3801,36 @@ def ai_approval_reject(entry_id: str):
 
 @app.route("/ai/approvals/approve_all", methods=["POST"])
 def ai_approval_approve_all():
-    """Approve and execute every pending approval that can be decided in bulk.
+    """Hand every pending drift item to ONE capture preview (register C105).
 
-    Items whose execution **ends in a confirmation** are skipped and reported,
-    never looped. Approve-all exists to clear a queue of decided outcomes; a
-    confirm-ending item would otherwise either auto-confirm a program nobody
-    was shown — exactly what the confirm hash exists to prevent — or stack one
-    modal per item on a single click.
+    Approve-all resolved every item at once, and each drift item read its
+    device and committed with no preview: many goldens changed by one click.
+    Every queued kind now ends in a confirmation, so this approves nothing by
+    itself. The drift items' devices go to the capture operation together,
+    where each device's capture is previewed and confirmed by its hash, and
+    an item closes only when its device is recorded. A revert is a restore
+    of one device, previewed per device, so it is named for individual review.
     """
-    from modules.approval_queue import get_pending, is_confirm_ending, resolve
-    from modules.identity import request_actor
+    from modules.approval_queue import get_pending
 
-    results, skipped = [], []
+    devices, approvals, individual = [], {}, []
     for entry in get_pending():
-        if is_confirm_ending(entry):
-            skipped.append({
-                "id": entry["id"],
-                "device": entry.get("device_hostname") or entry.get("device_ip", ""),
-                "action_type": entry.get("action_type", ""),
-                "reason": "requires individual review",
-                "detail": ("Approving this opens a preview of the exact program "
-                           "to be sent, which you confirm per device. It cannot "
-                           "be approved in bulk."),
-            })
-            continue
-        results.append(resolve(entry["id"], "approve", actor=request_actor()))
-
-    ok_count   = sum(1 for r in results if r.get("ok"))
-    fail_count = len(results) - ok_count
-    return jsonify({"ok": True, "approved": ok_count, "failed": fail_count,
-                    "skipped": skipped, "skipped_count": len(skipped),
-                    "results": results,
-                    "message": (
-                        f"{ok_count} approved"
-                        + (f", {fail_count} failed" if fail_count else "")
-                        + (f", {len(skipped)} require individual review"
-                           if skipped else ""))})
+        host = entry.get("device_hostname") or entry.get("device_ip", "")
+        if entry.get("action_type") == "update_golden_config" and host:
+            if host not in approvals:
+                devices.append(host)
+            approvals.setdefault(host, []).append(entry["id"])
+        else:
+            individual.append({"id": entry["id"], "device": host,
+                               "action_type": entry.get("action_type", ""),
+                               "reason": "requires individual review"})
+    message = (f"{len(devices)} device(s) to capture from {sum(map(len, approvals.values()))} "
+               "drift item(s): nothing is recorded until you confirm each"
+               if devices else "No drift items to capture")
+    if individual:
+        message += f"; {len(individual)} item(s) require individual review"
+    return jsonify({"ok": True, "capture": {"devices": devices, "approvals": approvals},
+                    "individual": individual, "message": message})
 
 
 # ---------------------------------------------------------------------------

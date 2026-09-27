@@ -234,6 +234,29 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
             text)
 
 
+def _close_handed_off(approvals: dict, outcomes: list) -> dict:
+    """Close the queue items a capture was handed ({host: [ids]}), ONLY for
+    devices it recorded: an item closed for a device that moved, could not be
+    read or was busy would be the queue claiming work that did not happen,
+    and one left pending for a recorded device teaches the operator to clear
+    the queue by rejecting things."""
+    from modules.approval_queue import mark_done
+    from modules.identity import request_actor
+
+    recorded = {o["device"] for o in outcomes if o.get("outcome") in ("captured", "unchanged")}
+    closed, left = [], []
+    for host, ids in (approvals or {}).items():
+        for entry_id in (ids or []):
+            if host in recorded:
+                out = mark_done(entry_id, f"Recorded {host}'s running config as its golden "
+                                          f"through the capture operation, confirmed by "
+                                          f"{request_actor()}")
+                (closed if out.get("ok") else left).append(entry_id)
+            else:
+                left.append(entry_id)
+    return {"closed": closed, "left_pending": left}
+
+
 @bp.route("/capture/preview", methods=["POST"])
 def capture_preview():
     """Record running configs as goldens: the PREVIEW (7.1 step 4, C82, C89).
@@ -370,8 +393,9 @@ def capture_apply():
                                     else "unchanged")
                     o["intent"] = (save.get("intent") or {}).get(o["device"], o["intent"])
         result = capture_result(outcomes, save, fleet=fleet)
+        closed = _close_handed_off(data.get("approvals") or {}, outcomes)
         return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
-                                     "result": result}))
+                                     "result": result, "approvals": closed}))
     finally:
         device_ops.release_many(list_name, held)
 

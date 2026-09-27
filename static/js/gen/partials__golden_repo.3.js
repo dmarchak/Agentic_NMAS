@@ -473,3 +473,8 @@ function _restoreHeadFromUrl() {
 
 document.addEventListener('DOMContentLoaded', loadGoldenRepoPanel);
 document.addEventListener('DOMContentLoaded', _restoreHeadFromUrl);
+
+/* Any response naming `goldens` redraws the golden panel: its pending
+   renames, baselines and legacy store (Refresh Hostnames records a pending
+   rename there, and the panel is where it is committed). */
+NMAS.subscribe('goldens', 'goldenRepoPanel', loadGoldenRepoPanel, {panel: 'goldenRepoPanel'});

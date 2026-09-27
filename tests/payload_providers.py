@@ -208,5 +208,13 @@ def capture_apply(mp, tmp):
     lab["running"]["r2"] = _broken(lab["captured"])
     d = _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    return _ok(lab["client"].post("/golden/capture/apply",
-                                  json={"confirmations": {"r2": h}}))
+    # Two handed-off drift items (C105): r2's is closed by the capture, and
+    # one for a device this capture does not record stays pending, so both
+    # lists carry something real.
+    from modules import approval_queue
+    ids = [approval_queue.add_approval("update_golden_config", f"drift on {h_}",
+                                       ip_, h_, "", {}, "fixture")
+           for h_, ip_ in (("r2", "203.0.113.12"), ("s9", "203.0.113.19"))]
+    ids = [i["id"] if isinstance(i, dict) else i for i in ids]
+    return _ok(lab["client"].post("/golden/capture/apply", json={
+        "confirmations": {"r2": h}, "approvals": {"r2": [ids[0]], "s9": [ids[1]]}}))

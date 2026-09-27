@@ -63,6 +63,9 @@
   async function previewCapture(devices, opts) {
     devices = (devices || []).filter(Boolean);
     var scope = (opts && opts.scope) || '';
+    // Queue items handed to this capture ({host: [ids]}), closed by the apply
+    // only for devices it records.
+    var approvals = (opts && opts.approvals) || null;
     state.fleet = !devices.length && !scope;
     var el = modal(scope ? 'Record a first golden for every device without one'
                    : state.fleet ? 'Record every device as its golden'
@@ -105,7 +108,9 @@
       try {
         var ar = await fetch('/golden/capture/apply', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({confirmations: captureSelection(boxes), fleet: state.fleet})});
+          body: JSON.stringify(Object.assign(
+            {confirmations: captureSelection(boxes), fleet: state.fleet},
+            approvals ? {approvals: approvals} : {}))});
         ad = await ar.json();
       } catch (e) {
         showToast('Recording failed: ' + e.message, 'danger');
@@ -115,9 +120,15 @@
       if (!ad.ok) { showToast(ad.error || 'Recording failed', 'danger'); btn.disabled = false; return; }
       body.innerHTML = previewConfirmResultHtml(ad.result, {});
       btn.classList.add('d-none');
-      showToast(((ad.result || {}).happened || {}).summary || 'Recorded',
-                previewConfirmResultLevel(ad.result));
+      var summary = ((ad.result || {}).happened || {}).summary || 'Recorded';
+      var q = ad.approvals || {};
+      if (approvals) {
+        summary += ' Queue: ' + (q.closed || []).length + ' item(s) closed, '
+                 + (q.left_pending || []).length + ' left pending (their device was not recorded).';
+      }
+      showToast(summary, previewConfirmResultLevel(ad.result));
       if (typeof loadGoldenRepoPanel === 'function') loadGoldenRepoPanel();
+      if (approvals && typeof loadApprovalsTab === 'function') loadApprovalsTab();
     });
   }
 

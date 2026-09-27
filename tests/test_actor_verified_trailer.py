@@ -234,13 +234,18 @@ class TestThroughTheApp:
 
 
 class TestAnApprovalCommitsItsApprover:
-    """C81. Approving a drift item ("Update Golden Config") committed the
-    device's golden as `Actor: ai-agent`, `Source: ai`: the executor called
-    the save helper with its defaults. Through the real approve route now,
-    read back from git."""
+    """C81, then C105. Approving a drift item ("Update Golden Config")
+    committed the device's golden as `Actor: ai-agent`, `Source: ai` (C81),
+    then as the approving person with no preview (a second capture path in
+    the queue). It now hands off to the capture operation: the approve
+    commits nothing, and the capture it opens records the device as the
+    verified person and closes the item. Through the real routes, read back
+    from git."""
 
-    def test_the_approve_route_commits_the_verified_person(self, tmp_path, monkeypatch):
+    def test_approving_hands_off_and_the_capture_records_the_person(self, tmp_path,
+                                                                     monkeypatch):
         import app as app_module
+        import routes.golden as golden
         from modules import approval_queue
         from modules.nsot.repo import GoldenItem, save_golden
         from tests.conftest import TEST_PERSON
@@ -254,16 +259,36 @@ class TestAnApprovalCommitsItsApprover:
         # The device exists (an approval never mints an identity).
         assert save_golden("t", [GoldenItem("r2", "hostname r2\n", ip)],
                            source="onboarding", actor="x", allow_new=True)["ok"]
-        monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
-                            lambda i, h: "hostname r2\ninterface Gi2\n load-interval 30\n")
+        repo = str(tmp_path / "t" / "config_repo")
+        head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout
+        running = "hostname r2\ninterface Gi2\n load-interval 30\n"
+        device = {"hostname": "r2", "ip": ip, "device_type": "cisco_xe",
+                  "platform": "cisco_iosxe"}
+        monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(device)])
+        monkeypatch.setattr(golden, "_read_running", lambda d: (running, ""))
         entry = approval_queue.add_approval(
             "update_golden_config", "drift on r2", ip, "r2", "", {}, "test")
         entry_id = entry["id"] if isinstance(entry, dict) else entry
+        client = app_module.app.test_client()
 
-        resp = app_module.app.test_client().post(f"/ai/approvals/{entry_id}/approve")
+        resp = client.post(f"/ai/approvals/{entry_id}/approve")
         assert resp.status_code == 200, resp.get_data(as_text=True)[:300]
-        msg = _last_message(str(tmp_path / "t" / "config_repo"))
+        handoff = resp.get_json()["execution"]["capture"]
+        assert handoff == {"devices": ["r2"], "approvals": {"r2": [entry_id]}}
+        assert subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout == head, \
+            "approving committed something: it must only hand off"
+        assert approval_queue.get_pending()[0]["id"] == entry_id
+
+        pv = client.post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        h = pv["preview"]["what"]["targets"][0]["select_data"]["hash"]
+        out = client.post("/golden/capture/apply", json={
+            "confirmations": {"r2": h}, "approvals": handoff["approvals"]}).get_json()
+        assert out["approvals"] == {"closed": [entry_id], "left_pending": []}, out
+        msg = _last_message(repo)
         assert f"Actor: {TEST_PERSON}" in msg, msg
         assert "Actor-Verified: access" in msg, msg
-        assert "Source: approval" in msg, msg
+        assert "Source: capture" in msg, msg
         assert "ai-agent" not in msg, msg
+        assert not [e for e in approval_queue.get_pending() if e["id"] == entry_id]

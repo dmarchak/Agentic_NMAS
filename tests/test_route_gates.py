@@ -256,7 +256,7 @@ class TestEveryGatedEndpointRefusesWithoutIdentity:
     def test_the_sweep_finds_the_population(self):
         reqs = _gated_requests(_app())
         # 87 measured 2026-09-26: 121 mutating endpoints, 34 of them not_device
-        assert len({e for _, _, e, _ in reqs}) >= 77, len(reqs)  # C102 removed three gated routes; C104 the manual commit; Auto-Create
+        assert len({e for _, _, e, _ in reqs}) >= 76, len(reqs)  # C102 removed three gated routes; C104 the manual commit; Auto-Create; approve-all hands off (C105)
         assert any(e == "deploy.apply_deploy" or u == "/deploy/apply"
                    for _, u, e, _ in reqs)
 

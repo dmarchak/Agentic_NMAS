@@ -95,7 +95,6 @@ PENDING = {
     "ai_agent_run": "nothing: the response is never read (the agent is off)",
     "ai_approval_approve": "a toast; the commit an approval makes is never shown",
     "ai_approval_reject": "a toast",
-    "ai_approval_approve_all": "a toast",
     "netbox_safety.apply_removal": "a toast with a count; what was removed is not shown",
     "refresh_hostnames": "a toast, then a page reload",
     "templates.approve": "a toast carrying the per-device evidence",
@@ -125,7 +124,7 @@ UNESCAPED = {
     # by the component, which escapes every value (C102, 2026-09-27).
 }
 
-CEILINGS = {"PENDING": 28, "FALSE_GREEN": 1, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 27, "FALSE_GREEN": 1, "UNESCAPED": 0}
 
 
 def _population():
@@ -152,7 +151,7 @@ def toast_refusals(toast_enough: dict) -> list:
 class TestEveryResultIsPlaced:
     def test_the_population_is_the_gate_table(self):
         pop = _population()
-        assert len(pop) >= 39, len(pop)           # measured 41 on 2026-09-27; C104 removed the manual commit, C102 Auto-Create
+        assert len(pop) >= 38, len(pop)           # measured 41 on 2026-09-27; C104 removed the manual commit, C102 Auto-Create, C105 approve-all records nothing
         assert {GATES[e].kind for e in pop} == set(KINDS)
 
     def test_every_member_is_in_exactly_one_place(self):

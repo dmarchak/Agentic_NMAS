@@ -15,6 +15,19 @@ fixed (any lowercase slug is recorded as given). The ten commits there with no
 `Source:` at all are a different fact (hand or pre-convention commits) and
 are not listed: absent is not wrong.
 
+**First goldens recorded as the agent: measured, and there are NONE** (C102,
+2026-09-27). Auto-Create saved each first golden through
+`_save_golden_config_file()`, whose defaults are `Source: ai` and
+`Actor: ai-agent`, so a person's button would be recorded as an agent that has
+never made a tool call. Refresh Hostnames re-saved goldens the same way.
+Measured on the host: no commit carries `Source: ai`, `Actor: ai-agent` or
+`Source: approval` (the same query finds all 18 `Source: pipeline` commits, so
+it can see a trailer that is there), `default` is the host's only list, and
+its first goldens came from the migration (all nine, 2026-09-20) and
+onboarding. So Auto-Create's use, if any, predates the repository and wrote to
+the legacy store. Nothing to list, and both paths are removed. An install
+where these exist lists them here, by hash, the same way.
+
 Any screen that states a claim about history (the Versions screen's "N of M
 commits carry a verified identity", D10) draws these beside it.
 """

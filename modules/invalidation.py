@@ -84,7 +84,7 @@ _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's
 DECLARED = {
     # Inventory and lists.
     "reorder_devices": ("inventory",),
-    "refresh_hostnames": ("inventory",),
+    "refresh_hostnames": ("inventory", "goldens"),   # a pending golden rename
     "inventory.refresh": ("inventory",),
     "inventory.set_order": ("inventory",),
     "inventory.set_source": ("inventory", "lists"),
@@ -97,7 +97,7 @@ DECLARED = {
     "inventory.delete_credential_profile": ("credentials",),
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
-    "golden.capture_apply": _COMMIT + ("baselines", "drift"),
+    "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items
     "golden.migrate_apply": _COMMIT,
     "golden.sync_renames": _COMMIT,
     "golden.restore_apply": ("device_state", "intent", "baselines", "drift",
@@ -134,7 +134,7 @@ DECLARED = {
     "drift_settings_post": ("drift",),
     # Approvals and the agent.
     "ai_approval_approve": ("approvals",),
-    "ai_approval_approve_all": ("approvals",),
+    "ai_approval_approve_all": Nothing("builds a capture handoff and records nothing (C105); the capture apply closes the items"),
     "ai_approval_reject": ("approvals",),
     "ai_agent_run": ("agent", "approvals"),
     "ai_agent_pause": ("agent",),

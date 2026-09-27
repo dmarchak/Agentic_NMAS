@@ -55,6 +55,9 @@ def _bodies(v):
     return {
         "ai_clear": (200, ("json", {}), "clears the caller's history; returns a status"),
         "ai_stop": (200, ("json", {}), "a stop flag; returns a status"),
+        "ai_approval_approve_all": (200, ("json", {}),
+                                    "a capture handoff built from the planted queue: "
+                                    "device names and item ids, never a diff (C105)"),
         "bulk_clear": (200, ("json", {}), "clears an on-screen result; returns a status"),
         "compare_backups_route": (200, ("form", {"file1": v["_backup_file"],
                                                  "file2": v["_backup_file_2"]}),

@@ -283,11 +283,11 @@ document.addEventListener('DOMContentLoaded', () => {
       spinner.classList.add('d-none');
       refreshBtn.disabled = false;
 
-      if (data.status === 'success') {
-        showToast(data.message, 'success');
-        if (data.updated > 0) {
-          setTimeout(() => { window.location.reload(); }, 1500);
-        }
+      // No reload: the response invalidates `inventory` and `goldens`, so the
+      // device list and the golden panel redraw in place, and the message
+      // (which says what is left to do) is not erased by a new page.
+      if (data.status === 'success' || data.status === 'warning') {
+        showToast(data.message, data.status);
       } else {
         showToast(data.message || 'Refresh hostnames failed', 'danger');
       }

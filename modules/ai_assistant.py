@@ -418,8 +418,13 @@ def _identity_for_ip(device_ip: str) -> str:
 
 
 def _save_golden_config_file(device_ip: str, hostname: str, config_text: str,
-                             source: str = "ai", actor: str = "ai-agent") -> None:
-    """Promote a golden config for one device. Signature unchanged.
+                             *, source: str, actor: str) -> None:
+    """Promote a golden config for one device.
+
+    ``source`` and ``actor`` are REQUIRED (2026-09-27). Their defaults were
+    ``ai`` and ``ai-agent``, so Auto-Create and Refresh Hostnames recorded a
+    person's button as the agent; a caller that forgets them now fails loudly
+    instead of attributing its commit to something that decided nothing.
 
     A thin wrapper over :func:`modules.nsot.repo.save_golden`, which is the one
     write path: one call, one commit, immediately. The previous implementation

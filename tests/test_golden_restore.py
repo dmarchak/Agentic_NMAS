@@ -554,30 +554,29 @@ class TestRevertHandsOffToTheConfirmedPath:
             "may generate 'no' is deploy.rollback_commands(), bounded by "
             "assert_rollback_provenance()")
 
-    def test_the_other_action_type_still_works(self, monkeypatch):
-        """Only the pushing path is retired. Promoting a capture is fine."""
+    def test_the_update_action_hands_off_to_capture_and_saves_nothing(self, monkeypatch):
+        """C105: a drift item's "record the running config" is a CAPTURE, so
+        approving it hands off to the capture operation, which reads the
+        device now and records it only when confirmed. It used to read and
+        commit with no preview (and as `ai-agent` until C81)."""
         from modules import approval_queue
 
         called = {}
-        monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
-                            lambda ip, host: "hostname R1\n")
         monkeypatch.setattr("modules.ai_assistant._save_golden_config_file",
-                            lambda ip, host, text, source, actor: called.update(
-                                saved=host, source=source, actor=actor))
-        monkeypatch.setattr("modules.ai_assistant._safe_device_name", lambda h: h)
-        monkeypatch.setattr("modules.ai_assistant._get_golden_configs_dir",
-                            lambda: "/tmp")
-
+                            lambda *a, **k: called.setdefault("saved", True))
+        monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
+                            lambda *a, **k: called.setdefault("read", True))
         result = approval_queue._exec_update_golden(
-            {"device_ip": "203.0.113.1", "device_hostname": "R1"},
+            {"id": "q1", "device_ip": "203.0.113.1", "device_hostname": "R1"},
             actor="ops@example.com")
-        assert called.get("saved") == "R1"
-        assert "error" not in result
-        # C81: the person who approved, never the helper's "ai-agent" default.
-        assert (called["source"], called["actor"]) == ("approval", "ops@example.com")
+        assert called == {}, "approving read or saved: it must only hand off"
+        assert result["needs_confirmation"] is True
+        assert result["capture"] == {"devices": ["R1"], "approvals": {"R1": ["q1"]}}
 
     def test_an_approval_with_nobody_behind_it_saves_nothing(self, monkeypatch):
-        """C81: no actor refuses, rather than falling back to "ai-agent"."""
+        """Nothing is saved at approve, with or without an actor: the capture
+        apply records, and its gate requires a person (C81's rule moved
+        there)."""
         from modules import approval_queue
 
         called = {}
@@ -585,35 +584,29 @@ class TestRevertHandsOffToTheConfirmedPath:
                             lambda *a, **k: called.setdefault("saved", True))
         result = approval_queue._exec_update_golden(
             {"device_ip": "203.0.113.1", "device_hostname": "R1"})
-        assert "error" in result and "accountable" in result["error"]
-        assert called == {}
+        assert "saved" not in called and result["needs_confirmation"] is True
 
 
-class TestApproveAllSkipsConfirmEndingItems:
-    """Bulk approval must not auto-confirm a program nobody was shown.
+class TestApproveAllHandsOffToOneCapture:
+    """C105: Approve-all approves nothing by itself. Every queued kind ends in
+    a confirmation: the drift items' devices go to ONE capture preview, each
+    confirmed by its hash, and a revert (a restore of one device) is named for
+    individual review. Nothing is resolved by the click."""
 
-    Approve-all exists to clear a queue of decided outcomes. A confirm-ending
-    item — one whose approval opens a preview the operator confirms per device
-    — has no decided outcome yet. Looping it would either auto-confirm (exactly
-    what the confirm hash prevents) or stack N modals on one click.
-    """
-
-    def test_a_confirm_ending_action_is_identified(self):
+    def test_both_kinds_are_confirm_ending(self):
         from modules import approval_queue
 
-        assert approval_queue.is_confirm_ending(
-            {"action_type": "revert_to_golden"}) is True
-        assert approval_queue.is_confirm_ending(
-            {"action_type": "update_golden_config"}) is False
+        assert approval_queue.is_confirm_ending({"action_type": "revert_to_golden"})
+        assert approval_queue.is_confirm_ending({"action_type": "update_golden_config"})
 
-    def test_approve_all_skips_it_and_says_why(self, monkeypatch):
-        import flask
-
+    def test_approve_all_builds_the_handoff_and_resolves_nothing(self, monkeypatch):
         import app as app_module
         from modules import approval_queue
 
         pending = [
             {"id": "a1", "action_type": "update_golden_config",
+             "device_ip": "203.0.113.1", "device_hostname": "r1"},
+            {"id": "a3", "action_type": "update_golden_config",
              "device_ip": "203.0.113.1", "device_hostname": "r1"},
             {"id": "b2", "action_type": "revert_to_golden",
              "device_ip": "203.0.113.2", "device_hostname": "r2"},
@@ -621,16 +614,15 @@ class TestApproveAllSkipsConfirmEndingItems:
         resolved = []
         monkeypatch.setattr(approval_queue, "get_pending", lambda: pending)
         monkeypatch.setattr(approval_queue, "resolve",
-                            lambda i, a, actor="": resolved.append(i) or {"ok": True})
+                            lambda *a, **k: resolved.append(a) or {"ok": True})
 
         with app_module.app.test_request_context(json={}):
-            response = app_module.ai_approval_approve_all()
-        body = response.get_json() if hasattr(response, "get_json") else response[0]
+            body = app_module.ai_approval_approve_all().get_json()
 
-        assert resolved == ["a1"], "a confirm-ending item was bulk-approved"
-        assert body["skipped_count"] == 1
-        assert body["skipped"][0]["device"] == "r2"
-        assert body["skipped"][0]["reason"] == "requires individual review"
+        assert resolved == [], "approve-all resolved an item by itself"
+        assert body["capture"] == {"devices": ["r1"], "approvals": {"r1": ["a1", "a3"]}}
+        assert [x["device"] for x in body["individual"]] == ["r2"]
+        assert "nothing is recorded until you confirm" in body["message"]
         assert "individual review" in body["message"]
 
 
