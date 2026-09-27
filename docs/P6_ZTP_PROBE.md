@@ -732,6 +732,24 @@ report:**
   `show license status | include Transport|URL` and
   `show logging | include CALLHOME|SMART_LIC` would say.
 
+**From the console, after the watch (the operator's):**
+- `startup-config is not present` (P-M0 from the device side).
+- `Gi2 10.255.0.50 YES DHCP up up`, and `bia aabb.cc00.0250`.
+- `AUTOINSTALL: Obtain tftp server name 10.255.0.10 resolved to 10.255.0.10`:
+  option 66 used as an address, so no resolver was needed (D4).
+- `AUTOINSTALL: Setting hostname router from DHCP reply`, and the prompt went
+  `Router#` to `router#`. That is the capture's echo seen from the device.
+  **An echo is not inert:** AutoInstall APPLIES option 12. Kea echoed the
+  node's own name back lowercased, and the device renamed itself. The
+  fetched config sets the real hostname in M4 and overwrites it. A
+  reservation could also carry `hostname` (option 12 from the reservation
+  instead of the echo), so the device names itself correctly before its
+  config arrives. That is for the build to decide.
+- `%PNP-6-PNP_DISCOVERY_STOPPED: PnP Discovery stopped (Config Wizard)`,
+  logged when the dialog was answered after the watch. **Answering the setup
+  dialog ends discovery**, so in M4 the console is watched and never
+  answered until the config has been fetched.
+
 ### M4 — does the fetched config apply, and is the staged credential then accepted
 
 Onboard `bp-ztp-a` through the wizard with source `ztp`, once the build exists
