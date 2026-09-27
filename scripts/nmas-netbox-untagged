@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Objects NMAS created in NetBox that Remove can never act on (register C59).
+
+Remove deletes only what is TAGGED `nmas-managed` AND in NMAS's created-object
+record. A create whose tag could not be ensured used to go ahead untagged
+("tagging is provenance, not correctness"), and a failed tag lookup was cached
+for the life of the process, so one transient error left every later create
+untagged until a restart, with only the first recorded. Creates now fail
+closed. This finds what the old behaviour left behind. READ-ONLY.
+
+Two halves, because they answer different questions:
+
+1. **Recorded, untagged.** Every object in the created-object record is read
+   back. Untagged means NMAS made it and Remove cannot act on it. The census
+   cannot see these: it counts identity, and an untagged object simply is not
+   NMAS's by the tag.
+2. **Created by NMAS's NetBox account, in no record.** The changelog names who
+   created what. NMAS's account is identified from the changelog entry of an
+   object the record holds, and every create by that account the record lacks
+   is listed. **Two limits, stated:** the changelog keeps entries only for its
+   retention (NetBox's default is 90 days), so older creations are out of
+   reach; and if that account is shared with a person, their creates appear
+   here too, so this half names candidates, not verdicts.
+
+    nmas-netbox-untagged              # every list
+    nmas-netbox-untagged --list Lab
+
+Exit: 0 both halves proven clean, 1 findings, 2 UNPROVEN (an object or the
+changelog could not be read: the check did not run, which is not a pass).
+Names and ids only; no object content is printed.
+"""
+
+import argparse
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+#: endpoint -> the changelog's object type, where the plural rule misses.
+OBJECT_TYPES = {"dcim/device-roles": "dcim.devicerole",
+                "dcim/device-types": "dcim.devicetype",
+                "vpn/tunnel-terminations": "vpn.tunneltermination",
+                "extras/config-templates": "extras.configtemplate",
+                "extras/custom-fields": "extras.customfield"}
+
+CHANGELOG_PATHS = ("core/object-changes", "extras/object-changes")   # 4.1+, then 4.0
+
+
+def object_type(endpoint: str) -> str:
+    endpoint = endpoint.strip("/")
+    if endpoint in OBJECT_TYPES:
+        return OBJECT_TYPES[endpoint]
+    app, _, model = endpoint.partition("/")
+    model = model.replace("-", "")
+    if model.endswith(("addresses", "prefixes")):
+        model = model[:-2]
+    elif model.endswith("ies"):
+        model = model[:-3] + "y"
+    elif model.endswith("s"):
+        model = model[:-1]
+    return f"{app}.{model}"
+
+
+def _read(session, base, endpoint, obj_id):
+    """("present", obj) | ("gone", None) | ("unreadable", reason)."""
+    try:
+        r = session.get(f"{base}/api/{endpoint.strip('/')}/{obj_id}/", timeout=15)
+    except Exception as exc:                  # noqa: BLE001
+        return "unreadable", str(exc)
+    if r.status_code == 404:
+        return "gone", None
+    if not r.ok:
+        return "unreadable", f"HTTP {r.status_code}"
+    return "present", r.json()
+
+
+def _get_all(session, base, path, **params):
+    """Every page of a list endpoint, or raise."""
+    out, url = [], f"{base}/api/{path.strip('/')}/"
+    params = dict(params, limit=1000)
+    while url:
+        r = session.get(url, params=params, timeout=30)
+        if not r.ok:
+            raise RuntimeError(f"GET {path} returned HTTP {r.status_code}")
+        body = r.json()
+        out += body.get("results") or []
+        url, params = body.get("next"), None
+    return out
+
+
+def reconcile(session, base, created: dict) -> dict:
+    """*created* is the record: ``{list slug: {endpoint: [{id, name}]}}``."""
+    from modules.netbox_guard import has_managed_tag, is_taggable
+
+    out = {"recorded": 0, "tagged": 0, "gone": 0, "not_taggable": 0,
+           "untagged": [], "unreadable": [], "unrecorded": [],
+           "changelog": "not run", "account": None}
+    recorded_keys = set()
+    sample = []
+    for slug, endpoints in created.items():
+        for endpoint, entries in endpoints.items():
+            for entry in entries:
+                recorded_keys.add((endpoint.strip("/"), entry["id"]))
+                if not is_taggable(endpoint):
+                    out["not_taggable"] += 1
+                    continue
+                out["recorded"] += 1
+                state, obj = _read(session, base, endpoint, entry["id"])
+                if state == "gone":
+                    out["gone"] += 1
+                elif state == "unreadable":
+                    out["unreadable"].append({"list": slug, "endpoint": endpoint,
+                                              "id": entry["id"], "reason": obj})
+                elif has_managed_tag(obj):
+                    out["tagged"] += 1
+                    sample.append((endpoint, entry["id"]))
+                else:
+                    out["untagged"].append({"list": slug, "endpoint": endpoint,
+                                            "id": entry["id"], "name": entry.get("name", "")})
+                    sample.append((endpoint, entry["id"]))
+
+    # The changelog half. NMAS's account is read from a recorded object's own
+    # create entry, never assumed.
+    for path in CHANGELOG_PATHS:
+        try:
+            account = None
+            for endpoint, obj_id in sample[:5]:
+                hits = _get_all(session, base, path, action="create",
+                                changed_object_type=object_type(endpoint),
+                                changed_object_id=obj_id)
+                if hits:
+                    account = hits[0].get("user")
+                    break
+            if account is None:
+                out["changelog"] = ("no create entry found for any recorded object "
+                                    "(beyond the changelog's retention, or no access)")
+                continue
+            out["account"] = {"id": account.get("id"),
+                              "username": account.get("username") or account.get("name")}
+            types = {}
+            for change in _get_all(session, base, path, action="create",
+                                   user_id=account.get("id")):
+                otype = change.get("changed_object_type")
+                if isinstance(otype, dict):
+                    otype = f"{otype.get('app_label')}.{otype.get('model')}"
+                types.setdefault(otype, []).append(change.get("changed_object_id"))
+            endpoint_of = {object_type(e): e for (e, _i) in recorded_keys}
+            for otype, ids in sorted(types.items()):
+                endpoint = endpoint_of.get(otype)
+                for obj_id in ids:
+                    if endpoint and (endpoint, obj_id) in recorded_keys:
+                        continue
+                    if endpoint is None:
+                        out["unrecorded"].append({"type": otype, "id": obj_id,
+                                                  "state": "type NMAS records nothing of"})
+                        continue
+                    state, obj = _read(session, base, endpoint, obj_id)
+                    if state == "gone":
+                        continue
+                    out["unrecorded"].append({
+                        "type": otype, "id": obj_id,
+                        "state": ("unreadable" if state == "unreadable"
+                                  else "tagged" if has_managed_tag(obj) else "untagged")})
+            out["changelog"] = f"read ({path})"
+            break
+        except Exception as exc:              # noqa: BLE001
+            out["changelog"] = f"unreadable ({path}): {exc}"
+    return out
+
+
+def verdict(result: dict) -> int:
+    if result["unreadable"] or not result["changelog"].startswith("read"):
+        return 2
+    if result["untagged"] or result["unrecorded"]:
+        return 1
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--list", default="", help="one list's record (default: every list)")
+    args = ap.parse_args(argv)
+
+    from modules.config import list_slug
+    from modules.netbox_client import _nb_ready
+    from modules.netbox_guard import _load_created
+
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        print(f"UNPROVEN: NetBox is not reachable: {err}")
+        return 2
+    created = _load_created()
+    if args.list:
+        created = {k: v for k, v in created.items() if k == list_slug(args.list)}
+    result = reconcile(session, base, created)
+    print(f"recorded (taggable): {result['recorded']}  tagged: {result['tagged']}  "
+          f"gone: {result['gone']}  not taggable: {result['not_taggable']}")
+    for u in result["untagged"]:
+        print(f"UNTAGGED, recorded: {u['list']} {u['endpoint']}/{u['id']} {u['name']}"
+              " -- NMAS made it and Remove cannot act on it")
+    for u in result["unreadable"]:
+        print(f"UNREADABLE: {u['list']} {u['endpoint']}/{u['id']}: {u['reason']}")
+    print(f"changelog: {result['changelog']}")
+    if result["account"]:
+        print(f"NMAS's NetBox account (from a recorded object's create): "
+              f"{result['account']['username']} (id {result['account']['id']})")
+    for u in result["unrecorded"]:
+        print(f"IN NO RECORD, created by that account: {u['type']} {u['id']} ({u['state']})"
+              " -- a candidate: the account may be shared with a person")
+    code = verdict(result)
+    print({0: "CLEAN: every recorded object is tagged, and the changelog shows no "
+              "unrecorded create by NMAS's account within its retention",
+           1: "FINDINGS above",
+           2: "UNPROVEN: part of the check could not run; this is not a pass"}[code])
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

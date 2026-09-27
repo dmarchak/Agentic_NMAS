@@ -988,6 +988,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
+| `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -4760,6 +4761,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   used hand-written output shapes, all in config syntax, so it could not
   exhibit the case. Its first control passed wrongly, served by the
   process-wide tool-result cache, which each drive now clears.
+- **Constrain the shape; do not only enumerate the instances** (the
+  operator's naming, 2026-09-27). A survey finds what someone can see; a
+  rule that every member of a CLASS must satisfy finds what nobody saw.
+  Twice now the rule found more than the survey: the route gate table
+  (every mutating endpoint declared, P.3) and C8's handler rule (every
+  handler around a NetBox write records, re-raises, retries or refuses:
+  the survey listed twenty, the rule found nine more). Reach for the
+  constraint when the population can grow.
 - **A pattern earns a member by measurement, not by resemblance** (the
   operator, 2026-09-27). C54 (a job-health row for a device that has left) was
   proposed to widen to the heartbeat check, whose row read `failing` after
@@ -4782,7 +4791,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **37 open at 2026-09-27**, counted from the rows: 32 recorded only in
+present when each was recorded. **38 open at 2026-09-27**, counted from the rows: 33 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

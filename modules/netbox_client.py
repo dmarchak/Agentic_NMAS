@@ -232,18 +232,16 @@ _managed_tag_ids: dict = {}
 def _managed_tag_id(session: requests.Session, base: str):
     """Get-or-create the ``nmas-managed`` tag, caching its id per NetBox."""
     from modules.netbox_guard import MANAGED_TAG, MANAGED_TAG_SLUG
-    if base in _managed_tag_ids:
+    # Only a SUCCESS is cached (register C59). A failure used to be cached as
+    # None for the life of the process, so one transient error left every
+    # later create untagged until a restart, and only the first was recorded.
+    if _managed_tag_ids.get(base):
         return _managed_tag_ids[base]
-    try:
-        tag = _ensure_tag(session, base, MANAGED_TAG, MANAGED_TAG_SLUG, "00bcd4")
-        _managed_tag_ids[base] = tag.get("id")
-    except Exception as exc:
-        # Tagging is provenance, not correctness — never fail a write over it.
-        # Recorded, not only logged (register C8): without the tag, every
-        # object this sync creates is untagged, so Remove can never act on it.
-        _ensure_failed(f"the '{MANAGED_TAG}' tag", exc)
-        _managed_tag_ids[base] = None
-    return _managed_tag_ids[base]
+    tag = _ensure_tag(session, base, MANAGED_TAG, MANAGED_TAG_SLUG, "00bcd4")
+    if not tag.get("id"):
+        raise RuntimeError(f"NetBox returned no id for the '{MANAGED_TAG}' tag")
+    _managed_tag_ids[base] = tag["id"]
+    return tag["id"]
 
 
 def _with_managed_tag(session: requests.Session, base: str,
@@ -253,12 +251,23 @@ def _with_managed_tag(session: requests.Session, base: str,
     This is how removal later tells NMAS-created objects apart from records a
     human curated by hand.
     """
-    from modules.netbox_guard import is_taggable
+    from modules.netbox_guard import MANAGED_TAG, is_taggable
     if not is_taggable(path):
         return payload
-    tag_id = _managed_tag_id(session, base)
-    if tag_id is None:
-        return payload
+    # FAIL CLOSED (register C59; the operator's reading). This was "tagging
+    # is provenance, not correctness -- never fail a write over it". But the
+    # tag IS the safety mechanism: Remove acts only on objects that are
+    # tagged AND recorded, so an untagged create is an object NMAS made and
+    # can NEVER clean up, and it happened silently, because the create
+    # succeeded. A create that cannot be tagged is refused; its caller records
+    # the refusal as a write failure, which the summary names.
+    try:
+        tag_id = _managed_tag_id(session, base)
+    except Exception as exc:
+        raise RuntimeError(
+            f"refusing to create {path.strip('/')} untagged: the "
+            f"'{MANAGED_TAG}' tag could not be ensured ({exc}), and an untagged "
+            f"object is one Remove can never act on") from exc
     tags = list(payload.get("tags") or [])
     if tag_id not in tags:
         tags.append(tag_id)
