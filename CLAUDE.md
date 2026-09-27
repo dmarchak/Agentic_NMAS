@@ -1052,6 +1052,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens and the legacy `golden_configs/`, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
 | `test_device_ops.py` | C98: a second operation on a held device is refused naming the holder, operation and start time, never queued; free again after, re-entrant for the holding thread, other devices unaffected; asking who holds it creates nothing; a CHILD PROCESS holding it refuses the app and its death releases it; deploy, restore, capture, rotation, onboarding phase two and retirement each refuse a held device before anything runs; the lock released when the batch raises; the list of holding paths pinned (a pin: a new path not added is not caught) |
 | `test_session_write_guard.py` | C101: at the one opener, a write (config set, save, `write memory`, `reload`, `clear`) with no hold is refused and nothing is sent, a read needs none, holding the device allows it and holding ANOTHER does not, and the refusal names the verb, never the command; Save Device Config, `/run_command` and bulk exec each hold the device, refused BY THE LOCK with the holder named (asserted, since the guard would also stop the send), a read never waits; the refusal says how long, the last progress step and, past ten minutes, "may be stuck" with no force; progress reaches another process's view; the long holders note their steps |
+| `test_one_home_per_action.py` | Minimalism at the effect level (section 6a): every device-changing command (C101's scan, a local variable resolved to its text, operands keyed by KIND so `delete {fs}{f}` and `delete flash:{f}` are one effect) has one implementation; the measured duplicates (`write memory` twice, and the page's and the selection's file upload, download, delete and typed command) in a list that only shrinks; an unresolvable send is a prompt's answer or DECLARED; anchors and a ghost check |
 | `test_ssh_sessions.py` | C97: every NETMIKO session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers; the break-glass terminal's raw paramiko sessions are outside it, C101); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
@@ -5146,18 +5147,38 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   distinction as a golden (what IS) and intent (what SHOULD BE). The
   temptation recurs whenever a record already has the property a new case
   wants, such as deletability or trust.
-- **A check that accepts a MENTION instead of a USE passes the moment the
-  use is removed** (C101's writer scan, 2026-09-27). It first accepted any
-  function naming `device_ops`; a control that removed `delete_file`'s hold
-  still passed, because the import line survived the mutation. It now
-  requires a CALL that takes the lock. Same family as the checker that had
-  to learn a use from a mention, found only because the control was run.
-- **A survey by method name misses a write sent as a command string.**
-  C101 listed writers by `send_config_set` and `save_config`; four more
-  (upload, delete and download a file, save to startup) sent `copy`,
-  `delete` and `write memory` through `send_command_timing`. The scan that
-  found them parses every command string the program sends and asks the
-  read-only allowlist about each; it is a test now.
+- **When a check matches a NAME, a PREFIX or a MENTION, it is matching
+  something ADJACENT to the property, and the deliberate break is what
+  reveals it** (the operator, 2026-09-27; four instances in one day):
+  - C61: the read-only allowlist checked a command's FIRST WORD, and
+    `show running-config | redirect tftp://` wrote;
+  - C87: the reachability reader counted a URL PREFIX, so the intent
+    editor's own route made intent revert look reachable;
+  - C101's writer scan accepted a MENTION of `device_ops`, and a control
+    removing `delete_file`'s hold passed because the import line survived.
+    It now requires a CALL that takes the lock;
+  - C101's first survey listed writers by METHOD NAME (`send_config_set`,
+    `save_config`), and four more sent `copy`, `delete` and `write memory` as
+    command STRINGS. The population is now the commands themselves: every
+    command string the program sends, asked of the allowlist.
+
+  C103 is a fifth, found by the same question: the template preview picks
+  a backup by a file-name prefix, so `r1` takes `r10`'s. It is the proxy
+  rule at the level of a single comparison: ask what the match stands in
+  for, and break the property on purpose to see whether the check notices.
+- **MINIMALISM: everything serves a purpose, and no function appears in two
+  places** (the operator's rule, 2026-09-27; NSOT_STAGE7_PLAN section 6a).
+  A task has one home; two ways to do one thing means one is wrong. Acting
+  on MANY devices and on ONE are different tasks, so Fleet and the Device
+  page may both offer an action, but only through ONE component: two entry
+  points into one code path, never two implementations. Mechanised at the
+  EFFECT level (`test_one_home_per_action.py`, from C101's command-string
+  scan). Whether two different effects serve one task, and duplicated views,
+  are a person's judgement, and the route level needs a JavaScript call
+  graph this project has no parser for. It settled the device page as (a):
+  the page is the home for everything per-device, addressed by NAME (an
+  address moves for a DHCP or ZTP device), and a Fleet row carries status
+  and a link, no action.
 - **A concurrency test that HANGS rather than fails reports nothing; the
   hard timeout is what turns it back into a measurement** (the operator,
   2026-09-27). C98's lock first deadlocked on a device another process held,

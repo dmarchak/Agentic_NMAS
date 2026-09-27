@@ -95,7 +95,8 @@ every source checked, because an empty list must say what was looked at.
 
 - **A bounded list**: search, filter (state, platform, site, network, pending
   or promoted) and selection. Nothing renders every device; the §0a numbers
-  are pinned by `test_scale.py`.
+  are pinned by `test_scale.py`. **A row carries the device's status and a
+  link to its page, and no action** (section 6a).
 - **Actions on a selection**, each through the preview-then-confirm pattern:
   - change intent on many devices (bulk intent, CLI-only today);
   - plan a batch deploy (curl-only today);
@@ -109,7 +110,8 @@ every source checked, because an empty list must say what was looked at.
 
 ### 1c. The device page
 
-One page per device. The header carries identity, platform, network, status,
+One page per device, **addressed by name** (section 6a), and the one home
+for everything per-device. The header carries identity, platform, network, status,
 and **the credential source it resolves to** (shown nowhere today). The page
 has five sections:
 
@@ -131,24 +133,28 @@ has five sections:
    - captures;
    - restores.
 5. **Actions**, each through the preview-then-confirm pattern:
-   - edit intent, or author it from a form (decision 2);
+   - edit intent, or author it from a form (decision 2): the form is an
+     input MODE of the one intent editor, committing through its route
+     (section 6a);
    - **seed intent from a capture** (curl-only today);
    - deploy;
    - restore to a golden or a ref (guarded, P.3);
    - **revert one intent commit** and **retry after a rollback** (curl-only
      today);
    - rotate the credential (CLI-only today);
-   - move files to or from flash;
-   - save to startup;
+   - move files to or from flash, through the selection's implementation
+     for one device (section 6a);
+   - save to startup (ONE save: today's two, Save Device Config and Save to
+     Startup, are one `write memory` with two implementations);
+   - ask the device a question: the allowlisted command box, with history
+     (absorbing quick actions), rendering and completion;
    - reload;
    - retire;
-   - **the terminal, LAST**: labelled as the break-glass path whose use is
-     recorded, and a change made there is drift until captured into intent
-     (decision 3).
-     **COMMITTED 2026-09-27 (NSOT_FEATURE_AUDIT 3a):**
-     replaced by a read-only LENS in the diagnosis area, line mode,
-     allowlisted (C61 fixed first), masked, and not break-glass. Config mode
-     is cut, and the break-glass path is the console runbook.
+   - ~~the terminal~~: **REMOVED** (NSOT_FEATURE_AUDIT 3b, 2026-09-27,
+     superseding 3a's read-only lens). A source of truth has no pane that
+     goes to the device directly; the command box above is the one way to
+     ask a device a question, and the break-glass path is the console
+     runbook.
 
 ### 1d. Versions
 
@@ -376,11 +382,130 @@ Their RESULTS surface in *Needs attention* where they are scheduled checks.
 - the legacy NetBox routes (P.3);
 - the dead code the audit lists.
 
+## 6a. One home per action (minimalism), decided 2026-09-27
+
+**The rule (the operator's):** everything serves a purpose, and no function
+appears in two places. A task has exactly one home, and if there are two ways
+to do something, one of them is wrong. **Acting on MANY devices and acting on
+ONE are different tasks**, so Fleet and the Device page may both offer
+deploy. Two ways to act on one device is a defect, and so is one task with
+two implementations: the page's action for its one device goes **through the
+same component** as the selection's action. Many-versus-one is two entry
+points into one code path, never two code paths.
+
+**The device page, settled: (a).** The page is the home for everything
+per-device. A Fleet row carries the device's status and a link to its page,
+and no action. The row's four buttons (Template preview, Deploy plan, Edit
+intent, Golden history) move to the page's Overview, Actions and History, and
+Manage becomes the link on the device's name. The selection keeps the
+batch-shaped operations: deploy, capture, restore to a baseline, command,
+push a file. (c) differs from (a) only in whether the row shows status, and
+status is not an action. (b) loses linkability, which a Stage 8 triage
+report, a Needs attention row and a receipt all need.
+
+**Addressed by NAME, not by address.** `/device/<ip>` breaks when a DHCP or
+ZTP device's address moves, and those are now supported ways for a device to
+arrive, so the URL would rot for exactly the devices the tool is newest at
+managing. The name is also what a triage report, a Needs attention row and a
+receipt already carry. 7.3 moves the page to `/device/<name>`. Whether
+anything stored carries the IP form is measured then; if nothing does, the IP
+form is removed rather than kept as an alias, since an alias is two addresses
+for one page.
+
+**The size, stated honestly:** a smaller reduction than the terminal. Most of
+today's tab functions MOVE rather than vanish:
+- Utilities becomes the command box;
+- Files becomes an action;
+- Changes becomes History;
+- capture and restore-from are already page actions (7.1).
+
+What actually goes is **Backups and Utilities as tabs**, and **the duplicate
+save** (Save Device Config and Save to Startup: one `write memory`, two
+implementations, one page). "7.3 deletes four tabs" is not a large cut.
+
+### The backup store's retirement: a PREREQUISITE, not a note
+
+The feature audit folds Backups into Versions as captures. The backup store
+cannot retire until the template preview stops reading it, and that is
+blocking, or it will be discovered during 7.5:
+1. `routes/templates.py` `_captured_running()` supplies the template
+   preview's second diff, "rendered versus running config", from the newest
+   file in `backups/`. That diff reads a capture (the capture operation's
+   read), or goes, since the capture preview is already the live comparison
+   and the golden is the approved one.
+2. Three renders fall back from the golden to that backup when a device has
+   no golden (`capture = golden or running`): the template preview, the
+   intent editor's preview, and bulk intent's render. So an artifact can be
+   built from a store other than the one deploy and restore use. Each must
+   say instead that it has nothing to render against.
+3. "Refresh capture" opens the capture operation, not the backup route.
+
+**Measured 2026-09-27:** the host's `backups/` holds **0 files**, so on the
+host the "versus running" half has never compared anything, and removing it
+loses nothing observed there. The backup is also chosen by a PREFIX match on
+the file name and by mtime rather than a commit time (register C103).
+
+### The check: what is mechanised, and what cannot be
+
+- **Effect level: MECHANISED** (`tests/test_one_home_per_action.py`). C101's
+  command-string scan (the AST over every command string the program sends)
+  already makes the population the commands themselves. So each
+  device-changing command is required to have ONE implementation, with the
+  measured duplicates in a list that only shrinks. First run:
+  - `write memory`, twice: Save Device Config and Save to Startup (a true
+    duplicate);
+  - TFTP upload, file delete, file download and the command, each with two
+    implementations (`app.py` for the page, `bulk_ops.py` for the
+    selection). The many-versus-one affordance is allowed; two code paths
+    are not.
+
+  Records were already one path: `save_golden()` for goldens, and
+  `repo.git()` for every commit (`test_actor_verified_trailer.py`).
+- **Route level: measured, and NOT a test.** Of 112 mutating routes, 13 are
+  sent from more than one JavaScript function. Three are real:
+  - playbook delete, implemented twice (the chat panel and the AI tab);
+  - quick actions beside the command box, one route and one task;
+  - approve beside Approve-all, which is many versus one.
+
+  The other ten are steps of one flow (a re-plan inside the deploy wizard, an
+  automatic clear after a corrupt chat history, a new list selected after it
+  is created), or the scan attributing a fetch to the wrong enclosing
+  function. It is not a test because a person's entry point is a CONTROL,
+  and control to function to fetch is a JavaScript call graph that this
+  project has no parser for. The enclosing-function match is a NAME match,
+  and a test built on it would carry ten exemptions for its own noise, which
+  is a check people learn to override.
+- **Not mechanisable: whether two things are the same TASK.** Two mechanisms
+  can reach one outcome through different routes AND different effects. The
+  Configure forms and the intent editor both "change a device's
+  configuration": one sends nothing and the other commits intent. The check
+  can offer candidates, and a person decides. Nor does it cover VIEWS: golden
+  history is drawn by a row's modal, the Git tab and the Device page, and
+  reads are the destination structure's job (section 1), not this check's.
+
+### The retroactive pass (2026-09-27)
+
+| Pair | Verdict | Action |
+|---|---|---|
+| Save All / capture one device | many versus one, one component (`previewCapture` with no selection) | none |
+| Selection deploy / the row's Deploy plan | many versus one, one wizard | the row's button moves to the page |
+| Save Device Config / Save to Startup | **duplicate**: one effect, two implementations, one page | one save (7.3) |
+| The page's file upload, download and delete / the selection's | many versus one, **two implementations** | the page calls the selection's (7.3) |
+| The command box / the selection's bulk command | many versus one, **two implementations** | one implementation (7.3) |
+| Quick actions / the command box | **duplicate**: canned input to the same route | saved entries in the box's history (7.3) |
+| Playbook delete in the chat panel / in the AI tab | **duplicate**: two implementations | one; Stage 8 decides whether playbooks survive (P.3 refused replay) |
+| Approve / Approve all | many versus one | rebuilt as a previewed operation (next, with Auto-Create) |
+| The Configure forms / the intent editor | **duplicate task**, and the forms send nothing | section 7 revised: a form is an input MODE of the one intent editor; the tab goes in 7.8 |
+| The TFTP server field on both pages | the stored copy of a derivable fact | goes with C48 (derive) |
+
 ## 7. The Configure forms (decision 2), a parallel track
 
 P.3 removes the direct push. Stage 7 homes the forms as **"Author intent
 from a form"** on the Device page, and on a Fleet selection for the same
-change on many devices.
+change on many devices. **Revised by section 6a:** a form is an input MODE of
+the one intent editor, writing the same committed intent through the same
+route and preview, never a second authoring path; the Configure TAB goes in
+7.8, since today its forms send nothing and duplicate the editor's task.
 - Converted **in batches**, starting with features the intent schema already
   models, so the first batch is mapping, not schema work.
 - A form whose feature the schema cannot express says so and offers nothing.
@@ -397,12 +522,12 @@ first.**
 | **7.0** | The checks every later step is written against: per-route reachability (url_for-aware, per method where a path mixes read and write), the invalidation map (all mutating routes declare), **the payload-to-render check (section 5)** and **the nine-concept harness (section 4)**. Each starts with an allowlist that only shrinks. |
 | **7.1** | The preview-then-confirm component, retrofitted to deploy (absorbing P.3's wizard fix), restore, onboarding, bulk intent and NetBox import/remove |
 | **7.2** | The status bar, and **Needs attention** with every source in section 1a. **The reachability reader (C92)**: one job keeping, per device, the last probe, its time and the consecutive-miss count, with the threshold taken from the host's measured misses, read by the dot and by every action that now acts on a single probe |
-| **7.3** | The Device page: the Grafana iframe test FIRST, then Overview (the reachability claim drawn with its age and which claim it is, never "offline" for a device nobody probed: C92), Monitoring, Neighbours, History and Actions, including seed intent, revert, retry, rotate, retire and the terminal last. **Monitoring's acceptance is Stage 5's enumeration, 7.3-a…f** (NSOT_PLAN.md; renumbered from "7.5" on 2026-09-27), with 7.3-f already done by P.1 |
+| **7.3** | The Device page: the Grafana iframe test FIRST, then Overview (the reachability claim drawn with its age and which claim it is, never "offline" for a device nobody probed: C92), Monitoring, Neighbours, History and Actions, including seed intent, revert, retry, rotate and retire; the row's actions move here and the page moves to `/device/<name>` (section 6a); the terminal is REMOVED (7.8), the command box absorbing its reads. **Monitoring's acceptance is Stage 5's enumeration, 7.3-a…f** (NSOT_PLAN.md; renumbered from "7.5" on 2026-09-27), with 7.3-f already done by P.1 |
 | **7.4** | Fleet: the bounded list and selection, batch deploy, bulk intent, onboard, adopt and retire, networks, and the inventory source. **Onboarding is designed for N address sources** (static, dhcp, ztp: P.6 lands first): the source choice is a LIST, not a toggle, and the pending-device row carries a per-source PROGRESS column (for ZTP: reservation written, config fetched, first seen). Cheap to design now, expensive to retrofit. |
 | **7.5** | Versions: commits by actor and source (stating once *"N of M commits carry a verified identity"*, with the rest marked *"recorded, not verified"*: D10, P.3 step 10), baselines with their reasons, re-applying one, the remote with connect |
 | **7.6** | Source of truth: templates (the scheme-3 approval badge saying what it covers and what it does not, P.5; revoke, bindings, coverage, seed status), NetBox, credentials, freshness authorisations |
 | **7.7** | Settings split, file-only settings listed, diagnostics |
-| **7.8** | Removals, each with `check_removed_definitions.py` and a recorded reason, last so nothing goes before its replacement is on screen |
+| **7.8** | Removals, each with `check_removed_definitions.py` and a recorded reason, last so nothing goes before its replacement is on screen. **The backup store retires only after section 6a's prerequisite** (the template preview and the two other renders read no backup), which is blocking, not a note |
 | **7.9** | Configure forms: batch 1 (a parallel track, not blocking) |
 
 ### 7.0 built, 2026-09-27 (awaiting the host check)
