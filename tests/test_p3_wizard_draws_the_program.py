@@ -145,12 +145,14 @@ def _lift(src: str, name: str) -> str:
     return src[start:i + 1]
 
 
-def _card(entry):
-    dukpy = pytest.importorskip("dukpy")
-    src = open(WIZARD, encoding="utf-8").read()
-    fns = "\n".join(_lift(src, n) for n in ("_dEsc", "_programHtml",
-                                            "_attributionHtml", "_deviceCard"))
-    return dukpy.evaljs(fns + f"\n_deviceCard({json.dumps(entry)})")
+def _card(plan):
+    """The wizard's screen: the plan's `preview`, drawn by the one shipped
+    renderer with the wizard's hooks (Stage 7.1)."""
+    pytest.importorskip("dukpy")
+    from tests.payload_render import render_preview
+
+    return render_preview(plan["preview"], {"selectable": True, "onSelect": "_updateDeploySummary",
+                                            "authorise": "_reauthoriseDevice"})
 
 
 def _unesc(html: str) -> str:
@@ -160,39 +162,39 @@ def _unesc(html: str) -> str:
 
 class TestTheWizardDrawsIt:
     def test_every_line_of_the_program_is_drawn(self, client):
-        _, d = _plan(client)
-        html = _unesc(_card(d))
+        plan, d = _plan(client)
+        html = _unesc(_card(plan))
         assert len(d["commands"]) >= 3
         for line in d["commands"]:
             assert line in html, (line, html)
-        assert f"exactly these {len(d['commands'])} line(s) will be sent" in html
+        assert f"Exactly these {len(d['commands'])} line(s) will be sent" in html
 
     def test_the_dangerous_line_has_its_own_authorise_box(self, client):
-        _, d = _plan(client)
-        html = _card(d)
+        plan, _d = _plan(client)
+        html = _card(plan)
         boxes = re.findall(r'data-auth-device="s4" data-line="([^"]*)"', html)
         assert [_unesc(b) for b in boxes] == ["shutdown"], boxes
         assert "tick to authorise this exact line" in html
 
     def test_an_unauthorised_device_cannot_be_ticked(self, client):
-        _, d = _plan(client)
-        html = _card(d)
-        device_box = re.search(r'<input class="form-check-input" type="checkbox" id="dep_s4"[^>]*>', html).group(0)
+        plan, _d = _plan(client)
+        html = _card(plan)
+        device_box = re.search(r'<input [^>]*data-pc-select id="pc_sel_s4"[^>]*>', html).group(0)
         assert "disabled" in device_box
         assert "dangerous line(s) not authorised" in html
 
     def test_once_authorised_it_can_be_ticked_and_says_so(self, client):
         """Control for the one above."""
-        _, d = _plan(client, {"s4": ["shutdown"]})
-        html = _card(d)
-        device_box = re.search(r'<input class="form-check-input" type="checkbox" id="dep_s4"[^>]*>', html).group(0)
+        plan, d = _plan(client, {"s4": ["shutdown"]})
+        html = _card(plan)
+        device_box = re.search(r'<input [^>]*data-pc-select id="pc_sel_s4"[^>]*>', html).group(0)
         assert "disabled" not in device_box
         assert "dangerous: AUTHORISED" in html
         assert f'data-command-hash="{d["command_hash"]}"' in html
 
     def test_the_attribution_split_is_drawn(self, client):
-        _, d = _plan(client)
-        html = _unesc(_card(d))
+        plan, _d = _plan(client)
+        html = _unesc(_card(plan))
         assert "From this edit: <strong>1</strong>" in html
         assert "Not from this edit: <strong>1</strong>" in html
         assert "abcdef12" in html and "host_vars: s4 shut Gi0/2" in html
@@ -207,11 +209,15 @@ class TestTheWizardSendsTheAuthorisationItsHashCovers:
         assert "(_deployPlan || {}).devices" in fn
         assert "data-auth-device" not in fn, "read from the plan, never from the boxes"
 
-    def test_ticking_a_box_re_plans_that_device(self):
+    def test_ticking_a_box_re_plans_with_every_box(self):
+        """7.1: the whole batch is re-planned with the authorisation map read
+        from every box, and redrawn by the one renderer. A device whose command
+        hash moved is left unticked, so it is confirmed as now shown."""
         fn = _lift(self.SRC, "_reauthoriseDevice")
         assert "fetch('/deploy/plan'" in fn
-        assert "authorise: {[device]: lines}" in fn
-        assert "card.outerHTML = _deviceCard(entry)" in fn
+        assert "input[data-auth-device]" in fn and "authorise})" in fn
+        assert "_renderDeployPlan(d)" in fn
+        assert "kept[b.dataset.device] === b.dataset.commandHash" in fn
 
 
 class TestTheRestorePathCanAuthorise:

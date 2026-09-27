@@ -315,6 +315,12 @@ class RenderArtifact:
                 self.report.get("excluded_unrenderable", [])),
             "round_trip_fidelity": (self.template_report or self.report).get(
                 "round_trip_fidelity", 0.0),
+            # What `complete` and the fidelity figure summarise, as counts:
+            # a rounded percentage can read 100.0 with a line missing.
+            "template_gaps": {
+                "missing": (self.template_report or self.report or {}).get("missing_from_render", 0),
+                "extra": (self.template_report or self.report or {}).get("extra_in_render", 0),
+                "reordered": (self.template_report or self.report or {}).get("reordered_sections", 0)},
             "bootstrap": self.bootstrap,
             "intent_drift": self.intent_drift,
             "unsendable": list(self.unsendable),

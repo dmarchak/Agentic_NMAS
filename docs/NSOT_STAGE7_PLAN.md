@@ -470,6 +470,49 @@ invalidation cannot see a change made after the response, or on a
 schedule. Two of the three measured cases are exactly that (C58, proposed
 fix: a server-sent invalidation over the existing Socket.IO connection).
 
+### 7.1, deploy retrofitted, 2026-09-27
+
+**The contract (approved by the operator, 2026-09-27):** one Python helper
+builds the six parts (`modules/preview_confirm.py`: `build()`, a
+`PreviewIncomplete` floor, per-screen adapters such as `deploy_preview()`),
+and one shipped renderer draws them (`static/js/nmas_preview_confirm.js`).
+The six parts are a FLOOR, not a template: a part with nothing to say states
+it, the builder refuses a silent one, and the renderer draws the sentence.
+Gates have five states. `at_apply` and `not_reached` are separate from `pass`
+because a check that ran later, or not at all, has not passed.
+
+**Deploy is the first screen on it.** `/deploy/plan` returns `preview`
+beside `devices`. The wizard draws it and supplies only wiring (which
+function a tick calls, and which a dangerous line's box calls).
+`_programHtml`, `_attributionHtml` and `_deviceCard` are deleted.
+Authorising a line re-plans the batch with every box, redraws it, and leaves
+unticked any device whose command hash moved.
+
+**What it moved, measured.** Once the server builds what the screen draws,
+the ADAPTER is the step that can drop a key: D4's failure, one step
+upstream. So the payload-to-render check reads the adapter as well
+(`python_reads`), and the anchors now include `preview`, `lines` and
+`from_this_edit` as well as `commands` and `attribution`. The promise in
+UNDRAWN ("7.1's component draws each gate by name") is kept. Gates now
+cover committed intent, template fidelity (its gap counts, since a rounded
+100.0% can hide a missing line), acknowledgement, printable ASCII,
+dangerous lines, the rollback block and the two apply-time checks. As a
+result, 18 keys left UNDRAWN (117 to 99).
+
+**Controls, each restored from a copy:**
+- an empty "what will not happen" omitted;
+- the builder accepting a silent part;
+- an apply-time gate drawn as pass;
+- the adapter dropping the attribution;
+- untrimmed dangerous-line matching.
+
+Each failed the tests aimed at it, and nothing else.
+
+**Next, in the approved order:** restore, onboarding, NetBox import/remove,
+then bulk intent. `test_preview_confirm.py`'s `RETROFIT_PENDING` lists them
+and only shrinks. Bulk intent has **no screen**: its routes are reached by
+curl, so its retrofit is the preview and the screen that draws it.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** If it returns, it caps the devices shown, and

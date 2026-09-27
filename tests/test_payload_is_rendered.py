@@ -37,8 +37,8 @@ from typing import NamedTuple
 import pytest
 
 from tests import payload_providers as P
-from tests.payload_render import (lift, literal_keys, payload_keys, reads,
-                                  root_reads, shipped)
+from tests.payload_render import (lift, literal_keys, payload_keys, python_reads,
+                                  reads, root_reads, shipped)
 
 
 class Render(NamedTuple):
@@ -54,6 +54,11 @@ class Render(NamedTuple):
     #: {file: (object literal, ...)} a renderer reads the payload THROUGH:
     #: the literal's keys are the keys read.
     tables: dict = None
+    #: {python file: (function, ...)}: a server-side adapter that builds what
+    #: the renderer draws from the payload's raw entries (7.1's
+    #: preview-confirm). Its reads count as reads: it is the step that
+    #: decides what reaches the screen.
+    adapters: dict = None
 
 
 def _answer(r):
@@ -72,6 +77,9 @@ def _post(path, body):
     return lambda mp, tmp: _answer(P._client().post(path, json=body))
 
 
+PC = "nmas_preview_confirm.js"
+PC_FNS = ("previewConfirmHtml", "whatHtml", "whatNotHtml", "programHtml", "operandsHtml",
+          "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js",
                      "partials__golden_repo.2.js", "partials__golden_repo.3.js")
 I1, I4 = "index.1.js", "index.4.js"
@@ -83,9 +91,11 @@ RENDERS = {
         (("partials__onboard_pending.1.js", "pendingBannerHtml", "data"),)),
     "POST /deploy/plan": Render(
         lambda mp, tmp: P.deploy_plan(mp),
-        {DW: ("openDeployPlan", "_renderDeployPlan", "_deviceCard", "_programHtml",
-              "_attributionHtml", "_reauthoriseDevice", "applyDeploy")},
-        ((DW, "openDeployPlan", "d"), (DW, "_renderDeployPlan", "plan"))),
+        {DW: ("openDeployPlan", "_renderDeployPlan", "_reauthoriseDevice",
+              "_updateDeploySummary", "applyDeploy"), PC: PC_FNS},
+        ((DW, "openDeployPlan", "d"), (DW, "_renderDeployPlan", "plan")),
+        maps=("select_data",),
+        adapters={"modules/preview_confirm.py": ("deploy_preview", "_deploy_gates")}),
     "POST /deploy/apply": Render(
         lambda mp, tmp: P.deploy_apply(mp),
         {DW: ("applyDeploy", "_renderDeployResult")},
@@ -299,18 +309,12 @@ UNDRAWN = {
         ("commit golden", "the batch's golden commit; 7.5 links it"),
         ("list", LIST)],
     "POST /deploy/plan": [
-        ("adds removes differs reordered complete",
-         "the diff's statistics; the wizard draws the PROGRAM itself, which "
-         "is what is confirmed (D4)"),
-        ("bootstrap excluded_unrenderable intent_drift masked_refs rolled_back "
-         "stale_acknowledgements unacknowledged unmodeled unsendable",
-         "each also reaches the screen as a sentence in blocking_reasons, which "
-         "is drawn; 7.1's component draws each gate by name (section 2, part 5)"),
-        ("deployable_count unchanged_count", "summary counts; each device is drawn"),
-        ("modeled_coverage round_trip_fidelity", "fidelity figures; 7.1 draws "
-                                                 "them beside the template gate"),
-        ("attributable platform template_approved",
-         "flags behind what is drawn (the split, the card, the gate)"),
+        ("complete", "the conjunction of two gates drawn by name (template "
+                     "reproduces the device; every line modelled or acknowledged)"),
+        ("deployable_count", "the summary sentence recomputes it from the "
+                             "devices the preview draws"),
+        ("actor", "the confirming person, drawn inside the confirm part's "
+                  "`statement` sentence, which names them"),
         ("list", LIST)],
     "POST /golden/restore/preview": [
         ("add excluded_unrenderable intent_restored inventory_size mode partial "
@@ -355,7 +359,7 @@ def _flat(table):
             for keys, reason in groups for key in keys.split()}
 
 
-UNDRAWN_CEILING = 117
+UNDRAWN_CEILING = 99   # 117 before 7.1 drew the deploy gates by name
 PHANTOM_CEILING = 18
 
 
@@ -394,6 +398,9 @@ def measured(tmp_path_factory):
                 src = shipped(file)
                 for fn in functions:
                     names |= reads(lift(src, fn))
+            for path, functions in (spec.adapters or {}).items():
+                for fn in functions:
+                    names |= python_reads(path, fn)
             for file, tables in (spec.tables or {}).items():
                 for table in tables:
                     names |= literal_keys(shipped(file), table)
@@ -466,6 +473,9 @@ class TestThePopulation:
                 src = shipped(file)
                 for fn in functions:
                     lift(src, fn)
+            for path, functions in (spec.adapters or {}).items():
+                for fn in functions:
+                    python_reads(path, fn)
 
 
 class TestAnchors:
@@ -474,6 +484,10 @@ class TestAnchors:
     @pytest.mark.parametrize("route,key", [
         ("POST /deploy/plan", "commands"), ("POST /deploy/plan", "dangerous"),
         ("POST /deploy/plan", "attribution"), ("GET /onboard/pending", "list"),
+        # 7.1: the program reaches the screen THROUGH the preview; the adapter
+        # reads `commands` and the renderer draws `lines` and the split.
+        ("POST /deploy/plan", "preview"), ("POST /deploy/plan", "lines"),
+        ("POST /deploy/plan", "from_this_edit"),
         ("POST /golden/restore/preview", "commands")])
     def test_carried_and_read(self, measured, route, key):
         payload, names, _ = measured[route]

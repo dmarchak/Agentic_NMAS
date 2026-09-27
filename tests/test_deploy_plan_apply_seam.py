@@ -134,10 +134,28 @@ class TestTheClientSendsWhatTheRouteReads:
 
         return read_shipped("static/js/gen/partials__deploy_wizard.1.js")
 
-    def test_the_apply_call_sends_confirmations(self):
+    @staticmethod
+    def _select_box(monkeypatch):
+        """The device's tick as the SHIPPED renderer draws it from a real
+        `/deploy/plan` (7.1: the one preview-confirm renderer), with the
+        plan entry it was drawn from."""
+        import re
+
+        from tests import payload_providers as P
+        from tests.payload_render import render_preview
+
+        plan = P.deploy_plan(monkeypatch)
+        entry = plan["devices"][0]
+        html = render_preview(plan["preview"], {"selectable": True})
+        box = re.search(r'<input [^>]*data-pc-select[^>]*data-device="%s"[^>]*>'
+                        % re.escape(entry["device"]), html).group(0)
+        return box, entry
+
+    def test_the_apply_call_sends_confirmations(self, monkeypatch):
         source = self._wizard_js()
         assert "confirmations[b.dataset.device] = b.dataset.hash" in source
-        assert "d.capture_hash" in source, \
+        box, entry = self._select_box(monkeypatch)
+        assert entry["capture_hash"] and f'data-hash="{entry["capture_hash"]}"' in box, \
             "the checkbox no longer carries the hash the plan published"
 
     def test_the_apply_call_sends_command_hashes(self):
@@ -162,7 +180,7 @@ class TestTheClientSendsWhatTheRouteReads:
         assert "command_hashes: commandHashes" in apply_call
         assert "b.dataset.commandHash" in apply_call
 
-    def test_the_hashes_come_from_the_DOM_not_a_re_fetch(self):
+    def test_the_hashes_come_from_the_DOM_not_a_re_fetch(self, monkeypatch):
         """**Designed in, not added after.**
 
         The confirmed values must be the ones the operator was *shown*.
@@ -176,7 +194,9 @@ class TestTheClientSendsWhatTheRouteReads:
         assert "/deploy/plan" not in apply_call, (
             "applyDeploy re-fetches the plan — the comparison then passes by "
             "construction")
-        assert 'data-command-hash="${_dEsc(d.command_hash' in source, \
+        box, entry = self._select_box(monkeypatch)
+        assert entry["command_hash"] and \
+            f'data-command-hash="{entry["command_hash"]}"' in box, \
             "the card no longer carries the plan's command hash into the DOM"
 
     def test_the_restore_path_does_send_them(self):

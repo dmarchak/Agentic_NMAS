@@ -123,6 +123,11 @@ tracked in git.
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
   (panels subscribe; a failed re-fetch marks the panel stale with a time)
+- **[modules/preview_confirm.py](modules/preview_confirm.py)** — Stage 7.1:
+  the preview-then-confirm contract. One builder for the six parts (what,
+  what will NOT happen, program, operands, gates, confirm), refusing a part
+  that is empty without saying so; per-screen adapters (`deploy_preview`).
+  One renderer: **[static/js/nmas_preview_confirm.js](static/js/nmas_preview_confirm.js)**
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
   `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`,
   `templates.py`, `deploy.py`, `freshness.py`, `devices_view.py` (the device
@@ -983,7 +988,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
 | `test_route_reachability.py` | 7.0 (1): every (method, route) pair is reachable from a rendered page (both pages, with a device; `url_for` in template source counted), non-GUI with a consumer shown to reference it, or allowlisted with its group and home; per METHOD where a PATH mixes a read and a write (decided per path: `/drift/settings` is two rules); exact both ways, ceiling pinned at the measured 54; anchors each way. `tests/route_references.py` is the shared reader |
 | `test_invalidation_map.py` | 7.0 (2): every mutating route (115, from `url_map`) declares the data it changes or `Nothing` with a reason, and an undeclared one is found (a throwaway app is the built-in control); the response carries the keys (header always, `invalidates` in a JSON body) and is otherwise unchanged; subscriptions both directions with floors, and a shrinking list of declared keys nobody subscribes to yet; the shipped client EXECUTED in duktape against a real response's header, a failed re-fetch marking the panel with the time of the value shown; the device list redrawn from the index's own templates (the 0-to-1 case) |
-| `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 118, PHANTOM 18) compared exactly; anchors `commands`/`dangerous`/`attribution` on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
+| `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 99, PHANTOM 18) compared exactly; since 7.1 a server-side adapter's reads count, because it decides what reaches the screen; anchors `commands`/`dangerous`/`attribution` (read by the adapter) and `preview`/`lines`/`from_this_edit` (drawn) on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
+| `test_preview_confirm.py` | 7.1: the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
@@ -4778,6 +4784,17 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   real gap was a teardown step (re-run the checks the probe made fail),
   because a correct probe-caused failure reads like a live one until the next
   tick.
+- **Moving what a screen draws to the server moves the dropped-key failure
+  with it** (7.1, 2026-09-27). Once `/deploy/plan` built a preview and one
+  renderer drew it, the wizard stopped reading `commands` and `attribution`
+  at all. The adapter that builds the preview became the step that could
+  drop a key. A check reading only the browser's code would have had to
+  exempt every raw key as "drawn through the preview", and that exemption
+  holds whether the adapter carried the key or dropped it. So the
+  payload-to-render check reads the adapter's
+  source too, and a control that nulls the attribution in the adapter fails
+  the anchor. Wherever a transformation sits between a payload and its
+  renderer, the check has to cover the transformation.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every

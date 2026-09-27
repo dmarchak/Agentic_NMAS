@@ -47,9 +47,12 @@ def _run(file, names, call):
 
 
 def _deploy_program(mp, tmp):
-    device = P.deploy_plan(mp)["devices"][0]
-    return _run("partials__deploy_wizard.1.js", ("_dEsc", "_programHtml"),
-                f"_programHtml({json.dumps(device)})")
+    """7.1: the deploy screen is the preview-confirm component, and each
+    concept is drawn in the part it explains (merge-only in what will NOT
+    happen, confirm-by-hash in confirm)."""
+    from tests.payload_render import render_preview
+
+    return render_preview(P.deploy_plan(mp)["preview"])
 
 
 def _pending_banner(mp, tmp):
@@ -73,8 +76,8 @@ def _approval_badge(mp, tmp):
 
 
 LIVE = {
-    "confirm-by-hash": Screen(_deploy_program, "the deploy wizard's program"),
-    "merge-only": Screen(_deploy_program, "the deploy wizard's program"),
+    "confirm-by-hash": Screen(_deploy_program, "the deploy preview's confirm part"),
+    "merge-only": Screen(_deploy_program, "the deploy preview's what-will-not-happen part"),
     "pending-vs-promoted": Screen(_pending_banner, "the pending-onboarding banner"),
     "approval-binds-the-template": Screen(_approval_badge,
                                           "the template library's approval badge"),
@@ -157,18 +160,30 @@ class TestEachLiveScreenTeachesIt:
         assert approval.COVERS[:30] in badge and approval.DOES_NOT_COVER[:30] in badge
 
 
+def _marked_names() -> set:
+    """Every concept a shipped screen can mark. Two places: a marker written
+    in a renderer (`data-concept="x"`), and, since 7.1, an explanation the
+    preview-confirm builder puts in a preview's `explain` (`"concept": "x"`),
+    which the one renderer marks the same way."""
+    text = "\n".join(open(os.path.join(GEN, f), encoding="utf-8").read()
+                     for f in os.listdir(GEN))
+    for root, _, files in os.walk(os.path.join(ROOT, "templates")):
+        for f in files:
+            text += open(os.path.join(root, f), encoding="utf-8").read()
+    names = set(re.findall(r'data-concept="([a-z-]+)"', text))
+    builder = open(os.path.join(ROOT, "modules", "preview_confirm.py"), encoding="utf-8").read()
+    return names | set(re.findall(r'"concept":\s*"([a-z-]+)"', builder))
+
+
 class TestPendingHasNoGhosts:
     def test_a_pending_concept_with_a_marker_must_leave(self):
-        shipped_text = "\n".join(open(os.path.join(GEN, f), encoding="utf-8").read()
-                                 for f in os.listdir(GEN))
-        for root, _, files in os.walk(os.path.join(ROOT, "templates")):
-            for f in files:
-                shipped_text += open(os.path.join(root, f), encoding="utf-8").read()
-        ghosts = [n for n in PENDING if f'data-concept="{n}"' in shipped_text]
+        ghosts = sorted(set(PENDING) & _marked_names())
         assert ghosts == [], f"marked now: move to LIVE with a real-payload render: {ghosts}"
 
     def test_every_live_marker_is_in_the_shipped_source(self):
-        """The floor for the check above: the scan can find a marker."""
-        shipped_text = "\n".join(open(os.path.join(GEN, f), encoding="utf-8").read()
-                                 for f in os.listdir(GEN))
-        assert all(f'data-concept="{n}"' in shipped_text for n in LIVE)
+        """The floor for the check above: the scan can find a marker, in
+        both places it looks."""
+        marked = _marked_names()
+        assert set(LIVE) <= marked, sorted(set(LIVE) - marked)
+        assert {"merge-only", "confirm-by-hash"} <= marked
+        assert "pending-vs-promoted" in marked

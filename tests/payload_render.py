@@ -97,8 +97,14 @@ def lift(src: str, name: str) -> str:
     return src[start:i + 1]
 
 
+#: The shared components live beside gen/, not in it: named by their path
+#: under static/js/.
+COMPONENTS = ("nmas_preview_confirm.js",)
+
+
 def shipped(file: str) -> str:
-    return open(os.path.join(GEN, file), encoding="utf-8").read()
+    base = os.path.dirname(GEN) if file in COMPONENTS else GEN
+    return open(os.path.join(base, file), encoding="utf-8").read()
 
 
 _DOT = re.compile(r"(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)")
@@ -165,3 +171,35 @@ def literal_keys(src: str, name: str) -> set:
         i += 1
     body = strip_comments(src[start + 1:i])
     return set(re.findall(r"(?:^|[,{\s])([A-Za-z_$][\w$]*)\s*:", body))
+
+
+def python_reads(path: str, name: str) -> set:
+    """Keys a server-side ADAPTER reads from the payload (``d.get("x")``,
+    ``d["x"]``) in function *name* of *path*. The preview-confirm component
+    (7.1) draws a preview the server builds FROM the plan's entries, so a
+    key the adapter never reads is dropped before any renderer sees it: D4's
+    failure moved one step upstream, and this is where it would reappear."""
+    import ast
+
+    src = open(os.path.join(ROOT, path), encoding="utf-8").read()
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            body = ast.get_source_segment(src, node)
+            break
+    else:
+        raise KeyError(f"no function {name!r} in {path}")
+    return (set(re.findall(r"""\.get\(\s*["']([\w-]+)["']""", body))
+            | set(re.findall(r"""\[\s*["']([\w-]+)["']\s*\]""", body)))
+
+
+def render_preview(preview: dict, hooks: dict = None) -> str:
+    """The SHIPPED preview-confirm renderer, executed in duktape against a
+    preview from a real route. The whole file runs, as the browser runs it,
+    rather than lifted functions: it is one IIFE."""
+    import json
+
+    import dukpy
+
+    src = shipped("nmas_preview_confirm.js")
+    return dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmHtml("
+                        + json.dumps(preview) + ", " + json.dumps(hooks or {}) + ")")
