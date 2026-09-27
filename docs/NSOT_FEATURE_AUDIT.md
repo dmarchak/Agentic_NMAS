@@ -46,7 +46,7 @@ control whose guard does not exist.
 | **NetBox** | ABSORB | The guarded Import and Remove previews survive, under keeping the source of truth correct. The legacy unguarded routes (`/netbox/sync`, `/sync_all`, `/remove`) are CUT: they skip the one-shot token half of the write gate. |
 | **Agent** | **UNDECIDED** (section 5) | |
 | **Approvals** | ABSORB into *Is anything wrong / needs you* | The queue is attention, not a place. Approve needs a person (B12). |
-| **Monitoring** | ABSORB: the integration status into the status bar, per-device graphs and logs into the device page (Grafana embedded, 7.5); the legacy collectors CUT (7.5-e, decided) | |
+| **Monitoring** | ABSORB: the integration status into the status bar, per-device graphs and logs into the device page (Grafana embedded, 7.3); the legacy collectors CUT (7.3-e, decided) | |
 | **Configure** | **UNDECIDED** (section 3) | |
 | **Git** | KEEP as **Versions** (7.4) | commits, tags, baselines, per-device history, remote and push state, and CI results per commit |
 | **Logs** | ABSORB into a diagnostics area (7.7) | |
@@ -99,7 +99,7 @@ control whose guard does not exist.
 | Legacy-golden migration cards | KEEP until the retirement condition, then CUT | Self-retiring by design. |
 | Template library: edit, validate, approve | KEEP, and ADD revoke and bindings (7.1) | |
 | Variable store and compliance policy (`/list/variables`, `/list/compliance_policy`, AI tools) | **CUT**; compliance ABSORBED into CI | The variable store is the CSV-era predecessor of host_vars intent. Compliance rules as strings run in exec mode are superseded by required-block checks over intent (docs/NSOT_CI.md R7). |
-| Legacy collectors (SNMP traps, NetFlow, OOB collector IP) | CUT (7.5-e, decided) | Replaced by Prometheus, Loki and Grafana. SNMP Quick Poll: CUT with them. |
+| Legacy collectors (SNMP traps, NetFlow, OOB collector IP) | CUT (7.3-e, decided) | Replaced by Prometheus, Loki and Grafana. SNMP Quick Poll: CUT with them. |
 | Integration status strip and service status | KEEP as the status bar (7.2) | |
 | `/jobs/health` | KEEP, and ADD GUI in *Is anything wrong* | |
 
@@ -162,7 +162,7 @@ Tool-by-tool, for Stage 8 (group counts from the audit):
 | Self-modification (4) | **CUT, without exception** |
 | Jenkins (19) | CUT (docs/NSOT_CI.md §4) |
 | "Ansible" replay (3) | CUT |
-| Legacy collectors (7) | CUT (with 7.5-e) |
+| Legacy collectors (7) | CUT (with 7.3-e) |
 | Reports (4) | UNDECIDED, with the knowledge tools |
 | NSoT and NetBox reads (6) | KEEP; `nsot_get_device_context` must read host_vars, not call NetBox "intended" |
 | **New (Stage 8)** | Read plans, previews and job, drift and freshness states; draft an intent edit; queue an approval. |

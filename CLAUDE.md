@@ -4734,8 +4734,10 @@ scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
 
 **Sequencing decided 2026-09-25** ([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md)):
-**Stage 5 is folded into 7.5**, so the views are built once, with its
-paragraph enumerated as 7.5-a…f. Two standalone items come **before Stage
+**Stage 5 is folded into 7.3** (renumbered from "7.5" on 2026-09-27:
+NSOT_STAGE7_PLAN.md governs, and monitoring is the Device page), so the
+views are built once, with its paragraph enumerated as 7.3-a…f, and 7.3-f
+already done by P.1. Two standalone items come **before Stage
 7**: **P.1** switch syslog (stopped 2026-09-09; a pipeline defect, not a
 screen) and **P.2** NetBox backup with a tested restore (A1). The service
 unit's hardening is **6.5**. **P.1 COMPLETE 2026-09-25**: a silenced s4 alerted alone, 1,118 s after its last heartbeat, between its second and third missed heartbeat as designed; nine devices heartbeating on per-device measured windows. **P.1 measured first**: nothing stopped. Every device
@@ -4771,11 +4773,18 @@ PROPOSES fixes as ordinary plans, and never confirms its own.
 is demonstrated end to end** (ZTP: a reservation the tool wrote, a config
 the tool served, a device reached, rotated, saved, promoted, and reboot-safe;
 teardown clean). The ledger is in [docs/P6_ZTP.md](docs/P6_ZTP.md) section
-8. **Stage 7 is next, at 7.0**, and its gate list was **revised on
-2026-09-27 and awaits the operator's confirmation**
-([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md), the Stage 7 dependency notes). It
-includes two decisions before 7.0: whether Stage 6 must close first, and
-which document's 7.5 numbering holds.
+8. **Stage 7 is next, at 7.0.** Its gate list is **CONFIRMED 2026-09-27**
+([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md), the Stage 7 dependency notes):
+- B1 before 7.0, with C51 inside 7.0's harness;
+- C8 before 7.1;
+- C17, E4, C54 and C53's check RUNNING before 7.2;
+- C50 before 7.3, as the lab map's `kind:` entry;
+- C10 before 7.4;
+- C2 and B3 within 7.6;
+- C7 before 7.7.
+Stage 6 does not close first. 6.1, a live exposure, is fixed on its own
+schedule, and 6.2 comes before Stage 8. NSOT_STAGE7_PLAN.md's numbering
+holds.
 
 **Authorization is decided, and built later**
 ([docs/NSOT_AUTHORIZATION.md](docs/NSOT_AUTHORIZATION.md), 2026-09-26).

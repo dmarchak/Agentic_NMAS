@@ -59,7 +59,7 @@ the task.
 | See whether the integration stack is up | GUI | |
 | **See whether scheduled jobs, VM images and pools are healthy** | **CLI, curl** | `nmas-jobs`; 9 rows now |
 | Be alerted when a device goes silent | CLI (the alert lives in Grafana) | |
-| **Find out why a device went silent** | partly; the core views are **none** | per-device logs, metrics and neighbours (7.5) |
+| **Find out why a device went silent** | partly; the core views are **none** | per-device logs, metrics and neighbours (7.3) |
 | See what needs a person: approvals, pending onboardings, rollback-blocked devices | GUI, GUI, **curl** | |
 | See round-trip template coverage for the fleet | curl | C2 |
 | See whether a list's templates are stale seeds | curl, CLI | |
@@ -75,7 +75,7 @@ the task.
 | See its committed intent | GUI | |
 | Preview its template render and coverage | GUI | |
 | See its neighbours and adjacencies | GUI (Topology tab) | UNDECIDED |
-| See its metrics, logs, Oxidized history and leases | **none** | 7.5, Grafana embedded |
+| See its metrics, logs, Oxidized history and leases | **none** | 7.3, Grafana embedded |
 | See which credential source it resolves to | **none** | |
 | Look it up in NetBox | curl, AI | |
 | Ask the AI about it | GUI | depends on the agent decision |

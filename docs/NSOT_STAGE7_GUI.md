@@ -1030,8 +1030,21 @@ the pairing is the reason to do §0b first rather than "when there is time".
 
 ## 7. Sequencing
 
-Each step is independently shippable and leaves the interface working. Nothing
-here starts before Stage 6 closes.
+Each step is independently shippable and leaves the interface working.
+
+**Superseded 2026-09-27 (the operator's decisions), stated here so the two
+documents stop disagreeing:**
+- **Stage 6 does not close first.** This sentence used to read "Nothing here
+  starts before Stage 6 closes". It was written before P.3, when this stage
+  would have re-homed ungated controls. P.3 did that work, so Stage 7's
+  screens are built against gates already enforced. 6.1 (Docker publishing
+  past ufw, a live exposure) is fixed on its own schedule, and 6.2's
+  per-consumer accounts come before Stage 8.
+- **The sequencing below is superseded by
+  [NSOT_STAGE7_PLAN.md](NSOT_STAGE7_PLAN.md) section 8**, which governs. In
+  particular its 7.5 is Versions, and monitoring (the "7.5" below, absorbing
+  Stage 5) is the Device page, 7.3. The table is kept for its "why first"
+  reasoning.
 
 | Step | Work | Why first |
 |---|---|---|

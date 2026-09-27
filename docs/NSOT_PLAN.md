@@ -1604,14 +1604,14 @@ not an order**; the ordering constraints are named below it.
 
 | Stage | Items | Build | Decide | Note |
 |---|---|---|---|---|
-| **5** — per-device monitoring | — | — | — | **FOLDED INTO 7.5 — DECIDED 2026-09-25.** Its six remaining items are 7.5's acceptance; switch syslog is carved out as **P.1** |
+| **5** — per-device monitoring | — | — | — | **FOLDED INTO 7.3 — DECIDED 2026-09-25, RENUMBERED 2026-09-27** (was "7.5"; NSOT_STAGE7_PLAN.md governs, and there monitoring is the Device page). Its six remaining items are 7.3's acceptance; switch syslog is carved out as **P.1** |
 | **Before 7** — standalone | **2** (P.1, P.2) | 2 | 0 | P.1 switch syslog (a pipeline defect); P.2 NetBox backup (A1) |
 | **6** — security | **5** (6.1–6.5) | 4 | 1 | infrastructure and device-side; touches no GUI. 6.5 added 2026-09-25 (C5) |
 | **7** — the interface | **11** (7.0–7.9, incl. 7.2b) | 8 | 2 | **7.2b is DONE** — §0b's script extraction and §6c's cache headers both landed |
 | **8** — AI and agent | **6** (8.0–8.5) | 4 | 2 | plus three named sub-findings inside 8.2/8.3 |
 
 **⚠ Stage 5's seven was a different kind of number from the others**, and
-the fold resolves it: the paragraph is now enumerated as 7.5's acceptance,
+the fold resolves it: the paragraph is now enumerated as 7.3's acceptance,
 six items plus P.1. The original note is kept below because it is why the
 enumeration was needed.
 
@@ -1640,7 +1640,7 @@ of an existing one.
   against a system that may not survive.
 - **7.0 → everything in Stage 7.** The reachability test plus the invalidation
   map is the checklist every later step is written against.
-- **Grafana `allow_embedding` + an Access policy for the embed path → 7.5 →
+- **Grafana `allow_embedding` + an Access policy for the embed path → 7.3 →
   7.9.** Named blockers, not measured ones; the iframe test comes first.
 - **P.1 and P.2 are scheduled ahead of Stage 7 by the operator's DECISION,
   not by dependency.**
@@ -1648,10 +1648,17 @@ of an existing one.
   every day it waits is a day of switch logs that do not exist. P.2 is what
   makes the Stage 7 work recoverable if it damages NetBox. It is the one
   store NMAS writes to that has no restore path.
-- Stage 6 blocks nothing and is blocked by nothing. **But
-  NSOT_STAGE7_GUI.md section 7 says "Nothing here starts before Stage 6
-  closes"**, so the two documents disagree. Undecided (flagged 2026-09-25);
-  if the GUI doc holds, 6.2's per-consumer accounts come before 7.0.
+- Stage 6 blocks nothing and is blocked by nothing. **DECIDED 2026-09-27
+  (the operator): Stage 6 does NOT close before Stage 7.** NSOT_STAGE7_GUI.md's
+  "Nothing here starts before Stage 6 closes" predates P.3. It was written
+  when the GUI stage would have re-homed ungated controls, and P.3 did that
+  work, so Stage 7's screens are built against gates already enforced. The
+  GUI doc now says so. Two conditions:
+  - **6.1 is fixed on its own schedule**, independent of any stage. Docker
+    publishing past ufw lets oxidized-web serve every device's running
+    config to the LAN, which is a live exposure.
+  - **6.2's per-consumer accounts come before Stage 8's agent work**, not
+    before Stage 7.
 - **Before 7.0 (the operator's decision, 2026-09-26): C1 alone, CLEARED 2026-09-26** (not reproduced in one controlled run; see the register)
   (`nmas-deploy` unconfirmed, one measurement). P.2 is done except its
   unattended watch. Every Stage 7 step is verified on the host, so a deploy
@@ -1663,14 +1670,16 @@ of an existing one.
   multi-select; C8 before 7.5's NetBox summary; E4 before 7.6; C7 before
   7.7. The other open findings are carried into Stage 7 with conditions
   (register).
-- **The gate list, REVISED 2026-09-27 after P.6, PROPOSED and awaiting the
-  operator's confirmation.** Each gate is tied to the step whose screen
+- **The gate list, REVISED 2026-09-27 after P.6, and CONFIRMED by the
+  operator the same day with two changes** (applied below: C53's hourly
+  check before 7.2, and C50's fix as the map's `kind:` entry). Each gate is tied to the step whose screen
   would be wrong without it, read against NSOT_STAGE7_PLAN.md's steps and
   section 1a's sources:
-  - **Two decisions before 7.0.** Whether Stage 6 must close first (the GUI
-    doc says so, this plan says it blocks nothing). And the NUMBERING: this
-    plan folds Stage 5's monitoring into "7.5", while NSOT_STAGE7_PLAN.md's
-    7.5 is Versions and puts monitoring on the Device page (7.3).
+  - **Both decisions are taken (2026-09-27).** Stage 6 does not close
+    first (above). **NSOT_STAGE7_PLAN.md's numbering holds**, by its own
+    first line: 7.5 is Versions and monitoring is the Device page, 7.3.
+    Stage 5's six items move to 7.3 as 7.3-a…f, and 7.3-f is already done
+    (P.1).
   - **Before 7.0: B1.** 7.0 writes the payload-to-render check, which
     requires every payload key to be drawn or allowlisted. `skipped_drifted`
     still carries a whole device config, so it would enter that allowlist on
@@ -1680,14 +1689,23 @@ of an existing one.
     NetBox import and remove into the preview-confirm component, and the
     import reports `failed=0` while 20 write paths log failures at DEBUG, so
     the component would present a false count.
-  - **Before 7.2: C17, E4 (moved from 7.6), C54.** Needs attention's
-    sources include Grafana's alert state (C17: `grafana_url` and
-    `loki_url` empty), drift with coverage (E4: the checker is off, so the
-    source reads "disabled"), and job health, which carries rows for
-    devices that no longer exist (C54).
-  - **Before 7.3: C50 (new).** The Device page offers rotate, and rotation's
-    persistence chain resolves an unknown lab to rcn-lab1's paths. It is
-    now the chain's SECOND half: C53 made its first stage the device's own
+  - **Before 7.2: C17, E4 (moved from 7.6), C54, and C53's check
+    RUNNING** (the operator's change). Needs attention's sources include:
+    - Grafana's alert state (C17: `grafana_url` and `loki_url` are empty);
+    - drift with coverage (E4: the checker is off, so the source reads
+      "disabled");
+    - job health, which carries rows for devices that no longer exist
+      (C54), and the startup-credential row. If `nmas-startup-check` reads
+      `not_installed` when 7.2 draws the page, the landing view shows a
+      check that is not running: C14's shape, the row's reason for
+      existing. The same argument as C54's.
+  - **Before 7.3: C50, fixed as the map's `kind:` entry, not a narrower
+    patch** (the operator's strengthening). The Device page offers Rotate
+    as a button, so the wrong-lab write becomes a ONE-CLICK action rather
+    than something only a CLI user reaches. And there are now two
+    persistence kinds, `clab` and `native` (C53), and the map answers only
+    the first. An unknown lab must be refused, and a non-containerlab device
+    must be a declared `kind: native` whose persistence is the device's own
     save.
   - **Before 7.4: C10**, unchanged: 7.4's batch deploy is the first
     multi-select.
@@ -1698,15 +1716,15 @@ of an existing one.
     which the tool correctly refused to delete.
   - **Before 7.7: C7**, unchanged.
 
-**The overlap worth knowing: Stage 5 and Stage 7.5 are the same screens.**
-Stage 5's per-device Prometheus / Loki / Oxidized / lease views and Stage 7.5's
+**The overlap worth knowing: Stage 5 and Stage 7.3 are the same screens** (renumbered 2026-09-27 from "7.5").
+Stage 5's per-device Prometheus / Loki / Oxidized / lease views and Stage 7.3's
 Monitoring destination are one surface. Doing 5 before 7 means building it
 twice — which is the argument the plan already makes for putting Stage 8 last,
 and does not make here.
 
-**DECIDED 2026-09-25: Stage 5 folds into 7.5.** The views are built once,
+**DECIDED 2026-09-25: Stage 5 folds into 7.3** (was "7.5"; renumbered 2026-09-27). The views are built once,
 inside the redesigned interface, rather than built into the current UI and
-rebuilt by Stage 7. Enumerating Stage 5 becomes 7.5's acceptance criteria;
+rebuilt by Stage 7. Enumerating Stage 5 becomes 7.3's acceptance criteria;
 see *Stage 5*, below. **The exception is switch syslog**, which is not a
 screen. Logs that stopped arriving on 2026-09-09 are a defect in a pipeline
 that runs whether or not anyone looks at it, and folding it into a UI stage
@@ -1714,26 +1732,26 @@ would schedule a repair behind a redesign. It is **P.1**, before Stage 7.
 
 ---
 
-### STAGE 5 — Phase 5: per-device monitoring — FOLDED INTO 7.5 (decided 2026-09-25)
+### STAGE 5 — Phase 5: per-device monitoring — FOLDED INTO 7.3 (decided 2026-09-25; renumbered from 7.5 on 2026-09-27)
 
 **No longer a stage.** Building these views before Stage 7 builds them twice,
-because 7.5's Monitoring destination is the same surface. The acceptance
+because 7.3's Monitoring tab on the Device page is the same surface. The acceptance
 paragraph below is kept as written, since it is the source. Its enumeration
-is **7.5's acceptance criteria**:
+is **7.3's acceptance criteria**:
 
-| # | 7.5 acceptance item (from Stage 5) |
+| # | 7.3 acceptance item (from Stage 5) |
 |---|---|
-| 7.5-a | A device page shows **its own** Prometheus series |
-| 7.5-b | ... its own Loki lines. Switch lines must be flowing first, which is **P.1** |
-| 7.5-c | ... its own Oxidized fetch history |
-| 7.5-d | ... its own Kea leases |
-| 7.5-e | The legacy SNMP/NetFlow collector is **retired**, not collapsed |
-| 7.5-f | `logging trap` level set deliberately and **recorded in intent**, through the deploy path, not configured by hand |
+| 7.3-a | A device page shows **its own** Prometheus series |
+| 7.3-b | ... its own Loki lines. Switch lines must be flowing first, which is **P.1** (done 2026-09-25) |
+| 7.3-c | ... its own Oxidized fetch history |
+| 7.3-d | ... its own Kea leases |
+| 7.3-e | The legacy SNMP/NetFlow collector is **retired**, not collapsed |
+| 7.3-f | `logging trap` level set deliberately and **recorded in intent**, through the deploy path, not configured by hand. **DONE by P.1 (2026-09-25)**: `notifications` in the syslog block, in intent, deployed through the deploy path. Carried as done, not pending |
 
 Carved out: **switch syslog restored** is **P.1**, below. Stage 5's derived
 count was seven, and this is six plus P.1, so the enumeration agrees with the
 reading. If P.1 finds that restoring syslog needs a logging change on the
-switches, that change is 7.5-f made early, through intent. It is not a
+switches, that change is 7.3-f made early, through intent. It is not a
 hand edit.
 
 Per Section 6's Phase 5, narrowed by what Part 1 built: the Integrations panel
@@ -1844,7 +1862,7 @@ receiver get packets (a capture on its port)? Does the shipper forward? Does
 Loki hold switch-labelled streams? Every hop gets checked, not just the most
 likely one. *Acceptance:* switch lines queried **from Loki**, from all four
 switches, with a timestamp after the fix. If it needs a device-side change,
-that change goes through intent (7.5-f), not a hand edit. And the loss gets a
+that change goes through intent (7.3-f, done by P.1), not a hand edit. And the loss gets a
 signal: a switch that stops logging must show up somewhere other than a
 count of 0, or the next outage is found the way this one was.
 
@@ -1932,7 +1950,7 @@ the confirmed path.
 4. **Alerting: Grafana alert rules on Loki, generated from the NetBox
    inventory** (one expected heartbeat per device), **NoData = alerting**,
    provisioned from the repository. NMAS displays Grafana's alert state in
-   7.5 and does not run the check itself.
+   7.2 (Needs attention) and 7.3 (the Device page) and does not run the check itself.
 5. **The rsyslog address filter is fixed, not registered.**
    [deploy/rsyslog/10-network-devices.conf](../deploy/rsyslog/10-network-devices.conf)
    binds the UDP input to its own ruleset and files every message by source
