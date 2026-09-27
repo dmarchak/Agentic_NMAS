@@ -893,9 +893,16 @@ def _canary_sanity_check(canary_dev: dict, ctx: PipelineContext) -> None:
     hostname = canary_dev.get("hostname", ip)
     conn     = get_persistent_connection(canary_dev, ctx.connections_pool, ctx.pool_lock)
     out      = run_device_command(conn, "show ip interface brief")
-    if "up" not in out.lower():
+    # A LOOPBACK does not count: it is up whatever the push did, so "any
+    # interface up" passed on every device in this fleet (C67). The question
+    # is whether an interface that carries traffic is still up and up.
+    carrying = [line.split()[0] for line in out.splitlines()
+                if line.split()[-2:] == ["up", "up"]
+                and not line.lower().startswith(("loopback", "interface"))]
+    if not carrying:
         raise PipelineStageError(
-            f"Canary {hostname}: no interfaces UP after deploy — fleet push halted"
+            f"Canary {hostname}: no non-loopback interface is up/up after deploy "
+            "— fleet push halted"
         )
     log.info("pipeline[6/deploy]: canary %s sanity check passed", hostname)
 
@@ -975,12 +982,15 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
         return {"state": _FAILED, "count": -1, "elapsed": 0.0, "window": window}
 
     latest = {"count": -1, "snapshot": {}}
+    seen: list = []
 
     def _probe():
         conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
         snapshot = _detect_routing_neighbors(conn)
-        latest["count"] = snapshot.get("count", -1)
-        latest["snapshot"] = snapshot
+        # THIS protocol's count and details, not the primary's (C62).
+        latest["count"] = _protocol_counts(snapshot).get(protocol, -1)
+        latest["snapshot"] = (snapshot.get("protocols") or {}).get(protocol) or snapshot
+        seen.append(latest["count"])
         return snapshot
 
     # ctx.settle_sleep lets a caller run verification without real delays —
@@ -988,14 +998,16 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
     # wait" mode. Defaults to real sleeping.
     result = _wait_for(
         protocol, _probe,
-        lambda snap: (snap.get("count", -1) - pre_count) >= -_NEIGHBOR_DROP_TOLERANCE,
+        lambda snap: (_protocol_counts(snap).get(protocol, -1) - pre_count)
+        >= -_NEIGHBOR_DROP_TOLERANCE,
         sleep=ctx.settle_sleep or time.sleep,
     )
 
     count = latest["count"]
+    rose = len(seen) > 1 and max(seen[1:]) > seen[0]
     if result["state"] == _CONVERGED:
         state = _CONVERGED
-    elif _protocol_shows_progress(latest["snapshot"], count):
+    elif _protocol_shows_progress(latest["snapshot"], count, rose=rose):
         state = _NOT_YET
     else:
         state = _FAILED
@@ -1004,14 +1016,18 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
             "window": window, "attempts": result["attempts"]}
 
 
-def _protocol_shows_progress(snapshot: dict, count: int) -> bool:
-    """Is the protocol still doing something, or has it simply stopped?
+def _protocol_shows_progress(snapshot: dict, count: int, rose: bool = False) -> bool:
+    """Is the protocol still recovering, or has it settled short?
 
-    A partial recovery counts. For RIP, so does a recent update from any
-    remaining source — the gateway is still talking, the table is just not
-    complete yet.
+    Progress is MOVEMENT: the count ROSE during the settle window, or, for
+    RIP, updates are still arriving from a remaining source. A count that
+    is merely above zero is not progress (C68, found 2026-09-27 by the C62
+    fix's own test on r3's real output). "Any count > 0" called a permanent
+    loss of three of six OSPF adjacencies "not yet converged" for ever, and
+    that state is reported without counting against the deploy, so a
+    partial loss could never fail verify.
     """
-    if count > 0:
+    if rose:
         return True
     for source in snapshot.get("sources", []) or []:
         stamp = source.get("last_update", "")
@@ -1030,9 +1046,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
     on networks that run any combination of routing protocols — or none at all.
 
     Checks:
-      • Routing neighbors: count detected from whichever protocol responded
-        (BGP, OSPF, EIGRP, IS-IS) must not drop by more than
-        _NEIGHBOR_DROP_TOLERANCE.
+      • Routing neighbours: for EVERY protocol read before the push (BGP
+        established sessions, OSPF adjacencies, EIGRP, IS-IS, RIP sources),
+        the count must not drop by more than _NEIGHBOR_DROP_TOLERANCE.
       • Route table size: total routes must remain >=
         _ROUTE_RETENTION_MIN × pre-deploy count.
       • Interface up-count: interfaces that were UP before deploy must still
@@ -1048,56 +1064,67 @@ def _stage_verify(ctx: PipelineContext) -> None:
         )
         issues: list[str] = []
 
-        # ── Routing neighbor count (protocol-agnostic) ────────────────────
+        # ── Routing neighbours, EVERY protocol the device runs (C62) ───────
+        # Each protocol read before the push is compared on its own. The
+        # first version compared one protocol per device, and on r3 and r4 the
+        # one it chose (BGP) counted 0 on both sides (C64), so their verify
+        # could not fail.
         pre_nbr  = pre.get("routing_neighbors",  {})
         post_nbr = post.get("routing_neighbors", {})
-        pre_proto  = pre_nbr.get("protocol",  "unknown")
-        post_proto = post_nbr.get("protocol", "unknown")
-        pre_count  = pre_nbr.get("count",  -1)
-        post_count = post_nbr.get("count", -1)
+        pre_counts  = _protocol_counts(pre_nbr)
+        post_counts = _protocol_counts(post_nbr)
+        primary = pre_nbr.get("protocol", "unknown")
+        record = ctx.convergence.setdefault(ip, {})
+        record["checked_protocols"] = sorted(pre_counts)
 
-        if pre_count >= 0 and post_count >= 0:
+        for pre_proto, pre_count in sorted(pre_counts.items()):
+            post_count = post_counts.get(pre_proto, -1)
+            if post_count < 0:
+                # Present before, not read after: treat as full loss.
+                issues.append(
+                    f"{pre_proto} neighbor table unreadable after deploy "
+                    f"(pre={pre_count}, post=unavailable)"
+                )
+                continue
             drop = pre_count - post_count
-            if drop > _NEIGHBOR_DROP_TOLERANCE:
-                # Do not call it a failure on the first look. A protocol that
-                # has just had its config changed needs time: RIP sends updates
-                # every 30 seconds, so a neighbour check run two seconds after a
-                # RIP change reports a drop that is not real.
-                settled = _await_neighbour_convergence(
-                    ctx, ip, hostname, pre_proto, pre_count)
-                ctx.convergence.setdefault(ip, {})["neighbors"] = settled
+            if drop <= _NEIGHBOR_DROP_TOLERANCE:
+                continue
+            # Do not call it a failure on the first look. A protocol that
+            # has just had its config changed needs time: RIP sends updates
+            # every 30 seconds, so a neighbour check run two seconds after a
+            # RIP change reports a drop that is not real.
+            settled = _await_neighbour_convergence(
+                ctx, ip, hostname, pre_proto, pre_count)
+            record.setdefault("neighbors_by_protocol", {})[pre_proto] = settled
+            if pre_proto == primary or "neighbors" not in record:
+                record["neighbors"] = settled
 
-                if settled["state"] == _CONVERGED:
-                    log.info("pipeline[8/verify]: %s %s neighbours recovered "
-                             "(%d) after %.0fs", hostname, pre_proto,
-                             settled["count"], settled["elapsed"])
-                elif settled["state"] == _NOT_YET:
-                    # Reported, not counted against the deploy. Calling a slow
-                    # protocol a failure is what makes an operator distrust the
-                    # verifier and start skipping it.
-                    log.warning("pipeline[8/verify]: %s %s not yet converged "
-                                "(%d → %d after %.0fs)", hostname, pre_proto,
-                                pre_count, settled["count"], settled["elapsed"])
-                    ctx.pending_convergence.append(
-                        f"{hostname}: {pre_proto} {pre_count} → {settled['count']} "
-                        f"(still converging after {settled['elapsed']:.0f}s)")
-                else:
-                    issues.append(
-                        f"{pre_proto} neighbors dropped: {pre_count} → "
-                        f"{settled['count']} and did not recover within "
-                        f"{settled['window']['timeout']}s "
-                        f"(tolerance={_NEIGHBOR_DROP_TOLERANCE})")
-        elif pre_count >= 0 and post_count < 0:
-            # Protocol was present before but not detected after — treat as full loss.
-            issues.append(
-                f"{pre_proto} neighbor table unreadable after deploy "
-                f"(pre={pre_count}, post=unavailable)"
-            )
-        elif pre_count < 0:
+            if settled["state"] == _CONVERGED:
+                log.info("pipeline[8/verify]: %s %s neighbours recovered "
+                         "(%d) after %.0fs", hostname, pre_proto,
+                         settled["count"], settled["elapsed"])
+            elif settled["state"] == _NOT_YET:
+                # Reported, not counted against the deploy. Calling a slow
+                # protocol a failure is what makes an operator distrust the
+                # verifier and start skipping it.
+                log.warning("pipeline[8/verify]: %s %s not yet converged "
+                            "(%d → %d after %.0fs)", hostname, pre_proto,
+                            pre_count, settled["count"], settled["elapsed"])
+                ctx.pending_convergence.append(
+                    f"{hostname}: {pre_proto} {pre_count} → {settled['count']} "
+                    f"(still converging after {settled['elapsed']:.0f}s)")
+            else:
+                issues.append(
+                    f"{pre_proto} neighbors dropped: {pre_count} → "
+                    f"{settled['count']} and did not recover within "
+                    f"{settled['window']['timeout']}s "
+                    f"(tolerance={_NEIGHBOR_DROP_TOLERANCE})")
+
+        if not pre_counts:
             # No routing protocol detected at all. Record it explicitly so a
             # device that checked nothing cannot look the same as one that
             # checked something and passed.
-            ctx.convergence.setdefault(ip, {})["neighbors"] = {
+            record["neighbors"] = {
                 "state": _SKIPPED, "protocol": "none",
                 "reason": "no routing protocol detected on this device"}
 
@@ -1135,25 +1162,30 @@ def _stage_verify(ctx: PipelineContext) -> None:
             "ok":     not issues,
             "issues": issues,
             "pre":  {
-                "routing_protocol": pre_proto,
-                "routing_neighbors": pre_count,
+                "routing_protocol": pre_nbr.get("protocol", "unknown"),
+                "routing_neighbors": pre_nbr.get("count", -1),
+                "routing_protocols": pre_counts,
                 "routes":           pre_routes,
                 "interfaces_up":    pre_up,
             },
             "post": {
-                "routing_protocol": post_proto,
-                "routing_neighbors": post_count,
+                "routing_protocol": post_nbr.get("protocol", "unknown"),
+                "routing_neighbors": post_nbr.get("count", -1),
+                "routing_protocols": post_counts,
                 "routes":           post_routes,
                 "interfaces_up":    post_up,
             },
+            # What was actually compared, by name, so a record can say which
+            # checks ran on this device (the deploy receipt, C60).
+            "checked_protocols": sorted(pre_counts),
         }
         if issues:
             failures.append(f"{hostname}: " + "; ".join(issues))
             log.error("pipeline[8/verify]: %s FAILED: %s", hostname, issues)
         else:
-            log.info("pipeline[8/verify]: %s OK  protocol=%s  neighbors=%s→%s  "
+            log.info("pipeline[8/verify]: %s OK  neighbours=%s→%s  "
                      "routes=%s→%s  intf_up=%s→%s",
-                     hostname, pre_proto, pre_count, post_count,
+                     hostname, pre_counts, post_counts,
                      pre_routes, post_routes, pre_up, post_up)
 
     if failures:
@@ -1517,6 +1549,9 @@ def _stage_audit_log(ctx: PipelineContext) -> None:
                 "routing_protocol":       pre_nbr.get("protocol"),
                 "routing_neighbors_pre":  pre_nbr.get("count"),
                 "routing_neighbors_post": post_nbr.get("count"),
+                # Every protocol read, by name (C62): what the verify checked.
+                "routing_protocols_pre":  _protocol_counts(pre_nbr),
+                "routing_protocols_post": _protocol_counts(post_nbr),
                 "routes_pre":             pre.get("routes", {}).get("total_count"),
                 "routes_post":            post.get("routes",{}).get("total_count"),
                 "interfaces_up_pre":      pre.get("interfaces",  {}).get("up_count"),
@@ -1622,8 +1657,7 @@ def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
     # ── Route table size ──────────────────────────────────────────────────
     try:
         route_out = run_device_command(conn, "show ip route summary")
-        m         = re.search(r"Total\s+(\d+)", route_out)
-        total     = int(m.group(1)) if m else -1
+        total     = _parse_route_total(route_out)
         snap["routes"] = {"output": route_out[:1000], "total_count": total}
     except Exception as exc:
         snap["routes"] = {"error": str(exc), "total_count": -1}
@@ -1646,7 +1680,17 @@ def _parse_rip_sources(show_ip_protocols: str):
     but hearing from nobody — and is distinct from None, which means RIP was
     not found at all.
     """
-    lines = (show_ip_protocols or "").splitlines()
+    text = show_ip_protocols or ""
+    # RIP's OWN section: from `Routing Protocol is "rip"` to the next
+    # protocol. Both platforms print an "application" pseudo-protocol first
+    # with an empty sources table, and reading the first table found is what
+    # made every RIP device read 0 (C65, measured on s1, 2026-09-27).
+    m = re.search(r'^Routing Protocol is "rip"\s*$', text, re.MULTILINE)
+    if not m:
+        return None
+    end = re.search(r"^Routing Protocol is ", text[m.end():], re.MULTILINE)
+    text = text[m.start():m.end() + end.start()] if end else text[m.start():]
+    lines = text.splitlines()
     sources = []
     in_section = False
 
@@ -1670,96 +1714,166 @@ def _parse_rip_sources(show_ip_protocols: str):
     return sources if in_section else None
 
 
-def _detect_routing_neighbors(conn) -> dict:
+def _parse_bgp_summary(out: str) -> Optional[dict]:
+    """Established and configured BGP peers from ``show ip bgp summary``.
+
+    A real row has TEN fields (C64, measured on r3, 2026-09-27)::
+
+        198.51.100.1    4  65002  7255  7244   4   0   0 4d13h      3
+
+    Neighbor, V, AS, MsgRcvd, MsgSent, TblVer, InQ, OutQ, Up/Down, and
+    State/PfxRcd. The last field is the PREFIX COUNT when the session is
+    established, and a state word (Idle, Active, Connect, OpenSent,
+    OpenConfirm, "Idle (Admin)") when it is not. The first version counted
+    rows matching eight fields and so matched no real row in either state.
+    A long neighbour address (IPv6) wraps the rest of its row onto the next
+    line, and the two are joined.
+
+    Returns None when BGP is not running, else ``{"established",
+    "configured", "peers"}``.
     """
-    Probe for active routing protocols and return the neighbor/adjacency count
-    for the first one found.
+    if "BGP router identifier" not in (out or ""):
+        return None
+    lines = out.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines)
+                     if line.startswith("Neighbor") and "State/PfxRcd" in line) + 1
+    except StopIteration:
+        return {"established": 0, "configured": 0, "peers": []}
+    peers, pending = [], None
+    for line in lines[start:]:
+        fields = line.split()
+        if not fields:
+            continue
+        if pending is not None:
+            fields, pending = [pending] + fields, None
+        elif len(fields) == 1 and re.match(r"^[0-9a-fA-F:.]+$", fields[0]):
+            pending = fields[0]         # a wrapped row: the address alone
+            continue
+        if not re.match(r"^[0-9a-fA-F:.]+$", fields[0]) or len(fields) < 10:
+            continue
+        state = " ".join(fields[9:])
+        peers.append({"neighbor": fields[0], "remote_as": fields[2],
+                      "up_down": fields[8], "state": state,
+                      "established": fields[9].isdigit() and len(fields) == 10})
+    return {"established": sum(1 for p in peers if p["established"]),
+            "configured": len(peers), "peers": peers}
 
-    Probe order: BGP → OSPF → EIGRP → IS-IS.  Returns a dict:
-      {"protocol": "<name>", "count": <int>, "output": "<raw>"}
 
-    ``count`` is -1 when no routing protocol is detected, which tells
-    _stage_verify to skip the neighbor check rather than fail it.
+def _parse_route_total(route_summary: str) -> int:
+    """Routes in ``show ip route summary``: networks PLUS subnets.
+
+    The Total row's first column is Networks (classful major networks) and
+    the second Subnets (C66, measured 2026-09-27: r3's ``Total 4 26 ...`` is
+    30 routes, where the first version read 4, so a device could lose every
+    OSPF subnet and keep its count). -1 when the row cannot be read.
+    """
+    m = re.search(r"^Total\s+(\d+)\s+(\d+)", route_summary or "", re.MULTILINE)
+    return int(m.group(1)) + int(m.group(2)) if m else -1
+
+
+# Probe order decides only which protocol is PRIMARY, for callers that read
+# one name. Every protocol present is read and verified (C62).
+_PROTOCOL_ORDER = ("bgp", "ospf", "eigrp", "isis", "rip")
+
+
+def _read_routing_protocols(conn) -> dict:
+    """Every routing protocol the device answers for, with its neighbour
+    count: ``{name: {"count", "output", ...}}``.
+
+    Each protocol is read on its own, so a device running OSPF and BGP (r3,
+    r4) or OSPF and RIP (r1, r2) is verified for both. The first version
+    returned the first protocol it found, so OSPF was never read on r3 and
+    r4 and RIP never on r1 and r2 (C62).
     """
     from modules.commands import run_device_command
 
-    # ── BGP ───────────────────────────────────────────────────────────────
+    found: dict = {}
+
     try:
         out = run_device_command(conn, "show ip bgp summary")
-        if "BGP router identifier" in out:
-            # Count peer rows: lines that end with an uptime token (e.g. "5w2d",
-            # "00:05:12") or the word "Established".
-            count = len(re.findall(
-                r"^\d[\d.]+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+[\w:]+\s*$",
-                out, re.MULTILINE,
-            ))
-            return {"protocol": "bgp", "count": count, "output": out[:2000]}
+        bgp = _parse_bgp_summary(out)
+        if bgp is not None:
+            found["bgp"] = {"count": bgp["established"], "configured": bgp["configured"],
+                            "peers": bgp["peers"], "output": out[:2000]}
     except Exception:
         pass
 
-    # ── OSPF ──────────────────────────────────────────────────────────────
     try:
         out = run_device_command(conn, "show ip ospf neighbor")
         if out.strip() and "Neighbor ID" in out:
-            # Count rows below the header line.
-            rows = [
-                ln for ln in out.splitlines()
-                if ln.strip() and not ln.strip().startswith("Neighbor")
-                and re.match(r"\d+\.\d+\.\d+\.\d+", ln.strip())
-            ]
-            return {"protocol": "ospf", "count": len(rows), "output": out[:2000]}
+            # Counts adjacencies in any state: 2WAY between DROTHERs is a
+            # steady state on a broadcast segment (r1 and s3 show three), so
+            # counting only FULL would be wrong. The state is kept per row.
+            rows = [ln.split() for ln in out.splitlines()
+                    if re.match(r"\d+\.\d+\.\d+\.\d+", ln.strip())]
+            found["ospf"] = {"count": len(rows),
+                             "states": [r[2] for r in rows if len(r) > 2],
+                             "output": out[:2000]}
     except Exception:
         pass
 
-    # ── EIGRP ─────────────────────────────────────────────────────────────
     try:
         out = run_device_command(conn, "show ip eigrp neighbors")
         if out.strip() and "H " in out:
-            # Each peer line starts with a sequence number (the "H" column).
-            rows = [
-                ln for ln in out.splitlines()
-                if re.match(r"\s*\d+\s+\d+\.\d+\.\d+\.\d+", ln)
-            ]
-            return {"protocol": "eigrp", "count": len(rows), "output": out[:2000]}
+            rows = [ln for ln in out.splitlines()
+                    if re.match(r"\s*\d+\s+\d+\.\d+\.\d+\.\d+", ln)]
+            found["eigrp"] = {"count": len(rows), "output": out[:2000]}
     except Exception:
         pass
 
-    # ── IS-IS ─────────────────────────────────────────────────────────────
     try:
         out = run_device_command(conn, "show isis neighbors")
         if out.strip() and "System Id" in out:
-            rows = [
-                ln for ln in out.splitlines()
-                if ln.strip() and not ln.strip().startswith("System")
-                and not ln.strip().startswith("IS-IS")
-            ]
-            return {"protocol": "isis", "count": len(rows), "output": out[:2000]}
+            rows = [ln for ln in out.splitlines()
+                    if ln.strip() and not ln.strip().startswith("System")
+                    and not ln.strip().startswith("IS-IS")]
+            found["isis"] = {"count": len(rows), "output": out[:2000]}
     except Exception:
         pass
 
-    # ── RIP ───────────────────────────────────────────────────────────────
-    # RIP is distance-vector: it has no adjacencies, so there is no
-    # `show ip rip neighbor` to read. Its equivalent is the "Routing
-    # Information Sources" table in `show ip protocols`, which lists each
-    # gateway RIP is hearing from and how long ago.
-    #
-    # Probed last so a device running OSPF *and* RIP keeps its existing primary
-    # protocol. Before this, a RIP-only device (S1/S2) matched nothing, returned
-    # count -1, and the verify stage skipped the neighbour check entirely — so
-    # it reported "verified" having checked no neighbour state at all. A verify
-    # that silently checks nothing is worse than no verify.
+    # RIP is distance-vector: no adjacencies. Its equivalent is the Routing
+    # Information Sources table under RIP's own section of `show ip protocols`
+    # (C65: not the first such table, which is the "application"
+    # pseudo-protocol's).
     try:
         out = run_device_command(conn, "show ip protocols")
-        if "rip" in out.lower():
-            sources = _parse_rip_sources(out)
-            if sources is not None:
-                return {"protocol": "rip", "count": len(sources),
-                        "sources": sources, "output": out[:2000]}
+        sources = _parse_rip_sources(out)
+        if sources is not None:
+            found["rip"] = {"count": len(sources), "sources": sources,
+                            "output": out[:2000]}
     except Exception:
         pass
 
-    # No routing protocol detected (e.g. pure L2 switch, static-only router).
-    return {"protocol": "none", "count": -1, "output": ""}
+    return found
+
+
+def _detect_routing_neighbors(conn) -> dict:
+    """Every routing protocol's neighbour state, plus a PRIMARY one.
+
+    Returns ``{"protocol", "count", "output", "protocols": {name: {...}}}``.
+    ``protocols`` holds every protocol present, and verify compares each
+    (C62). ``protocol`` and ``count`` name the first present in
+    ``_PROTOCOL_ORDER``, kept for callers that log one name; ``count`` is -1
+    and ``protocol`` "none" when no routing protocol answers, which tells
+    verify to record a skip rather than a pass.
+    """
+    protocols = _read_routing_protocols(conn)
+    primary = next((p for p in _PROTOCOL_ORDER if p in protocols), None)
+    if primary is None:
+        return {"protocol": "none", "count": -1, "output": "", "protocols": {}}
+    result = {"protocol": primary, "protocols": protocols}
+    result.update(protocols[primary])
+    return result
+
+
+def _protocol_counts(snapshot: dict) -> dict:
+    """``{protocol: count}`` from a neighbour snapshot, old shape or new."""
+    per = snapshot.get("protocols")
+    if per:
+        return {name: info.get("count", -1) for name, info in per.items()}
+    name, count = snapshot.get("protocol"), snapshot.get("count", -1)
+    return {name: count} if name and name != "none" and count >= 0 else {}
 
 
 # ---------------------------------------------------------------------------

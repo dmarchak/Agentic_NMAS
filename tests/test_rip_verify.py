@@ -15,52 +15,48 @@ import pytest
 from modules import pipeline
 from modules.nsot import convergence
 
-SHOW_IP_PROTOCOLS_RIP = """Routing Protocol is "rip"
-  Outgoing update filter list for all interfaces is not set
-  Sending updates every 30 seconds, next due in 12 seconds
-  Default version control: send version 2, receive version 2
-    Interface             Send  Recv  Triggered RIP  Key-chain
-    GigabitEthernet0/2    2     2
-  Automatic network summarization is not in effect
-  Maximum path: 4
-  Routing for Networks:
-    10.0.0.0
-  Routing Information Sources:
-    Gateway         Distance      Last Update
-    10.255.2.10          120      00:00:12
-    10.255.2.14          120      00:00:04
-  Distance: (default is 120)
-"""
+import os
 
-SHOW_IP_PROTOCOLS_RIP_SILENT = SHOW_IP_PROTOCOLS_RIP.replace(
-    "    10.255.2.10          120      00:00:12\n"
-    "    10.255.2.14          120      00:00:04\n", "")
+_FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "operational")
 
-SHOW_IP_PROTOCOLS_RIP_STALE = SHOW_IP_PROTOCOLS_RIP.replace(
-    "00:00:12", "00:04:31").replace("00:00:04", "00:05:02")
 
-SHOW_IP_PROTOCOLS_OSPF = """Routing Protocol is "ospf 1"
-  Router ID 10.255.1.11
-  Routing for Networks:
-    10.255.3.0 0.0.0.255 area 0
-"""
+def _capture(name):
+    with open(os.path.join(_FIX, name), encoding="utf-8") as fh:
+        return fh.read()
+
+
+# REAL captures (tests/fixtures/operational/). The hand-written sample these
+# tests used began at `Routing Protocol is "rip"` and so left out the
+# "application" pseudo-protocol both platforms print first, the one thing
+# that made the parser read the wrong table on every device (C65). A fixture
+# that cannot exhibit the case passes whatever the parser does.
+SHOW_IP_PROTOCOLS_RIP = _capture("s1__show_ip_protocols.txt")
+_S1_SOURCE = "    10.255.2.10          120      00:00:03\n"
+assert _S1_SOURCE in SHOW_IP_PROTOCOLS_RIP, "the capture must carry its source row"
+
+SHOW_IP_PROTOCOLS_RIP_SILENT = SHOW_IP_PROTOCOLS_RIP.replace(_S1_SOURCE, "")
+
+SHOW_IP_PROTOCOLS_RIP_STALE = SHOW_IP_PROTOCOLS_RIP.replace("00:00:03", "00:04:31")
+
+# r3 runs OSPF and BGP and no RIP; its OSPF section has a sources table too.
+SHOW_IP_PROTOCOLS_OSPF = _capture("r3__show_ip_protocols.txt")
 
 
 class TestRipSourceParsing:
     def test_parses_gateways(self):
         sources = pipeline._parse_rip_sources(SHOW_IP_PROTOCOLS_RIP)
-        assert [s["gateway"] for s in sources] == ["10.255.2.10", "10.255.2.14"]
+        assert [s["gateway"] for s in sources] == ["10.255.2.10"]
 
     def test_parses_distance_and_age(self):
         first = pipeline._parse_rip_sources(SHOW_IP_PROTOCOLS_RIP)[0]
         assert first["distance"] == 120
-        assert first["last_update"] == "00:00:12"
+        assert first["last_update"] == "00:00:03"
 
     def test_stops_at_the_distance_line(self):
         """`Distance: (default is 120)` is not a gateway row."""
         sources = pipeline._parse_rip_sources(SHOW_IP_PROTOCOLS_RIP)
         assert all(s["gateway"] != "120" for s in sources)
-        assert len(sources) == 2
+        assert len(sources) == 1
 
     def test_absent_section_returns_none(self):
         assert pipeline._parse_rip_sources(SHOW_IP_PROTOCOLS_OSPF) is None
@@ -90,7 +86,7 @@ class TestRipIsDetected:
         result = pipeline._detect_routing_neighbors(
             self._Conn(SHOW_IP_PROTOCOLS_RIP))
         assert result["protocol"] == "rip"
-        assert result["count"] == 2
+        assert result["count"] == 1
 
     def test_rip_with_no_sources_reports_zero_not_minus_one(self):
         result = pipeline._detect_routing_neighbors(
@@ -105,7 +101,7 @@ class TestRipIsDetected:
     def test_sources_are_carried_for_the_progress_check(self):
         result = pipeline._detect_routing_neighbors(
             self._Conn(SHOW_IP_PROTOCOLS_RIP))
-        assert len(result["sources"]) == 2
+        assert len(result["sources"]) == 1
 
 
 class TestNoVacuousPass:
@@ -142,7 +138,11 @@ class TestRipUsesItsOwnSettleWindow:
         assert pipeline._protocol_shows_progress({"sources": sources}, 0) is False
 
     def test_partial_recovery_counts_as_progress(self):
-        assert pipeline._protocol_shows_progress({}, 1) is True
+        assert pipeline._protocol_shows_progress({}, 1, rose=True) is True
+
+    def test_a_count_above_zero_that_did_not_move_is_not_progress(self):
+        """C68: 'count > 0' called a permanent partial loss 'converging'."""
+        assert pipeline._protocol_shows_progress({}, 3, rose=False) is False
 
 
 class TestConvergenceOutcomes:
@@ -198,6 +198,17 @@ class TestConvergenceOutcomes:
         """A baseline of 5 dropping to 1 is outside tolerance."""
         result = self._await([1, 1, 1], pre_count=5)
         assert result["state"] != convergence.CONVERGED
+
+    def test_a_partial_loss_that_stays_put_fails(self):
+        """C68: 5 → 1 and still 1 at the end of the window, with no fresh
+        updates, is a failure, not 'still converging'."""
+        result = self._await([1, 1, 1], pre_count=5)
+        assert result["state"] == convergence.FAILED
+
+    def test_a_partial_loss_that_is_climbing_is_not_yet(self):
+        """The control: 1 → 2 → 3 of 5 is recovering."""
+        result = self._await([1, 2, 3], pre_count=5)
+        assert result["state"] == convergence.NOT_YET
 
     def test_still_updating_is_not_yet_converged(self):
         fresh = [{"gateway": "10.255.2.10", "distance": 120, "last_update": "00:00:08"}]

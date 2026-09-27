@@ -7,12 +7,10 @@ the repository had ever fed the BGP or RIP branch a real capture.
 
 - **Correct on real output, pinned here:** the error pattern, the interface
   up-count, the OSPF row count.
-- **Wrong on real output: the acceptance for each finding is a STRICT
-  expected failure.** It fails today for the recorded reason, and when the
-  fix lands it passes, which strict mode turns into a failure until the
-  marker is removed. So the fix and the retirement of the marker are one
-  commit, and a finding cannot be closed without its real-output test
-  passing.
+- **Wrong on real output, and fixed:** each finding's acceptance was a
+  STRICT expected failure built from a capture. The fixes made all six pass,
+  strict mode then failed them, and the markers were removed in the same
+  commit as the fixes, so no finding closed without its real-output test.
 """
 
 import ast
@@ -92,39 +90,40 @@ class TestCorrectOnRealOutput:
 
 
 class TestTheFindings:
-    @pytest.mark.xfail(strict=True, reason="C64: the BGP pattern expects eight fields; "
-                                           "a real row has ten, so it counts 0")
     def test_c64_the_established_bgp_session_on_r3_is_counted(self, on):
         on("r3")
         got = pipeline._detect_routing_neighbors(None)
         assert (got["protocol"], got["count"]) == ("bgp", 1)
 
-    def test_c64_what_it_counts_today(self, on):
-        """The measured defect, so its fix is seen to move it."""
-        on("r3")
-        got = pipeline._detect_routing_neighbors(None)
-        assert (got["protocol"], got["count"]) == ("bgp", 0)
+    def test_c64_a_down_session_is_configured_not_established(self):
+        """r3's real row, with its last field replaced by a state word, is the
+        same ten-field row a down peer prints: configured, not established."""
+        text = capture("r3", "show_ip_bgp_summary")
+        down = text.replace("4d13h           3", "never       Idle")
+        assert down != text, "the fixture must carry the row being edited"
+        parsed = pipeline._parse_bgp_summary(down)
+        assert (parsed["established"], parsed["configured"]) == (0, 1)
 
-    @pytest.mark.xfail(strict=True, reason="C65: the parser reads the first 'Routing "
-                                           "Information Sources' table, the "
-                                           "'application' pseudo-protocol's, which is empty")
     def test_c65_s1_hears_its_rip_neighbour(self):
         sources = pipeline._parse_rip_sources(capture("s1", "show_ip_protocols"))
         assert [s["gateway"] for s in sources] == ["10.255.2.10"]
 
-    def test_c65_what_it_reads_today(self):
-        assert pipeline._parse_rip_sources(capture("s1", "show_ip_protocols")) == []
+    def test_c65_r1_hears_rip_under_its_ospf(self):
+        """r1 runs OSPF and RIP: its OSPF section has a sources table too, and
+        the RIP one is read."""
+        sources = pipeline._parse_rip_sources(capture("r1", "show_ip_protocols"))
+        assert sources is not None and all(s["distance"] == 120 for s in sources)
 
-    @pytest.mark.xfail(strict=True, reason="C66: 'Total\\s+(\\d+)' captures the Networks "
-                                           "column, not networks plus subnets")
+    def test_c65_no_rip_section_is_none_even_with_other_tables(self):
+        """r3 runs no RIP; its application and OSPF tables must not be read as RIP."""
+        assert pipeline._parse_rip_sources(capture("r3", "show_ip_protocols")) is None
+
     @pytest.mark.parametrize("host,routes", [("r3", 30), ("s1", 13)])
     def test_c66_the_route_count_is_the_route_count(self, on, host, routes):
         on(host)
         snap = pipeline._capture_operational_snapshot(None, "x", host)
         assert snap["routes"]["total_count"] == routes
 
-    @pytest.mark.xfail(strict=True, reason="C67: the canary asks whether 'up' appears "
-                                           "anywhere, and Loopback0 is always up")
     def test_c67_the_canary_fails_when_only_the_loopback_is_up(self, monkeypatch):
         """Real lines only: r3's header and its Loopback0 line, with every
         physical interface removed. The canary should halt the fleet."""
@@ -137,13 +136,63 @@ class TestTheFindings:
         with pytest.raises(pipeline.PipelineStageError):
             pipeline._canary_sanity_check({"ip": "x", "hostname": "r3"}, ctx)
 
-    @pytest.mark.xfail(strict=True, reason="C62: the first protocol found is the only "
-                                           "one read; r3 runs BGP and OSPF")
     def test_c62_r3s_ospf_is_read_as_well_as_its_bgp(self, on):
         on("r3")
         got = pipeline._detect_routing_neighbors(None)
         names = set(got.get("protocols") or [got["protocol"]])
         assert {"bgp", "ospf"} <= names
+
+
+class TestVerifyComparesEveryProtocol:
+    """C62 at the verify stage, from r3's real captures: r3 runs BGP and OSPF,
+    and a loss in OSPF must fail the deploy even though BGP, the protocol the
+    old check chose, is untouched."""
+
+    def _snap(self, monkeypatch, ospf_text):
+        replies = {"show ip ospf neighbor": ospf_text}
+
+        def reply(_conn, command, **_kw):
+            if command in replies:
+                return replies[command]
+            return device("r3")(_conn, command)
+        monkeypatch.setattr("modules.commands.run_device_command", reply)
+        return pipeline._detect_routing_neighbors(None)
+
+    def test_an_ospf_loss_on_a_bgp_router_fails_verify(self, monkeypatch):
+        from modules.pipeline import PipelineContext
+
+        full = capture("r3", "show_ip_ospf_neighbor")
+        rows = full.splitlines()
+        degraded = "\n".join(rows[:-3])            # three adjacencies gone
+        assert len(rows) - 3 >= 3, "the capture must hold the adjacencies removed"
+        pre = self._snap(monkeypatch, full)
+        post = self._snap(monkeypatch, degraded)
+        assert pre["protocol"] == "bgp", "the protocol the old check chose"
+        ctx = PipelineContext(config_type="interface", device_ips=["x"], params={},
+                              ip_params_map={}, selected_devices=[{"ip": "x", "hostname": "r3"}],
+                              connections_pool={}, pool_lock=None, config_id="t",
+                              settle_sleep=lambda _s: None)
+        ctx.pre_snapshots = {"x": {"routing_neighbors": pre}}
+        ctx.post_snapshots = {"x": {"routing_neighbors": post}}
+        monkeypatch.setattr("modules.connection.get_persistent_connection", lambda *a, **k: None)
+        with pytest.raises(pipeline.PipelineStageError, match="ospf neighbors dropped"):
+            pipeline._stage_verify(ctx)
+        assert ctx.verify_result["x"]["checked_protocols"] == ["bgp", "ospf"]
+
+    def test_unchanged_passes_and_names_both(self, monkeypatch):
+        """The control: the same captures before and after pass."""
+        from modules.pipeline import PipelineContext
+
+        snap = self._snap(monkeypatch, capture("r3", "show_ip_ospf_neighbor"))
+        ctx = PipelineContext(config_type="interface", device_ips=["x"], params={},
+                              ip_params_map={}, selected_devices=[{"ip": "x", "hostname": "r3"}],
+                              connections_pool={}, pool_lock=None, config_id="t",
+                              settle_sleep=lambda _s: None)
+        ctx.pre_snapshots = {"x": {"routing_neighbors": snap}}
+        ctx.post_snapshots = {"x": {"routing_neighbors": snap}}
+        pipeline._stage_verify(ctx)
+        assert ctx.verify_result["x"]["ok"] is True
+        assert ctx.verify_result["x"]["pre"]["routing_protocols"] == {"bgp": 1, "ospf": 6}
 
 
 class TestOneReader:

@@ -10466,3 +10466,68 @@ person and passing with one, on the real system.
    scratch copy, a rule written the day before, after a `git checkout`
    restore reverted a step's uncommitted work. The rule earned itself within
    a day.
+
+
+## The deploy's verify, against real output: four of nine devices checked nothing (2026-09-27)
+
+**The finding of the day** (the operator's framing). The deploy path claims
+it verifies that the routing protocol came back. Eleven deploy audits on the
+host recorded "verified". Swept against real device output for the first
+time, the routing check was real on four devices and compared 0 with 0 on
+four:
+
+| Device | Runs | What verify checked, per the audits |
+|---|---|---|
+| r1, r2 | OSPF, RIP | OSPF (5 adjacencies); RIP never read |
+| r3, r4 | OSPF, BGP | BGP, counted 0 on both sides; OSPF never read |
+| s1, s2 | RIP | RIP, counted 0 on both sides |
+| s3, s4 | OSPF | OSPF (5) |
+| r6 | static only | nothing to check, recorded as skipped |
+
+That is *a test that passes in both cases shows nothing*, at the centre of
+the deploy path, four times over. It survived because the only way to see
+it was to compare a pattern against what a device actually prints, and
+nothing did until the operator asked.
+
+**Three of the four were the same shape: a parser reading the WRONG TABLE
+or the WRONG COLUMN of correct output.**
+- RIP read the first "Routing Information Sources" table, which on both
+  platforms belongs to an empty `"application"` pseudo-protocol, and never
+  reached RIP's own table (C65).
+- The route count read the Networks column: 4 on r3, which has 30 routes
+  (C66).
+- The canary passed if "up" appeared anywhere, and Loopback0 is always up
+  (C67).
+
+Each is a proxy for the property, and each would look fine to anyone
+reading the code. The fourth, BGP (C64), expected eight fields where IOS
+prints ten, so it matched nothing in either state: the operator's
+measurement from r3, confirmed on the capture.
+
+**Fixing them found a fifth (C68), and it would have undone the rest.**
+With every protocol now compared (C62), the fix's own test took r3's real
+OSPF output from six adjacencies to three, and verify reported "not yet
+converged". Progress had been defined as "the count is above zero", and
+that state is reported without counting against the deploy. So a
+permanent partial loss could never fail. Progress now means the count
+ROSE during the settle window, or RIP updates are still arriving.
+
+**How it was found: the probe.** A read-only capture on the host, run
+from a `git archive` copy in a scratch directory:
+- bytecode off;
+- `show` commands only, through the pipeline's own reader;
+- redacted before leaving the host;
+- the live checkout and `data/` checked unchanged afterwards;
+- the scratch directory deleted.
+
+The captures are `tests/fixtures/operational/`. Each finding's acceptance
+was a strict expected failure built from them, confirmed with `--runxfail`
+to fail on its own assertion rather than a crash. The fixes made each pass,
+and the markers came off in the same commit.
+
+**What it says about the suite.** It was green throughout, with
+`test_rip_verify.py` asserting that "a RIP-only device is no longer
+invisible". Its sample began at `Routing Protocol is "rip"`, the one line a
+person writing the output from memory starts with. A fixture that cannot
+exhibit the case passes whatever the code does. Now a parser's test is
+built from a capture, never a typed sample.

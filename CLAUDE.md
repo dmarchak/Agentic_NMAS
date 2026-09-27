@@ -710,16 +710,17 @@ The only part of the NSoT work that reaches a device.
   rollback. "The push failed" and "the device is unchanged" are different
   claims; a device that cannot be read reports `device_changed: None`.
 - **Verification uses settle windows** (OSPF 45s, BGP 60s, RIP 90s) and reports
-  *not yet converged* distinctly from *failed*. **CORRECTED 2026-09-27,
-  measured against real output: the routing check is real on 4 of 9
-  devices.** "RIP is checked via the Routing Information Sources table" was
-  false. The parser reads the empty table of the `"application"`
-  pseudo-protocol both platforms print first (C65). The BGP count matches
-  no real row (C64), and verify reads only the first protocol it finds
-  (C62). So r3, r4, s1 and s2 compare 0 with 0. The route check reads the
-  Networks column (C66), and the canary cannot fail (C67). Each has a
-  strict expected-failure acceptance built from a real capture
-  (`tests/test_pipeline_reads_real_output.py`).
+  *not yet converged* distinctly from *failed*. **Until 2026-09-27 the
+  routing check was real on 4 of 9 devices, measured against real output,
+  and it is fixed.** It had read only the first protocol found (C62), a BGP
+  count that matched no real row (C64), and the empty `"application"` table
+  in place of RIP's (C65). So r3, r4, s1 and s2 compared 0 with 0, and the
+  sentence here, "RIP is checked via the Routing Information Sources
+  table", was false. Every protocol is compared now, BGP counts
+  established sessions, RIP reads its own section, the route count is
+  networks plus subnets (C66), the canary needs a non-loopback interface
+  (C67), and progress means the count ROSE (C68). Acceptance from real
+  captures: `tests/test_pipeline_reads_real_output.py`.
 - **Stage 8.5 saves golden** after verify, on partial success, from the
   post-deploy config stage 7 now captures.
 - **Batch**: sequential by default, circuit breaker on repeated *verify*
@@ -4883,7 +4884,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **46 open at 2026-09-27**, counted from the rows: 40 recorded only in
+present when each was recorded. **41 open at 2026-09-27**, counted from the rows: 35 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
