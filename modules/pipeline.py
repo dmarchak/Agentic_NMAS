@@ -217,6 +217,13 @@ class PipelineContext:
     #: Sleep function used by the verify settle windows. Tests pass a no-op;
     #: a caller could pass one that shortens the wait. Defaults to real sleep.
     settle_sleep:        Any = None
+    #: ip -> the routing protocols the TARGET intent declares (a deploy's
+    #: committed intent, a restore's intent at the ref), or ``None`` when no
+    #: intent is known. Carried by the caller, never derived: verify read
+    #: its protocol list from the device's BEFORE state alone, so the
+    #: protocol an operation exists to bring back was the one it could not
+    #: check (C107's sibling, the operator's, C70 re-run 2026-09-27).
+    declared_protocols:  dict = None
 
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
@@ -966,7 +973,7 @@ from modules.nsot.convergence import (
 
 
 def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
-                                 pre_count: int) -> dict:
+                                 pre_count: int, need: int = None) -> dict:
     """Re-poll a device's neighbour count within the protocol's settle window.
 
     Returns ``{"state", "count", "elapsed", "window"}``. Three outcomes:
@@ -978,6 +985,11 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
 
     For RIP, "sign of life" is a recent entry in the Routing Information
     Sources table: updates arriving means convergence is in progress.
+
+    ``need``, when given, is an absolute floor instead of "no worse than
+    before": a protocol intent declares and the device was not running
+    needs at least one neighbour, and the drop tolerance would otherwise
+    let zero pass. It can only tighten the condition.
     """
     from modules.connection import get_persistent_connection
 
@@ -1001,12 +1013,14 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
     # ctx.settle_sleep lets a caller run verification without real delays —
     # tests pass a no-op, and it is the seam for a future "verify now, do not
     # wait" mode. Defaults to real sleeping.
-    result = _wait_for(
-        protocol, _probe,
-        lambda snap: (_protocol_counts(snap).get(protocol, -1) - pre_count)
-        >= -_NEIGHBOR_DROP_TOLERANCE,
-        sleep=ctx.settle_sleep or time.sleep,
-    )
+    if need is not None:
+        def _met(snap):
+            return _protocol_counts(snap).get(protocol, -1) >= need
+    else:
+        def _met(snap):
+            return (_protocol_counts(snap).get(protocol, -1) - pre_count) \
+                >= -_NEIGHBOR_DROP_TOLERANCE
+    result = _wait_for(protocol, _probe, _met, sleep=ctx.settle_sleep or time.sleep)
 
     count = latest["count"]
     rose = len(seen) > 1 and max(seen[1:]) > seen[0]
@@ -1018,7 +1032,8 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
         state = _FAILED
 
     return {"state": state, "count": count, "elapsed": result["elapsed"],
-            "window": window, "attempts": result["attempts"]}
+            "window": window, "attempts": result["attempts"],
+            "snapshot": latest["snapshot"]}
 
 
 def _protocol_shows_progress(snapshot: dict, count: int, rose: bool = False) -> bool:
@@ -1080,7 +1095,16 @@ def _stage_verify(ctx: PipelineContext) -> None:
         post_counts = _protocol_counts(post_nbr)
         primary = pre_nbr.get("protocol", "unknown")
         record = ctx.convergence.setdefault(ip, {})
-        record["checked_protocols"] = sorted(pre_counts)
+        # What the TARGET intent declares, carried in (None: unknown). A
+        # protocol it declares is checked whether or not the device ran it
+        # before: the operation may exist precisely to bring it back.
+        from modules.nsot.golden_state import MEASURED, protocol_up
+        declared = (ctx.declared_protocols or {}).get(ip)
+        from_intent = sorted(p for p in (declared or [])
+                             if p in MEASURED and pre_counts.get(p, 0) < 1)
+        checked = sorted(set(pre_counts) | set(from_intent))
+        record["checked_protocols"] = checked
+        unmet: list[str] = []
 
         for pre_proto, pre_count in sorted(pre_counts.items()):
             post_count = post_counts.get(pre_proto, -1)
@@ -1125,7 +1149,30 @@ def _stage_verify(ctx: PipelineContext) -> None:
                     f"{settled['window']['timeout']}s "
                     f"(tolerance={_NEIGHBOR_DROP_TOLERANCE})")
 
-        if not pre_counts:
+        # ── What intent declares and the device was not running before ──
+        # Required to be UP after the change, judged by the golden state's
+        # one definition of "up". Not a rollback: the device did not run it
+        # before either, so undoing the change cannot bring it back, and on
+        # an unrelated deploy a rollback would undo a good change. It makes
+        # verify NOT pass, recorded and drawn, so "verify passed" never
+        # stands over a protocol intent requires and the device lacks.
+        for proto in from_intent:
+            settled = _await_neighbour_convergence(
+                ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)
+            record.setdefault("neighbors_by_protocol", {})[proto] = settled
+            up, why = protocol_up(proto, settled.get("snapshot") or {})
+            if settled["state"] == _CONVERGED and up:
+                log.info("pipeline[8/verify]: %s %s declared by intent and now up: %s",
+                         hostname, proto, why)
+            elif settled["state"] == _NOT_YET:
+                ctx.pending_convergence.append(
+                    f"{hostname}: {proto} is declared by intent, was not running "
+                    f"before, and is still coming up after {settled['elapsed']:.0f}s")
+            else:
+                unmet.append(f"{proto} is declared by intent and is not up after the "
+                             f"change ({why}); it was not up before it either")
+
+        if not checked:
             # No routing protocol detected at all. Record it explicitly so a
             # device that checked nothing cannot look the same as one that
             # checked something and passed.
@@ -1164,8 +1211,13 @@ def _stage_verify(ctx: PipelineContext) -> None:
                 )
 
         ctx.verify_result[ip] = {
-            "ok":     not issues,
+            "ok":     not issues and not unmet,
             "issues": issues,
+            # Declared by intent and not up: verify did not pass, and nothing
+            # was rolled back (see above).
+            "intent_unmet": unmet,
+            "declared_protocols": declared,
+            "from_intent": from_intent,
             "pre":  {
                 "routing_protocol": pre_nbr.get("protocol", "unknown"),
                 "routing_neighbors": pre_nbr.get("count", -1),
@@ -1182,8 +1234,11 @@ def _stage_verify(ctx: PipelineContext) -> None:
             },
             # What was actually compared, by name, so a record can say which
             # checks ran on this device (the deploy receipt, C60).
-            "checked_protocols": sorted(pre_counts),
+            "checked_protocols": checked,
         }
+        if unmet:
+            log.error("pipeline[8/verify]: %s intent not met (no rollback): %s",
+                      hostname, unmet)
         if issues:
             failures.append(f"{hostname}: " + "; ".join(issues))
             log.error("pipeline[8/verify]: %s FAILED: %s", hostname, issues)

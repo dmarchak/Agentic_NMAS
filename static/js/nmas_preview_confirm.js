@@ -88,7 +88,11 @@
       return '<div class="form-check d-flex align-items-center gap-2">' + box
         + '<label class="form-check-label fw-semibold" for="' + idFor(t.name) + '">'
         + esc(t.name) + '</label>'
-        + '<span class="badge ' + badge[0] + '">' + esc(badge[1]) + '</span></div>';
+        + '<span class="badge ' + badge[0] + '">' + esc(badge[1]) + '</span>'
+        // Why this one cannot be selected, beside the box it disables.
+        + (t.selectable || !t.why_not ? '' : '<span class="small text-danger" data-pc-why-not>'
+           + 'Cannot be selected: ' + esc(t.why_not) + '</span>')
+        + '</div>';
     }).join('');
     return section('what', title(p, 'what', 'What will happen'), '<div class="small">' + esc(p.what.summary)
       + '</div>' + rows);
@@ -319,11 +323,19 @@
         + (c.ok ? '<span class="badge bg-success">verify passed</span> '
                 : '<span class="badge bg-danger">verify failed</span> ')
         + (protocols.length ? 'checked ' + esc(protocols.join(', ')) : esc(c.neighbours_note || 'no routing protocol on this device'))
+        + ((c.from_intent || []).length ? ' <span data-pr-from-intent>(declared by intent, not '
+           + 'running before: ' + esc(c.from_intent.join(', ')) + ')</span>' : '')
+        + (c.intent_note ? '<div class="small text-muted" data-pr-intent-note>'
+           + esc(c.intent_note) + '</div>' : '')
         + '</div><div class="small font-monospace">' + rows
         + '<div>routes ' + pair(c.routes) + '</div><div>interfaces up '
         + pair(c.interfaces_up) + '</div></div>'
         + (c.issues || []).map(function (i) {
             return '<div class="small text-danger">' + esc(i) + '</div>';
+          }).join('')
+        + (c.intent_unmet || []).map(function (i) {
+            return '<div class="small text-danger" data-pr-intent-unmet>' + esc(i)
+              + ' (not rolled back: the change cannot have caused it)</div>';
           }).join('')
         + (c.pending_convergence || []).map(function (i) {
             return '<div class="small text-muted">' + esc(i) + '</div>';

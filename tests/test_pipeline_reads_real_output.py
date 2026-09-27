@@ -234,3 +234,143 @@ class TestTheIpv6ProtocolsOnRealOutput:
 
     def test_a_device_not_running_ripng_has_none(self):
         assert pipeline._parse_ripng_next_hops(capture("r3", "show_ipv6_rip_next_hops")) == []
+
+
+class TestVerifyChecksWhatIntentDeclares:
+    """The C70 re-run (the operator, 2026-09-27): a restore whose whole
+    purpose was putting `ipv6 ospf 1 area 0` back reported "checked ospf,
+    rip, ripng". Verify took its protocol list from the device's BEFORE
+    state, so the protocol the operation existed to restore was the one it
+    could not check. The list is now the before-state plus what the TARGET
+    intent declares, carried in by the operation. From r1's real captures,
+    with OSPFv3 absent before (the device answered nothing for it)."""
+
+    def _snap(self, monkeypatch, ospfv3_text):
+        def reply(_conn, command, **_kw):
+            if command == "show ospfv3 neighbor":
+                return ospfv3_text
+            return device("r1")(_conn, command)
+        monkeypatch.setattr("modules.commands.run_device_command", reply)
+        return pipeline._detect_routing_neighbors(None)
+
+    def _ctx(self, monkeypatch, pre, post, declared, settle=None):
+        from modules.pipeline import PipelineContext
+
+        ctx = PipelineContext(config_type="template", device_ips=["x"], params={},
+                              ip_params_map={}, selected_devices=[{"ip": "x", "hostname": "r1"}],
+                              connections_pool={}, pool_lock=None, config_id="t",
+                              settle_sleep=lambda _s: None)
+        ctx.pre_snapshots = {"x": {"routing_neighbors": pre}}
+        ctx.post_snapshots = {"x": {"routing_neighbors": post}}
+        ctx.declared_protocols = {"x": declared}
+        monkeypatch.setattr("modules.connection.get_persistent_connection",
+                            lambda *a, **k: None)
+        # The settle window re-reads the device: it answers as `settle` does.
+        monkeypatch.setattr(pipeline, "_detect_routing_neighbors",
+                            lambda _c: settle if settle is not None else post)
+        return ctx
+
+    def _declared(self):
+        from modules.nsot.golden_state import declared_protocols
+        from modules.nsot.parsers import get_parser
+
+        intent = get_parser("cisco_iosxe").parse(
+            open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r1.cfg"),
+                 encoding="utf-8").read())
+        declared = declared_protocols(intent)
+        assert "ospfv3" in declared, declared      # the fixture can reach the case
+        return declared
+
+    def test_a_protocol_intent_declares_is_checked_though_absent_before(self, monkeypatch):
+        pre = self._snap(monkeypatch, "")
+        post = self._snap(monkeypatch, capture("r1", "show_ospfv3_neighbor"))
+        assert "ospfv3" not in pipeline._protocol_counts(pre)   # the break
+        ctx = self._ctx(monkeypatch, pre, post, self._declared())
+        pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert "ospfv3" in v["checked_protocols"], v["checked_protocols"]
+        assert v["from_intent"] == ["ospfv3"] and v["ok"] is True, v
+
+    def test_still_absent_after_is_not_a_pass_and_not_a_rollback(self, monkeypatch):
+        pre = self._snap(monkeypatch, "")
+        ctx = self._ctx(monkeypatch, pre, pre, self._declared())
+        pipeline._stage_verify(ctx)            # raises nothing: no rollback
+        v = ctx.verify_result["x"]
+        assert v["ok"] is False and v["issues"] == []
+        assert len(v["intent_unmet"]) == 1 and v["intent_unmet"][0].startswith("ospfv3")
+
+    def test_the_control_with_no_intent_known_checks_the_before_state_only(self, monkeypatch):
+        pre = self._snap(monkeypatch, "")
+        post = self._snap(monkeypatch, capture("r1", "show_ospfv3_neighbor"))
+        ctx = self._ctx(monkeypatch, pre, post, None)
+        pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert "ospfv3" not in v["checked_protocols"] and v["from_intent"] == []
+        assert v["declared_protocols"] is None
+
+    def test_the_receipt_and_the_screen_say_it(self, monkeypatch):
+        import json
+
+        import dukpy
+
+        from modules.nsot import receipts
+
+        pre = self._snap(monkeypatch, "")
+        ctx = self._ctx(monkeypatch, pre, pre, self._declared())
+        pipeline._stage_verify(ctx)
+        checks = receipts._checks({"outcome": "deployed", "commands": ["x"],
+                                   "verify": ctx.verify_result["x"]})
+        assert checks["from_intent"] == ["ospfv3"] and checks["neighbours"]["ospfv3"][0] == 0
+        src = open(os.path.join(ROOT, "static", "js", "nmas_preview_confirm.js")).read()
+        result = {"parts": ["happened", "did_not", "sent", "checks", "record", "not_watched"],
+                  "action": "restore", "level": "partial",
+                  "happened": {"summary": "s", "targets": []}, "did_not": {"none": "n"},
+                  "targets": [{"name": "r1", "sent": {"lines": [], "none": "x"},
+                               "checks": checks}],
+                  "record": {"statement": ""}, "not_watched": ""}
+        html = dukpy.evaljs("var window = {};\n" + src
+                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
+        assert "declared by intent, not running before: ospfv3" in html
+        assert "data-pr-intent-unmet" in html and "verify failed" in html
+
+
+class TestTheOperationCarriesItsIntentIntoVerify:
+    """The seam: `_deploy_one` hands verify the TARGET intent's protocols, the
+    ref's for a restore and the committed intent's for a deploy."""
+
+    def _run(self, monkeypatch, artifact):
+        import routes.deploy as rd
+
+        seen = {}
+        monkeypatch.setattr("modules.nsot.deploy.prepare_for_deploy",
+                            lambda a: {"config": "hostname r1\n"})
+        monkeypatch.setattr("modules.nsot.deploy.merge_commands", lambda i, c: ["hostname r1"])
+        monkeypatch.setattr("modules.nsot.deploy.assert_merge_only", lambda c, i: None)
+
+        def run(self):
+            seen["declared"] = self.ctx.declared_protocols
+            self.ctx.final_status = "success"
+            return self.ctx
+        monkeypatch.setattr(pipeline.PipelineRunner, "run", run)
+        rd._deploy_one({"artifact": artifact, "fresh": "hostname x\n"}, "Lab",
+                       {"r1": {"ip": "203.0.113.11", "hostname": "r1"}})
+        return seen["declared"]
+
+    def test_a_restore_carries_the_refs_intent_and_a_deploy_its_own(self, monkeypatch):
+        routing = {"routing": {"ospf": {"x": 1}, "ospfv3": {"x": 1}}}
+
+        class Restore:
+            device = "r1"
+            ref_intent = routing
+
+        class Deploy:
+            device = "r1"
+            host_vars = routing
+
+        class Predates:
+            device = "r1"
+            ref_intent = None
+
+        assert self._run(monkeypatch, Restore()) == {"203.0.113.11": ["ospf", "ospfv3"]}
+        assert self._run(monkeypatch, Deploy()) == {"203.0.113.11": ["ospf", "ospfv3"]}
+        assert self._run(monkeypatch, Predates()) == {"203.0.113.11": None}

@@ -71,12 +71,24 @@ def _checks(result: dict) -> dict:
         return {"ran": False, "why": f"verify did not complete (stopped at: {stage})"}
     pre, post = verify.get("pre", {}), verify.get("post", {})
     protocols = verify.get("checked_protocols") or []
+    from_intent = list(verify.get("from_intent") or [])
+    declared = verify.get("declared_protocols")
     checks = {
         "ran": True,
         "ok": verify.get("ok"),
         "issues": list(verify.get("issues") or []),
+        # Declared by the target intent and not up after: verify did not
+        # pass, and nothing was rolled back for it.
+        "intent_unmet": list(verify.get("intent_unmet") or []),
         "checked_protocols": protocols,
-        "neighbours": {p: [(pre.get("routing_protocols") or {}).get(p),
+        # Checked because intent declares them, though the device was not
+        # running them before (its before-state alone would have missed them).
+        "from_intent": from_intent,
+        "intent_note": ("" if declared is not None else
+                        "no target intent is known, so the protocols checked are "
+                        "only those the device ran before the change"),
+        "neighbours": {p: [(pre.get("routing_protocols") or {}).get(
+                               p, 0 if p in from_intent else None),
                            (post.get("routing_protocols") or {}).get(p)]
                        for p in protocols},
         "routes": [pre.get("routes"), post.get("routes")],

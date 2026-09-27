@@ -28,6 +28,12 @@ onboarding. So Auto-Create's use, if any, predates the repository and wrote to
 the legacy store. Nothing to list, and both paths are removed. An install
 where these exist lists them here, by hash, the same way.
 
+**The two baseline re-applies** (C70, measured on the host 2026-09-27).
+The batch commit wrote `Source: pipeline` for a deploy and a restore alike,
+so both restores on the host (the first run at 18:53 and the re-run at
+23:45, found by their `re-apply` subject: exactly two) name the mechanism
+rather than the workflow. The code is fixed: a restore records `restore`.
+
 Any screen that states a claim about history (the Versions screen's "N of M
 commits carry a verified identity", D10) draws these beside it.
 """
@@ -53,6 +59,18 @@ EXCEPTIONS = {
         "bf1166874a55f8e0cd9949de7f9a7177bb7e56fb",  # r2
     )
 }
+
+EXCEPTIONS.update({
+    sha: {"list": "default", "field": "Source", "recorded": "pipeline",
+          "was": "restore", "finding": "C70",
+          "why": ("recorded as pipeline because the batch commit named the "
+                  "mechanism for deploys and restores alike; this commit is a "
+                  "baseline re-apply")}
+    for sha in (
+        "ed6548e3859f0135cefdb7a32e06618e39c0e28d",  # r2, 2026-09-27 18:53
+        "6d8e722c89b24b3579930f8843d794492517a71c",  # r2, 2026-09-27 23:45
+    )
+})
 
 
 def exception_for(sha: str):

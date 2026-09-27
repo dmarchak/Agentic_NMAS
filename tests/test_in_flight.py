@@ -187,3 +187,44 @@ class TestThePreviewNamesTheHolder:
         gates = {g["name"]: g for g in d["preview"]["targets"][0]["gates"]}
         assert gates["no other operation holds this device"]["state"] == "at_apply"
         assert target["selectable"] is True
+
+
+class TestAnUnselectableTargetSaysWhy:
+    """The C70 re-run: a deploy tried mid-restore made r2's checkbox
+    unclickable with nothing on or near it. The refusal was at the panel and
+    the interaction at the checkbox, and a greyed control with no reason is
+    what P.3's own rule rejects."""
+
+    def test_the_held_device_row_names_the_holder(self, monkeypatch, tmp_path):
+        from tests.test_capture import build_capture_lab
+
+        lab = build_capture_lab(monkeypatch, tmp_path)
+        with D.hold("Lab", "r2", "restore", "someone@example.com"):
+            d = lab["client"].post("/golden/capture/preview",
+                                   json={"devices": ["r2"]}).get_json()
+        target = d["preview"]["what"]["targets"][0]
+        assert target["selectable"] is False
+        assert "someone@example.com" in target["why_not"], target["why_not"]
+        src = open(os.path.join(ROOT, "static", "js", "nmas_preview_confirm.js")).read()
+        html = dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmHtml("
+                            + json.dumps(d["preview"]) + ", {selectable: true});")
+        assert "data-pc-why-not" in html and "someone@example.com" in html
+        assert "disabled" in html
+
+    def test_a_selectable_one_draws_no_reason(self, monkeypatch, tmp_path):
+        from tests.test_capture import build_capture_lab
+
+        lab = build_capture_lab(monkeypatch, tmp_path)
+        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        assert d["preview"]["what"]["targets"][0]["why_not"] == ""
+
+    def test_the_builder_refuses_one_that_says_nothing(self):
+        from modules import preview_confirm as P
+
+        silent = {"name": "r9", "state": "blocked", "selectable": False,
+                  "program": {"lines": [], "none": "nothing"},
+                  "operands": [{"name": "x", "value": "y"}],
+                  "gates": [P.gate("device read", "pass", "")]}
+        with pytest.raises(P.PreviewIncomplete, match="nothing says why"):
+            P.build(action="t", summary="s", targets=[silent], what_not=[],
+                    nothing_left_out="n", confirm={"statement": "c"})

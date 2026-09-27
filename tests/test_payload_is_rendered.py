@@ -474,6 +474,8 @@ EMPTY_IN_FIXTURE = {
     "GET /deploy/receipts changes[].result.record.tags": (S_, "a receipt names the golden commit and not its tags, and the history's record statement says so"),
     "GET /deploy/receipts changes[].result.targets[].checks.issues": (S_, "the fixture's verify is clean; a failing check is drawn in test_preview_confirm (TestTheResultHalf)"),
     "GET /deploy/receipts changes[].result.targets[].checks.pending_convergence": (S_, "the fixture's verify converged; the renderer draws a pending line when one exists"),
+    "GET /deploy/receipts changes[].result.targets[].checks.from_intent": (S_, "the fixture's device ran every protocol its intent declares before the change; drawn from r1's real captures in test_pipeline_reads_real_output (TestVerifyChecksWhatIntentDeclares)"),
+    "GET /deploy/receipts changes[].result.targets[].checks.intent_unmet": (S_, "the fixture's declared protocols are up; an unmet one is drawn from r1's real captures in test_pipeline_reads_real_output (TestVerifyChecksWhatIntentDeclares)"),
     "GET /deploy/receipts changes[].result.targets[].rollback.commands": (S_, "no device in the fixture was rolled back"),
     "GET /deploy/receipts changes[].result.targets[].rollback.not_undone": (S_, "no device in the fixture was rolled back"),
     "GET /deploy/receipts changes[].result.did_not.items[].lines": (S_, "the did-not items here are a refusal, which carries no lines"),

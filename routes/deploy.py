@@ -743,6 +743,17 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     ctx.confirmed_commands = {device.get("ip", ""): commands}
     # The batch commits; this device hands its capture back.
     ctx.defer_golden = True
+    # What the TARGET intent declares, so verify checks the protocol this
+    # operation may exist to bring back (it read the device's before-state
+    # alone). A restore's target is the ref's intent (None: the ref predates
+    # the device's onboarding, so unknown); a deploy's, its committed intent.
+    from modules.nsot.golden_state import declared_protocols
+    if hasattr(artifact, "ref_intent"):
+        target_intent = artifact.ref_intent
+    else:
+        target_intent = getattr(artifact, "host_vars", None)
+    ctx.declared_protocols = {device.get("ip", ""): (
+        declared_protocols(target_intent) if target_intent is not None else None)}
 
     try:
         result = PipelineRunner(ctx).run()
@@ -936,7 +947,12 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     items = [GoldenItem(p["hostname"], p["config_text"], p["mgmt_ip"],
                         netbox_id=p["netbox_id"], device_uid=p["device_uid"])
              for p in pending]
-    result = save_golden(list_name, items, source="pipeline", actor=request_actor(),
+    # `Source:` names the WORKFLOW (repo.ACTOR_CONVENTION). A restore was
+    # recorded `pipeline`, the mechanism both paths share, so C70's premise
+    # ("no commit carries Source: restore") held whether or not a restore
+    # had ever run: a lookup that could not miss.
+    result = save_golden(list_name, items, source="restore" if source_ref else "pipeline",
+                         actor=request_actor(),
                          message=subject, pipeline_id=batch_id,
                          baseline=earned["baseline"], allow_new=False,
                          extra_trailers=trailers, extra_paths=extra_paths)

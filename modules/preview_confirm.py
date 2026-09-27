@@ -63,6 +63,24 @@ def confirm_part(request, action: str = "confirm") -> dict:
             if not allowed else f"You are confirming as {ident.actor or 'an unverified caller'}."}
 
 
+def _why_not(target: dict, what_not: list) -> str:
+    """Why a target cannot be selected, in words: its failing gates, else
+    what part 2 says about it. A target that cannot be selected and says
+    neither is refused, like any other silent part: its box would be greyed
+    with no reason (the C70 re-run: the busy gate held the device and the
+    deploy wizard's checkbox said nothing)."""
+    failing = [f"{g['name']}: {g['detail']}" if g.get("detail") else g["name"]
+               for g in target.get("gates") or [] if g.get("state") == "fail"]
+    if failing:
+        return "; ".join(failing)
+    said = [i.get("text", "") for i in what_not
+            if i.get("target") == target.get("name") and i.get("text")]
+    if said:
+        return "; ".join(said)
+    raise PreviewIncomplete(f"{target.get('name') or '?'} cannot be selected and "
+                            "nothing says why")
+
+
 def build(*, action: str, summary: str, targets: list, what_not: list,
           nothing_left_out: str, confirm: dict, explain: dict = None,
           titles: dict = None) -> dict:
@@ -87,6 +105,7 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
             raise PreviewIncomplete(f"part 5 (gates) for {name} is empty")
     if not (confirm or {}).get("statement"):
         raise PreviewIncomplete("part 6 (confirm) has no statement")
+    why_not = {t["name"]: _why_not(t, what_not) for t in targets if not t.get("selectable")}
     explain = explain or {}
     unknown = set(explain) - set(PARTS)
     if unknown:
@@ -101,6 +120,10 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
             "what": {"summary": summary,
                      "targets": [{"name": t["name"], "state": t.get("state", ""),
                                   "selectable": bool(t.get("selectable")),
+                                  # Drawn beside the disabled box: a control
+                                  # greyed with no reason says "you can't"
+                                  # and never says why (the C70 re-run).
+                                  "why_not": why_not.get(t["name"], ""),
                                   "select_data": t.get("select_data") or {}}
                                  for t in targets]},
             "what_not": {"items": what_not, "none": "" if what_not else nothing_left_out},
