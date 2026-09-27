@@ -4971,6 +4971,26 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
 
   A gate drawn by name is a claim with a name. Before drawing one, find
   the line of code that makes it true.
+- **A baseline is a record of a moment, and moments contain credentials:
+  any re-apply is a time machine for secrets as well as for configuration**
+  (the operator, 2026-09-27; C75 was LIVE). The newest baseline predates
+  s1's rotation. From the UI, a baseline could only be re-applied to the
+  whole fleet (C80), so "run the restore once, deliberately" (C70) would
+  have pushed the credential B13 exposed back onto s1. It would have gone
+  past a warning that could be acknowledged. Measured by hash on the host,
+  all eleven baselines carry a stale account credential for s1, and seven
+  carry the exposed one. **The path that had never run was more dangerous
+  than anyone knew**, which is the strongest argument for the rule that
+  made us run it. C75 closes rewriting. Adding back is still open (C79): a
+  removed account, or an old community after its first rotation, returns as
+  an ADDED line.
+- **C76 is the Phase 3c promise broken in the quiet direction.** "What the
+  operator confirms is what is sent" was written after one line was
+  confirmed and eighty-three were sent. C76 is its mirror: the preview
+  listed a line the program never sent, because a line counted as present
+  if the same text sat under ANY section. Sending less than shown is the
+  same promise broken, and only the loud direction had been looked for.
+  When a guarantee is written after a failure, test it in both directions.
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
   The list covers a stored config at the ref, printable ASCII, and
@@ -5010,7 +5030,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **46 open at 2026-09-27**, counted from the rows: 40 recorded only in
+present when each was recorded. **47 open at 2026-09-27**, counted from the rows: 41 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

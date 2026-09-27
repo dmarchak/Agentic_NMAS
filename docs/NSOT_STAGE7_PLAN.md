@@ -555,8 +555,10 @@ C75-C78):
 Each gate drawn by name had to be traced to the line of code that makes it
 true, and three of them were not what they said.
 
-**Next, in the approved order:** onboarding, NetBox import/remove, then
-bulk intent. Before any of them, C70 runs on r2 (the procedure is in the
+**Next, in the approved order:** the C77 sweep (every `not_device` POST
+that computes, driven with every store planted; scheduled by the operator
+2026-09-27, first because the next retrofits each add such a POST), then
+onboarding, NetBox import/remove, then bulk intent. Before any of them, C70 runs on r2 (the procedure is in the
 register row) and exercises this screen, C76's fix and the receipt's
 restore half on a real device.
 
