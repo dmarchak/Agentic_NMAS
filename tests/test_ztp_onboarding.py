@@ -528,3 +528,120 @@ class TestTheResponderRow:
 
     def test_an_unreadable_journal_is_unknown(self):
         assert self._rows(self.ACTIVE, journal_ok=False)[0]["state"] == "unknown"
+
+
+# ── M4, second attempt: fetched and applied, and SSH never came up ──────────
+
+class TestAZtpDeviceGeneratesItsOwnSshKey:
+    """vrnetlab's day-0 config was the only thing that ever generated a
+    C8000v's SSH key (the reason it is not in GENERATES_SSH_KEY). A ZTP device
+    has no day-0 config from vrnetlab, so M4's node applied its config, had no
+    key, and refused TCP 22 in 3 ms."""
+
+    def test_the_ztp_render_generates_a_key_after_the_hostname_and_domain(self, tmp_path, monkeypatch):
+        cfg = _plan(tmp_path, monkeypatch).bootstrap_config.splitlines()
+        key = [i for i, l in enumerate(cfg) if l.startswith("crypto key generate rsa modulus")]
+        assert len(key) == 1, cfg
+        assert cfg.index("hostname bp-ztp-a") < key[0]
+        assert [i for i, l in enumerate(cfg) if l.startswith("ip domain name")][0] < key[0]
+        assert "ip ssh version 2" in cfg
+
+    def test_no_other_c8000v_render_changes(self, tmp_path, monkeypatch):
+        """The floor: vrnetlab still generates the key for those, and a second
+        generation would replace a key the device is using."""
+        plan = _plan(tmp_path, monkeypatch, address_source="dhcp", mgmt_ip="",
+                     ztp_check=None, kea=_NoKea())
+        assert "crypto key generate" not in plan.bootstrap_config
+
+    def test_the_re_render_is_byte_identical_to_the_plan(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars, repo as _repo
+
+        plan = _plan(tmp_path, monkeypatch, manager_interface="GigabitEthernet2")
+        list_dir = tmp_path / "probe"
+        repo = str(list_dir / "config_repo")
+        os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda _n: str(list_dir))
+        monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(tmp_path / "key.key"))
+        _repo.init_repo(repo)
+        hostvars.write_committed(repo, {"hostname": "bp-ztp-a", "bootstrap": {
+            "source": "ztp", "interface": "GigabitEthernet2", "mac": MAC,
+            "domain": "rcn.lab", "platform": "cisco_iosxe", "address": "", "mask": ""}})
+        onboard.stage_bootstrap_credential(repo, "bp-ztp-a", "Secret123")
+        out = onboard.bootstrap_artifact(repo, "bp-ztp-a")
+        assert out["ok"], out["reason"]
+        assert out["config"] == plan.bootstrap_config
+
+
+class _NoKea:
+    def reservation_for(self, mac):
+        return {"state": "reserved", "address": "192.0.2.40", "source": "config", "error": ""}
+
+
+def test_a_phase_two_stop_is_logged_with_its_step_and_reason(tmp_path, monkeypatch, caplog):
+    """M4: the reason lived only in a response body the browser overwrote,
+    and the app log held the status and nothing else."""
+    import logging
+
+    from modules.nsot import repo as _repo
+
+    repo = str(tmp_path / "config_repo")
+    os.makedirs(repo)
+    _repo.init_repo(repo)
+    with caplog.at_level(logging.WARNING, logger="modules.nsot.onboard"):
+        out = onboard.run_phase_two(repo, "bp-nobody", "probe")
+    assert not out["ok"]
+    assert any("phase 2 for bp-nobody stopped at verify" in r.getMessage() for r in caplog.records)
+
+
+class TestTheVerifyFailureStaysOnScreen:
+    """Executed in duktape: the shipped functions, with the asynchrony
+    stripped and nothing else changed."""
+
+    @staticmethod
+    def _js():
+        from tests.js_source import read_shipped
+        return read_shipped("static/js/gen/partials__onboard_wizard.2.js")
+
+    def _run(self, payload):
+        import json as _json
+
+        import dukpy
+
+        js = self._js()
+        start = js.index("async function onboardVerify")
+        end = js.index("async function onboardAbandon")
+        code = js[start:end].replace("async function", "function").replace("await ", "")
+        assert "await" not in code
+        harness = """
+        var calls = [], banner = {innerHTML: ''};
+        var document = {getElementById: function (id) {
+            return id === 'onboardPendingBanner' ? banner : null; }};
+        function fetch(url, opts) { return {json: function () { return dukpy.payload; }}; }
+        function showToast(t, k) { calls.push('toast:' + k); }
+        function loadOnboardPending(l) { calls.push('reload:' + l); }
+        """ + code + """
+        onboardVerify('bp-ztp-a', 'ztp-a');
+        ({calls: calls, html: banner.innerHTML})
+        """
+        return dukpy.evaljs(harness, payload=payload)
+
+    def test_a_failure_is_left_on_screen_not_reloaded_over(self):
+        out = self._run({"ok": False, "reason": "did not answer", "steps": [
+            {"step": "verify", "ok": False, "detail": "did_not_answer"}],
+            "verify": {"error": "tcp/22 refused", "causes": []}})
+        assert "reload:ztp-a" not in out["calls"], out["calls"]
+        assert "did not answer" in out["html"] and "Back to the pending list" in out["html"]
+
+    def test_a_stop_after_verify_names_the_step_and_the_reason(self):
+        out = self._run({"ok": False, "reason": "the capture timed out", "steps": [
+            {"step": "verify", "ok": True, "detail": "answered"},
+            {"step": "capture", "ok": False, "detail": "timeout"},
+            {"step": "rotate", "ok": False, "detail": "did not run"}],
+            "verify": {"state": "answered"}})
+        assert "stopped" in out["html"] and "<code>capture</code>" in out["html"]
+        assert "the capture timed out" in out["html"]
+        assert "nothing about it has changed" not in out["html"]
+
+    def test_a_success_still_reloads(self):
+        out = self._run({"ok": True})
+        assert "reload:ztp-a" in out["calls"]

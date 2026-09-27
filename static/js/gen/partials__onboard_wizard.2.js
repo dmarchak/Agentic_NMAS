@@ -19,15 +19,18 @@ async function onboardVerify(hostname, listName) {
       showToast(`${hostname} answered and is now in the inventory.`, 'success');
     } else {
       /* The diagnosis, not "cannot reach". Rendered into the banner area so
-         the operator can act without leaving the screen. */
+         the operator can act without leaving the screen -- and LEFT there.
+         M4: this drew the failure and the next line reloaded the same
+         element, so the reason flashed past unread. It stays until the
+         operator goes back to the list. */
       const host = document.getElementById('onboardPendingBanner');
-      if (host) { host.innerHTML = verifyFailureHtml(hostname, d); }
+      if (host) { host.innerHTML = verifyFailureHtml(hostname, d, list); return; }
     }
   } catch (e) { showToast('Verify failed: ' + e, 'danger'); }
   loadOnboardPending(list);
 }
 
-function verifyFailureHtml(hostname, d) {
+function verifyFailureHtml(hostname, d, listName) {
   const esc = s => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const v = (d && d.verify) || {};
@@ -45,12 +48,30 @@ function verifyFailureHtml(hostname, d) {
      the interface was right; failing to reach it proves nothing about why,
      so the causes below are possibilities in the order they are worth
      checking. */
+  /* WHERE PHASE 2 STOPPED. It can stop after verify (capture, rotate, ...),
+     and there "nothing about it has changed" would be false, and verify's
+     causes beside the wrong question. The step and the reason come from
+     the run itself. */
+  const steps = (d && d.steps) || [];
+  const failed = steps.find(s => !s.ok && s.detail !== 'did not run');
+  const at = (failed && failed.step) || 'verify';
+  const ran = steps.filter(s => s.ok).map(s => s.step);
+  const back = `<button class="btn btn-sm btn-outline-secondary py-0 px-1 mt-2"
+      onclick="loadOnboardPending('${esc(listName || '')}')">Back to the pending list</button>`;
+  if (at !== 'verify') {
+    return `<div class="alert alert-danger py-2 px-3 mb-0">
+      <div class="fw-semibold mb-1">${esc(hostname)} answered, and phase 2 stopped
+        at <code>${esc(at)}</code>.</div>
+      <div class="small mb-1">${esc((d && d.reason) || '')}</div>
+      <div class="small">Steps that ran: ${esc(ran.join(', ') || 'none')}. The
+        device may have changed; read the steps before trying again.</div>${back}</div>`;
+  }
   return `<div class="alert alert-warning py-2 px-3 mb-0">
     <div class="fw-semibold mb-1">${esc(hostname)} did not answer
       — nothing about it has changed.</div>
-    <div class="small mb-1">${esc(v.error || '')}</div>
+    <div class="small mb-1">${esc(v.error || (d && d.reason) || '')}</div>
     <div class="small">Worth checking, in this order:</div>
-    <ol class="small mb-0">${causes}</ol>${recovery}</div>`;
+    <ol class="small mb-0">${causes}</ol>${recovery}${back}</div>`;
 }
 
 async function onboardAbandon(hostname, listName) {

@@ -4661,6 +4661,18 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the pending stage `asked_not_served` and the `nmas-ztp-responder`
   job-health row. **Input ends discovery**: `en` alone stopped PnP, and the
   node had said so, so a watched console is TOUCHED by nothing.
+- **A ZTP device has no SSH key unless the bootstrap makes one** (P.6 M4,
+  2026-09-27). The C8000v was left out of `GENERATES_SSH_KEY` because
+  vrnetlab's day-0 config generates its key, and ZTP removes that day-0
+  config. M4's node applied its config and refused TCP 22. The
+  `ztp` render now generates the key (the plan and the re-render alike),
+  and every other render is unchanged. Third proxy population of the stage:
+  a rule keyed on the PLATFORM whose real subject was the deployment.
+- **A diagnosis drawn and then overwritten is a diagnosis nobody reads** (M4).
+  `onboardVerify()` rendered the failure and its next line reloaded the
+  same element, and phase 2 logged nothing, so the 409's reason existed for
+  a moment on one screen. The operator had to infer the cause from another
+  panel, and inferred the wrong one.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every

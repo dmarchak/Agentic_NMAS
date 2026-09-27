@@ -358,13 +358,21 @@ def domain_line(platform: str, domain: str) -> str:
     return f"{keyword} {domain}"
 
 
-def ssh_key_lines(platform: str) -> list:
+def ssh_key_lines(platform: str, force: bool = False) -> list:
     """Key generation, on the platforms that need it and nowhere else.
 
     Emitting it where vrnetlab already does the work would regenerate a key
     the device is mid-way through using.
+
+    *force*: nothing else will generate one. P.6 M4 found the case: a ZTP
+    C8000v boots the pristine base with vrnetlab's day-0 config REMOVED, so
+    "vrnetlab sets it up" (the reason the C8000v is not in
+    `GENERATES_SSH_KEY`) was no longer true. The device fetched and applied
+    its config, had no key, and refused TCP 22 (measured in 3 ms). The
+    platform was standing in for "a C8000v whose day-0 config vrnetlab
+    supplied", which is also not a real greenfield C8000v.
     """
-    if platform not in GENERATES_SSH_KEY:
+    if platform not in GENERATES_SSH_KEY and not force:
         return []
     return [f"crypto key generate rsa modulus {SSH_KEY_MODULUS}"]
 
@@ -373,8 +381,14 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
                      secret: str, domain: str = "rcn.lab",
                      mgmt_interface: str = "",
                      manager_interface: str = "", manager_address: str = "",
-                     manager_mask: str = "", manager_gateway: str = "") -> str:
+                     manager_mask: str = "", manager_gateway: str = "",
+                     generate_ssh_key: bool = False) -> str:
     """The minimal management-plane config for a device joining the lab.
+
+    *generate_ssh_key*: on a platform where vrnetlab normally generates the
+    SSH key, generate it here anyway, because nothing else will (a ZTP
+    device, P.6 M4). Off by default, so every existing render is unchanged
+    byte for byte.
 
     Derived from ``r1.cfg`` and ``s1.cfg`` with everything else removed: no
     loopback, no routing process, no data interface beyond the one the
@@ -419,7 +433,9 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "!",
             domain_line(platform, domain),
             "!",
-        ] + manager_lines + [
+        ] + manager_lines + ((ssh_key_lines(platform, force=True)
+                              + ["ip ssh version 2", "!"])
+                             if generate_ssh_key else []) + [
             "line vty 0 4",
             " logging synchronous",
             " login local",

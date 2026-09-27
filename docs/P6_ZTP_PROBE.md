@@ -916,6 +916,64 @@ configuration has been modified. Save?": the running config holds `hostname
 bp-ztp-a` from the reservation, and saving it would create a startup config,
 which AutoInstall would then defer to.
 
+### Observed: M4's second attempt (2026-09-27): fetched and applied, and SSH never came up
+
+**P-M4b and P-M4c held.**
+- Served: 12 complete transfers between 03:10:54 and 03:11:00, each one
+  382-byte block, ACKed, and the same sha256 `9c8314cc81e0`. The responder's
+  journal and its audit rows agree on 12. The operator counted 18 elsewhere;
+  where the other six come from is open.
+- `%SCRIPT_INSTALL-3-SCRPT_TYPE_NOT_MATCHED` came first: IOS-XE tried the
+  file as a script. Then `%SYS-5-CONFIG_I: Configured from
+  tftp://10.255.0.10/bp-ztp-a.cfg` and `AUTOINSTALL: script execution
+  successful for Gi2`.
+- The pending row reached `fetched_not_reached`, each fact from its own
+  source.
+
+**P-M4e failed: Verify answered 409 four times in 20 ms to 1 s**, too fast
+for an SSH login. The operator's first reading was that `mgmt_ip` was empty.
+It is, by design: `mgmt_ip` is the RECORD of where the device is, written by
+phase 2 after verify discovers the lease, and verify DID discover it
+(`discover_dhcp_address` gives `10.255.0.50/24`, measured). The cause,
+measured from the NMAS host: **TCP 22 refused in 3 ms, and telnet too.**
+The generator emits `crypto key generate rsa` only for `cisco_ios`, and its
+own comment says why the C8000v is left out: *"vrnetlab's own bootstrap
+config sets it up."* The probe removes vrnetlab's day-0 config, and with it
+the only thing that ever generated a C8000v key. So the device applied its
+config, had no key, and never started SSH. It is the third proxy population
+this stage, after C50 and `RESERVED_INTERFACES`: "C8000v" stood in for "a
+C8000v whose day-0 config vrnetlab supplied". A real greenfield device is
+not one either.
+
+**Fixed:**
+- `render_bootstrap(generate_ssh_key=True)` for a `ztp` source, in the plan
+  and in the re-render alike, so the two stay byte-identical (pinned). Every
+  other render is unchanged, and the existing fixture test pins that.
+- Phase 2's stop is logged at WARNING with its step and reason. The app log
+  had only the 409.
+- **The GUI drew the diagnosis and then overwrote it.** `onboardVerify()`
+  rendered the failure into the banner, and its next line reloaded the same
+  element. The failure now stays until "Back to the pending list".
+  `verifyFailureHtml` names the step phase 2 stopped at, and its reason; it
+  says "nothing about it has changed" only when the stop was verify itself.
+- The pending summary no longer claims "Verify reaches it". It says the
+  fetches (count, first, last, hash) and that Verify must reach it over SSH.
+
+**The 12 serves, and rate limiting.** Every one went to the reserved address
+of a pending device, the same holder each time, and each is its own row:
+twelve disclosures of one credential to one device, recorded as twelve. A
+limit inside a burst would risk failing an onboarding whose window is
+bounded (M4's first attempt). The disclosure ends where it should:
+promotion stops the serving, and phase 2 rotates the credential. So no
+limit, and the count is on the pending row.
+
+**To finish M4 on the SAME node** once the fix is deployed and the responder
+restarted: reload the node, answering `no` to "Save?". AutoInstall runs
+again (nothing was saved) and fetches the new render, WITH the key. The
+served hash will differ from `9c8314cc81e0` by exactly the key lines, and
+the review screen showed the render without them: the re-render follows
+today's generator, and both hashes are in the audit.
+
 **Redeploying mid-run:** the responder is a long-running process, and it
 holds the code it started with. After deploying the fix,
 `sudo systemctl restart nmas-ztp-responder.service` (the socket stays bound,

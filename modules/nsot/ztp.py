@@ -719,7 +719,8 @@ def progress(entry: dict, *, kea=None, fetches=None) -> dict:
     if served:
         f = served[0]
         out["fetch"] = {"state": "fetched", "at": f.get("at"), "peer": f.get("peer"),
-                        "sha256": f.get("sha256", "")}
+                        "sha256": f.get("sha256", ""), "count": len(served),
+                        "first": served[-1].get("at")}
     elif refused:
         f = refused[0]
         out["fetch"] = {"state": "refused", "at": f.get("at"), "peer": f.get("peer"),
@@ -755,9 +756,14 @@ def progress(entry: dict, *, kea=None, fetches=None) -> dict:
         out["summary"] = (f"leased {out['lease']['address']}; it has not asked for its "
                           "config yet (the responder has recorded nothing from it)")
     else:
+        # NO CLAIM THAT VERIFY WILL REACH IT: M4 fetched and applied its
+        # config and still refused SSH. Fetched is a fact; reachable is what
+        # Verify finds out.
+        f = out["fetch"]
         out["stage"] = "fetched_not_reached"
-        out["summary"] = (f"fetched its config at {out['fetch']['at']} (sha256 "
-                          f"{out['fetch']['sha256'][:12]}); Verify reaches it")
+        out["summary"] = (f"fetched its config {f['count']} time(s) between {f['first']} "
+                          f"and {f['at']} (sha256 {f['sha256'][:12]}); next, Verify must "
+                          "reach it over SSH with the staged credential")
     return out
 
 
