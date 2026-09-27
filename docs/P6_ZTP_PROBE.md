@@ -128,6 +128,24 @@ end, while its MAC was sending IPv6 RS for minutes. Something had it up for a
 while. The capture's last RS time against the time `show ip interface brief`
 ran would say when it went down. Recorded, not explained.
 
+### Observed: M1 re-run on the same node, after `write erase` and `reload` (2026-09-26)
+
+The erase was done on the device (answering `no` to "Save?"), so this run
+tests the diagnosis. It does not test `944876c`'s disk fix, which has not yet
+booted a fresh node.
+
+| # | Observed |
+|---|---|
+| P-M0 | **Passed**: `No startup-config, starting autoinstall/pnp/ztp...`. The install overlay's NVRAM was the whole cause |
+| P-M1 | **Yes**: `Autoinstall trying DHCPv4 on GigabitEthernet1,GigabitEthernet2`. IOS-XE brings both interfaces up itself. The first run's "administratively down" came from the saved config, not the platform |
+| P-M2b | **Holds**: DHCPDISCOVERs from `aa:bb:cc:00:02:50` on `br-mgmt` at 00:23:13, 00:23:20 and 00:23:24, unanswered (nothing reserved, correct for M1). Also RARP requests, AutoInstall's older path |
+| P-M2c | **Holds, and it decides the next step**: Gi1 was answered first (`Acquired IPv4 address 10.0.0.15 on Interface GigabitEthernet1 … si-addr 10.0.0.2`), then `stop Autoip process`. AutoInstall takes the first answer and stops |
+| (none) | **Unpredicted: PnP reached the internet.** `PNP_CCO_SERVER_IP_RESOLVED: devicehelper.cisco.com` and `HTTP_CONNECTED … /pnp/HELLO`, then a 600 s backoff. Through Gi1's qemu DHCP, which handed out DNS `10.0.0.3` and a route out through the lab host. A PnP HELLO carries the device's UDI (product ID and serial number), so a configless node on a network with a way out identifies itself to Cisco before it finds anything local. P6_ZTP.md D4 is the design consequence |
+
+**So the branch at step 6 is "DISCOVERs on br-mgmt", corrected for Gi1.**
+Section 9's option (e) removes Gi1's answer inside containerlab; option (d)
+removes it with a Proxmox VM.
+
 ---
 
 ## Step 1 — stage the probe's own configless copy (lab host)
@@ -363,6 +381,24 @@ improvisation:
   the topology rules refuse it.
 - **(d) The node as its own Proxmox VM**, with no qemu user network at all,
   so nothing answers before Kea. Scoped in section 11, not built.
+- **(e) vrnetlab's management passthrough (found after M1's re-run, by
+  reading `/vrnetlab.py`).** With the node environment
+  `CLAB_MGMT_PASSTHROUGH: "true"`, `gen_mgmt()` builds Gi1 as a tap mirrored
+  onto the container's `eth0` instead of qemu's user network. So neither
+  qemu's DHCP server nor its TFTP server exists any more. `eth0` sits on the
+  probe's docker bridge (`clab-ztp-probe`), and docker runs no DHCP server.
+  Gi1 still exists and still asks, and nothing answers it. That is the
+  shape of a real device with an unserviced port, and it needs no Gi1 cable,
+  so the reserved-interface rule is not involved. **It is read, not
+  measured.** Its prediction (P-M2d): DISCOVERs from Gi1's MAC appear on the
+  docker bridge and go unanswered, and AutoInstall keeps asking on both
+  interfaces. Cost: one environment line in the topology. If it fails, (d)
+  is next.
+- **(b) as the operator framed it, letting Gi1 be answered, is not viable:**
+  `stop Autoip process` ends discovery at the first lease. Its variant (put
+  the bootstrap config in the container's `/tftpboot`, which qemu serves to
+  Gi1) would work, and would demonstrate vrnetlab's plumbing rather than Kea,
+  the tool's responder or the lab segment. Rejected on that ground.
 
 ---
 

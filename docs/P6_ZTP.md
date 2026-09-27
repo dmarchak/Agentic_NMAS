@@ -156,6 +156,25 @@ that fact is how `tftp_server_ip` came to name `192.168.0.30`. A per-list
 store beside `source.json` is the right shape when a second network needs a
 second segment, and P.6 does not need one.
 
+### D4. What a ZTP reservation offers (proposed; the operator's to decide)
+
+Measured in M1's re-run: a configless IOS-XE 17.6 node with DNS and a route
+out resolves `devicehelper.cisco.com` and sends it a PnP HELLO, carrying its
+UDI, before it finds anything local. On an air-gapped network that fails
+harmlessly. On a network with a way out, it discloses the device's identity
+to a third party. A 600 s PnP backoff followed; whether that delays local
+discovery was not measured.
+
+**Proposed:** a reservation the tool writes carries the address and the
+config-source options it needs (option 67, and 150 or 66 as M3 decides) and
+**never `routers` or `domain-name-servers`**. The node reaches the config
+server on its own `/24` (D3 derives that address from the interface Kea
+serves the subnet on), so it needs neither. Measured 2026-09-26: subnet 255
+carries no option data today, so this is the posture already in force. The
+build would pin it: the reservation writer refuses options 3 and 6, with a
+control showing an option-6 reservation refused. Subnets 10 and 20 do carry
+both, which matters only if ZTP is ever served there.
+
 ---
 
 ## 4. What the throwaway measures first
