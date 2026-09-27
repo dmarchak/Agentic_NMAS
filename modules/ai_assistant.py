@@ -2591,33 +2591,24 @@ TOOLS = [
 # P.3 step 8: the agent reads devices; it never changes one
 # ---------------------------------------------------------------------------
 
-#: The first word of every command the agent may send, and the abbreviations
-#: IOS accepts for `show`. Exec mode is not read-only (reload, delete, copy,
-#: clear, write erase all run there), so a free-form command is not a read.
-READ_ONLY_VERBS = ("show", "sho", "sh", "ping", "traceroute", "dir", "more")
+#: The verbs live in ONE place, `modules/readonly_commands.py` (C61), with
+#: the output-modifier allowlist that the first version of this check lacked:
+#: a verb alone let `show running-config | redirect tftp://...` through.
+from modules.readonly_commands import refusal_for  # noqa: E402
 
 
 def _read_only_refusal(commands: list, mode: str = "") -> str:
     """A refusal naming the reason, or "" when every command is a read.
 
     The agent is an on-call responder (feature audit, decision 1): it triages
-    with reads and PROPOSES a change as an ordinary plan a person confirms. A
-    newline inside a command is refused too, because it would send a second
-    command the check never saw.
+    with reads and PROPOSES a change as an ordinary plan a person confirms.
+    Whether a command is a read is decided by the shared allowlist, the
+    whole command and not its first word (C61).
     """
     if (mode or "").strip().lower() == "config":
         return ("REFUSED: config mode was removed from the agent (P.3 step 8). "
                 "Propose the change as a plan for a person to confirm.")
-    for cmd in commands:
-        text = (cmd or "").strip()
-        if "\n" in text or "\r" in text:
-            return f"REFUSED: one command per entry, no line breaks: {text[:60]!r}"
-        verb = text.split()[0].lower() if text else ""
-        if verb not in READ_ONLY_VERBS:
-            return (f"REFUSED: {verb or '(empty)'!r} is not a read-only command. "
-                    "The agent may run only show, ping, traceroute, dir or more "
-                    "(P.3 step 8); a change is proposed as a plan, never sent.")
-    return ""
+    return refusal_for(commands)
 
 # ---------------------------------------------------------------------------
 # Human-readable tool labels for the UI
