@@ -1,0 +1,7 @@
+
+Neighbor ID     Pri   State           Dead Time   Address         Interface
+10.255.1.11     100   2WAY/DROTHER    00:00:36    10.255.3.11     Vlan100
+10.255.1.12     100   2WAY/DROTHER    00:00:36    10.255.3.12     Vlan100
+10.255.1.13     255   FULL/DR         00:00:35    10.255.3.13     Vlan100
+10.255.1.14     200   FULL/BDR        00:00:36    10.255.3.14     Vlan100
+10.255.1.24       0   2WAY/DROTHER    00:00:38    10.255.3.24     Vlan100

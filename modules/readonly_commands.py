@@ -13,11 +13,19 @@ B13's shape (a secret leaving through a path the gate did not examine).
 So both halves are allowlists, which a command added to IOS later cannot
 outgrow:
 - the VERB: show, ping, traceroute, dir, more;
-- every OUTPUT MODIFIER after a ``|``: begin, count, exclude, include,
-  section, and their unambiguous abbreviations. Anything else is refused,
-  including a ``|`` inside a regex whose alternative does not read as one of
-  those (``| include a|redirect x`` must not reach the device, and a split
-  that cannot tell a regex from a modifier fails closed).
+- the OUTPUT MODIFIER after the first ``|``: begin, count, exclude,
+  include, section, and their unambiguous abbreviations. Anything else is
+  refused.
+
+**What follows the modifier is its regular expression, measured**
+(2026-09-27, IOS-XE 17.6 and vIOS 15.2, `tests/fixtures/operational/`):
+``show version | include Cisco | count`` prints the matching lines, not a
+count, on both. So a later ``|`` is regex alternation there, and the
+pipeline's own ``show interfaces | include (line protocol|Internet address)``
+is a read. The first version of this module split on every ``|`` and refused
+that read. A later segment is refused only when its first word could name a
+modifier that is not a filter (``| include a|redirect x``): harmless here,
+and a write on any platform that does chain pipes, so it fails closed.
 
 Also refused, because each makes a "read" do something else:
 - a URL anywhere (``://``): the device reaching another host, in either
@@ -96,17 +104,21 @@ def refusal(command) -> str:
         if not args:
             return (f"REFUSED: {verb} with no target starts an interactive "
                     "dialogue; give the address.")
-    for modifier in modifiers:
+    for position, modifier in enumerate(modifiers):
         parts = modifier.split()
         word = parts[0] if parts else ""
         if not word:
             return "REFUSED: an empty output modifier after '|'."
-        if not _modifier_is_safe(word):
-            writes = any(m.startswith(word.lower()) for m in WRITING_MODIFIERS)
-            why = (" It WRITES the output to a file or another host." if writes
-                   else "")
-            return (f"REFUSED: output modifier {word!r} is not a filter.{why} "
-                    f"{_TAIL}")
+        could_be_other = any(m.startswith(word.lower()) for m in OTHER_MODIFIERS)
+        if position == 0 and _modifier_is_safe(word):
+            continue
+        if position > 0 and not could_be_other:
+            continue    # part of the filter's regular expression
+        writes = any(m.startswith(word.lower()) for m in WRITING_MODIFIERS)
+        why = (" It WRITES the output to a file or another host." if writes
+               else "")
+        return (f"REFUSED: output modifier {word!r} is not a filter.{why} "
+                f"{_TAIL}")
     return ""
 
 

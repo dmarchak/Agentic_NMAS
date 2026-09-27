@@ -51,7 +51,8 @@ class TestEverySpellingOfAWritingModifier:
         assert rc.refusal(cmd).startswith("REFUSED"), cmd
 
     @pytest.mark.parametrize("cmd", ["show run | json", "show run | utility x",
-                                     "show run | ", "show run || include x"])
+                                     "show run | ", "show run || include x",
+                                     "show run | include x|"])
     def test_an_unknown_or_empty_modifier_is_refused_too(self, cmd):
         """An allowlist, so a modifier IOS adds later is refused, not trusted."""
         assert rc.refusal(cmd).startswith("REFUSED"), cmd
@@ -67,6 +68,11 @@ class TestTheFiltersStillWork:
         "show run | section ospf", "show run | sec ospf", "show run | s ospf",
         "show ip int br | count up", "show run | c interface",
         "show run | section router ospf | include network",
+        # Measured: after a filter the rest of the line is its regex, on both
+        # platforms (tests/fixtures/operational/README.md). The pipeline's own
+        # read, refused by the first version of this module:
+        "show interfaces | include (line protocol|Internet address)",
+        "show run | include hostname|interface", "show version | include Cisco | count",
         "show running-config", "sh ip int br", "sho clock", "dir flash:",
         "more flash:vlan.dat", "ping 192.0.2.1", "ping vrf clab-mgmt 192.0.2.1",
         "traceroute 192.0.2.1",

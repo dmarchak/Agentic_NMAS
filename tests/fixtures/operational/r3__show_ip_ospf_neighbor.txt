@@ -1,0 +1,8 @@
+
+Neighbor ID     Pri   State           Dead Time   Address         Interface
+10.255.1.11     100   FULL/DROTHER    00:00:39    10.255.3.11     GigabitEthernet3
+10.255.1.12     100   FULL/DROTHER    00:00:39    10.255.3.12     GigabitEthernet3
+10.255.1.14     200   FULL/BDR        00:00:39    10.255.3.14     GigabitEthernet3
+10.255.1.23       0   FULL/DROTHER    00:00:23    10.255.3.23     GigabitEthernet3
+10.255.1.24       0   FULL/DROTHER    00:00:38    10.255.3.24     GigabitEthernet3
+10.255.1.14       1   FULL/DR         00:00:34    10.255.2.15     GigabitEthernet4

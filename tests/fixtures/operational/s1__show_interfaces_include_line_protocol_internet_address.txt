@@ -1,0 +1,15 @@
+GigabitEthernet0/0 is up, line protocol is up (connected) 
+  Internet address is 10.0.0.18/24
+GigabitEthernet0/1 is up, line protocol is up (connected) 
+GigabitEthernet0/2 is up, line protocol is up (connected) 
+  Internet address is 10.255.2.11/31
+GigabitEthernet0/3 is up, line protocol is up (connected) 
+GigabitEthernet1/0 is up, line protocol is up (connected) 
+GigabitEthernet1/1 is up, line protocol is up (connected) 
+Loopback0 is up, line protocol is up 
+  Internet address is 10.255.1.21/32
+Vlan10 is up, line protocol is up 
+  Internet address is 10.10.10.2/24
+Vlan20 is up, line protocol is up 
+  Internet address is 10.10.20.2/24
+Vlan30 is up, line protocol is up 

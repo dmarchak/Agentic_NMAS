@@ -710,8 +710,16 @@ The only part of the NSoT work that reaches a device.
   rollback. "The push failed" and "the device is unchanged" are different
   claims; a device that cannot be read reports `device_changed: None`.
 - **Verification uses settle windows** (OSPF 45s, BGP 60s, RIP 90s) and reports
-  *not yet converged* distinctly from *failed*. RIP is checked via the Routing
-  Information Sources table; it was previously not checked at all.
+  *not yet converged* distinctly from *failed*. **CORRECTED 2026-09-27,
+  measured against real output: the routing check is real on 4 of 9
+  devices.** "RIP is checked via the Routing Information Sources table" was
+  false. The parser reads the empty table of the `"application"`
+  pseudo-protocol both platforms print first (C65). The BGP count matches
+  no real row (C64), and verify reads only the first protocol it finds
+  (C62). So r3, r4, s1 and s2 compare 0 with 0. The route check reads the
+  Networks column (C66), and the canary cannot fail (C67). Each has a
+  strict expected-failure acceptance built from a real capture
+  (`tests/test_pipeline_reads_real_output.py`).
 - **Stage 8.5 saves golden** after verify, on partial success, from the
   post-deploy config stage 7 now captures.
 - **Batch**: sequential by default, circuit breaker on repeated *verify*
@@ -1001,6 +1009,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
 | `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
+| `test_pipeline_reads_real_output.py` | C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -1086,6 +1095,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   commit's scope is narrower than a reader would assume: an adoption that
   records and does not rotate, a bulk change that refused some devices (`Refused:`
   already does this).
+- **Print a commit message file's first line before `git commit -F`.** A
+  write that failed leaves the previous message in place, and the commit
+  takes it: `df17b55` carries `ff6fc24`'s 7.1 subject over four design
+  documents. It is left unrewritten (the operator: a clear record beats a
+  rewritten history), with `a94e0ca` as the empty commit stating its real
+  content. The same holds for any file an action reads after a write: the
+  action does not know the write failed.
 - **A method call on another object is not a use of a removed module-level
   function** (`check_removed_definitions.py`, P.3 step 11). Removing the
   Flask view `disconnect` was flagged by every Netmiko `conn.disconnect()` in
@@ -4827,9 +4843,33 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   WRITE: `| redirect tftp://<host>/x` sends the whole config to another host,
   and the device sends it, so the tool's redaction never sees the bytes.
   B13's shape: a secret leaving through a path the gate did not examine.
-  Both halves are allowlists now, verb and modifier. The sweep for the shape
+  Both halves are allowlists now, verb and modifier. **Measured the same day:
+  only the first `|` is a modifier on both platforms**, and the rest is the
+  filter's regex, so the first parse (every `|` a modifier) refused the
+  pipeline's own read and was corrected. The sweep for the shape
   found one more of the family (C63): the deploy's dangerous check is a list
   of forms, and misses `no router rip` on a fleet running RIP.
+- **A parser written against imagined output passes every test written the
+  same way** (C64-C67, the operator's sweep of `pipeline.py`, 2026-09-27).
+  Four readers of device text were wrong on the real fleet, and the suite
+  was green: the BGP pattern expects eight columns where IOS prints ten, and
+  the RIP parser reads the `"application"` pseudo-protocol's empty table,
+  which nobody writing `show ip protocols` from memory includes. The route
+  count reads the Networks column. The canary accepts any "up", and Loopback0
+  is always up. The deploy's verify therefore compared 0 with 0 on four
+  devices in every recorded deploy. A parser's test is built from a capture
+  (`tests/fixtures/operational/`), never a sample typed into the test (D4's
+  rule, now with a directory). And a deploy receipt that records "verified"
+  is only as true as the verify it records (C60 before C64-C67 would store
+  a false claim).
+- **Some controls exist to make behaviour visible, not to prevent it** (8.8,
+  the operator's distinction, 2026-09-27). A written reason required when
+  the second reading warns does not stop anyone. It makes the pattern
+  legible to a person who can act on it, so "ok" typed thirty times is the
+  finding, not a defeat of the control. Its measure is the AGGREGATE, per
+  person and per device, drawn where people look. It stands on the
+  attribution work (D10, P.3), which now serves accountability as well as
+  security.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
@@ -4843,7 +4883,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **42 open at 2026-09-27**, counted from the rows: 36 recorded only in
+present when each was recorded. **46 open at 2026-09-27**, counted from the rows: 40 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

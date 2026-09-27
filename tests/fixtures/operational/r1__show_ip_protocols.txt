@@ -1,0 +1,57 @@
+*** IP Routing is NSF aware ***
+
+Routing Protocol is "application"
+  Sending updates every 0 seconds
+  Invalid after 0 seconds, hold down 0, flushed after 0
+  Outgoing update filter list for all interfaces is not set
+  Incoming update filter list for all interfaces is not set
+  Maximum path: 32
+  Routing for Networks:
+  Routing Information Sources:
+    Gateway         Distance      Last Update
+  Distance: (default is 4)
+
+Routing Protocol is "ospf 1"
+  Outgoing update filter list for all interfaces is not set
+  Incoming update filter list for all interfaces is not set
+  Router ID 10.255.1.11
+  It is an autonomous system boundary router
+ Redistributing External Routes from,
+    rip, includes subnets in redistribution
+  Number of areas in this router is 1. 1 normal 0 stub 0 nssa
+  Maximum path: 4
+  Routing for Networks:
+    10.255.1.11 0.0.0.0 area 0
+    10.255.3.0 0.0.0.255 area 0
+  Passive Interface(s):
+    Loopback0
+  Routing Information Sources:
+    Gateway         Distance      Last Update
+    10.255.1.23          110      04:48:55
+    10.255.1.24          110      04:57:13
+    10.255.1.12          110      04:57:13
+    10.255.1.13          110      04:57:18
+    10.255.1.14          110      04:57:18
+  Distance: (default is 110)
+
+Routing Protocol is "rip"
+  Outgoing update filter list for all interfaces is not set
+  Incoming update filter list for all interfaces is not set
+  Sending updates every 30 seconds, next due in 25 seconds
+  Invalid after 180 seconds, hold down 180, flushed after 240
+  Redistributing: rip
+  Default version control: send version 2, receive version 2
+    Interface                           Send  Recv  Triggered RIP  Key-chain
+    GigabitEthernet3                    2     2          No        none            
+  Automatic network summarization is not in effect
+  Maximum path: 4
+  Routing for Networks:
+    10.0.0.0
+  Passive Interface(s):
+    GigabitEthernet2
+    Loopback0
+    VoIP-Null0
+  Routing Information Sources:
+    Gateway         Distance      Last Update
+    10.255.2.11          120      00:00:20
+  Distance: (default is 120)

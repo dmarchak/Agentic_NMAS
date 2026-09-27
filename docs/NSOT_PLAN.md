@@ -4069,6 +4069,11 @@ then starts from what was pushed, not from a diff:
   let the record flatter the gate: it could confirm its own value and
   never disconfirm it.
 - **"Not reviewed":** the review did not run, with its reason.
+- **"Warned, overridden, and the operator's stated reason was …":** quoted
+  with who wrote it, when, and its until-when if any, labelled testimony.
+  A device inside an unexpired stated reason is reported as *deliberately
+  different, per the operator, until …*, and triage proposes nothing
+  against it. An expired one is named as expired.
 - **No receipt in the window:** stated, so "nothing was deployed" is
   never inferred from a missing record.
 
@@ -4425,6 +4430,13 @@ re-arguing the class:
       actor, recorded durably.
 - [ ] **Human activity is recorded as an input:** plan previews, intent not
       yet landed, the lens's sessions, `show users`.
+- [ ] **A stated reason, with its until-when, is an input** (8.8's written
+      response to a warning). It ADDS an item rather than removing one: it
+      makes deliberate changes legible when they went through the deploy
+      path and were warned about. A change outside the pipeline, or one the
+      reader did not warn about, still carries no reason. So it narrows the
+      unexplained case and does not close it; the device-as-witness item
+      (E6) is still what covers every path.
 - [ ] **Free-text device inputs are allowlisted:** the terminal, the
       command runners, and the agent's tools, pipes included (C61).
 - [ ] **The class's own limits:**
@@ -4650,6 +4662,83 @@ before anyone asks it:
   Deciding the threshold after seeing the numbers is how a feature is
   kept on sentiment. The counts are one report with denominators
   (`nmas-review-report`, CLI first).
+
+**When the second reading warns, confirming requires a written reason**
+(the operator, 2026-09-27; decided, design only). Not a checkbox: a sentence,
+saved in the deploy record (C60) beside the warning, the program and its
+hash. The deploy still proceeds and the person still decides, but the record
+then holds *"warned about X; proceeded because Y"*.
+- **Why it is more than friction.** 8.7's missing evidence was WHY a change
+  was made, and no store answers it: the terminal audit records that a
+  session opened, not what anybody intended. A reason attached to the
+  program is that evidence, supplied by the only party who has it. At 3am
+  triage reads *"a deploy 40 minutes ago was warned it would drop the
+  adjacency, and the operator wrote 'replacing the cable at 04:00'"*
+  instead of an unexplained diff.
+- **Only when warned.** A reason asked of every deploy becomes "ok", and
+  the field becomes noise. Asking only on a warning keeps the friction in
+  proportion to the risk. `no_warnings` and `not_reviewed` ask nothing.
+- **Testimony, not fact.** A reason is what the person believed at the
+  time. The record and every triage report label it *the operator's stated
+  reason*, never a cause: the same separation the reports already make
+  between what was READ and what was CONCLUDED.
+- **Where the minimum is drawn: shape, never quality.** The server refuses
+  only what carries no statement at all:
+  - an empty or whitespace-only reason;
+  - fewer than a handful of words (proposed: three);
+  - text identical to the warning it answers.
+
+  It never judges whether a reason is a good one. A tool grading reasons is
+  theatre, and teaches people to write for the grader. A reason like "ok"
+  that passes the shape rule is exactly what the aggregate below exists to
+  surface.
+- **An optional UNTIL.** "Temporary, reverting at 06:00" is the most useful
+  kind, and the kind that goes stale. The reason carries an optional
+  until-when, so a device is *deliberately different, for now* or
+  *deliberately different, with no end stated*. It feeds drift: a device
+  with an unexpired reason is EXPECTED to differ in exactly the lines the
+  warned program touched, and it is drawn that way, not as drift. An
+  expired one is drawn as drift again, naming the reason that lapsed. So a
+  temporary fix nobody reverted becomes a finding the moment its own stated
+  deadline passes, which is the only deadline the tool can hold anyone to.
+- **Who.** The verified person from `identity.request_actor()`, never a
+  field in the request, so the 3am reader knows whom to call.
+
+**Some controls exist to make behaviour VISIBLE rather than to prevent it**
+(the operator's distinction, recorded because it is a different kind of
+control). Every gate so far is technical: refuse, block, require a person.
+This one accepts that a determined operator will proceed, and makes the
+pattern legible to someone who can address it on a human level. One override
+had a reason; thirty is a problem a tool cannot fix and a manager can. That
+is why the ritual risk is accepted rather than disqualifying: **if someone
+types "ok" thirty times, that is the finding.** The record working as
+designed produces the evidence that it is not being taken seriously. What
+follows:
+- **The aggregate is the feature, not the row.** Overrides are countable
+  and attributable: per person, per device, and over time. A row nobody
+  aggregates is a row nobody reads.
+- **It is drawn where a person already looks**: Needs attention (7.2)
+  surfaces a repeated override pattern the way it surfaces drift and failing
+  jobs, and Versions (7.5) lists the overrides with their reasons. Evidence
+  that needs a grep works only after somebody already suspects.
+- **The count states what it covers:** overrides of warnings the second
+  reading produced, on deploys that went through the tool. It cannot see a
+  change made outside the pipeline, and says so on the count itself, so
+  the number is never read as the whole picture.
+- **The outcomes become** warned-and-heeded, **warned-and-overridden with a
+  reason**, cleared-and-broke, and not-reviewed. The second is the
+  interesting one: over time it says whether the warnings are right and
+  being ignored, or wrong and being worked around. Joined to what followed
+  (the follow-up window), an overridden warning that then broke and one that
+  did not are different findings, about the person and about the reviewer
+  respectively.
+
+**What it stands on: the attribution work, which now serves two purposes.**
+D10's `Actor-Verified` and P.3's person-gated confirms were built as
+SECURITY controls. They are equally the foundation for this ACCOUNTABILITY
+control, because an override attributed to "user" or "pipeline" is
+worthless. That second purpose is what justifies keeping attribution strict
+even where the security argument alone might have relaxed it (register E5).
 
 **What a review row holds.** It is `0600` and masked:
 - the command hash and capture hash;
