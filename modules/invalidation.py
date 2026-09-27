@@ -255,6 +255,13 @@ def install(app) -> None:
     def _declare_invalidations(response):
         from flask import request
 
+        # By METHOD as well as endpoint: one Flask endpoint can serve both a
+        # read and a write (`monitoring_config` is GET and POST), and keying
+        # on the endpoint alone made every READ of that panel announce an
+        # invalidation and changed its response (found measuring payloads
+        # for 7.0 (3); a read-only endpoint could not show it).
+        if request.method not in MUTATING_METHODS:
+            return response
         keys = keys_for(request.endpoint or "")
         if not keys:
             return response

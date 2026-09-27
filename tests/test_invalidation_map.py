@@ -184,6 +184,19 @@ class TestTheResponseCarriesIt:
     def test_a_read_carries_no_header(self, client):
         assert I.HEADER not in client.get("/health").headers
 
+    def test_a_read_of_a_mixed_endpoint_carries_no_header(self, client):
+        """`monitoring_config` serves GET and POST from ONE endpoint. The hook
+        first keyed on the endpoint alone, so every read of the panel
+        announced an invalidation and carried `invalidates` in its body;
+        `/health` above could not show it, having no write half."""
+        import app as A
+
+        rules = [r for r in A.app.url_map.iter_rules() if r.endpoint == "monitoring_config"]
+        assert {"GET", "POST"} <= set().union(*(r.methods for r in rules))
+        r = client.get("/monitoring/config")
+        assert I.HEADER not in r.headers
+        assert "invalidates" not in (r.get_json() or {})
+
 
 # ── subscriptions, both directions ──────────────────────────────────────────
 
