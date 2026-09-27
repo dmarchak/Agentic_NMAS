@@ -116,6 +116,9 @@ def test_the_listing_route_marks_shared_files(tmp_path, monkeypatch):
     repo_dir = str(list_dir / "config_repo")
     monkeypatch.setattr("modules.config.get_list_data_dir",
                         lambda name: str(list_dir))
+    # The list must EXIST: a read naming a list that does not is refused
+    # (register C51). Patching the accessor alone left `lab` nowhere.
+    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
     monkeypatch.setattr("routes.templates._seed_and_commit",
                         lambda n, r: None)
     _repo.init_repo(repo_dir)

@@ -28,6 +28,12 @@ def register_blueprints(app) -> list:
     from modules import route_gates
     route_gates.install(app)
 
+    # A read naming a list that does not exist is refused before any view
+    # resolves a path (register C51). Outside the try for the same reason:
+    # without it, 24 GETs create the list they are asked about.
+    from routes import list_param
+    list_param.install(app)
+
     from routes.settings_integrations import bp as integrations_bp
     from routes.netbox_safety import bp as netbox_safety_bp
     from routes.inventory import bp as inventory_bp

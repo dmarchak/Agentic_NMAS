@@ -139,9 +139,23 @@ def list_slug(name: str) -> str:
     return _re.sub(r"[^\w]+", "_", name.lower()).strip("_") or "default"
 
 
+def list_data_path(list_name: str) -> str:
+    """The data directory for a list, WITHOUT creating it (register C51).
+
+    `get_list_data_dir()` below creates the directory, so merely resolving a
+    path with it brings a list into existence. That is right for a writer
+    and wrong for anything that only asks: 24 GETs created the list they
+    were asked about, a mistyped name included.
+    """
+    return os.path.join(LISTS_DIR, list_slug(list_name))
+
+
 def get_list_data_dir(list_name: str) -> str:
-    """Return (and create) the data directory for a specific device list."""
-    path = os.path.join(LISTS_DIR, list_slug(list_name))
+    """Return (and create) the data directory for a specific device list.
+
+    Derived through `list_data_path()`, so the resolver that creates and the
+    one that only asks cannot disagree about where a list lives."""
+    path = list_data_path(list_name)
     os.makedirs(path, exist_ok=True)
     return path
 

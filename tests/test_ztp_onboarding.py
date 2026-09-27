@@ -306,6 +306,10 @@ class TestThePendingRoute:
         import app as nmas
         monkeypatch.setattr("modules.config.get_list_data_dir",
                             lambda name: str(tmp_path / name))
+        # The list must EXIST: a read naming a list that does not is refused
+        # (register C51), and this list was only ever a patched path.
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        (tmp_path / "probe").mkdir(exist_ok=True)
         rows = [dict(ENTRY, age_seconds=10, state="in_flight", onboarded_at="x"),
                 {"name": "r7", "address_source": "static", "mgmt_ip": "192.0.2.7",
                  "age_seconds": 10, "state": "in_flight", "onboarded_at": "x"}]

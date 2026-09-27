@@ -160,6 +160,26 @@ def resolve(name: str) -> ListRef:
     return _build(text, derived)
 
 
+def exists(name) -> bool:
+    """Is there a list answering to *name*: registered by name or slug, or a
+    directory on disk (a list can exist on disk before the registry catches
+    up, which is why `resolve()` derives)? Creates nothing (register C51):
+    `resolve()` itself cannot answer this, because building a ref calls the
+    accessor that creates the directory it was asked about."""
+    import os
+
+    from modules.config import list_data_path, list_slug
+
+    text = str(name or "").strip()
+    if not text:
+        return False
+    registry = _registry()
+    if text in registry or text in registry.values():
+        return True
+    return os.path.isdir(list_data_path(text)) or \
+        list_slug(text) in registry.values()
+
+
 def active() -> ListRef:
     """The currently selected list.
 
