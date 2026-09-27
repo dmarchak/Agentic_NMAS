@@ -752,11 +752,95 @@ report:**
 
 ### M4 — does the fetched config apply, and is the staged credential then accepted
 
-Onboard `bp-ztp-a` through the wizard with source `ztp`, once the build exists
-(census baseline and a temporary list first, exactly as in Phase 2). The
-responder serves the bootstrap artefact. The node applies it, and Phase 2's
-verify reaches it with the staged credential. **This is Lab 8.** Lab 9 is
-Phase 2 and one intent deploy after it.
+**This is Lab 8.** What M3 already settles for it: the reservation the
+tool's mechanism wrote answered a device that asked, and the device asked
+for exactly the file named. What M4 adds is the thing that answers on port
+69, and the tool doing all of it: writing the reservation, serving the
+config, and reaching the device. Lab 9 is Phase 2 and one intent deploy
+after it.
+
+**Built (2026-09-27):**
+- step 1, the writer and D4 (`1b7e639`);
+- step 2, the responder (`7416cbf`);
+- step 3, `ztp` in the plan and phase 1 (`8ae4faa`);
+- steps 4 and 5, the pending row and the shared phase 2 (`4095240`);
+- step 6, abandon.
+
+**Host steps, once (the operator's; NMAS host).**
+
+1. Deploy the build (`nmas-deploy`), then tell NMAS where the fragment is,
+   through the one settings write path:
+
+   ```bash
+   cd /home/dmarchak/python/Agentic_NMAS && python3 -c 'from modules.settings_schema import write_settings as w; print(w({"kea_ztp_fragment": "/etc/kea/nmas/reservations-255.json"}, actor="dmarchak"))'
+   ```
+
+2. Install the responder's socket and service and enable the SOCKET, then
+   add the firewall rule. The commands are in `docs/DEPLOY_LINUX.md`, in the
+   section "The ZTP config responder".
+
+3. **Clear M3's hand-written reservation.** The tool's writer refuses a MAC
+   that is already reserved by an entry it did not write in that exact form
+   (M3's has no `hostname`), and a refusal is the right answer there:
+
+   ```bash
+   install -m 0644 /dev/null /etc/kea/nmas/.reservations-255.json.tmp
+   printf '[]\n' > /etc/kea/nmas/.reservations-255.json.tmp
+   mv -f /etc/kea/nmas/.reservations-255.json.tmp /etc/kea/nmas/reservations-255.json
+   sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
+   sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+   ```
+
+   Expect `0 reservation(s)` and the D4 line.
+
+4. Job health should carry `ztp-posture:subnet-255` as `ok` (D4 both
+   conditions, measured by the tool itself this time).
+
+**Then, in order:**
+
+5. The census baseline and a temporary list, exactly as in Phase 2.
+6. The captures, as in M3: terminals A and B on `br-mgmt`, C on the NMAS
+   host's `enp6s19`, and D on the probe's docker bridge right after the
+   deploy. Add one more on the NMAS host, the responder's own record:
+
+   ```bash
+   journalctl -u nmas-ztp-responder -f
+   ```
+
+7. **The wizard:** the temporary list, platform C8000v, source **ZTP**, MAC
+   `aa:bb:cc:00:02:50`, address to reserve `10.255.0.50`, interface
+   `GigabitEthernet2`. **The review must read:** `ZTP: this onboarding WRITES
+   Kea reservation aa:bb:cc:00:02:50 → 10.255.0.50 in subnet 255, and the
+   device fetches bp-ztp-a.cfg by TFTP from 10.255.0.10. Checked a moment
+   ago: … (D4)`. Any refusal is a finding, not an obstacle to route around.
+8. **Create.** Phase 1 runs credentials, commit, reserve, render. Then
+   `kea-m5.py show` must list the reservation with `hostname`, 66 and 67,
+   and the D4 line, and the pending row must read `ZTP: reserved …; no
+   lease yet`.
+9. **Boot the probe fresh**, with the same consumer checks as M3 (the
+   `/launch.py` hash and the three log lines) before the console. Watch it
+   and answer nothing until the config has been fetched: M3 showed
+   answering the dialog ends discovery.
+
+**Predictions, recorded before the run:**
+
+| # | What will be seen | Prediction |
+|---|---|---|
+| P-M4a | The address | DORA on `br-mgmt`; Kea's ACK carries 12 (`bp-ztp-a`, from the reservation, not an echo), 66 and 67, and no 3 or 6 |
+| P-M4b | The fetch | `RRQ "bp-ztp-a.cfg" octet` answered with DATA blocks and ACKs; the responder's journal says `served bp-ztp-a to 10.255.0.50`; one `bootstrap_config` row in `data/reveal_audit.jsonl` with a sha256 and no config text |
+| P-M4c | The device applies it | The console shows AutoInstall loading the file, and the prompt becomes `bp-ztp-a#` |
+| P-M4d | The pending row | Goes reservation → leased → `fetched its config at <time> (sha256 …); Verify reaches it`, each from its own source |
+| P-M4e | Phase 2 | **Verify** reaches the device with the staged credential, then the seven steps run and promotion comes last. The device is then in the inventory |
+| P-M4f | After promotion | A second request for the file (a node reload, or a TFTP client on the segment) is REFUSED and recorded: a promoted device is not served |
+| P-M4g | Two subsystems | While the console is open, `show call-home profile all \| include tools` says which subsystem queried `tools.cisco.com` in M3 |
+
+**Teardown:** as Phase 2's ([PHASE2_DHCP.md](PHASE2_DHCP.md)), whose census
+`--compare` against the step-5 baseline is the acceptance, plus the
+containerlab teardown as in step 7 above. Abandon is NOT the path for a
+promoted device. **A promoted ZTP device KEEPS its reservation**, because its
+address depends on it, exactly as a DHCP device's does. So the probe's is
+cleared explicitly, as in step 3, and `kea-m5.py show` must read 0
+reservations afterwards.
 
 ---
 

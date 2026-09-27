@@ -153,7 +153,7 @@ bootstrap config of a few blocks.
 
 Two decisions follow, both the operator's:
 
-**D5. How port 69 is bound** (proposed: (a)).
+**D5. How port 69 is bound: (a), decided by the operator (2026-09-27).** (b) grants the whole web app a capability to solve one socket ("a capability's name is not its power"); (c) is host state outside the repository that a rebuild must reproduce.
 
 - **(a) A systemd socket unit** (`ListenDatagram=69`, `BindToDevice=enp6s19`)
   activating a small `nmas-ztp-responder.service` as `dmarchak`. systemd
@@ -175,7 +175,7 @@ leaves from a new port and the client's ACKs return on that flow, which
 conntrack already tracks as established. The rule is the second layer; the
 responder's "only the reserved address" is the first.
 
-**D6. The TFTP implementation** (proposed: (a)).
+**D6. The TFTP implementation: (a), decided by the operator (2026-09-27).** Read requests only, octet, no options, because the capture measured exactly that; and tftpy's real cost is a write path that would then have to be proven unreachable, where a server with no write code needs no argument.
 
 - **(a) A minimal responder in the tool: read requests only, octet mode, no
   options, retransmit on timeout.** There is no write path to guard because
@@ -306,6 +306,8 @@ measured, in [P6_ZTP_PROBE.md](P6_ZTP_PROBE.md) section 11. Not built.
    serving the device.
 
 Every step carries its negative controls, run confined (`scripts/nmas-test`).
+
+**Built 2026-09-27**, each step with its controls run confined: step 1 `1b7e639`, step 2 `7416cbf`, step 3 `8ae4faa`, steps 4 and 5 `4095240`, step 6 with this record. Lab 8 is M4 in [P6_ZTP_PROBE.md](P6_ZTP_PROBE.md).
 
 ---
 

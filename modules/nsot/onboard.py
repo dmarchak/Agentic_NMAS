@@ -1525,10 +1525,18 @@ def real_steps(repo: str, actor: str) -> dict:
 #: named the device -- which is exactly the state this flow exists to end.
 ABANDON_STEPS = ("intent", "netbox", "credentials", "identity")
 
+#: P.6: a ZTP device's abandon. The reservation was written LAST, so it is
+#: removed FIRST, and removing it is also what stops the responder serving
+#: the device (it serves only an address the tool reserved). If it cannot be
+#: removed the name is NOT released: a released name with a reservation still
+#: holding its address is the "reclaimed while referenced" state this flow
+#: exists to prevent, and Kea is a store `manifest.release()` cannot see.
+ZTP_ABANDON_STEPS = ("reservation",) + ABANDON_STEPS
+
 
 def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                        actor: str = "", dry_run: bool = False,
-                       remove_netbox=None) -> dict:
+                       remove_netbox=None, remove_reservation=None) -> dict:
     """Undo an onboarding, in the reverse of the order that created it.
 
     **Why this exists rather than `manifest.release()` alone.** Release
@@ -1598,6 +1606,35 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
         if not ok:
             result["remaining"].append({"step": name, "detail": detail,
                                         "how_to_finish": how})
+
+    # 0. THE RESERVATION (ztp only), first: see ZTP_ABANDON_STEPS.
+    ztp_device = (entry or {}).get("address_source") == "ztp"
+    if ztp_device:
+        mac = (entry or {}).get("mgmt_mac", "")
+        how = ("remove it from the kea_ztp_fragment file, reload Kea, then run "
+               "abandon again")
+        if not mac:
+            _step("reservation", False, "a ztp device with no recorded MAC: the "
+                  "reservation cannot be found to remove", how)
+        elif dry_run:
+            _step("reservation", True, f"would remove the Kea reservation for {mac}")
+        else:
+            try:
+                if remove_reservation is None:
+                    from modules.nsot.ztp import write_reservations
+
+                    def remove_reservation(m):
+                        return write_reservations(removes=[m])
+                out = remove_reservation(mac) or {}
+                o = (out.get("outcomes") or {}).get(mac.strip().lower(), {})
+                if out.get("ok") and o.get("outcome") in ("removed", "absent"):
+                    _step("reservation", True, f"{o['outcome']}: {o.get('detail', '')}")
+                else:
+                    _step("reservation", False,
+                          o.get("detail") or out.get("error") or "not removed", how)
+            except Exception as exc:           # noqa: BLE001
+                log.exception("abandon: reservation step failed for %r", hostname)
+                _step("reservation", False, str(exc), how)
 
     # 1. INTENT. Staged first because it is the only step that needs the
     #    repo lock, and the only one whose failure is purely local.
@@ -1697,6 +1734,17 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
               "would release" if not outstanding
               else f"would refuse: {len(outstanding)} reference(s) remain")
         result["ok"] = not outstanding and all(s["ok"] for s in result["steps"])
+        return result
+
+    if ztp_device and not all(st["ok"] for st in result["steps"]
+                              if st["step"] == "reservation"):
+        _step("identity", False,
+              "not released: the device's Kea reservation remains, and releasing "
+              "the name would leave an address reserved for a device nobody "
+              "knows", "remove the reservation, then run abandon again")
+        result["ok"] = False
+        result["error"] = ("abandon did not finish; %d step(s) remain"
+                           % len(result["remaining"]))
         return result
 
     released = _m.release(repo, identity, list_name=list_name, actor=actor)

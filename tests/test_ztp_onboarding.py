@@ -377,3 +377,79 @@ class TestPhaseTwoIsUnchanged:
                     found.add(fn.name)
         assert found, "the scan found nothing; it can no longer see a dhcp comparison"
         assert found == self.DECLARED, found
+
+
+# ── step 6: abandon reverses it ─────────────────────────────────────────────
+
+class TestAbandon:
+    def _repo(self, tmp_path, monkeypatch, source="ztp"):
+        from modules.nsot import manifest as _m, repo as _repo
+        from modules.nsot.repo import GoldenItem, adopt_identity
+
+        list_dir = tmp_path / "probe"
+        repo = str(list_dir / "config_repo")
+        os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda _n: str(list_dir))
+        monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(tmp_path / "key.key"))
+        _repo.init_repo(repo)
+        identity = adopt_identity(repo, GoldenItem("bp-ztp-a", "", ""))
+        _m.upsert_device(repo, identity, "bp-ztp-a", platform="cisco_iosxe", pending=True,
+                         address_source=source, mgmt_mac=MAC, reserved_address=ADDR)
+        return repo
+
+    def _abandon(self, repo, remover, **kw):
+        return onboard.abandon_onboarding(
+            repo, "bp-ztp-a", "probe", actor="op@example.com",
+            remove_netbox=lambda *a, **k: {"ok": True, "deleted": [], "skipped": []},
+            remove_reservation=remover, **kw)
+
+    def test_the_reservation_goes_first_and_the_name_is_released(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path, monkeypatch)
+        calls = []
+        out = self._abandon(repo, lambda mac: calls.append(mac) or {
+            "ok": True, "outcomes": {MAC: {"outcome": "removed", "detail": f"{MAC} -> {ADDR}"}}})
+        assert calls == [MAC]
+        assert [st["step"] for st in out["steps"]] == list(onboard.ZTP_ABANDON_STEPS)
+        assert out["ok"] and out["released"] == "bp-ztp-a", out
+
+    def test_an_already_absent_reservation_is_not_a_failure(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path, monkeypatch)
+        out = self._abandon(repo, lambda mac: {
+            "ok": True, "outcomes": {MAC: {"outcome": "absent", "detail": "no reservation"}}})
+        assert out["ok"], out
+
+    def test_a_reservation_that_remains_keeps_the_name(self, tmp_path, monkeypatch):
+        from modules.nsot import manifest as _m
+
+        repo = self._repo(tmp_path, monkeypatch)
+        out = self._abandon(repo, lambda mac: {"ok": False, "error": "Kea unreachable",
+                                               "outcomes": {}})
+        assert not out["ok"] and not out["released"]
+        assert any(r["step"] == "reservation" for r in out["remaining"])
+        assert "not released" in [s for s in out["steps"] if s["step"] == "identity"][0]["detail"]
+        assert _m.find_by_name(repo, "bp-ztp-a")[0], "the name was released anyway"
+
+    def test_a_dry_run_removes_nothing(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path, monkeypatch)
+        calls = []
+        self._abandon(repo, lambda mac: calls.append(mac), dry_run=True)
+        assert calls == []
+
+    def test_another_source_has_no_reservation_step(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path, monkeypatch, source="dhcp")
+        calls = []
+        out = self._abandon(repo, lambda mac: calls.append(mac))
+        assert calls == [] and "reservation" not in [st["step"] for st in out["steps"]]
+
+    def test_a_refused_removal_keeps_the_name_and_says_why(self, tmp_path, monkeypatch):
+        """Found by a control that passed: the only failure fixture had empty
+        outcomes, so a mutated check crashed into the exception branch and
+        stayed correct by accident. A REFUSED removal is the real case."""
+        repo = self._repo(tmp_path, monkeypatch)
+        out = self._abandon(repo, lambda mac: {"ok": False, "outcomes": {
+            MAC: {"outcome": "refused",
+                  "detail": f"{MAC} is reserved outside the fragment"}}})
+        step = [s for s in out["steps"] if s["step"] == "reservation"][0]
+        assert not step["ok"] and "reserved outside the fragment" in step["detail"]
+        assert not out["released"]
