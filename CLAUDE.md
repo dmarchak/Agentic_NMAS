@@ -4715,6 +4715,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   time by measurement. The CLI chain's first stage now saves on the device,
   and `nmas-startup-check` (hourly, read-only) keeps asking, because the
   answer changes silently.
+- **A pattern earns a member by measurement, not by resemblance** (the
+  operator, 2026-09-27). C54 (a job-health row for a device that has left) was
+  proposed to widen to the heartbeat check, whose row read `failing` after
+  P.6's teardown. Measured, the heartbeat generator reconciles from NetBox,
+  and its row was STALE: correct failures from checks run while the probe
+  existed. A hand-started run read `ok`. The member was withdrawn, and the
+  real gap was a teardown step (re-run the checks the probe made fail),
+  because a correct probe-caused failure reads like a live one until the next
+  tick.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every

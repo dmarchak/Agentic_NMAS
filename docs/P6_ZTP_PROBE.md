@@ -1107,6 +1107,21 @@ IOS may retry the request.
    `r6-mgmt` only, and no `ztp-probe` docker network remains (lab host).
 10. **Step 5b again:** `r1# show ip route 10.255.1.16` still reads extern 2,
     metric 20, from `10.255.1.23`.
+11. **Re-run every check the probe made fail, then read job health**
+    (added 2026-09-27, the operator's). Run `nmas-jobs`. For any row that
+    reads `failing` and whose last failure falls inside the probe window,
+    start its unit once by hand, e.g. `sudo systemctl start
+    nmas-heartbeat-check.service`, and read `nmas-jobs` again: it must read
+    `ok`. The heartbeat check is the one known case. While `bp-ztp-a` was in
+    NetBox it was in the check's population and not in the installed rules
+    file, so the check failed correctly, and it reconciled the moment the
+    device left.
+    - **Why it is a step:** a correct failure caused by a probe stays
+      `failing` until the next tick, up to an hour for an hourly job. That
+      reads exactly like a real problem, and the next person cannot tell
+      them apart.
+    - **A row still failing after its re-run is not the probe's**, and is a
+      finding.
 
 **Kept, deliberately:** the responder's socket and service, the ufw rule, the
 fragment file (now `[]`) and `kea_ztp_fragment`. They are the host's ZTP

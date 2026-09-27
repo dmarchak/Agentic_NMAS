@@ -612,6 +612,11 @@ Isolating those was the point of doing this on a throwaway.
   from `10.255.1.23`, six hours old. The probe touched nothing of r6's
 - `nmas-credential-overrides` flagged `10.255.0.40` **ORPHAN** the moment its
   list stopped existing
+- **(Added 2026-09-27, from P.6's teardown.)** Re-run every job-health check
+  the probe made fail, by starting its unit once, and confirm `nmas-jobs`
+  reads it `ok`. A correct failure caused by a probe persists until the next
+  tick and reads exactly like a live problem. The steps are in
+  [P6_ZTP_PROBE.md](P6_ZTP_PROBE.md), teardown step 11.
 
 That last one is the survey's first real case and it is worth naming: the
 r6-era residue we cleaned by hand would now be **reported** rather than
