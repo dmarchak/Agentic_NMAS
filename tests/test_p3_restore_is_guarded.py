@@ -9,11 +9,16 @@ queue already hands off to, and the replay routes are gone.
 Routing two more buttons into that preview exposed its own defect: its confirm
 dialog showed counts and at most three replace and three residue lines, and
 never the lines to be ADDED. `commands` was computed by the route, carried to
-the browser, and drawn nowhere, while the confirm hash covered it. So the
-renderer is now a pure function, executed here against the route's real
-payload.
+the browser, and drawn nowhere, while the confirm hash covered it.
+
+Stage 7.1 moved the preview onto THE preview-then-confirm component: the
+route builds the six parts (`modules/preview_confirm.restore_preview`) and
+`previewConfirmHtml` draws them, executed here against the route's real
+payload over REAL `RestoreTarget`s (a stub target could not exhibit the
+restore's own gates, and C75 lived there).
 """
 
+import html as _html
 import json
 import os
 import re
@@ -21,15 +26,20 @@ import re
 import pytest
 
 from tests.js_source import shipped_js
+from tests.payload_render import render_preview
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GOLDEN_JS = os.path.join(ROOT, "static", "js", "gen", "partials__golden_repo.3.js")
 
+# The device carries a line the ref does not mention INSIDE a section (the
+# description under Gi3), so the residue part can show whether it names the
+# section (C73's fix, in the restore path this time).
 CAPTURED = """hostname r1
 interface GigabitEthernet2
  description old text
  ip address 10.1.1.1 255.255.255.0
 interface GigabitEthernet3
+ description retired uplink
  shutdown
 logging host 192.0.2.50
 """
@@ -39,24 +49,23 @@ interface GigabitEthernet2
  ip address 10.1.1.1 255.255.255.0
 interface GigabitEthernet3
  shutdown
+interface GigabitEthernet4
+ shutdown
 ip domain name example.invalid
 snmp-server location lab
 """
 
 
-class _Target:
-    def __init__(self, device, deployable=True, reasons=()):
-        self.device = device
-        self.platform = "cisco_iosxe"
-        self.deployable = deployable
-        self.blocking_reasons = list(reasons)
-        self.captured = CAPTURED
-        self.target_config = TARGET
+def _target(device, target_config=TARGET, captured=CAPTURED):
+    from modules.nsot.deploy import RestoreTarget
+
+    return RestoreTarget(device=device, platform="cisco_iosxe",
+                         target_config=target_config, captured=captured, ref="HEAD")
 
 
-def _real_payload(monkeypatch):
-    """What POST /golden/restore/preview returns, with the real merge_diff and
-    merge_commands, over two targets: one deployable, one blocked."""
+def _preview_for(monkeypatch, targets, skipped=(), body=None):
+    """What POST /golden/restore/preview returns for *targets*, with the real
+    merge_diff, merge_commands, prepare_restore and adapter."""
     import flask
 
     import routes.golden as golden
@@ -71,18 +80,25 @@ def _real_payload(monkeypatch):
                             "inventory_size": 0, "partial": False,
                             "denominator": 0, "scope_words": "in this list"})
     monkeypatch.setattr(golden, "_intent_preview", lambda ln, t: {"action": "none"})
-    monkeypatch.setattr("modules.nsot.deploy.prepare_restore",
-                        lambda target: {"config": target.target_config})
     monkeypatch.setattr("modules.nsot.restore.build_targets",
-                        lambda *a, **k: ([_Target("r1"),
-                                          _Target("r2", False, ["no golden at HEAD"])],
-                                         [{"hostname": "r9", "reason": "stale"}]))
+                        lambda *a, **k: (list(targets), list(skipped)))
     app = flask.Flask(__name__)
     app.register_blueprint(golden.bp)
-    body = app.test_client().post("/golden/restore/preview",
-                                  json={"ref": "HEAD", "devices": ["r1", "r2"]}).get_json()
-    assert body["ok"], body
-    return body
+    out = app.test_client().post("/golden/restore/preview",
+                                 json=body or {"ref": "HEAD"}).get_json()
+    assert out["ok"], out
+    return out
+
+
+def _real_payload(monkeypatch):
+    """Two real targets, one restorable and one with no stored config, and
+    one skipped device."""
+    return _preview_for(monkeypatch, [_target("r1"), _target("r2", target_config="")],
+                        [{"hostname": "r9", "reason": "stale"}],
+                        # r1's program shuts a new interface: a dangerous
+                        # line, authorised, so the fixture reaches both lists.
+                        {"ref": "HEAD", "devices": ["r1", "r2"],
+                         "authorise": {"r1": ["shutdown"]}})
 
 
 def _lift(page: str, name: str) -> str:
@@ -100,11 +116,20 @@ def _lift(page: str, name: str) -> str:
     return page[start:i + 1]
 
 
-def _render(payload, frm=None):
-    dukpy = pytest.importorskip("dukpy")
-    src = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "restorePreviewText")
-    return dukpy.evaljs(src + f"\nrestorePreviewText({json.dumps(payload)}, "
-                              f"{json.dumps(frm or {})})")
+def _html_of(payload) -> str:
+    return _html.unescape(render_preview(payload["preview"]))
+
+
+def _part(html: str, part: str, target: str = None) -> str:
+    """One part's HTML: in *target*'s card when named."""
+    if target:
+        html = html[html.index(f'data-pc-target="{target}"'):]
+    return re.search(rf'data-pc-part="{part}"(.*?)</section>', html, re.S).group(1)
+
+
+def _gates(payload, name):
+    t = next(t for t in payload["preview"]["targets"] if t["name"] == name)
+    return {g["name"]: g for g in t["gates"]}
 
 
 class TestThePreviewDrawsTheProgram:
@@ -112,53 +137,153 @@ class TestThePreviewDrawsTheProgram:
         payload = _real_payload(monkeypatch)
         r1 = next(d for d in payload["devices"] if d["device"] == "r1")
         assert len(r1["commands"]) >= 3, r1["commands"]       # the fixture can fail
-        text = _render(payload)
+        program = _part(_html_of(payload), "program", "r1")
         for line in r1["commands"]:
-            assert line in text, (line, text)
-        assert f"{len(r1['commands'])} line(s) will be sent, exactly these" in text
+            assert line in program, (line, program)
+        assert f"Exactly these {len(r1['commands'])} line(s) will be sent" in program
 
-    def test_what_it_replaces_and_what_stays_are_drawn(self, monkeypatch):
+    def test_what_it_replaces_is_drawn(self, monkeypatch):
+        payload = _real_payload(monkeypatch)
+        program = _part(_html_of(payload), "program", "r1")
+        assert "What these lines replace on the device" in program
+        assert "description old text  ->  description restored text" in program
+
+    def test_residue_is_drawn_under_its_section(self, monkeypatch):
+        """C73 in the restore path: the leftover line names its interface."""
         payload = _real_payload(monkeypatch)
         r1 = next(d for d in payload["devices"] if d["device"] == "r1")
-        assert r1["replace"] and r1["residue"], r1
-        text = _render(payload)
-        assert "replaces:" in text and "restored text" in text
-        assert "stays (not removed): logging host 192.0.2.50" in text
+        assert " description retired uplink" in r1["residue"], r1["residue"]
+        part = _part(_html_of(payload), "what_not")
+        assert "interface GigabitEthernet3\n description retired uplink" in part, part
+        assert "logging host 192.0.2.50" in part
+        assert 'data-concept="merge-only"' in part
 
     def test_a_blocked_device_says_nothing_is_sent_and_why(self, monkeypatch):
-        text = _render(_real_payload(monkeypatch))
-        assert "r2: BLOCKED, nothing will be sent: no golden at HEAD" in text
-        assert "r9: stale" in text
+        payload = _real_payload(monkeypatch)
+        html = _html_of(payload)
+        assert "r2</strong>: Not sent: no golden config for this device at HEAD" in html
+        assert "r9</strong>: Not touched: stale" in html
+        assert "Nothing is sent to this device: it is blocked" in _part(html, "program", "r2")
 
-    def test_a_dangerous_line_is_marked(self):
-        payload = {"summary": "", "scope": "", "devices": [{
-            "device": "s4", "deployable": True,
-            "commands": ["interface Gi0/1", " shutdown", "exit"],
-            "dangerous": [" shutdown"], "replace": [], "residue": []}]}
-        text = _render(payload)
-        assert "!  shutdown" in text
-        assert "dangerous" in text
+    def test_the_scope_is_a_stated_non_action(self, monkeypatch):
+        html = _html_of(_real_payload(monkeypatch))
+        assert "Never templates, bindings or approvals" in _part(html, "what_not")
 
-    def test_the_agents_diff_is_labelled_context(self, monkeypatch):
-        text = _render(_real_payload(monkeypatch),
-                       {"advisoryDiff": "-a\n+b", "advisoryNote": "seen at 03:00"})
-        assert text.index("NOT what will be sent") < text.index("line(s) will be sent")
+
+class TestTheRestoresOwnGates:
+    """The gates are `RestoreTarget.checks`, the list its refusal is computed
+    from, never the deploy's template gates (a restore has no template)."""
+
+    def test_a_restorable_device(self, monkeypatch):
+        gates = _gates(_real_payload(monkeypatch), "r1")
+        assert {n: g["state"] for n, g in gates.items()} == {
+            "golden config at this ref": "pass", "printable ASCII": "pass",
+            "credential unchanged": "pass",
+            "this ref's intent usable today": "not_applicable",
+            "dangerous lines": "pass",
+            "capture unchanged since this preview": "at_apply"}
+
+    def test_a_device_with_no_stored_config_reached_nothing_else(self, monkeypatch):
+        gates = _gates(_real_payload(monkeypatch), "r2")
+        assert gates["golden config at this ref"]["state"] == "fail"
+        assert gates["printable ASCII"]["state"] == "not_reached"
+        assert gates["credential unchanged"]["state"] == "not_reached"
+
+    def test_no_template_gate_is_drawn(self, monkeypatch):
+        names = set(_gates(_real_payload(monkeypatch), "r1"))
+        assert not names & {"template approved", "committed intent",
+                            "template reproduces the device"}
+
+
+class TestARestoreMayNotChangeACredential:
+    """C75. A ref holding the pre-rotation secret: the restore's program was
+    the old `username` line and the target was deployable. Measured
+    2026-09-27 before the guard; the deploy's rule now applies here too."""
+
+    OLD = "username admin privilege 15 secret 5 $1$oldsalt$oldoldoldoldold\n"
+    NEW = "username admin privilege 15 secret 5 $1$newsalt$newnewnewnewnew\n"
+
+    def test_the_device_is_blocked_by_the_credential_gate(self, monkeypatch):
+        payload = _preview_for(monkeypatch, [
+            _target("s4", target_config="hostname s4\n" + self.OLD,
+                    captured="hostname s4\n" + self.NEW)])
+        gate = _gates(payload, "s4")["credential unchanged"]
+        assert gate["state"] == "fail"
+        assert "re-apply HEAD to s4" in gate["detail"]
+        assert "with a different value" in gate["detail"]
+        target = payload["preview"]["what"]["targets"][0]
+        assert target["state"] == "blocked" and target["selectable"] is False
+
+    def test_the_refusal_never_prints_a_value(self, monkeypatch):
+        payload = _preview_for(monkeypatch, [
+            _target("s4", target_config="hostname s4\n" + self.OLD,
+                    captured="hostname s4\n" + self.NEW)])
+        text = json.dumps(payload["preview"])
+        for value in ("oldoldoldoldold", "newnewnewnewnew"):
+            assert value not in text
+
+    def test_the_apply_path_refuses_it_too(self):
+        from modules.nsot.deploy import DeployRefused, prepare_restore
+
+        with pytest.raises(DeployRefused, match="credential"):
+            prepare_restore(_target("s4", target_config="hostname s4\n" + self.OLD,
+                                    captured="hostname s4\n" + self.NEW))
+
+    def test_the_same_credential_passes(self, monkeypatch):
+        """Control: an unchanged credential line is not a change."""
+        payload = _preview_for(monkeypatch, [
+            _target("s4", target_config="hostname s4\n" + self.NEW + "ip domain name x\n",
+                    captured="hostname s4\n" + self.NEW)])
+        assert _gates(payload, "s4")["credential unchanged"]["state"] == "pass"
+
+    def test_an_account_the_device_lacks_is_added_not_refused(self, monkeypatch):
+        """May ADD an account: the deploy rule's second half, unchanged."""
+        payload = _preview_for(monkeypatch, [
+            _target("s4", target_config="hostname s4\n" + self.NEW
+                    + "username backup privilege 15 secret 5 $1$b$bbbbbbbbbbbbbbbb\n",
+                    captured="hostname s4\n" + self.NEW)])
+        assert _gates(payload, "s4")["credential unchanged"]["state"] == "pass"
 
 
 class TestTheWiring:
-    """The render is pure; these pin that the flow actually uses it."""
+    """The flow draws the component and confirms what it drew."""
 
-    def test_the_restore_flow_confirms_on_the_drawn_program(self):
+    def test_the_restore_flow_confirms_on_the_drawn_preview(self):
         src = open(GOLDEN_JS, encoding="utf-8").read()
         flow = _lift(src, "previewBaselineRestore")
-        assert "_confirmProgram(" in flow and "restorePreviewText(d, from)" in flow
+        assert "_confirmRestorePreview(`Re-apply ${tag}`, d, from)" in flow
+        assert "_restoreSelected(d.preview)" in flow
+        assert "x.deployable).forEach" not in flow, "confirms what the preview selects"
         # The only confirm() left is the un-onboard question, which has no program.
         assert flow.count("confirm(") == 1, flow.count("confirm(")
 
-    def test_the_modal_puts_config_in_as_text_never_html(self):
-        modal = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "_confirmProgram")
-        assert "querySelector('pre').textContent = text" in modal
-        assert "innerHTML = text" not in modal
+    def test_the_modal_draws_the_component(self):
+        modal = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "_confirmRestorePreview")
+        assert "previewConfirmHtml(d.preview, {})" in modal
+        assert "previewConfirmButton(d.preview" in modal
+
+    def test_the_agents_diff_is_labelled_context_and_goes_in_as_text(self):
+        modal = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "_confirmRestorePreview")
+        assert "NOT what will be sent" in modal
+        assert "pre.textContent = from.advisoryDiff" in modal
+        assert modal.index("data-advisory") < modal.index("data-restore-preview")
+
+    def test_the_old_renderers_are_gone(self):
+        src = open(GOLDEN_JS, encoding="utf-8").read()
+        for gone in ("function restorePreviewText", "function _confirmProgram"):
+            assert gone not in src, gone
+
+    def test_what_is_confirmed_is_what_the_preview_selects(self, monkeypatch):
+        """Executed against the real preview: r1 (restorable) and not r2
+        (blocked), with the hashes the preview drew."""
+        dukpy = pytest.importorskip("dukpy")
+        payload = _real_payload(monkeypatch)
+        src = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "_restoreSelected")
+        chosen = dukpy.evaljs(src + f"\n_restoreSelected({json.dumps(payload['preview'])})"
+                                    ".map(function (t) { return [t.name, t.select_data]; })")
+        r1 = next(d for d in payload["devices"] if d["device"] == "r1")
+        assert chosen == [["r1", {"hash": r1["capture_hash"],
+                                  "command-hash": r1["command_hash"]}]]
 
     def test_bulk_ops_opens_the_guarded_preview_at_head(self):
         src = open(os.path.join(ROOT, "static", "js", "gen", "index.1.js"),

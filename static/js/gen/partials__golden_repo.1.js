@@ -151,17 +151,20 @@ function _gBaselineCoverage(b) {
 /* A baseline can be stale in two directions. The usual one is being behind.
    The other is that it names credentials the fleet has rotated away from —
    re-applying it would re-publish a secret that exists in history precisely
-   because rotation was meant to kill it. validate_restored_intent() refuses
-   such a device at plan time; this says so before the click. */
+   because rotation was meant to kill it. The restore refuses such a device at
+   plan time (its credential guard, C75, and validate_restored_intent()); this
+   says so before the click. */
 function _gCredWarning(b) {
   const stale  = b.credential_stale || [];
   const silent = b.credential_silent || [];
   const none   = b.no_intent || [];
   if (stale.length) {
-    // `silent` is the set the restore would NOT refuse — it would land, and
-    // this tool would lose SSH to those devices.
+    // `silent` is the set the restore would NOT refuse. Since C75 the
+    // restore refuses any rewrite of a credential a device holds, so what is
+    // left is an account the baseline has and the device lacks: it would be
+    // ADDED back. Not a lockout, and not nothing.
     const worst = silent.length
-      ? `<div class="small text-danger">NMAS would LOSE ACCESS to: ${silent.map(_gEsc).join(', ')}</div>`
+      ? `<div class="small text-danger">would add back an account on: ${silent.map(_gEsc).join(', ')}</div>`
       : '';
     return `<span class="badge bg-danger-subtle text-danger-emphasis"
              title="These devices' username lines at this baseline differ from the ones they have now. Re-applying would change their credentials back.">
@@ -188,20 +191,24 @@ window.confirmBaselineRestore = function (tag) {
   const b = (window._gBaselineCache || []).find(x => x.tag === tag) || {};
   const stale   = b.credential_stale || [];
   const silent  = b.credential_silent || [];
-  const refused = b.credential_refused || [];
+  // Refused by either guard: the intent check or the credential guard (C75).
+  const refused = [...new Set([...(b.credential_refused || []),
+                               ...(b.credential_guarded || [])])].sort();
   if (!stale.length) { previewBaselineRestore(tag); return; }
 
   let msg = `${tag} predates the credentials now on: ${stale.join(', ')}.\n\n`;
   if (silent.length) {
     // The dangerous case, stated as a consequence rather than a category.
-    msg += `WOULD ACTUALLY APPLY to: ${silent.join(', ')}\n` +
-           `Those devices accept a credential change without complaint, and ` +
-           `NMAS holds the NEW password — re-applying this baseline would ` +
-           `push the OLD one and NMAS would LOSE SSH ACCESS to them.\n` +
-           `Recovery is the serial console (see the rotation plan).\n\n`;
+    msg += `WOULD APPLY to: ${silent.join(', ')}\n` +
+           `No credential those devices hold is rewritten (the restore ` +
+           `refuses that), but an account this baseline has and the device ` +
+           `no longer does would be ADDED back. If it was removed on ` +
+           `purpose, do not re-apply.\n\n`;
   }
   if (refused.length) {
-    msg += `Refused at plan time (safe): ${refused.join(', ')}\n\n`;
+    msg += `Refused at plan time (safe): ${refused.join(', ')}\n` +
+           `Re-applying would rewrite a credential they hold, so the preview ` +
+           `blocks them and nothing is sent to them.\n\n`;
   }
   msg += `Type the word APPLY in the next prompt to continue to the preview.`;
   if (!confirm(msg)) return;

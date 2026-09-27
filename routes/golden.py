@@ -137,10 +137,13 @@ def baselines():
                                             devices)
             entry["credential_stale"] = sorted(gaps["stale"])
             entry["credential_detail"] = gaps["stale"]
-            # Stale AND not refused by the intent guard: re-applying these
-            # would actually land, and this tool would lose access to them.
+            # Stale AND refused by neither guard. Since C75 nothing that
+            # rewrites a held credential passes, so these would only ADD an
+            # account the baseline has and the device lacks.
             entry["credential_silent"] = gaps["silent"]
             entry["credential_refused"] = gaps["refused"]
+            # The restore's own credential guard refuses these (C75).
+            entry["credential_guarded"] = gaps["guarded"]
             entry["no_intent"] = gaps["no_golden"]
         return jsonify({"ok": True, "baselines": entries})
     except Exception as exc:                  # noqa: BLE001
@@ -166,7 +169,7 @@ def restore_preview():
     from modules.nsot.deploy import (NotAuthorised, assert_authorised,
                                      command_fingerprint, dangerous_in,
                                      merge_commands, merge_diff,
-                                     prepare_restore)
+                                     prepare_restore, residue_in_context)
     from modules.nsot import normalize
     from modules.nsot.restore import build_targets
     from routes.deploy import _capture_hash
@@ -195,6 +198,10 @@ def restore_preview():
                  "deployable": target.deployable,
                  "blocking_reasons": target.blocking_reasons,
                  "capture_hash": _capture_hash(target.captured),
+                 # The restore's own gates, by name: the list its refusal is
+                 # computed from, so the preview and the refusal cannot differ.
+                 "checks": [{"name": n, "state": st, "detail": dt}
+                            for n, st, dt in target.checks],
                  # The intent half of the same unit, stated before it happens.
                  "intent": _intent_preview(list_name, target)}
         try:
@@ -205,6 +212,10 @@ def restore_preview():
                 "add": diff["add"],
                 "replace": diff["replace"],
                 "residue": diff["residue"],
+                # Each residue line under its section (C73, which the deploy
+                # preview had and this path had too).
+                "residue_in_context": residue_in_context(diff["residue"],
+                                                         target.captured),
                 # Blocks a re-apply cannot send at all — certificate chains,
                 # licence UDI, banners. Correct to exclude, and the operator
                 # has to know: a drifted banner on s3 is NOT re-applied by
@@ -242,41 +253,53 @@ def restore_preview():
                        if (d.get("intent") or {}).get("action") == "restore"]
     un_onboarding = [d["device"] for d in devices
                      if (d.get("intent") or {}).get("action") == "un_onboard"]
-    return jsonify({
+    scope = ("Device configuration AND committed intent from this ref — "
+             "one unit per device, one commit. Never templates, bindings "
+             "or approvals: those are code, and rolling them back to fix "
+             "a network would silently revert template fixes.")
+    summary = (
+        f"Re-applying stored configuration to {len(devices)} of "
+        f"{cov['denominator']} device(s) {cov['scope_words']}."
+        + (" This ref is a PARTIAL restore point: it predates "
+           + ", ".join(s["hostname"] for s in skipped if s.get("not_at_ref"))
+           + ", which will be left exactly as they are."
+           if cov["partial"] else "")
+        + (f" {residue_total} line(s) present on devices are absent from "
+           "this ref and will NOT be removed." if residue_total else "")
+        + (f" {excluded_total} block(s) cannot be re-applied at all "
+           "(certificates, licence UDI, banners)." if excluded_total else "")
+        + (f" Committed intent moves back to this ref for "
+           f"{len(intent_restored)} device(s)." if intent_restored else "")
+        + (f" UN-ONBOARDING (committed intent removed): "
+           f"{', '.join(un_onboarding)}." if un_onboarding else "")
+        + (f" Skipped: {', '.join(s['hostname'] for s in skipped)}."
+           if skipped else ""))
+    # Stage 7.1: the six parts, from the one builder, drawn by the one
+    # renderer. The fields below stay: the apply's confirmations are read
+    # from them by the same client.
+    from modules.preview_confirm import restore_preview as _parts
+    preview = _parts(devices, skipped, ref=ref, summary=summary, scope=scope,
+                     request=request)
+    # Masked on the way out, AFTER every hash is computed from the truthful
+    # program (C77): stored config lines (the program, residue, what a line
+    # replaces) came back verbatim.
+    from modules.outbound import mask_payload
+    return jsonify(mask_payload({
         "ok": True, "ref": ref, "list": list_name, "mode": "re-apply",
-        "devices": devices, "skipped": skipped,
+        "devices": devices, "skipped": skipped, "preview": preview,
         "intent_restored": intent_restored, "un_onboarding": un_onboarding,
         # Echoed back so the confirm dialog can show "what the agent saw"
         # beside the freshly computed program. Never an input to anything.
         "advisory_diff": (data.get("advisory_diff") or ""),
         "approval_id": (data.get("approval_id") or ""),
-        "scope": ("Device configuration AND committed intent from this ref — "
-                  "one unit per device, one commit. Never templates, bindings "
-                  "or approvals: those are code, and rolling them back to fix "
-                  "a network would silently revert template fixes."),
+        "scope": scope,
         # C23: the denominator is the INVENTORY for a whole restore and the
         # selection for a scoped one, never "whatever the ref happened to
         # hold". A device the ref predates is named in `skipped`.
         "inventory_size": cov["inventory_size"],
         "partial": cov["partial"],
-        "summary": (
-            f"Re-applying stored configuration to {len(devices)} of "
-            f"{cov['denominator']} device(s) {cov['scope_words']}."
-            + (" This ref is a PARTIAL restore point: it predates "
-               + ", ".join(s["hostname"] for s in skipped if s.get("not_at_ref"))
-               + ", which will be left exactly as they are."
-               if cov["partial"] else "")
-            + (f" {residue_total} line(s) present on devices are absent from "
-               "this ref and will NOT be removed." if residue_total else "")
-            + (f" {excluded_total} block(s) cannot be re-applied at all "
-               "(certificates, licence UDI, banners)." if excluded_total else "")
-            + (f" Committed intent moves back to this ref for "
-               f"{len(intent_restored)} device(s)." if intent_restored else "")
-            + (f" UN-ONBOARDING (committed intent removed): "
-               f"{', '.join(un_onboarding)}." if un_onboarding else "")
-            + (f" Skipped: {', '.join(s['hostname'] for s in skipped)}."
-               if skipped else "")),
-    })
+        "summary": summary,
+    }))
 
 
 def _intent_preview(list_name: str, target) -> dict:

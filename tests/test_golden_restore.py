@@ -892,8 +892,11 @@ class TestBaselineCredentialGaps:
         assert sorted(out["stale"]) == ["s1", "s2"]
         assert out["stale"]["s1"] == {"at_ref": "secret 5", "at_head": "secret 9"}
         assert out["refused"] == [], "the name check finds nothing — that is the point"
-        assert out["silent"] == ["s1", "s2"], (
-            "stale and NOT refused: re-applying would land and lock us out")
+        # Before C75 this was the lockout: stale, refused by nothing, and it
+        # would land. Now the restore's own credential guard refuses both,
+        # asked of a real RestoreTarget, so `silent` is empty.
+        assert out["guarded"] == ["s1", "s2"]
+        assert out["silent"] == [], "the credential guard refuses a rewrite of a held secret"
 
     def test_an_unchanged_device_is_not_flagged(self, tmp_path, monkeypatch):
         from modules.nsot.restore import baseline_credential_gaps
@@ -966,6 +969,10 @@ class TestBaselineCredentialGaps:
 
         out = baseline_credential_gaps(repo, "baseline/x", "Lab", ["s1"])
         assert "s1" in out["stale"]
+        # The device holds an account the ref lacks: a re-apply never removes
+        # it, and rewrites nothing the device holds, so the guard does not
+        # refuse it. Stale, and correctly NOT a lockout.
+        assert out["guarded"] == [] and out["silent"] == ["s1"]
 
     def test_golden_user_lines_distinguishes_absent_from_empty(self, tmp_path):
         from modules.nsot.restore import golden_user_lines

@@ -221,18 +221,14 @@ class TestTheWizardSendsTheAuthorisationItsHashCovers:
 
 
 class TestTheRestorePathCanAuthorise:
-    def test_the_preview_folds_the_authorisation_into_the_hash(self, monkeypatch):
-        import flask
-
+    @staticmethod
+    def _stub(monkeypatch):
+        """A REAL RestoreTarget through the real route and prepare_restore."""
         import routes.golden as golden
-        from tests.test_p3_restore_is_guarded import _Target
+        from modules.nsot.deploy import RestoreTarget
 
-        class _T(_Target):
-            pass
-
-        t = _T("s4")
-        t.captured = CAPTURE
-        t.target_config = INTENT
+        t = RestoreTarget(device="s4", platform="cisco_ios", target_config=INTENT,
+                          captured=CAPTURE, ref="HEAD")
         monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
         # build_targets is stubbed with a made-up list, so coverage() is too: it
         # reads that list's inventory, and resolving a list that does not exist
@@ -243,9 +239,14 @@ class TestTheRestorePathCanAuthorise:
                                 "inventory_size": 0, "partial": False,
                                 "denominator": 0, "scope_words": "in this list"})
         monkeypatch.setattr(golden, "_intent_preview", lambda ln, x: {"action": "none"})
-        monkeypatch.setattr("modules.nsot.deploy.prepare_restore",
-                            lambda target: {"config": target.target_config})
         monkeypatch.setattr("modules.nsot.restore.build_targets", lambda *a, **k: ([t], []))
+
+    def test_the_preview_folds_the_authorisation_into_the_hash(self, monkeypatch):
+        import flask
+
+        import routes.golden as golden
+
+        self._stub(monkeypatch)
         app = flask.Flask(__name__)
         app.register_blueprint(golden.bp)
         c = app.test_client()
@@ -260,16 +261,25 @@ class TestTheRestorePathCanAuthorise:
         src = open(GOLDEN_JS, encoding="utf-8").read()
         flow = _lift(src, "previewBaselineRestore")
         assert flow.count("authorise: from.authorise || {}") == 2, "preview AND apply"
-        assert flow.index("_authoriseDangerous(") < flow.index("_confirmProgram(")
+        assert flow.index("_authoriseDangerous(") < flow.index("_confirmRestorePreview(")
 
-    def test_the_restore_text_marks_authorised_and_refused_lines(self):
-        dukpy = pytest.importorskip("dukpy")
-        src = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "restorePreviewText")
-        dev = {"device": "s4", "deployable": True, "commands": ["interface Gi0/2", " shutdown", "exit"],
-               "dangerous": ["shutdown"], "replace": [], "residue": []}
-        authed = dukpy.evaljs(src + "\nrestorePreviewText(" + json.dumps(
-            {"devices": [dict(dev, authorised=["shutdown"])]}) + ", {})")
-        refused = dukpy.evaljs(src + "\nrestorePreviewText(" + json.dumps(
-            {"devices": [dict(dev, authorised=[])]}) + ", {})")
-        assert "A  shutdown" in authed and "AUTHORISED by you" in authed
-        assert "!  shutdown" in refused and "will be refused" in refused
+    def test_the_restore_preview_marks_authorised_and_refused_lines(self, monkeypatch):
+        """Drawn by the component from the real restore preview, both ways."""
+        import flask
+
+        import routes.golden as golden
+        from tests.payload_render import render_preview
+
+        self._stub(monkeypatch)
+        app = flask.Flask(__name__)
+        app.register_blueprint(golden.bp)
+        c = app.test_client()
+        refused = c.post("/golden/restore/preview", json={"ref": "HEAD"}).get_json()
+        authed = c.post("/golden/restore/preview",
+                        json={"ref": "HEAD", "authorise": {"s4": ["shutdown"]}}).get_json()
+        a_html, r_html = render_preview(authed["preview"]), render_preview(refused["preview"])
+        assert "dangerous: AUTHORISED" in a_html
+        assert "dangerous: tick to authorise this exact line" in r_html
+        assert refused["preview"]["what"]["targets"][0]["state"] == "not_authorised"
+        assert refused["preview"]["what"]["targets"][0]["selectable"] is False
+        assert authed["preview"]["what"]["targets"][0]["selectable"] is True

@@ -80,8 +80,10 @@ function _updateDeploySummary() {
   btn.textContent = state.text;
   document.getElementById('deployPlanSummary').innerHTML = boxes.length
     ? `Confirmed: <strong>${boxes.map(b => _dEsc(b.dataset.device)).join(', ')}</strong>. `
-      + 'Each device is re-read at deploy time; one whose config changed since this '
-      + 'plan is skipped and reported, not deployed against a diff you did not see.'
+      + 'Each device\'s stored capture is re-read at deploy time; one whose capture '
+      + 'changed since this plan is skipped and reported, not deployed against a diff '
+      + 'you did not see. A change made on the device itself since its capture is NOT '
+      + 'detected: save its golden first.'
     : 'Tick the devices to deploy. Unticked devices are not touched.';
 }
 

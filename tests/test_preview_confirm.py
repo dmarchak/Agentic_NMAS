@@ -143,7 +143,7 @@ class TestTheDeployScreen:
     def test_the_apply_time_checks_are_never_drawn_as_passed(self, monkeypatch):
         plan = P.deploy_plan(monkeypatch)
         gates = {g["name"]: g["state"] for g in plan["preview"]["targets"][0]["gates"]}
-        assert gates["device unchanged since capture"] == "at_apply"
+        assert gates["capture unchanged since this preview"] == "at_apply"
         assert gates["credential unchanged"] == "at_apply"
 
     def test_every_blocking_condition_has_a_gate_by_name(self, monkeypatch):
@@ -165,6 +165,32 @@ class TestTheDeployScreen:
         assert gates[0] == pc.gate("artifact built", "fail", "no golden config")
         assert {g["state"] for g in gates[1:]} == {"not_reached"}
         assert p["what"]["targets"][0]["selectable"] is False
+
+
+class TestTheCaptureGateSaysWhatItCompares:
+    """C78. The gate read "device unchanged since capture: re-read at apply",
+    and the apply re-reads the STORED capture, never the device. Both
+    previews and the deploy wizard's summary said so. The sentence now names
+    what is compared and what is not."""
+
+    def test_the_gate_names_the_stored_capture_and_the_limit(self, monkeypatch):
+        plan = P.deploy_plan(monkeypatch)
+        gate = {g["name"]: g for g in plan["preview"]["targets"][0]["gates"]}[
+            "capture unchanged since this preview"]
+        assert "stored capture is re-read" in gate["detail"]
+        assert "not detected" in gate["detail"]
+
+    def test_no_screen_claims_the_device_is_re_read(self):
+        for f in ("partials__deploy_wizard.1.js", "partials__golden_repo.3.js"):
+            assert "Each device is re-read" not in shipped(f), f
+        src = open(os.path.join(ROOT, "modules", "preview_confirm.py"), encoding="utf-8").read()
+        assert "a changed device is skipped" not in src
+
+    def test_the_apply_compares_the_stored_capture(self):
+        """What the sentence now says, read from the code it describes: the
+        apply's "fresh" capture is the stored one the plan used."""
+        src = open(os.path.join(ROOT, "routes", "deploy.py"), encoding="utf-8").read()
+        assert src.count("fresh_captures[hostname] = captured") == 2
 
 
 class TestConfirmSaysWho:
@@ -202,9 +228,9 @@ class TestConfirmSaysWho:
 
 #: Screens moved onto the component, and the ones still to move, in the
 #: approved order. RETROFIT_PENDING only shrinks.
-RETROFITTED = {"deploy": "partials__deploy_wizard.1.js"}
+RETROFITTED = {"deploy": "partials__deploy_wizard.1.js",
+               "restore": "partials__golden_repo.3.js"}
 RETROFIT_PENDING = {
-    "restore": "partials__golden_repo.3.js",
     "onboarding": "partials__onboard_wizard.1.js",
     "netbox import/remove": "partials__netbox_safety_modal.1.js",
     # No screen: the routes (/templatize/bulk/preview, /apply) are reached by
@@ -242,7 +268,7 @@ class TestNoSecondImplementation:
         assert moved == [], f"retrofitted: move to RETROFITTED: {moved}"
 
     def test_the_pending_list_only_shrinks(self):
-        assert len(RETROFIT_PENDING) <= 4
+        assert len(RETROFIT_PENDING) <= 3
         for screen, f in RETROFIT_PENDING.items():
             assert f is None or os.path.exists(os.path.join(GEN, f)), screen
 

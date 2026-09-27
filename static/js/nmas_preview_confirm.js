@@ -144,6 +144,13 @@
         return '<pre class="small bg-body-tertiary p-2 rounded mt-1 mb-1" '
           + 'style="max-height:140px;overflow:auto">' + esc(x.join('\n')) + '</pre>';
       };
+      // A plain note: a title and its lines (the restore's "what these lines
+      // replace on the device").
+      if (n.lines) {
+        body += '<div class="mt-2 small" data-pc-note><div class="fw-semibold">'
+          + esc(n.title) + '</div>' + pre(n.lines) + '</div>';
+        return;
+      }
       body += '<div class="mt-2 small" data-attribution><div class="fw-semibold">'
         + esc(n.title) + '</div>'
         + (n.intent_commit ? '<div class="text-muted">This edit: <code>'

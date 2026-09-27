@@ -1000,7 +1000,9 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_route_gates.py` | P.3: every mutating endpoint and terminal event declared, both directions with floors; all 87 gated endpoints answer 403 with no identity and no view runs (views replaced by sentinels); the table agrees with every in-route gate; refused before input; a person passes and a service does not; the actor is the verified one |
 | `test_p3_cuts.py` | P.3 step 2: the eight direct-push routes answer 404 and nothing shipped names them; bulk config mode and chat playbook replay refused by name; the Configure forms send nothing |
 | `test_harness_leaves_the_app_log_alone.py` | the suite never writes into the app log of the checkout it runs in (C26) |
-| `test_p3_restore_is_guarded.py` | P.3 step 3 (D5): both Restore Golden Config buttons open the guarded preview at HEAD; the preview draws every line it will send, executed against the route's real payload |
+| `test_p3_restore_is_guarded.py` | P.3 step 3 (D5): both Restore Golden Config buttons open the guarded preview at HEAD; 7.1: the preview is the shared component over REAL `RestoreTarget`s, every line sent drawn, residue under its section (C73), the restore's own gates and no template gate, the confirm covering exactly what the preview selects; C75: a restore that would rewrite a held credential is blocked at preview and apply, never printing the value |
+| `test_merge_is_keyed_on_the_section.py` | C76: the merge program keyed on (section, line): every child line the fleet shares between two stanzas (44, real configs, one real line removed from one real stanza) is sent to its own stanza; two new stanzas needing one child each get it; the consistency assertion names a skipped line |
+| `test_previews_mask_secrets.py` | C77: neither preview returns a planted secret (as residue or as a line the program adds), the line still drawn with its slot masked; the command hash is of the truthful program, and a masked plan driven into the apply is accepted while a wrong hash is refused |
 | `test_terminal_privilege.py` | B13: the terminal sends the enable secret ONLY in answer to a password prompt, once; a device at `#` receives nothing; the page states the terminal is break-glass and unmasked by design |
 | `test_p3_wizard_draws_the_program.py` | P.3 step 4 (D4): the wizard draws every line of the program, with one authorise box per dangerous line that re-plans the device; an authorised `shutdown` deploys end to end and a changed authorisation is refused; restore can authorise; C24's unbuildable device is named |
 | `test_job_health.py` (C28 rows) | a guard-gating setting empty on this install is an `unset_guard` row naming what it gates; unreadable settings is one `unknown` row; the real scan covers the four the erasure blanked |
@@ -4899,6 +4901,17 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   RIP-only device is no longer invisible" and passed while every RIP device
   read 0. It is the second time in a day: the BGP sample from memory had
   eight columns.
+- **A fixture sometimes has to build a state the live fleet does not
+  currently offer. The rule then is that the PIECES are real even when the
+  arrangement is not** (the operator, 2026-09-27). C74's row rule needed a
+  junk line INSIDE a BGP table, and no device prints one there. The test
+  took r3's own junk line, the one that sits between the IPv4 and IPv6
+  tables, and placed it inside one. Nothing in the input was typed from
+  memory, and the case now exists. Likewise, each golden-state failure is
+  a minimal edit of a real capture (one peer down, one neighbour stuck).
+  The pieces cannot be invented, because an invented piece is how C64-C67
+  passed. Moving them is allowed, since otherwise every case the live
+  fleet happens not to be in right now goes untested.
 - **A parser written against imagined output passes every test written the
   same way** (C64-C67, the operator's sweep of `pipeline.py`, 2026-09-27).
   Four readers of device text were wrong on the real fleet, and the suite
@@ -4928,6 +4941,53 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   line, the census's precedent: the tool sees what the managed devices
   report about themselves. The live claim reads "configured and working,
   resting on 4 routing peer(s) outside management".
+- **Listing what a claim depends on is a way of finding defects, not only
+  a way of being honest about limits** (the operator, 2026-09-27). C74
+  was found by asking what "configured and working" rested on, one input
+  at a time. BGP rested on `show ip bgp summary`, and that command lists
+  IPv4 only, while r3's and r4's intent declares an IPv6 peer. So the
+  claim had been judged on half the sessions it named, and no test or
+  symptom pointed there. Each listed dependency is a question about the
+  code: which reader supplies it, and what does that reader leave out? Ask
+  those questions before writing the limits line.
+- **A preview's gates part is that method applied to a screen** (7.1's
+  restore retrofit, 2026-09-27). Drawing each gate by name meant stating
+  what each check establishes, and stating it found four defects before
+  C70 ran:
+  - **C75.** A restore could CHANGE a credential the device holds. The
+    deploy's rule had never been applied to restore, and a baseline
+    predating a rotation pushed the old `username` line. The Baselines
+    panel's acknowledgement let it through.
+  - **C76.** The merge program compared lines as TEXT. Intent adding
+    ` ipv6 ospf 1 area 0` to an interface on a device whose other
+    interfaces had it produced an EMPTY program on deploy and restore
+    alike. `classify_diff()`, in the same function, was chain-aware, so
+    the preview named a line the program did not send.
+  - **C77.** Both previews returned stored config verbatim.
+  - **C78.** The gate "device unchanged since capture: re-read at apply"
+    re-read the STORED capture, never the device. This session wrote that
+    sentence into the deploy adapter, and the deploy wizard had said it for
+    months.
+
+  A gate drawn by name is a claim with a name. Before drawing one, find
+  the line of code that makes it true.
+- **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
+  `blocking_reasons` derives from it, and the preview draws it as gates.
+  The list covers a stored config at the ref, printable ASCII, and
+  credential unchanged. The refusal says "re-apply <ref> to", never
+  "deploy to". When both sides carry the same credential form, it says
+  "with a different value", because the value is never printed and two
+  identical strings read as no difference.
+- **A population defined by the HTTP method missed a leak again** (C77, the
+  B16 lesson's newest member). B11 swept every GET with every store
+  planted. `/deploy/plan` and `/golden/restore/preview` are POSTs that
+  compute and return stored config, and both returned a planted community,
+  as residue and as a line the program adds. `outbound.mask_payload()`
+  masks the response AFTER every hash is computed from the truthful
+  program, so the confirm is still bound to what is sent. A masked plan
+  driven into the apply is accepted, and a wrong hash is refused. The sweep
+  that would find the next one (every `not_device` POST) is open in the
+  register.
 - **"Configured" and "configured and working" are different claims, and a
   baseline states which it makes** (E7, 2026-09-27). A baseline records
   configuration, so a broken moment and a good one read the same. A golden
@@ -4950,7 +5010,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **44 open at 2026-09-27**, counted from the rows: 38 recorded only in
+present when each was recorded. **46 open at 2026-09-27**, counted from the rows: 40 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

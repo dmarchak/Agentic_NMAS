@@ -106,6 +106,19 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
             "confirm": confirm}
 
 
+#: What the apply compares, stated exactly (register C78). This gate read
+#: "device unchanged since capture: re-read at apply", and the apply re-reads
+#: the STORED capture, never the device: the pipeline reads the device at its
+#: pre-change snapshot and compares it with nothing. A sentence claiming a
+#: check the code does not make is the finding, so it says what is checked
+#: and what is not.
+CAPTURE_GATE = "capture unchanged since this preview"
+CAPTURE_GATE_DETAIL = ("the stored capture is re-read at apply, and a change to it "
+                       "refuses this device. The DEVICE is not compared with it: a "
+                       "change made on the device since its capture is not detected "
+                       "here, so save its golden first")
+
+
 def _deploy_gates(d: dict, failed: str) -> list:
     """One gate per reason a deploy can be refused, by name: the same
     conditions `blocking_reasons` states as sentences, plus the two checked
@@ -163,10 +176,9 @@ def _deploy_gates(d: dict, failed: str) -> list:
     if failed:
         built.insert(0, gate("program built", "fail", failed))
     return built + [
-        gate("device unchanged since capture", "at_apply",
-             "re-read at apply; a changed device is skipped, never deployed"),
+        gate(CAPTURE_GATE, "at_apply", CAPTURE_GATE_DETAIL),
         gate("credential unchanged", "at_apply",
-             "compared at apply, before anything connects")]
+             "compared with the capture at apply, before anything connects")]
 
 
 def deploy_preview(devices: list, request) -> dict:
@@ -253,6 +265,158 @@ def deploy_preview(devices: list, request) -> dict:
                                   "device that intent does not mention is never removed; "
                                   "it is listed here as not removed."}],
             "confirm": [{"concept": "confirm-by-hash",
-                         "text": "You are confirming this exact program. If the device or "
-                                 "intent moves before you apply, the apply is refused for "
-                                 "that device and nothing is sent to it."}]})
+                         "text": "You are confirming this exact program. If the device's "
+                                 "stored capture or its intent moves before you apply, the "
+                                 "apply is refused for that device and nothing is sent to "
+                                 "it."}]})
+
+
+#: What a restore's intent half will do, in words (`_intent_preview`'s actions).
+_INTENT_WORDS = {
+    "restore": "set back to this ref's version by a forward commit",
+    "un_onboard": "REMOVED by a forward commit (un-onboarding)",
+    "unchanged": "already matches this ref; nothing is committed for it",
+    "none": "none at this ref",
+}
+
+
+def _restore_gates(d: dict, failed: str) -> list:
+    """The restore's OWN gates, from `RestoreTarget.checks` (the list its
+    refusal is computed from), plus what the preview and the apply add.
+    Never the deploy's template gates: a restore has no template."""
+    out = [gate(c.get("name", "?"), c.get("state", "not_reached"), c.get("detail", ""))
+           for c in d.get("checks") or []]
+    if not out:
+        out = [gate("restore target built", "fail",
+                    "; ".join(d.get("blocking_reasons") or []) or "not built")]
+    action = (d.get("intent") or {}).get("action", "none")
+    # build_targets() refuses a ref whose intent does not round-trip through
+    # today's template or names a secret the store lacks, so a target here
+    # passed it. An un-onboarding carries no intent, so it was not checked.
+    out.append(gate("this ref's intent usable today",
+                    "pass" if action in ("restore", "unchanged") else "not_applicable",
+                    "round-trips through today's template; every secret it names is "
+                    "held" if action in ("restore", "unchanged")
+                    else "no intent at this ref to check"))
+    dangerous = d.get("dangerous") or []
+    out.append(gate("dangerous lines",
+                    "not_applicable" if not dangerous
+                    else "pass" if d.get("authorisation_ok") else "fail",
+                    "" if not dangerous else (d.get("authorisation_error")
+                                              or f"{len(dangerous)} authorised")))
+    if failed and d.get("deployable"):
+        out.insert(0, gate("program built", "fail", failed))
+    return out + [gate(CAPTURE_GATE, "at_apply", CAPTURE_GATE_DETAIL)]
+
+
+def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
+                    scope: str, request) -> dict:
+    """The restore preview's per-device entries, as the six parts (7.1).
+
+    Its own adapter over the same builder, for the reason `RestoreTarget`
+    has its own short list of blocking reasons: a restore re-applies stored
+    configuration, so the deploy's template gates do not apply, and drawing
+    them would be a claim about a template nobody used.
+    """
+    targets, what_not = [], []
+    for d in devices:
+        name = d.get("device", "?")
+        blocked = not d.get("deployable")
+        unauthorised = bool(d.get("dangerous")) and d.get("authorisation_ok") is False
+        failed = "" if blocked else (d.get("error") or "")
+        state = ("blocked" if blocked else "refused" if failed
+                 else "not_authorised" if unauthorised else "deployable")
+        commands = d.get("commands") or []
+        if blocked:
+            none = "Nothing is sent to this device: it is blocked (see its gates)."
+        elif failed:
+            none = f"Nothing is sent to this device: {failed}"
+        else:
+            none = ("Nothing will be sent: the device already matches this ref. It "
+                    "is still read back at apply, so the baseline can count it as "
+                    "measured.")
+        notes = []
+        replace = d.get("replace") or []
+        if replace and commands:
+            notes.append({"title": "What these lines replace on the device",
+                          "lines": [f"{str(r.get('old', '')).strip()}  ->  "
+                                    f"{str(r.get('new', '')).strip()}" for r in replace]})
+        if d.get("residue"):
+            what_not.append({"target": name, "kind": "residue",
+                             "text": "On the device but not in this ref: will NOT be "
+                                     "removed (a re-apply adds and replaces; it never "
+                                     "removes). Remove them by hand if the ref is "
+                                     "what the device should be.",
+                             "lines": list(d.get("residue_in_context") or d["residue"])})
+        excluded = d.get("excluded_unrenderable") or []
+        if excluded:
+            what_not.append({"target": name, "kind": "excluded",
+                             "text": "Blocks in the stored config that a re-apply cannot "
+                                     "send at all (certificates, licence UDI, banners). "
+                                     "If one of these drifted, this does not restore it.",
+                             "lines": [str(x) for x in excluded]})
+        if blocked:
+            reasons = "; ".join(d.get("blocking_reasons") or []) or "not deployable"
+            what_not.append({"target": name, "kind": "blocked",
+                             "text": f"Not sent: {reasons}", "lines": []})
+        if failed:
+            what_not.append({"target": name, "kind": "refused",
+                             "text": f"Not sent: {failed}", "lines": []})
+        intent = d.get("intent") or {}
+        operands = [
+            {"name": "ref", "value": ref},
+            {"name": "capture hash", "value": d.get("capture_hash") or "none"},
+            {"name": "command hash", "value": d.get("command_hash") or "none"},
+            {"name": "authorised lines", "value": str(len(d.get("authorised") or []))},
+            {"name": "platform", "value": d.get("platform") or "unknown"},
+            {"name": "committed intent",
+             "value": _INTENT_WORDS.get(intent.get("action", "none"),
+                                        intent.get("detail") or "unknown")},
+            {"name": "lines already on the device", "value": str(d.get("unchanged_count", 0))},
+        ]
+        targets.append({
+            "name": name, "state": state,
+            "selectable": not (blocked or unauthorised or failed),
+            "select_data": {"hash": d.get("capture_hash") or "",
+                            "command-hash": d.get("command_hash") or ""},
+            "program": {"lines": commands, "dangerous": d.get("dangerous") or [],
+                        "authorised": d.get("authorised") or [],
+                        "authorisation_error": d.get("authorisation_error") or "",
+                        "none": "" if commands else none, "notes": notes},
+            "operands": operands, "gates": _restore_gates(d, failed)})
+    for s in skipped or []:
+        what_not.append({"target": s.get("hostname") or "(the ref)", "kind": "skipped",
+                         "text": "Not touched: " + s.get("reason", "skipped")
+                                 + (f". {s['detail']}" if s.get("detail") else ""),
+                         "lines": []})
+    if scope:
+        what_not.append({"target": "this restore", "kind": "scope", "text": scope,
+                         "lines": []})
+    if not targets:
+        # Every device skipped: the parts still say so, rather than a builder
+        # refusal reading as a crash.
+        targets.append({"name": "(no device)", "state": "blocked", "selectable": False,
+                        "program": {"lines": [], "none": "Nothing is sent: no device "
+                                                         "in this restore can be "
+                                                         "re-applied."},
+                        "operands": [{"name": "ref", "value": ref}],
+                        "gates": [gate("a device to restore", "fail",
+                                       "every device was skipped; see what will not "
+                                       "happen")]})
+    return build(
+        action="restore",
+        summary=summary or f"Re-apply {ref}.",
+        targets=targets, what_not=what_not,
+        nothing_left_out="Nothing: every device can be re-applied, and nothing on "
+                         "any device lies outside this ref.",
+        confirm=confirm_part(request),
+        explain={
+            "what_not": [{"concept": "merge-only",
+                          "text": "A re-apply adds and replaces. A line on the device "
+                                  "that the ref does not mention is never removed; it is "
+                                  "listed here as not removed."}],
+            "confirm": [{"concept": "confirm-by-hash",
+                         "text": "You are confirming this exact program for every "
+                                 "device marked deployable. If a device's stored capture "
+                                 "moves before you apply, it is skipped and nothing is "
+                                 "sent to it."}]})

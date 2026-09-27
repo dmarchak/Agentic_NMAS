@@ -70,7 +70,8 @@ def assert_deployable(artifact) -> None:
             + "; ".join(artifact.blocking_reasons))
 
 
-def assert_credentials_unchanged(rendered: str, artifact) -> None:
+def assert_credentials_unchanged(rendered: str, artifact,
+                                 operation: str = "deploy to") -> None:
     """A deploy may ADD an account; it may never CHANGE one.
 
     **The worst failure available on this path is a lockout dressed as a
@@ -97,6 +98,10 @@ def assert_credentials_unchanged(rendered: str, artifact) -> None:
     **The refusal names the form and never the value** -- a guard against a
     credential leaking a credential is the trail that copies the secret it
     records.
+
+    *operation* only words the refusal, so a restore's refusal names a
+    restore (a refusal on a shared helper names the CALLER's operation). It
+    cannot loosen anything.
     """
     from modules.nsot.render_artifact import (CredentialWouldChange,
                                               credential_form,
@@ -108,12 +113,17 @@ def assert_credentials_unchanged(rendered: str, artifact) -> None:
                if key in proposed and proposed[key] != line]
     if not changed:
         return
-    detail = "; ".join(
-        f"{key}: device has {credential_form(held[key])!r}, "
-        f"this deploy would send {credential_form(proposed[key])!r}"
-        for key in sorted(changed))
+    def _one(key):
+        have, send = credential_form(held[key]), credential_form(proposed[key])
+        # The same form twice reads as "no difference". The difference is the
+        # value, which is never printed, so say so.
+        if have == send:
+            return f"{key}: {have!r} on both sides, with a different value"
+        return f"{key}: device has {have!r}, this would send {send!r}"
+
+    detail = "; ".join(_one(key) for key in sorted(changed))
     raise CredentialWouldChange(
-        f"refusing to deploy to {getattr(artifact, 'device', '?')}: it would "
+        f"refusing to {operation} {getattr(artifact, 'device', '?')}: it would "
         f"rewrite {len(changed)} credential(s) the device already holds -- "
         f"{detail}. A type-9 secret cannot be regenerated, so this is a "
         "lockout, not a configuration change. Rotate credentials through "
@@ -267,11 +277,25 @@ class RestoreTarget:
     un_onboard: bool = False
 
     @property
-    def blocking_reasons(self) -> list:
-        reasons = list(self.reasons)
+    def checks(self) -> list:
+        """The restore's own gates, by name: ``[(name, state, detail)]``.
+
+        ONE computation, read twice: `blocking_reasons` states the failures
+        as sentences, and the restore preview (Stage 7.1) draws every check
+        as a gate. Two lists of one set of checks is how the screen and the
+        refusal come to disagree. A state is ``pass``, ``fail`` or
+        ``not_reached`` (a check that could not run is neither a pass nor a
+        failure, and saying either would be a claim).
+        """
+        from modules.nsot.render_artifact import CredentialWouldChange
+
+        out = [("refused", "fail", r) for r in self.reasons]
         if not self.target_config.strip():
-            reasons.append(f"no golden config for this device at {self.ref}")
-            return reasons
+            out.append(("golden config at this ref", "fail",
+                        f"no golden config for this device at {self.ref}"))
+            return out + [(n, "not_reached", "no stored config to check")
+                          for n in ("printable ASCII", "credential unchanged")]
+        out.append(("golden config at this ref", "pass", ""))
 
         # Sendability is a property of the PROGRAM, and `merge_commands()`
         # already decides it — so this consumes that answer rather than
@@ -281,11 +305,53 @@ class RestoreTarget:
         # stored config that the device already has identically is never sent.
         try:
             merge_commands(self.target_config, self.captured)
+            out.append(("printable ASCII", "pass", ""))
         except UnsendableCommand as exc:
-            reasons.append(str(exc))
+            out.append(("printable ASCII", "fail", str(exc)))
         except Exception:                      # noqa: BLE001
-            pass       # other failures surface where the program is built
-        return reasons
+            # Other failures surface where the program is built.
+            out.append(("printable ASCII", "not_reached",
+                        "the program could not be built; the preview names why"))
+
+        # A RESTORE MAY NOT CHANGE A CREDENTIAL EITHER (register C75). The
+        # deploy's rule, "a deploy may ADD an account; it may never CHANGE
+        # one", was never applied here: this target had no
+        # `capture_credentials`, so the guard would have seen nothing even if
+        # called, and nothing called it. Measured 2026-09-27: a stored config
+        # holding the pre-rotation secret was deployable, and its program was
+        # the old `username` line alone, a lockout of the tool from a device
+        # it manages. The Baselines panel warned before the click and asked
+        # for an acknowledgement; the acknowledgement let it through.
+        try:
+            assert_credentials_unchanged(self.target_config, self,
+                                         operation=f"re-apply {self.ref} to")
+            held = len(self.capture_credentials)
+            out.append(("credential unchanged", "pass",
+                        f"{held} credential line(s) on the device, none rewritten"
+                        if held else "the capture holds no credential line"))
+        except CredentialWouldChange as exc:
+            out.append(("credential unchanged", "fail", str(exc)))
+        return out
+
+    @property
+    def blocking_reasons(self) -> list:
+        return [detail for _name, state, detail in self.checks if state == "fail"]
+
+    @property
+    def capture_credentials(self) -> dict:
+        """The credential lines the device holds, from the capture the
+        confirm is bound to (the apply re-reads the device and refuses one
+        that moved, so this is the device's own)."""
+        from modules.nsot.render_artifact import credential_lines
+
+        return credential_lines(self.captured)
+
+    @property
+    def credential_would_change(self) -> bool:
+        """Whether re-applying would rewrite a credential the device holds,
+        read from the same checks the refusal is."""
+        return any(name == "credential unchanged" and state == "fail"
+                   for name, state, _detail in self.checks)
 
     @property
     def deployable(self) -> bool:
@@ -329,8 +395,6 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
     here generates a ``no`` command: removals are reported for a human to act
     on, never performed.
     """
-    from modules.nsot import ifnames, normalize
-
     #: Neither a command nor a removal. A blank line pushed as configuration is
     #: a no-op at best, and it made ``to_add`` non-empty for a device with
     #: nothing to deploy — so "is there anything to do here" answered yes for
@@ -338,17 +402,23 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
     #: not from additions; both sides are filtered now, symmetrically.
     _NOT_A_COMMAND = ("", "!", "end")
 
-    def _norm(text):
-        lines = [ifnames.canonicalise_line(l.rstrip())
-                 for l in normalize.strip_for_roundtrip(text)]
-        return [l for l in lines if l.strip() not in _NOT_A_COMMAND]
-
-    intended = _norm(intended_config)
-    running = _norm(running_config)
-    running_set = set(running)
-    intended_set = set(intended)
-
-    to_add = [l for l in intended if l not in running_set]
+    # KEYED ON THE SECTION, never on the text alone (register C76). This was
+    # `[l for l in intended if l not in set(running)]`: a child line counted
+    # as present if the same text sat under ANY parent. Measured 2026-09-27
+    # while building the restore preview's fixture: intent adding
+    # ` ip ospf cost 10` to Gi4 on a device whose Gi3 already had it produced
+    # an EMPTY program, reported as "the device already has every line", and
+    # a new interface's ` shutdown` was dropped because Gi3 was shut.
+    # `classify_diff()`, above, was chain-aware all along, so the preview's
+    # "add" list named the line the program did not send: two answers to one
+    # question in one function, and the one that reached the wire was wrong.
+    intended = _section_chains(intended_config)
+    running_keys = {(tuple(chain), line) for line, chain in
+                    _section_chains(running_config)}
+    to_add_keyed = [(tuple(chain), line) for line, chain in intended
+                    if line.strip() not in _NOT_A_COMMAND
+                    and (tuple(chain), line) not in running_keys]
+    to_add = [line for _chain, line in to_add_keyed]
 
     # `removal_warnings` used to be every device line absent from the intended
     # config, which listed a line about to be REPLACED as one that would not be
@@ -358,11 +428,15 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
 
     return {
         "to_add": to_add,
+        # The same lines with the section each belongs to: what
+        # `merge_commands()` builds the program from.
+        "to_add_keyed": to_add_keyed,
         "add": classified["add"],
         "replace": classified["replace"],
         "removal_warnings": classified["residue"],
         "residue": classified["residue"],
-        "unchanged_count": len(intended) - len(to_add),
+        "unchanged_count": len([1 for line, _c in intended
+                                if line.strip() not in _NOT_A_COMMAND]) - len(to_add),
     }
 
 
@@ -452,11 +526,14 @@ def merge_commands(intended_config: str, running_config: str) -> list:
     altogether.
     """
     diff = merge_diff(intended_config, running_config)
-    wanted = list(diff["to_add"])
+    wanted = list(diff["to_add_keyed"])
     if not wanted:
         return []
 
-    remaining = dict.fromkeys(wanted)          # preserves order, de-duplicates
+    # Keyed on (section, line), never the text alone (C76): two new
+    # interfaces both needing ` shutdown` are two lines to send, and a text
+    # key de-duplicated them into one.
+    remaining = dict.fromkeys(wanted)          # preserves order
     commands, open_chain = [], []
     entries = _section_chains(intended_config)
 
@@ -473,7 +550,10 @@ def merge_commands(intended_config: str, running_config: str) -> list:
     # IOS re-entering a stanza is idempotent -- which is why nothing noticed,
     # and a line nobody authored in a program whose whole claim is that it is
     # exactly what was confirmed.
-    containers = {ancestor for _line, chain in entries for ancestor in chain}
+    # A container is a PATH, not a text: `exit-address-family` aside, the same
+    # header text can open different levels in different places.
+    containers = {tuple(chain[:depth + 1]) for _line, chain in entries
+                  for depth in range(len(chain))}
 
     def _close():
         for _level in reversed(open_chain):
@@ -481,15 +561,16 @@ def merge_commands(intended_config: str, running_config: str) -> list:
         open_chain.clear()
 
     for line, chain in entries:
-        if line not in remaining:
+        key = (tuple(chain), line)
+        if key not in remaining:
             continue
         if chain != open_chain:
             _close()
             commands.extend(chain)
             open_chain = list(chain)
         commands.append(line)
-        del remaining[line]
-        if line in containers:
+        del remaining[key]
+        if tuple(chain) + (line,) in containers:
             open_chain = list(chain) + [line]
 
     _close()
@@ -509,12 +590,20 @@ def merge_commands(intended_config: str, running_config: str) -> list:
     #   * nothing we meant to add was dropped from the program;
     #   * no LEAF of the program is configuration nobody asked for -- which is
     #     the half that stops a synthesised line reaching a device.
+    # Keyed on the section too (C76): compared as text, a line dropped from
+    # one interface was "carried" by the same text under another, and the
+    # assertion could not see the defect it exists to catch.
     from modules.nsot import ifnames as _ifnames
-    expected = {_ifnames.canonicalise_line(l) for l in wanted
-                if l not in remaining}
-    carried = {_ifnames.canonicalise_line(e["line"])
-               for e in program_structure(commands)}
-    leaves = {_ifnames.canonicalise_line(e.line) for e in program_leaves(commands)}
+
+    def _key(chain, line):
+        return (tuple(_ifnames.canonicalise_line(c) for c in chain),
+                _ifnames.canonicalise_line(line))
+
+    # EVERY wanted line, not only those the loop reached: one left in
+    # `remaining` is one the program does not send.
+    expected = {_key(chain, l) for chain, l in wanted}
+    carried = {_key(e["chain"], e["line"]) for e in program_structure(commands)}
+    leaves = {_key(e.chain, e.line) for e in program_leaves(commands)}
     dropped = expected - carried
     invented = leaves - expected
     if dropped or invented:

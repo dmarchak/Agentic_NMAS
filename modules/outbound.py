@@ -45,3 +45,32 @@ def config_text(request, text: str, *, what: str, target: str, detail: str = "")
                                if ident.kind == "service" else ident.actor})
     return {"ok": True, "masked": False, "text": text,
             "revealed_by": ident.actor}, 200
+
+
+def mask_payload(obj):
+    """A JSON-shaped response with every string through `redact_text`.
+
+    For the PREVIEWS (register C77): `/deploy/plan` and
+    `/golden/restore/preview` returned stored and rendered config lines
+    verbatim (the program, residue, what a line replaces), so a planted
+    community came back in both, as residue and as a line the program adds.
+    B11's sweep planted every store and swept GETs, and these are POSTs: a
+    population defined by the method again, where the property is "returns
+    stored config" (the B16 lesson, one more member).
+
+    Masked on the way OUT, after every hash is computed from the truthful
+    program: the confirm is bound to what is SENT, and the apply recomputes
+    it from the truthful render. The operator reads `<redacted:...>` in a
+    secret's slot and every other byte as sent. The authorisations the client
+    echoes back are dangerous lines, and no dangerous form has a secret slot,
+    so masking cannot change what they match.
+    """
+    from modules import redact
+
+    if isinstance(obj, str):
+        return redact.redact_text(obj)
+    if isinstance(obj, dict):
+        return {k: mask_payload(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [mask_payload(v) for v in obj]
+    return obj

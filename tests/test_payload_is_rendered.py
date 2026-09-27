@@ -102,8 +102,11 @@ RENDERS = {
         ((DW, "_renderDeployResult", "report"),), maps=("by_outcome", "routing_protocols")),
     "POST /golden/restore/preview": Render(
         lambda mp, tmp: P.restore_preview(mp),
-        {GR3: ("previewBaselineRestore", "_authoriseDangerous", "restorePreviewText")},
-        ((GR3, "restorePreviewText", "d"),)),
+        {GR3: ("previewBaselineRestore", "_authoriseDangerous", "_confirmRestorePreview",
+               "_restoreSelected"), PC: PC_FNS},
+        ((GR3, "previewBaselineRestore", "d"), (GR3, "_confirmRestorePreview", "d")),
+        maps=("select_data",),
+        adapters={"modules/preview_confirm.py": ("restore_preview", "_restore_gates")}),
     "GET /drift/status": Render(
         _get("/drift/status"),
         {I4: ("loadDriftStatus", "driftDetailHtml")},
@@ -322,13 +325,15 @@ UNDRAWN = {
                   "`statement` sentence, which names them"),
         ("list", LIST)],
     "POST /golden/restore/preview": [
-        ("add excluded_unrenderable intent_restored inventory_size mode partial "
-         "ref un_onboarding unchanged_count",
+        ("add intent_restored inventory_size mode partial ref un_onboarding",
          "structured forms of claims the drawn `summary` sentence makes (C23's "
-         "coverage included); 7.1's component draws them as parts"),
+         "coverage included); the component draws the per-device ones as parts"),
         ("advisory_diff approval_id", "the echo of an approval handoff; the "
                                       "client draws its own copy of what it sent"),
-        ("platform", "each device's platform; the preview is per device"),
+        ("scope", "drawn as the preview's `scope` what-not item; the adapter "
+                  "takes it as an argument, so no `.get` reads it"),
+        ("actor", "the confirming person, drawn inside the confirm part's "
+                  "`statement` sentence, which names them"),
         ("list", LIST)],
     "POST /onboard/plan": [
         ("host_vars", "the intent phase 1 will commit; the review draws the "
@@ -412,9 +417,7 @@ EMPTY_IN_FIXTURE = {
                                                      "sentence); a real residue plan is "
                                                      "drawn in test_preview_confirm "
                                                      "(deploy_plan_with_residue)"),
-    "POST /golden/restore/preview devices[].authorised": (S_, _STRINGS),
     "POST /golden/restore/preview devices[].blocking_reasons": (S_, _STRINGS),
-    "POST /golden/restore/preview devices[].dangerous": (S_, _STRINGS),
     "POST /golden/restore/preview devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /golden/restore/preview intent_restored": (S_, _STRINGS),
     "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
@@ -450,8 +453,10 @@ def _flat(table):
 # could not exhibit a deployed row (it planned without the authorisation it
 # applied with, so every row was a refusal). Fixed, the check saw seven keys a
 # deployed row always carried and nothing had examined. A ceiling rises only
-# for that reason, stated here.
-UNDRAWN_CEILING = 106
+# for that reason, stated here. 106 -> 105: the restore preview moved onto
+# the component (7.1), and its adapter now reads three keys it carried
+# undrawn.
+UNDRAWN_CEILING = 105
 PHANTOM_CEILING = 18
 
 

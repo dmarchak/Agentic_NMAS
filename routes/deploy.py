@@ -290,10 +290,15 @@ def plan():
     # The six parts, built ONCE by the shared contract (Stage 7.1); the
     # wizard draws `preview` with the one renderer. `devices` stays: apply's
     # wiring and older callers read it.
+    from modules.outbound import mask_payload
     from modules.preview_confirm import deploy_preview
-    return jsonify({"ok": True, "list": list_name, "devices": devices,
-                    "deployable_count": sum(1 for d in devices if d.get("deployable")),
-                    "preview": deploy_preview(devices, request)})
+    # Masked on the way out, AFTER every hash is computed from the truthful
+    # program (C77): the preview carried a secret the program adds, and
+    # residue, verbatim.
+    return jsonify(mask_payload({
+        "ok": True, "list": list_name, "devices": devices,
+        "deployable_count": sum(1 for d in devices if d.get("deployable")),
+        "preview": deploy_preview(devices, request)}))
 
 
 @bp.route("/apply", methods=["POST"])

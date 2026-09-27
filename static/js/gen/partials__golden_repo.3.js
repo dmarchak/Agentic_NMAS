@@ -272,16 +272,17 @@ async function previewBaselineRestore(tag, unOnboard, from) {
         Object.assign({}, from, {authorise: chosen, authoriseAsked: true}));
     }
 
-    // The EXACT program per device, every line (P.3 step 3). The dialog used
-    // to show counts and at most three replace and three residue lines, and
-    // never the lines to be added: `commands` was computed, carried to the
-    // browser, and drawn nowhere, while the confirm hash covered it.
-    if (!(await _confirmProgram(`Re-apply ${tag}`, restorePreviewText(d, from)))) return;
+    // The EXACT program per device, every line (P.3 step 3), now as the six
+    // parts of the shared component (7.1). The dialog used to show counts and
+    // at most three replace and three residue lines, and never the lines to
+    // be added: `commands` was computed, carried to the browser, and drawn
+    // nowhere, while the confirm hash covered it.
+    if (!(await _confirmRestorePreview(`Re-apply ${tag}`, d, from))) return;
 
     const confirmations = {}, hashes = {};
-    (d.devices || []).filter(x => x.deployable).forEach(x => {
-      confirmations[x.device] = x.capture_hash;
-      hashes[x.device] = x.command_hash;
+    _restoreSelected(d.preview).forEach(t => {
+      confirmations[t.name] = t.select_data.hash;
+      hashes[t.name] = t.select_data['command-hash'];
     });
     if (!Object.keys(confirmations).length) {
       showToast('Nothing to re-apply — every device is blocked or already matches', 'warning');
@@ -305,61 +306,6 @@ async function previewBaselineRestore(tag, unOnboard, from) {
               ad.ok ? 'success' : 'danger');
     loadGoldenRepoPanel();
   } catch (e) { showToast(e.message, 'danger'); }
-}
-
-// What a restore will send, as text: every device's exact program, what it
-// replaces, what stays behind, the dangerous lines, and what was skipped or is
-// blocked. PURE, so a test executes it against the route's real payload.
-function restorePreviewText(d, from) {
-  from = from || {};
-  const out = [];
-  if (from.advisoryDiff) {
-    out.push('WHAT THE AGENT SAW when the drift was detected (context only, NOT '
-             + 'what will be sent):');
-    from.advisoryDiff.trim().split('\n').slice(0, 12).forEach(l => out.push('  ' + l));
-    if (from.advisoryNote) out.push(from.advisoryNote);
-    out.push('-'.repeat(60), '');
-  }
-  out.push(d.summary || '', '');
-  (d.devices || []).forEach(dev => {
-    if (!dev.deployable) {
-      out.push(`${dev.device}: BLOCKED, nothing will be sent: `
-               + (dev.blocking_reasons || []).join('; '), '');
-      return;
-    }
-    const cmds = dev.commands || [];
-    // Stripped on the server; commands keep indentation. Compare trimmed.
-    const risky = new Set((dev.dangerous || []).map(x => x.trim()));
-    const auth = new Set((dev.authorised || []).map(x => x.trim()));
-    out.push(`${dev.device}: ${cmds.length} line(s) will be sent, exactly these:`);
-    if (!cmds.length) out.push('  (nothing: the device already matches)');
-    cmds.forEach(c => out.push((risky.has(c.trim()) ? (auth.has(c.trim()) ? 'A ' : '! ') : '  ') + c));
-    const unauth = [...risky].filter(c => !auth.has(c));
-    if (auth.size) {
-      out.push(`  ${auth.size} line(s) marked A are dangerous and AUTHORISED by you.`);
-    }
-    if (unauth.length) {
-      out.push(`  ${unauth.length} line(s) marked ! are dangerous and NOT authorised, `
-               + 'so this device will be refused and nothing sent to it.');
-    }
-    (dev.replace || []).forEach(rp =>
-      out.push(`  replaces: ${String(rp.old).trim()}  ->  ${String(rp.new).trim()}`));
-    (dev.residue || []).forEach(rs =>
-      out.push(`  stays (not removed): ${String(rs).trim()}`));
-    const it = dev.intent || {};
-    if (it.action === 'restore')    out.push('  intent: restored to this ref');
-    if (it.action === 'un_onboard') out.push('  intent: REMOVED (un-onboard)');
-    out.push('');
-  });
-  const skipped = d.skipped || [];
-  if (skipped.length) {
-    out.push('Skipped:');
-    skipped.forEach(sk => out.push(`  ${sk.hostname}: ${sk.reason}`));
-    out.push('');
-  }
-  out.push(`SCOPE: ${d.scope || ''}`, '',
-           'This ADDS and REPLACES. It does not remove lines a device has gained.');
-  return out.join('\n');
 }
 
 // Per device, per exact dangerous line: tick to authorise. Resolves the
@@ -419,9 +365,15 @@ function _authoriseDangerous(devices, current) {
   });
 }
 
-// A modal holding a block of text and two buttons. Resolves true on Confirm.
-// Text goes in via textContent, never innerHTML: it carries device config.
-function _confirmProgram(title, text) {
+// The restore preview, drawn by THE preview-then-confirm component (Stage
+// 7.1): the six parts come from the server's one builder (`d.preview`) and
+// `previewConfirmHtml` draws them, so this path cannot drop a part the
+// deploy wizard draws (C27 was this preview never drawing the lines to add;
+// C73 its residue without a section). Resolves true on Confirm.
+// The agent's diff goes in as TEXT above the component, labelled: context
+// only, never what is sent, and never part of what the server built.
+function _confirmRestorePreview(title, d, from) {
+  from = from || {};
   return new Promise(resolve => {
     const el = document.createElement('div');
     el.className = 'modal fade';
@@ -430,23 +382,49 @@ function _confirmProgram(title, text) {
       '<div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">'
       + '<div class="modal-header"><h5 class="modal-title"></h5>'
       + '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'
-      + '<div class="modal-body"><pre class="small mb-0" style="white-space:pre-wrap"></pre></div>'
+      + '<div class="modal-body"><div data-advisory></div><div data-restore-preview></div></div>'
       + '<div class="modal-footer">'
       + '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>'
-      + '<button type="button" class="btn btn-warning" data-confirm>Send exactly this</button>'
+      + '<button type="button" class="btn btn-warning" data-confirm></button>'
       + '</div></div></div>';
     el.querySelector('.modal-title').textContent = title;
-    el.querySelector('pre').textContent = text;
+    if (from.advisoryDiff) {
+      const box = el.querySelector('[data-advisory]');
+      const head = document.createElement('div');
+      head.className = 'small fw-semibold text-warning-emphasis';
+      head.textContent = 'WHAT THE AGENT SAW when the drift was detected '
+        + '(context only, NOT what will be sent):';
+      const pre = document.createElement('pre');
+      pre.className = 'small bg-body-tertiary p-2 rounded';
+      pre.textContent = from.advisoryDiff.trim().split('\n').slice(0, 12).join('\n')
+        + (from.advisoryNote ? '\n' + from.advisoryNote : '');
+      box.appendChild(head);
+      box.appendChild(pre);
+    }
+    // The component escapes every value it draws.
+    el.querySelector('[data-restore-preview]').innerHTML = previewConfirmHtml(d.preview, {});
+    const ready = _restoreSelected(d.preview).length;
+    const state = previewConfirmButton(d.preview, ready, `Re-apply to ${ready} device(s)`);
+    const btn = el.querySelector('[data-confirm]');
+    btn.disabled = state.disabled;
+    btn.textContent = state.text;
     let answer = false;
-    el.querySelector('[data-confirm]').addEventListener('click', () => {
-      answer = true;
-      modal.hide();
-    });
+    btn.addEventListener('click', () => { answer = true; modal.hide(); });
     el.addEventListener('hidden.bs.modal', () => { el.remove(); resolve(answer); });
     document.body.appendChild(el);
     const modal = new bootstrap.Modal(el);
     modal.show();
   });
+}
+
+// The devices this confirm covers: exactly the targets the preview marks
+// selectable, with the hashes it drew beside them. One source, so the
+// button's count, the screen and the apply's confirmations cannot differ.
+// It used to confirm every `deployable` device, including one whose
+// dangerous line was not authorised or whose program failed to build.
+function _restoreSelected(preview) {
+  return ((preview || {}).what || {}).targets
+    ? preview.what.targets.filter(t => t.selectable) : [];
 }
 
 // The device page's and bulk ops' "Restore Golden Config" (P.3 step 3, D5)

@@ -523,6 +523,43 @@ then bulk intent. `test_preview_confirm.py`'s `RETROFIT_PENDING` lists them
 and only shrinks. Bulk intent has **no screen**: its routes are reached by
 curl, so its retrofit is the preview and the screen that draws it.
 
+### 7.1, restore retrofitted, 2026-09-27
+
+**Restore is the second screen on the component.** `/golden/restore/preview`
+returns `preview`, built by `restore_preview()`. That adapter has its own
+gates, never the deploy's template gates, because a restore has no
+template. Its gates:
+- `RestoreTarget.checks`: a stored config at the ref, printable ASCII, and
+  credential unchanged;
+- whether this ref's intent is usable today;
+- dangerous lines;
+- the capture check at apply.
+
+The flow keeps the un-onboard question and the authorise modal. It then
+draws the component in a modal, with the agent's diff above it as labelled
+text (context, never part of what the server built). It confirms exactly
+the targets the preview marks selectable. Before, it confirmed every
+`deployable` device, including one with an unauthorised dangerous line.
+`restorePreviewText` and `_confirmProgram` are deleted, and the residue is
+drawn under its section (C73's restore half).
+
+**Building the gates part found four defects before C70 ran** (register
+C75-C78):
+- a restore could rewrite a held credential;
+- the merge program compared lines as text, so it sent nothing when
+  another stanza carried the same line;
+- both previews returned stored config verbatim;
+- "re-read at apply" re-read the stored capture, not the device. That
+  sentence was in the deploy adapter written above.
+
+Each gate drawn by name had to be traced to the line of code that makes it
+true, and three of them were not what they said.
+
+**Next, in the approved order:** onboarding, NetBox import/remove, then
+bulk intent. Before any of them, C70 runs on r2 (the procedure is in the
+register row) and exercises this screen, C76's fix and the receipt's
+restore half on a real device.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** If it returns, it caps the devices shown, and

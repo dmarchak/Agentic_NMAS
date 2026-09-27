@@ -241,12 +241,16 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
 
         {"stale":     {host: {"at_ref": "...", "at_head": "..."}},
          "refused":   [hosts],   # the intent guard WOULD stop these
+         "guarded":   [hosts],   # the credential guard WOULD stop these
          "silent":    [hosts],   # stale AND nothing would stop it
          "no_golden": [hosts],
          "checked":   n}
 
     ``silent`` is the set that matters. A stale device the restore already
     refuses is a nuisance; a stale device it does not refuse is a lockout.
+    ``guarded`` is the stale devices the restore's own credential guard
+    refuses (C75), asked of a real ``RestoreTarget``; with that guard in
+    place ``silent`` is empty, and a test asserts it on real fleet configs.
     """
     import yaml
 
@@ -289,8 +293,22 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
         if missing:
             refused.append(host)
 
+    # Would the restore's own credential guard refuse it (C75)? Asked of the
+    # REAL target the restore builds, never assumed from the guard existing:
+    # remove the guard and `silent` comes back, which is the point.
+    guarded = []
+    for host in stale:
+        from modules.nsot.deploy import RestoreTarget
+
+        _rc1, at_ref_text, _e1 = git(repo, "show", f"{ref}:golden/{host}.cfg")
+        _rc2, at_head_text, _e2 = git(repo, "show", f"HEAD:golden/{host}.cfg")
+        if RestoreTarget(device=host, platform="", target_config=at_ref_text,
+                         captured=at_head_text, ref=ref).credential_would_change:
+            guarded.append(host)
+
     return {"stale": stale, "refused": sorted(refused),
-            "silent": sorted(set(stale) - set(refused)),
+            "guarded": sorted(guarded),
+            "silent": sorted(set(stale) - set(refused) - set(guarded)),
             "no_golden": sorted(no_golden), "checked": len(hosts)}
 
 
