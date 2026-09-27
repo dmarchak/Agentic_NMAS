@@ -1042,7 +1042,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_results_are_drawn.py` | 7.1 step 1: every action gated confirm, approve or publish_remote (41, the gate table) shows its result where it can be read again, or is placed: drawn by the component with a reader (deploy, restore; evidence from source), pending (31, measured, only shrinks) or no GUI (tied to the reachability list); a toast is never enough for this population, and the bar is shown refusing; colour is part of the result (`FALSE_GREEN`: Save All, the NetBox sync card, onboarding Create) and the first XSS-shaped finding is pinned (`UNESCAPED`) |
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
-| `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
+| `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens and the legacy `golden_configs/`, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
+| `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
 | `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
@@ -5124,6 +5125,19 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   is deliberately not matched. So the payload-to-render check's population
   had a hole exactly where the newest code lives: the check was sound and
   its input incomplete, the fixture findings' class one level up.
+- **C77's sweep: the population is the gate table's `not_device` POSTs,
+  and its first real run found three leaks and a secret store** (7.1,
+  2026-09-27). `POST /compare_backups` returned both backups' secrets, and
+  the NetBox import previews returned each device's golden and community.
+  The community arrived as a plain JSON VALUE (`snmp.communities[].community`),
+  which positional redaction cannot see, so `outbound.mask_payload` also
+  masks by key now (`SECRET_FIELDS`, exact names). The previews then showed
+  what the import WRITES: **NetBox holds every imported device's credential
+  lines and SNMP communities in `local_context_data`**, measured on all 10
+  devices (C95, a decision). Before that run, the sweep's first pass was
+  clean and meant nothing: most routes refused before computing. What made
+  it mean something was giving each route a body that reaches its state,
+  and requiring the masked slot in every response that draws stored config.
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
   The list covers a stored config at the ref, printable ASCII, and
@@ -5163,7 +5177,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **52 open at 2026-09-27**, counted from the rows: 46 recorded only in
+present when each was recorded. **54 open at 2026-09-27**, counted from the rows: 48 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

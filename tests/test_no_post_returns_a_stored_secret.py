@@ -1,0 +1,343 @@
+"""C77's sweep: no POST that computes returns a stored secret.
+
+B11's sweep (`test_no_get_returns_a_stored_secret.py`) planted every store
+and drove every GET. Its population was defined by the HTTP method, and
+`/deploy/plan` and `/golden/restore/preview` are POSTs that compute and
+return stored config: both returned a planted community (C77, fixed). The
+property is "returns stored config", not "is a GET" (B16's lesson).
+
+**The population is the gate table's `not_device` POSTs** (the routes
+that neither reach a device nor change the record: they compute, read, or
+save layout), read from `route_gates.GATES` and `app.url_map`, so a new
+computing POST is swept by being declared. The other kinds change a device
+or the record and are pinned per route (the apply side of C77, whose
+responses are masked; `test_previews_mask_secrets.py`).
+
+**Every store is planted** by B11's own planting (`planted_stores`), and
+the sweep adds what a POST reads that a GET does not: a device's running
+config as a read returns it NOW, a second backup to compare, configs a
+caller supplies, a NetBox to preview against, and a list that has what a
+real list has (seeded templates, r1's intent extracted and committed
+through the routes a person uses, the template approved, a template secret
+that differs from the device, and a second golden).
+
+**A refusal proves nothing**, so each route declares the status it must
+answer with and, where its response draws stored config, `REACHES`: the
+masked slot must be present, which shows the line was reached and masked
+rather than never reached. Each route is driven twice, anonymous and as a
+verified person.
+"""
+
+import json
+import os
+
+import pytest
+
+from tests.test_no_get_returns_a_stored_secret import (DEVICE, LIST, _config_body, _fill,
+                                                       _p, planted_stores)
+
+PERSON = "test-person@example.invalid"
+
+
+def _head_golden():
+    """r1 as its golden holds it NOW: the same account line as the first
+    golden (so a restore's credential guard passes), a different community."""
+    return (f"hostname r1\n"
+            f"username admin privilege 15 secret 9 {_p('GoldSec')}\n"
+            f"snmp-server community {_p('HeadComm')} RO\n"
+            f"end\n")
+
+
+#: endpoint -> (expected status, body builder, why this body reaches it).
+#: Every `not_device` POST must be here: a missing one fails the population
+#: test, so a new computing POST cannot go unswept by being new.
+def _bodies(v):
+    return {
+        "ai_clear": (200, ("json", {}), "clears the caller's history; returns a status"),
+        "ai_stop": (200, ("json", {}), "a stop flag; returns a status"),
+        "bulk_clear": (200, ("json", {}), "clears an on-screen result; returns a status"),
+        "compare_backups_route": (200, ("form", {"file1": v["_backup_file"],
+                                                 "file2": v["_backup_file_2"]}),
+                                  "two different backups of r1: the diff carries both"),
+        "deploy.plan": (200, ("json", {"devices": ["r1"], "list_name": LIST}),
+                        "committed intent renders a community the device does not hold: "
+                        "the program adds one, and the device's is residue"),
+        "backup_config": (302, ("form", {}), "a form post that redirects; no body"),
+        "refresh_files": (302, ("form", {}), "a form post that redirects; no body"),
+        "discover_subnet": (200, ("json", {"network": "192.0.2.0", "prefix": 30, "username": "u",
+                                           "password": "p"}),
+                            "probes addresses; every probe refused in the harness"),
+        "drift_check_trigger": (200, ("json", {}), "schedules a run; returns a message"),
+        "drift_check_sync": (200, ("json", {}),
+                             "r1 read NOW differs from its golden: the drift carries both"),
+        "freshness.gate": (409, ("json", {"configs": {"r1": _config_body("Oxi")}}),
+                           "a supplied config that differs from the golden: blocked, with "
+                           "the differing lines"),
+        "golden.capture_preview": (200, ("json", {"devices": ["r1"]}),
+                                   "r1 read NOW: the golden diff and the intent departure"),
+        "golden.migrate_plan": (200, ("json", {}), "a dry run over the legacy store"),
+        "golden.restore_preview": (200, ("json", {"ref": v["_first_golden"],
+                                                  "devices": ["r1"]}),
+                                   "the first golden against HEAD: a program that adds its "
+                                   "community, and HEAD's as residue"),
+        "inventory.refresh": (200, ("json", {}), "a local list: refused as not NetBox-sourced"),
+        "monitoring_snmp_poll": (200, ("json", {"device_ip": DEVICE["ip"]}),
+                                 "an SNMP read with the stored community; the read is faked"),
+        "netbox_safety.preview_import": (200, ("json", {"list_name": LIST}),
+                                         "a dry-run import of r1 from its golden"),
+        "netbox_safety.preview_import_all": (200, ("json", {}), "the same, every list"),
+        "netbox_safety.preview_removal": (200, ("json", {"list_name": LIST}),
+                                          "a dry-run removal"),
+        "netbox_test_connection": (200, ("json", {}),
+                                   "the stored URL and token: the connection is refused"),
+        "onboard.plan": (200, ("json", {"list_name": LIST, "hostname": "r8",
+                                        "platform": "cisco_ios"}),
+                         "a plan for a new device; creates nothing"),
+        "remote.verify": (200, ("json", {}),
+                          "no remote configured: a configured one would start ssh, which the "
+                          "harness refuses and counts as a failure; the remote is an alias "
+                          "and a key PATH, never a stored secret"),
+        "settings_integrations.test_integration": (200, ("json", {}),
+                                                   "driven once per registered integration "
+                                                   "below; this row is the grafana one"),
+        "templates.preview": (200, ("json", {"list_name": LIST}),
+                              "the render (a community the device lacks) against the golden"),
+        "templates.refresh_capture": (200, ("json", {}), "delegates to the backup flow"),
+        "templates.validate": (200, ("json", {"list_name": LIST}), "validates the template"),
+        "templatize.bulk_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"],
+                                                   "steps": [{"path": ["hostname"],
+                                                              "before": "r1",
+                                                              "after": "r1x"}]}),
+                                    "a bulk intent change's render delta"),
+        "templatize.extract": (200, ("json", {"list_name": LIST}),
+                               "extraction from HEAD's golden"),
+        "templatize.preview_committed_edit": (200, ("json", {"list_name": LIST,
+                                                             "yaml": v["_intent_text"]}),
+                                              "committed intent, previewed against the device"),
+        "templatize.report": (200, ("json", {"list_name": LIST}), "the fleet report"),
+        "topology_save_hidden": (200, ("json", {"hidden": []}), "layout"),
+        "topology_save_positions": (200, ("json", {"positions": {}}), "layout"),
+        "topology_save_proto_hidden": (200, ("json", {"view": "ospf", "hidden": []}), "layout"),
+        "topology_save_proto_positions": (200, ("json", {"view": "ospf", "positions": {}}),
+                                          "layout"),
+    }
+
+
+#: Responses that draw stored config: the masked slot must be in them.
+#: `drift_check_sync` is not among them: it answers with counts and queues
+#: the diff as an approval item, which the GET sweep covers.
+REACHES = {"compare_backups_route", "deploy.plan", "freshness.gate",
+           "golden.capture_preview", "golden.restore_preview", "templates.preview",
+           "templatize.preview_committed_edit", "netbox_safety.preview_import"}
+
+#: The two masks: the outbound redactor's, and the template preview's
+#: (`render_artifact.MASK`, which JSON carries escaped).
+MASKS = ("<redacted:", "\\u2022\\u2022")
+
+#: Integrations whose connection test cannot be driven here, with the reason.
+INTEGRATIONS_NOT_DRIVEN = {
+    "nsot_git": "its test runs `git ls-remote` against a remote; the harness refuses a "
+                "remote git and counts the attempt as a failure",
+}
+
+
+def _population():
+    import app as A
+    from modules.route_gates import GATES
+
+    out = {}
+    for rule in A.app.url_map.iter_rules():
+        g = GATES.get(rule.endpoint)
+        if g and g.kind == "not_device" and "POST" in (rule.methods or ()):
+            out[rule.endpoint] = rule
+    return out
+
+
+def _setup(v, mp, client):
+    """What a POST reads that the planting does not provide. Everything is
+    built through the program's own writers and routes, as a person."""
+    from modules import backups, config, credentials
+    from modules.nsot import repo as R
+    from modules.nsot import templates_repo
+
+    repo = os.path.join(config.list_data_path(LIST), "config_repo")
+
+    # A list that has what a real list has.
+    templates_repo.seed_templates(repo)
+    for url in ("/templatize/extract/r1", "/templatize/commit/r1",
+                "/templates/approve/cisco_ios/base.j2"):
+        r = client.post(url, json={"list_name": LIST})
+        assert r.status_code == 200, (url, r.get_data(as_text=True)[:300])
+    v["_intent_text"] = open(os.path.join(repo, "host_vars", "r1.yml"), encoding="utf-8").read()
+    key = credentials.template_secret_key(LIST, "r1", "snmp_community_ro")
+    assert credentials.get_template_secret(key), "the commit stored r1's community"
+    credentials.set_template_secret(key, _p("Rend"))
+    # The restore's ref: r1's golden WITH its committed intent (the first
+    # golden predates the intent, and a restore correctly skips it).
+    v["_first_golden"] = R.git(repo, "rev-parse", "HEAD")[1].strip()
+    v["template_secret"].append(_p("Rend"))
+    R.save_golden(LIST, [R.GoldenItem("r1", _head_golden(), DEVICE["ip"])],
+                  source="manual", actor="t", baseline=False)
+    v["golden"].append(_p("HeadComm"))
+
+    # A second backup, under its own name.
+    second = backups.save_config_backup(DEVICE["ip"], "r1", _config_body("Back2"))
+    if second["filename"] == v["_backup_file"]:
+        new = second["filepath"].replace(".cfg", "_b.cfg")
+        os.replace(second["filepath"], new)
+        second["filename"] = os.path.basename(new)
+        # save_config_backup overwrote the first under the same name: re-plant it.
+        backups.save_config_backup(DEVICE["ip"], "r1", _config_body("Back"))
+    v["_backup_file_2"] = second["filename"]
+    v["backup"] += [_p("Back2Sec"), _p("Back2Comm")]
+
+    # The device, as a read returns it NOW (capture preview and drift).
+    import routes.golden as rg
+    running = _config_body("Run")
+    mp.setattr(rg, "_read_running", lambda d: (running, ""))
+    mp.setattr("modules.connection.get_persistent_connection", lambda *a, **k: object())
+    mp.setattr("modules.commands.run_device_command", lambda conn, cmd, *a, **k: running)
+    v["device_read"] = [_p("RunSec"), _p("RunComm")]
+    v["caller_supplied"] = [_p("OxiSec"), _p("OxiComm")]
+
+    # An SNMP read, faked: the route reads the stored community to make it.
+    mp.setattr("modules.snmp_collector.snmp_get",
+               lambda ip, oids, community, version=2: [{"oid": o, "value": "x"} for o in oids])
+
+    # A NetBox to preview against, behind a URL nothing answers.
+    from tests.fake_netbox import FakeNetBox
+    import modules.netbox_client as nbc
+
+    config.set_user_setting("netbox_url", "http://127.0.0.1:9")
+    nb = FakeNetBox()
+    nb.seed("dcim/sites", {"name": LIST, "slug": "default"})
+    mp.setattr(nbc, "_session_from_config", lambda cfg: nb)
+    mp.setattr(nbc, "_managed_tag_ids", {})
+
+    # Every integration pointed at a closed loopback port, so each connection
+    # test runs and fails with its own words.
+    from modules.integrations import REGISTRY
+    for name, cls in REGISTRY.items():
+        if name not in INTEGRATIONS_NOT_DRIVEN:
+            config.set_user_setting(cls().url_key, "http://127.0.0.1:9")
+
+
+def _drive(v, person):
+    import app as A
+    from modules import identity
+    from modules.integrations import REGISTRY
+
+    mp = pytest.MonkeyPatch()
+    if person:
+        who = identity.Identity(actor=PERSON, email=PERSON, kind="person", verified=True,
+                                outcome="ok", peer="198.51.100.7", peer_trusted=True,
+                                header_present=True)
+        mp.setattr(identity, "identify", lambda _r: who)
+    else:
+        mp.setattr(identity, "identify", lambda _r: identity.Identity(peer="198.51.100.7"))
+    client = A.app.test_client()
+    out = {}
+    try:
+        bodies = _bodies(v)
+        for endpoint, rule in sorted(_population().items()):
+            status, (kind, body), _why = bodies[endpoint]
+            names = [None]
+            if endpoint == "settings_integrations.test_integration":
+                names = sorted(set(REGISTRY) - set(INTEGRATIONS_NOT_DRIVEN))
+            for name in names:
+                url = _fill(rule, dict(v, **({"_integration": name} if name else {})))
+                if name:
+                    url = url.replace("/planted-profile/", f"/{name}/")
+                r = (client.post(url, data=body) if kind == "form"
+                     else client.post(url, json=body))
+                out[endpoint if not name else f"{endpoint}:{name}"] = (
+                    r.status_code, r.get_data(as_text=True))
+    finally:
+        mp.undo()
+    return out
+
+
+@pytest.fixture(scope="module")
+def swept():
+    import app as A
+    from modules import identity
+
+    from modules import drift_check
+
+    mp = pytest.MonkeyPatch()
+    # The drift routes run a real check, whose result the process-wide checker
+    # holds in MEMORY. Restoring the store's files does not undo that, and a
+    # later test read a drift run its own fixture never made (found by the
+    # full suite: the payload check saw four fields of a run). The sweep gets
+    # a checker of its own, discarded afterwards.
+    mp.setattr(drift_check, "_checker", None)
+    who = identity.Identity(actor=PERSON, email=PERSON, kind="person", verified=True,
+                            outcome="ok", peer="198.51.100.7", peer_trusted=True,
+                            header_present=True)
+    try:
+        with planted_stores() as values:
+            with pytest.MonkeyPatch.context() as setup_mp:
+                setup_mp.setattr(identity, "identify", lambda _r: who)
+                _setup(values, mp, A.app.test_client())
+            planted = {x: store for store, xs in values.items() if not store.startswith("_")
+                       for x in xs}
+            yield {"values": values, "planted": planted,
+                   "anon": _drive(values, person=False),
+                   "person": _drive(values, person=True)}
+    finally:
+        mp.undo()
+
+
+def _hits(result, planted):
+    return sorted({(key, store) for key, (_s, text) in result.items()
+                   for value, store in planted.items() if value in text})
+
+
+class TestThePopulation:
+    def test_every_not_device_post_has_a_body(self, swept):
+        population = set(_population())
+        declared = set(_bodies(swept["values"]))
+        assert population - declared == set(), "undeclared: give each a body that reaches it"
+        assert declared - population == set(), "declared but no longer in the population"
+        assert len(population) >= 30, len(population)
+
+    def test_the_known_computing_posts_are_in_it(self):
+        """The anchor: C77's two are in the population the gate table gives."""
+        assert {"deploy.plan", "golden.restore_preview"} <= set(_population())
+
+    def test_every_integration_is_driven_or_named(self, swept):
+        from modules.integrations import REGISTRY
+        driven = {k.split(":", 1)[1] for k in swept["person"] if ":" in k}
+        assert driven | set(INTEGRATIONS_NOT_DRIVEN) == set(REGISTRY)
+        assert len(driven) >= 8
+
+
+class TestEveryRouteReachedItsState:
+    @pytest.mark.parametrize("who", ["anon", "person"])
+    def test_each_answered_with_its_declared_status(self, swept, who):
+        bodies = _bodies(swept["values"])
+        wrong = {k: (s, t[:200]) for k, (s, t) in swept[who].items()
+                 if s != bodies[k.split(":")[0]][0]}
+        assert wrong == {}, "a different status means the fixture no longer reaches the state"
+
+    def test_the_config_reaching_routes_drew_the_masked_slot(self, swept):
+        """The positive control, per route: the line was REACHED and masked.
+        A response that never held the line passes the leak test too."""
+        missing = sorted(k for k in REACHES
+                         if not any(m in swept["person"][k][1] for m in MASKS))
+        assert missing == [], missing
+        assert len(REACHES) >= 8
+
+
+class TestNoPostReturnsAStoredSecret:
+    @pytest.mark.parametrize("who", ["anon", "person"])
+    def test_no_planted_value_comes_back(self, swept, who):
+        hits = _hits(swept[who], swept["planted"])
+        assert hits == [], "\n".join(f"{k} <- {s}" for k, s in hits)
+
+    def test_every_store_is_planted(self, swept):
+        from tests.test_no_get_returns_a_stored_secret import STORES
+        values = swept["values"]
+        assert all(values.get(s) for s in STORES), [s for s in STORES if not values.get(s)]
+        for extra in ("device_read", "caller_supplied"):
+            assert values[extra]

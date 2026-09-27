@@ -157,14 +157,19 @@ def preview_import():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
     plan = result.get("plan", {})
-    return jsonify({
+    # Masked on the way out, AFTER the authorisation is bound to the truthful
+    # plan (C77's sweep, 2026-09-27): each device's payload carries its golden
+    # in `local_context_data`, and this returned its secrets verbatim. What the
+    # import WRITES to NetBox is register C95, a separate decision.
+    from modules.outbound import mask_payload
+    return jsonify(mask_payload({
         "ok": True,
         "list": list_name,
         "device_count": len(devices),
         "plan": plan,
         "summary": _describe_plan(plan),
         **_authorization_for("import", list_name, plan),
-    })
+    }))
 
 
 @bp.route("/import/apply", methods=["POST"])
@@ -249,14 +254,17 @@ def preview_import_all():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
     plan = result.get("plan", {})
-    return jsonify({
+    # Masked after the authorisation is bound to the truthful plan (C77's
+    # sweep): the same device payloads as a single list's preview.
+    from modules.outbound import mask_payload
+    return jsonify(mask_payload({
         "ok": True,
         "list": _ALL_LISTS,
         "device_count": sum(len(d) for _, d in payload),
         "plan": plan,
         "summary": _describe_plan(plan),
         **_authorization_for("import_all", _ALL_LISTS, plan),
-    })
+    }))
 
 
 @bp.route("/import_all/apply", methods=["POST"])

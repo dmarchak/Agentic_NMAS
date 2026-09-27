@@ -20,6 +20,7 @@ a claim, and this one was wrong.)
 | Received SNMP traps, each carrying its community | `data/lists/<slug>/snmp_traps.json` (and a top-level `data/snmp_traps.json`) | **plaintext** | file mode; the community is masked on `GET /monitoring/snmp/traps` (C56). Unclassified until 2026-09-27, found by deriving the stores from the code's writers |
 | Device credentials, the pre-lists legacy file | `data/Devices.csv` | **encrypted** (raw Fernet fields), when it exists | the key + file mode. Nothing writes it since lists existed; declared so a leftover copy is checked |
 | **The B2 application key** (off-box NetBox dailies) | `~/.config/rclone/rclone.conf` | **plaintext** (rclone obscures, it does not encrypt) | file mode, and nothing else. The key has no `deleteFiles`, and whether it can HIDE is register B9 |
+| **Every imported device's golden (its credential lines) and SNMP communities** | NetBox, `local_context_data` on each device (`running_config`, `snmp.communities`), and so every P.2 NetBox backup | **plaintext**: measured 2026-09-27, all 10 devices, credential-slot lines unmasked | NetBox's own access control, and nothing else. Register C95 (a decision: mask on the way in, then re-import) |
 | NetBox's `SECRET_KEY`, API token pepper, DB password | `~/netbox-docker/env/netbox.env`, `postgres.env` | plaintext | file mode (B4) |
 | The backup push key (rrsync -wo to Proxmox) | `~/.ssh/nmas_netbox_backup` | plaintext | file mode, plus `from=`, `restrict` and a forced command on the Proxmox side |
 

@@ -2002,12 +2002,16 @@ def compare_backups_route():
 
         diff = compare_configs(config1, config2)
 
-        return jsonify({
+        # Masked on the way out (C77's sweep, 2026-09-27): the diff carries
+        # both backups' secrets on its -/+ lines, and this returned them
+        # verbatim. Reading a backup unmasked is the download's reveal.
+        from modules.outbound import mask_payload
+        return jsonify(mask_payload({
             "status": "success",
             "diff": diff,
             "file1": file1,
             "file2": file2
-        })
+        }))
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

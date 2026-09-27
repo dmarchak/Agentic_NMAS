@@ -30,6 +30,7 @@ cannot reach `/golden/version/<host>` or `/download_backup/<file>`), twice:
 the checker learns about and this sweep does not plant fails here.
 """
 
+import contextlib
 import os
 import re
 import shutil
@@ -51,7 +52,8 @@ def _p(tag):
 STORES = ("env", "settings", "credential_profile", "device_override",
           "template_secret", "devices_csv", "collector_config", "golden",
           "backup", "approval_queue", "chat_history", "config_cache",
-          "variables", "snmp_traps", "legacy_devices_csv", "tool_cache")
+          "variables", "snmp_traps", "legacy_devices_csv", "tool_cache",
+          "legacy_golden")
 
 #: The checker's `secret` patterns, each mapped to the store planted for it.
 #: A pattern the checker gains without a plant here fails the test below.
@@ -90,7 +92,19 @@ def _config_body(tag):
 
 @pytest.fixture(scope="module")
 def planted(tmp_path_factory):
-    """Plant every store in the harness store, and restore it afterwards."""
+    """Plant every store, sweep every GET inside the planting (so the GETs'
+    known writes, C33, land before the store is restored), and restore."""
+    with planted_stores() as values:
+        values["_anon"] = _sweep(values, person=False)
+        values["_person"] = _sweep(values, person=True)
+        yield values
+
+
+@contextlib.contextmanager
+def planted_stores():
+    """Plant every store in the harness store, and restore it afterwards.
+    Shared with the POST sweep (C77), which is the same population of stores
+    driven through a different population of routes."""
     from modules import config
 
     mp = pytest.MonkeyPatch()
@@ -183,10 +197,14 @@ def planted(tmp_path_factory):
         ai._tool_cache.clear()
         ai._cache_set("get_running_config", {"device_ip": DEVICE["ip"]}, _config_body("Tc"))
         values["tool_cache"] = [_p("TcSec"), _p("TcComm")]
-        # Swept HERE, inside the fixture, so the GETs' known writes (C33)
-        # land before the store is restored rather than inside a test.
-        values["_anon"] = _sweep(values, person=False)
-        values["_person"] = _sweep(values, person=True)
+        # The deprecated golden store (C77's sweep, 2026-09-27): read-only,
+        # still read by `_find_golden_config_file()` for a device the manifest
+        # does not know, and holding whole configs. Neither sweep planted it.
+        legacy_dir = os.path.join(config.list_data_path(LIST), "golden_configs")
+        os.makedirs(legacy_dir, exist_ok=True)
+        with open(os.path.join(legacy_dir, "legacy9.cfg"), "w", encoding="utf-8") as fh:
+            fh.write("! Golden config -- legacy9 (192.0.2.9)\n" + _config_body("LegG"))
+        values["legacy_golden"] = [_p("LegGSec"), _p("LegGComm")]
         yield values
     finally:
         mp.undo()

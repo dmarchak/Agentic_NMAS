@@ -47,6 +47,11 @@ def config_text(request, text: str, *, what: str, target: str, detail: str = "")
             "revealed_by": ident.actor}, 200
 
 
+#: Keys whose string value IS a secret, in a structured payload. Exact names.
+SECRET_FIELDS = frozenset({"community", "password", "secret", "token", "api_token",
+                           "auth_key", "priv_key", "key_string"})
+
+
 def mask_payload(obj):
     """A JSON-shaped response with every string through `redact_text`.
 
@@ -64,13 +69,22 @@ def mask_payload(obj):
     secret's slot and every other byte as sent. The authorisations the client
     echoes back are dangerous lines, and no dangerous form has a secret slot,
     so masking cannot change what they match.
+
+    **A secret can also arrive as a plain VALUE, not in config syntax**
+    (C77's sweep, 2026-09-27; C55's shape). The NetBox import preview carries
+    `snmp.communities[].community`, a structured copy of a community, and
+    positional redaction cannot see a bare value. So a string under a key in
+    `SECRET_FIELDS` is masked by its key. The match is exact: `secret_refs`,
+    `password_set` and the like are names and flags, never values.
     """
     from modules import redact
 
     if isinstance(obj, str):
         return redact.redact_text(obj)
     if isinstance(obj, dict):
-        return {k: mask_payload(v) for k, v in obj.items()}
+        return {k: (f"<redacted:{k}>" if k in SECRET_FIELDS and isinstance(v, str) and v
+                    else mask_payload(v))
+                for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [mask_payload(v) for v in obj]
     return obj
