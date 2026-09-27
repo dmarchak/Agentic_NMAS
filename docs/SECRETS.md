@@ -16,6 +16,7 @@ a claim, and this one was wrong.)
 | Device credentials | `data/lists/<slug>/devices.csv` | **encrypted** (raw Fernet fields) | the key + file mode |
 | The Fernet key itself | `data/key.key` | — | file mode, and nothing else |
 | Credential profiles, device overrides, template secrets | `data/credential_profiles.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
+| SNMP communities (RO and RW) for the collectors | `data/lists/<slug>/collector_config.json` | **plaintext**: the same values are in every device's config and golden, which are plaintext by design (masking is outbound) | file mode (created `0600`, atomically, since register C55); **write-only on every route**, never returned to a browser or the model. Undeclared here and unclassified by the checker until 2026-09-27 |
 | **The B2 application key** (off-box NetBox dailies) | `~/.config/rclone/rclone.conf` | **plaintext** (rclone obscures, it does not encrypt) | file mode, and nothing else. The key has no `deleteFiles`, and whether it can HIDE is register B9 |
 | NetBox's `SECRET_KEY`, API token pepper, DB password | `~/netbox-docker/env/netbox.env`, `postgres.env` | plaintext | file mode (B4) |
 | The backup push key (rrsync -wo to Proxmox) | `~/.ssh/nmas_netbox_backup` | plaintext | file mode, plus `from=`, `restrict` and a forced command on the Proxmox side |

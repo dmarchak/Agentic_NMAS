@@ -257,11 +257,6 @@ UNDRAWN = {
          "schema_version site tag",
          "the source's configuration; the panel draws its status only, and "
          "7.4 (Fleet, Networks) draws and sets the rest (reachability group a)")],
-    "GET /monitoring/config": [
-        ("snmp_community_rw",
-         "A SECRET ON A GET, drawn nowhere (register C55): the read-write "
-         "community. Listed so the check stays green while the fix, which "
-         "changes the route's behaviour, lands as its own commit")],
     "GET /monitoring/stack/<tool>": [
         ("name", "the tool's key; the card is keyed by it at the call site")],
     "GET /netbox/status": [
@@ -360,7 +355,7 @@ def _flat(table):
             for keys, reason in groups for key in keys.split()}
 
 
-UNDRAWN_CEILING = 118
+UNDRAWN_CEILING = 117
 PHANTOM_CEILING = 18
 
 

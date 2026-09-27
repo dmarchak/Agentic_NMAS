@@ -596,11 +596,18 @@ async function loadMonitoringTab() {
     const srcLabel = document.getElementById('collectorIpSource');
 
     if (ipInput)  ipInput.value  = ip;
-    if (roInput)  roInput.value  = cfg.snmp_community_ro || 'public';
-    // Pre-fill the quick-poll community with the collector community if blank
-    const pollCommunity = document.getElementById('snmpPollCommunity');
-    if (pollCommunity && !pollCommunity.value)
-      pollCommunity.value = cfg.snmp_community_ro || 'public';
+    // The communities are WRITE-ONLY (register C55): the page is told
+    // whether each is set, never its value. The field stays empty, and an
+    // empty field saves nothing; a poll with no community typed uses the
+    // stored one on the server.
+    if (roInput) {
+      roInput.value = '';
+      roInput.placeholder = cfg.snmp_community_ro_set
+        ? 'set: type to replace' : "not set: the default 'public' applies";
+    }
+    const commState = document.getElementById('snmpCommunityState');
+    if (commState) commState.textContent =
+      `RO ${cfg.snmp_community_ro_set ? 'set' : 'not set'} · RW ${cfg.snmp_community_rw_set ? 'set' : 'not set'} (write-only)`;
     // Pre-fill Configure tab SNMP trap fields with collector settings
     const cfgTrapHost = document.getElementById('cfg_snmp_trap_host');
     const cfgTrapPort = document.getElementById('cfg_snmp_trap_port');
@@ -620,9 +627,9 @@ async function loadMonitoringTab() {
       if (cont) cont.innerHTML = `
         <div class="mb-2">
           <span class="text-muted small">SNMP traps (IOS):</span>
-          <pre class="mb-0" style="background:#0f172a;padding:8px;border-radius:4px;font-size:12px">snmp-server host ${_esc(ip)} traps version 2c ${_esc(cfg.snmp_community_ro || 'public')}
+          <pre class="mb-0" style="background:#0f172a;padding:8px;border-radius:4px;font-size:12px">snmp-server host ${_esc(ip)} traps version 2c &lt;RO community&gt;
 snmp-server enable traps
-snmp-server host ${_esc(ip)} version 2c ${_esc(cfg.snmp_community_ro || 'public')} udp-port ${cfg.snmp_trap_port || 1162}</pre>
+snmp-server host ${_esc(ip)} version 2c &lt;RO community&gt; udp-port ${cfg.snmp_trap_port || 1162}</pre>
         </div>
         <div class="mb-2">
           <span class="text-muted small">NetFlow export (IOS):</span>
@@ -669,15 +676,17 @@ async function detectCollectorIp() {
 
 async function saveMonitoringConfig() {
   const ip  = (document.getElementById('collectorIpInput')?.value || '').trim();
-  const ro  = (document.getElementById('snmpCommunityRo')?.value  || 'public').trim();
+  // Sent only when typed: an empty write-only field saves nothing (C55).
+  const ro  = (document.getElementById('snmpCommunityRo')?.value  || '').trim();
   const trap = parseInt(document.getElementById('snmpTrapPort')?.value || '1162');
   const nf   = parseInt(document.getElementById('netflowPort')?.value  || '9996');
   try {
     const r = await fetch('/monitoring/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ collector_ip: ip, snmp_community_ro: ro,
-                             snmp_trap_port: trap, netflow_port: nf })
+      body: JSON.stringify(Object.assign(
+        { collector_ip: ip, snmp_trap_port: trap, netflow_port: nf },
+        ro ? { snmp_community_ro: ro } : {}))
     });
     const data = await r.json();
     if (data.ok) {
@@ -699,14 +708,15 @@ async function snmpPollDevice() {
   try {
     // Use the explicit community field; fall back to the collector's configured RO community
     const communityField = document.getElementById('snmpPollCommunity');
+    // Typed here, or typed in the RO field; otherwise none is sent and the
+    // server uses the stored RO community (the values are write-only, C55).
     const community = (communityField?.value || '').trim()
-                      || document.getElementById('snmpCommunityRo')?.value
-                      || 'public';
+                      || (document.getElementById('snmpCommunityRo')?.value || '').trim();
     const version = parseInt(document.getElementById('snmpPollVersion')?.value || '2', 10);
     const r = await fetch('/monitoring/snmp/poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_ip: ip, community, version,
+      body: JSON.stringify({ device_ip: ip, community: community || undefined, version,
         oids: ['sysName', 'sysDescr', 'sysUpTime', 'sysLocation'] })
     });
     const data = await r.json();

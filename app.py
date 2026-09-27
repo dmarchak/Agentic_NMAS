@@ -4424,24 +4424,26 @@ def git_commit():
 @app.route("/monitoring/config", methods=["GET", "POST"])
 def monitoring_config():
     """GET: return collector config. POST: update one or more fields."""
+    # The communities are WRITE-ONLY (register C55): no response carries a
+    # value, and an empty field saves nothing (B11's rule).
     from modules.collector_config import (
-        get_full_config, set_collector_ip, set_snmp_community,
+        public_config, set_collector_ip, set_snmp_community,
         set_netflow_port, set_snmp_trap_port,
     )
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         if "collector_ip" in data:
             set_collector_ip(data["collector_ip"])
-        if "snmp_community_ro" in data:
-            set_snmp_community(data["snmp_community_ro"], "ro")
-        if "snmp_community_rw" in data:
-            set_snmp_community(data["snmp_community_rw"], "rw")
+        for direction in ("ro", "rw"):
+            value = (data.get(f"snmp_community_{direction}") or "").strip()
+            if value:
+                set_snmp_community(value, direction)
         if "netflow_port" in data:
             set_netflow_port(int(data["netflow_port"]))
         if "snmp_trap_port" in data:
             set_snmp_trap_port(int(data["snmp_trap_port"]))
-        return jsonify({"ok": True, "config": get_full_config()})
-    return jsonify(get_full_config())
+        return jsonify({"ok": True, "config": public_config()})
+    return jsonify(public_config())
 
 
 @app.route("/monitoring/interfaces")

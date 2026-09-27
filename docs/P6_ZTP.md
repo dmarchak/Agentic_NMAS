@@ -384,6 +384,11 @@ operator's ledger):**
 about the deployment (RESERVED_INTERFACES, C50, the SSH key, C52). ZTP was
 the first route to break all four.
 
-**Still open from this work:** C50 (the lab map's unknown-lab fallback, now
-proposed as a gate before 7.3) and C54 (job-health rows for devices that no
-longer exist).
+**Still open from this work:** C50 (the lab map's unknown-lab fallback, a
+gate before 7.3), C54 (job-health rows for devices that no longer exist),
+and **C57: the phase-2 persist step has never carried a real onboarding.**
+It was built after `bp-ztp-a` was promoted, and that device was saved by
+hand, then by `nmas-persist-native`. The first real ZTP onboarding (Lab 9's
+demonstration or a real device) is the step's first execution. Its
+acceptance: the step reads `persisted` from a real read-back, and a failed
+read-back makes promotion REFUSE. Treat it as unproven until then.

@@ -36,10 +36,17 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
+    """Atomically, and created 0600: this file holds both SNMP communities
+    (register C55). It was `open(path, "w")`: truncate in place (the shape
+    that erased user_settings.json) at the process umask."""
+    from modules.config import open_secure
+
     path = _config_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open_secure(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
+    os.replace(tmp, path)
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +97,19 @@ def set_snmp_trap_port(port: int) -> None:
     data = _load()
     data["snmp_trap_port"] = port
     _save(data)
+
+
+def public_config() -> dict:
+    """The collector config as it may leave this host: the communities are
+    WRITE-ONLY (register C55, as B11 decided for every secret). Whether each
+    is set is carried; its value never is. `get_full_config()` below is for
+    the collectors themselves."""
+    full = get_full_config()
+    stored = _load()
+    for key in ("snmp_community_ro", "snmp_community_rw"):
+        full.pop(key, None)
+        full[f"{key}_set"] = bool(stored.get(key))
+    return full
 
 
 def get_full_config() -> dict:

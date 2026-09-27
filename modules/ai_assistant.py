@@ -3915,22 +3915,30 @@ def run_chat(
                 return "\n".join(lines)
 
             elif name == "get_monitoring_config":
-                from modules.collector_config import get_full_config
-                cfg = get_full_config()
+                # The communities are WRITE-ONLY (register C55): this text goes
+                # to the model provider, and positional redaction masks them in
+                # config syntax but not in the prose lines this tool used to
+                # write ("SNMP community (RW):  <value>", measured). So the
+                # tool says whether each is set, and the snippets carry a
+                # placeholder the operator fills.
+                from modules.collector_config import public_config
+                cfg = public_config()
                 collector_ip = cfg.get("collector_ip", "not set")
                 source       = cfg.get("collector_ip_source", "none")
+                ro_state = "set" if cfg.get("snmp_community_ro_set") else "not set (the default applies)"
+                rw_state = "set" if cfg.get("snmp_community_rw_set") else "not set (the default applies)"
                 return (
                     f"Monitoring configuration for this list:\n"
                     f"  Collector IP:         {collector_ip}  [{source}]\n"
-                    f"  SNMP community (RO):  {cfg.get('snmp_community_ro', 'public')}\n"
-                    f"  SNMP community (RW):  {cfg.get('snmp_community_rw', 'private')}\n"
+                    f"  SNMP community (RO):  {ro_state} (write-only: never shown)\n"
+                    f"  SNMP community (RW):  {rw_state} (write-only: never shown)\n"
                     f"  SNMP trap port:       {cfg.get('snmp_trap_port', 1162)}\n"
                     f"  NetFlow port:         {cfg.get('netflow_port', 9996)}\n\n"
                     f"Device config snippets (use EXACTLY these commands):\n"
                     f"  SNMP traps (IOS):\n"
-                    f"    snmp-server host {collector_ip} traps version 2c {cfg.get('snmp_community_ro', 'public')}\n"
+                    f"    snmp-server host {collector_ip} traps version 2c <RO community>\n"
                     f"    snmp-server enable traps\n"
-                    f"    snmp-server host {collector_ip} version 2c {cfg.get('snmp_community_ro', 'public')} udp-port {cfg.get('snmp_trap_port', 1162)}\n"
+                    f"    snmp-server host {collector_ip} version 2c <RO community> udp-port {cfg.get('snmp_trap_port', 1162)}\n"
                     f"  NOTE: The 'udp-port {cfg.get('snmp_trap_port', 1162)}' line is REQUIRED — the trap receiver does NOT listen on the default port 162.\n"
                     f"  NetFlow export:\n"
                     f"    ip flow-export destination {collector_ip} {cfg.get('netflow_port', 9996)}\n"

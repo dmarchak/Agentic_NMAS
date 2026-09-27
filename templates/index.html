@@ -1880,6 +1880,7 @@
       <div class="col-sm-3">
         <label class="form-label text-muted small mb-1">SNMP Community (RO)</label>
         <input id="snmpCommunityRo" type="text" class="form-control form-control-sm" placeholder="public">
+        <div class="form-text small" id="snmpCommunityState"></div>
       </div>
       <div class="col-sm-2">
         <label class="form-label text-muted small mb-1">Trap Port</label>
@@ -3103,7 +3104,8 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
           const community = document.getElementById('cfg_snmp_community');
           if (trapHost && !trapHost.value && cfg.collector_ip) trapHost.value = cfg.collector_ip;
           if (trapPort && !trapPort.value && cfg.snmp_trap_port) trapPort.value = cfg.snmp_trap_port;
-          if (community && !community.value && cfg.snmp_community_ro) community.value = cfg.snmp_community_ro;
+          // The community is write-only (register C55): the form's field is
+          // typed by the operator, never filled from the store.
         } else {
           const collIp   = document.getElementById('cfg_nf_collector_ip');
           const collPort = document.getElementById('cfg_nf_collector_port');
