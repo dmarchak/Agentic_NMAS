@@ -1043,6 +1043,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens and the legacy `golden_configs/`, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
+| `test_ssh_sessions.py` | C97: every session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
@@ -5096,6 +5097,36 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   alike. **The detection method differs too: print which state came back,
   do not only assert the one you expected.** Asserting what you expect
   hides it, and printing what happened reveals it.
+- **EVERY PROCESS TELLS THE PERSON WHAT HAPPENED OR WHAT TO DO NEXT. No
+  action ever ends in silence** (the operator's standing rule, 2026-09-27,
+  after C99). **The test: after any action, can the person tell whether it
+  happened without opening a terminal, a network tab or the log? If not,
+  the action is not finished being built.** It covers what 7.1 step 1's
+  result rule cannot see:
+  - an action that succeeded and changed NOTHING: "no difference; nothing
+    was sent" is a result, and silence reads as failure;
+  - an action that is WAITING: staged, queued, or pending someone else, say
+    so and say who. The operator's deploy after the restore (C99) was an
+    inference of "staged" from silence;
+  - an action that REFUSED: the refusal, its reason and both operands, as
+    the CLI does and the GUI does inconsistently (the verify 409 flashed
+    too fast to read);
+  - an action that is still RUNNING: "running, started 18:53, waiting on
+    the settle window" is feedback; a spinner is not, and nothing is worse;
+  - a screen with NOTHING on it: "nothing recorded yet" and "the record
+    cannot be read" are different facts, and a panel saying neither is the
+    same silence in a different place.
+  Where it is mechanised and where it cannot be is stated in
+  `tests/test_results_are_drawn.py`, because the parts a test cannot see
+  are the parts that will rot.
+- **Run the thing for real, on the real system, and watch what else
+  moves** (the operator's generalisation of C70's rule, 2026-09-27). C70's
+  restore was correct: the preview was accurate, and the program was three
+  lines, the right three. Every finding came from AROUND the operation: a
+  leaked session pool (C97), a concurrent deploy (C98), a status dot that
+  was right for a reason nobody predicted (C92), and a result that arrived
+  after the operator had concluded there was none (C99). None was the thing
+  under test. The rule is no longer only for paths that have never run.
 - **A baseline asserts the network is at its committed INTENT, and every
   capture path now says whether it is** (C89 (c) and (d), decided
   2026-09-27). `save_golden()` is the one place every capture commits

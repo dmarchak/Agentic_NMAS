@@ -794,6 +794,59 @@ def startup_rows(read=None, now: float = None) -> list:
     return rows
 
 
+#: An operation's own session (not a long-lived pool's) held this long is
+#: named: a pipeline's longest settle window is 90 s, and the device ends an
+#: idle session at ten minutes, so an operation still holding one after that
+#: has leaked it (C97).
+LEAK_AFTER_SECONDS = 600
+
+
+def ssh_session_rows(held: dict = None) -> list:
+    """The SSH sessions THIS process holds, per device (register C97).
+
+    The tool locked itself out of r2 with its own idle sessions, and nothing
+    counted them. A device at its budget (its vty lines minus one kept for a
+    person) is not ok, naming every holder; an operation's session held past
+    ten minutes is named as a leak; otherwise one row says how many are held,
+    so a zero is a statement and not an absence."""
+    from modules import connection
+
+    what = "SSH sessions this app holds, within each device's vty budget (C97)"
+    try:
+        held = connection.held_sessions() if held is None else held
+    except Exception as exc:                          # noqa: BLE001
+        return [{"unit": "ssh-sessions", "what": what, "state": "unknown",
+                 "max_age_minutes": 0,
+                 "detail": f"the session count raised {type(exc).__name__}: {exc} "
+                           "-- not the same as ok"}]
+    rows = []
+    for ip, h in sorted(held.items()):
+        owners = ", ".join(f"{s['owner']} ({s['age_s']}s, idle {s['idle_s']}s)"
+                           for s in h["sessions"])
+        if h["held"] >= h["budget"]:
+            rows.append({"unit": f"ssh:{ip}", "what": what, "state": "at_budget",
+                         "max_age_minutes": 0,
+                         "detail": f"holds {h['held']} of {h['budget']} allowed "
+                                   f"({h['lines']} vty lines, one kept for a person): "
+                                   f"{owners}. The next operation on it is refused."})
+        leaked = [s for s in h["sessions"]
+                  if not s["pooled"] and s["age_s"] > LEAK_AFTER_SECONDS]
+        if leaked:
+            rows.append({"unit": f"ssh-leak:{ip}", "what": what, "state": "leaked",
+                         "max_age_minutes": 0,
+                         "detail": "an operation's session held past ten minutes: "
+                                   + ", ".join(f"{s['owner']} ({s['age_s']}s)"
+                                               for s in leaked)})
+    if not rows:
+        total = sum(h["held"] for h in held.values())
+        rows.append({"unit": "ssh-sessions", "what": what, "state": "ok",
+                     "max_age_minutes": 0,
+                     "detail": (f"holds {total} session(s) across {len(held)} device(s), "
+                                "none at its budget" if total else
+                                "holds no SSH session now")})
+    return rows
+
+
 def ztp_rows() -> list:
     """D4, checked where it could otherwise silently stop holding (P.6)."""
     from modules.nsot import ztp
@@ -808,7 +861,7 @@ def ztp_rows() -> list:
 
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
-           startup=None) -> dict:
+           startup=None, sessions=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -819,6 +872,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += ztp_rows() if ztp is None else list(ztp)
     jobs += ztp_responder_rows(run) if responder is None else list(responder)
     jobs += startup_rows() if startup is None else list(startup)
+    jobs += ssh_session_rows() if sessions is None else list(sessions)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     return {"ok": True, "jobs": jobs, "not_ok": bad,

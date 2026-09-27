@@ -129,6 +129,7 @@ class LockedConnection:
         if callable(attr):
             def _locked(*args, **kwargs):
                 with lock:
+                    _touch(conn)
                     return attr(*args, **kwargs)
             return _locked
         return attr
@@ -136,6 +137,231 @@ class LockedConnection:
     def __setattr__(self, name: str, value) -> None:
         conn = object.__getattribute__(self, '_conn')
         setattr(conn, name, value)
+
+
+# ---------------------------------------------------------------------------
+# Every SSH session this process holds, per device (register C97)
+# ---------------------------------------------------------------------------
+# The tool locked itself out of r2 (2026-09-27): all five vty lines held by
+# its own idle sessions, so SSH was refused and the device read as offline
+# while nothing was wrong with it. Each deploy and restore left its pipeline
+# pool open, the capture reader left one per read, and nothing counted them.
+# A Netmiko session is not closed by dropping the reference: paramiko's
+# transport thread keeps it alive until the DEVICE times it out
+# (`exec-timeout 10 0`, the IOS default, measured on a C8000v and a vIOS).
+#
+# So every session is opened through `open_ssh()`, which:
+#   * counts the sessions this process holds per device, with who owns each;
+#   * refuses past a BUDGET: the device's vty lines minus one kept free for a
+#     person, because the tool locking a human out of a device it manages is
+#     the worst version of this, and the console is not always there;
+#   * logs every open and close naming the device and the owner (paramiko's
+#     own "Connected" line names neither);
+#   * lets `reap_idle()` close a long-lived pool's idle session itself,
+#     rather than waiting on the device's timeout.
+# The budget counts THIS process only. Oxidized and a person's own sessions
+# take lines too, which is why one is kept rather than none.
+
+RESERVED_FOR_PEOPLE = 1
+#: IOS's own default (`line vty 0 4`), used when the device's golden cannot
+#: say: the smallest vty count in the fleet, so an unknown is never generous.
+DEFAULT_VTY_LINES = 5
+#: A pooled session idle this long is closed by the tool, well inside the
+#: device's own ten minutes.
+IDLE_REAP_SECONDS = 120
+_VTY_CACHE_SECONDS = 300
+
+
+class SessionBudgetExceeded(RuntimeError):
+    """Opening another session would leave no vty line for a person."""
+
+
+_sessions: dict = {}          # ip -> {sid: info}
+_sessions_mu = threading.Lock()
+_sid_counter = [0]
+_vty_cache: dict = {}         # ip -> (lines, source, at)
+
+
+def _count_vty_lines(config: str) -> int:
+    """The vty lines a config declares (`line vty 0 4` is five)."""
+    import re
+
+    total = 0
+    for first, last in re.findall(r"^line vty (\d+)(?: (\d+))?\s*$", config or "", re.M):
+        total += (int(last) - int(first) + 1) if last else 1
+    return total
+
+
+def vty_lines(ip: str) -> tuple:
+    """``(lines, source)`` for a device, from its golden config."""
+    now = time.time()
+    cached = _vty_cache.get(ip)
+    if cached and now - cached[2] < _VTY_CACHE_SECONDS:
+        return cached[0], cached[1]
+    lines, source = DEFAULT_VTY_LINES, "IOS default: the golden does not say"
+    try:
+        from modules.ai_assistant import _find_golden_config_file
+
+        path = _find_golden_config_file(ip)
+        if path:
+            with open(path, encoding="utf-8") as fh:
+                counted = _count_vty_lines(fh.read())
+            if counted:
+                lines, source = counted, "its golden config"
+    except Exception:                          # noqa: BLE001
+        logger.debug("ssh: vty count unreadable for %s", ip, exc_info=True)
+    _vty_cache[ip] = (lines, source, now)
+    return lines, source
+
+
+def session_budget(ip: str) -> dict:
+    lines, source = vty_lines(ip)
+    return {"lines": lines, "source": source,
+            "budget": max(0, lines - RESERVED_FOR_PEOPLE)}
+
+
+def _caller_label() -> str:
+    """module:function of the code asking for a session, for attribution."""
+    import sys
+
+    frame = sys._getframe(1)
+    while frame and frame.f_globals.get("__name__") == __name__:
+        frame = frame.f_back
+    if not frame:
+        return "?"
+    return f"{frame.f_globals.get('__name__', '?')}:{frame.f_code.co_name}"
+
+
+def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None):
+    """Open ONE SSH session, counted, attributed, and within the budget.
+
+    The only place in the program a Netmiko session is opened (a test holds
+    it to that). Closing it with ``disconnect()`` removes it from the count.
+    """
+    ip = params["ip"]
+    owner = owner or _caller_label()
+    budget = session_budget(ip)
+    with _sessions_mu:
+        held = _sessions.setdefault(ip, {})
+        if len(held) >= budget["budget"]:
+            holders = ", ".join(sorted(i["owner"] for i in held.values())) or "none"
+            raise SessionBudgetExceeded(
+                f"refusing to open another SSH session to {ip}: this tool already "
+                f"holds {len(held)} ({holders}), and its budget is {budget['budget']} "
+                f"of the device's {budget['lines']} vty line(s) ({budget['source']}), "
+                f"keeping {RESERVED_FOR_PEOPLE} free for a person. Wait for one to "
+                "finish; if none is running, a session has leaked (register C97).")
+        _sid_counter[0] += 1
+        sid = _sid_counter[0]
+        now = time.time()
+        held[sid] = {"owner": owner, "opened": now, "last_used": now,
+                     "pool": pool, "pool_lock": pool_lock, "conn": None}
+    try:
+        # Looked up at CALL time, like the callers that used to open their own
+        # sessions did, so a fake installed at the Netmiko boundary reaches here.
+        import netmiko
+
+        conn = netmiko.ConnectHandler(**params)
+    except Exception:
+        _drop(ip, sid, "connect failed")
+        raise
+    with _sessions_mu:
+        info = _sessions.get(ip, {}).get(sid)
+        if info is not None:
+            info["conn"] = conn
+        count = len(_sessions.get(ip, {}))
+    original = conn.disconnect
+
+    def _disconnect(*args, **kwargs):
+        try:
+            return original(*args, **kwargs)
+        finally:
+            _drop(ip, sid, "closed")
+
+    conn.disconnect = _disconnect
+    conn._nmas_session = (ip, sid)
+    logger.info("ssh: opened %s for %s (%d of %d this tool may hold; %d vty line(s), "
+                "%d kept for a person)", ip, owner, count, budget["budget"],
+                budget["lines"], RESERVED_FOR_PEOPLE)
+    return conn
+
+
+def _drop(ip: str, sid: int, why: str) -> None:
+    with _sessions_mu:
+        info = _sessions.get(ip, {}).pop(sid, None)
+        left = len(_sessions.get(ip, {}))
+    if info is not None:
+        logger.info("ssh: %s %s for %s after %.0fs (%d still held)", why, ip,
+                    info["owner"], time.time() - info["opened"], left)
+
+
+def _touch(conn) -> None:
+    ip_sid = getattr(conn, "_nmas_session", None)
+    if ip_sid:
+        with _sessions_mu:
+            info = _sessions.get(ip_sid[0], {}).get(ip_sid[1])
+            if info is not None:
+                info["last_used"] = time.time()
+
+
+def held_sessions() -> dict:
+    """``{ip: {"held": n, "budget": b, "lines": l, "sessions": [...]}}``: what
+    this process holds now. Read by job health; names owners, never secrets."""
+    now = time.time()
+    with _sessions_mu:
+        snapshot = {ip: [dict(i) for i in held.values()] for ip, held in _sessions.items()
+                    if held}
+    out = {}
+    for ip, infos in snapshot.items():
+        b = session_budget(ip)
+        out[ip] = {"held": len(infos), "budget": b["budget"], "lines": b["lines"],
+                   "sessions": [{"owner": i["owner"], "age_s": round(now - i["opened"]),
+                                 "idle_s": round(now - i["last_used"]),
+                                 "pooled": i["pool"] is not None} for i in infos]}
+    return out
+
+
+def reap_idle(max_idle: float = IDLE_REAP_SECONDS) -> int:
+    """Close long-lived pools' sessions idle longer than *max_idle*.
+
+    Only a POOLED session is reaped: a per-operation one is closed by its
+    operation. A session in use (its device's send lock held) or whose pool
+    is busy is skipped this round, never waited for, so the reaper cannot
+    deadlock against a caller holding the pool lock then the send lock."""
+    now = time.time()
+    with _sessions_mu:
+        idle = [(ip, sid, dict(i)) for ip, held in _sessions.items()
+                for sid, i in held.items()
+                if i["pool"] is not None and i["conn"] is not None
+                and now - i["last_used"] > max_idle]
+    closed = 0
+    for ip, _sid, info in idle:
+        send_lock = get_device_send_lock(ip)
+        if not send_lock.acquire(blocking=False):
+            continue
+        try:
+            pool_lock = info["pool_lock"]
+            if pool_lock is not None and not pool_lock.acquire(blocking=False):
+                continue
+            try:
+                entry = info["pool"].get(ip)
+                raw = (object.__getattribute__(entry, "_conn")
+                       if isinstance(entry, LockedConnection) else entry)
+                if raw is info["conn"]:
+                    info["pool"].pop(ip, None)
+            finally:
+                if pool_lock is not None:
+                    pool_lock.release()
+            try:
+                logger.info("ssh: closing %s for %s, idle %.0fs", ip, info["owner"],
+                            now - info["last_used"])
+                info["conn"].disconnect()
+                closed += 1
+            except Exception:                  # noqa: BLE001
+                logger.debug("ssh: idle close of %s failed", ip, exc_info=True)
+        finally:
+            send_lock.release()
+    return closed
 
 # This module provides two connection styles:
 
@@ -154,12 +380,16 @@ def verify_device_connection(
     Attempts to connect to a device using Netmiko and returns the hostname prompt.
     Raises exception if connection fails.
     """
-    conn = ConnectHandler(**connection_params(
+    conn = open_ssh(connection_params(
         {"device_type": device_type, "ip": ip, "username": username},
-        password=password, secret=secret))
-    conn.enable()
-    prompt = conn.find_prompt()
-    conn.disconnect()
+        password=password, secret=secret), owner="verify_device_connection")
+    try:
+        conn.enable()
+        prompt = conn.find_prompt()
+    finally:
+        # It returned before disconnecting when enable() or find_prompt()
+        # raised, leaving the session open until the device timed it out (C97).
+        conn.disconnect()
     # Extract hostname from prompt (e.g., 'R1#' -> 'R1')
     hostname = prompt.rstrip("#>").strip()
     return hostname
@@ -265,6 +495,12 @@ def ping_worker(
                                 logger.info("ping_worker: %s online=%s", ip, status)
             except Exception:
                 logger.exception("Ping worker error")
+            # The long-lived pools' idle sessions are closed by the tool, not
+            # left for the device's own ten-minute timeout (C97).
+            try:
+                reap_idle()
+            except Exception:
+                logger.exception("ssh: idle reaper failed")
             time.sleep(interval)
 
     t = threading.Thread(target=worker, daemon=True)
@@ -294,8 +530,13 @@ def get_persistent_connection(
                         raw.disconnect()
                 except Exception:
                     pass
-                raw = ConnectHandler(**stored_connection_params(dev))
-                raw.enable()
+                raw = open_ssh(stored_connection_params(dev), pool=connections,
+                               pool_lock=lock)
+                try:
+                    raw.enable()
+                except Exception:
+                    raw.disconnect()
+                    raise
                 connections[ip] = LockedConnection(raw, send_lock)
             elif not isinstance(conn, LockedConnection):
                 connections[ip] = LockedConnection(raw, send_lock)
@@ -321,10 +562,10 @@ def with_temp_connection(dev: dict, func) -> any:
         logger.debug(
             "Attempting connection to %s as %s", dev.get("ip"), dev.get("username")
         )
-        conn = ConnectHandler(**stored_connection_params(dev))
-        conn.enable()
+        conn = open_ssh(stored_connection_params(dev))
         logger.debug("Connected to %s", dev.get("ip"))
         try:
+            conn.enable()
             return func(conn)
         finally:
             try:

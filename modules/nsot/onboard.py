@@ -2421,11 +2421,11 @@ def capture_config(mgmt_ip: str, username: str, password: str, secret: str,
     from modules.connection import connection_params
 
     try:
-        from netmiko import ConnectHandler
+        from modules.connection import open_ssh
 
-        conn = ConnectHandler(**connection_params(
+        conn = open_ssh(connection_params(
             {"device_type": device_type, "ip": mgmt_ip, "username": username},
-            password=password, secret=secret))
+            password=password, secret=secret), owner="onboard:capture")
         try:
             conn.enable()
             config = conn.send_command("show running-config",
@@ -2479,7 +2479,10 @@ def persist_on_device(mgmt_ip: str, username: str, password: str, secret: str,
     out = {"ok": False, "state": "unknown", "detail": ""}
     try:
         if connect is None:
-            from netmiko import ConnectHandler as connect
+            from modules.connection import open_ssh
+
+            def connect(**params):
+                return open_ssh(params, owner="onboard:startup_config")
         conn = connect(**connection_params(
             {"device_type": device_type, "ip": mgmt_ip, "username": username},
             password=password, secret=secret))
@@ -2535,7 +2538,10 @@ def check_startup(mgmt_ip: str, username: str, password: str, secret: str,
 
     try:
         if connect is None:
-            from netmiko import ConnectHandler as connect
+            from modules.connection import open_ssh
+
+            def connect(**params):
+                return open_ssh(params, owner="onboard:startup_config")
         conn = connect(**connection_params(
             {"device_type": device_type, "ip": mgmt_ip, "username": username},
             password=password, secret=secret))
@@ -2592,11 +2598,11 @@ def remove_rw_communities(mgmt_ip: str, username: str, password: str,
     from modules.connection import connection_params
 
     try:
-        from netmiko import ConnectHandler
+        from modules.connection import open_ssh
 
-        conn = ConnectHandler(**connection_params(
+        conn = open_ssh(connection_params(
             {"device_type": device_type, "ip": mgmt_ip, "username": username},
-            password=password, secret=secret))
+            password=password, secret=secret), owner="onboard:remove_rw")
         try:
             conn.enable()
             conn.send_config_set(plan["remove"], read_timeout=_read_timeout())

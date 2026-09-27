@@ -89,12 +89,13 @@ def test_a_recovery_clears_the_streak():
 def test_the_headline_counts_and_names():
     journal = _ok(NOW - 60)
     # images=[] and settings=[]: this test is about the systemd jobs' count;
-    # the Proxmox image rows and the settings rows have their own tests.
+    # the Proxmox image rows, the settings rows and the SSH-session rows
+    # (C97) have their own tests.
     h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
-                 rotations=[], owner=[])
+                 rotations=[], owner=[], sessions=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
     h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[],
-                 rotations=[], owner=[])
+                 rotations=[], owner=[], sessions=[])
     assert h["headline"].startswith("0 of") and "clab-sync" in h["headline"]
 
 

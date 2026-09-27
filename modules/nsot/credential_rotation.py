@@ -573,18 +573,22 @@ def open_original_session(device: dict):
     afterwards because it holds the old credential. This session exists solely
     so there is a guaranteed-authenticated channel to revert on.
     """
-    from netmiko import ConnectHandler
-
-    from modules.connection import connection_params
+    from modules.connection import connection_params, open_ssh
     from modules.device import decrypt_field
 
-    conn = ConnectHandler(**connection_params(
+    conn = open_ssh(connection_params(
         device,
         password=decrypt_field(device["password"]),
-        secret=decrypt_field(device.get("secret", "") or device["password"])))
-    conn.enable()
-    # Prove it, rather than trusting that connect() succeeding means usable.
-    conn.send_command("show clock", read_timeout=30)
+        secret=decrypt_field(device.get("secret", "") or device["password"])),
+        owner="rotation:original_session")
+    try:
+        conn.enable()
+        # Prove it, rather than trusting that connect() succeeding means usable.
+        conn.send_command("show clock", read_timeout=30)
+    except Exception:
+        # Never returned, so nobody would close it (C97).
+        conn.disconnect()
+        raise
     return conn
 
 
@@ -812,7 +816,7 @@ def verify_new_credential(device: dict, username: str, password: str, *,
     it is a local failure, and treating it as one produced the most alarming
     message this tool can emit from code that never contacted anything.
     """
-    from netmiko import ConnectHandler
+    from modules.connection import open_ssh
 
     from modules.connection import connection_params
 
@@ -826,7 +830,7 @@ def verify_new_credential(device: dict, username: str, password: str, *,
         # Only THIS may be a local fault. Classified by name, because a name
         # is all there is before a connection exists.
         try:
-            conn = ConnectHandler(**params)
+            conn = open_ssh(params, owner="rotation:verify_new_credential")
         except Exception as exc:              # noqa: BLE001
             name = type(exc).__name__
             verdict = classify_failure(name)
@@ -1037,7 +1041,7 @@ def live_user_line(device: dict, username: str) -> dict:
     program, and on the password path the wrong program is the one that gets
     silently refused.
     """
-    from netmiko import ConnectHandler
+    from modules.connection import open_ssh
 
     from modules.connection import connection_params
     from modules.device import decrypt_field
@@ -1049,8 +1053,9 @@ def live_user_line(device: dict, username: str) -> dict:
 
     conn = None
     try:
-        conn = ConnectHandler(**connection_params(
-            device, password=password, secret=enable_secret(device)))
+        conn = open_ssh(connection_params(
+            device, password=password, secret=enable_secret(device)),
+            owner="rotation:live_user_line")
         conn.enable()
         out = conn.send_command(
             f"show running-config | include ^username {username}",

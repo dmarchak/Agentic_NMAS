@@ -192,14 +192,15 @@ def restore_points(hostname):
 def _read_running(device: dict) -> tuple:
     """``(running_config, error)`` read NOW from *device* (the list's own
     row, carried, never looked up in the active list)."""
-    import threading
-
     from modules.commands import run_device_command
-    from modules.connection import get_persistent_connection
+    from modules.connection import with_temp_connection
 
+    # A temporary connection, closed when the read ends. It was a persistent
+    # connection in a fresh pool nobody kept, so every preview and apply left
+    # a session open until the device timed it out (C97).
     try:
-        conn = get_persistent_connection(device, {}, threading.Lock())
-        text = run_device_command(conn, "show running-config")
+        text = with_temp_connection(
+            device, lambda conn: run_device_command(conn, "show running-config"))
     except Exception as exc:                  # noqa: BLE001
         return None, f"{type(exc).__name__}: {exc}"
     return (text, "") if text else (None, "the device returned an empty running config")

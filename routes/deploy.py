@@ -713,6 +713,13 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         log.exception("deploy: pipeline raised for %s", hostname)
         return {"device": hostname, "outcome": FAILED, "stage": "pipeline",
                 "reason": str(exc)}
+    finally:
+        # The run's pool is this run's, and nothing else will ever close it:
+        # each deploy and restore left one session open until the device's
+        # ten-minute timeout, and five of them locked the tool out of r2 (C97).
+        from modules.connection import close_persistent_connection
+        for ip in list(ctx.connections_pool):
+            close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
 
     from modules.nsot.deploy import command_fingerprint
 
