@@ -1342,6 +1342,17 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
         out["reason"] = result.get("error") or "the sync did not report success"
         return out
 
+    # WRITES THAT DID NOT LAND for this device (register C8). The record
+    # exists, so this is not a failure of the step; but "recorded" alone
+    # would claim a whole record where, say, the primary IP was never set.
+    # The step says which writes are missing, and phase 2 carries it.
+    mine = [w for w in (result.get("write_failures") or [])
+            if w.get("device") in ("", hostname)]
+    out["write_failures"] = mine
+    if mine:
+        out["reason"] = (f"recorded, but {len(mine)} write(s) did not land: "
+                         + "; ".join(f"{w['write']} ({w['error']})" for w in mine[:3]))
+
     from modules.netbox_guard import get_created
 
     created = get_created(list_name) or {}

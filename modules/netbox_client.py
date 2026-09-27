@@ -239,7 +239,9 @@ def _managed_tag_id(session: requests.Session, base: str):
         _managed_tag_ids[base] = tag.get("id")
     except Exception as exc:
         # Tagging is provenance, not correctness — never fail a write over it.
-        log.warning("netbox: could not ensure '%s' tag: %s", MANAGED_TAG, exc)
+        # Recorded, not only logged (register C8): without the tag, every
+        # object this sync creates is untagged, so Remove can never act on it.
+        _ensure_failed(f"the '{MANAGED_TAG}' tag", exc)
         _managed_tag_ids[base] = None
     return _managed_tag_ids[base]
 
@@ -647,6 +649,74 @@ def _drain_ensure_failures() -> list:
     return items
 
 
+# A WRITE THAT DID NOT LAND, per sync thread (register C8). Twenty write
+# paths logged their failure at DEBUG and the sync then reported `failed=0`:
+# `failed` counts only devices whose WHOLE upsert raised, so a device whose
+# VLAN, cable or primary IP did not land was counted as created or updated,
+# and its failures appeared nowhere. That is the number Stage 7.1's
+# preview-confirm component draws, so a counter that cannot count failures
+# would have been drawn as an assurance. Every write path records here:
+# a WARNING, and a structured entry naming the device, the write and the
+# error, which the sync summary carries as `write_failures`.
+_write_failures = threading.local()
+_current_device = threading.local()
+
+
+def _write_failed(what: str, exc, device: str = "") -> None:
+    """Record a NetBox write that did not land. *device* defaults to the
+    device the sync is upserting (`_attributed_to`). The error text is
+    redacted, because the summary leaves this host."""
+    from modules.redact import redact_text
+
+    dev = device or getattr(_current_device, "name", "") or ""
+    error = redact_text(str(exc))[:300]
+    log.warning("netbox: %s%s could not be written: %s",
+                f"{dev}: " if dev else "", what, error)
+    if not hasattr(_write_failures, "items"):
+        _write_failures.items = []
+    _write_failures.items.append({"device": dev, "write": what, "error": error})
+
+
+def _drain_write_failures() -> list:
+    items = list(getattr(_write_failures, "items", None) or [])
+    _write_failures.items = []
+    return items
+
+
+class _attributed_to:
+    """Attribute every write failure inside the block to *device*."""
+
+    def __init__(self, device: str):
+        self.device = device
+
+    def __enter__(self):
+        self.previous = getattr(_current_device, "name", "")
+        _current_device.name = self.device
+        return self
+
+    def __exit__(self, *exc):
+        _current_device.name = self.previous
+        return False
+
+
+def write_failure_report(failed_devices: list, write_failures: list) -> dict:
+    """The part of a sync summary a person, and 7.1's component, reads as
+    the outcome. PURE, so the counting is tested apart from a NetBox.
+
+    * `failed`: devices whose whole upsert raised (unchanged);
+    * `write_failures`: every write that did not land, with its device;
+    * `partial`: devices that were written, some of whose writes did not land;
+    * `complete`: nothing failed at all. `ok` keeps meaning "the sync ran",
+      which callers depend on; `complete` is the claim that it all landed.
+    """
+    whole = {d.get("hostname") for d in failed_devices}
+    partial = sorted({w["device"] for w in write_failures
+                      if w.get("device") and w["device"] not in whole})
+    return {"failed": failed_devices, "write_failures": write_failures,
+            "partial": partial,
+            "complete": not failed_devices and not write_failures}
+
+
 def _ensure_custom_field(session, base: str, name: str) -> bool:
     """Get-or-create one of the app's known custom field definitions.
 
@@ -730,7 +800,7 @@ def _ensure_vpn_tunnel(session, base: str, name: str,
             payload["description"] = description[:200]
         return _nb_post(session, base, "vpn/tunnels/", payload)
     except Exception as exc:
-        log.debug("netbox: vpn/tunnels not available or failed: %s", exc)
+        _write_failed(f"VPN tunnel {name}", exc)
         return None
 
 
@@ -752,7 +822,7 @@ def _ensure_tunnel_termination(session, base: str,
             "termination_id":   interface_id,
         })
     except Exception as exc:
-        log.debug("netbox: tunnel termination failed: %s", exc)
+        _write_failed(f"tunnel termination ({role})", exc)
         return None
 
 
@@ -784,7 +854,7 @@ def _ensure_cable(session, base: str,
             "status": "connected",
         })
     except RuntimeError as exc:
-        log.debug("netbox: cable create failed: %s", exc)
+        _write_failed(f"cable {a_type}:{a_id} -> {b_type}:{b_id}", exc)
         return None
 
 
@@ -864,7 +934,9 @@ def _ensure_interface(session, base: str, device_id: int,
             try:
                 return _nb_patch(session, base,
                                  f"dcim/interfaces/{existing['id']}/", update)
-            except RuntimeError:
+            except RuntimeError as exc:
+                # The object exists; the UPDATE did not land (register C8).
+                _write_failed(f"update of interface {existing.get('name', existing['id'])}", exc)
                 return existing
         return existing
     return _nb_post(session, base, "dcim/interfaces/", payload)
@@ -885,7 +957,9 @@ def _ensure_prefix(session, base: str, prefix: str,
             try:
                 return _nb_patch(session, base, f"ipam/prefixes/{existing['id']}/",
                                  {"role": role_id})
-            except RuntimeError:
+            except RuntimeError as exc:
+                # The object exists; the UPDATE did not land (register C8).
+                _write_failed(f"update of prefix {prefix}", exc)
                 return existing
         return existing
     payload: dict = {
@@ -1012,7 +1086,9 @@ def _ensure_ip_address(session, base: str, address_cidr: str,
                 return _nb_patch(session, base,
                                  f"ipam/ip-addresses/{existing['id']}/",
                                  payload)
-            except RuntimeError:
+            except RuntimeError as exc:
+                # The object exists; the UPDATE did not land (register C8).
+                _write_failed(f"update of IP {address_cidr}", exc)
                 return existing
         return existing
     return _nb_post(session, base, "ipam/ip-addresses/", payload)
@@ -1674,7 +1750,9 @@ def _ensure_config_template(session: requests.Session, base: str) -> Optional[in
                  _NDM_TEMPLATE_NAME, result.get("id"))
         return result["id"]
     except Exception as exc:
-        log.debug("netbox: config-templates endpoint unavailable (%s) — skipping", exc)
+        # Recorded (register C8): the template is how NetBox renders a
+        # device's config, and "skipping" at DEBUG said nothing anywhere.
+        _ensure_failed("the config template", exc)
         return None
 
 
@@ -1714,7 +1792,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             plat = _ensure_platform(session, base, facts["platform"], manuf["id"])
             platform_id = plat["id"]
         except Exception as exc:
-            log.debug("netbox: platform upsert failed: %s", exc)
+            _write_failed(f"platform {facts['platform']}", exc, hostname)
 
     # VRFs (IPAM) — build a name→id map used when assigning IPs later
     vrf_id_map: dict = {}
@@ -1724,7 +1802,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             vrf_id_map[vrf["name"]] = nb_vrf["id"]
             ipam_stats["vrfs_synced"] = ipam_stats.get("vrfs_synced", 0) + 1
         except Exception as exc:
-            log.debug("netbox: VRF upsert failed for %s: %s", vrf["name"], exc)
+            _write_failed(f"VRF {vrf['name']}", exc, hostname)
 
     # VLANs
     for vlan in (vlans or []):
@@ -1732,7 +1810,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             _ensure_vlan(session, base, vlan["vlan_id"], vlan["name"], site_id)
             ipam_stats["vlans_synced"] = ipam_stats.get("vlans_synced", 0) + 1
         except Exception as exc:
-            log.debug("netbox: VLAN %s upsert failed: %s", vlan.get("vlan_id"), exc)
+            _write_failed(f"VLAN {vlan.get('vlan_id')}", exc, hostname)
 
     # Build device payload
     # Match by serial number first when we have one — it's the actual stable
@@ -1878,7 +1956,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                                        f"dcim/devices/{device_id}/",
                                        {"tags": merged})
             except Exception as exc:
-                log.debug("netbox: device tag update failed on %s: %s", hostname, exc)
+                _write_failed("device tags", exc, hostname)
 
     # ── DCIM interfaces + IPAM ─────────────────────────────────────────────
     mgmt_ip_id: Optional[int] = None
@@ -1896,7 +1974,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             try:
                 prefix_role_id_cache[name] = _ensure_prefix_role(session, base, name)["id"]
             except Exception as exc:
-                log.debug("netbox: prefix role '%s' failed: %s", name, exc)
+                _write_failed(f"prefix role {name}", exc, hostname)
                 prefix_role_id_cache[name] = None
         return prefix_role_id_cache[name]
 
@@ -1927,8 +2005,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                                           f"VLAN{vlan_vid}", site_id)
                     untagged_vlan_id = nb_vlan["id"]
                     ipam_stats["vlans_synced"] = ipam_stats.get("vlans_synced", 0) + 1
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _write_failed(f"VLAN {vlan_vid} on {intf['name']}", exc, hostname)
 
             # Tagged VLANs for trunk ports (cap at 50 to keep payloads reasonable)
             tagged_vlan_ids: Optional[list] = None
@@ -1939,8 +2017,9 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                         nb_vlan = _ensure_vlan(session, base, vid, f"VLAN{vid}", site_id)
                         tagged_vlan_ids.append(nb_vlan["id"])
                         ipam_stats["vlans_synced"] = ipam_stats.get("vlans_synced", 0) + 1
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # A trunk's VLAN list then lands incomplete (register C8).
+                        _write_failed(f"tagged VLAN {vid} on {intf['name']}", exc, hostname)
 
             nb_intf = _ensure_interface(
                 session, base,
@@ -2035,8 +2114,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                                        vrf_id=vrf_id)
                     ipam_stats["ips_synced"] = ipam_stats.get("ips_synced", 0) + 1
                 except Exception as exc:
-                    log.debug("netbox: secondary IP %s on %s/%s: %s",
-                              sec_cidr, hostname, intf["name"], exc)
+                    _write_failed(f"secondary IP {sec_cidr} on {intf['name']}", exc, hostname)
 
             # IPv6 addresses — same VRF as the interface's IPv4 side (a device's
             # dual-stack interface shares one VRF) and tracked for primary_ip6,
@@ -2058,15 +2136,13 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                     if "loopback0" in intf["name"].lower():
                         loopback_ipv6_id = nb_ip6["id"]
                 except Exception as exc:
-                    log.debug("netbox: IPv6 %s on %s/%s: %s",
-                              v6_cidr, hostname, intf["name"], exc)
+                    _write_failed(f"IPv6 {v6_cidr} on {intf['name']}", exc, hostname)
 
         except Exception as exc:
-            log.warning("netbox: IPAM sync failed on %s %s: %s",
-                        hostname, intf.get("name"), exc)
-            ipam_stats.setdefault("errors", []).append(
-                f"{hostname} {intf.get('name', '?')}: {exc}"
-            )
+            # It went into `ipam_stats["errors"]`, which the summary never
+            # copies (it takes only the counts): recorded where nothing read
+            # it (register C8). Now a write failure like the rest.
+            _write_failed(f"interface {intf.get('name', '?')} and its addresses", exc, hostname)
 
     # ── LAG membership (second pass — Port-channel must exist first) ───────
     for member_name, lag_parent_name in deferred_lags:
@@ -2078,8 +2154,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             _nb_patch(session, base, f"dcim/interfaces/{member_id}/",
                       {"lag": lag_parent_id})
         except Exception as exc:
-            log.debug("netbox: LAG wire %s→%s on %s: %s",
-                      member_name, lag_parent_name, hostname, exc)
+            _write_failed(f"LAG membership {member_name} -> {lag_parent_name}", exc, hostname)
 
     # ── VPN tunnels (NetBox 3.7+ vpn/tunnels/ endpoint) ──────────────────
     for intf in (interfaces or []):
@@ -2131,7 +2206,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 ipam_stats["tunnels_synced"] = ipam_stats.get("tunnels_synced", 0) + 1
                 log.debug("netbox: tunnel %s (%s) → %s", tun_name, encap, role)
         except Exception as exc:
-            log.debug("netbox: tunnel %s failed: %s", tun_name, exc)
+            _write_failed(f"tunnel {tun_name}", exc, hostname)
 
     # ── Static routes as IPAM prefixes ────────────────────────────────────
     if static_routes:
@@ -2163,8 +2238,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 _nb_post(session, base, "ipam/prefixes/", pf)
                 ipam_stats["prefixes_synced"] = ipam_stats.get("prefixes_synced", 0) + 1
             except Exception as exc:
-                log.debug("netbox: static route %s on %s: %s",
-                          route.get("prefix"), hostname, exc)
+                _write_failed(f"static route {route.get('prefix')}", exc, hostname)
 
     # Set primary_ip4 from management IP.
     # The strict match during the interface loop only fires when one interface IP
@@ -2244,10 +2318,9 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                     log.info("netbox: %s — no interface IPs found; created mgmt IP %s from device list",
                              hostname, mgmt_cidr)
                 except Exception as exc2:
-                    log.debug("netbox: could not create fallback mgmt IP %s on %s: %s",
-                              mgmt_cidr, hostname, exc2)
+                    _write_failed(f"fallback management IP {mgmt_cidr}", exc2, hostname)
         except Exception as exc:
-            log.debug("netbox: primary_ip fallback failed on %s: %s", hostname, exc)
+            _write_failed("primary IP fallback", exc, hostname)
 
     if mgmt_ip_id and (device.get("primary_ip4") or {}).get("id") != mgmt_ip_id:
         try:
@@ -2255,7 +2328,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                                f"dcim/devices/{device_id}/",
                                {"primary_ip4": mgmt_ip_id})
         except Exception as exc:
-            log.debug("netbox: could not set primary_ip4 on %s: %s", hostname, exc)
+            _write_failed("primary_ip4", exc, hostname)
 
     # Set primary_ip6 the same way primary_ip4 falls back to Loopback0 (tier 2
     # above) — no exact-SSH-match tier (this app doesn't manage over IPv6) and
@@ -2268,7 +2341,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                                f"dcim/devices/{device_id}/",
                                {"primary_ip6": mgmt_ipv6_id})
         except Exception as exc:
-            log.debug("netbox: could not set primary_ip6 on %s: %s", hostname, exc)
+            _write_failed("primary_ip6", exc, hostname)
 
     return {
         "action":       action,
@@ -2767,6 +2840,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
     # caller renders this.
     provisioning_notes: list = []
     _drain_ensure_failures()     # this sync's failures only
+    _drain_write_failures()      # likewise: an aborted sync on this thread leaves none behind
 
     # Build/refresh the region and site up-front. Device roles are resolved
     # per-device below (router/switch/firewall, matching the app's own
@@ -2802,7 +2876,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         list_vrf_id = list_vrf["id"]
         log.info("netbox: list VRF '%s' id=%s", list_name, list_vrf_id)
     except Exception as exc:
-        log.warning("netbox: could not create list VRF '%s': %s", list_name, exc)
+        _write_failed(f"list VRF {list_name}", exc)
 
     # Populate from golden configs — no SSH needed, works for offline devices.
     scanned: list[dict] = [_scan_device_from_golden(d) for d in devices]
@@ -2845,34 +2919,35 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
             failed.append({"hostname": result["hostname"], "ip": result["ip"], "error": result["error"]})
             continue
         try:
-            outcome = _upsert_device(
-                session, base,
-                hostname=result["hostname"],
-                ip=result["ip"],
-                facts=result["facts"],
-                interfaces=result.get("interfaces", []),
-                site_id=site["id"],
-                role_id=_role_id_for(result.get("app_role", "router")),
-                ipam_stats=ipam_stats,
-                vlans=result.get("vlans", []),
-                vrfs=result.get("vrfs", []),
-                running_config=result.get("running_config", ""),
-                config_template_id=config_template_id,
-                static_routes=result.get("static_routes", []),
-                protocol_tags=result.get("protocol_tags", []),
-                routing_context=result.get("routing_context", {}),
-                list_vrf_id=list_vrf_id,
-                mgmt_prefix_len=result.get("mgmt_prefix_len") or 0,
-            )
-            if outcome["action"] == "created":
-                created += 1
-            else:
-                updated += 1
-            device_registry[result["hostname"]] = {
-                "device_id":    outcome["id"],
-                "nb_iface_map": outcome.get("nb_iface_map", {}),
-                "neighbors":    result.get("neighbors", []),
-            }
+            with _attributed_to(result["hostname"]):
+                outcome = _upsert_device(
+                    session, base,
+                    hostname=result["hostname"],
+                    ip=result["ip"],
+                    facts=result["facts"],
+                    interfaces=result.get("interfaces", []),
+                    site_id=site["id"],
+                    role_id=_role_id_for(result.get("app_role", "router")),
+                    ipam_stats=ipam_stats,
+                    vlans=result.get("vlans", []),
+                    vrfs=result.get("vrfs", []),
+                    running_config=result.get("running_config", ""),
+                    config_template_id=config_template_id,
+                    static_routes=result.get("static_routes", []),
+                    protocol_tags=result.get("protocol_tags", []),
+                    routing_context=result.get("routing_context", {}),
+                    list_vrf_id=list_vrf_id,
+                    mgmt_prefix_len=result.get("mgmt_prefix_len") or 0,
+                )
+                if outcome["action"] == "created":
+                    created += 1
+                else:
+                    updated += 1
+                device_registry[result["hostname"]] = {
+                    "device_id":    outcome["id"],
+                    "nb_iface_map": outcome.get("nb_iface_map", {}),
+                    "neighbors":    result.get("neighbors", []),
+                }
         except Exception as exc:
             log.exception("netbox: upsert failed for %s", result["hostname"])
             failed.append({"hostname": result["hostname"], "ip": result["ip"], "error": str(exc)})
@@ -2892,16 +2967,17 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
             if not (local_iface_id and remote_iface_id):
                 continue
             try:
-                cable = _ensure_cable(
-                    session, base,
-                    "interface", local_iface_id,
-                    "interface", remote_iface_id,
-                )
+                with _attributed_to(local_hostname):
+                    cable = _ensure_cable(
+                        session, base,
+                        "interface", local_iface_id,
+                        "interface", remote_iface_id,
+                    )
                 if cable:
                     ipam_stats["cables_synced"] = ipam_stats.get("cables_synced", 0) + 1
             except Exception as exc:
-                log.debug("netbox: cable failed %s:%s → %s:%s: %s",
-                          local_hostname, local_iface, remote_hostname, remote_iface, exc)
+                _write_failed(f"cable {local_iface} -> {remote_hostname}:{remote_iface}",
+                              exc, local_hostname)
 
     summary = {
         "ok":         True,
@@ -2912,7 +2988,11 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         "synced":     len([r for r in scanned if not r.get("error")]),
         "created":    created,
         "updated":    updated,
-        "failed":     failed,
+        # `failed` is devices whose whole upsert raised; `write_failures`
+        # every write that did not land, `partial` the devices they belong
+        # to, and `complete` the claim that everything landed (register C8:
+        # this reported failed=0 while twenty write paths failed silently).
+        **write_failure_report(failed, _drain_write_failures()),
         "config_template_id": config_template_id,
         "ipam": {
             "interfaces": ipam_stats.get("interfaces_synced", 0),
@@ -2942,6 +3022,22 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
     return summary
 
 
+_last_delete_failure = threading.local()
+
+
+def _note_delete_failure(endpoint: str, obj_id, reason: str) -> None:
+    from modules.redact import redact_text
+
+    reason = redact_text(reason)[:300]
+    log.warning("netbox: DELETE %s/%s refused: %s", endpoint, obj_id, reason)
+    _last_delete_failure.reason = reason
+
+
+def last_delete_failure() -> str:
+    """Why the most recent failed `_nb_delete` on this thread failed."""
+    return getattr(_last_delete_failure, "reason", "") or "unknown"
+
+
 def _nb_delete(session, base: str, path: str, obj_id: int) -> bool:
     """DELETE one NetBox object; return True on success or already-gone (404).
 
@@ -2967,9 +3063,16 @@ def _nb_delete(session, base: str, path: str, obj_id: int) -> bool:
         ok = r.ok or r.status_code == 404
         if ok:
             _guard.forget_created(_guard.get_current_list(), endpoint, obj_id)
+        else:
+            # A refused delete (a 409 for a protected object, say) returned
+            # False with NO log at all; only an exception was logged, at
+            # DEBUG (register C8). Now it says why, and the reason reaches
+            # the removal's `failed` list through `_last_delete_failure`.
+            _note_delete_failure(endpoint, obj_id,
+                                 f"HTTP {r.status_code}: {(getattr(r, 'text', '') or '')[:200]}")
         return ok
     except Exception as exc:
-        log.debug("netbox _nb_delete %s/%s: %s", path, obj_id, exc)
+        _note_delete_failure(endpoint, obj_id, str(exc))
         return False
 
 
@@ -3108,7 +3211,7 @@ def remove_device_from_netbox(list_name: str, hostname: str,
             f"'{hostname}' (id {dev_id}) no longer carries the nmas-managed "
             f"tag — treated as operator-owned and left alone.")}
 
-    deleted, skipped = [], []
+    deleted, skipped, failed = [], [], []
 
     def _consider(endpoint, obj):
         obj_id = obj.get("id")
@@ -3125,8 +3228,11 @@ def remove_device_from_netbox(list_name: str, hostname: str,
             deleted.append({"endpoint": endpoint, "id": obj_id, "name": label})
             _guard.forget_created(list_name, endpoint, obj_id)
         else:
-            skipped.append({"endpoint": endpoint, "id": obj_id, "name": label,
-                            "reason": "delete failed"})
+            # FAILED, not skipped (register C8): a skip is a decision (NMAS
+            # did not create it), a failure is an outcome, and one bucket for
+            # both drew a refused delete as a deliberate choice.
+            failed.append({"endpoint": endpoint, "id": obj_id, "name": label,
+                           "reason": last_delete_failure()})
 
     def _run():
         for endpoint in _PER_DEVICE_ORDER:
@@ -3146,7 +3252,7 @@ def remove_device_from_netbox(list_name: str, hostname: str,
     except Exception as exc:                    # noqa: BLE001
         log.exception("netbox: remove_device_from_netbox failed for %r", hostname)
         return {"ok": False, "error": str(exc), "deleted": deleted,
-                "skipped": skipped}
+                "skipped": skipped, "failed": failed, "complete": False}
 
     # Named, so the operator can see what abandoning one device deliberately
     # did NOT touch. An empty report here would read as "nothing else exists".
@@ -3158,6 +3264,9 @@ def remove_device_from_netbox(list_name: str, hostname: str,
              " (dry run)" if dry_run else "", len(deleted), len(skipped))
     return {"ok": True, "device": hostname, "dry_run": dry_run,
             "deleted": deleted, "skipped": skipped, "retained": retained,
+            # A delete NetBox refused, with its reason: an outcome, never a
+            # skip (register C8). `complete` is the claim that all landed.
+            "failed": failed, "complete": not failed,
             # Only on the preview: after an apply the objects are gone, and
             # the same query would report no consequence for a delete that
             # had one.
@@ -3215,13 +3324,14 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
     created = _guard.get_created(list_name)
     if not created:
         return {"ok": True, "list": list_name, "devices": 0, "deleted_devices": 0,
-                "deleted": [], "skipped": [], "counts": {},
+                "deleted": [], "skipped": [], "failed": [], "complete": True, "counts": {},
                 "message": "NMAS has no record of creating anything in NetBox for this "
                            "list, so there is nothing safe to remove. Objects created "
                            "before this safeguard existed must be removed in NetBox."}
 
     deleted: list = []
     skipped: list = []
+    failed:  list = []
     counts:  dict = {}
 
     def _run() -> None:
@@ -3248,9 +3358,9 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
                                     "name": obj.get("name") or name})
                     counts[endpoint] = counts.get(endpoint, 0) + 1
                 else:
-                    skipped.append({"endpoint": endpoint, "id": obj_id,
-                                    "name": obj.get("name") or name,
-                                    "reason": "delete failed"})
+                    failed.append({"endpoint": endpoint, "id": obj_id,
+                                   "name": obj.get("name") or name,
+                                   "reason": last_delete_failure()})
 
     try:
         if dry_run:
@@ -3278,6 +3388,10 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
         "dry_run": dry_run,
         "deleted": deleted,
         "skipped": skipped,
+        # A delete NetBox refused, with its reason: an outcome, never a skip
+        # (register C8). `complete` is the claim that everything landed.
+        "failed": failed,
+        "complete": not failed,
         "counts": counts,
         "cascade": cascade,
         # Kept for the existing NetBox tab, which reads both of these.
