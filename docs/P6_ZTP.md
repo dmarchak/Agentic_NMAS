@@ -351,3 +351,39 @@ from committed intent, through an approved template, by a confirmed program.
 | A config served to something other than the device | Only the reserved address is served; every refusal is a row |
 | A stale server address handed to devices | Derived from Kea's subnet interface, never read from `tftp_server_ip` |
 | A device ZTP'd but outside the model's guarantees | Not in the inventory until Phase 2 promotes it, and Phase 2 is unchanged |
+
+
+---
+
+## 8. Closed, 2026-09-27: what the five measurements cost and found
+
+**Lab 8 is demonstrated end to end:**
+1. A device with no configuration got its address from a reservation THE
+   TOOL WROTE into Kea.
+2. It fetched its bootstrap config from THE TOOL by TFTP, every fetch a
+   reveal row, and applied it.
+3. It was reached over SSH with the staged credential.
+4. Its credential was rotated, saved and read back.
+5. It was captured, recorded in NetBox and promoted.
+6. It rebooted into its own saved config and stayed reachable.
+
+**The caveat:** the node had to be persuaded to ask, because vrnetlab always
+injects a day-0 config.
+
+**Almost none of what the measurements found was in the plan (the
+operator's ledger):**
+
+| Measurement | Runs | What it found |
+|---|---|---|
+| M1 | 2 | vrnetlab's install overlay carries a saved startup config, so removing the day-0 ISO was not enough; PnP defers to any startup config; qemu's user network answers Gi1 first and AutoInstall stops at the first lease |
+| M5 | 1 | the include is live, and a config-set-only reservation vanishes at a restart (C49 demonstrated and closed) |
+| M3 | 2 | a stale bind made the first run measure the OLD instrument; then passthrough silenced Gi1, Kea's reservation answered, and the node asked for exactly the file named. Also: withholding the resolver stops the call to Cisco but not the attempt (D4's second condition) |
+| M4 | 3 boots | the responder's IPv6 socket family (identity AND reply); the SSH key keyed on the platform; phase 2 reporting success while leaving the device one reboot from unrecoverable, which then found the SAME defect live on s1 in production (C53, nine of nine carry now) |
+
+**And the class it named:** a rule keyed on the platform when it was really
+about the deployment (RESERVED_INTERFACES, C50, the SSH key, C52). ZTP was
+the first route to break all four.
+
+**Still open from this work:** C50 (the lab map's unknown-lab fallback, now
+proposed as a gate before 7.3) and C54 (job-health rows for devices that no
+longer exist).

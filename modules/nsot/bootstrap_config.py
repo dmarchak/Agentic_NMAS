@@ -333,14 +333,19 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
     return body
 
 
-def secret_clause(platform: str, value: str) -> str:
+def secret_clause(platform: str, value: str, injects_user: bool = None) -> str:
     """``password 0 x`` or ``secret 0 x``, per what the platform will accept.
 
     Not a style choice. On a platform where vrnetlab injects a password line
     first, a secret line for the same user is refused — the device keeps
     vrnetlab's credential and the startup file describes one it does not have.
     """
-    if platform in VRNETLAB_INJECTS_USER:
+    # *injects_user*: whether something injects a user line ahead of this
+    # config. None means the platform's rule. A ZTP device boots with no
+    # vrnetlab day-0 config, so nothing injects one, and the stronger form
+    # applies (register C52; the same shape as the SSH key, P.6 M4).
+    injects = platform in VRNETLAB_INJECTS_USER if injects_user is None else injects_user
+    if injects:
         return f"password 0 {value}"
     return f"secret 0 {value}"
 
@@ -382,7 +387,8 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
                      mgmt_interface: str = "",
                      manager_interface: str = "", manager_address: str = "",
                      manager_mask: str = "", manager_gateway: str = "",
-                     generate_ssh_key: bool = False) -> str:
+                     generate_ssh_key: bool = False,
+                     injects_user: bool = None) -> str:
     """The minimal management-plane config for a device joining the lab.
 
     *generate_ssh_key*: on a platform where vrnetlab normally generates the
@@ -429,7 +435,7 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "!",
             "no aaa new-model",
             "!",
-            f"username {username} privilege 15 {secret_clause(platform, secret)}",
+            f"username {username} privilege 15 {secret_clause(platform, secret, injects_user)}",
             "!",
             domain_line(platform, domain),
             "!",

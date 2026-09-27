@@ -643,7 +643,9 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         # A ZTP device boots with no day-0 config from anywhere else, so
         # nothing else generates its SSH key (M4). The re-render in
         # `bootstrap_artifact` applies the same rule, so they stay identical.
-        generate_ssh_key=(address_source == "ztp"))
+        generate_ssh_key=(address_source == "ztp"),
+        # Nothing injects a user ahead of a ZTP device's config (C52).
+        injects_user=(False if address_source == "ztp" else None))
 
     # THE SYSLOG BLOCK IS PART OF THE BASELINE (NSOT_PLAN P.1). Merged into
     # the initial intent, never over an author's own block: a caller that
@@ -779,7 +781,8 @@ def _template_for(repo: str, hostname: str, platform: str):
 def _render(platform: str, hostname: str, secret: str, domain: str,
             mgmt_interface: str, *, manager_interface: str = "",
             manager_address: str = "", manager_mask: str = "",
-            manager_gateway: str = "", generate_ssh_key: bool = False):
+            manager_gateway: str = "", generate_ssh_key: bool = False,
+            injects_user: bool = None):
     """``(config, unsendable)``. A render that cannot be sent is a refusal.
 
     **The ASCII guard is the generator's own**, not a second copy here.
@@ -810,7 +813,8 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
                                   manager_address=manager_address,
                                   manager_mask=manager_mask,
                                   manager_gateway=manager_gateway,
-                                  generate_ssh_key=generate_ssh_key)
+                                  generate_ssh_key=generate_ssh_key,
+                                  injects_user=injects_user)
     except UnsendableCommand as exc:
         # The ONE failure that belongs in `unsendable`, keyed on the type
         # rather than on "the render raised". `assert_sendable` names the
@@ -2355,7 +2359,8 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
             manager_mask=("dhcp" if source in ("dhcp", "ztp")
                           else params.get("mask", "")),
             manager_gateway=params.get("gateway", ""),
-            generate_ssh_key=(source == "ztp"))
+            generate_ssh_key=(source == "ztp"),
+            injects_user=(False if source == "ztp" else None))
     except Exception as exc:                   # noqa: BLE001
         log.error("onboard: could not re-render bootstrap for %r: %s",
                   hostname, exc)

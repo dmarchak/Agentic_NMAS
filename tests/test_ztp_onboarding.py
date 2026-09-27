@@ -645,3 +645,20 @@ class TestTheVerifyFailureStaysOnScreen:
     def test_a_success_still_reloads(self):
         out = self._run({"ok": True})
         assert "reload:ztp-a" in out["calls"]
+
+
+class TestAZtpRenderUsesTheStrongerCredentialForm:
+    """C52: `password 0` exists because vrnetlab injects its own user line
+    first and a `secret` line for the same user is refused. On a ZTP device
+    nothing injects one, so the render uses `secret 0`."""
+
+    def test_ztp_gets_secret_0(self, tmp_path, monkeypatch):
+        cfg = _plan(tmp_path, monkeypatch).bootstrap_config
+        assert "username admin privilege 15 secret 0 " in cfg
+        assert "password 0" not in cfg
+
+    def test_every_other_c8000v_render_is_unchanged(self, tmp_path, monkeypatch):
+        """The floor: vrnetlab still injects for those."""
+        plan = _plan(tmp_path, monkeypatch, address_source="dhcp", mgmt_ip="",
+                     ztp_check=None, kea=_NoKea())
+        assert "username admin privilege 15 password 0 " in plan.bootstrap_config

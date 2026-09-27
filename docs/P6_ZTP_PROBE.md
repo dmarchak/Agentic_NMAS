@@ -1112,6 +1112,23 @@ IOS may retry the request.
 fragment file (now `[]`) and `kea_ztp_fragment`. They are the host's ZTP
 capability, not the probe's.
 
+### Teardown result (2026-09-27): clean
+
+- `census --compare` gave **PASS, exit 0**. The operator's first reading of
+  "devices 10, tagged 1" was a misreading: the baseline holds ten devices,
+  with `11:r6` the only tagged one, and `bp-ztp-a` was device 13, absent from
+  both. The census was right throughout.
+- The reservation was removed by the tool's writer and read back
+  (`removed`, `reloaded: True`): 0 reservations, and the D4 line intact.
+- containerlab destroyed; `br-mgmt` back to `enp6s19`, `s3-mgmt`,
+  `r6-mgmt`; 0 probe networks.
+- The `10.255.0.50` override was flagged ORPHAN once the list was gone, and
+  the tool refused to delete it itself. That default is right: removing a
+  secret because a script could not attribute it is the wrong direction
+  (register B3).
+- **r1's route to r6 unchanged:** extern 2, metric 20, from `10.255.1.23`,
+  last update 3h 1m ago, so it predates the probe and never flapped.
+
 **Teardown:** as Phase 2's ([PHASE2_DHCP.md](PHASE2_DHCP.md)), whose census
 `--compare` against the step-5 baseline is the acceptance, plus the
 containerlab teardown as in step 7 above. Abandon is NOT the path for a

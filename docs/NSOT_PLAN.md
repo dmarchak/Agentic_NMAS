@@ -1663,6 +1663,40 @@ of an existing one.
   multi-select; C8 before 7.5's NetBox summary; E4 before 7.6; C7 before
   7.7. The other open findings are carried into Stage 7 with conditions
   (register).
+- **The gate list, REVISED 2026-09-27 after P.6, PROPOSED and awaiting the
+  operator's confirmation.** Each gate is tied to the step whose screen
+  would be wrong without it, read against NSOT_STAGE7_PLAN.md's steps and
+  section 1a's sources:
+  - **Two decisions before 7.0.** Whether Stage 6 must close first (the GUI
+    doc says so, this plan says it blocks nothing). And the NUMBERING: this
+    plan folds Stage 5's monitoring into "7.5", while NSOT_STAGE7_PLAN.md's
+    7.5 is Versions and puts monitoring on the Device page (7.3).
+  - **Before 7.0: B1.** 7.0 writes the payload-to-render check, which
+    requires every payload key to be drawn or allowlisted. `skipped_drifted`
+    still carries a whole device config, so it would enter that allowlist on
+    day one. Small to fix; fix it first. **C51** (a GET creating the list it
+    names) belongs IN 7.0's harness, beside C33.
+  - **Before 7.1: C8** (moved from "7.5's NetBox summary"). 7.1 retrofits
+    NetBox import and remove into the preview-confirm component, and the
+    import reports `failed=0` while 20 write paths log failures at DEBUG, so
+    the component would present a false count.
+  - **Before 7.2: C17, E4 (moved from 7.6), C54.** Needs attention's
+    sources include Grafana's alert state (C17: `grafana_url` and
+    `loki_url` empty), drift with coverage (E4: the checker is off, so the
+    source reads "disabled"), and job health, which carries rows for
+    devices that no longer exist (C54).
+  - **Before 7.3: C50 (new).** The Device page offers rotate, and rotation's
+    persistence chain resolves an unknown lab to rcn-lab1's paths. It is
+    now the chain's SECOND half: C53 made its first stage the device's own
+    save.
+  - **Before 7.4: C10**, unchanged: 7.4's batch deploy is the first
+    multi-select.
+  - **Within 7.6, not before 7.3: C2** (the register already schedules it
+    there: "fixed as it moves", with fleet coverage). **B3 moves to 7.6**
+    too, where credentials are shown and the orphan action lives. Nothing
+    in 7.1 depends on it. The live case is P.6's own `10.255.0.50` orphan,
+    which the tool correctly refused to delete.
+  - **Before 7.7: C7**, unchanged.
 
 **The overlap worth knowing: Stage 5 and Stage 7.5 are the same screens.**
 Stage 5's per-device Prometheus / Loki / Oxidized / lease views and Stage 7.5's
@@ -3465,7 +3499,14 @@ exist before the screen that explains it.
   `python3 scripts/nsot_reapprove_templates.py <list>` (dry run), then with
   `--apply`.
 
-### P.6 — ZTP as a third address source (DECIDED 2026-09-26; after P.5, before Stage 7's onboarding step 7.4)
+### P.6 — ZTP as a third address source — COMPLETE 2026-09-27 (Lab 8 demonstrated end to end; teardown clean)
+
+**Closed 2026-09-27.** Built in six steps. Proven by five measurements on
+`bp-ztp-a`, which survived a reboot. The teardown was clean: census exit 0,
+reservation removed and read back, r1's route to r6 unchanged. The ledger
+of what the measurements found is in [P6_ZTP.md](P6_ZTP.md) section 8.
+
+*(The original entry, kept for the reasoning:)*
 
 The course's Labs 8 and 9 (ZTP, then ZTP + IaC) land on Phase 2's
 foundation. ZTP fits the onboarding design as another address SOURCE, beside
