@@ -12,7 +12,12 @@ name: nmas-ztp-a
 #
 # THE BIND IS THIS PROBE'S OWN CONFIGLESS COPY, made by
 # patches/patch-configless.py from the adopted copy (runbook step 1). It keeps
-# smp="2" and the user-skip, and changes four things:
+# smp="2" and the user-skip, and changes six things:
+#   - it boots the BASE disk, never an overlay: the image's install step
+#     saved a startup config ("do wr") into the overlay it would otherwise
+#     boot;
+#   - it removes that install overlay from this container's own layer, since
+#     vrnetlab reuses an existing <disk>-overlay.qcow2 as the run-time one;
 #   - no config ISO at run time;
 #   - the console wait accepts IOS-XE's own prompt;
 #   - that prompt marks the VM running and releases the console;

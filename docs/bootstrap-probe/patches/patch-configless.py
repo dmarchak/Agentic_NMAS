@@ -21,6 +21,17 @@ copies on the lab host, 2026-09-26) before anything booted.
 
 WHAT IT CHANGES, and why each is needed
 ---------------------------------------
+0. THE DISK. Removing the ISO is not enough, found by reading before the
+   first boot: the image carries the Cisco base disk AND an overlay the
+   image's install step wrote into, ending with `do wr`, so a startup config
+   is saved in that overlay's NVRAM. The launch script takes the first
+   `.qcow2` in sorted order, which is that overlay, and vrnetlab reuses an
+   existing `<disk>-overlay.qcow2` as the run-time overlay. So the variant
+   (a) chooses the base and (b) removes the install overlay from this
+   container's own layer before the VM starts. Evidence the saved config is
+   real: r6's first golden carries `platform console serial` and `license
+   boot level ...`, which neither vrnetlab's run-time bootstrap nor the tool's
+   generator emits.
 1. `-cdrom` is attached only in install mode. At run time the VM boots with
    no config ISO, so IOS-XE has no startup config.
 2. The autonomous-mode console wait also accepts IOS-XE's own prompt
@@ -45,6 +56,35 @@ import sys
 MARK = "CONFIGLESS (P.6 M1)"
 
 EDITS = (
+    (
+        "the base disk",
+        '        for e in sorted(os.listdir("/")):\n'
+        '            if not disk_image and re.search(".qcow2$", e):\n'
+        '                disk_image = "/" + e\n',
+        '        for e in sorted(os.listdir("/")):\n'
+        '            # CONFIGLESS (P.6 M1): the BASE disk, never an overlay. The\n'
+        '            # image\'s install step saved its startup config ("do wr") into\n'
+        '            # <base>-overlay.qcow2, and that name sorts first, so an\n'
+        '            # unpatched script boots from NVRAM that already has a config.\n'
+        '            if not disk_image and re.search(".qcow2$", e) and "-overlay" not in e:\n'
+        '                disk_image = "/" + e\n',
+    ),
+    (
+        "the install overlay",
+        '        super().__init__(username, password, disk_image=disk_image, ram=4096, smp="2")\n',
+        '        if not install_mode and disk_image:\n'
+        '            # CONFIGLESS (P.6 M1): vrnetlab names the run-time overlay\n'
+        '            # <disk>-overlay.qcow2 and REUSES it when it exists, and that is\n'
+        '            # the install overlay. Remove it from THIS container\'s writable\n'
+        '            # layer (the image is untouched), so the overlay is created\n'
+        '            # fresh from the pristine base.\n'
+        '            install_overlay = re.sub(r"(\\.qcow2)$", r"-overlay\\1", disk_image)\n'
+        '            if os.path.exists(install_overlay):\n'
+        '                logger.warning("CONFIGLESS: removing %s so the node boots from the pristine base",\n'
+        '                               install_overlay)\n'
+        '                os.remove(install_overlay)\n'
+        '        super().__init__(username, password, disk_image=disk_image, ram=4096, smp="2")\n',
+    ),
     (
         "the config ISO",
         '        self.qemu_args.extend(["-cdrom", "/" + self.image_name])\n',

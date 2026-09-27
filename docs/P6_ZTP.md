@@ -176,6 +176,16 @@ option definition, and whether the `<?include?>` directive is accepted inside
 a subnet's `reservations` value (`config-test` answers it without touching
 the running server).
 
+**The variant needed more than the ISO removed** (found by reading, before
+M1 ran): the image's install step saved a startup config into the overlay
+the launch script boots, so a variant that removed only the ISO would have
+booted that config and answered M1 "no" about the instrument, not the
+platform. The variant now boots the base disk; the runbook's P-M0 checks it
+on the device. **If M2 finds Gi1's qemu DHCP ends discovery**, the prepared
+fallback is the node as its own Proxmox VM on `vmbr10`, with no qemu user
+network. It is scoped, with its image, network, resource and model costs
+measured, in [P6_ZTP_PROBE.md](P6_ZTP_PROBE.md) section 11. Not built.
+
 ---
 
 ## 5. Build steps, after the measurements

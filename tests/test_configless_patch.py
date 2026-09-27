@@ -118,13 +118,83 @@ class TestThePatchedScript:
             "controller mode uses indices 2 and 3 for its own patterns"
 
 
+# The image's disks, read from / inside r6's container (2026-09-26): the Cisco
+# base (Aug 28 00:56, no backing file) and the overlay the image's install step
+# saved "do wr" into (Aug 28 01:06, backed by the base). A third file there,
+# <base>-overlay-overlay.qcow2, was dated the day it was read: vrnetlab creates
+# it at start in the container's own layer, so a FIRST start sees only these two.
+BASE = "c8000v-universalk9_8G_serial.17.06.01a.qcow2"
+INSTALL_OVERLAY = "c8000v-universalk9_8G_serial.17.06.01a-overlay.qcow2"
+
+
+class _Reached(Exception):
+    """Raised by the stub vrnetlab.VM: the disk the script hands to vrnetlab."""
+
+
+def _construct(source, listing, install_mode):
+    """Run the script's C8000v_vm.__init__ up to vrnetlab's constructor, on a
+    fake root. Only the class is executed (never the module, whose top level
+    alters the logging module), with a fake `os` recording every removal."""
+    import logging
+    import re
+    import types
+
+    tree = ast.parse(source)
+    cls = [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "C8000v_vm"]
+    assert len(cls) == 1
+
+    class VM:
+        def __init__(self, *args, **kwargs):
+            raise _Reached(kwargs.get("disk_image"))
+
+    removed = []
+    files = {"/" + e for e in listing}
+    fake_os = types.SimpleNamespace(
+        listdir=lambda path: list(listing),
+        rename=lambda a, b: None,
+        remove=lambda path: (removed.append(path), files.discard(path)),
+        path=types.SimpleNamespace(isfile=lambda p: p in files, exists=lambda p: p in files))
+    ns = {"vrnetlab": types.SimpleNamespace(VM=VM), "os": fake_os, "re": re,
+          "logging": logging, "logger": logging.getLogger("test_configless_patch")}
+    exec(compile(ast.Module(body=cls, type_ignores=[]), "launch.py", "exec"), ns)
+    with pytest.raises(_Reached) as reached:
+        ns["C8000v_vm"]("bp-ztp-a", "admin", "admin", "scrapli", install_mode=install_mode)
+    return reached.value.args[0], removed
+
+
+class TestTheDiskItBootsFrom:
+    """The config ISO is not the only day-0 config: the install overlay's NVRAM
+    holds the one the image build saved. A configless boot needs the BASE disk
+    and a run-time overlay created fresh from it."""
+
+    LISTING = ["bin", BASE, INSTALL_OVERLAY, "tftpboot"]      # a first start
+
+    def test_unpatched_it_boots_the_install_overlay(self):
+        # The reading that found it, and the floor the next test needs.
+        disk, removed = _construct(_real(), self.LISTING, install_mode=False)
+        assert disk == "/" + INSTALL_OVERLAY and removed == []
+
+    def test_patched_it_boots_the_base_with_the_install_overlay_removed(self):
+        disk, removed = _construct(_patcher().patch(_real()), self.LISTING, install_mode=False)
+        assert disk == "/" + BASE
+        assert removed == ["/" + INSTALL_OVERLAY], "exactly the install overlay, nothing else"
+
+    def test_install_mode_removes_nothing(self):
+        disk, removed = _construct(_patcher().patch(_real()), [BASE, INSTALL_OVERLAY], install_mode=True)
+        assert disk == "/" + BASE and removed == []
+
+    def test_an_image_with_no_install_overlay_removes_nothing(self):
+        disk, removed = _construct(_patcher().patch(_real()), ["bin", BASE], install_mode=False)
+        assert disk == "/" + BASE and removed == []
+
+
 class TestItRefuses:
     def test_a_script_already_patched(self):
         patcher = _patcher()
         with pytest.raises(patcher.Refused, match="already patched"):
             patcher.patch(patcher.patch(_real()))
 
-    @pytest.mark.parametrize("index", range(4))
+    @pytest.mark.parametrize("index", range(6))
     def test_a_missing_anchor_by_name(self, index):
         patcher = _patcher()
         name, anchor, _ = patcher.EDITS[index]
