@@ -60,6 +60,9 @@ RESULT_COMPONENT = {
                              "deploy.receipts_read"),
     # The import runs on a thread; its result is the stored summary, drawn on
     # the sync card whenever the NetBox tab is read (C85).
+    # Capture (7.1 step 4): Save All is its whole-fleet form, and the one-click
+    # route it replaced is gone. The record read back is the golden history.
+    "golden.capture_apply": ("static/js/nmas_capture.js", "previewCapture", "golden.history"),
     "netbox_safety.apply_import": ("static/js/gen/index.4.js", "loadNetboxTab", "netbox_status"),
     "netbox_safety.apply_import_all": ("static/js/gen/index.4.js", "loadNetboxTab",
                                        "netbox_status"),
@@ -95,7 +98,6 @@ PENDING = {
     "ai_approval_approve": "a toast; the commit an approval makes is never shown",
     "ai_approval_reject": "a toast",
     "ai_approval_approve_all": "a toast",
-    "golden_configs_save_all": "a rich toast, green whenever a baseline tag was taken",
     "netbox_safety.apply_removal": "a toast with a count; what was removed is not shown",
     "refresh_hostnames": "a toast, then a page reload",
     "templates.approve": "a toast carrying the per-device evidence",
@@ -112,10 +114,6 @@ NO_GUI = {
 
 #: (file, the literal that draws success unearned) -> reason. Only shrinks.
 FALSE_GREEN = {
-    ("static/js/gen/index.1.js",
-     "const level = (s.baseline && s.baseline !== 'none') ? 'success'"):
-        "Save All: green whenever a baseline tag was taken, whatever the "
-        "moment (a baseline of r2 deliberately broken read as success)",
     ("static/js/gen/partials__onboard_wizard.1.js",
      "showToast(d.ok ? 'Device onboarded.'"):
         "Create: a success toast asserting the outcome of phase 2, which "
@@ -124,13 +122,11 @@ FALSE_GREEN = {
 
 #: (file, the unescaped interpolation) -> where. Only shrinks.
 UNESCAPED = {
-    ("static/js/gen/index.1.js", "`<div><span class=\"text-muted\">${k}</span> <strong>${v}</strong></div>`"):
-        "Save All's toast: skipped hostnames and reasons into innerHTML",
     ("templates/index.html", "${x.hostname}: ${x.reason}"):
         "Auto-Create's result: hostnames and failure reasons into HTML",
 }
 
-CEILINGS = {"PENDING": 29, "FALSE_GREEN": 2, "UNESCAPED": 2}
+CEILINGS = {"PENDING": 28, "FALSE_GREEN": 1, "UNESCAPED": 1}
 
 
 def _population():

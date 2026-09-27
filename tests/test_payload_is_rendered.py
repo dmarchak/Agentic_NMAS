@@ -79,10 +79,11 @@ def _post(path, body):
 
 PC = "nmas_preview_confirm.js"
 PC_RESULT_FNS = ("previewConfirmResultHtml", "sentHtml", "checksHtml", "resultSection",
-                 "pair", "previewConfirmResultLevel")
-PC_FNS = ("previewConfirmHtml", "whatHtml", "whatNotHtml", "programHtml", "operandsHtml",
+                 "pair", "previewConfirmResultLevel", "title")
+PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "programHtml", "operandsHtml",
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 DC = "partials__device_changes.1.js"
+CAP = "nmas_capture.js"
 DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js",
                      "partials__golden_repo.2.js", "partials__golden_repo.3.js")
 I1, I4 = "index.1.js", "index.4.js"
@@ -107,6 +108,17 @@ RENDERS = {
         adapters={"modules/preview_confirm.py": ("operation_result", "build_result",
                                                  "result_level"),
                   "modules/nsot/receipts.py": ("rows_for", "_checks")}),
+    "POST /golden/capture/preview": Render(
+        lambda mp, tmp: P.capture_preview(mp, tmp),
+        {CAP: ("previewCapture", "captureSelection", "refreshButton"), PC: PC_FNS},
+        ((CAP, "previewCapture", "d"),), maps=("select_data",),
+        adapters={"modules/preview_confirm.py": ("capture_preview", "_intent_words", "build")}),
+    "POST /golden/capture/apply": Render(
+        lambda mp, tmp: P.capture_apply(mp, tmp),
+        {CAP: ("previewCapture",), PC: PC_RESULT_FNS},
+        ((CAP, "previewCapture", "ad"),),
+        adapters={"modules/preview_confirm.py": ("capture_result", "_intent_words",
+                                                 "build_result")}),
     "GET /deploy/receipts": Render(
         lambda mp, tmp: P.deploy_receipts(mp),
         {DC: ("deviceChangesHtml", "loadDeviceChanges"), PC: PC_RESULT_FNS},
@@ -294,6 +306,11 @@ UNDRAWN = {
          "7.4 (Fleet, Networks) draws and sets the rest (reachability group a)")],
     "GET /monitoring/stack/<tool>": [
         ("name", "the tool's key; the card is keyed by it at the call site")],
+    "POST /golden/capture/preview": [
+        ("actor", "the confirming person, drawn inside the confirm part's "
+                  "`statement` sentence, which names them"),
+        ("list", LIST)],
+    "POST /golden/capture/apply": [("list", LIST)],
     "GET /netbox/status": [
         ("filename", "the list's legacy CSV name; nothing needs it on screen, "
                      "and 7.8 removes the legacy lists API"),
@@ -446,6 +463,7 @@ EMPTY_IN_FIXTURE = {
                                                      "drawn in test_preview_confirm "
                                                      "(deploy_plan_with_residue)"),
     "POST /golden/restore/preview devices[].blocking_reasons": (S_, _STRINGS),
+    "POST /golden/capture/apply result.did_not.items[].lines": (S_, "the first did-not item is r2's departure from intent, whose lines are drawn under its checks; the baseline item carries no lines"),
     "GET /netbox/status status.lists.Default.result.did_not.items[].lines": (S_, "the first did-not item is the device that was not imported (s9), which has no write lines; r2's partial item carries them"),
     "GET /deploy/receipts changes[].result.record.tags": (S_, "a receipt names the golden commit and not its tags, and the history's record statement says so"),
     "GET /deploy/receipts changes[].result.targets[].checks.issues": (S_, "the fixture's verify is clean; a failing check is drawn in test_preview_confirm (TestTheResultHalf)"),
@@ -502,7 +520,10 @@ def _flat(table):
 # 101 -> 104, the permitted reason: `GET /netbox/status` could not reach a
 # stored import (C85's fixture), and reaching one showed three keys with
 # reasons, beside `notes` and `region`, which are now drawn.
-UNDRAWN_CEILING = 104
+# 104 -> 107: capture (7.1 step 4) is two new payloads; each carries only the
+# confirming person (drawn in the confirm sentence) and the list, the same
+# exemptions every other preview has. Its raw reads were removed, not exempted.
+UNDRAWN_CEILING = 107
 PHANTOM_CEILING = 18
 
 

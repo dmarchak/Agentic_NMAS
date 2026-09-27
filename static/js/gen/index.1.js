@@ -226,81 +226,13 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSelection();
   };
 
+  // Save All is the WHOLE-FLEET form of the capture operation (7.1 step 4,
+  // register C89): every device read now, previewed against its golden and
+  // its committed intent, confirmed, then recorded in one commit. It used to
+  // commit on one click, and a hand change became a golden, a baseline and a
+  // pushed commit in four minutes with nothing asking whether it was intended.
   window.saveAllConfigs = function() {
-    const onlineDeviceIps = Array.from(deviceCheckboxes())
-      .filter(cb => !cb.disabled)
-      .map(cb => cb.value);
-
-    if (onlineDeviceIps.length === 0) {
-      showToast('No online devices available', 'warning');
-      return;
-    }
-
-    if (!confirm(
-      `Fetch running-config from ${onlineDeviceIps.length} online device(s), save as golden configs, and stage in Git?\n\n` +
-      `If Jenkins is configured, a validation pipeline will also be created — you can then commit ` +
-      `from the Git tab once it passes, or commit directly at any time without one.`
-    )) return;
-
-    const saveBtn = document.getElementById('saveAllBtn');
-    const btnText = saveBtn.querySelector('.btn-text');
-    const spinner = saveBtn.querySelector('.spinner-border');
-    btnText.textContent = 'Saving...';
-    spinner.classList.remove('d-none');
-    saveBtn.disabled = true;
-
-    fetch('/golden_configs/save_all', { method: 'POST' })
-    .then(resp => resp.json())
-    .then(data => {
-      btnText.textContent = 'Save All Configs';
-      spinner.classList.add('d-none');
-      saveBtn.disabled = false;
-
-      if (data.ok) {
-        // The same summary the server logs. A toast that says "saved" while
-        // the run produced no commit and no baseline is how an operator ends
-        // up reading git to find out what happened.
-        const s = data.summary || {};
-        const skipped = (s.skipped || []);
-        const rows = [
-          ['captured',  `${s.captured} of ${s.inventory}`],
-          ['changed',   (s.changed || []).join(', ') || 'none'],
-          ['unchanged', `${(s.unchanged || []).length}`],
-          ['skipped',   skipped.length
-                          ? skipped.map(k => `${k.hostname} (${k.reason})`).join(', ')
-                          : 'none'],
-          ['commit',    s.commit || 'none'],
-          ['baseline',  s.baseline || 'none'],
-        ];
-        const detail = rows.map(([k, v]) =>
-          `<div><span class="text-muted">${k}</span> <strong>${v}</strong></div>`
-        ).join('');
-        // No commit AND no baseline means this run left no restore point.
-        const level = (s.baseline && s.baseline !== 'none') ? 'success'
-                    : (skipped.length ? 'warning' : 'warning');
-        showToast(`${data.message}<hr class="my-1">${detail}`, level);
-        // Refresh git tab if open
-        if (document.getElementById('gitPane') &&
-            !document.getElementById('gitPane').classList.contains('d-none')) {
-          loadGitTab();
-        }
-        // ...and the golden-repo panel, which is where baselines are listed.
-        // Save All is the main way a baseline is created, and the panel was
-        // only refreshed on tab activation — so a new baseline did not appear
-        // until the operator navigated away and back. The tag existed; the
-        // screen that exists to show it did not say so.
-        if (typeof loadGoldenRepoPanel === 'function') loadGoldenRepoPanel();
-      } else {
-        showToast(data.message || 'Save all configs failed', 'danger');
-      }
-    })
-    .catch(err => {
-      btnText.textContent = 'Save All Configs';
-      spinner.classList.add('d-none');
-      saveBtn.disabled = false;
-      console.error('Save all configs failed:', err);
-      showToast('Failed to save configs', 'danger');
-    });
+    previewCapture(null);
   };
 
 

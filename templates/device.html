@@ -60,6 +60,13 @@
        title="Preview re-applying this device's golden at HEAD: the exact program, what stays behind, then a confirm">
       ⭐ Restore Golden Config
     </a>
+    <!-- Capture as golden (7.1 step 4, C82): previewed and confirmed -->
+    <button type="button" class="btn btn-outline-success"
+            data-hostname="{{ device['hostname'] }}"
+            onclick="previewCapture([this.dataset.hostname])"
+            title="Read this device now and record its running config as its golden: see what changes and how it compares with its committed intent, then confirm">
+      Capture as golden
+    </button>
     <!-- Ask AI about this device -->
     <button type="button" class="btn btn-outline-primary"
             onclick="document.getElementById('aiOpenBtn').click();"

@@ -108,7 +108,10 @@ GATES = {
     "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),
     "templatize.retry_rolled_back": _g(A, "lifts a rollback block so the change may be planned again"),
     "freshness.authorise": _g(A, "authorises one divergence past the freshness gate"),
-    "golden_configs_save_all": _g(A, "commits captures as the approved goldens"),
+    # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
+    # the old one-click route is gone, because nothing in it asked whether the
+    # state being enshrined was the one intended.
+    "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
     "golden_configs_auto_create": _g(A, "commits captures as the approved goldens"),
     "refresh_hostnames": _g(A, "renames devices and rewrites their goldens"),
     "git_commit": _g(A, "commits into the network's repository"),
@@ -172,6 +175,8 @@ GATES = {
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
     "deploy.plan": _g(N, "computes a program; sends nothing"),
     "golden.restore_preview": _g(N, "computes a restore program; sends nothing"),
+    "golden.capture_preview": _g(N, "reads each device's running config and computes a "
+                                    "capture preview; records nothing"),
     "golden.migrate_plan": _g(N, "a dry run"),
     "onboard.plan": _g(N, "builds a plan; creates nothing"),
     "templatize.bulk_preview": _g(N, "computes a preview; writes nothing"),

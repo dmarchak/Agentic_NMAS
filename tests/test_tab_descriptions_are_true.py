@@ -58,27 +58,30 @@ def netbox_tab(page):
 
 class TestTheGitTabDescribesWhatSaveAllDoes:
     def test_save_all_really_commits_in_one_call(self):
-        """The claim, checked at the source."""
-        import app as nmas
+        """The claim, checked at the source. Save All is now the whole-fleet
+        capture (7.1 step 4): one `save_golden` call, after the confirm."""
+        import routes.golden as golden
 
-        assert calls_in(nmas.golden_configs_save_all, "save_golden") == 1
-        assert calls_in(nmas.golden_configs_save_all, "write_and_stage") == 0
+        assert calls_in(golden.capture_apply, "save_golden") == 1
+        assert calls_in(golden.capture_apply, "write_and_stage") == 0
 
     def test_the_tab_no_longer_says_it_stages(self, git_tab):
         assert "stages device configs" not in git_tab
 
-    def test_the_tab_says_it_commits_by_itself(self, git_tab):
-        assert "commits by itself" in git_tab
+    def test_the_tab_says_it_commits_once_you_confirm(self, git_tab):
+        """It committed on one click until C89: now it previews first."""
+        assert "commits once you confirm" in git_tab
+        assert "commits by itself" not in git_tab
 
     def test_the_tab_says_what_the_manual_commit_is_for(self, git_tab):
         """Otherwise the button looks redundant and gets used wrongly."""
         assert "infra/" in git_tab
 
     def test_the_route_docstring_matches_the_tab(self):
-        import app as nmas
+        import routes.golden as golden
 
-        doc = inspect.getdoc(nmas.golden_configs_save_all) or ""
-        assert "ONE commit" in doc
+        doc = inspect.getdoc(golden.capture_apply) or ""
+        assert "One commit" in doc and "READ AGAIN" in doc
         assert "stage the changes" not in doc
 
 

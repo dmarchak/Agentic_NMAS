@@ -150,6 +150,150 @@ def baselines():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+def _read_running(device: dict) -> tuple:
+    """``(running_config, error)`` read NOW from *device* (the list's own
+    row, carried, never looked up in the active list)."""
+    import threading
+
+    from modules.commands import run_device_command
+    from modules.connection import get_persistent_connection
+
+    try:
+        conn = get_persistent_connection(device, {}, threading.Lock())
+        text = run_device_command(conn, "show running-config")
+    except Exception as exc:                  # noqa: BLE001
+        return None, f"{type(exc).__name__}: {exc}"
+    return (text, "") if text else (None, "the device returned an empty running config")
+
+
+def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
+    """``(entry, running_config)`` for one device read for a capture: what
+    its golden would become, and how that compares with its committed INTENT
+    (C89). The raw config is returned BESIDE the entry, never in it, so it
+    cannot reach a response."""
+    import difflib
+
+    from modules.nsot.intent_match import intent_match
+    from modules.nsot.platform import platform_for_device
+    from modules.nsot.repo import golden_body
+    from routes.deploy import _capture_hash, _captured_config
+
+    host, ip = device.get("hostname", ""), device.get("ip", "")
+    platform = platform_for_device(device)
+    text, error = _read_running(device)
+    if text is None:
+        return {"device": host, "read": False, "error": error, "platform": platform}, None
+    current = _captured_config(repo, host)
+    incoming = golden_body(host, ip, text)
+    diff = [l for l in difflib.unified_diff(current.splitlines(), incoming.splitlines(),
+                                             lineterm="", n=1)
+            if not l.startswith(("---", "+++"))]
+    return ({"device": host, "read": True, "error": "", "platform": platform,
+             "capture_hash": _capture_hash(text), "changed": incoming != current,
+             "diff": diff, "intent": intent_match(repo, list_name, host, text, platform)},
+            text)
+
+
+@bp.route("/capture/preview", methods=["POST"])
+def capture_preview():
+    """Record running configs as goldens: the PREVIEW (7.1 step 4, C82, C89).
+
+    Reads each device NOW and shows what its golden would become and how that
+    compares with its committed intent. No `devices` is the whole fleet (what
+    Save All now opens). Masked on the way out; writes nothing."""
+    from modules.nsot.restore import _devices_of
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import capture_preview as _parts
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    inventory = _devices_of(list_name)
+    wanted = [d for d in (data.get("devices") or []) if d]
+    names = {d.get("hostname") for d in inventory}
+    unknown = sorted(set(wanted) - names)
+    if unknown:
+        return jsonify({"ok": False, "error": f"not in {list_name}: {', '.join(unknown)}"}), 404
+    fleet = not wanted
+    devices = [d for d in inventory if fleet or d.get("hostname") in set(wanted)]
+    repo = _repo_for(list_name)
+    entries = [_capture_entry(list_name, repo, d)[0] for d in devices]
+    preview = _parts(entries, fleet=fleet, inventory=inventory, request=request)
+    # The preview alone: it draws each device's read, and its `select_data`
+    # carries the hash the confirm is bound to. The raw reads are not sent.
+    return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
+                                 "preview": preview}))
+
+
+@bp.route("/capture/apply", methods=["POST"])
+def capture_apply():
+    """Record the confirmed captures: each device is READ AGAIN, and one whose
+    running config moved since the preview is refused. One commit, as the
+    verified person, through `save_golden()`, which writes the computed
+    `Intent-Match:` trailer and takes a baseline only for a whole-fleet
+    capture with every device at its committed intent (C89 (c))."""
+    from modules.identity import request_actor
+    from modules.nsot.repo import GoldenItem, save_golden
+    from modules.nsot.restore import _devices_of
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import capture_result
+    from routes.deploy import _capture_hash
+
+    data = request.get_json(silent=True) or {}
+    confirmations = {k: v for k, v in (data.get("confirmations") or {}).items() if k}
+    if not confirmations:
+        return jsonify({"ok": False, "error": "Nothing confirmed: nothing recorded"}), 400
+    list_name = _active_list(data)
+    fleet = bool(data.get("fleet"))
+    inventory = _devices_of(list_name)
+    repo = _repo_for(list_name)
+    outcomes, items, skipped, texts = [], [], [], {}
+    for device in inventory:
+        host = device.get("hostname", "")
+        if host not in confirmations:
+            skipped.append({"hostname": host, "reason": "not confirmed"})
+            continue
+        entry, text = _capture_entry(list_name, repo, device)
+        if not entry["read"]:
+            outcomes.append({"device": host, "outcome": "unread", "reason": entry["error"]})
+            skipped.append({"hostname": host, "reason": "could not be read"})
+            continue
+        if entry["capture_hash"] != confirmations[host]:
+            outcomes.append({"device": host, "outcome": "moved",
+                             "reason": f"its running config moved since the preview "
+                                       f"({confirmations[host]} -> {entry['capture_hash']})"})
+            skipped.append({"hostname": host, "reason": "moved since the preview"})
+            continue
+        outcomes.append({"device": host, "outcome": "pending", "diff": entry["diff"],
+                         "intent": entry["intent"], "platform": entry["platform"]})
+        texts[host] = text
+    # The configs to record are the ones just read and matched to the confirmed
+    # hash; read once more would be a third read with no one to confirm it.
+    pending = [o for o in outcomes if o["outcome"] == "pending"]
+    save = {}
+    if pending:
+        by_host = {d.get("hostname"): d for d in inventory}
+        for o in pending:
+            d = by_host[o["device"]]
+            items.append(GoldenItem(o["device"], texts[o["device"]], d.get("ip", ""),
+                                    netbox_id=d.get("_netbox_id"),
+                                    device_uid=d.get("device_uid", ""),
+                                    platform=o["platform"]))
+        save = save_golden(list_name, items, source="save_all" if fleet else "capture",
+                           actor=request_actor(), allow_new=False,
+                           inventory_size=len(inventory) if fleet else 0,
+                           skipped=skipped, baseline=None if fleet else False)
+        for o in pending:
+            if not save.get("ok"):
+                o.update(outcome="unread", reason=save.get("error") or "the save failed")
+            else:
+                o["outcome"] = ("captured" if o["device"] in (save.get("changed") or [])
+                                else "unchanged")
+                o["intent"] = (save.get("intent") or {}).get(o["device"], o["intent"])
+    result = capture_result(outcomes, save, fleet=fleet)
+    return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
+                                 "result": result}))
+
+
 @bp.route("/restore/preview", methods=["POST"])
 def restore_preview():
     """What re-applying a ref would do, per device, before anything is sent.

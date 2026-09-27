@@ -140,7 +140,7 @@ class TestEveryMutatingRouteDeclares:
 
     def test_the_three_measured_cases_are_declared(self):
         assert "inventory" in I.keys_for("onboard.verify")
-        for endpoint in ("deploy.apply", "golden_configs_save_all",
+        for endpoint in ("deploy.apply", "golden.capture_apply",
                          "golden.restore_apply"):
             assert "remote" in I.keys_for(endpoint), endpoint
         assert "drift" in I.keys_for("drift_check_sync")

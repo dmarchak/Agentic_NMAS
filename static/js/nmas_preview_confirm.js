@@ -46,8 +46,17 @@
     deployable: ['bg-success', 'deployable'],
     blocked: ['bg-warning text-dark', 'not deployable'],
     refused: ['bg-warning text-dark', 'refused'],
-    not_authorised: ['bg-danger', 'dangerous line(s) not authorised']
+    not_authorised: ['bg-danger', 'dangerous line(s) not authorised'],
+    capturable: ['bg-success', 'will be recorded'],
+    unchanged: ['bg-secondary', 'unchanged'],
+    unread: ['bg-warning text-dark', 'could not be read']
   };
+
+  /* A part's heading: the operation's own words where the server gives them
+     (a capture RECORDS; it sends nothing), else the default. */
+  function title(obj, part, dflt) {
+    return ((obj || {}).titles || {})[part] || dflt;
+  }
 
   function explain(p, part) {
     var items = (p.explain || {})[part] || [];
@@ -81,7 +90,7 @@
         + esc(t.name) + '</label>'
         + '<span class="badge ' + badge[0] + '">' + esc(badge[1]) + '</span></div>';
     }).join('');
-    return section('what', 'What will happen', '<div class="small">' + esc(p.what.summary)
+    return section('what', title(p, 'what', 'What will happen'), '<div class="small">' + esc(p.what.summary)
       + '</div>' + rows);
   }
 
@@ -162,7 +171,7 @@
         + 'already pending before it. They are sent too.</div>'
         + (old.length ? pre(old) : '') + '</div>';
     });
-    return section('program', 'The exact program', body);
+    return section('program', title(p, 'program', 'The exact program'), body);
   }
 
   function operandsHtml(t) {
@@ -246,7 +255,9 @@
   var OUTCOME_BADGE = {
     deployed: 'bg-success', refused: 'bg-warning text-dark',
     skipped_drifted: 'bg-warning text-dark', failed: 'bg-danger',
-    unattempted: 'bg-secondary', skipped_not_selected: 'bg-secondary'
+    unattempted: 'bg-secondary', skipped_not_selected: 'bg-secondary',
+    captured: 'bg-success', unchanged: 'bg-secondary', moved: 'bg-warning text-dark',
+    unread: 'bg-warning text-dark', partial: 'bg-warning text-dark'
   };
 
   function resultSection(part, title, body) {
@@ -260,16 +271,18 @@
     return esc(a[0] == null ? '?' : a[0]) + ' &rarr; ' + esc(a[1] == null ? '?' : a[1]);
   }
 
-  function sentHtml(t) {
+  function sentHtml(t, r) {
     var s = t.sent || {};
     var body;
     if (!(s.lines || []).length) {
       body = '<div class="small text-muted" data-pr-none>' + esc(s.none) + '</div>';
     } else {
-      body = '<div class="small">' + s.lines.length + ' line(s) sent, program <code>'
-        + esc((s.program_hash || '').slice(0, 12)) + '</code>: <span data-pr-match="'
-        + esc(String(s.matches)) + '"' + (s.matches === false ? ' class="text-danger fw-semibold"' : '')
-        + '>' + esc(s.match_words) + '</span></div>'
+      body = (s.program_hash
+        ? '<div class="small">' + s.lines.length + ' line(s) sent, program <code>'
+          + esc((s.program_hash || '').slice(0, 12)) + '</code>: <span data-pr-match="'
+          + esc(String(s.matches)) + '"' + (s.matches === false ? ' class="text-danger fw-semibold"' : '')
+          + '>' + esc(s.match_words) + '</span></div>'
+        : '<div class="small">' + esc(s.caption || (s.lines.length + ' line(s)')) + '</div>')
         + '<div class="font-monospace small bg-body-tertiary p-2 rounded" '
         + 'style="max-height:220px;overflow:auto;white-space:pre" data-pr-program="'
         + esc(t.name) + '">' + esc(s.lines.join('\n')) + '</div>';
@@ -281,14 +294,21 @@
         + ((rb.not_undone || []).length ? ', ' + rb.not_undone.length
            + ' line(s) not undone because the device never applied them' : '') + '</div>';
     }
-    return resultSection('sent', 'What was sent', body);
+    return resultSection('sent', title(r, 'sent', 'What was sent'), body);
   }
 
-  function checksHtml(t) {
+  function checksHtml(t, r) {
     var c = t.checks || {};
     var body;
     if (!c.ran) {
       body = '<div class="small text-muted" data-pr-none>Nothing was checked: ' + esc(c.why) + '</div>';
+    } else if (c.statements) {
+      body = '<div class="small" data-pr-statements>'
+        + (c.ok ? '<span class="badge bg-success">matches</span> '
+                : '<span class="badge bg-warning text-dark">departs</span> ')
+        + c.statements.map(esc).join('; ') + '</div>'
+        + ((c.issues || []).length ? '<pre class="small bg-body-tertiary p-2 rounded mb-0">'
+           + esc(c.issues.join('\n')) + '</pre>' : '');
     } else {
       var protocols = c.checked_protocols || [];
       var rows = protocols.map(function (p) {
@@ -309,7 +329,7 @@
             return '<div class="small text-muted">' + esc(i) + '</div>';
           }).join('');
     }
-    return resultSection('checks', 'What was checked', body);
+    return resultSection('checks', title(r, 'checks', 'What was checked'), body);
   }
 
   function previewConfirmResultHtml(r, hooks) {
@@ -345,7 +365,7 @@
         + '<div class="card-body py-2 px-3"><div class="fw-semibold mb-1">' + esc(t.name)
         + (t.stage ? ' <span class="small text-muted">stopped at: ' + esc(t.stage) + '</span>' : '')
         + '</div>' + (t.reason ? '<div class="small mb-1">' + esc(t.reason) + '</div>' : '')
-        + sentHtml(t) + checksHtml(t) + '</div></div>';
+        + sentHtml(t, r) + checksHtml(t, r) + '</div></div>';
     }).join('');
     var rec = r.record || {};
     var receipt = rec.receipt || {};
@@ -353,13 +373,16 @@
       + '<div>golden commit: ' + (rec.commit ? '<code>' + esc(rec.commit.slice(0, 12)) + '</code>' : 'none') + '</div>'
       + '<div>baseline: ' + (rec.baseline ? esc(rec.baseline) : 'none') + '</div>'
       + ((rec.tags || []).length ? '<div>tags: ' + esc(rec.tags.join(', ')) + '</div>' : '')
-      + '<div data-pr-receipt="' + (receipt.ok ? 'ok' : 'failed') + '"'
-      + (receipt.ok ? '' : ' class="text-danger fw-semibold"') + '>receipt: '
-      + (receipt.ok ? esc(receipt.written) + ' row(s) written'
-                    : 'NOT WRITTEN: ' + esc(receipt.error || 'not reported')) + '</div></div>'
+      // Only an operation that writes a receipt has a receipt line: a capture
+      // has none, and "NOT WRITTEN" there would be a false alarm.
+      + (rec.receipt ? '<div data-pr-receipt="' + (receipt.ok ? 'ok' : 'failed') + '"'
+        + (receipt.ok ? '' : ' class="text-danger fw-semibold"') + '>receipt: '
+        + (receipt.ok ? esc(receipt.written) + ' row(s) written'
+                      : 'NOT WRITTEN: ' + esc(receipt.error || 'not reported')) + '</div>' : '')
+      + '</div>'
       + '<div class="small">' + esc(rec.statement) + '</div>';
     return '<div data-pr-result="' + esc(r.action) + '">' + head
-      + resultSection('happened', 'What happened', rows)
+      + resultSection('happened', title(r, 'happened', 'What happened'), rows)
       + resultSection('did_not', 'What did not happen', didNot) + cards
       + resultSection('record', 'The record', record)
       + resultSection('not_watched', 'What is not being watched', '<div class="small text-muted">'

@@ -101,7 +101,8 @@ DECLARED = {
     "inventory.credential_profiles": ("credentials",),
     "inventory.delete_credential_profile": ("credentials",),
     # Goldens, the repository and the remote.
-    "golden_configs_save_all": _COMMIT + ("baselines", "drift"),
+    # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
+    "golden.capture_apply": _COMMIT + ("baselines", "drift"),
     "golden_configs_auto_create": _COMMIT,
     "golden.migrate_apply": _COMMIT,
     "golden.sync_renames": _COMMIT,
@@ -202,6 +203,8 @@ DECLARED = {
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),
+    "golden.capture_preview": Nothing("reads each device's running config and computes a "
+                                      "preview; it records nothing"),
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
     "golden.migrate_plan": Nothing("the migration's dry run; it writes nothing by design"),

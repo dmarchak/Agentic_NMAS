@@ -172,3 +172,27 @@ def netbox_status(mp, tmp):
         "ipam_url": "https://netbox.example.invalid/ipam/prefixes/"}}}), encoding="utf-8")
     mp.setattr(nb, "_SYNC_STATUS_FILE", str(path))
     return _client().get("/netbox/status").get_json()
+
+
+def capture_preview(mp, tmp):
+    """7.1 step 4: r2's real config with the host's exact break, so the
+    preview carries a golden diff AND a departure from committed intent."""
+    from tests.test_capture import build_capture_lab
+    from tests.test_intent_match import _broken
+
+    lab = build_capture_lab(mp, tmp)
+    lab["running"]["r2"] = _broken(lab["captured"])
+    return _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
+
+
+def capture_apply(mp, tmp):
+    """The same, confirmed and recorded: a departing capture's result."""
+    from tests.test_capture import build_capture_lab
+    from tests.test_intent_match import _broken
+
+    lab = build_capture_lab(mp, tmp)
+    lab["running"]["r2"] = _broken(lab["captured"])
+    d = _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
+    h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
+    return _ok(lab["client"].post("/golden/capture/apply",
+                                  json={"confirmations": {"r2": h}}))

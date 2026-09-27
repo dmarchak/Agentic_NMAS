@@ -24,6 +24,12 @@ TEMPLATES = os.path.join(ROOT, "templates")
 GEN = os.path.join(ROOT, "static", "js", "gen")
 
 _SRC = re.compile(r"js/gen/([\w.]+\.js)")
+#: The shared components the page loads from `static/js/` itself (the
+#: preview-confirm renderer, the invalidation client, capture): the project's
+#: own `nmas_*.js`. Bootstrap is vendored in the SAME directory (measured), so
+#: "only files directly in static/js/" would have pulled a library in.
+_COMPONENT_SRC = re.compile(r"/static/js/(nmas_[\w.]+\.js)")
+STATIC_JS = os.path.join(ROOT, "static", "js")
 
 
 def shipped_js(*parts) -> str:
@@ -92,6 +98,14 @@ def with_loaded_scripts(html: str) -> str:
     rather than one file that happened to hold all of it.
     """
     extra = []
+    # The shared components first, as the browser loads them from <head>.
+    # Until 2026-09-27 only `js/gen/` files were appended, so a `fetch` in a
+    # component (capture's two routes, 7.1 step 4) was invisible to every
+    # check reading "the program the browser assembles", reachability included.
+    for name in sorted(set(_COMPONENT_SRC.findall(html))):
+        full = os.path.join(STATIC_JS, name)
+        if os.path.exists(full):
+            extra.append(open(full, encoding="utf-8").read())
     for name in sorted(set(_SRC.findall(html))):
         full = os.path.join(GEN, name)
         if os.path.exists(full):

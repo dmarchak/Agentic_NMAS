@@ -64,7 +64,8 @@ def confirm_part(request, action: str = "confirm") -> dict:
 
 
 def build(*, action: str, summary: str, targets: list, what_not: list,
-          nothing_left_out: str, confirm: dict, explain: dict = None) -> dict:
+          nothing_left_out: str, confirm: dict, explain: dict = None,
+          titles: dict = None) -> dict:
     """The preview. *targets* is ``[{"name", "state", "selectable",
     "select_data", "program": {"lines", "dangerous", "authorised", "none",
     "notes"}, "operands": [{"name", "value"}], "gates": [gate(...)]}]``;
@@ -91,6 +92,9 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
     if unknown:
         raise PreviewIncomplete(f"explanations for no such part: {sorted(unknown)}")
     return {"action": action, "parts": list(PARTS),
+            # A part's heading where the operation's own words differ (a
+            # capture RECORDS; it sends nothing). The parts never change.
+            **({"titles": dict(titles)} if titles else {}),
             # {part: [{"concept", "text"}]}: a concept taught at the point of
             # action (section 4), drawn by the renderer in that part.
             "explain": explain,
@@ -439,6 +443,10 @@ RESULT_LEVELS = ("success", "partial", "failed", "nothing")
 
 OUTCOME_WORDS = {
     "deployed": "done",
+    "captured": "recorded as its golden",
+    "unchanged": "unchanged: measured, nothing to record",
+    "moved": "refused: it changed since the preview, nothing was recorded",
+    "unread": "could not be read, nothing was recorded",
     "refused": "refused: nothing was sent",
     "skipped_drifted": "skipped: its capture moved since the preview, nothing was sent",
     "failed": "failed",
@@ -453,7 +461,7 @@ class ResultIncomplete(ValueError):
 
 def build_result(*, action: str, level: str, summary: str, targets: list,
                  did_not: list, nothing_left_out: str, record: dict,
-                 not_watched: str) -> dict:
+                 not_watched: str, titles: dict = None) -> dict:
     """The result. Floors, as the preview's: a part with nothing to say states
     it, because an empty section and a missing one read the same."""
     if level not in RESULT_LEVELS:
@@ -474,6 +482,7 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
     if not not_watched:
         raise ResultIncomplete("part 6 (not_watched) is empty")
     return {"action": action, "parts": list(RESULT_PARTS), "level": level,
+            **({"titles": dict(titles)} if titles else {}),
             "happened": {"summary": summary,
                          "targets": [{"name": t["name"], "outcome": t.get("outcome", ""),
                                       "words": t.get("words", "")} for t in targets]},
@@ -699,3 +708,162 @@ def netbox_sync_result(summary: dict) -> dict:
         not_watched="Nothing re-reads NetBox after an import to check it against what was "
                     "written; the census and the modification record are the checks that "
                     "exist, and they are run by hand.")
+
+
+
+# ---------------------------------------------------------------------------
+# Capture (7.1 step 4, register C82 and C89): recording a device's running
+# config as its golden is itself an operation, previewed and confirmed. A
+# capture BECOMES the golden, so what it is checked against is committed
+# INTENT (`intent_match`), and a departure is recorded, marked, and kept out
+# of any baseline rather than refused: the record must say what the device
+# holds.
+# ---------------------------------------------------------------------------
+
+CAPTURE_TITLES = {"program": "What will change in its golden",
+                  "what": "What will be recorded"}
+CAPTURE_RESULT_TITLES = {"sent": "What was recorded", "checks": "Checked against committed intent",
+                         "happened": "What was recorded"}
+
+
+def _intent_words(i: dict) -> str:
+    from modules.nsot.intent_match import words
+    return words(i) if i else "not compared"
+
+
+def capture_preview(entries: list, *, fleet: bool, inventory: list, request) -> dict:
+    """*entries*: per device ``{device, read, error, capture_hash, diff,
+    changed, intent, platform}`` from reading it now."""
+    targets, what_not = [], []
+    read = [e for e in entries if e.get("read")]
+    for e in entries:
+        name = e["device"]
+        intent = e.get("intent") or {}
+        if not e.get("read"):
+            what_not.append({"target": name, "kind": "unread",
+                             "text": "Could not be read, so it is not recorded: "
+                                     + (e.get("error") or "no answer"), "lines": []})
+        elif intent.get("state") != "match":
+            what_not.append({
+                "target": name, "kind": "departs_from_intent",
+                "text": ("Departs from its committed intent (" + _intent_words(intent) + "). "
+                         "Recording it makes the golden a state nobody intended: it will be "
+                         "recorded, marked `Intent-Match: no`, and it cannot be part of a baseline."
+                         if intent.get("state") == "differs" else
+                         "Cannot be compared with committed intent (" + (intent.get("why") or "?")
+                         + "): it will be recorded, marked, and it cannot be part of a baseline."),
+                "lines": list(intent.get("lines") or [])})
+        targets.append({
+            "name": name,
+            "state": ("unread" if not e.get("read") else
+                      "capturable" if e.get("changed") else "unchanged"),
+            "selectable": bool(e.get("read")),
+            "select_data": {"hash": e.get("capture_hash") or ""},
+            "program": {"lines": list(e.get("diff") or []) if e.get("read") else [],
+                        "none": ("Nothing is recorded: it could not be read." if not e.get("read")
+                                 else "Unchanged: the device matches its current golden. Confirming "
+                                      "records that it was measured.")},
+            "operands": [{"name": "capture hash", "value": e.get("capture_hash") or "none"},
+                         {"name": "platform", "value": e.get("platform") or "unknown"},
+                         {"name": "committed intent", "value": _intent_words(intent)}],
+            "gates": ([gate("device read", "pass" if e.get("read") else "fail",
+                            "" if e.get("read") else (e.get("error") or "no answer"))]
+                      + ([gate("capture unchanged since this preview", "at_apply",
+                               "the device IS re-read at apply, and one that moved is refused")]
+                         if e.get("read") else [])),
+        })
+    what_not.append({"target": "the devices", "kind": "scope",
+                     "text": "Nothing is sent to any device: a capture reads and records.",
+                     "lines": []})
+    if fleet:
+        reasons = []
+        if len(read) < len(inventory):
+            reasons.append(f"{len(inventory) - len(read)} inventory device(s) could not be read")
+        reasons += [f"{e['device']} does not match its committed intent"
+                    for e in read if (e.get("intent") or {}).get("state") != "match"]
+        what_not.append({"target": "the baseline", "kind": "baseline",
+                         "text": ("No baseline tag will be taken: " + "; ".join(reasons) + ". A "
+                                  "baseline asserts the network is at its committed intent."
+                                  if reasons else
+                                  "A baseline tag is taken only if you confirm EVERY device and "
+                                  "each still matches its committed intent at apply."),
+                         "lines": []})
+    else:
+        what_not.append({"target": "the baseline", "kind": "baseline",
+                         "text": "No baseline tag: capturing part of the fleet never earns one.",
+                         "lines": []})
+    changed = sum(1 for e in read if e.get("changed"))
+    departs = sum(1 for e in read if (e.get("intent") or {}).get("state") != "match")
+    return build(
+        action="capture",
+        summary=(f"Record the running config of {len(read)} of {len(entries)} device(s) as "
+                 f"their goldens, in one commit: {changed} differ from their current golden, "
+                 f"{departs} depart from committed intent."),
+        targets=targets, what_not=what_not,
+        nothing_left_out="Nothing: every device was read and matches its intent.",
+        confirm=confirm_part(request, "approve"), titles=CAPTURE_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "You are confirming these captures. Each device is read again "
+                                      "at apply, and one whose config moved is refused."}]})
+
+
+def capture_result(outcomes: list, save: dict, *, fleet: bool) -> dict:
+    """*outcomes*: per device ``{device, outcome, diff, intent, reason}``;
+    *save*: `save_golden()`'s answer, or ``{}`` when nothing was saved."""
+    targets, did_not = [], []
+    for o in outcomes:
+        name, outcome = o["device"], o["outcome"]
+        intent = o.get("intent") or {}
+        words = OUTCOME_WORDS.get(outcome, outcome)
+        recorded = outcome in ("captured", "unchanged")
+        targets.append({
+            "name": name, "outcome": outcome, "words": words, "reason": o.get("reason", ""),
+            "sent": {"lines": list(o.get("diff") or []) if outcome == "captured" else [],
+                     "caption": f"{len(o.get('diff') or [])} line(s) of its golden changed",
+                     "none": ("Its golden already matched: measured, nothing to record."
+                              if outcome == "unchanged" else "Nothing was recorded.")},
+            "checks": ({"ran": True, "ok": intent.get("state") == "match",
+                        "statements": ["committed intent: " + _intent_words(intent)],
+                        "issues": list(intent.get("lines") or [])}
+                       if recorded else
+                       {"ran": False, "why": o.get("reason") or "nothing was recorded"}),
+        })
+        if not recorded:
+            did_not.append({"target": name, "kind": outcome,
+                            "text": words + (f": {o['reason']}" if o.get("reason") else ""),
+                            "lines": []})
+        elif intent.get("state") != "match":
+            did_not.append({"target": name, "kind": "departs_from_intent",
+                            "text": "Recorded, and it departs from committed intent ("
+                                    + _intent_words(intent) + "): marked `Intent-Match: no`.",
+                            "lines": []})
+    for reason in (save or {}).get("baseline_denied") or []:
+        did_not.append({"target": "the baseline", "kind": "no_baseline",
+                        "text": "No baseline tag: " + reason, "lines": []})
+    commit = (save or {}).get("commit", "")
+    baseline = (save or {}).get("baseline", "")
+    statement = ((f"Golden commit {commit[:12]} records "
+                  f"{', '.join((save or {}).get('changed') or [])}." if commit else
+                  "No golden commit: nothing changed, or nothing was recorded.")
+                 + (f" Baseline {baseline} was tagged: every device captured and at its "
+                    "committed intent." if baseline else "")
+                 + (" The commit's `Intent-Match:` trailer says which captures depart from intent."
+                    if commit else ""))
+    recorded = [o for o in outcomes if o["outcome"] in ("captured", "unchanged")]
+    clean = (recorded and len(recorded) == len(outcomes)
+             and all((o.get("intent") or {}).get("state") == "match" for o in recorded)
+             and (baseline or not fleet) and (save or {}).get("ok", False))
+    level = ("nothing" if not outcomes else "success" if clean
+             else "failed" if not recorded else "partial")
+    return build_result(
+        action="capture", level=level,
+        summary=(f"{len(recorded)} of {len(outcomes)} device(s) recorded"
+                 + (f"; baseline {baseline}" if baseline else "") + "."),
+        targets=targets, did_not=did_not,
+        nothing_left_out="Nothing: every device was recorded and matches its intent.",
+        record={"commit": commit, "tags": list((save or {}).get("tags") or []),
+                "baseline": baseline, "statement": statement},
+        not_watched="A capture records the device at one moment; nothing watches it after. "
+                    "The drift check compares the device with this golden from now on, and the "
+                    "Intent-Match trailer is what says whether this golden is what was intended.",
+        titles=CAPTURE_RESULT_TITLES)
