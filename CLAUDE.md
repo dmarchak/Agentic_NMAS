@@ -4694,7 +4694,9 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the fourth in minutes. A member handled correctly shows the other shape:
   RW-community removal treats "nothing to remove" as success, because a real
   device may not arrive with one.
-- **A STATE THE SYSTEM NAMES AND NOTHING READS** (P.6 M4, 2026-09-27).
+- **A VALUE THAT NAMES THE DANGER IS NOT A CHECK UNTIL SOMETHING READS IT**
+  (the operator's wording, P.6 M4, 2026-09-27). The same shape as C50's
+  `named: False`, which `clab_target_for()` computes and nothing reads.
   Phase 2 answered 200 and promoted a device whose startup config was "not
   present": one reload from a configless node, with NMAS holding a
   credential for an account that no longer existed. `rotate()` had returned
@@ -4702,8 +4704,12 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   and job health read it as `not_safe_to_reboot`. Phase 2 judged by
   `rotated` and read none of it. Nothing on the path had ever saved a device
   (no `write memory` anywhere). Phase 2 now saves and reads back the
-  device's own startup config before promotion, for every source. A named
-  danger is worth only what reads the name.
+  device's own startup config before promotion, for every source. The
+  information existed in two places, and the consumer looked at a third.
+  **Measured on the fleet the same day (C53):** eight of nine devices boot
+  their running credential. `s1` boots the credential the terminal exposed
+  (B13), because its NVRAM was never saved after the rotation that retired
+  it: B15 fixed the boot FILE, and a guest reload boots NVRAM.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
