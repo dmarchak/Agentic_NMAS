@@ -566,6 +566,101 @@ onboarding, NetBox import/remove, then bulk intent. Before any of them, C70 runs
 register row) and exercises this screen, C76's fix and the receipt's
 restore half on a real device.
 
+### 7.1 reshaped, 2026-09-27: an operation, whole, from the interface
+
+**Why** (the operator, stopping C70 rather than finishing it with
+workarounds, because the workarounds ARE the finding). Restoring one
+device needed:
+- a browser-console call, because the only button is whole-fleet (C80);
+- a fleet-wide Save All, because per-device capture does not exist (C82);
+- the network tab, because the program and hash have no screen (C84);
+- an SSH session, because the receipt has no screen either.
+
+A preview leading to an action that cannot be scoped, from a state that
+cannot be created, with a result that cannot be read, is not finished:
+the GUI has delivered a TRIGGER for the capability, not the capability.
+So those three are not separate register rows. Together they are "the
+restore path is not usable from the interface", and they belong in 7.1.
+
+**The survey the operator asked for: does any other completed path end in
+a result with no screen?** The payload-to-render check covers responses
+that renderers draw. It cannot see a response nobody draws, which is
+`/jobs/health`'s original shape. The population is every route gated
+`confirm`, `approve` or `publish_remote` in `route_gates.py` (41: the
+routes that change a device or the record). Each handler was read by hand;
+a script's first classification was only the starting list. **None of the
+41 has a screen where its result can be read again later.** Receipts
+record deploys and restores, and nothing draws them.
+
+| Result | Count | Routes |
+|---|---|---|
+| **Drawn in place**, until the window closes | 16 | deploy apply (the result modal); bulk execute, delete file and TFTP upload (bulk results); run command, save config, save to startup, delete file and upload (the device page re-rendered); chat; git commit; auto-create; intent commit (a status line); remote push, auto-push and acknowledge |
+| **Toast only** (gone in seconds) | 17 | **restore apply (C84)**; onboard verify on SUCCESS (failure is drawn), abandon and **create, whose toast "Device onboarded." is false: create is phase 1 (C86)**; bulk reload; agent run (its response is never read; the agent is off); approval approve, reject and approve-all (the commit an approval makes is never shown); Save All (a rich toast, green whenever a baseline tag was taken, whatever the moment); NetBox import, import-all and remove ("Import started": **the import's outcome, including C8's `write_failures`, `partial` and `complete`, is persisted and drawn nowhere, and the sync card shows a green badge when `failed` is empty, C85**); refresh hostnames; template approve (its per-device evidence) and template save; remote verify-write |
+| **No GUI** (curl or CLI) | 8 | freshness authorise; template revoke and bindings; bulk intent apply; extraction commit ("seed intent from a capture"); intent revert and retry; remote adopt |
+
+Two of the toasts also interpolate hostnames and reasons into HTML
+unescaped (Save All, Auto-Create). A result renderer that escapes every
+field closes that surface for everything it draws.
+
+**What it does to 7.1's shape.** 7.1 was "retrofit five previews onto one
+component". It becomes **"an operation, whole: prepare, preview, confirm,
+result, record, from the interface"**. The component gains its second
+half, and the Device page becomes the place a single-device operation
+starts. In order:
+
+1. **The constraint first, with the survey as its measured list** (7.0's
+   pattern: an allowlist that only shrinks). Every `confirm`, `approve` and
+   `publish_remote` route's response is drawn by the result component or a
+   declared renderer, or is declared toast-sufficient with a reason (a
+   reject that did nothing is one). The population is the gate table, so a
+   new gated route fails the check until it is declared.
+2. **The result half of the component** (C84, generalised). One builder, one
+   renderer in `nmas_preview_confirm.js`, parts mirroring the preview:
+   - **what happened**, per target;
+   - **what did not**: skipped, refused, residue left, measured;
+   - **what was sent**: the program as sent, its hash against the confirmed
+     hash;
+   - **the checks that ran**, before and after, or why none did;
+   - **the record**: the commit, its tags and the claim they make, the
+     receipt;
+   - **what is not being watched**: the follow-up window, not built.
+
+   The result is **built from the receipt rows the apply has just written**,
+   so the screen and the record are one computation. Deploy's
+   `_renderDeployResult` retires into it, and restore gets it for free.
+3. **The receipt on screen, later**: a masked reader
+   (`GET /deploy/receipts`, per device and per batch) and a Device-page
+   "Changes" list drawn by the same result renderer. It covers what none of
+   the 41 has.
+4. **Per-device capture (C82)**, a Device-page action that is itself an
+   operation:
+   - **preview**: read the device and show the diff against its current
+     golden, masked. What will NOT happen: no device change, and no baseline
+     tag, since one device never earns one;
+   - **confirm**: bound to the capture hash;
+   - **apply**: re-read the device, refuse if it moved, and commit
+     `Source: manual` with the verified person;
+   - **result**: drawn by the component.
+
+   The drift approval (C81) stays as the automated route.
+5. **Scoped restore (C80)**: "Restore from…" on the Device page, choosing
+   one of the baselines or this device's own golden tags. The Baselines
+   panel's re-apply takes a device selection that defaults to NONE, so
+   "the whole fleet" is chosen rather than inherited. Both open the same
+   restore preview.
+
+Then the C77 sweep, which now also covers capture's preview POST.
+**C70 is 7.1's acceptance**, run entirely in the browser: capture r2 alone,
+preview scoped to r2, confirm, then read the program, the hash, the receipt
+and verify's result on screen. A console call exercises the function; this
+exercises what a person actually does. After it: onboarding, whose result
+half then comes with the component and ends the false toast; NetBox
+import/remove, whose import outcome draws C8's fields; bulk intent.
+
+**The overlap with 7.3, stated:** capture and scoped restore are the first
+Device-page ACTIONS. 7.3 builds the rest of that page around them rather
+than beside them.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** If it returns, it caps the devices shown, and

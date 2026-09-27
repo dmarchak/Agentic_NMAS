@@ -5005,6 +5005,21 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
     `ai-agent` (C81, fixed);
   - every golden commit's subject claims "baseline", tagged or not (C83);
   - the restore's result is only a toast (C84).
+- **A GUI that needs a terminal to finish an operation has delivered a
+  TRIGGER, not the capability** (the operator, 2026-09-27, stopping C70).
+  Restoring one device needed four workarounds: a console call, a
+  fleet-wide Save All, the network tab and an SSH session. In a tool whose
+  purpose is to be the single control point, the workarounds ARE the
+  finding, so the run waits for the interface rather than being completed
+  around it. The survey it prompted: of the 41 routes that change a device
+  or the record, **none has a screen where its result can be read again
+  later**. 16 draw it until the window closes, 17 only in a toast, and 8
+  have no GUI. The payload-to-render check could not see this, because it
+  checks the responses renderers draw and not the responses nobody draws
+  (`/jobs/health`'s original shape). An operation is whole when a person
+  can prepare, preview, confirm, read the result and find the record again,
+  all from the interface. 7.1 is reshaped to that
+  ([NSOT_STAGE7_PLAN.md](docs/NSOT_STAGE7_PLAN.md), "7.1 reshaped").
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
   The list covers a stored config at the ref, printable ASCII, and
@@ -5044,7 +5059,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **50 open at 2026-09-27**, counted from the rows: 44 recorded only in
+present when each was recorded. **49 open at 2026-09-27**, counted from the rows: 43 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
