@@ -949,10 +949,17 @@ from the UI Settings panel — no restart needed except for bind host/port.
 
 ```bash
 scripts/nmas-test         # the suite, confined to loopback (C46); args go to pytest
-scripts/nmas-test -n auto # the same, in parallel (pytest-xdist; C45)
-pytest                    # 756 tests
+scripts/nmas-test -n auto # in parallel: ONLY where pytest-xdist is installed
+pytest                    # unconfined; says so in its header
 pytest tests/test_netbox_write_gate.py -v
 ```
+
+**Where each way runs** (2026-09-27): pytest-xdist 3.8.0 is installed on the
+deployment host and in CI (to match CI), and is **not** installed on the
+development laptop, where `-n auto` is refused as an unknown argument. So a
+laptop run is serial and a host or CI run is parallel. They schedule tests
+differently, which is the C43 class (a test depending on what ran before
+it), and a result should say which machine it came from.
 
 `pytest.ini` sets `pythonpath = .`, so both `pytest` and `python -m pytest` work
 from the repo root. (Before Phase 0 only the latter did.)
@@ -5099,7 +5106,9 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   generated scripts, so a component loaded from `static/js/nmas_*.js` was
   invisible to every renderer test reading the assembled page (found wiring
   step 4). It includes them now; Bootstrap, vendored in the same directory,
-  is deliberately not matched.
+  is deliberately not matched. So the payload-to-render check's population
+  had a hole exactly where the newest code lives: the check was sound and
+  its input incomplete, the fixture findings' class one level up.
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
   The list covers a stored config at the ref, printable ASCII, and
@@ -5139,7 +5148,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **49 open at 2026-09-27**, counted from the rows: 43 recorded only in
+present when each was recorded. **51 open at 2026-09-27**, counted from the rows: 45 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
