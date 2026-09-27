@@ -1363,6 +1363,34 @@ def list_baselines(repo: str) -> list:
     return sorted(baselines, key=lambda b: b["created"], reverse=True)
 
 
+def device_restore_points(repo: str, hostname: str) -> list:
+    """Where ONE device can be restored from, newest first (C80, 7.1 step 5).
+
+    Its golden now (``HEAD``), its own golden tags, and every baseline that
+    holds a golden for it. A baseline predating the device is not a restore
+    point for it: re-applying it would leave the device exactly as it is, so
+    offering it would be a choice that does nothing. Each point says which
+    kind it is and, for a baseline, which claim the baseline makes."""
+    sep = "@@|@@"
+    name = _safe_name(hostname)
+    points = [{"ref": "HEAD", "kind": "head", "created": "",
+               "subject": "its golden now"}]
+    rc, out, _ = git(repo, "tag", "--list", f"golden/{name}/*",
+                     f"--format=%(refname:short){sep}%(creatordate:iso-strict){sep}%(subject)")
+    own = []
+    for line in (out.splitlines() if rc == 0 else []):
+        parts = line.split(sep)
+        if len(parts) >= 3:
+            own.append({"ref": parts[0], "kind": "device", "created": parts[1],
+                        "subject": parts[2]})
+    for b in list_baselines(repo):
+        if name in devices_at(repo, b["tag"]):
+            own.append({"ref": b["tag"], "kind": "baseline", "created": b["created"],
+                        "subject": b["subject"], "claim": b["claim"],
+                        "claim_detail": b["claim_detail"]})
+    return points + sorted(own, key=lambda p: p["created"], reverse=True)
+
+
 def _baseline_claim(repo: str, tag: str) -> dict:
     """WHICH CLAIM a baseline makes (register E7), from its own message.
 

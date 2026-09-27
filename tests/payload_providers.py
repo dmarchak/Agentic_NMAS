@@ -185,6 +185,20 @@ def capture_preview(mp, tmp):
     return _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
 
 
+def restore_points(mp, tmp):
+    """7.1 step 5 (C80): r2's restore points, from a real repository holding
+    its onboarding golden, its own golden tag and a baseline earned by a
+    whole-fleet capture at intent. Not a hand-built list."""
+    from tests.test_capture import build_capture_lab
+
+    lab = build_capture_lab(mp, tmp)
+    d = _ok(lab["client"].post("/golden/capture/preview", json={"devices": []}))
+    h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
+    _ok(lab["client"].post("/golden/capture/apply",
+                           json={"confirmations": {"r2": h}, "fleet": True}))
+    return _ok(lab["client"].get("/golden/restore_points/r2"))
+
+
 def capture_apply(mp, tmp):
     """The same, confirmed and recorded: a departing capture's result."""
     from tests.test_capture import build_capture_lab

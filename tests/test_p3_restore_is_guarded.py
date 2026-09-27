@@ -311,4 +311,9 @@ class TestTheWiring:
         assert "history.replaceState" in fn.split("previewBaselineRestore")[0], (
             "the parameter must be removed BEFORE the preview opens, or a "
             "reload re-opens a preview nobody asked for")
-        assert "previewBaselineRestore('HEAD', null, {devices})" in fn
+        # HEAD unless "Restore from…" (7.1 step 5, C80) names a ref; both
+        # parameters go before the preview opens.
+        assert "const ref = params.get('restore_ref') || 'HEAD';" in fn
+        before = fn.split("history.replaceState")[0]
+        assert "params.delete('restore_head')" in before and "params.delete('restore_ref')" in before
+        assert "previewBaselineRestore(ref, null, {devices})" in fn

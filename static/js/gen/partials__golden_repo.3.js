@@ -79,7 +79,7 @@ async function loadGoldenRepoPanel() {
                     </button>
                   </td>
                 </tr>`).join('')}</tbody></table></div>`
-            : '<p class="text-muted small mb-0">No baselines yet. "Save All" creates one.</p>'}
+            : '<p class="text-muted small mb-0">No baselines yet. Save All takes one when every device is captured and matches its committed intent.</p>'}
         </div>
       </div>`;
   } catch (e) { console.error('loadGoldenRepoPanel', e); }
@@ -454,18 +454,21 @@ function _restoreSelected(preview) {
 
 // The device page's and bulk ops' "Restore Golden Config" (P.3 step 3, D5)
 // arrive here as ?restore_head=<hostname>[,<hostname>...]: the guarded
-// preview at HEAD, scoped to those devices, exactly as an approval-queue
+// preview at HEAD (or at ?restore_ref=<ref>, from "Restore from…"), scoped to those devices, exactly as an approval-queue
 // handoff opens it. The parameter is removed first, so a reload cannot
 // re-open a preview nobody asked for.
 function _restoreHeadFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const raw = params.get('restore_head');
   if (!raw) return;
+  // The Device page's "Restore from…" (C80) names the ref; HEAD otherwise.
+  const ref = params.get('restore_ref') || 'HEAD';
   params.delete('restore_head');
+  params.delete('restore_ref');
   const q = params.toString();
   history.replaceState(null, '', window.location.pathname + (q ? '?' + q : ''));
   const devices = raw.split(',').map(x => x.trim()).filter(Boolean);
-  if (devices.length) previewBaselineRestore('HEAD', null, {devices});
+  if (devices.length) previewBaselineRestore(ref, null, {devices});
 }
 
 document.addEventListener('DOMContentLoaded', loadGoldenRepoPanel);

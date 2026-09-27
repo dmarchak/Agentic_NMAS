@@ -120,6 +120,8 @@ def baselines():
         for entry in entries:
             devices = devices_at(repo, entry["tag"])
             entry["device_count"] = len(devices)
+            # The scope chooser (C80) lists these, none ticked.
+            entry["devices"] = sorted(devices)
             # PARTIAL RELATIVE TO TODAY'S FLEET, named rather than left to
             # arithmetic. The count alone made an older baseline read "9"
             # and a newer one "10" with nothing saying the first covers less
@@ -147,6 +149,43 @@ def baselines():
             entry["no_intent"] = gaps["no_golden"]
         return jsonify({"ok": True, "baselines": entries})
     except Exception as exc:                  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@bp.route("/restore_points/<path:hostname>", methods=["GET"])
+def restore_points(hostname):
+    """Where one device can be restored from (C80, 7.1 step 5): the Device
+    page's "Restore from…" chooser. Reads only.
+
+    Each point carries this device's credential state at that ref, measured
+    the way the Baselines panel measures it, so the chooser warns BEFORE the
+    click: ``current``, ``refused`` (the restore's own guards stop it),
+    ``silent`` (an account the ref has and the device lacks would be ADDED
+    back) or ``no_golden``. The username lines themselves never leave."""
+    from modules.nsot.repo import device_restore_points
+    from modules.nsot.restore import baseline_credential_gaps
+
+    list_name = _active_list()
+    repo = _repo_for(list_name)
+    try:
+        points = device_restore_points(repo, hostname)
+        for point in points:
+            if point["kind"] == "head":
+                point["credential"] = "current"
+                continue
+            gaps = baseline_credential_gaps(repo, point["ref"], list_name, [hostname])
+            if hostname in gaps["no_golden"]:
+                point["credential"] = "no_golden"
+            elif hostname in gaps["silent"]:
+                point["credential"] = "silent"
+            elif hostname in set(gaps["refused"]) | set(gaps["guarded"]):
+                point["credential"] = "refused"
+            else:
+                point["credential"] = "current"
+        return jsonify({"ok": True, "hostname": hostname, "list": list_name,
+                        "points": points})
+    except Exception as exc:                  # noqa: BLE001
+        log.exception("golden: restore points failed for %s", hostname)
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 

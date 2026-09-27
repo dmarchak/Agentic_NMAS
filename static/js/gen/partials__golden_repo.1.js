@@ -178,41 +178,51 @@ function _gCredWarning(b) {
   return '<span class="badge bg-success-subtle text-success-emphasis">credentials current</span>';
 }
 
-/* Explicit acknowledgement before re-applying a baseline whose credentials
-   the fleet has rotated away from. The restore path refuses those devices at
-   plan time anyway — this is so the operator knows BEFORE starting, rather
-   than meeting a refusal mid-operation and wondering what is broken.
+/* Re-apply a baseline: SCOPE FIRST (7.1 step 5, C80), then the explicit
+   acknowledgement for any chosen device whose credentials the fleet has
+   rotated away from, then the guarded preview.
+
+   The scope starts EMPTY. It used to be the whole fleet by default, so
+   restoring one device from a baseline needed the browser console, and "the
+   whole fleet" was inherited rather than chosen. Now it is a box ticked.
+
+   The acknowledgement names only the CHOSEN devices. The restore path
+   refuses a rewritten credential at plan time anyway (C75); this is so the
+   operator knows BEFORE starting, rather than meeting a refusal mid-operation.
 
    Deliberately not folded into previewBaselineRestore(): its second parameter
    is `unOnboard`, and passing anything else there would be read as a list of
    devices to un-onboard. */
 window._gBaselineCache = [];
-window.confirmBaselineRestore = function (tag) {
-  const b = (window._gBaselineCache || []).find(x => x.tag === tag) || {};
-  const stale   = b.credential_stale || [];
-  const silent  = b.credential_silent || [];
+window.confirmBaselineRestore = async function (tag) {
+  const b = (window._gBaselineCache || []).find(x => x.tag === tag) || {tag};
+  const scope = await chooseBaselineScope(b);
+  if (!scope) return;
+  const inScope = h => scope.devices === null || scope.devices.includes(h);
+  const stale   = (b.credential_stale || []).filter(inScope);
+  const silent  = (b.credential_silent || []).filter(inScope);
   // Refused by either guard: the intent check or the credential guard (C75).
   const refused = [...new Set([...(b.credential_refused || []),
-                               ...(b.credential_guarded || [])])].sort();
-  if (!stale.length) { previewBaselineRestore(tag); return; }
-
-  let msg = `${tag} predates the credentials now on: ${stale.join(', ')}.\n\n`;
-  if (silent.length) {
-    // The dangerous case, stated as a consequence rather than a category.
-    msg += `WOULD APPLY to: ${silent.join(', ')}\n` +
-           `No credential those devices hold is rewritten (the restore ` +
-           `refuses that), but an account this baseline has and the device ` +
-           `no longer does would be ADDED back. If it was removed on ` +
-           `purpose, do not re-apply.\n\n`;
+                               ...(b.credential_guarded || [])])].filter(inScope).sort();
+  if (stale.length) {
+    let msg = `${tag} predates the credentials now on: ${stale.join(', ')}.\n\n`;
+    if (silent.length) {
+      // The dangerous case, stated as a consequence rather than a category.
+      msg += `WOULD APPLY to: ${silent.join(', ')}\n` +
+             `No credential those devices hold is rewritten (the restore ` +
+             `refuses that), but an account this baseline has and the device ` +
+             `no longer does would be ADDED back. If it was removed on ` +
+             `purpose, do not re-apply.\n\n`;
+    }
+    if (refused.length) {
+      msg += `Refused at plan time (safe): ${refused.join(', ')}\n` +
+             `Re-applying would rewrite a credential they hold, so the preview ` +
+             `blocks them and nothing is sent to them.\n\n`;
+    }
+    msg += `Type the word APPLY in the next prompt to continue to the preview.`;
+    if (!confirm(msg)) return;
+    const typed = prompt(`Re-apply ${tag}? Type APPLY to continue.`);
+    if ((typed || '').trim() !== 'APPLY') return;
   }
-  if (refused.length) {
-    msg += `Refused at plan time (safe): ${refused.join(', ')}\n` +
-           `Re-applying would rewrite a credential they hold, so the preview ` +
-           `blocks them and nothing is sent to them.\n\n`;
-  }
-  msg += `Type the word APPLY in the next prompt to continue to the preview.`;
-  if (!confirm(msg)) return;
-  const typed = prompt(`Re-apply ${tag}? Type APPLY to continue.`);
-  if ((typed || '').trim() !== 'APPLY') return;
-  previewBaselineRestore(tag);
+  previewBaselineRestore(tag, null, {devices: scope.devices});
 };

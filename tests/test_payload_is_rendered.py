@@ -84,6 +84,7 @@ PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "programHtml
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 DC = "partials__device_changes.1.js"
 CAP = "nmas_capture.js"
+RS = "nmas_restore_scope.js"
 DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js",
                      "partials__golden_repo.2.js", "partials__golden_repo.3.js")
 I1, I4 = "index.1.js", "index.4.js"
@@ -119,6 +120,10 @@ RENDERS = {
         ((CAP, "previewCapture", "ad"),),
         adapters={"modules/preview_confirm.py": ("capture_result", "_intent_words",
                                                  "build_result")}),
+    "GET /golden/restore_points/<host>": Render(
+        lambda mp, tmp: P.restore_points(mp, tmp),
+        {RS: ("openRestoreFrom", "restorePointsHtml", "credBadge")},
+        ((RS, "restorePointsHtml", "d"),)),
     "GET /deploy/receipts": Render(
         lambda mp, tmp: P.deploy_receipts(mp),
         {DC: ("deviceChangesHtml", "loadDeviceChanges"), PC: PC_RESULT_FNS},
@@ -163,7 +168,8 @@ RENDERS = {
     "GET /golden/baselines": Render(
         _get("/golden/baselines"),
         {GR3: ("loadGoldenRepoPanel",), GR1: ("_gBaselineCoverage", "_gCredWarning",
-                                               "_gBaselineClaim")},
+                                               "_gBaselineClaim"),
+         RS: ("baselineScopeHtml",)},
         ((GR3, "loadGoldenRepoPanel", "bRes"),)),
     "GET /golden/history/<host>": Render(
         _get("/golden/history/r1"),
