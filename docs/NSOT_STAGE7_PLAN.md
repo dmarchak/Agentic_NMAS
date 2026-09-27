@@ -445,6 +445,31 @@ cases updates without a reload:
 - after a commit, the Remote card shows the new push state;
 - after a drift run, the badge shows it.
 
+**Acceptance 6, first run (2026-09-27): not passed, and why each case says
+what it says:**
+- **The Remote card** updated after an intent commit and its auto-push. The
+  result cannot yet be attributed: the push runs on a background thread
+  after the response that triggers the re-fetch, so the card updating means
+  the push won the race or something else refreshed it (register C58).
+- **The drift badge** did not visibly change after Check Now. That run
+  could not test the mechanism: Check Now re-fetches the badge in its own
+  code, as it did before 7.0. The operator's reading generalises: a test
+  whose pass and fail render the same is not a test. The card's "Last:"
+  line changes on every run, to the second, and is the observable.
+- **The device list after Verify** is NOT MEASURED, and is not recorded as
+  passing. It needs a pending device. It is measured at the next onboarding,
+  which is also the first real run of the phase-2 persist step (C57).
+  Verify runs phase 2 inside the request, so this case IS one the response
+  can carry.
+
+**What changed after the run:** the registry records what fired, with the
+URL, the keys, the panels refreshed and each outcome. `NMAS.log()` in the
+browser console shows it, so the next run can tell "did not fire" from
+"fired and redrew an identical value". **What it found:** response-triggered
+invalidation cannot see a change made after the response, or on a
+schedule. Two of the three measured cases are exactly that (C58, proposed
+fix: a server-sent invalidation over the existing Socket.IO connection).
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** If it returns, it caps the devices shown, and

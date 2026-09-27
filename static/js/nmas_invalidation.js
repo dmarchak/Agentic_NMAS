@@ -24,6 +24,22 @@
 
   var subs = [];
 
+  /* What fired, when, and what it refreshed (Stage 7.0 acceptance 6).
+     Without it, "the panel did not change" cannot tell a mechanism that did
+     not fire from one that fired and redrew an identical value: a test whose
+     pass and fail render the same (the operator's reading of the drift
+     case). Read it in the browser console with NMAS.log(). */
+  var log = [];
+
+  function record(entry) {
+    entry.at = new Date(now()).toISOString();
+    log.push(entry);
+    if (log.length > 100) log.shift();
+    if (root.console && root.console.info) {
+      root.console.info('NMAS: ' + JSON.stringify(entry));
+    }
+  }
+
   function now() { return (root.NMAS && root.NMAS._clock) ? root.NMAS._clock() : Date.now(); }
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -67,6 +83,7 @@
 
   function settle(sub, ok) {
     sub.refreshing = false;
+    record({event: 'refreshed', panel: sub.name, key: sub.key, ok: !!ok});
     if (ok) {
       sub.lastGood = now();
       clearStale(sub);
@@ -129,7 +146,11 @@
     var value = resp && resp.headers && resp.headers.get
       ? resp.headers.get('X-NMAS-Invalidates') : null;
     var keys = keysFrom(value);
-    if (keys.length) invalidate(keys);
+    if (keys.length) {
+      var names = invalidate(keys);
+      record({event: 'invalidated', url: (resp && resp.url) || '', keys: keys,
+              panels: names});
+    }
     return resp;
   }
 
@@ -145,5 +166,6 @@
   root.NMAS = {
     subscribe: subscribe, invalidate: invalidate, onResponse: onResponse,
     keysFrom: keysFrom, staleMarkerHtml: staleMarkerHtml, _subs: subs,
+    log: function () { return log.slice(); },
   };
 })(typeof window !== 'undefined' ? window : this);

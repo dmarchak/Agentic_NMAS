@@ -361,6 +361,38 @@ class TestTheClientExecutes:
         """)
         assert out == [1, 1, True]
 
+    def test_the_log_says_what_fired_and_what_it_refreshed(self):
+        """Acceptance 6's observable: "no visible change" must be able to tell
+        a mechanism that did not fire from one that redrew an identical
+        value. The log records the response, its keys, the panels it
+        refreshed, and each refresh's outcome."""
+        out = _run("""
+          NMAS._clock = function () { return 1700000000000; };
+          NMAS.subscribe('drift', 'driftBadge', function () { return true; });
+          NMAS.subscribe('remote', 'remoteCard', function () { return false; });
+          NMAS.onResponse({url: '/drift/check/sync', headers: {get: function () {
+            return 'drift,remote'; }}});
+          JSON.stringify(NMAS.log());
+        """)
+        entries = __import__("json").loads(out)
+        fired = [e for e in entries if e["event"] == "invalidated"]
+        assert fired == [{"event": "invalidated", "url": "/drift/check/sync",
+                          "keys": ["drift", "remote"],
+                          "panels": ["driftBadge", "remoteCard"],
+                          "at": "2023-11-14T22:13:20.000Z"}]
+        refreshed = {e["panel"]: e["ok"] for e in entries if e["event"] == "refreshed"}
+        assert refreshed == {"driftBadge": True, "remoteCard": False}
+
+    def test_nothing_fired_is_an_empty_log(self):
+        """The other half: a response with no header leaves no entry, so an
+        empty log after an action means the mechanism did not fire."""
+        out = _run("""
+          NMAS.subscribe('drift', 'x', function () { return true; });
+          NMAS.onResponse({url: '/drift/status', headers: {get: function () { return null; }}});
+          NMAS.log().length;
+        """)
+        assert out == 0
+
     def test_a_missing_panel_is_said_not_silent(self):
         out = _run("""
           var said = [];
