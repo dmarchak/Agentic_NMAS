@@ -983,6 +983,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_ztp_reservations.py` | P.6 step 1: against a fake Kea that re-reads the fragment only on reload (as M5 measured): written, unchanged, removed, absent; per-device refusals (MAC or address reserved, address leased, no subnet); D4 at every level and on the entry; a refused candidate never touches the live fragment; a failed reload restores it; a server that did not take the write is named with both operands; 0644 whatever the umask; the DNS condition (broadcast, `.invalid`, unknown is never silent); the job-health row finds the ZTP subnet from Kea's listening interface; the probe helper and the module agree on D4 |
 | `test_ztp_responder.py` | P.6 step 2 (and M4's fix: a real dual-stack IPv6 listener with an IPv4 client, the peer normalised once for identity and reply): section 10's six controls (a reveal row per fetch with the hash and never the text; only the reserved address; only pending, decided per request; an abandoned device not served; nothing written by the module; a fresh render each time), the filename checked against option 67 naming both, served only once recorded, and the protocol over loopback: blocks, the empty final block, a retransmitted block, writes, netascii and malformed requests refused; the real manifest read and no list created |
 | `test_ztp_onboarding.py` | P.6 step 3: a `ztp` plan carries the typed address as the reservation, never as a static address, renders `ip address dhcp`, and states a claim naming the reservation it WRITES and the server and file it serves; every reason the write would refuse blocks the plan, and a check that raised has not passed; phase 1 is credentials, commit, reserve, render, with the reservation last among the fallible and a failure there offering cleanup; a ztp run with no reserve step cannot complete; D4 re-checked at write time; re-render and lease discovery shared with dhcp; step 4: the pending row's stage derived from the reservation in Kea's running config, the lease and the responder's audit rows (another device's fetch does not count, a Kea that cannot be asked is unknown), carried only on ztp rows, a raised read carried as unknown, and the shipped banner drawing it; step 5: every dhcp-only comparison in onboard.py is a declared plan branch; step 6: abandon removes the reservation FIRST (it was written last) and keeps the name while it remains, including a writer refusal; M4: `asked_not_served` (an unattributed request matched by its address, another device's row never), and the responder's job-health row (socket down, not installed, failing since its last start, unknown) |
+| `test_c53_device_stage.py` | C53: one pure judgement (`startup_carries`) for the save path and the job; the exposed line is not carried, no startup config is not, no username line is unknown; the check never saves; the CLI chain saves the device FIRST and a failure stops it and is recorded, with `nmas-persist-native` as the advice; the job's file (0600), a raised check is unknown, the script's exit codes; job-health rows: one ok row naming the count, the device that would boot the wrong credential named, stale, unreadable, and a run that found NO devices is not ok |
 | `test_kea_m5_helper.py` | P.6 M5: the helper reads subnet 255 from kea-dhcp4's control socket and adds the config-set control reservation, against a fake Kea socket; refuses a MAC or address already reserved; never calls config-write; D4's refusal of route and resolver options (3, 6, 33, 121) at global, shared-network, subnet and reservation level, with client classes reported as not ruled out |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
@@ -4709,7 +4710,11 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   **Measured on the fleet the same day (C53):** eight of nine devices boot
   their running credential. `s1` boots the credential the terminal exposed
   (B13), because its NVRAM was never saved after the rotation that retired
-  it: B15 fixed the boot FILE, and a guest reload boots NVRAM.
+  it: B15 fixed the boot FILE, and a guest reload boots NVRAM. After the
+  operator's `nmas-persist-native s1`, **nine of nine carry**, the first
+  time by measurement. The CLI chain's first stage now saves on the device,
+  and `nmas-startup-check` (hourly, read-only) keeps asking, because the
+  answer changes silently.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
@@ -4723,7 +4728,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **39 open at 2026-09-27**, counted from the rows: 34 recorded only in
+present when each was recorded. **38 open at 2026-09-27**, counted from the rows: 33 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

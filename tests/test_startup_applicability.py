@@ -45,6 +45,17 @@ end
 """
 
 
+@pytest.fixture(autouse=True)
+def _the_device_stage_passes(monkeypatch):
+    """C53 put a DEVICE stage first in the persistence chain (save on the
+    device, read its startup config back). This file tests the chain's other
+    stages, so that one is stubbed to pass here, explicitly and per file;
+    `test_c53_device_stage.py` tests the stage itself."""
+    from modules.nsot import credential_rotation as _cr
+    monkeypatch.setattr(_cr, "save_on_device",
+                        lambda *a, **k: {"ok": True, "state": "persisted", "detail": "stub"})
+
+
 @pytest.fixture
 def reads(monkeypatch):
     """Serve file contents by remote path, recording what was asked for."""

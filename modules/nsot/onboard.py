@@ -2480,25 +2480,60 @@ def persist_on_device(mgmt_ip: str, username: str, password: str, secret: str,
         out["detail"] = f"the save or its read-back could not run: {exc}"
         return out
 
-    held = [l.rstrip() for l in running.splitlines() if l.startswith("username ")]
+    out.update(startup_carries(startup, running, after_save=True))
+    return out
+
+
+def startup_carries(startup: str, running: str, *, after_save: bool = False) -> dict:
+    """PURE: does *startup* carry every `username` line *running* holds,
+    verbatim? ``{"ok", "state", "detail"}``, state ``persisted |
+    not_persisted | unknown``. The ONE judgement, used by the save path
+    (`persist_on_device`) and by the read-only check (the hourly job), so the
+    two cannot disagree about what "carries" means. Details name each line's
+    FORM, never its value."""
+    held = [l.rstrip() for l in (running or "").splitlines() if l.startswith("username ")]
     if not held:
-        out["detail"] = ("the running config shows no username line, so what the "
-                         "startup config should carry is unknown")
-        return out
-    if "startup-config is not present" in startup or not startup.strip():
-        out["state"] = "not_persisted"
-        out["detail"] = "after write memory the device still has NO startup config"
-        return out
+        return {"ok": False, "state": "unknown",
+                "detail": "the running config shows no username line, so what the "
+                          "startup config should carry is unknown"}
+    if "startup-config is not present" in (startup or "") or not (startup or "").strip():
+        return {"ok": False, "state": "not_persisted",
+                "detail": ("after write memory the device still has NO startup config"
+                           if after_save else "the device has NO startup config: a reload "
+                           "boots it with no credential NMAS holds")}
     stored = {l.rstrip() for l in startup.splitlines()}
     missing = [l for l in held if l not in stored]
     if missing:
-        out["state"] = "not_persisted"
-        out["detail"] = ("the startup config does not carry "
-                         + "; ".join(_credential_form(l) for l in missing))
-        return out
-    out.update(ok=True, state="persisted",
-               detail="the startup config carries " + "; ".join(_credential_form(l) for l in held))
-    return out
+        return {"ok": False, "state": "not_persisted",
+                "detail": ("the startup config does not carry "
+                           + "; ".join(_credential_form(l) for l in missing))}
+    return {"ok": True, "state": "persisted",
+            "detail": "the startup config carries " + "; ".join(_credential_form(l) for l in held)}
+
+
+def check_startup(mgmt_ip: str, username: str, password: str, secret: str,
+                  device_type: str, *, connect=None) -> dict:
+    """READ-ONLY: the same judgement as `persist_on_device`, with NO save. Two
+    show commands. What the hourly job asks (C53)."""
+    from modules.connection import connection_params
+
+    try:
+        if connect is None:
+            from netmiko import ConnectHandler as connect
+        conn = connect(**connection_params(
+            {"device_type": device_type, "ip": mgmt_ip, "username": username},
+            password=password, secret=secret))
+        try:
+            conn.enable()
+            startup = conn.send_command("show startup-config", read_timeout=_read_timeout())
+            running = conn.send_command("show running-config | include ^username",
+                                        read_timeout=_read_timeout())
+        finally:
+            conn.disconnect()
+    except Exception as exc:                   # noqa: BLE001
+        return {"ok": False, "state": "unknown",
+                "detail": f"could not ask: {type(exc).__name__}: {exc}"}
+    return startup_carries(startup, running)
 
 
 def _record_native_persist(hostname: str, pers: dict, actor: str) -> None:

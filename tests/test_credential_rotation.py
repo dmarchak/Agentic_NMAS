@@ -18,6 +18,17 @@ from cryptography.fernet import InvalidToken
 from modules.nsot import credential_rotation as cr
 
 
+@pytest.fixture(autouse=True)
+def _the_device_stage_passes(monkeypatch):
+    """C53 put a DEVICE stage first in the persistence chain (save on the
+    device, read its startup config back). This file tests the chain's other
+    stages, so that one is stubbed to pass here, explicitly and per file;
+    `test_c53_device_stage.py` tests the stage itself."""
+    from modules.nsot import credential_rotation as _cr
+    monkeypatch.setattr(_cr, "save_on_device",
+                        lambda *a, **k: {"ok": True, "state": "persisted", "detail": "stub"})
+
+
 class TestGeneration:
     def test_length_and_entropy(self):
         assert cr.LENGTH == 32
@@ -2196,7 +2207,10 @@ class TestPersistenceNeverReverts:
         out = cr.persist(self._result(), **self.BASE)
 
         assert out["state"] == cr.ROTATED_UNVERIFIED
-        assert out["persistence"][0]["ok"] is False
+        # By NAME: C53 put the device stage first, so position 0 is no longer
+        # the router.db write.
+        row = [st for st in out["persistence"] if st["name"] == "oxidized_row"][0]
+        assert row["ok"] is False
         assert "ROTATED and committed" in cr.summarise(out)
         # The message must be TERMINAL: the process has exited by the time it
         # is printed, so nothing is retrying and it must not say otherwise.
@@ -2214,7 +2228,7 @@ class TestPersistenceNeverReverts:
 
         assert out["state"] == cr.ROTATED_UNVERIFIED
         assert [s["name"] for s in out["persistence"]] == \
-            ["oxidized_row", "oxidized_reload", "fetch_confirmed"]
+            ["device_startup_config", "oxidized_row", "oxidized_reload", "fetch_confirmed"]
 
     def test_a_startup_file_miss_leaves_the_device_rotated(self, monkeypatch):
         monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})

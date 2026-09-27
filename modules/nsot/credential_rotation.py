@@ -2656,6 +2656,27 @@ def verify_startup_applies(hostname: str, *, platform: str, username: str,
                 f"and rotate after boot. Read: {where}")}
 
 
+def save_on_device(mgmt_ip: str, username: str, password: str, platform: str,
+                   secret: str = "") -> dict:
+    """The chain's FIRST stage: save on the DEVICE and read its startup config
+    back (`onboard.persist_on_device`). Register C53: nothing on this path had
+    ever saved a device, so a guest `reload` booted NVRAM, and s1's NVRAM held
+    the credential the terminal exposed (B13) while its boot FILE was SAFE.
+    Idempotent, as every stage here must be: saving again changes nothing,
+    and the read-back is a pure read."""
+    from modules.nsot.onboard import persist_on_device
+    from modules.nsot.platform import netmiko_type_for_dialect
+
+    try:
+        device_type = netmiko_type_for_dialect(platform)
+    except Exception as exc:                      # noqa: BLE001
+        return {"ok": False, "error": f"no Netmiko driver for {platform!r}: {exc}"}
+    out = persist_on_device(mgmt_ip, username, password, secret, device_type)
+    return {"ok": bool(out.get("ok")), "state": out.get("state", ""),
+            "detail": out.get("detail", ""),
+            "error": "" if out.get("ok") else out.get("detail", "")}
+
+
 def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
             hostname: str, new_hash: str, after_iso: str, platform: str,
             **kw) -> dict:
@@ -2705,6 +2726,12 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
         return outcome.get("ok")
 
     result["persistence"] = chain
+    # THE DEVICE FIRST (C53): its own boot state must not wait on Oxidized or
+    # the containerlab sync, and a guest reload boots NVRAM, not the file.
+    if not _stage("device_startup_config",
+                  save_on_device(mgmt_ip, username, password, platform,
+                                 **{k: kw[k] for k in ("secret",) if k in kw})):
+        return result
     # Each stage gates the next; every one of them may find its work done.
     if not _stage("oxidized_row",
                   update_oxidized_row(mgmt_ip, username, password,
@@ -2795,8 +2822,9 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
         return result
 
     result["state"] = ROTATED_PERSISTED
-    result["reason"] = ("rotated, committed, present in the startup config, "
-                        "that file applies on boot, and "
+    result["reason"] = ("rotated, committed, saved on the device and read back "
+                        "from its own startup config, present in the startup "
+                        "file, that file applies on boot, and "
                         "nmas-check-startup-applies reads SAFE")
     return result
 

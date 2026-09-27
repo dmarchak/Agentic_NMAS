@@ -43,6 +43,8 @@ JOBS = (
      "what": "NetBox restore into a scratch postgres, daily (P.2)"},
     {"unit": "nmas-heartbeat-check", "max_age_minutes": 180,
      "what": "each device's heartbeat window still fits its measured rate, hourly (C16)"},
+    {"unit": "nmas-startup-check", "max_age_minutes": 180,
+     "what": "every device's startup config carries the credential NMAS holds, hourly (C53)"},
 )
 
 JOURNAL_DAYS = 14
@@ -741,6 +743,57 @@ def ztp_responder_rows(run=None, get=None) -> list:
                  "not started yet (systemd starts it on the first request)"))}]
 
 
+def startup_rows(read=None, now: float = None) -> list:
+    """C53, from the hourly job's file (never a device session per request).
+
+    One row per device whose startup config does NOT carry the credential
+    NMAS holds, or could not be asked; one summary row when every device
+    carries it, naming the count so a zero cannot pose as coverage. Nothing
+    when the job has never run: its own unit row says that."""
+    from modules.nsot import startup_check
+
+    now = time.time() if now is None else now
+    what = "the device's startup config carries the credential NMAS holds (C53)"
+    try:
+        res = (read or startup_check.read_results)()
+    except Exception as exc:                          # noqa: BLE001
+        return [{"unit": "startup-check", "what": what, "state": "unknown",
+                 "max_age_minutes": 0,
+                 "detail": f"data/startup_check.json is unreadable: {exc} -- not the same as ok"}]
+    if not res:
+        return []
+    at = res.get("at") or 0
+    when = time.strftime("%Y-%m-%d %H:%M", time.localtime(at))
+    devices = res.get("devices") or []
+    if now - at > 3 * 3600:
+        return [{"unit": "startup-check", "what": what, "state": "stale",
+                 "max_age_minutes": 0,
+                 "detail": f"last checked {when}; stale after 3 h"}]
+    if not devices:
+        # "0 of 0 boot the right credential" is a vacuous pass: a job that
+        # found no device has checked nothing.
+        return [{"unit": "startup-check", "what": what, "state": "unknown",
+                 "max_age_minutes": 0,
+                 "detail": f"the last run (at {when}) found NO devices to check"}]
+    rows = []
+    for d in devices:
+        if d.get("state") == "persisted":
+            continue
+        state = "not_safe_to_reboot" if d.get("state") == "not_persisted" else "unknown"
+        rows.append({"unit": f"startup:{d.get('list')}/{d.get('device')}", "what": what,
+                     "state": state, "max_age_minutes": 0,
+                     "detail": f"{d.get('detail', '')} (checked {when})"
+                               + ("; a reload would boot a credential NMAS does not hold: "
+                                  f"run nmas-persist-native {d.get('device')} --list {d.get('list')}"
+                                  if state == "not_safe_to_reboot" else "")})
+    if not rows:
+        rows.append({"unit": "startup-check", "what": what, "state": "ok",
+                     "max_age_minutes": 0,
+                     "detail": f"{len(devices)} of {len(devices)} device(s) boot the "
+                               f"credential NMAS holds (checked {when})"})
+    return rows
+
+
 def ztp_rows() -> list:
     """D4, checked where it could otherwise silently stop holding (P.6)."""
     from modules.nsot import ztp
@@ -754,7 +807,8 @@ def ztp_rows() -> list:
 
 
 def health(now: float = None, run=None, images=None, settings=None,
-           rotations=None, owner=None, ztp=None, responder=None) -> dict:
+           rotations=None, owner=None, ztp=None, responder=None,
+           startup=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -764,6 +818,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += sync_owner_rows(run) if owner is None else list(owner)
     jobs += ztp_rows() if ztp is None else list(ztp)
     jobs += ztp_responder_rows(run) if responder is None else list(responder)
+    jobs += startup_rows() if startup is None else list(startup)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     return {"ok": True, "jobs": jobs, "not_ok": bad,

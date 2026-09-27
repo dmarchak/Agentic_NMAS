@@ -1,0 +1,10 @@
+[Unit]
+Description=NMAS: hourly startup-config credential check (C53)
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -133,6 +133,23 @@ sudo -u nmas install -m 600 /dev/null /home/nmas/agentic-nmas/.env
 echo 'ANTHROPIC_API_KEY=sk-ant-...' | sudo -u nmas tee -a /home/nmas/agentic-nmas/.env
 ```
 
+### The startup-config credential check (register C53)
+
+An hourly, READ-ONLY job asks every device whether its startup config
+carries the credential NMAS holds (two show commands each, never a save),
+writes `data/startup_check.json`, and job health reads that file:
+
+```bash
+sudo install -m 0644 deploy/systemd/nmas-startup-check.service deploy/systemd/nmas-startup-check.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now nmas-startup-check.timer
+sudo systemctl start nmas-startup-check.service
+python3 -c 'import json; d=json.load(open("/home/dmarchak/python/Agentic_NMAS/data/startup_check.json")); print(d["counts"])'
+```
+
+Until it is installed, job health's `nmas-startup-check` row reads
+`not_installed`, so the gap is visible rather than silent.
+
 ## Deploying an update
 
 `scripts/nmas-deploy` fast-forwards the checkout to origin/main ONLY if CI

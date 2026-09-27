@@ -1,0 +1,19 @@
+# Register C53: does each device's STARTUP config carry the credential NMAS
+# holds? Read-only (two show commands per device); writes
+# data/startup_check.json, which job health reads.
+#   sudo install -m 0644 deploy/systemd/nmas-startup-check.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now nmas-startup-check.timer
+[Unit]
+Description=NMAS: every device's startup config carries the credential NMAS holds
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=dmarchak
+Group=dmarchak
+WorkingDirectory=/home/dmarchak/python/Agentic_NMAS
+ExecStart=/home/dmarchak/python/Agentic_NMAS/scripts/nmas-startup-check
+# Exit 1 (a device would boot a credential NMAS does not hold) is a failure of
+# the unit, so job health shows it from the journal as well as from the file.
+TimeoutStartSec=20min
