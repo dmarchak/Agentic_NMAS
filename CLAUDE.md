@@ -1044,7 +1044,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens and the legacy `golden_configs/`, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
 | `test_device_ops.py` | C98: a second operation on a held device is refused naming the holder, operation and start time, never queued; free again after, re-entrant for the holding thread, other devices unaffected; asking who holds it creates nothing; a CHILD PROCESS holding it refuses the app and its death releases it; deploy, restore, capture, rotation, onboarding phase two and retirement each refuse a held device before anything runs; the lock released when the batch raises; the list of holding paths pinned (a pin: a new path not added is not caught) |
-| `test_ssh_sessions.py` | C97: every session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
+| `test_ssh_sessions.py` | C97: every NETMIKO session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers; the break-glass terminal's raw paramiko sessions are outside it, C101); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
@@ -5128,6 +5128,21 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   was right for a reason nobody predicted (C92), and a result that arrived
   after the operator had concluded there was none (C99). None was the thing
   under test. The rule is no longer only for paths that have never run.
+- **A record exists to answer ONE question, and widening it to cover a
+  second case makes it answer neither** (the operator, 2026-09-27, on A3).
+  Adopting the nine hand-built reference devices by writing them into the
+  created-object record would have recorded a creation that never happened,
+  and made a person's objects deletable by Remove on the strength of it: the
+  tag would have meant "NMAS made this" where it did not. Adoption is its
+  own record (who handed the device to the tool, when, why), the same
+  distinction as a golden (what IS) and intent (what SHOULD BE). The
+  temptation recurs whenever a record already has the property a new case
+  wants, such as deletability or trust.
+- **A concurrency test that HANGS rather than fails reports nothing; the
+  hard timeout is what turns it back into a measurement** (the operator,
+  2026-09-27). C98's lock first deadlocked on a device another process held,
+  and the test hung until killed. Same family as a control that "passed" by
+  crashing: an outcome that cannot be read is not a result.
 - **In this project building is how surveying happens, so every operation
   gets a real run on the host, and that run's findings are budgeted as part
   of its cost** (the operator's scheduling principle, 2026-09-27). The
@@ -5225,7 +5240,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **56 open at 2026-09-27**, counted from the rows: 50 recorded only in
+present when each was recorded. **57 open at 2026-09-27**, counted from the rows: 51 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
