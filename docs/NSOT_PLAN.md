@@ -3097,8 +3097,10 @@ one NMAS uses (register B17).
       records `none`, which is true.
     - **Two writers named nobody.** `abandon_onboarding` held the actor and
       committed without it; it now writes `Source`/`Actor`. The legacy Git
-      tab (`config_git.commit_configs`) commits through its own transport;
-      it now writes the verified `request_actor()` and the trailer itself.
+      tab (`config_git.commit_configs`) committed through its own transport,
+      and wrote the verified `request_actor()` and the trailer itself.
+      **Removed 2026-09-27 (register C104)**: it could commit only what a
+      failed operation had left staged.
     - **A scan keeps it that way**: every git `commit` call in `modules/` and
       `scripts/` goes through `repo.git()` or is a named exemption (the Git
       tab, and its repository's empty first commit), with a floor and a

@@ -146,7 +146,7 @@ class TestAddDeviceIsGone:
 
 
 class TestTheRefusalSaysWhereIdentitiesAreCreated:
-    def test_the_message_names_both_legitimate_paths(self, tmp_path, monkeypatch):
+    def test_the_message_names_where_an_identity_is_created(self, tmp_path, monkeypatch):
         from modules.nsot.repo import GoldenItem, save_golden
 
         list_dir = tmp_path / "lab"
@@ -163,4 +163,7 @@ class TestTheRefusalSaysWhereIdentitiesAreCreated:
         out = save_golden("lab", [GoldenItem("nope", "hostname x\n")],
                           source="manual", actor="test")
         assert "onboarding wizard" in out["error"]
-        assert "Add Device" in out["error"]
+        # Add Device was removed (C102), so the refusal no longer names it;
+        # an existing device waits for adopt (7.10).
+        assert "Add Device" not in out["error"]
+        assert "adopt" in out["error"]

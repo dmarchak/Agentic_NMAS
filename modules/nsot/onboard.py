@@ -1676,13 +1676,19 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             # which is precisely the failure this whole flow exists to
             # prevent. Found by auditing the four steps for discarded
             # return values after `adopt_identity` turned out to be one.
-            rc, _out, err = _repo.git(repo, "add", "-A")
+            # The ONE path this step removed. `add -A` staged the whole
+            # repository, so anything else left in the working tree (a golden
+            # a failed save had written) was committed as "abandon" (C104).
+            rc, _out, err = _repo.git(repo, "add", "-A", "--", rel)
             if rc == 0:
                 rc, _out, err = _repo.git(
                     repo, "-c", "user.email=nmas@local",
                     "-c", "user.name=NMAS", "commit", "-m",
                     f"abandon: {hostname} - onboarding withdrawn\n\n"
-                    f"Source: onboarding\nActor: {actor or 'unknown'}\n")
+                    f"Source: onboarding\nActor: {actor or 'unknown'}\n",
+                    "--", rel)
+                if rc != 0:
+                    _repo.git(repo, "reset", "-q", "--", rel)
             if rc != 0:
                 raise RuntimeError(err or f"git exited {rc}")
             _step("intent", True, f"removed {rel} and committed the removal")

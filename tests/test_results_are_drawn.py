@@ -83,7 +83,6 @@ PENDING = {
     "delete_file": "the device page re-rendered",
     "upload_file": "the device page re-rendered",
     "ai_chat": "the chat stream (Stage 8 decides what the agent's record is)",
-    "git_commit": "the Git tab's commit hash",
     "golden_configs_auto_create": "a result panel, until the next action",
     "templatize.edit_committed": "the editor's status line names the commit",
     "remote.push": "the remote panel's output box",

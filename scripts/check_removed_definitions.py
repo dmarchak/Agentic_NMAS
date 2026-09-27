@@ -48,6 +48,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: how a checker earns `--no-verify`.
 REMOVED = re.compile(r"^-(\s*)(?:async\s+)?(def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
 DEFINED = re.compile(r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+_ROUTE_DECORATOR = re.compile(r"^-\s*@\w+\.route\(")
 
 
 def _git(*args) -> str:
@@ -132,7 +133,8 @@ def _called_in(name: str, path: str, rev: str = "") -> bool:
     return False
 
 
-def _referenced_elsewhere(name: str, path: str, rev: str = "") -> list:
+def _referenced_elsewhere(name: str, path: str, rev: str = "",
+                         view: bool = False) -> list:
     """Files other than *path* that still mention *name* AND do not define it.
 
     A file carrying its own function of the same name is not a caller of the
@@ -146,7 +148,7 @@ def _referenced_elsewhere(name: str, path: str, rev: str = "") -> list:
     files = [l.split(":", 1)[-1] if rev else l for l in out.splitlines()]
     callers = sorted(f for f in files
                      if f and f != path and name not in _defined_now(f, rev)
-                     and _code_mentions(name, f, rev, defined_in=path))
+                     and _code_mentions(name, f, rev, defined_in=path, view=view))
     # THE NAME SURVIVES ELSEWHERE (P.4 step 1c, 2026-09-26). Deleting
     # `jenkins_runner.save_config` was flagged by `url_for('save_config')` and
     # the gate table's "save_config" key, both about app.py's own view of
@@ -220,7 +222,8 @@ def _module_aliases(tree, module: str) -> set:
     return found
 
 
-def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "") -> bool:
+def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "",
+                   view: bool = False) -> bool:
     """Does *path* actually USE *name*, as opposed to talking about it?
 
     A word-grep cannot tell the difference, and two things make that a
@@ -270,6 +273,24 @@ def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "") ->
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     probed.add(id(arg))
 
+    # A FLASK VIEW is named by strings in exactly two ways: `url_for('<name>')`
+    # and an `endpoint=` argument. Every endpoint-keyed TABLE (the gate table,
+    # the invalidation map) refuses a key naming no endpoint in its own test,
+    # measured by putting a removed view's key back into each (C104,
+    # 2026-09-27). Any other string equal to the name is a namesake: removing
+    # the view `git_commit` was flagged by the agent's long-removed TOOL of the
+    # same name, a cache TTL and a progress label keyed "git_commit".
+    endpoint_args = set()
+    if view:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if (getattr(node.func, "attr", getattr(node.func, "id", "")) == "url_for"
+                        and node.args):
+                    endpoint_args.add(id(node.args[0]))
+                for kw in node.keywords:
+                    if kw.arg == "endpoint":
+                        endpoint_args.add(id(kw.value))
+
     # Whole word. `"_scan_device" in "_scan_device_from_golden"` is True, so a
     # substring test makes every removal of a short name look referenced by
     # the longer name that replaced it -- which is precisely the pair this
@@ -300,7 +321,8 @@ def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "") ->
         if (isinstance(node, ast.Constant) and isinstance(node.value, str)
                 and _is_reference_shaped(node.value.strip())
                 and word.search(node.value)
-                and id(node) not in docstrings and id(node) not in probed):
+                and id(node) not in docstrings and id(node) not in probed
+                and (not view or id(node) in endpoint_args)):
             return True
     return False
 
@@ -362,6 +384,30 @@ def _removed_from_diff(diff: str) -> list:
     return removed
 
 
+def _removed_views(diff: str) -> set:
+    """``(path, name)`` for each removed definition whose removed lines carried
+    a ``.route(`` decorator: a Flask view, named by its endpoint."""
+    path, old, views, decorated = "", "", set(), False
+    for line in diff.splitlines():
+        if line.startswith("--- a/"):
+            old = line[6:]
+            continue
+        if line.startswith("+++ b/"):
+            path = line[6:]
+            continue
+        if line.startswith("+++ /dev/null"):
+            path = old
+            continue
+        if re.match(r"^-\s*@", line):          # a removed decorator; they stack
+            decorated = decorated or bool(_ROUTE_DECORATOR.match(line))
+            continue
+        match = REMOVED.match(line)
+        if match and decorated:
+            views.add((path, match.group(3)))
+        decorated = False
+    return views
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -375,6 +421,7 @@ def main() -> int:
         return 0
 
     removed = _removed_from_diff(diff)
+    views = _removed_views(diff)
 
     if not removed:
         print("no definitions removed by this diff")
@@ -403,7 +450,8 @@ def main() -> int:
         if _called_in(name, path, after):
             findings.append(("BROKEN", path, kind, name, [path]))
             continue
-        callers = _referenced_elsewhere(name, path, after)
+        callers = _referenced_elsewhere(name, path, after,
+                                        view=(path, name) in views)
         findings.append(("GONE" if callers else "gone", path, kind, name, callers))
 
     order = {"BROKEN": 0, "GONE": 1, "gone": 2, "local": 3, "moved": 4}

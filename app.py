@@ -4076,52 +4076,6 @@ def git_commit_diff(commit_hash):
     return jsonify({"ok": True, **result})
 
 
-@app.route("/git/commit", methods=["POST"])
-def git_commit():
-    """
-    Commit staged configs to git.
-
-    Requires:
-      - message: commit message (non-empty)
-
-    A ``pipeline_name`` is REFUSED by name: it named a Jenkins pipeline, and
-    Jenkins was removed (P.4). Its "passed CI" check was satisfiable by an
-    unauthenticated webhook POST, so it attested nothing anyway.
-    """
-    from modules.config_git import commit_configs, has_staged_changes
-
-    list_name, _ = get_current_device_list()
-    data         = request.get_json(silent=True) or {}
-    message      = (data.get("message") or "").strip()
-    pipeline     = (data.get("pipeline_name") or "").strip()
-
-    if not message:
-        return jsonify({"ok": False, "error": "Commit message is required"}), 400
-
-    if pipeline:
-        return jsonify({
-            "ok": False,
-            "error": ("CI pipelines were removed with Jenkins (P.4). Commit "
-                      "without one; reload the page if it still offers one."),
-        }), 410
-
-    # Check there are staged changes
-    if not has_staged_changes(list_name):
-        return jsonify({"ok": False, "error": "No staged changes to commit."}), 400
-
-    # Commit
-    commit_hash = commit_configs(list_name, message)
-    if not commit_hash:
-        return jsonify({"ok": False, "error": "git commit failed — check server logs"}), 500
-
-    return jsonify({
-        "ok":          True,
-        "commit_hash": commit_hash,
-        "message":     message,
-        "pipeline":    pipeline,
-    })
-
-
 @app.route("/monitoring/config", methods=["GET", "POST"])
 def monitoring_config():
     """GET: return collector config. POST: update one or more fields."""

@@ -7,11 +7,15 @@ Each device list maintains a Git repository at:
 
 Device configurations are stored as {hostname}.cfg.
 
-Workflow
---------
-1. Configs are saved (Save All Configs / AI save).
-2. Each config is written to the repo and staged (git add).
-3. The user can commit with a message at any time.
+Every write to this repository commits in the same call, through
+``modules.nsot.repo`` (goldens through ``save_golden()``). The Git tab's
+manual commit was REMOVED (2026-09-27): it committed whatever the index held,
+and the only thing that could be in the index was what a FAILED operation
+left staged, so a golden nobody had saved successfully could be committed
+under any message, without its Intent-Match trailer. Measured on the
+deployment host: never used, in 100 commits. What this module keeps is
+reading: the log, a commit's diff, and the status, which names anything left
+uncommitted and what to do about it.
 
 Jenkins validation pipelines were removed in P.4 (docs/NSOT_CI.md). The
 per-list `pipeline_commits.json` is still READ, so a commit linked to a
@@ -125,8 +129,6 @@ def write_and_stage(list_name: str, hostname: str, config_text: str,
     history existed only by luck. It now routes through
     :func:`modules.nsot.repo.save_golden`, which commits in the same call.
 
-    The manual stage/commit flow in the Git tab is unaffected — it is still how
-    ``infra/`` and ad-hoc files are handled.
     """
     from modules.nsot.repo import GoldenItem, save_golden
 
@@ -142,45 +144,6 @@ def write_and_stage(list_name: str, hostname: str, config_text: str,
                     list_name, hostname, result.get("error"))
         return False
     return True
-
-
-def has_staged_changes(list_name: str) -> bool:
-    """True if there are staged-but-not-committed changes."""
-    repo = _repo_dir(list_name)
-    if not os.path.isdir(os.path.join(repo, ".git")):
-        return False
-    rc, _, _ = _git(repo, "diff", "--cached", "--quiet")
-    return rc != 0     # exit 1 = differences exist
-
-
-def get_staged_stat(list_name: str) -> str:
-    """Human-readable summary of staged changes."""
-    repo = _repo_dir(list_name)
-    _, out, _ = _git(repo, "diff", "--cached", "--stat")
-    return out
-
-
-def commit_configs(list_name: str, message: str) -> Optional[str]:
-    """Commit all staged changes. Returns the short hash, or None on failure."""
-    repo = _repo_dir(list_name)
-    init_config_repo(list_name)
-
-    # WHO, and how that was established (D10): the Git tab's commits named
-    # nobody. The route is gated `approve`, so the actor is the verified one.
-    from modules.identity import request_actor
-    from modules.nsot.repo import with_actor_verification
-    message = with_actor_verification(
-        f"{message.rstrip()}\n\nSource: manual\nActor: {request_actor()}\n")
-    rc, _, err = _git(repo, "commit", "-m", message)
-    if rc != 0:
-        log.error("config_git: commit failed: %s", err)
-        return None
-
-    rc2, hash_out, _ = _git(repo, "rev-parse", "--short", "HEAD")
-    short_hash = hash_out.strip() if rc2 == 0 else "unknown"
-
-    log.info("config_git: committed %s", short_hash)
-    return short_hash
 
 
 # ---------------------------------------------------------------------------
@@ -261,20 +224,59 @@ def get_commit_diff(list_name: str, commit_hash: str) -> Optional[dict]:
     }
 
 
+#: What an uncommitted path means, by where it is. Every writer in the
+#: program commits in the same call, so anything here outside `.nsot/` was
+#: left by an operation that failed or was interrupted, or edited on the host.
+_UNCOMMITTED_MEANS = {
+    "golden": ("a golden that no save committed. Readers of the working tree "
+               "(drift, the NetBox import, the agent) treat it as the approved "
+               "golden. Capture the device to record what it holds now through "
+               "the save path, or discard it on the host (git checkout)."),
+    "host_vars": ("intent that was not committed. Deploy reads committed intent "
+                  "only; open the intent editor for this device to commit it."),
+    "templates": ("a template that was not committed. Its approval is already "
+                  "refused while it differs; save it again in the template "
+                  "editor."),
+    ".nsot": ("identity changes recorded by an inventory refresh or a save; "
+              "committed with the next golden save, by design."),
+}
+_UNCOMMITTED_ELSE = ("nothing in NMAS writes here, so it was changed on the "
+                     "host. Commit or discard it there.")
+
+
 def get_repo_status(list_name: str) -> dict:
-    """Return a summary dict: branch, staged changes, last commit."""
+    """The branch, the last commit, and EVERY uncommitted path with what it
+    means. It used to report only STAGED changes and call everything else
+    "working tree clean": a golden rewritten and left uncommitted is
+    unstaged, so the one state this bar exists to show read as clean."""
     repo = _repo_dir(list_name)
     if not os.path.isdir(os.path.join(repo, ".git")):
         return {"initialised": False}
 
     _, branch,      _ = _git(repo, "branch", "--show-current")
-    _, staged_stat, _ = _git(repo, "diff", "--cached", "--stat")
     _, last_commit, _ = _git(repo, "log", "-1", "--format=%h %s (%ai)")
-
+    rc, porcelain, err = _git(repo, "status", "--porcelain=v1",
+                              "--untracked-files=all")
+    if rc != 0:
+        return {"initialised": True, "ok": False, "branch": branch or "main",
+                "last_commit": last_commit,
+                "error": f"could not read the repository's status: {err}"}
+    uncommitted = []
+    for line in porcelain.splitlines():
+        # Parsed, never sliced: `_git` strips its output, so the first line's
+        # leading space (" M golden/r1.cfg") is gone and a fixed column
+        # slice ate the path's first letter (found by the exact-path test).
+        m = re.match(r"^\s*(\S{1,2})\s+(.*)$", line)
+        if not m:
+            continue
+        path = m.group(2).split(" -> ")[-1].strip('"')
+        top = path.split("/", 1)[0]
+        uncommitted.append({"path": path, "state": m.group(1),
+                            "means": _UNCOMMITTED_MEANS.get(top, _UNCOMMITTED_ELSE)})
     return {
         "initialised":  True,
+        "ok":           True,
         "branch":       branch or "main",
-        "has_staged":   bool(staged_stat.strip()),
-        "staged_stat":  staged_stat,
         "last_commit":  last_commit,
+        "uncommitted":  uncommitted,
     }

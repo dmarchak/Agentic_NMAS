@@ -26,7 +26,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MUTATING_FLOOR = 112     # 131 measured; steps 2-3 cut ten; B16 +1; D12 removed /disconnect; P.4 cut six Jenkins routes; C102 removed Add, Discover, discovered-Add and Delete
+MUTATING_FLOOR = 111     # 131 measured; steps 2-3 cut ten; B16 +1; D12 removed /disconnect; P.4 cut six Jenkins routes; C102 removed Add, Discover, discovered-Add and Delete; C104 removed the manual commit
 
 
 def _app():
@@ -256,7 +256,7 @@ class TestEveryGatedEndpointRefusesWithoutIdentity:
     def test_the_sweep_finds_the_population(self):
         reqs = _gated_requests(_app())
         # 87 measured 2026-09-26: 121 mutating endpoints, 34 of them not_device
-        assert len({e for _, _, e, _ in reqs}) >= 79, len(reqs)  # C102 removed three gated routes
+        assert len({e for _, _, e, _ in reqs}) >= 78, len(reqs)  # C102 removed three gated routes; C104 the manual commit
         assert any(e == "deploy.apply_deploy" or u == "/deploy/apply"
                    for _, u, e, _ in reqs)
 

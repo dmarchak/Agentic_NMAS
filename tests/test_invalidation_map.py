@@ -49,7 +49,6 @@ NOT_YET_SUBSCRIBED = {
     "files": "transferred files; 7.3 (Device)",
     "freshness": "the freshness signal; 7.6 (Source of truth)",
     "goldens": "the golden panel; 7.5 (Versions)",
-    "history": "the legacy git history; cut in 7.8",
     "intent": "the intent editor and device Overview; 7.3 (Device)",
     "lists": "the list selector; 7.4 (Fleet, Networks)",
     "monitoring": "the collectors' cards; 7.3 (Device, Monitoring)",
@@ -65,7 +64,7 @@ NOT_YET_SUBSCRIBED = {
     "topology": "the topology layout is drawn by its own editor",
     "variables": "the CSV-era variable store; cut in 7.8",
 }
-NOT_YET_CEILING = 28  # C102 retired "discovery" with its routes
+NOT_YET_CEILING = 27  # C102 retired "discovery" with its routes; C104 "history" with the manual commit
 
 _SUB = re.compile(r"^\s*NMAS\.subscribe\(\s*'([a-z_]+)'\s*,\s*'(\w+)'\s*,\s*(\w+)", re.M)
 

@@ -42,11 +42,13 @@ STALE_LOCK_SECONDS = 120
 _repo_locks: dict = {}
 _locks_guard = threading.Lock()
 
-VALID_SOURCES = ("manual", "save_all", "pipeline", "approval", "ai",
-                 "onboarding", "migration", "rename", "template", "extraction",
-                 # `golden_state` was coerced to "manual" until 2026-09-27, so
-                 # nmas-golden-state's commits named the wrong workflow.
-                 "golden_state", "capture")
+#: `Source:` names the workflow and is free text by design (CLAUDE.md), so
+#: any lowercase slug is recorded AS GIVEN. It used to be a list, and anything
+#: outside it was silently rewritten to "manual": `golden_state` until
+#: 2026-09-27, and every credential rotation (`rotation`) until the same day,
+#: so all eleven rotation commits on the host name the wrong workflow. A
+#: coercion is a record answering a different question from the one asked.
+SOURCE_SLUG = re.compile(r"[a-z][a-z0-9_]*\Z")
 
 
 class GoldenItem:
@@ -347,11 +349,22 @@ def apply_pending_renames(repo: str, actor: str = "nmas") -> dict:
             # through to the deprecated legacy header scan. The move has
             # already happened on disk, so the manifest is correct either way —
             # what matters is that the commit carries it.
+            manifest_before = _read_bytes(_manifest.manifest_path(repo))
             _manifest.clear_pending_rename(repo, identity, new_name, new_rel)
             git(repo, "add", "-A", "golden", ".nsot")
             rc, _, err = git(repo, "commit", "-m", message)
             if rc != 0:
-                log.error("repo: rename commit failed: %s", err)
+                # Put the move and the manifest back, so the rename stays
+                # PENDING and is retried alone. Left staged, the next golden
+                # save's `add golden .nsot` swept it into a content commit,
+                # which is exactly what "a rename is committed alone" forbids.
+                log.error("repo: rename commit failed, undone: %s", err)
+                git(repo, "reset", "-q", "--", "golden", ".nsot")
+                try:
+                    os.replace(os.path.join(repo, new_rel), old_abs)
+                except OSError as exc:
+                    log.error("repo: could not move %s back: %s", new_rel, exc)
+                _write_bytes(_manifest.manifest_path(repo), manifest_before)
                 continue
 
             renamed.append({"identity": identity, "from": old_name, "to": new_name})
@@ -627,8 +640,12 @@ def save_golden(list_name: str, items: list, source: str = "manual",
     """
     from modules.config import get_list_data_dir
 
-    if source not in VALID_SOURCES:
-        source = "manual"
+    if not SOURCE_SLUG.match(source or ""):
+        # Refused before anything is written. Recording it as "manual" would
+        # be the coercion this replaced.
+        return {"ok": False, "changed": [], "unchanged": [], "tags": [],
+                "error": (f"source {source!r} is not a workflow name (lowercase "
+                          f"letters, digits and underscores); nothing was saved")}
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
 
     rename_result = apply_pending_renames(repo, actor)
@@ -645,10 +662,9 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                     error = (
                         f"{item.hostname} ({item.mgmt_ip or 'no ip'}) is not in "
                         f"the manifest, so this save has nothing to attach it "
-                        f"to. Onboard it first — the onboarding wizard, or the "
-                        f"Add Device form for an existing device — which is "
-                        f"where an identity is created. Only those two callers "
-                        f"pass allow_new=True.")
+                        f"to. Onboard it first: the onboarding wizard is where "
+                        f"an identity is created, and an existing device waits "
+                        f"for adopt (7.10).")
                     log.error("repo: %s", error)
                     return {"ok": False, "error": error, "changed": [],
                             "unchanged": unchanged, "tags": [],
@@ -692,7 +708,11 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                                                item.config_text, item.platform or "")
                   for item in items}
 
+        # What each file held before this call, so a commit that fails can
+        # put it back (None: the file is new). See _undo_golden_writes.
+        before = {}
         for item, identity, rel, abs_path, content in pending:
+            before[abs_path] = _read_bytes(abs_path)
             with open(abs_path, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(content)
             changed.append({"hostname": item.hostname, "identity": identity,
@@ -805,6 +825,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         commit_message = f"{subject}\n\n" + "\n".join(trailers) + "\n"
         rc, _, err = git(repo, "commit", "-m", commit_message)
         if rc != 0:
+            _undo_golden_writes(repo, before, extra_paths)
             return {"ok": False, "error": f"commit failed: {err}",
                     "changed": [], "unchanged": unchanged, "tags": []}
 
@@ -898,6 +919,44 @@ def _golden_state_tag(repo: str, stamp: str, sha: str, operational: dict = None)
     return []
 
 
+def _read_bytes(path: str):
+    try:
+        with open(path, "rb") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
+
+
+def _write_bytes(path: str, data) -> None:
+    """Put *data* back at *path*; None means the file did not exist."""
+    if data is None:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        return
+    with open(path, "wb") as fh:
+        fh.write(data)
+
+
+def _undo_golden_writes(repo: str, before: dict, extra_paths=None) -> None:
+    """A save whose commit FAILED leaves nothing behind (register C104).
+
+    It used to return `changed: []` with every golden it had written still on
+    disk AND staged. The drift checker, the NetBox import, onboarding and the
+    agent read the golden from the working tree, so they treated content no
+    save had committed as the approved golden; and the Git tab's manual
+    commit (since removed) offered to commit it under any message, with no
+    Intent-Match trailer. The index is unstaged for everything this call
+    staged, each golden is put back as it was, and a new one is removed. The
+    manifest is left as it is: it is updated eagerly by design, on the refusal
+    paths too, and committed with the next save.
+    """
+    git(repo, "reset", "-q", "--", "golden", ".nsot", *(extra_paths or []))
+    for path, data in before.items():
+        _write_bytes(path, data)
+
+
 def _unique_tag(repo: str, tag: str, sha: str) -> str:
     """Return *tag*, suffixed with a short sha if that name already exists."""
     rc, _, _ = git(repo, "rev-parse", "--verify", f"refs/tags/{tag}")
@@ -932,6 +991,9 @@ def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
             trailers + [f"Source: {source}"]) + "\n"
         rc, _, err = git(repo, "commit", "-m", message)
         if rc != 0:
+            # Unstaged, never left for another commit to carry. The file stays
+            # on disk: it is the person's edit, and the status bar names it.
+            git(repo, "reset", "-q", "--", *paths)
             return {"ok": False, "error": f"commit failed: {err}"}
         _, sha, _ = git(repo, "rev-parse", "HEAD")
         git(repo, "gc", "--auto")

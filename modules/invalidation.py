@@ -76,7 +76,6 @@ VOCABULARY = {
     "topology": "the topology layout",
     "variables": "the CSV-era variable store and compliance policy",
     "bulk_ops": "bulk operation records",
-    "history": "the legacy config_git history",
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state
@@ -104,7 +103,6 @@ DECLARED = {
     "golden.sync_renames": _COMMIT,
     "golden.restore_apply": ("device_state", "intent", "baselines", "drift",
                              "approvals", "rolled_back") + _COMMIT,
-    "git_commit": ("history",),
     "remote.acknowledge": ("remote",),
     "remote.adopt": ("remote",),
     "remote.auto_push": ("remote",),

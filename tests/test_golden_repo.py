@@ -518,7 +518,11 @@ class TestIdentityIsResolvedNotMinted:
         result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n")],
                                allow_new=False)
         assert "Onboard it first" in result["error"]
-        assert "allow_new=True" in result["error"]
+        # It named "allow_new=True" and the Add Device form until C102
+        # removed that form: a refusal pointing at a control that does not
+        # exist sends the reader looking for it.
+        assert "Add Device" not in result["error"]
+        assert "adopt" in result["error"]
         assert "onboarding wizard" in result["error"], (
             "the refusal must name where an identity IS created")
 

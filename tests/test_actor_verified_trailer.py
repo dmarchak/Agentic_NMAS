@@ -165,8 +165,6 @@ class TestNoWriterGoesAround:
 
     #: (file, function) → why it may commit without git().
     EXEMPT = {
-        ("modules/config_git.py", "commit_configs"):
-            "the legacy Git tab: its own _git, and it calls with_actor_verification itself",
         ("modules/config_git.py", "init_config_repo"):
             "the repository's empty first commit, which names no actor",
     }
@@ -195,14 +193,13 @@ class TestNoWriterGoesAround:
         seen = {(f, fn) for f, fn, _ in self._all()}
         assert set(self.EXEMPT) <= seen, set(self.EXEMPT) - seen
 
-    def test_the_legacy_tab_names_its_actor(self):
-        src = (ROOT / "modules" / "config_git.py").read_text(encoding="utf-8")
-        tree = ast.parse(src)
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, ast.FunctionDef) and n.name == "commit_configs")
-        names = {n.id if isinstance(n, ast.Name) else getattr(n, "attr", "")
-                 for n in ast.walk(fn)}
-        assert {"request_actor", "with_actor_verification"} <= names
+    def test_the_manual_commit_is_gone(self):
+        """The Git tab's manual commit committed whatever the index held,
+        through its own transport, and the only thing that could be there was
+        what a FAILED operation left staged (2026-09-27, register C104)."""
+        import modules.config_git as cg
+        assert not hasattr(cg, "commit_configs")
+        assert not hasattr(cg, "has_staged_changes")
 
 
 class TestAbandonNamesItsActor:

@@ -1975,25 +1975,6 @@
   <span id="gitStatusText"></span>
 </div>
 
-<!-- Manual commit form -->
-<div class="card mb-3" id="gitCommitCard" style="background:var(--bs-body-bg,#1e293b);border:1px solid #334155;display:none">
-  <div class="card-header fw-semibold py-2">Commit Staged Changes</div>
-  <div class="card-body">
-    <div class="row g-2">
-      <div class="col-12">
-        <label class="form-label small mb-1">Commit Message <span class="text-danger">*</span></label>
-        <input id="gitCommitMsg" class="form-control form-control-sm" placeholder="e.g. Configure OSPF on all PE routers">
-      </div>
-      <div class="col-12">
-        <button class="btn btn-success btn-sm" onclick="gitDoCommit()" id="gitCommitBtn">
-          Commit to Git
-        </button>
-        <span id="gitCommitError" class="text-danger small ms-2"></span>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Commit log -->
 <div id="gitLogWrap">
   <div class="text-muted small py-4 text-center" id="gitLogPlaceholder">Loading Git history…</div>
@@ -3865,29 +3846,35 @@ ${tasks}
 
   // ── status bar ─────────────────────────────────────────────────────────────
   function _renderGitStatus(s) {
-    const bar      = document.getElementById('gitStatusBar');
-    const txt      = document.getElementById('gitStatusText');
-    const card     = document.getElementById('gitCommitCard');
-    if (!bar || !txt || !card) return;
+    const bar = document.getElementById('gitStatusBar');
+    const txt = document.getElementById('gitStatusText');
+    if (!bar || !txt) return;
+    bar.classList.remove('d-none');
 
     if (!s.initialised) {
       bar.className = 'alert alert-secondary small mb-3';
       txt.textContent = 'No Git repository yet. Press "Save All Configs" to initialise one.';
-      bar.classList.remove('d-none');
-      card.style.display = 'none';
       return;
     }
-
-    bar.classList.remove('d-none');
-    if (s.has_staged) {
-      bar.className = 'alert alert-warning small mb-3';
-      txt.innerHTML = `<strong>Staged changes ready to commit.</strong><br><pre class="mb-0 mt-1" style="font-size:.8rem">${escHtml(s.staged_stat)}</pre>`;
-      card.style.display = '';
-    } else {
-      bar.className = 'alert alert-success small mb-3';
-      txt.innerHTML = `<strong>Working tree clean.</strong> Last commit: ${escHtml(s.last_commit || '(none)')}`;
-      card.style.display = 'none';
+    if (s.ok === false) {
+      bar.className = 'alert alert-danger small mb-3';
+      txt.textContent = s.error || 'Could not read the repository status.';
+      return;
     }
+    const left = s.uncommitted || [];
+    if (!left.length) {
+      bar.className = 'alert alert-success small mb-3';
+      txt.innerHTML = `<strong>Everything is committed.</strong> Last commit: ${escHtml(s.last_commit || '(none)')}`;
+      return;
+    }
+    // Nothing here commits these: every write commits in its own call, so a
+    // path left over is a finding, with what it means and what to do.
+    const onlyNsot = left.every(u => u.path.startsWith('.nsot/'));
+    bar.className = 'alert ' + (onlyNsot ? 'alert-secondary' : 'alert-warning') + ' small mb-3';
+    txt.innerHTML = `<strong>${left.length} uncommitted path(s).</strong> Nothing on this page commits them.`
+      + '<ul class="mb-0 mt-1">' + left.map(u =>
+          `<li><code>${escHtml(u.path)}</code> (${escHtml(u.state)}): ${escHtml(u.means)}</li>`).join('')
+      + '</ul>';
   }
 
   // ── commit log table ───────────────────────────────────────────────────────
@@ -3957,39 +3944,6 @@ ${tasks}
     } catch (e) {
       loadingEl.style.display = 'none';
       errorEl.textContent = 'Request failed: ' + e.message;
-    }
-  };
-
-  // ── perform commit ─────────────────────────────────────────────────────────
-  window.gitDoCommit = async function () {
-    const msg  = (document.getElementById('gitCommitMsg')?.value  || '').trim();
-    const errEl = document.getElementById('gitCommitError');
-    const btn   = document.getElementById('gitCommitBtn');
-    if (errEl) errEl.textContent = '';
-
-    if (!msg)  { if (errEl) errEl.textContent = 'Commit message is required.'; return; }
-
-    if (btn) btn.disabled = true;
-    try {
-      const body = { message: msg };
-      const resp = await fetch('/git/commit', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        showToast(`Committed ${data.commit_hash}: ${data.message}`, 'success');
-        if (document.getElementById('gitCommitMsg'))
-          document.getElementById('gitCommitMsg').value = '';
-        loadGitTab();
-      } else {
-        if (errEl) errEl.textContent = data.error || 'Commit failed.';
-      }
-    } catch (e) {
-      if (errEl) errEl.textContent = 'Request failed: ' + e.message;
-    } finally {
-      if (btn) btn.disabled = false;
     }
   };
 

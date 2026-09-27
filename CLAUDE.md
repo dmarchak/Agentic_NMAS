@@ -349,6 +349,17 @@ tools refuse to act on it, and its pooled SSH session is closed.
 `data/lists/{slug}/config_repo/` is the NSoT repo: `golden/<device>.cfg`,
 `.nsot/manifest.json`, `infra/`, `.gitattributes`.
 
+- **A failed commit leaves nothing behind, and nothing else commits into the
+  repository** (C104, 2026-09-27). Measured: a `save_golden()` whose commit
+  failed returned `changed: []` with the golden still written AND staged, so
+  the drift checker, the NetBox import, onboarding and the agent (which read
+  the golden from the WORKING TREE) treated uncommitted content as the
+  approved golden, and the Git tab's manual commit offered to commit it
+  under any message, with no `Intent-Match:`. The manual commit is removed
+  (never used on the host, in 100 commits); `save_golden`, the rename, the
+  template/intent commit and onboarding's abandon each undo what they
+  staged; and the Git tab's status names every uncommitted path with what it
+  means (it said "working tree clean" whenever nothing was STAGED).
 - **One write path.** Everything that promotes a golden config goes through
   `nsot.repo.save_golden()`. **One call is one commit**, even for a nine-device
   Save All. An unchanged device creates no commit but is still reported.
@@ -370,8 +381,13 @@ tools refuse to act on it, and its pooled SSH session is closed.
   one-off script is none of these — nobody is accountable to a program — so
   it records the person in `Actor:` and names itself in a `Tool:` trailer.
   `Source:` names the workflow (`manual`, `save_all`, `pipeline`, `approval`,
-  `ai`, `onboarding`, `extraction`, `repair`) and is free text by design: an
-  enum would have to be edited before any new workflow could commit. The
+  `ai`, `onboarding`, `extraction`, `repair`, `rotation`) and is free text by
+  design: an enum would have to be edited before any new workflow could
+  commit. **Until 2026-09-27 the code did the opposite** (C104): a list, and
+  anything outside it silently rewritten to `manual`, so all eleven rotation
+  commits on the host name the wrong workflow. Any lowercase slug is now
+  recorded as given, a malformed one is refused before anything is written,
+  and an AST test checks every literal `source=` in the program. The
   first repair commit carries `Actor: description-repair` and predates this;
   it is left alone, and is why the convention is written down.
 - **`Actor-Verified:` says how the `Actor:` was established** (D10, P.3 step
@@ -1053,6 +1069,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_device_ops.py` | C98: a second operation on a held device is refused naming the holder, operation and start time, never queued; free again after, re-entrant for the holding thread, other devices unaffected; asking who holds it creates nothing; a CHILD PROCESS holding it refuses the app and its death releases it; deploy, restore, capture, rotation, onboarding phase two and retirement each refuse a held device before anything runs; the lock released when the batch raises; the list of holding paths pinned (a pin: a new path not added is not caught) |
 | `test_session_write_guard.py` | C101: at the one opener, a write (config set, save, `write memory`, `reload`, `clear`) with no hold is refused and nothing is sent, a read needs none, holding the device allows it and holding ANOTHER does not, and the refusal names the verb, never the command; Save Device Config, `/run_command` and bulk exec each hold the device, refused BY THE LOCK with the holder named (asserted, since the guard would also stop the send), a read never waits; the refusal says how long, the last progress step and, past ten minutes, "may be stuck" with no force; progress reaches another process's view; the long holders note their steps |
 | `test_one_home_per_action.py` | Minimalism at the effect level (section 6a): every device-changing command (C101's scan, a local variable resolved to its text, operands keyed by KIND so `delete {fs}{f}` and `delete flash:{f}` are one effect) has one implementation; the measured duplicates (`write memory` twice, and the page's and the selection's file upload, download, delete and typed command) in a list that only shrinks; an unresolvable send is a prompt's answer or DECLARED; anchors and a ghost check |
+| `test_no_second_commit_path.py` | C104: a save whose commit fails puts each golden back (or removes a new one) and stages nothing; a failed rename stays pending with its file and manifest back; the manual commit's route and request are gone; the Git tab's status names an uncommitted golden with its remedy, and the SHIPPED bar (with its own escaper) never says clean over one; `Source:` recorded as given (rotation), a malformed one refused before writing, every literal source a slug (AST, floor); abandon stages only its path |
 | `test_ssh_sessions.py` | C97: every NETMIKO session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers; the break-glass terminal's raw paramiko sessions are outside it, C101); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
@@ -1173,6 +1190,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   deleted modules' definitions were listed under `configure.py`. The hook
   refused the commit; the refusal was a checker defect, and fixing the checker
   was the answer, not `--no-verify`.
+- **A Flask view is named by its ENDPOINT** (`check_removed_definitions.py`,
+  C104). Removing the view `git_commit` was flagged by the agent's removed
+  TOOL of the same name, keyed "git_commit" in three dead tables. For a
+  removed definition carrying a `.route(` decorator, a string counts only as
+  a `url_for(...)` argument or an `endpoint=` value. That is safe because
+  every endpoint-keyed table (the gate table, the invalidation map) refuses
+  a key naming no endpoint in its own test, measured by putting the removed
+  key back into each.
 - **A filename is a mention** (`check_removed_definitions.py`, P.4 step 1).
   `"jenkins_results.json"` has the dotted shape of `mod.attr`, so removing the
   view `jenkins_results` was flagged by a module writing a file of that name.

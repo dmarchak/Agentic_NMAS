@@ -243,3 +243,42 @@ class TestANameThatSurvivesElsewhere:
         monkeypatch.setattr(CHECK, "ROOT", str(tmp_path))
         assert CHECK._imports_from("modules/caller.py", "modules.gone", "save_it") is True
         assert CHECK._imports_from("modules/attr.py", "modules.gone", "save_it") is True
+
+
+class TestAViewIsNamedByItsEndpoint:
+    """C104 (2026-09-27): removing the Flask view `git_commit` was flagged by
+    the agent's long-removed TOOL of the same name (a cache TTL and a progress
+    label keyed "git_commit"). A view is named by strings only through
+    `url_for` or `endpoint=`, and every endpoint-keyed table refuses a key
+    naming no endpoint in its own test."""
+
+    DIFF = ("diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n"
+            "@@ -1,4 +0,0 @@\n"
+            "-@app.route(\"/git/commit\", methods=[\"POST\"])\n"
+            "-def git_commit():\n"
+            "-def plain_helper():\n"
+            "-@functools.lru_cache\n"
+            "-def cached_helper():\n")
+
+    def test_the_diff_says_which_removed_definitions_were_views(self):
+        assert CHECK._removed_views(self.DIFF) == {("app.py", "git_commit")}
+
+    def test_a_namesake_string_is_not_a_use_of_a_view(self, source):
+        p = source('TTL = {"git_commit": None}\nif name == "git_commit":\n    pass\n')
+        assert CHECK._code_mentions("git_commit", p, view=True) is False
+
+    def test_url_for_is_still_a_use(self, source):
+        p = source('href = url_for("git_commit")\n')
+        assert CHECK._code_mentions("git_commit", p, view=True) is True
+
+    def test_an_endpoint_argument_is_still_a_use(self, source):
+        p = source('bp.add_url_rule("/x", endpoint="git_commit")\n')
+        assert CHECK._code_mentions("git_commit", p, view=True) is True
+
+    def test_an_import_is_still_a_use(self, source):
+        p = source("from app import git_commit\n")
+        assert CHECK._code_mentions("git_commit", p, view=True) is True
+
+    def test_the_control_a_non_view_string_still_counts(self, source):
+        p = source('TTL = {"git_commit": None}\n')
+        assert CHECK._code_mentions("git_commit", p) is True

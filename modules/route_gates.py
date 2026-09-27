@@ -114,7 +114,6 @@ GATES = {
     "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
     "golden_configs_auto_create": _g(A, "commits captures as the approved goldens"),
     "refresh_hostnames": _g(A, "renames devices and rewrites their goldens"),
-    "git_commit": _g(A, "commits into the network's repository"),
     "onboard.create": _g(A, "commits a new device's identity and intent", "onboard_device"),
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),
     "netbox_safety.apply_import_all": _g(A, "writes to NetBox"),
