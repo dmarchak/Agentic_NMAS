@@ -51,10 +51,16 @@
                     onchange="onboardAddressSourceChanged()">
               <option value="static" selected>Static (in the config)</option>
               <option value="dhcp">DHCP (Kea reservation)</option>
+              <option value="ztp">ZTP (the tool reserves it and serves the config)</option>
             </select>
           </div>
-          <div class="col-md-3 ob-static-only">
-            <label class="form-label small fw-semibold" for="obMgmtIp">Management IP</label>
+          {# Shown for static AND ztp: for ztp it is the address the tool will
+             RESERVE, and it is carried as the reservation, never as a static
+             address (build_plan). Hidden only for dhcp, whose address comes
+             from a reservation somebody else made. #}
+          <div class="col-md-3 ob-address">
+            <label class="form-label small fw-semibold" for="obMgmtIp"
+                   id="obMgmtIpLabel">Management IP</label>
             {# A DOCUMENTATION-RANGE EXAMPLE, deliberately. This read
                `10.255.0.31`, which is bp-onboard-c's real address from the
                first probe -- a torn-down device. A placeholder naming a live
@@ -79,9 +85,13 @@
             <label class="form-label small fw-semibold" for="obMgmtMac">MAC address</label>
             <input class="form-control form-control-sm" id="obMgmtMac"
                    autocomplete="off" placeholder="aa:bb:cc:00:02:40">
-            <div class="form-text small">Must match a <strong>host
-              reservation</strong> in Kea, and the MAC pinned in the
-              topology. A dynamic lease is refused.</div>
+            <div class="form-text small" id="obMacHelpDhcp">Must match a
+              <strong>host reservation</strong> in Kea, and the MAC pinned in
+              the topology. A dynamic lease is refused.</div>
+            <div class="form-text small" id="obMacHelpZtp" style="display:none">
+              The tool <strong>writes</strong> the reservation for this MAC,
+              so it must be the MAC pinned in the topology, known before the
+              device first boots.</div>
           </div>
           <div class="col-md-3">
             <label class="form-label small fw-semibold" for="obMgrIntf">Management interface</label>

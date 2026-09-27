@@ -40,8 +40,8 @@ function onboardReviewHtml(plan, bootstrapConfig) {
        reads "assigned by Kea reservation <mac> -> <address>" -- a claim
        checked a moment ago -- and never "assigned by DHCP", which is a
        promise about later that nothing here would notice failing. */
-    ['Management IP', plan.address_source === 'dhcp'
-        ? `${plan.address_claim || 'DHCP'} on ${plan.manager_interface || '(no interface)'}`
+    ['Management IP', (plan.address_source === 'dhcp' || plan.address_source === 'ztp')
+        ? `${plan.address_claim || plan.address_source.toUpperCase()} on ${plan.manager_interface || '(no interface)'}`
         : (plan.mgmt_mask
             ? `${plan.mgmt_ip} ${plan.mgmt_mask} on ${plan.manager_interface || '(no interface)'}`
             : plan.mgmt_ip)],
@@ -137,23 +137,33 @@ const ONBOARD_FIELDS = {
    drops it. */
 function onboardAddressSourceChanged() {
   const source = document.getElementById('obAddrSource');
+  const value = (source && source.value) || 'static';
+  const dhcp = value === 'dhcp', ztp = value === 'ztp';
   const row = document.getElementById('obMacRow');
   const staticRows = document.querySelectorAll('.ob-static-only');
-  const dhcp = !!source && source.value === 'dhcp';
-  if (row) row.style.display = dhcp ? '' : 'none';
-  staticRows.forEach(function (el) { el.style.display = dhcp ? 'none' : ''; });
+  const addressRows = document.querySelectorAll('.ob-address');
+  const show = function (el, on) { if (el) el.style.display = on ? '' : 'none'; };
+  const clear = function (id) {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  };
+  /* THREE SOURCES, three shapes. static: address and mask, no MAC. dhcp: a
+     MAC only, since the address is a reservation somebody else made. ztp: a
+     MAC AND the address the tool will reserve, and no mask, because the
+     device takes the subnet's from Kea. */
+  show(row, dhcp || ztp);
+  staticRows.forEach(function (el) { show(el, !dhcp && !ztp); });
+  addressRows.forEach(function (el) { show(el, !dhcp); });
+  show(document.getElementById('obMacHelpDhcp'), dhcp);
+  show(document.getElementById('obMacHelpZtp'), ztp);
+  const label = document.getElementById('obMgmtIpLabel');
+  if (label) label.textContent = ztp ? 'Address to reserve' : 'Management IP';
   /* CLEARED, not just hidden. A hidden field still has a value, and browser
      autofill puts one there -- so hiding alone leaves the payload carrying an
      address the operator cannot see and did not choose for this device. */
-  if (dhcp) {
-    ['obMgmtIp', 'obMgmtMask'].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-  } else {
-    const mac = document.getElementById('obMgmtMac');
-    if (mac) mac.value = '';
-  }
+  if (dhcp) { clear('obMgmtIp'); clear('obMgmtMask'); }
+  if (ztp) { clear('obMgmtMask'); }
+  if (!dhcp && !ztp) { clear('obMgmtMac'); }
 }
 
 function onboardFormPayload() {

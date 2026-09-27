@@ -492,18 +492,12 @@ def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
         if not got.get("ok"):
             raise Refused(f"Kea could not be asked for its configuration: {got.get('error')}")
         dhcp4 = _dhcp4(got["result"])
-        leases = kea.command("lease4-get-all", service=["dhcp4"])
-        if not leases.get("ok"):
-            raise Refused(f"Kea could not be asked for its leases: {leases.get('error')}")
+        leased = _leases(kea)
     except (OSError, Refused) as exc:
         out["error"] = str(exc)
         return out
 
     before = reservations(dhcp4)
-    leased = {}
-    for row in (leases["result"] if isinstance(leases["result"], list) else [leases["result"]]):
-        for lease in ((row or {}).get("arguments") or {}).get("leases") or []:
-            leased[lease.get("ip-address", "")] = _mac(lease.get("hw-address", ""))
     mine = {_mac(r.get("hw-address")): r for r in current if isinstance(r, dict)}
     candidate = dict(mine)
 
@@ -516,15 +510,9 @@ def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
             out["outcomes"][mac] = {"outcome": "unchanged",
                                     "detail": f"{mac} -> {address} is already in the fragment"}
             continue
-        if mac in before:
-            refuse(mac, f"{mac} is already reserved -> {before[mac][1]} in subnet {before[mac][0]}")
-            continue
-        taken = [m for m, (_sid, ip) in before.items() if ip == address]
-        if taken:
-            refuse(mac, f"{address} is already reserved for {taken[0]}")
-            continue
-        if leased.get(address) and leased[address] != mac:
-            refuse(mac, f"{address} is leased to {leased[address]} right now")
+        found = conflicts(dhcp4, leased, mac, address)
+        if found:
+            refuse(mac, "; ".join(found))
             continue
         try:
             bad = forbidden_options(dhcp4, address)
@@ -593,6 +581,67 @@ def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
         out["error"] = f"{fragment} does not read back as the candidate that was tested"
         return out
     out["ok"] = all(o["outcome"] != "refused" for o in out["outcomes"].values())
+    return out
+
+
+def conflicts(dhcp4: dict, leased: dict, mac: str, address: str) -> list:
+    """Why a NEW reservation *mac* -> *address* may not be written. One
+    rule for the plan and the writer, so the review screen refuses exactly
+    what the write would. *leased* is ``{address: mac}``."""
+    mac = _mac(mac)
+    held = reservations(dhcp4)
+    reasons = []
+    if mac in held:
+        reasons.append(f"{mac} is already reserved -> {held[mac][1]} in subnet {held[mac][0]}")
+    taken = [m for m, (_sid, ip) in held.items() if ip == address and m != mac]
+    if taken:
+        reasons.append(f"{address} is already reserved for {taken[0]}")
+    if leased.get(address) and leased[address] != mac:
+        reasons.append(f"{address} is leased to {leased[address]} right now")
+    return reasons
+
+
+def _leases(kea) -> dict:
+    got = kea.command("lease4-get-all", service=["dhcp4"])
+    if not got.get("ok"):
+        raise Refused(f"Kea could not be asked for its leases: {got.get('error')}")
+    leased = {}
+    for row in (got["result"] if isinstance(got["result"], list) else [got["result"]]):
+        for lease in ((row or {}).get("arguments") or {}).get("leases") or []:
+            leased[lease.get("ip-address", "")] = _mac(lease.get("hw-address", ""))
+    return leased
+
+
+def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
+               get=None) -> dict:
+    """Everything a `ztp` plan must know before anything is created:
+    ``{"ok", "reasons", "server", "subnet_id", "dns"}``.
+
+    The writer's own preconditions (configured, no conflict) plus D4's two
+    conditions and D3's derived server. Found at PLAN time, so the review
+    screen, which promises that nothing has been created yet, is where a
+    refusal lands. A check that could not run is a reason, never a pass."""
+    if get is None:
+        from modules.settings_schema import get_setting as get
+    out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
+    if not (get("kea_ztp_fragment", "") or "").strip():
+        out["reasons"].append(
+            "kea_ztp_fragment is not configured: a reservation written anywhere "
+            "else lives in Kea's memory until its next restart (C49)")
+        return out
+    if not mac or not address:
+        return out
+    kea = kea or _kea()
+    p = posture(address, kea=kea, dns=dns, addrs=addrs)
+    out.update(server=p["server"], subnet_id=p["subnet_id"], dns=p["dns"])
+    out["reasons"] += p["reasons"]
+    try:
+        got = kea.command("config-get")
+        if got.get("ok"):
+            out["reasons"] += conflicts(_dhcp4(got["result"]), _leases(kea), mac, address)
+    except Refused as exc:
+        out["reasons"].append(str(exc))
+    out["ok"] = not out["reasons"]
     return out
 
 

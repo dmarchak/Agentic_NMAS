@@ -957,11 +957,51 @@ class TestTheRevealRunsOnOpenNotOnlyOnChange:
         assert "onboardAddressSourceChanged();" in opener[:900], \
             "the reveal runs only on change, so a remembered value is not applied"
 
-    def test_it_reads_the_selects_CURRENT_value(self):
-        js = self._js()
-        fn = js[js.index("function onboardAddressSourceChanged"):]
-        assert "source.value === 'dhcp'" in fn, \
-            "it must read the value, not assume the default"
+    @staticmethod
+    def _run_reveal(source_value):
+        """EXECUTES the shipped function against a stub DOM whose select
+        holds *source_value*, and returns what the form then shows. A text
+        match on the function's spelling passed and failed with rewrites
+        that changed nothing; what the operator sees is the property."""
+        import dukpy
+
+        js = TestTheRevealRunsOnOpenNotOnlyOnChange._js()
+        start = js.index("function onboardAddressSourceChanged")
+        fn = js[start:js.index("\n}\n", start) + 3]
+        harness = """
+        var els = {};
+        function mk(id, value) { els[id] = {id: id, value: value || '',
+            style: {display: ''}, textContent: ''}; return els[id]; }
+        mk('obAddrSource', dukpy.source); mk('obMacRow'); mk('obMgmtIp', '192.0.2.9');
+        mk('obMgmtMask', '255.255.255.0'); mk('obMgmtMac', 'aa:bb:cc:00:02:50');
+        mk('obMacHelpDhcp'); mk('obMacHelpZtp'); mk('obMgmtIpLabel');
+        var ipBox = {style: {display: ''}}, maskBox = {style: {display: ''}};
+        var document = {getElementById: function (id) { return els[id] || null; },
+          querySelectorAll: function (sel) {
+            return sel === '.ob-address' ? [ipBox] : (sel === '.ob-static-only' ? [maskBox] : []); }};
+        """ + fn + """
+        onboardAddressSourceChanged();
+        ({mac: els.obMacRow.style.display, ip: ipBox.style.display,
+          mask: maskBox.style.display, label: els.obMgmtIpLabel.textContent,
+          ipv: els.obMgmtIp.value, maskv: els.obMgmtMask.value,
+          macv: els.obMgmtMac.value})
+        """
+        return dukpy.evaljs(harness, source=source_value)
+
+    @pytest.mark.parametrize("source,shown,cleared", [
+        ("static", {"mac": "none", "ip": "", "mask": ""}, {"macv"}),
+        ("dhcp", {"mac": "", "ip": "none", "mask": "none"}, {"ipv", "maskv"}),
+        ("ztp", {"mac": "", "ip": "", "mask": "none"}, {"maskv"}),
+    ])
+    def test_it_reads_the_selects_CURRENT_value(self, source, shown, cleared):
+        out = self._run_reveal(source)
+        assert {k: out[k] for k in shown} == shown, out
+        for key in ("ipv", "maskv", "macv"):
+            assert (out[key] == "") == (key in cleared), (source, key, out)
+
+    def test_ztp_relabels_the_address_as_the_one_to_reserve(self):
+        assert self._run_reveal("ztp")["label"] == "Address to reserve"
+        assert self._run_reveal("static")["label"] == "Management IP"
 
     def test_hidden_static_fields_are_CLEARED_not_just_hidden(self):
         """A hidden field still has a value, and autofill puts one there — so

@@ -102,6 +102,13 @@ class OnboardPlan:
     reservation_address: str = ""
     reservation_source: str = ""
     reservation_error: str = ""
+    #: ZTP only (P.6). What `ztp.plan_check()` found at plan time: the
+    #: config server (D3, derived), the subnet the reservation will land in,
+    #: and every reason not to write it (D4, conflicts, not configured).
+    ztp_server: str = ""
+    ztp_subnet_id: object = None
+    ztp_reasons: tuple = field(default_factory=tuple)
+    ztp_dns_measured_at: float = 0.0
     #: Chosen, never defaulted -- on a C8000v, Gi1 belongs to vrnetlab.
     manager_interface: str = ""
     #: Omitted unless the manager is on another subnet. See
@@ -210,7 +217,20 @@ class OnboardPlan:
         if self.name_taken_in_netbox:
             reasons.append(f"'{self.hostname}' already exists in NetBox")
 
-        if self.address_source == "dhcp":
+        if self.address_source == "ztp":
+            # P.6. The tool WRITES this reservation, so the MAC and the
+            # address are the operator's to state, and every reason the write
+            # would refuse is found here, before anything is created.
+            if not self.mgmt_mac:
+                reasons.append(
+                    "no MAC address — a ZTP device is reserved by its MAC, and "
+                    "the MAC must be known before its first boot")
+            if not self.reservation_address:
+                reasons.append(
+                    "no address to reserve — a ZTP device fetches its config "
+                    "from the address the tool reserves for it")
+            reasons.extend(self.ztp_reasons)
+        elif self.address_source == "dhcp":
             # A PRECONDITION, not an acceptance item. A dynamic lease is
             # correct on the day it is recorded and wrong at some renewal
             # nothing is watching: the manifest, the CSV and NetBox would all
@@ -236,6 +256,9 @@ class OnboardPlan:
                        else "")
                     + " — refusing rather than assuming, because an unchecked "
                       "precondition and a met one look the same afterwards")
+        elif self.address_source != "static":
+            reasons.append(f"address source {self.address_source!r} is not one "
+                           "of static, dhcp or ztp")
         elif not self.mgmt_ip:
             reasons.append("no management address — the device would be "
                            "created and unreachable")
@@ -247,7 +270,7 @@ class OnboardPlan:
         # operator is told which half is missing. On a C8000v the first
         # interface is vrnetlab's, and a management address landing there is
         # the failure 4C.8 exists to prevent.
-        if (self.mgmt_ip or self.address_source == "dhcp") \
+        if (self.mgmt_ip or self.address_source in ("dhcp", "ztp")) \
                 and not self.manager_interface:
             reasons.append(
                 "no interface chosen for the management address — it cannot "
@@ -370,6 +393,17 @@ class OnboardPlan:
     @property
     def address_claim(self) -> str:
         """The address line for the review screen, as a **checkable** claim."""
+        if self.address_source == "ztp":
+            if self.ztp_reasons or not self.ztp_server:
+                return (f"ZTP: a Kea reservation {self.mgmt_mac or '(no MAC)'} → "
+                        f"{self.reservation_address or '(no address)'} would be "
+                        "written, and it cannot be yet (the reasons are above)")
+            return (f"ZTP: this onboarding WRITES Kea reservation {self.mgmt_mac} → "
+                    f"{self.reservation_address} in subnet {self.ztp_subnet_id}, "
+                    f"and the device fetches {self.hostname}.cfg by TFTP from "
+                    f"{self.ztp_server}. Checked a moment ago: no route or "
+                    "resolver option reaches it, and nothing on the segment "
+                    "answered DNS (D4)")
         if self.address_source != "dhcp":
             return (f"{self.mgmt_ip} {self.mgmt_mask}".strip()
                     or "no address given")
@@ -417,6 +451,9 @@ class OnboardPlan:
             "address_claim":     self.address_claim,
             "manager_interface": self.manager_interface,
             "manager_gateway":   self.manager_gateway,
+            "reservation_address": self.reservation_address,
+            "ztp_server":        self.ztp_server,
+            "ztp_subnet_id":     self.ztp_subnet_id,
             "cred_source":    self.cred_source,
             "template":       self.template,
             # NOT a count of what phase 1 creates: phase 1 creates nothing
@@ -504,6 +541,20 @@ def _reservation(mac: str, kea=None) -> dict:
                 "error": f"{type(exc).__name__}: {exc}"}
 
 
+def _ztp_check(mac: str, address: str, kea, check=None) -> dict:
+    """`ztp.plan_check()`, **never raising**: an exception is a reason, and a
+    check that did not run has not passed."""
+    try:
+        if check is None:
+            from modules.nsot.ztp import plan_check as check
+        return check(mac, address, kea=kea)
+    except Exception as exc:                   # noqa: BLE001
+        log.warning("onboard: the ZTP check failed for %s: %s", mac, exc)
+        return {"ok": False, "reasons": [f"the ZTP check could not run: "
+                                         f"{type(exc).__name__}: {exc}"],
+                "server": "", "subnet_id": None, "dns": {}}
+
+
 def build_plan(hostname: str, platform: str, list_name: str, *,
                mgmt_ip: str = "", source_kind: str = "local",
                secret: str = "", domain: str = "rcn.lab",
@@ -511,7 +562,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                netbox_plan=(), cred_source: str = "",
                mgmt_mask: str = "", manager_interface: str = "",
                manager_gateway: str = "", address_source: str = "static",
-               mgmt_mac: str = "", kea=None) -> OnboardPlan:
+               mgmt_mac: str = "", kea=None, ztp_check=None) -> OnboardPlan:
     """The only constructor. Always validates; never writes anything.
 
     *secret* is the one-time bootstrap credential (4C.2). It reaches the
@@ -548,7 +599,12 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     #
     # Dropped here rather than in the route, because `build_plan` is the only
     # constructor and this must hold however the arguments arrive.
-    if address_source == "dhcp":
+    # A ZTP PLAN CARRIES NO STATIC ADDRESS EITHER, for the same reason: the
+    # address the operator typed is the one the tool will RESERVE, and it is
+    # carried as the reservation, while `mgmt_ip` stays empty until phase 2
+    # discovers the lease. The device gets it from Kea like a DHCP device.
+    requested = mgmt_ip if address_source == "ztp" else ""
+    if address_source in ("dhcp", "ztp"):
         mgmt_ip, mgmt_mask = "", ""
 
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
@@ -569,14 +625,20 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     reservation = {"state": "", "address": "", "source": "", "error": ""}
     if address_source == "dhcp" and mgmt_mac:
         reservation = _reservation(mgmt_mac, kea)
+    ztp = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
+    if address_source == "ztp":
+        ztp = _ztp_check(mgmt_mac, requested, kea, ztp_check)
+        reservation = {"state": "to_write" if ztp["ok"] else "refused",
+                       "address": requested, "source": "this onboarding",
+                       "error": ""}
 
     # DHCP emits `ip address dhcp`, so the generator is given no address --
     # and its refusal for a MISSING one still stands for `static`.
     config, unsendable, render_error = _render(
         platform, hostname, secret, domain,
         mgmt_interface, manager_interface=manager_interface,
-        manager_address=("dhcp" if address_source == "dhcp" else mgmt_ip),
-        manager_mask=("dhcp" if address_source == "dhcp" else mgmt_mask),
+        manager_address=("dhcp" if address_source in ("dhcp", "ztp") else mgmt_ip),
+        manager_mask=("dhcp" if address_source in ("dhcp", "ztp") else mgmt_mask),
         manager_gateway=manager_gateway)
 
     # THE SYSLOG BLOCK IS PART OF THE BASELINE (NSOT_PLAN P.1). Merged into
@@ -603,6 +665,9 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         reservation_address=reservation["address"],
         reservation_source=reservation["source"],
         reservation_error=reservation["error"],
+        ztp_server=ztp["server"], ztp_subnet_id=ztp["subnet_id"],
+        ztp_reasons=tuple(ztp["reasons"]),
+        ztp_dns_measured_at=float((ztp.get("dns") or {}).get("measured_at") or 0),
         manager_interface=manager_interface, manager_gateway=manager_gateway,
         domain=domain,
         bootstrap_config=config, cred_source=cred_source,
@@ -958,8 +1023,16 @@ def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
 #: onboarding is a commit plus a staged credential and never touches NetBox.
 STEPS = ("credentials", "commit", "render")
 
+#: P.6: a ZTP device's phase 1. **The reservation is the one step that
+#: reaches outside this host's own stores**, so it follows the commit and is
+#: last among the fallible: a failure before it has written nothing to Kea,
+#: and a failure AT it leaves a committed, pending device that `abandon`
+#: removes, together with any reservation the tool wrote. `STEPS` is
+#: unchanged for every other source.
+ZTP_STEPS = ("credentials", "commit", "reserve", "render")
 
-def run_onboarding(plan, *, bind_credentials, commit, render,
+
+def run_onboarding(plan, *, bind_credentials, commit, render, reserve=None,
                    repo: str = "") -> dict:
     """Execute an onboarding run. Every step is injected, and that is the point.
 
@@ -1016,6 +1089,29 @@ def run_onboarding(plan, *, bind_credentials, commit, render,
         return _fail("commit", exc)
     result["commit"] = sha or ""
     result["completed"].append("commit")
+
+    # ── ZTP: the reservation, last among the fallible (P.6) ────────────────
+    if getattr(plan, "address_source", "static") == "ztp":
+        if reserve is None:
+            # A ZTP run that could complete without its reservation is a
+            # device waiting for an address nothing will give it, reported
+            # as onboarded.
+            result["failed_at"] = "reserve"
+            result["reason"] = "no reservation step was supplied for a ztp plan"
+            result["cleanup_offered"] = True
+            return result
+        try:
+            reserve(plan)
+        except Exception as exc:               # noqa: BLE001
+            result["failed_at"] = "reserve"
+            result["reason"] = (f"the device is committed and pending, and its Kea "
+                                f"reservation was NOT written: {exc}. Abandon "
+                                f"removes the commit, the staged credential and "
+                                f"any reservation the tool wrote.")
+            result["cleanup_offered"] = True
+            log.error("onboard: reservation failed for %s: %s", plan.hostname, exc)
+            return result
+        result["completed"].append("reserve")
 
     # Pure computation over what is now committed. It cannot fail in a way
     # that leaves a partial state, because the state is already recorded --
@@ -1383,6 +1479,26 @@ def render_step(plan) -> str:
     return plan.bootstrap_config
 
 
+def reserve_step(plan, *, kea=None, check=None, write=None) -> dict:
+    """Write the ZTP reservation (P.6 D1). D4 and the conflicts are checked
+    AGAIN here, at write time: the plan may be minutes old, and a property
+    held by absence can change between the review and the confirm."""
+    from modules.nsot import ztp
+
+    check = check or ztp.plan_check
+    live = check(plan.mgmt_mac, plan.reservation_address, kea=kea)
+    if not live.get("ok"):
+        raise RuntimeError("; ".join(live.get("reasons") or ["the ZTP check failed"]))
+    entry = ztp.reservation_entry(plan.mgmt_mac, plan.reservation_address,
+                                  plan.hostname, live["server"])
+    out = (write or ztp.write_reservations)([entry], kea=kea)
+    outcome = (out.get("outcomes") or {}).get(entry["hw-address"], {})
+    if not out.get("ok") or outcome.get("outcome") not in ("written", "unchanged"):
+        raise RuntimeError(outcome.get("detail") or out.get("error")
+                           or "the reservation was not written")
+    return out
+
+
 def real_steps(repo: str, actor: str) -> dict:
     """The production steps, assembled once.
 
@@ -1392,6 +1508,7 @@ def real_steps(repo: str, actor: str) -> dict:
     return {
         "bind_credentials": lambda plan: bind_credentials_step(plan, repo=repo),
         "commit":           lambda plan: commit_step(plan, actor=actor),
+        "reserve":          lambda plan: reserve_step(plan),
         "render":           render_step,
     }
 
@@ -1961,7 +2078,7 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
     # disagreement refuses and names both rather than picking one.
     dhcp_note = ""
     dhcp_prefix = 0
-    if not mgmt_ip and (entry or {}).get("address_source") == "dhcp":
+    if not mgmt_ip and (entry or {}).get("address_source") in ("dhcp", "ztp"):
         found = discover_dhcp_address((entry or {}).get("mgmt_mac", ""),
                                       (entry or {}).get("reserved_address", ""),
                                       kea=kea)
@@ -2158,7 +2275,7 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
     # and now only fires when it is true.
     source = (params.get("source") or ("static" if params.get("address")
                                        else "")).strip()
-    if source == "dhcp":
+    if source in ("dhcp", "ztp"):
         if not params.get("interface"):
             return {"ok": False, "config": "", "reason": (
                 f"'{hostname}' is a DHCP device with no committed interface. "
@@ -2180,9 +2297,9 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
             manager_interface=params.get("interface", ""),
             # The same explicit sentinel the plan uses, so a re-render is
             # byte-identical to what the node booted.
-            manager_address=("dhcp" if source == "dhcp"
+            manager_address=("dhcp" if source in ("dhcp", "ztp")
                              else params.get("address", "")),
-            manager_mask=("dhcp" if source == "dhcp"
+            manager_mask=("dhcp" if source in ("dhcp", "ztp")
                           else params.get("mask", "")),
             manager_gateway=params.get("gateway", ""))
     except Exception as exc:                   # noqa: BLE001
