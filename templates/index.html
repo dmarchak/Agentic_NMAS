@@ -175,42 +175,18 @@
 {% include 'partials/onboard_wizard.html' %}
 {% include 'partials/onboard_pending.html' %}
 
-<!-- Add Device Form -->
+<!-- Devices arrive and leave (C102, decided 2026-09-27). Add Device and
+     Discover Subnet were removed: they produced half-managed devices, one
+     with no identity at all (C25). -->
 <hr>
-<div class="d-flex align-items-center gap-3 mt-4 mb-0">
-  <h3 class="mb-0">Add New Device</h3>
-  <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#discoverSubnetModal">
-    🔍 Discover Subnet
-  </button>
-</div>
-<p class="text-muted mt-1">Adding to: <strong id="currentListName">{{ current_list }}</strong></p>
-<form method="post" action="{{ url_for('add_device') }}" class="row g-3" id="addDeviceForm">
-  <div class="col-md-3">
-    <input class="form-control" name="ip" placeholder="IP Address" required>
-  </div>
-  <div class="col-md-3">
-    <input class="form-control" name="username" placeholder="Username" required>
-  </div>
-  <div class="col-md-3">
-    <input class="form-control" type="password" name="password" placeholder="Password" required>
-  </div>
-  <div class="col-md-2">
-    <input class="form-control" type="password" name="secret" placeholder="Enable Secret" required>
-  </div>
-  <div class="col-md-1">
-    <select class="form-select" name="role" title="Device role (affects topology icon)">
-      <option value="router">Router</option>
-      <option value="switch">Switch</option>
-      <option value="firewall">Firewall</option>
-    </select>
-  </div>
-  <div class="col-12">
-    <button type="submit" class="btn btn-success" id="addDeviceBtn">
-      <span class="btn-text">Add Device</span>
-      <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-    </button>
-  </div>
-</form>
+<p class="text-muted small mt-3 mb-0" id="deviceArrivalNote">
+  <strong>Devices arrive through onboarding</strong> (static address, DHCP or ZTP), which reaches,
+  rotates, captures and records each one. A device that is already configured cannot be brought in
+  from here yet: that is <em>adopt</em> (Stage 7.10), and a NetBox-sourced list is the path in
+  meanwhile. <strong>A device leaves through retirement</strong> (<code>nmas-retire</code> on the host
+  until the Device page offers it), never a delete: a delete removed the row and destroyed its only
+  stored credential while leaving its bindings and alerts behind (C11).
+</p>
 
 </div><!-- end Devices tab pane -->
 
@@ -2171,137 +2147,6 @@ document.addEventListener("DOMContentLoaded", () => window.bindDeviceTableSortab
 <!-- Topology Visualization Script -->
 <!-- ================================================================== -->
 <script src="{{ url_for('static', filename='js/gen/index.3.js') }}"></script>
-
-<!-- ================================================================== -->
-<!-- SUBNET DISCOVERY MODAL                                             -->
-<!-- ================================================================== -->
-<div class="modal fade" id="discoverSubnetModal" tabindex="-1" aria-labelledby="discoverSubnetModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-
-      <div class="modal-header">
-        <h5 class="modal-title" id="discoverSubnetModalLabel">🔍 Discover Devices on Subnet</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-
-      <div class="modal-body">
-
-        <!-- Config form (hidden once scan starts) -->
-        <div id="discoverForm">
-          <div class="row g-3">
-            <div class="col-md-5">
-              <label class="form-label fw-semibold">Network Address</label>
-              <input type="text" class="form-control" id="discoverNetwork" placeholder="e.g. 192.168.1.0">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label fw-semibold">Prefix Length</label>
-              <select class="form-select" id="discoverPrefix">
-                <option value="24" selected>/24 — 254 hosts</option>
-                <option value="25">/25 — 126 hosts</option>
-                <option value="26">/26 — 62 hosts</option>
-                <option value="27">/27 — 30 hosts</option>
-                <option value="28">/28 — 14 hosts</option>
-                <option value="29">/29 — 6 hosts</option>
-                <option value="30">/30 — 2 hosts</option>
-                <option value="23">/23 — 510 hosts</option>
-                <option value="22">/22 — 1022 hosts</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Device Type</label>
-              <select class="form-select" id="discoverDeviceType">
-                <option value="cisco_ios" selected>Cisco IOS</option>
-                <option value="cisco_xe">Cisco IOS XE</option>
-                <option value="cisco_nxos">Cisco NX-OS</option>
-                <option value="cisco_asa">Cisco ASA</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Username</label>
-              <input type="text" class="form-control" id="discoverUsername" placeholder="SSH username">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Password</label>
-              <input type="password" class="form-control" id="discoverPassword" placeholder="SSH password">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Enable Secret <span class="text-muted fw-normal">(optional)</span></label>
-              <input type="password" class="form-control" id="discoverSecret" placeholder="Enable secret">
-            </div>
-            <div class="col-12">
-              <label class="form-label fw-semibold">
-                Parallel Workers: <span id="workersLabel">30</span>
-                <small class="text-muted fw-normal ms-1">(higher = faster but more load)</small>
-              </label>
-              <input type="range" class="form-range" id="discoverWorkers" min="5" max="100" step="5" value="30"
-                     oninput="document.getElementById('workersLabel').textContent = this.value">
-            </div>
-          </div>
-        </div>
-
-        <!-- Progress (shown during scan) -->
-        <div id="discoverProgress" style="display:none;">
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="fw-semibold" id="discoverPhaseLabel">Phase 1 of 2 — Ping sweep…</span>
-            <span id="discoverProgressLabel" class="text-muted small">0 / 0</span>
-          </div>
-          <div class="progress mb-2" style="height:10px;">
-            <div class="progress-bar progress-bar-striped progress-bar-animated"
-                 id="discoverProgressBar" role="progressbar" style="width:0%"></div>
-          </div>
-          <div class="d-flex gap-3 mb-2">
-            <span class="text-muted small">Reachable (ping): <strong id="discoverPingReachable">0</strong></span>
-            <span class="text-muted small" id="discoverSshWrap" style="display:none;">SSH success: <strong id="discoverSshFound">0</strong> / <strong id="discoverSshTotal">0</strong></span>
-          </div>
-          <p class="text-muted small mb-0" id="discoverPhaseDesc">Pinging all hosts to find reachable addresses before attempting SSH.</p>
-        </div>
-
-        <!-- Results (shown when scan finishes) -->
-        <div id="discoverResults" style="display:none;">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">
-              Discovered <span id="discoverFoundCount" class="text-success fw-bold">0</span> device(s)
-              <span class="text-muted fw-normal">out of <span id="discoverTotal">0</span> hosts probed</span>
-            </h6>
-            <div class="d-flex gap-2">
-              <button class="btn btn-outline-secondary btn-sm" onclick="discoverSelectAll()">Select All</button>
-              <button class="btn btn-outline-secondary btn-sm" onclick="discoverSelectNone()">None</button>
-            </div>
-          </div>
-          <div class="table-responsive" style="max-height: 300px; overflow-y:auto;">
-            <table class="table table-sm table-hover align-middle mb-0">
-              <thead class="table-light sticky-top">
-                <tr>
-                  <th style="width:36px;"></th>
-                  <th>Hostname</th>
-                  <th>IP Address</th>
-                </tr>
-              </thead>
-              <tbody id="discoverResultsBody"></tbody>
-            </table>
-          </div>
-          <div id="discoverNoResults" class="text-center text-muted py-4" style="display:none;">
-            No devices responded to SSH on this subnet.
-          </div>
-        </div>
-
-      </div><!-- /modal-body -->
-
-      <div class="modal-footer">
-        <span id="discoverStatusText" class="text-muted small me-auto"></span>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-primary" id="discoverStartBtn" onclick="startSubnetDiscovery()">
-          Start Discovery
-        </button>
-        <button type="button" class="btn btn-success" id="discoverAddBtn" style="display:none;"
-                onclick="addDiscoveredDevices()">
-          ➕ Add Selected Devices
-        </button>
-      </div>
-
-    </div>
-  </div>
-</div>
 
 {% endblock %}
 

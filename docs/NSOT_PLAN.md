@@ -3655,7 +3655,15 @@ Raised by the operator. Analysed in
 It is a build, so it is its own item and not part of a stage that moves
 controls. **It changes Stage 7 in two places**, both undecided:
 - 7.4 lists "adopt" as a GUI home for a capability that does not exist;
-- 7.8 must not remove Add Device and Discover Subnet before it lands.
+- ~~7.8 must not remove Add Device and Discover Subnet before it lands.~~
+  **REVERSED deliberately, 2026-09-27 (the operator, register C102):** both
+  were removed at once. The rule was written to protect a capability, and the
+  capability turned out to produce broken devices: Add a half-managed one (a
+  row and an identity, nothing else), Discover-then-Add one with no identity
+  at all (C25). Until adopt lands, a device already configured cannot be
+  brought in from the interface: an honest gap with a name, smaller than it
+  sounds, because a NetBox-sourced list still brings devices in, and that is
+  the model adopt should build from.
 
 A scale finding rides with it: template approval is all-or-nothing per
 platform.

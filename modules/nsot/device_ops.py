@@ -47,6 +47,7 @@ OPERATION_WORDS = {
     "command": "sent a command that is not a read",
     "bulk": "changed by a bulk operation",
     "reload": "reloaded",
+    "file": "changed by a file action",
 }
 
 #: No progress for this long and the refusal says the holder may be stuck.
@@ -259,6 +260,19 @@ def hold(list_name: str, hostname: str, operation: str, actor: str, detail: str 
         yield
     finally:
         release(list_name, hostname)
+
+
+def hold_device(dev: dict, operation: str, detail: str = ""):
+    """A request's hold on one device of the ACTIVE list, as the verified
+    person: for the Device page's own actions, which act on the list the
+    page shows. Found by scanning every command string the program sends
+    through the read-only allowlist (C101): upload, delete and download a
+    file, and save to startup, each wrote without holding the device."""
+    from modules import identity
+    from modules.config import get_current_list_name
+
+    return hold(get_current_list_name(), dev.get("hostname", ""), operation,
+                identity.request_actor(), detail=detail, ip=dev.get("ip", ""))
 
 
 def acquire_many(list_name: str, hostnames: list, operation: str, actor: str,

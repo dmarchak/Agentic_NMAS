@@ -624,113 +624,6 @@ def index():
 
 
 # Add device
-@app.route("/add", methods=["POST"])
-def add_device():
-    # Add a new device to inventory after verifying connection
-    ip = request.form["ip"].strip()
-    username = request.form["username"].strip()
-    password = request.form["password"]
-    secret = request.form["secret"]
-
-    # Get current device list
-    current_list_name, current_list_file = get_current_device_list()
-
-    app.logger.info(f'Attempting to add device: {ip} with username: {username} to list: {current_list_name}')
-
-    # Validate IP address format
-    try:
-        ip_obj = ipaddress.ip_address(ip)
-
-        # Reject invalid IP types
-        if ip_obj.is_unspecified:
-            app.logger.warning(f'Rejected unspecified IP address: {ip}')
-            flash("Invalid IP: Cannot use unspecified address (0.0.0.0 or ::)", "danger")
-            return redirect(url_for("index"))
-        if ip_obj.is_loopback:
-            app.logger.warning(f'Rejected loopback IP address: {ip}')
-            flash("Invalid IP: Cannot use loopback address (127.0.0.0/8 or ::1)", "danger")
-            return redirect(url_for("index"))
-        if ip_obj.is_multicast:
-            app.logger.warning(f'Rejected multicast IP address: {ip}')
-            flash("Invalid IP: Cannot use multicast address", "danger")
-            return redirect(url_for("index"))
-        if ip_obj.is_reserved:
-            app.logger.warning(f'Rejected reserved IP address: {ip}')
-            flash("Invalid IP: Cannot use reserved address", "danger")
-            return redirect(url_for("index"))
-
-    except ValueError as e:
-        app.logger.warning(f'Invalid IP address format: {ip} - {e}')
-        flash(f"Invalid IP address format: {ip}", "danger")
-        return redirect(url_for("index"))
-
-    # Validate username and password are not empty
-    if not username:
-        app.logger.warning(f'Empty username provided for IP: {ip}')
-        flash("Username cannot be empty", "danger")
-        return redirect(url_for("index"))
-    if not password:
-        app.logger.warning(f'Empty password provided for IP: {ip}')
-        flash("Password cannot be empty", "danger")
-        return redirect(url_for("index"))
-
-    # Check for duplicate IP in current list
-    devices = load_saved_devices(current_list_file)
-    if any(d["ip"] == ip for d in devices):
-        app.logger.warning(f'Duplicate device IP detected: {ip}')
-        flash(f"Device with IP {ip} already exists in '{current_list_name}'", "warning")
-        return redirect(url_for("index"))
-
-    try:
-        from modules.connection import verify_device_connection
-
-        app.logger.info(f'Verifying connection to device: {ip}')
-        hostname = verify_device_connection(ip, username, password, secret)
-
-        role = request.form.get("role", "router").strip() or "router"
-        if role not in ("router", "switch", "firewall"):
-            role = "router"
-        # An identity is minted HERE, at add time, by the one function that
-        # creates them.
-        #
-        # It used to be minted silently by whichever save_golden ran first —
-        # usually a routine Save All — because allow_new defaulted to True.
-        # So "when does this device get an identity" had no answer anybody
-        # could point at, and the answer was "as a side effect of an unrelated
-        # capture". Adding a device IS onboarding, so this is where it belongs.
-        from modules.config import get_list_data_dir as _list_dir
-        from modules.nsot import manifest as _m
-        from modules.nsot.repo import GoldenItem, adopt_identity, init_repo
-
-        repo = os.path.join(_list_dir(current_list_name), "config_repo")
-        init_repo(repo)
-        identity = _m.find_by_name(repo, hostname)[0] \
-            or _m.find_by_ip(repo, ip)[0] \
-            or adopt_identity(repo, GoldenItem(hostname, "", ip))
-        _m.upsert_device(repo, identity, hostname, ip)
-
-        save_device(
-            {
-                "device_type": "cisco_ios",
-                "ip": ip,
-                "username": username,
-                "password": password,
-                "secret": secret,
-                "hostname": hostname,
-                "role": role,
-                "device_uid": identity.split(":", 1)[1]
-                if identity.startswith("uid:") else "",
-            },
-            current_list_file,
-        )
-        app.logger.info(f'Device added successfully: {hostname} ({ip}) as {identity}')
-        flash(f"Device {hostname} ({ip}) added successfully!", "success")
-    except Exception as e:
-        app.logger.error(f'Failed to add device {ip}: {e}', exc_info=True)
-        flash(f"Error connecting to {ip}: {e}", "danger")
-    return redirect(url_for("index"))
-
-
 # Manage device (no persistent use; only builds context via temp connection)
 @app.route("/device/<ip>")
 def manage_device(ip):
@@ -917,7 +810,9 @@ def upload_file(ip):
                     else:
                         raise Exception("File verification failed after transfer")
 
-                output = with_temp_connection(dev, execute_scp)
+                from modules.nsot import device_ops as _device_ops
+                with _device_ops.hold_device(dev, "file", detail="upload (scp)"):
+                    output = with_temp_connection(dev, execute_scp)
                 app.logger.info(f'SCP upload successful: {file.filename} to {ip}')
                 flash(f"File {file.filename} uploaded via SCP to {filesystem}", "success")
 
@@ -943,7 +838,9 @@ def upload_file(ip):
                 output += conn.send_command_timing("\n")
                 return output
 
-            output = with_temp_connection(dev, execute_tftp)
+            from modules.nsot import device_ops as _device_ops
+            with _device_ops.hold_device(dev, "file", detail="upload (tftp)"):
+                output = with_temp_connection(dev, execute_tftp)
             app.logger.info(f'TFTP upload successful: {file.filename} to {ip}')
             flash(f"File {file.filename} uploaded via TFTP to {filesystem}", "success")
 
@@ -1009,7 +906,9 @@ def delete_file(ip):
             output += "\n" + conn.send_command(f"dir {filesystem}")
             return output
 
-        output = with_temp_connection(dev, execute)
+        from modules.nsot import device_ops as _device_ops
+        with _device_ops.hold_device(dev, "file", detail="delete"):
+            output = with_temp_connection(dev, execute)
 
         filesystems, file_list, selected_fs = get_device_context(dev, filesystem)
 
@@ -1062,7 +961,9 @@ def download_device_file(ip):
             output += conn.send_command_timing("\n")
             return output
 
-        output = with_temp_connection(dev, execute)
+        from modules.nsot import device_ops as _device_ops
+        with _device_ops.hold_device(dev, "file", detail="download"):
+            output = with_temp_connection(dev, execute)
 
         filesystems, file_list, selected_fs = get_device_context(dev, filesystem)
 
@@ -1118,39 +1019,6 @@ def refresh_files(ip):
 
 
 # Delete device (CSV)
-@app.route("/device/<ip>/delete", methods=["POST"])
-def delete_device(ip):
-    app.logger.info(f'Attempting to delete device: {ip}')
-    _, current_list_file = get_current_device_list()
-    try:
-        # Delete from CSV using the device module helper
-        device_module.delete_device(ip, current_list_file)
-        # Also close any persistent connection for this IP (status-only pool)
-        close_persistent_connection(ip, connections, lock)
-        # Close EVERY connection's shell to this device: it is leaving the
-        # inventory (shells are per connection since D12).
-        for key in [k for k in list(terminal_sessions) if k.endswith(f"|{ip}")]:
-            _close_shell(key)
-        # Purge the deleted device from the cached topologies so it stops
-        # appearing in the topology map without needing a full rediscovery.
-        try:
-            _ai.invalidate_topology_cache()
-        except Exception:
-            pass
-        for _cache_file in (_proto_cache_file(), _proto_pos_file(), _proto_hidden_file()):
-            try:
-                if os.path.exists(_cache_file):
-                    os.remove(_cache_file)
-            except Exception:
-                pass
-        app.logger.info(f'Device deleted successfully: {ip}')
-        flash(f"Device {ip} deleted successfully.", "success")
-    except Exception as e:
-        app.logger.error(f'Failed to delete device {ip}: {e}', exc_info=True)
-        flash(f"Error deleting device {ip}: {e}", "danger")
-    return redirect(url_for("index"))
-
-
 # Device status (from cache)
 @app.route("/status/<ip>")
 def device_status(ip):
@@ -1915,7 +1783,9 @@ def save_to_startup(ip):
         conn = get_persistent_connection(dev, connections, lock)
 
         # Save config
-        output = save_running_to_startup(conn)
+        from modules.nsot import device_ops as _device_ops
+        with _device_ops.hold_device(dev, "save", detail="save to startup"):
+            output = save_running_to_startup(conn)
 
         flash("Running configuration saved to startup-config", "success")
         app.logger.info(f"Config saved on {ip}: {output}")
@@ -3022,101 +2892,6 @@ def _run_subnet_discovery(op_id: str, hosts: list, username: str,
                     op["found"].append(result)
 
     op["status"] = "done"
-
-
-@app.route("/discover_subnet", methods=["POST"])
-def discover_subnet():
-    """Start a threaded SSH probe across all hosts in a given subnet."""
-    try:
-        data = request.get_json(silent=True) or {}
-        network  = (data.get("network") or "").strip()
-        prefix   = data.get("prefix", 24)
-        username = (data.get("username") or "").strip()
-        password = data.get("password") or ""
-        secret   = data.get("secret") or ""
-        device_type = data.get("device_type") or "cisco_ios"
-        max_workers = max(1, min(int(data.get("max_workers", 30)), 100))
-
-        if not network or not username or not password:
-            return jsonify({"error": "network, username, and password are required"}), 400
-
-        try:
-            net = ipaddress.IPv4Network(f"{network}/{prefix}", strict=False)
-        except ValueError as exc:
-            return jsonify({"error": f"Invalid network: {exc}"}), 400
-
-        hosts = [str(h) for h in net.hosts()]
-        if not hosts:
-            return jsonify({"error": "Subnet contains no usable host addresses"}), 400
-
-        op_id = uuid.uuid4().hex[:10]
-        _discovery_ops[op_id] = {
-            "total":          len(hosts),
-            "phase":          "ping",
-            "ping_completed": 0,
-            "ping_reachable": 0,
-            "ssh_total":      0,
-            "completed":      0,
-            "found":          [],
-            "status":         "running",
-        }
-
-        t = threading.Thread(
-            target=_run_subnet_discovery,
-            args=(op_id, hosts, username, password, secret, device_type, max_workers),
-            daemon=True,
-        )
-        t.start()
-
-        return jsonify({"op_id": op_id, "total": len(hosts)})
-
-    except Exception as exc:
-        app.logger.error(f"discover_subnet error: {exc}", exc_info=True)
-        return jsonify({"error": str(exc)}), 500
-
-
-@app.route("/discover_status/<op_id>")
-def discover_status(op_id: str):
-    """Poll the progress and results of a running subnet discovery."""
-    op = _discovery_ops.get(op_id)
-    if not op:
-        return jsonify({"error": "Operation not found"}), 404
-    return jsonify(op)
-
-
-@app.route("/add_discovered_devices", methods=["POST"])
-def add_discovered_devices():
-    """Add a list of discovered devices (returned by /discover_subnet) to the inventory."""
-    try:
-        data       = request.get_json(silent=True) or {}
-        devices    = data.get("devices", [])
-        username   = data.get("username", "")
-        password   = data.get("password", "")
-        secret     = data.get("secret", "")
-        device_type = data.get("device_type", "cisco_ios")
-
-        _, current_list_file = get_current_device_list()
-
-        added = 0
-        for dev in devices:
-            try:
-                save_device({
-                    "hostname":    dev.get("hostname", dev["ip"]),
-                    "device_type": device_type,
-                    "ip":          dev["ip"],
-                    "username":    username,
-                    "password":    password,
-                    "secret":      secret,
-                }, current_list_file)
-                added += 1
-            except Exception as exc:
-                app.logger.warning(f"Could not add {dev.get('ip')}: {exc}")
-
-        return jsonify({"added": added})
-
-    except Exception as exc:
-        app.logger.error(f"add_discovered_devices error: {exc}", exc_info=True)
-        return jsonify({"error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------

@@ -269,3 +269,97 @@ def test_the_steps_that_take_long_report_progress():
     assert "device_ops.note(" in inspect.getsource(credential_rotation._rotate)
     assert "device_ops.note(" in inspect.getsource(onboard.run_phase_two.__wrapped__)
     assert "device_ops.note(" in inspect.getsource(retire.apply.__wrapped__)
+
+
+#: Functions that send a non-read command WITHOUT taking the hold themselves,
+#: because their caller holds it. Each with its caller. Only shrinks.
+HELD_BY_CALLER = {
+    "modules/bulk_ops.py:_run_single_enable_command": "the bulk worker, per device",
+    "modules/bulk_ops.py:_execute_tftp_upload": "the bulk worker, per device",
+    "modules/bulk_ops.py:_execute_tftp_download": "the bulk worker, per device",
+    "modules/bulk_ops.py:_execute_config_download": "the bulk worker, per device",
+    "modules/bulk_ops.py:_execute_delete_file": "the bulk worker, per device",
+    "modules/backups.py:save_running_to_startup": "app.save_to_startup",
+    "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
+    "modules/commands.py:run_device_command": "its callers: /run_command holds a non-read",
+}
+
+
+def _writer_sites():
+    """(file, enclosing functions, command) for every command string the
+    program sends that the read-only allowlist refuses, or cannot know."""
+    import ast
+
+    from modules.readonly_commands import refusal
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sends = {"send_command", "send_command_timing", "send_command_expect"}
+    out = []
+    files = ["app.py"] + [os.path.join(dp, f) for base in ("modules", "routes")
+                          for dp, _d, fs in os.walk(os.path.join(root, base))
+                          for f in fs if f.endswith(".py")]
+    for path in files:
+        full = path if os.path.isabs(path) else os.path.join(root, path)
+        rel = os.path.relpath(full, root)
+        tree = ast.parse(open(full, encoding="utf-8").read())
+        parents = {}
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                parents[child] = node
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and getattr(node.func, "attr", getattr(node.func, "id", "")) in sends):
+                continue
+            arg = node.args[0] if node.args else None
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                text = arg.value
+            elif isinstance(arg, ast.JoinedStr):
+                text = "".join(v.value if isinstance(v, ast.Constant) else "X"
+                               for v in arg.values)
+            else:
+                text = None                   # dynamic: its function is judged
+            if text is not None and not refusal(text):
+                continue
+            chain, n = [], node
+            while n in parents:
+                n = parents[n]
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    chain.append(n)
+            out.append((rel, chain, text, node.lineno))
+    return out
+
+
+def _takes_the_hold(func) -> bool:
+    """A CALL that takes the lock, not a mention of its module: the first
+    version accepted any function naming `device_ops`, and a control that
+    removed delete_file's hold passed, because its import line survived."""
+    import ast
+
+    return any(isinstance(n, ast.Call)
+               and getattr(n.func, "attr", getattr(n.func, "id", ""))
+               in ("hold", "hold_device", "acquire", "acquire_many")
+               for n in ast.walk(func))
+
+
+def test_every_writer_takes_the_hold_or_names_the_caller_that_does():
+    """C101's scan, pinned: the four writers it found (upload, delete and
+    download a file, save to startup) sent their writes as COMMAND STRINGS,
+    which a search for method names missed."""
+    import ast
+
+    sites = _writer_sites()
+    assert len(sites) >= 30, len(sites)
+    unheld = []
+    for rel, chain, text, line in sites:
+        if f"{rel}:*" in HELD_BY_CALLER:
+            continue
+        if any(f"{rel}:{f.name}" in HELD_BY_CALLER for f in chain):
+            continue
+        if any(_takes_the_hold(f) for f in chain):
+            continue
+        unheld.append(f"{rel}:{line} {text!r}")
+    assert unheld == [], unheld
+    names = {f"{rel}:{f.name}" for rel, chain, _t, _l in sites for f in chain}
+    assert "app.py:delete_file" in names and "app.py:upload_file" in names
+    ghosts = sorted(set(HELD_BY_CALLER) - names)
+    assert ghosts == [], f"named but sending nothing now: {ghosts}"

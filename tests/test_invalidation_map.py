@@ -46,7 +46,6 @@ NOT_YET_SUBSCRIBED = {
     "credentials": "credential profiles; 7.6 (Source of truth, Credentials)",
     "device_files": "the device page's file list; 7.3 (Device)",
     "device_state": "the device page; 7.3 (Device)",
-    "discovery": "discovery results are drawn by the caller; 7.4 (Fleet)",
     "files": "transferred files; 7.3 (Device)",
     "freshness": "the freshness signal; 7.6 (Source of truth)",
     "goldens": "the golden panel; 7.5 (Versions)",
@@ -66,7 +65,7 @@ NOT_YET_SUBSCRIBED = {
     "topology": "the topology layout is drawn by its own editor",
     "variables": "the CSV-era variable store; cut in 7.8",
 }
-NOT_YET_CEILING = 29
+NOT_YET_CEILING = 28  # C102 retired "discovery" with its routes
 
 _SUB = re.compile(r"^\s*NMAS\.subscribe\(\s*'([a-z_]+)'\s*,\s*'(\w+)'\s*,\s*(\w+)", re.M)
 

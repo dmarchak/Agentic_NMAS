@@ -107,23 +107,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Add loading indicator to add device form
-  const addDeviceForm = document.getElementById('addDeviceForm');
-  const addDeviceBtn = document.getElementById('addDeviceBtn');
-
-  if (addDeviceForm && addDeviceBtn) {
-    addDeviceForm.addEventListener('submit', function() {
-      const btnText = addDeviceBtn.querySelector('.btn-text');
-      const spinner = addDeviceBtn.querySelector('.spinner-border');
-
-      if (btnText && spinner) {
-        btnText.textContent = 'Connecting...';
-        spinner.classList.remove('d-none');
-        addDeviceBtn.disabled = true;
-      }
-    });
-  }
-
   // Device search/filter functionality.
   //
   // DELEGATED, and every lookup LIVE (Stage 7.0). The device list's rows,

@@ -126,7 +126,6 @@
       <th>Hostname</th>
       <th>IP Address</th>
       <th>Actions</th>
-      <th>Delete</th>
     </tr>
   </thead>
   <tbody id="deviceTableBody">
@@ -169,14 +168,6 @@
                   title="Every golden commit for this device"
                   onclick="nsotAction('showGoldenHistory', '{{ d['hostname'] }}')">Golden history</button>
         </div>
-      </td>
-      <td>
-        <form method="post" action="{{ url_for('delete_device', ip=d['ip']) }}">
-          <button class="btn btn-sm btn-danger"
-                  onclick="return confirm(`Are you sure you want to delete {{ d['hostname'] }} ({{ d['ip'] }})?`);">
-            Delete
-          </button>
-        </form>
       </td>
     </tr>
     {% endfor %}

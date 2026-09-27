@@ -5146,6 +5146,18 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   distinction as a golden (what IS) and intent (what SHOULD BE). The
   temptation recurs whenever a record already has the property a new case
   wants, such as deletability or trust.
+- **A check that accepts a MENTION instead of a USE passes the moment the
+  use is removed** (C101's writer scan, 2026-09-27). It first accepted any
+  function naming `device_ops`; a control that removed `delete_file`'s hold
+  still passed, because the import line survived the mutation. It now
+  requires a CALL that takes the lock. Same family as the checker that had
+  to learn a use from a mention, found only because the control was run.
+- **A survey by method name misses a write sent as a command string.**
+  C101 listed writers by `send_config_set` and `save_config`; four more
+  (upload, delete and download a file, save to startup) sent `copy`,
+  `delete` and `write memory` through `send_command_timing`. The scan that
+  found them parses every command string the program sends and asks the
+  read-only allowlist about each; it is a test now.
 - **A concurrency test that HANGS rather than fails reports nothing; the
   hard timeout is what turns it back into a measurement** (the operator,
   2026-09-27). C98's lock first deadlocked on a device another process held,

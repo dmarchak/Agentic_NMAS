@@ -12,9 +12,7 @@ function _invEsc(s) {
 
 /* Controls that edit device identity. Meaningless on a NetBox-sourced list. */
 const _IDENTITY_CONTROLS = [
-  {sel: '#addDeviceBtn',            label: 'Add Device'},
   {sel: '#refreshHostnamesBtn',     label: 'Refresh Hostnames'},
-  {sel: '[data-bs-target="#discoverSubnetModal"]', label: 'Discover Subnet'},
 ];
 
 function applyInventorySourceUI(status) {
@@ -40,9 +38,6 @@ function applyInventorySourceUI(status) {
     el.classList.toggle('disabled', isNetbox);
     if (isNetbox) el.setAttribute('title', 'Edit in NetBox');
   });
-
-  const form = document.getElementById('addDeviceForm');
-  if (form) form.classList.toggle('opacity-50', isNetbox);
 }
 
 function renderInventoryBanner(status, staleDevices) {

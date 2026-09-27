@@ -123,40 +123,26 @@ class TestTheAssistantCanNeverMint:
         assert "Onboard it first" in out["error"]
 
 
-class TestAddDeviceMintsAtAddTime:
-    """Adding a device IS onboarding, so the identity is created there.
+class TestAddDeviceIsGone:
+    """Add Device minted an identity for a device the tool had never reached:
+    a CSV row and a manifest entry, with no intent, golden, rotated
+    credential or NetBox record. Its sibling, Discover-then-Add, wrote rows
+    with NO identity (C25). Both were removed (C102, decided 2026-09-27):
+    onboarding creates identity, and nothing else does."""
 
-    It used to be created by whichever save_golden ran first — usually an
-    unrelated Save All — so "when does this device get an identity" had no
-    answer anybody could point at.
-    """
+    def test_neither_route_exists(self):
+        import app as A
 
-    def test_it_calls_adopt_identity(self):
-        source = _source("app.py")
-        tree = ast.parse(source)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "add_device":
-                assert "adopt_identity" in ast.dump(node)
-                break
-        else:
-            raise AssertionError("no add_device route")
+        rules = {r.rule for r in A.app.url_map.iter_rules()}
+        assert not {"/add", "/add_discovered_devices", "/discover_subnet"} & rules
 
-    def test_it_resolves_before_minting(self):
-        """An existing device re-added must not get a second identity."""
-        source = _source("app.py")
-        tree = ast.parse(source)
-        add = next(n for n in ast.walk(tree)
-                   if isinstance(n, ast.FunctionDef) and n.name == "add_device")
-        dumped = ast.dump(add)
-        assert "find_by_name" in dumped and "find_by_ip" in dumped, (
-            "minting without looking first creates duplicates for a device "
-            "that is already known")
-
-    def test_it_records_the_identity_on_the_csv_row(self):
-        add = next(n for n in ast.walk(ast.parse(_source("app.py")))
-                   if isinstance(n, ast.FunctionDef) and n.name == "add_device")
-        assert "device_uid" in ast.dump(add), (
-            "an identity nobody records is minted again next time")
+    def test_no_view_mints_an_identity(self):
+        """The anchor keeps the scan honest: onboarding's plan still mints."""
+        tree = ast.parse(_source("app.py"))
+        minting = [n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+                   and "adopt_identity" in ast.dump(n)]
+        assert minting == [], minting
+        assert "adopt_identity" in _source("modules/nsot/onboard.py")
 
 
 class TestTheRefusalSaysWhereIdentitiesAreCreated:

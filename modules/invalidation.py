@@ -75,7 +75,6 @@ VOCABULARY = {
     "monitoring": "the SNMP and NetFlow collectors",
     "topology": "the topology layout",
     "variables": "the CSV-era variable store and compliance policy",
-    "discovery": "subnet discovery results",
     "bulk_ops": "bulk operation records",
     "history": "the legacy config_git history",
 }
@@ -85,9 +84,6 @@ _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's
 #: endpoint -> keys, or Nothing(reason).
 DECLARED = {
     # Inventory and lists.
-    "add_device": ("inventory",),
-    "add_discovered_devices": ("inventory",),
-    "delete_device": ("inventory",),
     "reorder_devices": ("inventory",),
     "refresh_hostnames": ("inventory",),
     "inventory.refresh": ("inventory",),
@@ -199,7 +195,6 @@ DECLARED = {
     "list_variables_delete": ("variables",),
     "list_variables_discover": ("variables",),
     "list_compliance_policy_update": ("variables",),
-    "discover_subnet": ("discovery",),
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),
