@@ -262,6 +262,12 @@ def install(app) -> None:
         # for 7.0 (3); a read-only endpoint could not show it).
         if request.method not in MUTATING_METHODS:
             return response
+        # An identity refusal is made by the gate BEFORE any view runs, so
+        # nothing can have changed, and a refusal announcing an invalidation
+        # is a claim about a write that did not happen (found by the payload
+        # check, whose fixture was refused and carried `invalidates`).
+        if response.status_code in (401, 403):
+            return response
         keys = keys_for(request.endpoint or "")
         if not keys:
             return response

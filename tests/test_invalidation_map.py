@@ -174,6 +174,17 @@ class TestTheResponseCarriesIt:
                            json={"positions": {"r1": {"x": 1}}}).get_json()
         assert body == {"ok": True, "saved": 1, "invalidates": ["topology"]}
 
+    @pytest.mark.real_identity
+    def test_an_identity_refusal_carries_no_header(self, client):
+        """The gate refuses before any view runs, so nothing changed, and a
+        refusal announcing an invalidation claims a write that did not
+        happen (found when the payload check's fixture was refused and its
+        refusal carried `invalidates`)."""
+        r = client.post("/deploy/apply", json={})
+        assert r.status_code == 403
+        assert I.HEADER not in r.headers
+        assert "invalidates" not in (r.get_json() or {})
+
     def test_a_nothing_route_carries_no_header(self, client, monkeypatch):
         import routes.templatize as rt
 
