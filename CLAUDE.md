@@ -1574,6 +1574,19 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
     planted. The same move as drift enumerating the inventory rather than
     the golden store.
 
+  - **"The tool knows every change by construction"** (8.7, the
+    operator's own counter-argument, 2026-09-27): changes made
+    THROUGH the tool standing in for changes made TO the device. A gate
+    controls the tool's actions, not the network's. Measured writers
+    outside the pipeline on the live fleet:
+    - RESTCONF on five routers and NETCONF on six devices;
+    - the console and any SSH client holding the credential;
+    - the device itself (regenerated certificates);
+    - a redeploy from a stale startup file.
+
+    The constraint-shaped fix is to make the DEVICE the witness (it logs
+    every change, whatever the path), not to enumerate the paths.
+
   **The corollary (the operator's): a proxy population is a dependency on
   something staying true that nobody is watching.** Every member was correct
   WHEN WRITTEN and stopped being correct when something else moved:
@@ -4816,7 +4829,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **39 open at 2026-09-27**, counted from the rows: 34 recorded only in
+present when each was recorded. **40 open at 2026-09-27**, counted from the rows: 35 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
@@ -4887,13 +4900,29 @@ Loki outage up to 536 s apart.
   all six of its conditions. The alert-triggered drift check (now in 8.6)
   makes a revert arrive in seconds, during the repair that caused the alert.
   `reassert` is named, with `Actor-Verified: delegated`, so a grant cannot
-  arrive under another name. It is never granted on the alert path, and
-  recent human activity withholds even the proposal.
+  arrive under another name. The answer is **"not yet", with a checklist**
+  (the device logs its own config changes to the tool, the tool's account
+  is used by the pipeline alone, every other writer is attributable, deploy
+  receipts exist), so a later review checks the list instead of re-arguing
+  it. Recent human activity withholds even the proposal.
 - **8.8, a second reading before confirm: ADVISORY.** It is cheap and never
   blocks. Its states can never draw green (`warns`, `no_warnings: not a
   clearance`, `not_reviewed`). Its warnings cite program lines and carry no
   remedy, which is the structural answer to injection through device text.
   The deterministic management-path flag is built first.
+  Its warnings, and its CLEARANCES, are triage context (8.6): "reviewed,
+  no warnings, then broke" is surfaced preferentially, and a quiet deploy
+  counts only as far as something was watching.
+- **C60, the deploy record, now gates 8.6, 8.7 and 8.8.** It is a receipt
+  at apply (proposed for 7.1) plus a follow-up window that closes the row
+  and states WHAT WAS WATCHING (a job behind 7.1). No model is involved.
+  Handing that history to the model is a later decision, and the test for
+  it is whether a person learns anything from the last fifty rows.
+- **The terminal: a split is PROPOSED** (NSOT_FEATURE_AUDIT 3a): a
+  read-only lens and config mode cut, in 7.3, with the console runbook as
+  break-glass. The same allowlist goes on `/run_command` and
+  `bulk_execute`. It first needs C61 fixed: the allowlist checks only the
+  first word, so `| redirect` writes.
 Stage 6 does not close first. 6.1, a live exposure, is fixed on its own
 schedule, and 6.2 comes before Stage 8. NSOT_STAGE7_PLAN.md's numbering
 holds.

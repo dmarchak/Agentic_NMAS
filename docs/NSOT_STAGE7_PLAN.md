@@ -145,6 +145,10 @@ has five sections:
    - **the terminal, LAST**: labelled as the break-glass path whose use is
      recorded, and a change made there is drift until captured into intent
      (decision 3).
+     **PROPOSED 2026-09-27 (NSOT_FEATURE_AUDIT 3a), awaiting the operator:**
+     replaced by a read-only LENS in the diagnosis area, line mode,
+     allowlisted (C61 fixed first), masked, and not break-glass. Config mode
+     is cut, and the break-glass path is the console runbook.
 
 ### 1d. Versions
 

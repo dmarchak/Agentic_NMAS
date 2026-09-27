@@ -3980,6 +3980,52 @@ than scheduled.
   action, just slower, and the person most likely to click it at 3am is the
   one doing the repair.
 
+**What was deployed, and what the second reading said about it, is triage
+context** (the operator, 2026-09-27; 8.8 is the other half). When an
+instance lands, triage reads the deploy receipts (C60) for the device and
+its neighbours in a window before the onset (proposed: two hours). For each
+receipt it reads 8.8's recorded review of that program's hash. The report
+then starts from what was pushed, not from a diff:
+- **"Warned about, confirmed anyway, and it broke":** the warning, the
+  cited lines, who confirmed and when.
+- **"Reviewed, NO warnings, and it broke":** stated just as plainly, with
+  the same prominence. This is evidence about the REVIEWER, not only about
+  the change. A report that mentions the review only when it warned would
+  let the record flatter the gate: it could confirm its own value and
+  never disconfirm it.
+- **"Not reviewed":** the review did not run, with its reason.
+- **No receipt in the window:** stated, so "nothing was deployed" is
+  never inferred from a missing record.
+
+The join is on the COMMAND HASH, which is why it needs C60: without a
+durable record of what a deploy sent, the incident has nothing to find its
+way back to. It needs no authority; it is reads.
+
+**The record first, the model reading it later, as separate decisions**
+(the operator's split, 2026-09-27). The deploy record (C60: a receipt at
+apply, closed by a follow-up window that states what was watching) is
+deterministic, and triage uses it from the start as above: what was pushed
+before this broke. **Handing that HISTORY to the model as context is a
+separate, later decision**, for three reasons:
+- **Small sample.** Nine devices and a few deploys a week. "The network
+  was fine after X" is mostly evidence that nothing was going to break
+  anyway. A model given that history will find patterns whether or not
+  they are there, and a person will act on them.
+- **Absence of alerts is weak evidence.** "Deployed X, nothing alerted"
+  means something only if the alerting could have seen the failure. Today
+  that is device liveness (the heartbeat) and the pipeline's verify. A
+  deploy that degrades something unwatched looks identical to a clean one.
+  So each closed row says what was WATCHING, and a quiet row is "quiet,
+  watched by: …", never "fine".
+- **It must be able to disconfirm.** A history that accumulates only
+  "reviewed, cleared, quiet" flatters the gate. Triage surfaces
+  "reviewed, cleared, then broke" PREFERENTIALLY: it is the row that
+  teaches something.
+
+**The test for adding it: a person reads the last fifty rows first.** If a
+person cannot learn anything from them, neither can the model, and the
+context is not added.
+
 **The report states what it could NOT establish, always.** Beside what it
 READ and what it CONCLUDES (below), a third part is required: what it could
 not establish. It is never omitted and never empty without saying so. The
@@ -4097,8 +4143,9 @@ The *proposed* numbers (hold-down, cap) are starting points, to be set from
 8.4's first real runs, the way the heartbeat windows came from measured
 arrivals. Not built.
 
-**8.7 The agent closing drift. DECIDED 2026-09-27: PROPOSE-ONLY. The
-second class is named and not granted.** (The operator's proposal, argued
+**8.7 The agent closing drift. DECIDED 2026-09-27: PROPOSE-ONLY. NOT YET,
+rather than never: the second class is named, not granted, and the
+conditions that would change that are listed below.** (The operator's proposal, argued
 rather than accepted. Design only.)
 
 **The proposal, restated correctly by the operator:** *the agent may close a
@@ -4207,7 +4254,8 @@ not survive it** (the operator's refinement, argued 2026-09-27).
   symptoms of other defects (above). The alert path adds a correlation that
   works against it: the trigger fires most often when a person is the cause.
   So:
-  - **`reassert` is never granted on the alert path**, whatever else holds;
+  - **`reassert` is not granted on the alert path until the conditions
+    below hold** (positive attribution is what would make it safe there);
   - on the schedule path, it stays ungranted, with the preconditions above
     as what any future grant would have to meet, **plus no human activity
     found within the window** (8.6's three sources), since the scheduled
@@ -4220,6 +4268,103 @@ not survive it** (the operator's refinement, argued 2026-09-27).
   triage input there is. It sharpens the argument against the restoration
   rather than settling it by fiat: the same speed that makes the report
   better makes the revert worse.
+
+**The premise, argued (the operator's pushback, 2026-09-27): "once every
+change goes through the pipeline, the tool knows every change by
+construction".** Recorded so the answer can be revisited with evidence
+rather than re-fought.
+
+1. **The emergency case does not disappear, because the break-glass path is
+   outside the pipeline BY DESIGN.** A person touches a device at 3am for
+   reasons that are not deployment errors: a node that restarted, a link or
+   peer that failed, a config that was right when deployed and is wrong now
+   because something else moved. The fastest action is the device's CLI.
+   Once the terminal is read-only, that path is the console and the
+   break-glass record, and the break-glass path is deliberately
+   independent of the tool. A path the tool can see is not break-glass. So
+   the changes the tool cannot explain are concentrated exactly in the
+   emergencies, which is where a revert does the most harm. Not
+   hypothetical here:
+   - every golden before r6 was a configuration typed by hand;
+   - s4's timer was removed by hand for P.1;
+   - the fleet has been redeployed twice from startup files (2026-08-30 and
+     2026-09-22).
+2. **The timing gap survives, and part of it can be seen.** A person who has
+   decided on a pipeline fix and not yet deployed it leaves traces the tool
+   holds:
+   - an intent commit whose plan is not empty ("intent moved and has not
+     landed");
+   - a plan previewed for the device.
+
+   Both belong in 8.6's human-activity input, beside `show users`, the
+   terminal audit and `CONFIG_I`. The second is not recorded today (a plan
+   is a POST that stores nothing), and recording it is cheap. What no
+   signal covers: the person who has decided and not yet touched anything,
+   and the person working around the tool through the console. **A
+   restoration's speed and its danger are one property**: its value is
+   acting inside the window where a person may be responding, and that
+   window is exactly where it must not act.
+3. **Is "the gates prevent it" the shape this project keeps removing? Yes.**
+   A gate controls the TOOL's actions, and the claim needs a property of
+   the NETWORK: every writer of a device's config is the tool. That is a
+   proxy population ("changes made through the tool" standing in for
+   "changes made to the device"). Measured on the live goldens, 2026-09-27,
+   the writers that are not the pipeline:
+   - **RESTCONF** is enabled on r1-r4 and r6, and **NETCONF-YANG** on those
+     five and s1. Both accept config writes from any client holding the
+     credential, and yang-push already rides NETCONF.
+   - The console, and SSH from anywhere holding the credential (which the
+     break-glass record exists to hand out).
+   - The device itself: regenerated self-signed certificates (measured,
+     2026-09-22), and any EEM applet that runs CLI.
+   - A redeploy from a stale startup file (what the freshness gate exists
+     for).
+   - Until the split, the terminal and the free-text command runners (see
+     the terminal decision, NSOT_FEATURE_AUDIT 3a).
+
+   "If it happens, that is a defect in the gates" is true and does not
+   help. Authority conditioned on a property has to CHECK the property at
+   the moment it acts, not assume it from the design: *a gate keyed on
+   something that moves*. The constraint-shaped fix is not to enumerate the
+   writers. It is to make the DEVICE the witness, because the device sees
+   every change whatever the path.
+
+**So 8.7's answer is "no, NOT YET", and here is what would change it.** Each
+condition is checkable, and a future review reads this list instead of
+re-arguing the class:
+- [ ] **The device records every config change itself, and it reaches the
+      tool.** For example `archive` / `log config` with `notify syslog`, so
+      each command arrives with its user and line. No device has it today
+      (measured). Its arrival from every device is measured with a floor,
+      as the heartbeat is.
+- [ ] **The tool's device account is used by the pipeline alone.** People
+      and break-glass use other accounts (6.2's per-consumer accounts), so
+      a change by the tool's account outside a deploy is itself a defect,
+      and a person's is attributable to that person.
+- [ ] **Every config writer on the device is either the tool's account or
+      logged by the device.** RESTCONF and NETCONF are disabled where
+      unused, or their writes are attributable. SNMP RW stays absent
+      (measured absent 2026-09-27).
+- [ ] **Deploy receipts (C60)**: the confirmed program, its hash and its
+      actor, recorded durably.
+- [ ] **Human activity is recorded as an input:** plan previews, intent not
+      yet landed, the lens's sessions, `show users`.
+- [ ] **Free-text device inputs are allowlisted:** the terminal, the
+      command runners, and the agent's tools, pipes included (C61).
+- [ ] **The class's own limits:**
+  - confirmed against the same intent commit and template closure;
+  - an age backstop;
+  - once per device per line set per window, a recurrence being a finding;
+  - never while any human-activity signal is present;
+  - never a negation.
+
+**What they buy, stated so the list is not read as a formality.** With the
+first three, a loss becomes POSITIVELY attributable. Every human change
+carries a user, so a line that vanished with no logged command is
+non-human (a stale boot, the device's own doing). Only then is "restore
+what no person removed" a claim the tool can check. Even then, the alert
+path needs the activity conditions, because a person may be seconds from
+typing.
 
 **Decided:**
 1. **Propose-only.** The agent does everything but confirm. On drift from
@@ -4387,17 +4532,57 @@ the prompt's instructions:
 - Secrets are masked at the provider boundary as for every model call
   (`redact.py`), so nothing sent carries one.
 
-**Recorded, so it can be measured.** Every review is appended to a record,
-`0600`, masked, holding:
+**Measurable from the first review, and able to DISCONFIRM itself** (the
+operator, 2026-09-27). An advisory feature usually cannot be evaluated.
+This one can, if the recording is built so the question is answerable
+before anyone asks it:
+- **Every review is one row, joined to three things, deterministically:**
+  - the receipt of the program it reviewed (C60), by command hash;
+  - that deploy's outcome (verify failed, rolled back, or completed);
+  - any 8.6 incident on the device or a neighbour with its onset within a
+    window after the deploy.
+
+  "Broke" is decided by that join, in code, never by a model's opinion of
+  its own review.
+- **A quiet deploy counts only as far as something was watching.** The
+  follow-up window records the watchers. A "no warnings, quiet" row on a
+  program that touched sections no watcher covers is reported as
+  unobserved, not as a correct clearance. Otherwise every unmonitored
+  failure scores as the reviewer being right.
+- **Four outcomes, all first-class:**
+  - **warned, and it broke:** a catch;
+  - **warned, and nothing broke:** the false-warning rate, which is the
+    cost;
+  - **no warnings, and it broke:** a miss, which is the disconfirming
+    evidence;
+  - **not reviewed:** reported separately, so an unavailable reviewer
+    cannot count as a quiet one.
+- **The survivorship trap is recorded too.** A warning a person heeded
+  stops the deploy, and a deploy that was never sent cannot break. So
+  "warned, NOT confirmed" is its own row with the plan's hash. Without it,
+  the most effective warnings are invisible in the numbers, and the gate
+  looks worst exactly when it works best. It is counted as "heeded", never
+  as "caught", since whether it would have broken is unknown.
+- **The decision rule is written before the data.** Decided now, reviewed
+  after three months of real deploys:
+  - keep the review if it has at least one catch, or heeded warning, that
+    the operator judges real;
+  - and if its false warnings per deploy are low enough that its warnings
+    are still read;
+  - otherwise drop it.
+
+  Deciding the threshold after seeing the numbers is how a feature is
+  kept on sentiment. The counts are one report with denominators
+  (`nmas-review-report`, CLI first).
+
+**What a review row holds.** It is `0600` and masked:
 - the command hash and capture hash;
 - the model and prompt version;
 - the state, the warnings with their cited indices, and the latency;
-- whether the person then confirmed.
+- whether the person then confirmed, and the join keys above.
 
-It is joined to the deploy's outcome (verify failed, rolled back). Over time
-that answers the only question worth asking: did it warn on what later
-broke, and how often did it warn on what did not? The join needs the
-deploy's own record to name its program (C60).
+It is written at review time, and completed when the deploy's receipt
+lands or the plan is abandoned.
 
 **Not built.** The component leaves room for an advisory state in the gates
 part (7.1). The deterministic management-path flag can land with or before

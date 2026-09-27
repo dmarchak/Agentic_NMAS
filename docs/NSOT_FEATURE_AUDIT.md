@@ -320,6 +320,116 @@ and when (P.3 step 7). The page says two things: this is the break-glass path
 and its use is recorded; and a change made here is drift until it is captured
 into intent.
 
+### 3a. The terminal, revisited 2026-09-27: SPLIT IT. Proposed; the operator decides
+
+**The operator's position:** as built, the terminal makes every other gate
+optional. A gate you can walk around is not a gate, and this is the
+judgement P.3 already made about `/configure/apply`: its warning was
+answered by cutting the push, not by better wording. So enforce it in code:
+a read-only allowlist (show, ping, traceroute, dir, more), refused before
+anything reaches the device. The page stops being break-glass and becomes a
+LENS. Measured answers to the operator's four questions:
+
+**1. What task loses its only home? Not nothing, and both losses are named
+gaps rather than reasons to keep config mode.**
+- **Removing configuration from a device.** NSOT_TASKS C: "Remove
+  configuration through intent: **none**" (Mode B). C12: P.1's block can be
+  put on and not taken off. r5's exit. Today the terminal is its only
+  in-tool home, and after the split the console is. That is a gap in the
+  PIPELINE (Mode B), and typing `no …` in a tab is drift by construction:
+  exactly what the operator objects to.
+- **Operational exec actions that change state but not config**:
+  - `clear ip bgp`, `clear ip ospf process`, `clear counters`, `clear arp`;
+  - `debug`.
+
+  The task list has no row for them at all. They are real troubleshooting
+  moves. After the split they would need named, gated actions (as reload
+  has), or the console.
+- **Nothing else.** Every other row has a home outside the terminal.
+
+**2. The break-glass path, stated plainly, is the CONSOLE plus the
+break-glass record.**
+- **The console, per platform:**
+  - containerlab: `docker exec -it <node> telnet localhost 5000`,
+    documented in eight places;
+  - Proxmox: `qm terminal <vmid>`;
+  - hardware: its serial port.
+
+  It reaches a device when SSH or its address is down, which the terminal
+  never could.
+- **The credential:** `nmas-breakglass`.
+- **After a break-glass change:** it is drift, and it is captured into
+  intent (extract, review, commit).
+
+The terminal stops claiming a role it could not fill. The page's
+break-glass paragraph moves to a runbook section, *"When the tool cannot
+reach a device"*.
+
+**3. Does anything depend on the terminal configuring? No.** Measured:
+- No runbook, recovery flow or queue path sends a person to type config in
+  it.
+- The recovery texts (onboarding's verification causes, rotation's
+  out-of-band hint) name the console.
+- The only references are the page's own warning and Stage 7's plan text.
+
+**But the terminal is not the last free-text path to a device**, and the
+operator's rule applies to two more inputs:
+- **`/run_command`**, the device page's command form: gated `confirm`, and
+  it takes ANY exec-mode command.
+- **`bulk_execute`**: enable mode, many devices, so `copy`, `delete`,
+  `erase` and `reload`.
+
+That is the proxy population named for the agent's tools ("not config
+mode" standing in for "cannot change anything"), still live on the
+person-facing inputs. Measured cost of allowlisting all four:
+- the device page's file, save and backup actions use their own routes
+  (`delete_file`, `upload_file`, `save_config`, `save_to_startup`,
+  `backup_config`);
+- all five saved quick actions on the host are `show`;
+- reload, save and file moves keep their own named, gated routes.
+
+So one shared allowlist function for the agent tools, the lens,
+`/run_command` and `bulk_execute` costs no saved action and no named task.
+Whether a `configure terminal` sent through `/run_command` leaves the pooled
+session in config mode is unmeasured, and the allowlist makes it moot.
+**The allowlist itself has a hole first (C61)**: it checks only the first
+word, and `show … | redirect tftp://…` writes a device's config to another
+host. It is fixed before anything else adopts the function.
+
+**4. Build cost: not the same session, and that is an improvement.** The
+terminal streams keystrokes into an interactive shell (`invoke_shell`). A
+character stream cannot be allowlisted by command without re-implementing
+the CLI's line editor, abbreviations, `?` and tab completion. So the lens
+is LINE MODE: the browser sends a whole line; the server checks it with the
+shared function and runs it with `run_device_command` on the pooled
+connection (the transport `/run_command` already uses); the output comes
+back.
+- **It loses:**
+  - tab completion and inline `?`;
+  - interactive, argument-less `ping` and `traceroute`, which are refused,
+    since their prompts would arrive as refused lines.
+- **It removes the hand-rolled session and `privilege_step`**, the whole
+  surface of B13. Netmiko enables from the prompt, as everywhere else.
+- **Its output is MASKED** through `redact_text` like every other screen,
+  and revealing it is the person-gated reveal. "Unmasked by design" was a
+  property of a raw terminal, not of a read. So the lens can sit at
+  viewer level, where the terminal needed the `break_glass` grant, and
+  `break_glass` stays a grant for the console runbook.
+
+**The audit stays** (the operator: it is 8.6's human-activity input). Open,
+close and refusal rows keep the actor, device, peer and time. The lens adds
+the LINES, because only reads are accepted and a read carries no secret. A
+refused line records its verb only, since a refused
+`username x secret Y` must not become the record of the secret.
+
+**Stage 7:** 7.3 draws the lens in the device page's diagnosis area. It is
+not last and not labelled break-glass: it is a lens. The operator's
+condition was to do it inside 7.3 if (1) and (3) came back empty. (3) did.
+(1) returned two gaps, neither of which is config mode's to fill: Mode B,
+and named operational actions. **Recommendation: proceed in 7.3.** Record
+the `clear`/`debug` question as its own decision, and fix C61 first,
+because it is live in the agent's code today.
+
 ### 4. Topology
 
 **Per-device neighbours on the device page only. No fleet view now.**

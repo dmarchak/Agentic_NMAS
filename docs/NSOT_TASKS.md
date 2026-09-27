@@ -70,7 +70,7 @@ the task.
 |---|---|---|
 | Open the device's page | GUI (only while it is online) | |
 | Run a show command or a saved quick action | GUI | |
-| Open a terminal | GUI | UNDECIDED: keep gated and labelled |
+| Open a terminal | GUI | PROPOSED 2026-09-27: split: a read-only LENS, config mode cut (NSOT_FEATURE_AUDIT 3a) |
 | See its golden history, a version, or a diff | GUI (masked); reveal is curl | |
 | See its committed intent | GUI | |
 | Preview its template render and coverage | GUI | |
@@ -92,7 +92,8 @@ the task.
 | **Authorise a dangerous line** | **curl** | undeployable from the GUI (D4) |
 | **Retry after a rollback** | **curl** | |
 | **Revert one intent commit** | **curl** | |
-| Remove configuration through intent | **none** | Mode B |
+| Remove configuration through intent | **none** | Mode B. Today the terminal is its only in-tool home, and the console after the split (NSOT_FEATURE_AUDIT 3a) |
+| **Clear a protocol process, counters or ARP; debug** | GUI (the terminal, `/run_command`) | no row until 2026-09-27; state-changing exec actions with no named home once free text is allowlisted (3a) |
 | Configure a feature from a form (about 90 types) | GUI (a direct push) | UNDECIDED: absorb into intent authoring |
 | Run a command on many devices | GUI | enable mode KEEP; config mode CUT |
 | Reload devices | GUI | KEEP, gated |
