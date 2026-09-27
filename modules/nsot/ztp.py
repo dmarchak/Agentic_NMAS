@@ -645,6 +645,90 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
     return out
 
 
+#: The stages a pending ZTP device can be in, in order. Each is DERIVED from
+#: the facts below, never stored, so no stage can be claimed that its own
+#: source does not show (P6_ZTP.md section 2).
+STAGES = ("reservation_missing", "reserved_not_leased", "leased_not_fetched",
+          "fetched_not_reached")
+
+
+def progress(entry: dict, *, kea=None, fetches=None) -> dict:
+    """Where a pending ZTP device has got to, each fact from its own source:
+
+    - the reservation, read from Kea's RUNNING config (what the device will
+      be offered), not from the fragment (what the tool meant to write);
+    - the lease, from Kea's lease table;
+    - the fetch, from the responder's own audit rows.
+
+    "Reached" needs no fact here: a pending device has not been reached, and
+    phase 2's verify is what ends pending.
+    """
+    mac, want = entry.get("mgmt_mac", ""), entry.get("reserved_address", "")
+    name = entry.get("name", "")
+    kea = kea or _kea()
+    out = {"reservation": {}, "lease": {}, "fetch": {}, "stage": "unknown", "summary": ""}
+
+    r = kea.reservation_for(mac)
+    if r.get("state") == "reserved":
+        out["reservation"] = ({"state": "written", "address": r.get("address")}
+                              if r.get("address") == want else
+                              {"state": "differs", "address": r.get("address")})
+    elif r.get("state") == "not_reserved":
+        out["reservation"] = {"state": "missing"}
+    else:
+        out["reservation"] = {"state": "unknown", "error": r.get("error", "")}
+
+    lease = kea.lease_for(mac)
+    out["lease"] = ({"state": "leased", "address": lease.get("address")}
+                    if lease.get("state") == "found" else
+                    {"state": "none"} if lease.get("state") == "none" else
+                    {"state": "unknown", "error": lease.get("error", "")})
+
+    if fetches is None:
+        from modules import reveal_audit
+        fetches = reveal_audit.entries(limit=2000)
+    rows = [f for f in fetches if f.get("target") == name
+            and str(f.get("actor", "")).startswith("ztp:")]
+    served = [f for f in rows if f.get("what") == "bootstrap_config"]
+    refused = [f for f in rows if f.get("what") == "bootstrap_config_refused"]
+    if served:
+        f = served[0]
+        out["fetch"] = {"state": "fetched", "at": f.get("at"), "peer": f.get("peer"),
+                        "sha256": f.get("sha256", "")}
+    elif refused:
+        f = refused[0]
+        out["fetch"] = {"state": "refused", "at": f.get("at"), "peer": f.get("peer"),
+                        "reason": f.get("detail", "")}
+    else:
+        out["fetch"] = {"state": "none"}
+
+    res, ls, fe = out["reservation"]["state"], out["lease"]["state"], out["fetch"]["state"]
+    if res == "unknown" or ls == "unknown":
+        out["summary"] = ("Kea could not be asked: "
+                          + (out["reservation"].get("error") or out["lease"].get("error") or ""))
+    elif res != "written":
+        out["stage"] = "reservation_missing"
+        out["summary"] = (f"the Kea reservation {mac} -> {want} is NOT in Kea"
+                          + (f" (Kea reserves it -> {out['reservation']['address']})"
+                             if res == "differs" else "")
+                          + ". Abandon and re-create")
+    elif ls == "none":
+        out["stage"] = "reserved_not_leased"
+        out["summary"] = (f"reserved {mac} -> {want}; no lease yet: the device has "
+                          "not asked, or has not booted")
+    elif fe != "fetched":
+        out["stage"] = "leased_not_fetched"
+        out["summary"] = (f"leased {out['lease']['address']}; it has not fetched its "
+                          "config" + (f" (the responder REFUSED it at {out['fetch']['at']}: "
+                                      f"{out['fetch']['reason']})" if fe == "refused" else
+                                      " (the responder has recorded nothing for it)"))
+    else:
+        out["stage"] = "fetched_not_reached"
+        out["summary"] = (f"fetched its config at {out['fetch']['at']} (sha256 "
+                          f"{out['fetch']['sha256'][:12]}); Verify reaches it")
+    return out
+
+
 def _refuse_all(out: dict, why: str) -> dict:
     out["error"] = why
     for mac, o in out["outcomes"].items():

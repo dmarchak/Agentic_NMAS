@@ -53,7 +53,13 @@ function pendingBannerHtml(data) {
        with no address from one whose address is simply not known YET, and for
        a DHCP device the second is the normal state until it boots. So the row
        says what is expected and from where, rather than leaving a blank. */
-    const where = r.address_source === 'dhcp'
+    /* P.6: A ZTP ROW SAYS WHERE THE DEVICE HAS GOT TO, from the four sources
+       the server read (reservation, lease, fetch; reached ends pending). A
+       row with no progress says so rather than looking like a quiet one. */
+    const ztp = r.address_source === 'ztp'
+      ? `ZTP: ${esc((r.ztp && r.ztp.summary) || 'its progress was not reported')}`
+      : '';
+    const where = ztp ? ztp : r.address_source === 'dhcp'
       ? (r.reserved_address
           ? `awaiting DHCP (Kea reservation \u2192 ${esc(r.reserved_address)})`
           : `awaiting DHCP (reservation for ${esc(r.mgmt_mac || 'an unrecorded MAC')})`)

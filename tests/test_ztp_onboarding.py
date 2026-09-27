@@ -234,3 +234,146 @@ class TestTheSharedPaths:
                                     reach=lambda ip, *a, **k: reached.setdefault("ip", ip) and "bp-ztp-a#",
                                     interface="GigabitEthernet2", kea=kea)
         assert reached.get("ip") == ADDR, out
+
+
+# ── step 4: the pending row reports ZTP states from their own sources ──────
+
+class _ProgressKea:
+    def __init__(self, reservation="reserved", reserved_to=ADDR, lease="found"):
+        self.res, self.to, self.lease = reservation, reserved_to, lease
+
+    def reservation_for(self, mac):
+        return {"state": self.res, "address": self.to if self.res == "reserved" else "",
+                "error": "down" if self.res == "unknown" else ""}
+
+    def lease_for(self, mac):
+        return {"state": self.lease, "address": ADDR if self.lease == "found" else "",
+                "error": "down" if self.lease == "unknown" else ""}
+
+
+ENTRY = {"name": "bp-ztp-a", "mgmt_mac": MAC, "reserved_address": ADDR,
+         "address_source": "ztp"}
+SERVED = {"actor": f"ztp:{ADDR}", "what": "bootstrap_config", "target": "bp-ztp-a",
+          "at": "2026-09-27T02:00:00Z", "peer": ADDR, "sha256": "ab" * 32}
+REFUSED = {"actor": f"ztp:{ADDR}", "what": "bootstrap_config_refused", "target": "bp-ztp-a",
+           "at": "2026-09-27T01:59:00Z", "peer": ADDR, "detail": "asked for 'network-confg'"}
+
+
+class TestThePendingRow:
+    from modules.nsot import ztp as _z
+
+    @pytest.mark.parametrize("kea,fetches,stage", [
+        (_ProgressKea(reservation="not_reserved"), [], "reservation_missing"),
+        (_ProgressKea(reserved_to="192.0.2.77"), [], "reservation_missing"),
+        (_ProgressKea(lease="none"), [], "reserved_not_leased"),
+        (_ProgressKea(), [], "leased_not_fetched"),
+        (_ProgressKea(), [REFUSED], "leased_not_fetched"),
+        (_ProgressKea(), [SERVED, REFUSED], "fetched_not_reached"),
+    ])
+    def test_each_stage_is_derived_from_its_facts(self, kea, fetches, stage):
+        from modules.nsot import ztp
+        assert ztp.progress(ENTRY, kea=kea, fetches=fetches)["stage"] == stage
+
+    def test_a_different_reserved_address_is_named(self):
+        from modules.nsot import ztp
+        out = ztp.progress(ENTRY, kea=_ProgressKea(reserved_to="192.0.2.77"), fetches=[])
+        assert "192.0.2.77" in out["summary"]
+
+    def test_a_refused_fetch_is_said_with_its_reason(self):
+        from modules.nsot import ztp
+        out = ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[REFUSED])
+        assert "REFUSED" in out["summary"] and "network-confg" in out["summary"]
+
+    def test_the_fetch_names_its_time_and_hash(self):
+        from modules.nsot import ztp
+        out = ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[SERVED])
+        assert "2026-09-27T02:00:00Z" in out["summary"] and "abababababab" in out["summary"]
+
+    def test_another_devices_fetch_does_not_count(self):
+        from modules.nsot import ztp
+        other = dict(SERVED, target="bp-ztp-b")
+        assert ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[other])["stage"] == "leased_not_fetched"
+
+    @pytest.mark.parametrize("kea", [_ProgressKea(reservation="unknown"), _ProgressKea(lease="unknown")])
+    def test_kea_that_cannot_be_asked_is_unknown_not_a_stage(self, kea):
+        from modules.nsot import ztp
+        out = ztp.progress(ENTRY, kea=kea, fetches=[])
+        assert out["stage"] == "unknown" and "could not be asked" in out["summary"]
+
+
+class TestThePendingRoute:
+    def _get(self, monkeypatch, progress, tmp_path):
+        import app as nmas
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: str(tmp_path / name))
+        rows = [dict(ENTRY, age_seconds=10, state="in_flight", onboarded_at="x"),
+                {"name": "r7", "address_source": "static", "mgmt_ip": "192.0.2.7",
+                 "age_seconds": 10, "state": "in_flight", "onboarded_at": "x"}]
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: rows)
+        monkeypatch.setattr("modules.nsot.ztp.progress", progress)
+        r = nmas.app.test_client().get("/onboard/pending?list_name=probe")
+        return r.status_code, r.get_json()
+
+    def test_only_the_ztp_row_carries_progress(self, monkeypatch, tmp_path):
+        status, body = self._get(monkeypatch, lambda row: {"stage": "reserved_not_leased",
+                                                          "summary": "reserved"}, tmp_path)
+        assert status == 200 and body["ok"]
+        by = {r["name"]: r for r in body["pending"]}
+        assert by["bp-ztp-a"]["ztp"]["stage"] == "reserved_not_leased"
+        assert "ztp" not in by["r7"]
+
+    def test_a_progress_that_raised_is_carried_as_unknown(self, monkeypatch, tmp_path):
+        def boom(row):
+            raise OSError("Kea down")
+        status, body = self._get(monkeypatch, boom, tmp_path)
+        assert status == 200 and body["ok"], "one row's failure is not the list's"
+        row = [r for r in body["pending"] if r["name"] == "bp-ztp-a"][0]
+        assert row["ztp"]["stage"] == "unknown" and "Kea down" in row["ztp"]["summary"]
+
+
+from tests.test_onboard_phase2 import _banner, banner_js  # noqa: E402,F401
+
+
+class TestTheBannerDrawsIt:
+    def _data(self, ztp):
+        row = dict(ENTRY, age_seconds=10, state="in_flight", onboarded_at="x",
+                   credential_findable=True)
+        if ztp is not None:
+            row["ztp"] = ztp
+        return {"ok": True, "list": "probe", "pending": [row],
+                "counts": {"total": 1, "overdue": 0}}
+
+    def test_the_summary_is_drawn(self, banner_js):
+        html = _banner(banner_js, self._data({"stage": "fetched_not_reached",
+                                              "summary": "fetched its config at T"}))
+        assert "ZTP: fetched its config at T" in html
+
+    def test_a_row_with_no_progress_says_so(self, banner_js):
+        html = _banner(banner_js, self._data(None))
+        assert "its progress was not reported" in html
+
+
+class TestPhaseTwoIsUnchanged:
+    """Step 5: a ztp device is a dhcp device on every path phase 2 touches.
+    Every comparison that singles out "dhcp" alone in onboard.py is a
+    PLAN-TIME branch for the dhcp source itself, and is declared here. A new
+    one, anywhere else, would be a path ztp silently does not take."""
+
+    DECLARED = {"blocking_reasons", "address_claim", "build_plan"}
+
+    def test_every_dhcp_only_comparison_is_a_declared_plan_branch(self):
+        import ast
+
+        tree = ast.parse(open(onboard.__file__, encoding="utf-8").read())
+        found = set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Compare)
+                        and any(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops)
+                        and any(isinstance(c, ast.Constant) and c.value == "dhcp"
+                                for c in [node.left, *node.comparators])):
+                    found.add(fn.name)
+        assert found, "the scan found nothing; it can no longer see a dhcp comparison"
+        assert found == self.DECLARED, found

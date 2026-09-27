@@ -222,6 +222,19 @@ def pending():
                                            pending_devices)
 
         rows = pending_devices(_repo_for(list_name))
+        # P.6: a ZTP device's row says where it has got to, each fact from its
+        # own source. A failure to ask is carried as that, per row, never as
+        # a missing field that would render as "nothing to report".
+        ztp_rows = [r for r in rows if r.get("address_source") == "ztp"]
+        if ztp_rows:
+            from modules.nsot import ztp as _ztp
+
+            for r in ztp_rows:
+                try:
+                    r["ztp"] = _ztp.progress(r)
+                except Exception as exc:       # noqa: BLE001
+                    r["ztp"] = {"stage": "unknown",
+                                "summary": f"its progress could not be read: {exc}"}
         return jsonify({"ok": True, "list": list_name, "pending": rows,
                         "counts": {"total": len(rows),
                                    "overdue": sum(1 for r in rows
