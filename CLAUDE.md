@@ -116,6 +116,9 @@ tracked in git.
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
+- **[modules/outbound.py](modules/outbound.py)** — config text on its way out:
+  masked unless a person reveals it with `?reveal=1`, recorded. The golden
+  routes and the backup download call it (C56): one pattern, not two
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
@@ -983,6 +986,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 118, PHANTOM 18) compared exactly; anchors `commands`/`dangerous`/`attribution` on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
+| `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -1552,6 +1556,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
     run in exec mode (P.3 step 8, the operator's sixth). The fix is an
     ALLOWLIST (show, ping, traceroute, dir, more), which a command added later
     cannot outgrow, where "not config mode" already had been.
+  - **B11's "no GET returns a secret" planted secrets only in the stores it
+    knew about** (C55, C56; the operator's, 2026-09-27, and the sharpest:
+    the proxy was INSIDE the check built to catch this class of leak).
+    Planted over a survey of every store, with arguments filled, it found
+    five routes. The fix makes the population EXTERNAL to the test: its
+    stores are tied to the storage checker's secret classes, and those
+    classes to the files the CODE writes, so a new store fails until it is
+    planted. The same move as drift enumerating the inventory rather than
+    the golden store.
 
   **The corollary (the operator's): a proxy population is a dependency on
   something staying true that nobody is watching.** Every member was correct
@@ -4735,6 +4748,17 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   collector config (C55, fixed) and four more (C56). Its population is now
   tied to the storage checker's secret classes, so a new store fails the
   sweep until it is planted.
+- **A tool that DESCRIBES a secret defeats redaction that matches its
+  SYNTAX** (C55, C56, measured 2026-09-27). Positional redaction masks
+  `snmp-server community <X>`; it does not mask `SNMP community (RW):  <X>`
+  or `name = <value>`, and value redaction knows only the stores in its
+  table. `get_monitoring_config` and `read_variables` handed the model
+  stored values that way. `test_no_agent_tool_leaks_a_stored_secret.py`
+  drives EVERY tool through the real `run_chat()` loop with a fake provider
+  and searches what the provider would receive. The boundary test before it
+  used hand-written output shapes, all in config syntax, so it could not
+  exhibit the case. Its first control passed wrongly, served by the
+  process-wide tool-result cache, which each drive now clears.
 - **A pattern earns a member by measurement, not by resemblance** (the
   operator, 2026-09-27). C54 (a job-health row for a device that has left) was
   proposed to widen to the heartbeat check, whose row read `failing` after
@@ -4757,7 +4781,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **39 open at 2026-09-27**, counted from the rows: 34 recorded only in
+present when each was recorded. **38 open at 2026-09-27**, counted from the rows: 33 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

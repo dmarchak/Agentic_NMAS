@@ -3710,26 +3710,29 @@ def run_chat(
                 return summary + "\n" + "\n".join(report_lines)
 
             elif name == "read_variables":
+                # VALUES WITHHELD (register C56, the agent side). This wrote
+                # `name = value` in prose, and the provider boundary masks
+                # config syntax and known secrets, neither of which a variable
+                # is: measured, a planted value reached the model. The store
+                # holds whatever an operator put there, is CUT in 7.8, and
+                # the agent can no longer push the configs it used them for
+                # (P.3 step 8). Names and descriptions still come back.
                 variables = _load_variables()
                 key = args.get("key","").strip()
+                withheld = "<withheld: variable values are not sent to the model>"
                 if key:
                     if key not in variables:
                         return f"Variable '{key}' not set. All variables: {list(variables.keys())}"
                     v = variables[key]
                     desc = f" — {v['description']}" if isinstance(v, dict) and v.get("description") else ""
-                    val  = v["value"] if isinstance(v, dict) else v
-                    return f"{key} = {val}{desc}"
+                    return f"{key} = {withheld}{desc}"
                 if not variables:
                     return "No variables set for this list. Use set_variable to add some."
-                lines = ["Variables for this list:"]
+                lines = ["Variables for this list (values are not sent to the model):"]
                 for k, v in sorted(variables.items()):
-                    if isinstance(v, dict):
-                        lines.append(f"  {k} = {v.get('value','')}  {('— ' + v['description']) if v.get('description') else ''}")
-                    else:
-                        lines.append(f"  {k} = {v}")
+                    desc = f"  — {v['description']}" if isinstance(v, dict) and v.get("description") else ""
+                    lines.append(f"  {k}{desc}")
                 return "\n".join(lines)
-
-
             elif name == "request_approval":
                 from modules.approval_queue import add_approval as _add_appr
                 action_type     = args.get("action_type", "").strip()

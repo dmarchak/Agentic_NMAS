@@ -51,7 +51,7 @@ def _p(tag):
 STORES = ("env", "settings", "credential_profile", "device_override",
           "template_secret", "devices_csv", "collector_config", "golden",
           "backup", "approval_queue", "chat_history", "config_cache",
-          "variables")
+          "variables", "snmp_traps", "legacy_devices_csv", "tool_cache")
 
 #: The checker's `secret` patterns, each mapped to the store planted for it.
 #: A pattern the checker gains without a plant here fails the test below.
@@ -64,6 +64,9 @@ CHECKER_SECRET_CLASSES = {
     "lists/*/devices.csv": "devices_csv", "lists/*/devices.csv.*": None,
     "lists/*/collector_config.json": "collector_config",
     "lists/*/collector_config.json.*": None,
+    # Found by deriving the population from the code's writers (2026-09-27).
+    "snmp_traps.json": "snmp_traps", "lists/*/snmp_traps.json": "snmp_traps",
+    "Devices.csv": "legacy_devices_csv",
 }
 
 #: GETs a verified person may use to see a secret: reveal-gated and audited.
@@ -71,13 +74,11 @@ REVEALS = {"/onboard/bootstrap/<hostname>"}
 
 #: {rule: reason} GETs found returning a planted value, not yet fixed. Only
 #: shrinks; each is register C56, found by this sweep's first run.
-KNOWN_LEAKS = {
-    "/ai/approvals": "the approval queue's diffs, device config lines raw (C56)",
-    "/ai/history": "chat transcripts: tool results carry show running-config raw (C56)",
-    "/download_backup/<filename>": "a stored backup downloaded raw, ungated (C56)",
-    "/list/variables": "the CSV-era variable store returns every value it holds (C56)",
-}
-KNOWN_LEAKS_CEILING = 4
+KNOWN_LEAKS = {}
+# Empty since C56 was fixed (2026-09-27): the four it named, plus the trap
+# buffer found by deriving the stores from the code, are masked on the way
+# out. An entry here is a register finding.
+KNOWN_LEAKS_CEILING = 0
 
 
 def _config_body(tag):
@@ -163,6 +164,25 @@ def planted(tmp_path_factory):
 
         ai._save_variables({"snmp_ro_community": _p("Var")})
         values["variables"] = [_p("Var")]
+        from modules import snmp_collector
+        trap = {"id": "planted", "source_ip": DEVICE["ip"], "community": _p("Trap"),
+                "version": "v2c", "summary": "planted trap", "varbinds": []}
+        with snmp_collector._trap_lock:
+            snmp_collector._traps.append(trap)
+        snmp_collector._save_trap(trap)
+        values["snmp_traps"] = [_p("Trap")]
+        legacy = os.path.join(config.DATA_DIR, "Devices.csv")
+        device.write_devices_csv([dict(DEVICE, hostname="legacy", device_type="cisco_ios",
+                                       username="admin",
+                                       password=device.fernet.encrypt(_p("LegPw").encode()).decode(),
+                                       secret="")], legacy)
+        values["legacy_devices_csv"] = [_p("LegPw")]
+        # The agent's tool-result cache: in memory, holding tool output from
+        # BEFORE the provider boundary redacts it. Found by test order: an
+        # earlier test's cached result reached /ai/tool_cache_snapshot.
+        ai._tool_cache.clear()
+        ai._cache_set("get_running_config", {"device_ip": DEVICE["ip"]}, _config_body("Tc"))
+        values["tool_cache"] = [_p("TcSec"), _p("TcComm")]
         # Swept HERE, inside the fixture, so the GETs' known writes (C33)
         # land before the store is restored rather than inside a test.
         values["_anon"] = _sweep(values, person=False)
@@ -171,8 +191,12 @@ def planted(tmp_path_factory):
     finally:
         mp.undo()
         from modules import ai_assistant as ai
+        from modules import snmp_collector
+        with snmp_collector._trap_lock:
+            snmp_collector._traps[:] = [t for t in snmp_collector._traps if t.get("id") != "planted"]
         ai._chat_histories.pop("main", None)
         ai._config_cache.pop(DEVICE["ip"], None)
+        ai._tool_cache.clear()
         shutil.rmtree(store, ignore_errors=True)
         shutil.copytree(original, store)
         shutil.rmtree(original, ignore_errors=True)
@@ -278,3 +302,105 @@ class TestNoGetReturnsAStoredSecret:
         still = {r for r, _ in anon + person}
         ghosts = sorted(set(KNOWN_LEAKS) - still)
         assert ghosts == [], f"no longer leaks: remove from KNOWN_LEAKS: {ghosts}"
+
+
+class TestEveryFileTheCodeWritesIsClassified:
+    """The operator's question after C55: are there other stores outside the
+    sweep? "The checker would have said" only covers files that EXIST on the
+    host it runs on, which is how collector_config.json was missed (never
+    written on the deployment). So the population is derived from the CODE:
+    every file name the code joins onto the data directory or a list's
+    directory must fall in one of the checker's classes. Its first run found
+    nine, including the trap buffer, which stores each trap's community."""
+
+    #: Names the scan finds that are classified through a subdirectory, or
+    #: live outside data/, each with where.
+    EXPLAINED = {
+        "index.json": "lists/*/playbooks/index.json (covered by lists/*/playbooks/*); "
+                      "ccie_kb/index.json lives in the repository, not data/",
+    }
+
+    def _writers(self):
+        import glob
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        names = {}
+        files = (glob.glob(os.path.join(root, "modules", "**", "*.py"), recursive=True)
+                 + glob.glob(os.path.join(root, "routes", "*.py"))
+                 + [os.path.join(root, "app.py")])
+        for f in files:
+            text = open(f, encoding="utf-8").read()
+            for m in re.finditer(r"""["']([\w.-]+\.(?:json|jsonl|csv|log|key))["']""", text):
+                ctx = text[max(0, m.start() - 200):m.start()]
+                if re.search(r"DATA_DIR|list_data|data_dir", ctx):
+                    names.setdefault(m.group(1), set()).add(os.path.relpath(f, root))
+        return names
+
+    def test_floor(self):
+        names = self._writers()
+        assert {"user_settings.json", "credential_profiles.json",
+                "collector_config.json", "snmp_traps.json"} <= set(names), sorted(names)
+
+    def test_every_written_name_is_classified(self):
+        import fnmatch
+        import importlib.machinery
+        import importlib.util
+
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "scripts", "nmas-check-secret-storage")
+        loader = importlib.machinery.SourceFileLoader("nmas_check_secret_storage2", path)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+        pats = [p for p, _ in mod.DATA_CLASSES]
+        missing = sorted(n for n in self._writers() if n not in self.EXPLAINED
+                         and not any(fnmatch.fnmatch(c, p) for c in (n, f"lists/x/{n}")
+                                     for p in pats))
+        assert missing == [], f"written under data/ and in no class: {missing}"
+
+
+class TestTheBackupDownloadIsTheGoldenPattern:
+    """C56 (3): a stored backup was downloaded raw by anyone who reached the
+    URL. It is now `modules/outbound.py`, the golden routes' pattern: masked
+    by default, raw only for a person asking `?reveal=1`, and recorded."""
+
+    @pytest.fixture
+    def backup(self, tmp_path, monkeypatch):
+        import modules.backups as B
+
+        monkeypatch.setattr(B, "get_backups_dir", lambda: str(tmp_path))
+        name = "r1_192.0.2.1_running_x.cfg"
+        (tmp_path / name).write_text(_config_body("Dl"))
+        monkeypatch.setattr("app.get_backup_content",
+                            lambda f: (tmp_path / f).read_text() if (tmp_path / f).exists() else None)
+        return name
+
+    def test_masked_by_default(self, backup):
+        import app as A
+
+        body = A.app.test_client().get(f"/download_backup/{backup}").get_data(as_text=True)
+        assert _p("DlSec") not in body and _p("DlComm") not in body
+        assert "hostname r1" in body and "<redacted:" in body
+
+    def test_a_person_revealing_gets_it_and_is_recorded(self, backup, monkeypatch):
+        import app as A
+        from modules import reveal_audit
+
+        rows = []
+        monkeypatch.setattr(reveal_audit, "record", lambda **k: rows.append(k) or {"recorded": True})
+        body = A.app.test_client().get(f"/download_backup/{backup}?reveal=1").get_data(as_text=True)
+        assert _p("DlSec") in body
+        assert [(r["what"], r["target"]) for r in rows] == [("backup", backup)]
+
+    @pytest.mark.real_identity
+    def test_an_anonymous_reveal_is_refused_and_gets_the_mask(self, backup):
+        import app as A
+
+        r = A.app.test_client().get(f"/download_backup/{backup}?reveal=1")
+        body = r.get_json()
+        assert r.status_code == 403 and body["masked"] is True
+        assert _p("DlSec") not in r.get_data(as_text=True)
+
+    def test_the_page_asks_for_the_reveal(self):
+        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "templates", "device.html"), encoding="utf-8").read()
+        assert "/download_backup/${backup.filename}?reveal=1" in src

@@ -1916,13 +1916,28 @@ def backup_history_route(ip):
 
 @app.route("/download_backup/<filename>")
 def download_backup(filename):
-    """Download a backup file."""
+    """Download a backup file: MASKED unless a person reveals it (C56).
+
+    It returned the stored backup raw, secrets included, to anyone who
+    reached the URL. Now it is the golden path's pattern
+    (`modules/outbound.py`): masked by default, and `?reveal=1` requires a
+    person and is recorded. The page's Download button asks for the reveal,
+    so a raw backup always has a person and a record behind it.
+    """
+    from modules import outbound
+
     try:
         content = get_backup_content(filename)
 
         if content is None:
             flash("Backup file not found", "danger")
             return redirect(url_for("index"))
+
+        payload, status = outbound.config_text(
+            request, content, what="backup", target=filename)
+        if status != 200:
+            return jsonify(payload), status
+        content = payload["text"]
 
         # Create in-memory file
         file_obj = BytesIO(content.encode("utf-8"))
@@ -3289,12 +3304,19 @@ def ai_tool_cache_snapshot():
     """Return a snapshot of recently cached tool results for browser-side storage.
     The browser caches these in localStorage so repeated questions about interface
     status, routing tables, etc. can be answered without SSH round-trips."""
+    # Masked on the way out (register C56's sixth route, found 2026-09-27 by
+    # test order). The cache holds tool output BEFORE the provider boundary
+    # redacts it, and `get_running_config` is cached for 300 s, so for five
+    # minutes after the agent read a device this served its config raw to any
+    # GET, and the page copied it into localStorage.
+    from modules.redact import known_secret_values, redact_text
+    table = known_secret_values()
     snapshot = {}
     now = __import__("time").monotonic()
     for key, (result, expires_at) in list(_ai._tool_cache.items()):
         if expires_at > now:
             snapshot[key] = {
-                "result":     result[:2000],   # cap per-entry size
+                "result":     redact_text(result[:2000], table),   # cap per-entry size
                 "expires_in": int(expires_at - now),
             }
     return jsonify({"cache": snapshot, "count": len(snapshot)})
@@ -3358,7 +3380,12 @@ def ai_history():
         text = "\n".join(parts).strip()
         if text:
             out.append({"role": role, "text": text})
-    return jsonify(out)
+    # Masked on the way out (register C56): a tool result carries whatever
+    # the tool read, `show running-config` included, and this returned it raw
+    # to any caller. It is the text the model saw, since the provider
+    # boundary redacts the same way.
+    from modules.redact import redact_payload
+    return jsonify(redact_payload(out))
 
 
 @app.route("/ai/clear", methods=["POST"])
@@ -3612,7 +3639,12 @@ def list_compliance_policy_update():
 
 @app.route("/list/variables")
 def list_variables():
-    return jsonify(_ai._load_variables())
+    # WRITE-ONLY (register C56): the CSV-era variable store returned every
+    # value it held, whatever an operator had put there, to any caller. The
+    # page never reads it (reachability group c; the store is CUT in 7.8),
+    # and the agent reads variables in-process, not through this route. The
+    # names are kept; each value says it is withheld.
+    return jsonify({k: "<redacted:variable>" for k in _ai._load_variables()})
 
 
 @app.route("/list/variables", methods=["POST"])
@@ -3916,9 +3948,13 @@ def ai_approvals_list():
     show_all = request.args.get("all") == "1"
     limit    = min(int(request.args.get("limit", 50)), 200)
     entries  = get_all(limit) if show_all else get_pending()
+    # Masked on the way out (register C56): a queued diff is device config,
+    # and this returned it raw. The diff is advisory context, never what is
+    # sent, so masking it costs the approver nothing.
+    from modules.redact import redact_payload
     return jsonify({
         "pending_count": get_pending_count(),
-        "entries":       entries,
+        "entries":       redact_payload(entries),
         "ai_enabled":    _ai_enabled(),
     })
 
@@ -4479,7 +4515,13 @@ def monitoring_snmp_traps():
     limit = int(request.args.get("limit", 50))
     _, current_list_file = get_current_device_list()
     device_ips = {d["ip"] for d in load_saved_devices(current_list_file)}
-    return jsonify({"traps": get_recent_traps(limit, device_ips=device_ips)})
+    # A received trap carries its community, and the buffer stores it; this
+    # returned it with every trap (found 2026-09-27 by deriving the stores
+    # from the code's writers, after C56). The field is masked, not dropped,
+    # so the page and a reader can see a community was there.
+    traps = [dict(t, community="<redacted:snmp_community>") if t.get("community") else t
+             for t in get_recent_traps(limit, device_ips=device_ips)]
+    return jsonify({"traps": traps})
 
 
 @app.route("/monitoring/netflow")

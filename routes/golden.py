@@ -24,39 +24,12 @@ def _active_list(payload=None) -> str:
 
 
 def _serve_config(text: str, *, what: str, target: str, detail: str = ""):
-    """``(payload, status)`` for config text — **masked unless revealed**.
+    """``(payload, status)`` for config text, masked unless revealed. The
+    pattern lives in `modules/outbound.py` since register C56, so the backup
+    download and these routes are one pattern rather than two."""
+    from modules import outbound
 
-    Masked is the default because the caller who wants to read a diff or check
-    a hostname is the common case, and none of them need the SNMP community to
-    do it. Revealing is the exception, it requires a person, and it leaves a
-    mark.
-
-    The mask is the same `redact_text` used at the provider and log boundaries:
-    positional first, so a 6-character community is covered even though it is
-    below the value floor.
-    """
-    from modules import identity as ident_mod
-    from modules import redact, reveal_audit
-
-    wants_reveal = (request.args.get("reveal", "") or "").lower() in (
-        "1", "true", "yes")
-    if not wants_reveal:
-        return {"ok": True, "masked": True, "text": redact.redact_text(text)}, 200
-
-    ident, refusal = ident_mod.require(request, "reveal", operation=what)
-    if refusal is not None:
-        # The refusal is not an error about the config — say which it is.
-        log.warning("golden: reveal of %s/%s refused (%s)", what, target,
-                    refusal.get("outcome"))
-        return {**refusal, "masked": True,
-                "text": redact.redact_text(text)}, 403
-
-    reveal_audit.record(actor=ident.actor, kind=ident.kind, what=what,
-                        target=target, detail=detail, peer=ident.peer,
-                        extra={"audit_name": ident_mod.service_label(ident.service_id)
-                               if ident.kind == "service" else ident.actor})
-    return {"ok": True, "masked": False, "text": text,
-            "revealed_by": ident.actor}, 200
+    return outbound.config_text(request, text, what=what, target=target, detail=detail)
 
 
 @bp.route("/history/<path:hostname>", methods=["GET"])

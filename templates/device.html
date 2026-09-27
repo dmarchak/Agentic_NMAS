@@ -952,7 +952,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${formatBytes(backup.size)}</td>
         <td>
           <div class="btn-group btn-group-sm">
-            <a href="/download_backup/${backup.filename}" class="btn btn-outline-primary btn-sm" title="Download">
+            <a href="/download_backup/${backup.filename}?reveal=1" class="btn btn-outline-primary btn-sm" title="Download the raw backup: needs a person, and is recorded (reveal)">
               ⬇️
             </a>
             <form method="post" action="/delete_backup/${backup.filename}" style="display:inline;">
