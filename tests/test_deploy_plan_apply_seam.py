@@ -92,6 +92,24 @@ class TestTheCaptureHashHandshake:
         outcomes = body.get("by_outcome") or {}
         assert "r6" in outcomes.get("skipped_drifted", []), outcomes
 
+    def test_a_drifted_response_carries_no_config(self, client):
+        """Register B1, through the real route. The skip entry used to carry
+        the whole capture, so this JSON response held the device's
+        `username ... secret 9` line. The hashes are what a reader needs."""
+        _plan(client)
+        result = client.post("/deploy/apply",
+                             json={"confirmations": {"r6": "0" * 16}})
+        text = result.get_data(as_text=True)
+        body = result.get_json()
+        assert "r6" in (body.get("by_outcome") or {}).get("skipped_drifted", [])
+        for line in ("secret 9", "$9$abcdefghijklmnop", "ip address 10.255.0.32",
+                     "interface GigabitEthernet2"):
+            assert line not in text, f"the response carries {line!r}"
+        entry = [r for r in body["results"] if r.get("device") == "r6"][0]
+        assert entry["confirmed_hash"] == "0" * 16
+        assert entry["current_hash"] == \
+            hashlib.sha256(CAPTURE.encode("utf-8")).hexdigest()[:16]
+
     def test_an_empty_confirmation_is_not_a_pass(self, client):
         """A client that failed to read `capture_hash` sends `''`. That must
         skip, not deploy — and it is the shape a rendering bug produces."""

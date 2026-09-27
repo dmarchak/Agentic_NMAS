@@ -1235,6 +1235,12 @@ def plan_batch(artifacts: list, confirmed: dict, fresh_captures: dict) -> dict:
             # printing these two values. The `refused` entry a hundred lines
             # up already carries `confirmed_hash` and `current_hash`; this is
             # the same shape, arrived at late.
+            #
+            # And NOT the capture itself (register B1). It carried the whole
+            # device config, secret lines included, on a JSON route, for a
+            # "one-click re-preview" nothing was ever written to read. The
+            # two hashes are the diagnostic; re-previewing reads the device
+            # again, which is what a re-preview is for.
             plan["skipped"].append({
                 "device": device, "outcome": SKIPPED_DRIFTED,
                 "reason": ("the capture you confirmed against is not the "
@@ -1244,8 +1250,7 @@ def plan_batch(artifacts: list, confirmed: dict, fresh_captures: dict) -> dict:
                            "may not be this capture's hash — re-preview to "
                            "see what it looks like now"),
                 "confirmed_hash": confirmed[device],
-                "current_hash": fresh_hash,
-                "fresh_capture": fresh})
+                "current_hash": fresh_hash})
             continue
 
         plan["to_deploy"].append({"artifact": artifact, "fresh": fresh})

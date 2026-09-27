@@ -61,11 +61,18 @@ class TestPlanning:
         assert drifted["device"] == "R2"
         assert drifted["outcome"] == SKIPPED_DRIFTED
 
-    def test_drift_skip_carries_the_fresh_capture(self):
-        """So the operator gets one-click re-preview without another read."""
+    def test_drift_skip_carries_the_hashes_and_not_the_capture(self):
+        """Register B1. This test used to pin the opposite ("so the operator
+        gets one-click re-preview without another read"), and nothing ever
+        read the field: it put a whole device config, secret lines included,
+        on a JSON route. The two hashes are the diagnostic."""
         plan = plan_batch([FakeArtifact("R2")], {"R2": _hash("b")},
                           {"R2": "CHANGED"})
-        assert plan["skipped"][0]["fresh_capture"] == "CHANGED"
+        entry = plan["skipped"][0]
+        assert entry["confirmed_hash"] == _hash("b")
+        assert entry["current_hash"] == _hash("CHANGED")
+        assert "fresh_capture" not in entry
+        assert "CHANGED" not in repr(entry)
 
     def test_non_deployable_is_refused(self):
         plan = plan_batch([FakeArtifact("R3", deployable=False)],
