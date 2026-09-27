@@ -250,6 +250,22 @@ def _trees():
     return out
 
 
+def _reads(call) -> bool:
+    """Is this `open(...)` a READ? No mode, or a mode with no w/a/x/+. The
+    rule is about reading the working tree; a writer has to open files, and
+    matching the NAME `open` flagged bulk intent's put-back, which WRITES the
+    committed text back (the weaker-match class, caught in this scan)."""
+    import ast
+
+    mode = call.args[1] if len(call.args) > 1 else next(
+        (k.value for k in call.keywords if k.arg == "mode"), None)
+    if mode is None:
+        return True
+    if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
+        return not set(mode.value) & set("wax+")
+    return True                                   # unknown mode: count it
+
+
 def _functions_calling(names):
     import ast
 
@@ -259,7 +275,8 @@ def _functions_calling(names):
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             calls = {getattr(n.func, "attr", getattr(n.func, "id", ""))
-                     for n in ast.walk(fn) if isinstance(n, ast.Call)}
+                     for n in ast.walk(fn) if isinstance(n, ast.Call)
+                     and not (getattr(n.func, "id", "") == "open" and not _reads(n))}
             if calls & set(names):
                 found[(rel, fn.name)] = calls
     return found
@@ -335,3 +352,14 @@ class TestTheDeployPlanNamesARefusal:
         _hand_edit(lab["golden"])                       # uncommitted: ignored
         head = R.git_raw(lab["repo"], "show", "HEAD:golden/r1.cfg")[1]
         assert D._captured_config(lab["repo"], "r1") == head
+
+
+
+def test_the_rule_counts_a_read_and_not_a_write():
+    """Control for the refinement: a read-mode open still counts."""
+    import ast
+
+    read = ast.parse("open(p)").body[0].value
+    read_r = ast.parse("open(p, 'r', encoding='utf-8')").body[0].value
+    write = ast.parse("open(p, 'w', encoding='utf-8')").body[0].value
+    assert _reads(read) and _reads(read_r) and not _reads(write)

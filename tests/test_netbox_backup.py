@@ -450,3 +450,79 @@ class TestAnOffboxTransferIsProvenByTheListingNotTheExitCode:
         with pytest.raises(RuntimeError) as excinfo:
             B.ship_offbox(cfg, a)
         assert "still listed" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# C106: a run that fails to ship never leaves fewer backups than before it ran
+# ---------------------------------------------------------------------------
+
+class TestAFailedShipNeverReducesTheBackups:
+    """The prune ran before anything shipped and deleted by AGE alone, so
+    while shipping failed the local copies were the only copies and were
+    deleted as they aged (the operator: an operation that reduces safety
+    when it fails is worse than one that does nothing)."""
+
+    @pytest.fixture
+    def world(self, cfg, monkeypatch):
+        monkeypatch.setattr(B, "dump_database", _fake_dump())
+        monkeypatch.setattr(B, "_run", _fake_run)
+        monkeypatch.setattr(B, "_now", lambda: NOW)
+        monkeypatch.setattr(B, "encrypt", lambda c, d, n, o: (
+            os.makedirs(o, exist_ok=True) or open(os.path.join(o, n + ".gpg"), "w").close()
+            or os.path.join(o, n + ".gpg")))
+        cfg.update(recipient_file="/key.asc", proxmox_target="pve:backups")
+        old = _name(hours_ago=72)                        # past the hourly window
+        for tier in ("hourly", "daily"):
+            os.makedirs(os.path.join(cfg["root"], tier, old), exist_ok=True)
+        return cfg, old
+
+    def _ships(self, monkeypatch, ok=True):
+        shipped = []
+
+        def ship(c, artefact, tier):
+            if not ok:
+                raise RuntimeError("rsync: connection refused")
+            shipped.append((tier, os.path.basename(artefact)))
+        monkeypatch.setattr(B, "ship_proxmox", ship)
+        return shipped
+
+    def test_nothing_is_pruned_that_has_not_shipped(self, world, monkeypatch, capsys):
+        cfg, old = world
+        self._ships(monkeypatch, ok=False)
+        assert B.run_once(cfg) == B.EXIT_FAILED
+        assert os.path.isdir(os.path.join(cfg["root"], "hourly", old)), \
+            "an unshipped backup was pruned: the failed run left fewer copies"
+        out = capsys.readouterr().out
+        assert "KEPT" in out and "have not shipped" in out
+        state = B._read_state(cfg["root"])
+        assert state["kept_unshipped"]["count"] >= 1
+        code, lines = B.status_report(state, cfg, NOW)
+        assert code != B.EXIT_OK and lines[0].startswith("KEPT")
+
+    def test_the_control_a_shipped_backup_is_pruned(self, world, monkeypatch):
+        cfg, old = world
+        shipped = self._ships(monkeypatch)
+        assert B.run_once(cfg) == B.EXIT_OK
+        assert ("hourly", old + ".gpg") in shipped, "the old backup was caught up"
+        assert not os.path.isdir(os.path.join(cfg["root"], "hourly", old))
+        assert B._read_state(cfg["root"])["kept_unshipped"]["count"] == 0
+
+    def test_a_missed_daily_is_shipped_on_a_later_run(self, world, monkeypatch):
+        cfg, old = world
+        self._ships(monkeypatch, ok=False)
+        B.run_once(cfg)
+        # The next run is an hour later: a frozen clock names both backups
+        # alike and the second collides with the first.
+        monkeypatch.setattr(B, "_now", lambda: NOW + datetime.timedelta(hours=1))
+        shipped = self._ships(monkeypatch)
+        B.run_once(cfg)
+        assert ("daily", old + ".gpg") in shipped
+
+    def test_with_no_destination_the_local_tier_is_the_whole_policy(self, cfg, monkeypatch):
+        monkeypatch.setattr(B, "_now", lambda: NOW)
+        old = _name(hours_ago=72)
+        for tier in ("hourly", "daily"):
+            os.makedirs(os.path.join(cfg["root"], tier, old), exist_ok=True)
+        os.makedirs(os.path.join(cfg["root"], "hourly", _name()), exist_ok=True)
+        B.prune(cfg["root"], {}, NOW)
+        assert not os.path.isdir(os.path.join(cfg["root"], "hourly", old))

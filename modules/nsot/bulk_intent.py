@@ -316,6 +316,44 @@ def apply(list_name: str, repo: str, devices: list, steps: list,
         trailers.append(f"Refused: {','.join(refused)}")
     result = save_host_vars(list_name, written, actor=actor, message=message,
                             source="bulk-intent", extra_trailers=trailers)
-    return {"ok": result.get("ok", False), "commit": result.get("commit", ""),
-            "error": result.get("error", ""), "devices": written,
+    if not result.get("ok"):
+        # A failed commit leaves NOTHING written (register C106): the files
+        # stayed on disk, uncommitted, while the CLI printed "REFUSED", which
+        # reads as nothing having happened. host_vars/ was clean when this
+        # began (checked above), so HEAD holds exactly what each file was.
+        left = _put_back(repo, written)
+        error = result.get("error") or "the commit did not complete"
+        return {"ok": False, "devices": [], "refused": refused,
+                "headline": report["headline"], "left_uncommitted": left,
+                "error": ((f"LEFT UNCOMMITTED: {', '.join(left)} could not be put back; "
+                           "discard with `git checkout HEAD -- <path>` in the repository. "
+                           if left else "")
+                          + f"The commit failed ({error}). "
+                          + ("" if left else f"The {len(written)} file(s) written were "
+                             "put back as committed: nothing changed."))}
+    return {"ok": True, "commit": result.get("commit", ""),
+            "error": "", "devices": written,
             "refused": refused, "headline": report["headline"]}
+
+
+def _put_back(repo: str, devices: list) -> list:
+    """Restore each device's intent file to its committed text (or remove it
+    if it was new). Returns the repo-relative paths it could NOT restore."""
+    import os
+
+    from modules.nsot import hostvars
+
+    left = []
+    for device in devices:
+        path = hostvars.committed_path(repo, device)
+        try:
+            text, _state = hostvars.committed_at_head(repo, device)
+            if text is None:
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                with open(path, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(text)
+        except OSError:
+            left.append(os.path.relpath(path, repo))
+    return left

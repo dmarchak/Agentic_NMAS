@@ -250,6 +250,12 @@ def status_report(state: dict, cfg: dict, now: datetime.datetime) -> tuple:
     if not cfg["recipient_file"]:
         code = max(code, EXIT_FAILED)
         lines.append("encryption: NO RECIPIENT KEY -- nothing can be shipped")
+    kept = (state.get("kept_unshipped") or {}).get("count", 0)
+    if kept:
+        code = max(code, EXIT_FAILED)
+        lines.insert(0, f"KEPT {kept} expired backup(s) that have not shipped: they are the "
+                        "only copies until they do, and they are deleted only once shipped "
+                        "-- fix shipping")
     return code, lines
 
 
@@ -417,22 +423,81 @@ def take_backup(cfg: dict, now=None) -> str:
     return name
 
 
-def promote_and_prune(root: str, name: str, now=None) -> dict:
-    now = now or _now()
-    hourly_dir, daily_dir = os.path.join(root, "hourly"), os.path.join(
-        root, "daily")
+def promote(root: str, name: str) -> bool:
+    """The first backup of a UTC day becomes that day's daily (a hard link)."""
+    hourly_dir, daily_dir = os.path.join(root, "hourly"), os.path.join(root, "daily")
     os.makedirs(daily_dir, mode=0o700, exist_ok=True)
-    daily = os.listdir(daily_dir)
-    promoted = False
-    if needs_daily(name, daily):
+    if needs_daily(name, os.listdir(daily_dir)):
         shutil.copytree(os.path.join(hourly_dir, name),
                         os.path.join(daily_dir, name), copy_function=os.link)
-        promoted = True
-    plan = retention_plan(os.listdir(hourly_dir), os.listdir(daily_dir), now)
+        return True
+    return False
+
+
+def destinations(cfg: dict, tier: str) -> list:
+    """Where a backup of *tier* must reach before its local copy may go."""
+    out = ["proxmox"] if cfg.get("proxmox_target") else []
+    if tier == "daily" and cfg.get("rclone_remote"):
+        out.append("offbox")
+    return out
+
+
+def _read_shipped(root: str) -> dict:
+    try:
+        with open(os.path.join(root, "shipped.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return {}
+
+
+def _mark_shipped(root: str, tier: str, name: str, dest: str) -> None:
+    shipped = _read_shipped(root)
+    names = shipped.setdefault(tier, {}).setdefault(name, [])
+    if dest not in names:
+        names.append(dest)
+    fd, tmp = tempfile.mkstemp(dir=root, prefix=".shipped.")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(shipped, fh, indent=2, sort_keys=True)
+    os.replace(tmp, os.path.join(root, "shipped.json"))
+
+
+def unshipped(root: str, cfg: dict, tier: str, names: list) -> list:
+    """Which of *names* have not reached every destination their tier needs."""
+    need = destinations(cfg, tier)
+    have = _read_shipped(root).get(tier, {})
+    return [n for n in names if not set(need) <= set(have.get(n, []))]
+
+
+def prune(root: str, cfg: dict, now=None) -> dict:
+    """Delete expired backups, ONLY those recorded as shipped to every
+    destination their tier needs (the operator, 2026-09-27, register C106).
+
+    This used to run straight after the backup, before anything shipped, and
+    delete by AGE alone. So while shipping failed, the local copies were the
+    only copies, and they were deleted as they aged: a run that failed left
+    fewer backups of NetBox than there were before it ran. An operation that
+    reduces safety when it fails is worse than one that does nothing. With no
+    destination configured the local tier is the whole policy, as before.
+    Returns ``{"pruned": {tier: [...]}, "kept_unshipped": {tier: [...]}}``."""
+    now = now or _now()
+    plan = retention_plan(os.listdir(os.path.join(root, "hourly")),
+                          os.listdir(os.path.join(root, "daily")), now)
+    pruned, kept = {}, {}
     for tier, names in plan.items():
-        for n in names:
+        waiting = set(unshipped(root, cfg, tier, names))
+        kept[tier] = sorted(waiting)
+        pruned[tier] = [n for n in names if n not in waiting]
+        for n in pruned[tier]:
             shutil.rmtree(os.path.join(root, tier, n))
-    return {"promoted": promoted, "pruned": plan}
+    return {"pruned": pruned, "kept_unshipped": kept}
+
+
+def promote_and_prune(root: str, name: str, now=None, cfg=None) -> dict:
+    """Promotion then the shipped-aware prune. *cfg* None means no
+    destination is configured (the local tier is the whole policy)."""
+    promoted = promote(root, name)
+    out = prune(root, cfg or {}, now)
+    return {"promoted": promoted, **out}
 
 
 def encrypt(cfg: dict, tier_dir: str, name: str, out_dir: str) -> str:
@@ -558,15 +623,34 @@ def run_once(cfg: dict) -> int:
     os.makedirs(root, mode=0o700, exist_ok=True)
     try:
         name = take_backup(cfg)
-        kept = promote_and_prune(root, name)
+        promoted = promote(root, name)
     except Exception as exc:
         _record(root, "backup_failure", reason=_reason(exc))
         print(f"BACKUP FAILED: {_reason(exc)}", file=sys.stderr)
         return EXIT_FAILED
     _record(root, "backup_success", name=name)
-    print(f"backup {name} written"
-          + (" (also today's daily)" if kept["promoted"] else "")
-          + f"; pruned {sum(len(v) for v in kept['pruned'].values())}")
+    print(f"backup {name} written" + (" (also today's daily)" if promoted else ""))
+    # Ship FIRST, prune LAST, and prune only what shipped (C106).
+    code = _ship_all(cfg, root, name, promoted)
+    result = prune(root, cfg, _now())
+    kept = {t: n for t, n in result["kept_unshipped"].items() if n}
+    print(f"pruned {sum(len(v) for v in result['pruned'].values())}"
+          + (f"; KEPT {sum(len(v) for v in kept.values())} expired backup(s) that "
+             f"have not shipped ({', '.join(f'{t}/{n}' for t, ns in kept.items() for n in ns[:3])}): "
+             "they are deleted only once shipped" if kept else ""))
+    # Every run, 0 included, so a count never outlives its cause.
+    _record(root, "kept_unshipped", count=sum(len(v) for v in kept.values()),
+            names=[f"{t}/{n}" for t, ns in kept.items() for n in ns])
+    return code
+
+
+#: Unshipped backups retried per run, oldest first, so a run stays bounded.
+CATCH_UP_PER_RUN = 3
+
+
+def _ship_all(cfg: dict, root: str, name: str, promoted: bool) -> int:
+    """This run's backup, then up to CATCH_UP_PER_RUN retained backups that
+    never reached a destination (a missed daily used to be never shipped)."""
 
     code = EXIT_OK
     if not cfg["recipient_file"]:
@@ -574,28 +658,36 @@ def run_once(cfg: dict) -> int:
               "leaves the host unencrypted", file=sys.stderr)
         return EXIT_FAILED
     out_dir = os.path.join(root, "outgoing")
-    tiers = [("hourly", os.path.join(root, "hourly"))]
-    if kept["promoted"]:
-        tiers.append(("daily", os.path.join(root, "daily")))
-    for tier, tier_dir in tiers:
+    todo = [("hourly", name)] + ([("daily", name)] if promoted else [])
+    for tier in ("daily", "hourly"):
+        tier_dir = os.path.join(root, tier)
+        older = sorted(n for n in os.listdir(tier_dir) if _parse_ts(n) and n != name)
+        todo += [(tier, n) for n in unshipped(root, cfg, tier, older)[:CATCH_UP_PER_RUN]]
+    for tier, bname in todo:
+        tier_dir = os.path.join(root, tier)
+        need = destinations(cfg, tier)
+        done = _read_shipped(root).get(tier, {}).get(bname, [])
+        if not [d for d in need if d not in done]:
+            continue
         try:
-            artefact = encrypt(cfg, tier_dir, name, os.path.join(out_dir,
-                                                                 tier))
+            artefact = encrypt(cfg, tier_dir, bname, os.path.join(out_dir, tier))
         except Exception as exc:
             _record(root, "proxmox_failure", reason="encrypt: " + _reason(exc))
             print(f"ENCRYPT FAILED: {_reason(exc)}", file=sys.stderr)
             return EXIT_FAILED
         for dest, configured, ship in (
-                ("proxmox", cfg["proxmox_target"],
+                ("proxmox", "proxmox" in need,
                  lambda a=artefact, t=tier: ship_proxmox(cfg, a, t)),
-                ("offbox", cfg["rclone_remote"] and tier == "daily",
+                ("offbox", "offbox" in need,
                  lambda a=artefact: ship_offbox(cfg, a))):
-            if not configured:
+            if not configured or dest in done:
                 continue
             try:
                 ship()
-                _record(root, f"{dest}_success", name=name, tier=tier)
-                print(f"shipped {tier}/{name} to {dest}")
+                _mark_shipped(root, tier, bname, dest)
+                _record(root, f"{dest}_success", name=bname, tier=tier)
+                print(f"shipped {tier}/{bname} to {dest}"
+                      + ("" if bname == name else " (catching up)"))
             except Exception as exc:
                 code = EXIT_FAILED
                 _record(root, f"{dest}_failure", reason=_reason(exc))

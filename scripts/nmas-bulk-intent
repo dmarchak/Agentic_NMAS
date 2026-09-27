@@ -71,7 +71,11 @@ def main() -> int:
                 return 1
             code, out = _run(body, args.apply, args.actor)
             if not out.get("ok"):
-                print(f"REFUSED ({code}): {out.get('error')}")
+                # The state FIRST: "REFUSED" alone reads as nothing having
+                # happened, and a failed commit used to leave written files.
+                left = out.get("left_uncommitted") or []
+                print(("LEFT UNCOMMITTED: " + ", ".join(left) if left else
+                       f"REFUSED ({code}), nothing changed") + f": {out.get('error')}")
                 return 1
             print(f"COMMITTED {out['commit'][:8]}: {out['headline']}")
             print(f"  devices: {', '.join(out['devices'])}")

@@ -273,3 +273,31 @@ class TestTheRoutes:
             shipped = json.load(fh)["steps"]
         assert [{"path": s["path"], "before": s["before"], "after": s["after"]}
                 for s in shipped] == P1_MOVE
+
+
+class TestAFailedCommitLeavesNothingWritten:
+    """C106: when the commit failed, the written host_vars stayed on disk,
+    uncommitted, and the CLI printed "REFUSED", which reads as nothing having
+    happened. They are put back as committed, and the message says so."""
+
+    def test_the_files_are_put_back_and_the_message_says_nothing_changed(self, lab):
+        import subprocess
+
+        repo, hostvars, R = lab
+        before = {d: hostvars.committed_at_head(repo, d)[0] for d in ("s1", "s2")}
+        hook = os.path.join(repo, ".git", "hooks", "pre-commit")
+        with open(hook, "w") as fh:
+            fh.write("#!/bin/sh\necho refused-by-hook >&2\nexit 1\n")
+        os.chmod(hook, 0o755)
+        preview = _plan(repo, ["s1", "s2"])
+        out = BI.apply("Lab", repo, ["s1", "s2"], P1_MOVE, preview["hash"],
+                       render=_render, summary="syslog block", actor="t")
+        assert out["ok"] is False and out["left_uncommitted"] == []
+        assert "put back as committed: nothing changed" in out["error"]
+        assert "refused-by-hook" in out["error"]
+        for d, text in before.items():
+            with open(hostvars.committed_path(repo, d), encoding="utf-8") as fh:
+                assert fh.read() == text, f"{d} was left as written"
+        status = subprocess.run(["git", "-C", repo, "status", "--porcelain", "--", "host_vars"],
+                                capture_output=True, text=True).stdout
+        assert status == "", status

@@ -1079,11 +1079,11 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_seed_status.py` | C6: current / stale / edited / edited_and_stale from two git histories; edited is not a defect; a RELATIVE path classifies the same (the live run that got it wrong) |
 | `test_netbox_seeded_specs.py` | code-defined NetBox specs against NetBox with both operands; a failed definition write warns and reaches the sync's notes |
 | `test_template_library_renders.py` | the shared `_common.j2` is listed with what editing it revokes; a withdrawal's reason is drawn; the save message says what happened |
-| `test_bulk_intent.py` | P.1b: before-state compare-and-set per device with both operands; every refusal reason at once; the group count is the headline; one-shot hash; one commit; one device reverts alone from it |
+| `test_bulk_intent.py` | P.1b (and C106: a failed commit puts every written file back as committed and says nothing changed): before-state compare-and-set per device with both operands; every refusal reason at once; the group count is the headline; one-shot hash; one commit; one device reverts alone from it |
 | `test_retire.py` | the whole exit in one commit, history kept; the break-glass record must hold the CURRENT credential; what it will NOT do is stated; resumable; a failed commit restores the tree |
 | `test_clab_sync_commit.py` | the sanitiser's commit block EXECUTED under bash: identity rides on every commit; a failed commit names git's reason and is not "not versioned"; helpers resolve beside the script under a systemd PATH |
 | `test_job_health.py` | a failing timer is visible: the cause line and the streak; not-installed is never ok; could-not-ask is unknown; the Proxmox images: stale when the job STOPPED, failing names the task's own status, a multi-VM failure does not condemn the VM that succeeded, `will_not_fit` asks about the next run (1.2 × the largest image), never a percentage |
-| `test_netbox_backup.py` | P.2: complete-or-absent, `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
+| `test_netbox_backup.py` | P.2: complete-or-absent; C106: a run whose ship fails prunes nothing unshipped (the age-only prune left fewer copies after a failed run), a shipped backup is pruned (the control), a missed daily ships on a later run, and with no destination the local tier is the whole policy; `0600` whatever the original, newest never pruned, status never 0 with a failed restore test or an unconfigured destination, `-i` on every stdin-fed `docker exec` |
 | `test_breakglass.py` | the record is independent of the key it escrows; `verify --live` tests the ESCROWED key against the stored values (a right key on disk cannot pass a wrong copy); zero values is unproven; restore never replaces a key |
 | `test_route_gates.py` | P.3: every mutating endpoint and terminal event declared, both directions with floors; all 87 gated endpoints answer 403 with no identity and no view runs (views replaced by sentinels); the table agrees with every in-route gate; refused before input; a person passes and a service does not; the actor is the verified one |
 | `test_p3_cuts.py` | P.3 step 2: the eight direct-push routes answer 404 and nothing shipped names them; bulk config mode and chat playbook replay refused by name; the Configure forms send nothing |
@@ -5296,6 +5296,19 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   person's step on purpose** (the operator: "CI gates WHAT deploys; I gate
   WHEN"): a passwordless sudo rule was declined, and the fix is to make the
   failure cheap and self-explaining, not to remove the human.
+- **Three ways in three days for a rotation to leave a device unmanageable,
+  so build as if a fourth exists** (the operator, 2026-09-27). B15: the
+  rotation did not persist to the boot file, so a redeploy booted the old
+  password. C53: the CLI path never saved the device, so a reload did. C106
+  (1a): a failed RECORD deleted the only saved copy of the new password and
+  reported "live and recorded", so the device was unreachable AND the
+  recovery path had been deleted by the operation that needed it; only
+  break-glass remained, for a credential rotated away from what break-glass
+  held. All three are in the operation the plan calls the riskiest in the
+  tool. 7.3's rotate screen is built assuming a fourth: every state between
+  "the device changed" and "the tool holds it" is named, kept recoverable,
+  and drawn, and nothing the operation writes is removed until the record
+  it protects is proven.
 - **Every running operation says so** (C99, fixed). A fifty-second restore
   was silent, the silence read as "staged", and a second change followed on
   the same device. One panel, above every modal on both pages, reads C98's
