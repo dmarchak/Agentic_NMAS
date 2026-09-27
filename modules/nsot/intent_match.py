@@ -14,6 +14,16 @@ Three states, never two:
 - ``unknown``: no committed intent, or the render could not be made. Unknown
   is not a match: a baseline asserts intent, and an unmade comparison cannot
   support one.
+
+The capture is compared in the form it is STORED (`strip_for_repo`, the
+filter `golden_body` applies), never raw. A raw `show running-config` carries
+`! NVRAM config last updated at ...` after every save and `ntp clock-period`
+on a device running NTP, and the render has neither, so the raw comparison
+counted each as a departure. Measured on the host: r2's restore commit
+(ed6548e) says `Intent-Match: no: r2 (-2)`, the second line being the NVRAM
+comment, while its committed golden departs by one. A deploy saves the
+device, so after every deploy a device at intent read "no" and denied the
+baseline.
 """
 
 import logging
@@ -28,7 +38,7 @@ LINE_CAP = 20
 def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
                  platform: str = "") -> dict:
     """``{"state", "adds", "removes", "reordered", "lines", "why"}``."""
-    from modules.nsot import hostvars, templates_repo
+    from modules.nsot import hostvars, normalize, templates_repo
     from modules.nsot import manifest as _manifest
     from modules.nsot.render_artifact import build_artifact
 
@@ -44,7 +54,8 @@ def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
             platform = entry.get("platform") or committed.get("platform") or ""
         intent = hostvars.hydrate_secrets(committed, hostname, list_name)
         template = templates_repo.template_for_device(repo, hostname, platform)
-        artifact = build_artifact(hostname, config_text, platform, template=template,
+        stored = "\n".join(normalize.strip_for_repo(config_text or ""))
+        artifact = build_artifact(hostname, stored, platform, template=template,
                                   host_vars=intent,
                                   template_root=templates_repo.templates_dir(repo))
     except Exception as exc:                   # noqa: BLE001

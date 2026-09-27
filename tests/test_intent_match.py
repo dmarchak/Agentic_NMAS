@@ -79,6 +79,28 @@ class TestTheComparison:
         joined = "\n".join(got["lines"])
         assert "ipv6 ospf 1 area 0" in joined and "load-interval 30" in joined
 
+    # The header r2 printed at 18:53 on the host (its pre-change snapshot),
+    # copied verbatim: IOS writes the NVRAM line after every save, so every
+    # capture taken after a deploy carries it.
+    RAW_HEADER = ("Building configuration...\n\n"
+                  "Current configuration : 9029 bytes\n!\n"
+                  "! Last configuration change at 18:53:08 UTC Sun Sep 27 2026 by admin\n"
+                  "! NVRAM config last updated at 18:53:10 UTC Sun Sep 27 2026 by admin\n!\n")
+
+    def test_a_raw_capture_is_compared_as_it_is_stored(self, lab):
+        repo, captured = lab
+        result = im.intent_match(repo, "Lab", "r2", self.RAW_HEADER + captured, "cisco_iosxe")
+        assert result["state"] == "match", result["lines"]
+
+    def test_the_raw_header_does_not_hide_a_real_departure(self, lab):
+        # The operator's break, with the header: the same two lines as
+        # without it, and the NVRAM comment is not a third.
+        repo, captured = lab
+        result = im.intent_match(repo, "Lab", "r2", self.RAW_HEADER + _broken(captured),
+                                 "cisco_iosxe")
+        assert (result["adds"], result["removes"]) == (1, 1), result["lines"]
+        assert not any("NVRAM" in l for l in result["lines"]), result["lines"]
+
     def test_no_committed_intent_is_unknown_never_a_match(self, lab):
         repo, captured = lab
         got = im.intent_match(repo, "Lab", "r9", captured)
