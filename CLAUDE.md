@@ -124,6 +124,12 @@ tracked in git.
   modifier after a `|`, no URL, no target-less ping, no line editing. The
   agent's tools use it; the lens, `/run_command` and `bulk_execute` adopt it
   in 7.3
+- **[modules/nsot/receipts.py](modules/nsot/receipts.py)** — C60 (7.1): the
+  deploy receipt, one masked row per device per batch, written by the deploy
+  and restore apply paths after the golden commit: the program sent and its
+  hash against the confirmed one, the actor, the checks that RAN (or why
+  none did), rollback, and the commit. The follow-up window is not built,
+  and each row says so
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
@@ -1013,6 +1019,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_pipeline_reads_real_output.py` | C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
 | `test_capture_output.py` | `nmas-capture-output`, the probe kept as a tool: a refused command connects to nothing; captures never land in the store; a capture redaction changed is marked and written `.masked.txt`; its names are the fixtures'; bytecode off before any import |
+| `test_deploy_receipts.py` | C60: a row per device (sent, failed or refused), the program masked and hashed against the confirmed hash, the checks that ran by name (r6's "no routing protocol" a real state; verify not reached says why), what is not built stated; `0600`, append-only, absent vs unreadable; /deploy/apply writes it after the commit by the verified person; the commit's `Program-Hash:` trailer; a failed write loud and never raising; the restore path writes them too; the shipped result renderer, executed against the real apply payload (a deployed row AND a refusal), names each device's checks and the receipt |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |

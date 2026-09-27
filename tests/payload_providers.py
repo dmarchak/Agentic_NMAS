@@ -45,23 +45,46 @@ def deploy_plan(mp):
 
 
 def deploy_apply(mp):
-    """A plan, then its apply, authorised: one deployed row and its report."""
+    """A plan, then its apply, authorised: one deployed row and its report.
+
+    The plan carries the authorisation, as the wizard's re-plan does. Until
+    2026-09-27 this planned WITHOUT it and applied WITH it, so the hashes
+    differed and the "deployed row" was a refusal: the payload check had only
+    ever examined a refusal's keys, never a deployed row's (a fixture that
+    could not exhibit the case, inside the checker)."""
     import routes.deploy as rd
 
-    plan = deploy_plan(mp)
+    deploy_plan(mp)          # installs the artifact stubs
+    plan = _ok(_client().post("/deploy/plan", json={
+        "devices": ["s4"], "authorise": {"s4": ["shutdown"]}}))
     device = plan["devices"][0]
+    assert device["authorisation_ok"] is True, device
 
     def _deploy_one(entry, list_name, device_rows, authorise=None, source_ref=""):
+        """Shaped as the REAL `_deploy_one` returns a pushed, verified device
+        (the first version invented a `verified` key it never returns)."""
         from modules.nsot.deploy import DEPLOYED
-        return {"device": entry["artifact"].device, "outcome": DEPLOYED,
-                "verified": True}
+        return {"device": entry["artifact"].device, "outcome": DEPLOYED, "stage": "",
+                "reason": "", "commands": device["commands"], "authorised": ["shutdown"],
+                "program_hash": device["command_hash"], "rolled_back": False,
+                "pending_convergence": [], "golden_commit": "",
+                "verify": {"ok": True, "issues": [], "checked_protocols": ["ospf"],
+                           "pre": {"routing_protocol": "ospf", "routing_neighbors": 5,
+                                   "routing_protocols": {"ospf": 5}, "routes": 13,
+                                   "interfaces_up": 7},
+                           "post": {"routing_protocol": "ospf", "routing_neighbors": 5,
+                                    "routing_protocols": {"ospf": 5}, "routes": 13,
+                                    "interfaces_up": 7}}}
 
     mp.setattr(rd, "_deploy_one", _deploy_one)
     mp.setattr(rd, "_commit_batch_golden", lambda *a, **k: {"commit": ""})
+    # s4 deploys; s3 is refused because the program moved since it was
+    # confirmed, so the payload carries BOTH a deployed row and a refusal's
+    # operands, and the check can examine each.
     return _ok(_client().post("/deploy/apply", json={
-        "confirmations": {"s4": device["capture_hash"]},
-        "command_hashes": {"s4": device["command_hash"]},
-        "authorise": {"s4": list(device.get("dangerous") or [])},
+        "confirmations": {"s4": device["capture_hash"], "s3": device["capture_hash"]},
+        "command_hashes": {"s4": device["command_hash"], "s3": "0000000000000000"},
+        "authorise": {"s4": ["shutdown"], "s3": ["shutdown"]},
     }))
 
 

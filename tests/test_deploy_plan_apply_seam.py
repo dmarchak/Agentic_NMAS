@@ -481,7 +481,8 @@ class TestTheSpecificReasonReachesTheSCREEN:
         # harness that lifts only the renderer tests a function that cannot
         # run. The shipped escaper is also the thing that would silently
         # mangle a message, so it belongs in the execution rather than stubbed.
-        fn = _lift("_dEsc") + "\n" + _lift("_renderDeployResult")
+        fn = "\n".join(_lift(n) for n in ("_dEsc", "_checkedCell", "_receiptLine",
+                                           "_renderDeployResult"))
         # A stub DOM: duktape has no document, and the renderer writes into one.
         stub = """
         var __html = '';

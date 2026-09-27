@@ -414,7 +414,26 @@ def apply():
         _merge_refusals(report, refused)
 
     report["golden"] = _commit_batch_golden(list_name, report)
+    report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
+                                         command_hashes)
     return jsonify({"ok": True, "list": list_name, **report})
+
+
+def _write_receipts(list_name: str, report: dict, action: str, confirmations: dict,
+                    command_hashes: dict, source_ref: str = "") -> dict:
+    """Record what was sent, after the commit it names (C60). A failure is
+    loud in the response and the log, and never turns a deploy that happened
+    into one that reads as failed."""
+    from modules import identity
+    from modules.nsot import receipts
+
+    ident = identity.identify(request)
+    rows = receipts.rows_for(report, list_name=list_name, action=action,
+                             actor=identity.request_actor(),
+                             actor_kind=getattr(ident, "kind", ""),
+                             confirmations=confirmations,
+                             command_hashes=command_hashes, source_ref=source_ref)
+    return receipts.write(list_name, rows)
 
 
 def _merge_refusals(report: dict, refused: list) -> None:
@@ -512,6 +531,9 @@ def run_targets(list_name: str, targets: list, data: dict,
         _merge_refusals(report, refused)
     report["golden"] = _commit_batch_golden(list_name, report, label=label,
                                             source_ref=source_ref)
+    report["receipts"] = _write_receipts(
+        list_name, report, "restore" if source_ref else "reapply",
+        confirmations, command_hashes, source_ref=source_ref)
     return report
 
 
@@ -643,6 +665,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         return {"device": hostname, "outcome": FAILED, "stage": "pipeline",
                 "reason": str(exc)}
 
+    from modules.nsot.deploy import command_fingerprint
+
     failed_stage = result.stages_failed[-1] if result.stages_failed else ""
     # What actually landed. A failed push does not mean an unchanged device.
     failure_state = list((result.failure_state or {}).values())
@@ -677,6 +701,12 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         "golden_commit": (result.golden_result or {}).get("commit", ""),
         "golden_skipped": list(result.golden_skipped),
         "warnings": list(result.warnings),
+        # The receipt's two load-bearing facts (C60): what verify compared on
+        # this device, and the hash of the program as SENT (the lines the
+        # pipeline was given, with the authorisation folded in, exactly as the
+        # confirm hash is computed).
+        "verify": dict((result.verify_result or {}).get(device.get("ip", ""), {})),
+        "program_hash": command_fingerprint(commands, authorised),
     }
 
 
@@ -789,6 +819,12 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     what = label or f"via pipeline {batch_id}"
     subject = f"golden: baseline {len(pending)} device(s) {what}"
     trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
+    # The program each device was SENT, by hash (C60): the commit is the
+    # capture after the push, and this names what produced it. The full
+    # receipt, program included, is in deploy_receipts.jsonl.
+    for entry in results:
+        if entry.get("program_hash") and entry.get("device") in succeeded:
+            trailers.append(f"Program-Hash: {entry['device']}={entry['program_hash']}")
 
     # Device and intent are ONE UNIT per device, so the restored intent is part
     # of this commit, not a second one after it. A restore path names

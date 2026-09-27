@@ -233,6 +233,25 @@ def _a_verified_person_by_default(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _deploy_receipts_go_to_a_temp_file(request, monkeypatch, tmp_path):
+    """Every deploy and restore apply appends a receipt per device (C60), into
+    the list's directory. In the suite that is the shared test store, so each
+    test that drives an apply would leave a file there, which the store guard
+    rightly refuses. The receipt goes to THIS test's own directory instead,
+    where a test can read it back (`receipts.read`). The rotation record's
+    fixture below is the precedent. A test about the real path opts out with
+    ``@pytest.mark.real_receipts_path``."""
+    if request.node.get_closest_marker("real_receipts_path"):
+        yield
+        return
+    from modules.nsot import receipts
+
+    monkeypatch.setattr(receipts, "path_for",
+                        lambda list_name: str(tmp_path / f"{list_name}__deploy_receipts.jsonl"))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _rotation_record_goes_to_a_temp_file(monkeypatch, tmp_path):
     """Every rotate() and persist() appends to the rotation record (P.3 step
     12), and in the suite DATA_DIR is this checkout's data/: a test run would

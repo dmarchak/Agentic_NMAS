@@ -98,8 +98,8 @@ RENDERS = {
         adapters={"modules/preview_confirm.py": ("deploy_preview", "_deploy_gates")}),
     "POST /deploy/apply": Render(
         lambda mp, tmp: P.deploy_apply(mp),
-        {DW: ("applyDeploy", "_renderDeployResult")},
-        ((DW, "_renderDeployResult", "report"),), maps=("by_outcome",)),
+        {DW: ("applyDeploy", "_renderDeployResult", "_receiptLine", "_checkedCell")},
+        ((DW, "_renderDeployResult", "report"),), maps=("by_outcome", "routing_protocols")),
     "POST /golden/restore/preview": Render(
         lambda mp, tmp: P.restore_preview(mp),
         {GR3: ("previewBaselineRestore", "_authoriseDangerous", "restorePreviewText")},
@@ -307,6 +307,10 @@ UNDRAWN = {
         ("by_outcome refused workers", "counts and groupings of the rows, "
                                        "which are drawn one by one with the total"),
         ("commit golden", "the batch's golden commit; 7.5 links it"),
+        ("interfaces_up post pre routes routing_neighbors routing_protocol routing_protocols",
+         "verify's before/after counts per device, held in the deploy receipt "
+         "(C60) and drawn by 7.3's device History; the result screen names the "
+         "protocols checked and any failure"),
         ("list", LIST)],
     "POST /deploy/plan": [
         ("complete", "the conjunction of two gates drawn by name (template "
@@ -359,7 +363,12 @@ def _flat(table):
             for keys, reason in groups for key in keys.split()}
 
 
-UNDRAWN_CEILING = 99   # 117 before 7.1 drew the deploy gates by name
+# 99 -> 106 on 2026-09-27, and NOT a loosening: the /deploy/apply provider
+# could not exhibit a deployed row (it planned without the authorisation it
+# applied with, so every row was a refusal). Fixed, the check saw seven keys a
+# deployed row always carried and nothing had examined. A ceiling rises only
+# for that reason, stated here.
+UNDRAWN_CEILING = 106
 PHANTOM_CEILING = 18
 
 
