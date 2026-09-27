@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Save a device's running config ON THE DEVICE and prove it: the startup
+config must carry every `username` line the running config holds.
+
+The native persistence of P.6 M4. Phase 2 now does this before promotion;
+this is the same check for a device that is already promoted, and it records
+the outcome, so job health's rotation row reads what the DEVICE holds.
+
+    python3 scripts/nmas-persist-native bp-ztp-a --list ztp-a
+
+NOT `nmas-persist-credential`, which is the containerlab chain (startup
+file, Oxidized, the sync): for a device outside containerlab it resolves an
+unknown lab to rcn-lab1's paths (register C50).
+
+Exit codes: 0 persisted, 1 not persisted, 2 unknown (nothing was
+established). The output names each credential line's FORM, never its value.
+"""
+
+import argparse
+import getpass
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def run(list_name: str, hostname: str, *, persist=None, record=None) -> dict:
+    """Persist and record. ``{"state", "detail"}``."""
+    from modules.device import decrypt_field, load_saved_devices
+    from modules.nsot import credential_rotation as cr
+    from modules.nsot import onboard
+    from modules.nsot.listref import resolve
+
+    ref = resolve(list_name)
+    row = next((d for d in load_saved_devices(ref.csv_path)
+                if d.get("hostname") == hostname), None)
+    if row is None:
+        return {"state": "unknown", "detail": f"{hostname!r} is not in list {ref.name!r}"}
+    device_type = row.get("device_type", "")
+    if not device_type:
+        return {"state": "unknown",
+                "detail": f"{hostname!r} has no device_type in the inventory; not guessed"}
+    password = decrypt_field(row.get("password", ""))
+    if not password:
+        return {"state": "unknown", "detail": f"no stored credential for {hostname}"}
+    out = (persist or onboard.persist_on_device)(
+        row.get("ip", ""), row.get("username", "admin"), password,
+        cr.enable_secret(row), device_type)
+    (record or onboard._record_native_persist)(hostname, out, getpass.getuser())
+    return out
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("device")
+    parser.add_argument("--list", dest="list_name", required=True)
+    args = parser.parse_args(argv)
+
+    out = run(args.list_name, args.device)
+    state = out.get("state", "unknown")
+    print(f"{args.device:<12} {state.upper()}")
+    print(f"             {out.get('detail', '')}")
+    if state == "unknown":
+        print("\n  Nothing was established: this is not a verdict about the device.")
+    return {"persisted": 0, "not_persisted": 1}.get(state, 2)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

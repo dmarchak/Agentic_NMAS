@@ -1018,7 +1018,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_abandon.py` | release refuses while named; abandon reverses creation; a partial abandon never reclaims |
 | `test_onboard_pending.py` | pending has an exit; 24h/7d; promotion refuses the bootstrap credential |
 | `test_onboard_phase2.py` | reaching is the verification; silence is not a cause; the banner tells error from empty |
-| `test_onboard_phase_two.py` | the full phase: every step reported, promotion last, the first golden a true record |
+| `test_onboard_phase_two.py` | the full phase: every step reported, promotion last, the first golden a true record; P.6 M4: `persist` saves on the device and reads the startup config back (the running line verbatim, the form never the value), no startup config or an old line is not persisted, an unpersisted device is never promoted, the outcome is a rotation record job health reads, and its advice is `nmas-persist-native`, never the containerlab chain |
 | `test_settings_file_integrity.py` | absent vs unreadable; a write on defaults refused; the save is atomic |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
@@ -4694,6 +4694,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the fourth in minutes. A member handled correctly shows the other shape:
   RW-community removal treats "nothing to remove" as success, because a real
   device may not arrive with one.
+- **A STATE THE SYSTEM NAMES AND NOTHING READS** (P.6 M4, 2026-09-27).
+  Phase 2 answered 200 and promoted a device whose startup config was "not
+  present": one reload from a configless node, with NMAS holding a
+  credential for an account that no longer existed. `rotate()` had returned
+  `rotated_persistence_not_attempted`, the rotation record said the same,
+  and job health read it as `not_safe_to_reboot`. Phase 2 judged by
+  `rotated` and read none of it. Nothing on the path had ever saved a device
+  (no `write memory` anywhere). Phase 2 now saves and reads back the
+  device's own startup config before promotion, for every source. A named
+  danger is worth only what reads the name.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
@@ -4707,7 +4717,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **38 open at 2026-09-27**, counted from the rows: 33 recorded only in
+present when each was recorded. **39 open at 2026-09-27**, counted from the rows: 34 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

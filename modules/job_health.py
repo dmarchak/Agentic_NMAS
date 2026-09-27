@@ -621,6 +621,15 @@ def rotation_rows(records: list = None) -> list:
             st, detail = "ok", f"persisted and read SAFE at {at}"
         elif state in (cr.REVERTED, cr.NOT_STARTED):
             st, detail = "ok", f"unchanged: the last rotation ended {state} at {at}"
+        elif state == cr.ROTATED_UNVERIFIED and stage == "device_startup_config":
+            # P.6 M4: the DEVICE's own startup config, not a containerlab file.
+            # `nmas-persist-credential` is the containerlab chain and must not
+            # be advised here (for a device outside containerlab it resolves an
+            # unknown lab to rcn-lab1's paths, C50).
+            st, detail = ("not_safe_to_reboot",
+                          f"at {at} the device's startup config did NOT carry the rotated "
+                          f"credential: its running config holds the only working one. Do "
+                          f"not reload it; run nmas-persist-native {device} --list <list>")
         elif state == cr.ROTATED_UNVERIFIED:
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence FAILED at {stage or 'the chain'}. "

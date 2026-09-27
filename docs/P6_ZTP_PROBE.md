@@ -975,6 +975,55 @@ served hash will differ from `9c8314cc81e0` by exactly the key lines, and
 the review screen showed the render without them: the re-render follows
 today's generator, and both hashes are in the audit.
 
+### Observed: M4 phase 2 (2026-09-27): promoted with 200, one reload from unrecoverable
+
+After the key fix and a reload, Verify reached the device. Phase 2 rotated
+the credential, recorded it, committed intent, created NetBox and promoted,
+and answered **200**. Then `show startup-config` read **"startup-config is
+not present"**. The only copy of the working credential on the device was in
+volatile memory. A reload would have brought back a configless node, with
+NMAS holding a credential for an account that no longer existed. Nothing in
+the result said so. It is B15's shape, worse in one respect: B15 left the
+OLD credential bootable, and this left NOTHING bootable (the operator's
+reading).
+
+**The operator's questions, answered by measurement:**
+1. **Was the persistence chain called on this path? No, and nothing on it
+   ever saved a device.** No `write memory` (or `copy running`, or a save
+   call) exists anywhere in rotation or onboarding. `persist()` has two
+   callers, both CLI scripts, and it is the containerlab chain (startup
+   file, Oxidized, sync), not a device save. **`rotate()` NAMED the state**,
+   `rotated_persistence_not_attempted`, and so did the tool's own rotation
+   record for `bp-ztp-a` (03:35:52), which job health reads as
+   `not_safe_to_reboot`. Phase 2 judged the rotation by `rotated` and read
+   neither.
+2. **C50 is not live here**, because persistence never ran: nothing for
+   `bp-ztp-a` appeared in `labs/lab/configs/` (its newest file is from
+   2026-09-26 18:30).
+
+**Mitigated by hand:** the operator ran `write memory` on the console, and
+the startup config then carried `username admin privilege 15 secret 9 …`
+(`%SYS-6-PRIVCFG_ENCRYPT_SUCCESS`). **A hand action outside the tool, which
+is drift by the usual rule, recorded with its reason:** it prevented the loss
+of the only working credential, and it did exactly what the missing step
+should have done.
+
+**Fixed, for EVERY source.** No source ever saved the device, and an IOS
+reload boots whatever NVRAM holds.
+- Phase 2 gains `persist`, after both changes it makes to the device (rotate
+  and remove_rw) and before the golden: `write memory`, then `show
+  startup-config`. Every `username` line the running config holds must
+  appear in it verbatim. The comparison is against the RUNNING line, never
+  what was sent, because a type-9 secret is salted.
+- **Promotion does not happen until that holds** (the operator's
+  acceptance). A failure stops phase 2 with "do not reload it".
+- The outcome is a rotation record (`device_startup_config`), so job health
+  reads the DEVICE: SAFE only on a matching read-back. Its advice points at
+  `nmas-persist-native`, never at the containerlab chain.
+- `scripts/nmas-persist-native <device> --list <list>` is the same check
+  for a device already promoted. For `bp-ztp-a` it is how the 03:35:52
+  record gets superseded by a true one.
+
 **Redeploying mid-run:** the responder is a long-running process, and it
 holds the code it started with. After deploying the fix,
 `sudo systemctl restart nmas-ztp-responder.service` (the socket stays bound,

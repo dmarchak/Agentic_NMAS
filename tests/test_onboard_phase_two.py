@@ -88,6 +88,8 @@ def _steps(**over):
                                       "removed": ["no snmp-server community "
                                                   "s3cretRW RW 99"],
                                       "kept": ["snmp-server community public RO"]},
+        "persist": lambda *a, **k: {"ok": True, "state": "persisted",
+                                    "detail": "the startup config carries it"},
         "netbox": lambda *a, **k: {"ok": True, "created": ["dcim/devices:7"],
                                    "device_id": 7},
     }
@@ -119,7 +121,7 @@ class TestEveryStepIsReportedAndOkMeansAllOfIt:
         assert out["ok"] is False
         assert out["reason"] == "the device refused"
         not_run = {r["step"] for r in out["steps"] if r["detail"] == "did not run"}
-        assert not_run == {"remove_rw", "golden", "netbox", "promote"}, not_run
+        assert not_run == {"remove_rw", "persist", "golden", "netbox", "promote"}, not_run
         assert {r["step"] for r in out["remaining"]} == not_run
 
     def test_ok_is_false_if_any_step_is_false(self, world):
@@ -561,3 +563,133 @@ class TestPhaseTwoOpensNoSocketOfItsOwn:
         from modules.nsot.onboard import _phase_two_confirmation
 
         assert _phase_two_confirmation() == SELF_CONFIRMED
+
+
+# ── P.6 M4: the device's OWN startup config carries the rotated credential ──
+
+RUN_LINE = "username admin privilege 15 secret 9 $9$AbCdEfGhIjKlMn$SaltedHashValue"
+
+
+class _Conn:
+    def __init__(self, startup, running=RUN_LINE, save_raises=False):
+        self.startup, self.running, self.save_raises = startup, running, save_raises
+        self.saved = False
+
+    def enable(self):
+        pass
+
+    def save_config(self):
+        if self.save_raises:
+            raise OSError("the session dropped")
+        self.saved = True
+
+    def send_command(self, cmd, **kw):
+        return self.startup if cmd == "show startup-config" else self.running
+
+    def disconnect(self):
+        pass
+
+
+def _persist(conn):
+    from modules.nsot.onboard import persist_on_device
+    return persist_on_device("203.0.113.31", "admin", "x", "x", "cisco_xe",
+                             connect=lambda **kw: conn)
+
+
+class TestPersistOnTheDevice:
+    def test_a_startup_config_carrying_the_line_is_persisted(self):
+        conn = _Conn(startup=f"hostname bp1\n{RUN_LINE}\nend\n")
+        out = _persist(conn)
+        assert conn.saved and out["ok"] and out["state"] == "persisted"
+
+    def test_no_startup_config_is_not_persisted(self):
+        """The M4 state exactly: "startup-config is not present"."""
+        out = _persist(_Conn(startup="startup-config is not present\n"))
+        assert not out["ok"] and out["state"] == "not_persisted"
+        assert "NO startup config" in out["detail"]
+
+    def test_an_old_credential_in_the_startup_config_is_not_persisted(self):
+        old = "username admin privilege 15 password 0 Bootstrap123"
+        out = _persist(_Conn(startup=f"hostname bp1\n{old}\nend\n"))
+        assert out["state"] == "not_persisted"
+
+    def test_the_detail_names_the_form_never_the_value(self):
+        out = _persist(_Conn(startup="hostname bp1\nend\n"))
+        assert "secret 9 <value>" in out["detail"]
+        assert "SaltedHashValue" not in repr(out)
+
+    def test_a_save_that_could_not_run_is_unknown(self):
+        out = _persist(_Conn(startup="", save_raises=True))
+        assert not out["ok"] and out["state"] == "unknown"
+
+
+class TestPhaseTwoWaitsForIt:
+    def test_the_step_sits_after_both_device_changes_and_before_the_golden(self):
+        from modules.nsot.onboard import PHASE_TWO_STEPS as S
+        assert S.index("rotate") < S.index("persist") and S.index("remove_rw") < S.index("persist")
+        assert S.index("persist") < S.index("golden") and S[-1] == "promote"
+
+    def test_an_unpersisted_device_is_never_promoted(self, world):
+        from modules.nsot.onboard import run_phase_two
+
+        promoted = []
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            persist=lambda *a, **k: {"ok": False, "state": "not_persisted",
+                                     "detail": "after write memory the device still has NO startup config"},
+            promote=lambda *a, **k: promoted.append(1) or {"ok": True}))
+        assert out["ok"] is False and promoted == []
+        assert "do not reload it" in out["reason"]
+        not_run = {r["step"] for r in out["steps"] if r["detail"] == "did not run"}
+        assert {"golden", "netbox", "promote"} <= not_run
+
+    def test_the_outcome_is_a_rotation_record_job_health_reads(self, world):
+        from modules import job_health
+        from modules.nsot import credential_rotation as cr
+        from modules.nsot.onboard import run_phase_two
+
+        run_phase_two(world["repo"], "bp1", "probe", **_steps(
+            persist=lambda *a, **k: {"ok": False, "state": "not_persisted", "detail": "no"}))
+        rec = [r for r in cr.rotation_records() if r.get("device") == "bp1"][-1]
+        assert rec["state"] == cr.ROTATED_UNVERIFIED
+        row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp1"][0]
+        assert row["state"] == "not_safe_to_reboot"
+
+        run_phase_two(world["repo"], "bp1", "probe", **_steps())
+        rec = [r for r in cr.rotation_records() if r.get("device") == "bp1"][-1]
+        assert rec["state"] == cr.ROTATED_PERSISTED
+
+
+class TestTheNativePersistCommand:
+    """`nmas-persist-native`: the same check for a device already promoted,
+    recorded so job health reads the device, never the containerlab chain."""
+
+    @staticmethod
+    def _script():
+        import importlib.machinery
+        import importlib.util
+        import os
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "scripts", "nmas-persist-native")
+        loader = importlib.machinery.SourceFileLoader("nmas_persist_native", path)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+        return mod
+
+    def test_exit_codes_follow_the_state(self, monkeypatch):
+        mod = self._script()
+        for state, code in (("persisted", 0), ("not_persisted", 1), ("unknown", 2)):
+            monkeypatch.setattr(mod, "run", lambda *a, **k: {"state": state, "detail": "d"})
+            assert mod.main(["bp1", "--list", "probe"]) == code
+
+    def test_the_rotation_row_advises_it_not_the_containerlab_chain(self, world):
+        from modules import job_health
+        from modules.nsot.onboard import _record_native_persist
+
+        _record_native_persist("bp9", {"ok": False, "detail": "no startup config"}, "op")
+        row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp9"][0]
+        assert row["state"] == "not_safe_to_reboot"
+        assert "nmas-persist-native bp9" in row["detail"]
+        assert "nmas-persist-credential" not in row["detail"]
+        _record_native_persist("bp9", {"ok": True, "detail": "carries it"}, "op")
+        row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp9"][0]
+        assert row["state"] == "ok"

@@ -2388,8 +2388,8 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
 #: `promoted` is therefore not a state a partial run can reach. See
 #: `test_onboard_phase_two.py`, whose control moves promotion earlier and
 #: asserts the suite notices.
-PHASE_TWO_STEPS = ("verify", "capture", "rotate", "remove_rw", "golden",
-                   "netbox", "promote")
+PHASE_TWO_STEPS = ("verify", "capture", "rotate", "remove_rw", "persist",
+                   "golden", "netbox", "promote")
 
 
 def capture_config(mgmt_ip: str, username: str, password: str, secret: str,
@@ -2428,6 +2428,89 @@ def capture_config(mgmt_ip: str, username: str, password: str, secret: str,
             f"the capture was {len(config.splitlines())} lines — that is a "
             f"failed read, not a configuration")}
     return {"ok": True, "config": config, "error": ""}
+
+
+def _credential_form(line: str) -> str:
+    """A username line with its credential value replaced: the FORM, never
+    the value (a guard against a credential must not become a second place
+    it lives)."""
+    return re.sub(r"((?:secret|password)\s+\d+\s+)\S+", r"\1<value>", line.strip())
+
+
+def persist_on_device(mgmt_ip: str, username: str, password: str, secret: str,
+                      device_type: str, *, connect=None) -> dict:
+    """Save the running config ON THE DEVICE, then prove it: the startup
+    config must carry every `username` line the running config holds,
+    verbatim. ``{"ok", "state", "detail"}`` with state ``persisted |
+    not_persisted | unknown``.
+
+    P.6 M4: phase 2 rotated the credential, recorded it, committed intent,
+    created NetBox, promoted and returned 200, while the device's startup
+    config was "not present": the only copy of the working credential was in
+    volatile memory, one reload from a configless node and an account NMAS
+    held a credential for that no longer existed. Nothing on this path had
+    ever saved a device (no `write memory` anywhere in rotation or
+    onboarding). `rotate()` said so, in a state phase 2 did not read
+    (`rotated_persistence_not_attempted`).
+
+    Compared against the RUNNING config's line, never what was sent: a
+    type-9 secret is salted, so the stored form cannot be recomputed. That is
+    `verify_startup_carries_current()`'s question, asked of the device
+    instead of a file.
+    """
+    from modules.connection import connection_params
+
+    out = {"ok": False, "state": "unknown", "detail": ""}
+    try:
+        if connect is None:
+            from netmiko import ConnectHandler as connect
+        conn = connect(**connection_params(
+            {"device_type": device_type, "ip": mgmt_ip, "username": username},
+            password=password, secret=secret))
+        try:
+            conn.enable()
+            conn.save_config()
+            startup = conn.send_command("show startup-config", read_timeout=_read_timeout())
+            running = conn.send_command("show running-config | include ^username",
+                                        read_timeout=_read_timeout())
+        finally:
+            conn.disconnect()
+    except Exception as exc:                   # noqa: BLE001
+        log.error("phase2: persisting on %s failed: %s", mgmt_ip, exc)
+        out["detail"] = f"the save or its read-back could not run: {exc}"
+        return out
+
+    held = [l.rstrip() for l in running.splitlines() if l.startswith("username ")]
+    if not held:
+        out["detail"] = ("the running config shows no username line, so what the "
+                         "startup config should carry is unknown")
+        return out
+    if "startup-config is not present" in startup or not startup.strip():
+        out["state"] = "not_persisted"
+        out["detail"] = "after write memory the device still has NO startup config"
+        return out
+    stored = {l.rstrip() for l in startup.splitlines()}
+    missing = [l for l in held if l not in stored]
+    if missing:
+        out["state"] = "not_persisted"
+        out["detail"] = ("the startup config does not carry "
+                         + "; ".join(_credential_form(l) for l in missing))
+        return out
+    out.update(ok=True, state="persisted",
+               detail="the startup config carries " + "; ".join(_credential_form(l) for l in held))
+    return out
+
+
+def _record_native_persist(hostname: str, pers: dict, actor: str) -> None:
+    """A rotation record, so job health's rotation row reads what happened on
+    the DEVICE: SAFE only when the startup read-back matched."""
+    from modules.nsot import credential_rotation as cr
+
+    cr.record_outcome("persist", {
+        "device": hostname, "actor": actor,
+        "state": cr.ROTATED_PERSISTED if pers.get("ok") else cr.ROTATED_UNVERIFIED,
+        "persistence": [{"name": "device_startup_config", "ok": bool(pers.get("ok")),
+                         "detail": pers.get("detail", "")}]})
 
 
 def _read_timeout() -> int:
@@ -2479,8 +2562,8 @@ def remove_rw_communities(mgmt_ip: str, username: str, password: str,
 
 def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
                   actor_kind: str = "", online=None, reach=None,
-                  capture=None, rotate=None, remove_rw=None, save=None,
-                  netbox=None, promote=None) -> dict:
+                  capture=None, rotate=None, remove_rw=None, persist=None,
+                  save=None, netbox=None, promote=None) -> dict:
     """Finish onboarding a pending device. **`ok` means all of it.**
 
     Returns ``{"ok", "steps", "remaining", "reason", ...}`` with one entry
@@ -2680,6 +2763,18 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
                  f"{len(rw.get('removed') or [])} removed, "
                  f"{len(rw.get('kept') or [])} kept"):
         return _stop("remove_rw", rw.get("error") or "the removal failed")
+
+    # ---- 4b. persist ON THE DEVICE, after both changes phase 2 makes -----
+    # PROMOTION MUST NOT REPORT SUCCESS UNTIL THE DEVICE'S OWN STARTUP CONFIG
+    # CARRIES THE ROTATED CREDENTIAL (the operator's acceptance, P.6 M4).
+    pers = (persist or persist_on_device)(mgmt_ip, user, pw, sec, device_type)
+    result["persist"] = pers
+    _record_native_persist(hostname, pers, actor)
+    if not _step("persist", pers.get("ok"), pers.get("detail", "")):
+        return _stop("persist", (
+            f"{pers.get('detail') or 'the save could not be confirmed'}. The "
+            "device's RUNNING config holds the only working credential: do not "
+            "reload it. Save it on the device and run Verify again"))
 
     # ---- 5. the golden, captured AFTER the removal ------------------------
     # Re-read rather than edited: the golden must be what the device
