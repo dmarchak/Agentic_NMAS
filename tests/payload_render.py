@@ -203,3 +203,15 @@ def render_preview(preview: dict, hooks: dict = None) -> str:
     src = shipped("nmas_preview_confirm.js")
     return dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmHtml("
                         + json.dumps(preview) + ", " + json.dumps(hooks or {}) + ")")
+
+
+def render_result(result: dict, hooks: dict = None) -> str:
+    """The SHIPPED result half of the component, executed in duktape against
+    a result from a real route (7.1 step 2)."""
+    import json
+
+    import dukpy
+
+    src = shipped("nmas_preview_confirm.js")
+    return dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmResultHtml("
+                        + json.dumps(result) + ", " + json.dumps(hooks or {}) + ")")

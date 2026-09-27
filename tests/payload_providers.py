@@ -100,7 +100,13 @@ def deploy_apply(mp):
                                     "interfaces_up": 7}}}
 
     mp.setattr(rd, "_deploy_one", _deploy_one)
-    mp.setattr(rd, "_commit_batch_golden", lambda *a, **k: {"commit": ""})
+    # A golden commit with its tags, so the result's record part is reached
+    # (the fixture used to return an empty commit, and `record.tags` could
+    # never be examined).
+    mp.setattr(rd, "_commit_batch_golden", lambda *a, **k: {
+        "ok": True, "commit": "0123456789abcdef0123", "devices": ["s4"],
+        "tags": ["golden/s4/20260927T000000Z"], "baseline": False,
+        "baseline_reasons": ["the batch targeted 1 of 9 inventory devices"]})
     # s4 deploys; s3 is refused because the program moved since it was
     # confirmed, so the payload carries BOTH a deployed row and a refusal's
     # operands, and the check can examine each.
@@ -132,3 +138,14 @@ def onboard_pending(mp, tmp_path):
     mp.setattr("modules.nsot.ztp.progress",
                lambda row: {"stage": "reserved_not_leased", "summary": "reserved"})
     return _ok(_client().get("/onboard/pending?list_name=probe"))
+
+
+def deploy_receipts(mp):
+    """The receipt store read back (7.1 step 3): a real apply writes the
+    receipts (into this test's own file, conftest), then the reader answers
+    for s4. The deployed row, not a hand-built one."""
+    deploy_apply(mp)
+    # Unfiltered, so the batch carries the refused s3 as well as the deployed
+    # s4 and "what did not happen" has an item to examine. The Device page
+    # filters by device; the filtered summary is tested in test_deploy_receipts.
+    return _ok(_client().get("/deploy/receipts"))

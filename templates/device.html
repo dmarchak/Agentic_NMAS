@@ -123,6 +123,19 @@
       Backups
     </button>
   </li>
+  <!-- Changes tab (7.1 step 3): the receipts, drawn by the result component -->
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if tab == 'changes' %}active{% endif %}"
+            id="changes-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#changes"
+            type="button"
+            role="tab"
+            aria-controls="changes"
+            aria-selected="{{ 'true' if tab == 'changes' else 'false' }}">
+      Changes
+    </button>
+  </li>
 </ul>
 
 <div class="tab-content mt-3" id="deviceTabsContent">
@@ -470,6 +483,7 @@
     <div id="terminal-container" class="terminal-box"></div>
   </div>
 
+  {% include 'partials/device_changes.html' %}
   <!-- Backups Tab -->
   <div class="tab-pane fade {% if tab == 'backups' %}show active{% endif %}"
        id="backups"

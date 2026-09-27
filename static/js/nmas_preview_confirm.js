@@ -218,6 +218,161 @@
     return {disabled: false, text: label};
   }
 
+  /* ---- The RESULT half (7.1 step 2): what happened, drawn the way what
+     will happen is. Six parts, built by the server FROM THE RECEIPT ROWS it
+     wrote, so the screen and the record are one computation:
+       1 happened     what happened, each target named
+       2 did_not      what did not happen, with the reason
+       3 sent         per target: the program as sent, its hash against the
+                      hash you confirmed
+       4 checks       per target: what verify compared, before and after, or
+                      why nothing was checked
+       5 record       the commit, its tags, the receipt
+       6 not_watched  what is not being watched after the change
+     COLOUR COMES ONLY FROM THE SERVER'S `level`, never from a branch here: a
+     green result on a partial success is a false statement in a different
+     medium (the operator, 2026-09-27). Every field goes through esc(), so the
+     class of unescaped device text (C88) is closed for anything drawn here. */
+
+  var RESULT_PARTS = ['happened', 'did_not', 'sent', 'checks', 'record', 'not_watched'];
+
+  var LEVEL = {
+    success: ['alert-success', 'success', 'Done'],
+    partial: ['alert-warning', 'warning', 'Partly done'],
+    failed: ['alert-danger', 'danger', 'Not done'],
+    nothing: ['alert-secondary', 'secondary', 'Nothing to do']
+  };
+
+  var OUTCOME_BADGE = {
+    deployed: 'bg-success', refused: 'bg-warning text-dark',
+    skipped_drifted: 'bg-warning text-dark', failed: 'bg-danger',
+    unattempted: 'bg-secondary', skipped_not_selected: 'bg-secondary'
+  };
+
+  function resultSection(part, title, body) {
+    return '<section class="mb-2" data-pr-part="' + part + '">'
+      + '<div class="small fw-semibold text-uppercase text-muted">' + esc(title) + '</div>'
+      + body + '</section>';
+  }
+
+  function pair(a) {
+    a = a || [];
+    return esc(a[0] == null ? '?' : a[0]) + ' &rarr; ' + esc(a[1] == null ? '?' : a[1]);
+  }
+
+  function sentHtml(t) {
+    var s = t.sent || {};
+    var body;
+    if (!(s.lines || []).length) {
+      body = '<div class="small text-muted" data-pr-none>' + esc(s.none) + '</div>';
+    } else {
+      body = '<div class="small">' + s.lines.length + ' line(s) sent, program <code>'
+        + esc((s.program_hash || '').slice(0, 12)) + '</code>: <span data-pr-match="'
+        + esc(String(s.matches)) + '"' + (s.matches === false ? ' class="text-danger fw-semibold"' : '')
+        + '>' + esc(s.match_words) + '</span></div>'
+        + '<div class="font-monospace small bg-body-tertiary p-2 rounded" '
+        + 'style="max-height:220px;overflow:auto;white-space:pre" data-pr-program="'
+        + esc(t.name) + '">' + esc(s.lines.join('\n')) + '</div>';
+    }
+    var rb = t.rollback || {};
+    if (rb.performed) {
+      body += '<div class="small mt-1" data-pr-rollback><span class="badge bg-info text-dark">rolled back</span> '
+        + (rb.commands || []).length + ' line(s)'
+        + ((rb.not_undone || []).length ? ', ' + rb.not_undone.length
+           + ' line(s) not undone because the device never applied them' : '') + '</div>';
+    }
+    return resultSection('sent', 'What was sent', body);
+  }
+
+  function checksHtml(t) {
+    var c = t.checks || {};
+    var body;
+    if (!c.ran) {
+      body = '<div class="small text-muted" data-pr-none>Nothing was checked: ' + esc(c.why) + '</div>';
+    } else {
+      var protocols = c.checked_protocols || [];
+      var rows = protocols.map(function (p) {
+        return '<div><span class="font-monospace">' + esc(p) + '</span> neighbours '
+          + pair((c.neighbours || {})[p]) + '</div>';
+      }).join('');
+      body = '<div class="small" data-pr-checked="' + esc(protocols.join(',')) + '">'
+        + (c.ok ? '<span class="badge bg-success">verify passed</span> '
+                : '<span class="badge bg-danger">verify failed</span> ')
+        + (protocols.length ? 'checked ' + esc(protocols.join(', ')) : esc(c.neighbours_note || 'no routing protocol on this device'))
+        + '</div><div class="small font-monospace">' + rows
+        + '<div>routes ' + pair(c.routes) + '</div><div>interfaces up '
+        + pair(c.interfaces_up) + '</div></div>'
+        + (c.issues || []).map(function (i) {
+            return '<div class="small text-danger">' + esc(i) + '</div>';
+          }).join('')
+        + (c.pending_convergence || []).map(function (i) {
+            return '<div class="small text-muted">' + esc(i) + '</div>';
+          }).join('');
+    }
+    return resultSection('checks', 'What was checked', body);
+  }
+
+  function previewConfirmResultHtml(r, hooks) {
+    hooks = hooks || {};
+    if (!r || (r.parts || []).join(',') !== RESULT_PARTS.join(',')) {
+      return '<div class="alert alert-danger" data-pr-mismatch>This result cannot be drawn: '
+        + 'the server sent parts [' + esc(((r || {}).parts || []).join(', ')) + '] and this page '
+        + 'draws [' + RESULT_PARTS.join(', ') + ']. Reload the page; the receipt holds the record.</div>';
+    }
+    var lv = LEVEL[r.level] || ['alert-secondary', 'secondary', r.level];
+    var rows = (r.happened.targets || []).map(function (t) {
+      return '<div class="d-flex align-items-center gap-2"><span class="fw-semibold">'
+        + esc(t.name) + '</span><span class="badge ' + (OUTCOME_BADGE[t.outcome] || 'bg-secondary')
+        + '" data-pr-outcome="' + esc(t.outcome) + '">' + esc(t.words) + '</span>'
+        + (t.outcome === 'skipped_drifted' && hooks.repreview
+            ? '<button class="btn btn-outline-primary btn-sm py-0" onclick="'
+              + esc(hooks.repreview) + '([\'' + esc(t.name) + '\'])">Preview again</button>' : '')
+        + '</div>';
+    }).join('');
+    var head = '<div class="alert ' + lv[0] + ' py-2 px-3" data-pr-level="' + esc(r.level) + '">'
+      + '<strong>' + esc(lv[2]) + '.</strong> ' + esc(r.happened.summary) + '</div>';
+    var dn = r.did_not || {};
+    var didNot = (dn.items || []).length
+      ? (dn.items || []).map(function (i) {
+          return '<div class="small mt-1" data-pr-not="' + esc(i.kind) + '"><strong>'
+            + esc(i.target) + '</strong>: ' + esc(i.text)
+            + ((i.lines || []).length ? '<pre class="small bg-body-tertiary p-2 rounded mb-0">'
+               + esc(i.lines.join('\n')) + '</pre>' : '') + '</div>';
+        }).join('')
+      : '<div class="small" data-pr-none>' + esc(dn.none) + '</div>';
+    var cards = (r.targets || []).map(function (t) {
+      return '<div class="card mb-2 border-light-subtle" data-pr-target="' + esc(t.name) + '">'
+        + '<div class="card-body py-2 px-3"><div class="fw-semibold mb-1">' + esc(t.name)
+        + (t.stage ? ' <span class="small text-muted">stopped at: ' + esc(t.stage) + '</span>' : '')
+        + '</div>' + (t.reason ? '<div class="small mb-1">' + esc(t.reason) + '</div>' : '')
+        + sentHtml(t) + checksHtml(t) + '</div></div>';
+    }).join('');
+    var rec = r.record || {};
+    var receipt = rec.receipt || {};
+    var record = '<div class="small font-monospace">'
+      + '<div>golden commit: ' + (rec.commit ? '<code>' + esc(rec.commit.slice(0, 12)) + '</code>' : 'none') + '</div>'
+      + '<div>baseline: ' + (rec.baseline ? esc(rec.baseline) : 'none') + '</div>'
+      + ((rec.tags || []).length ? '<div>tags: ' + esc(rec.tags.join(', ')) + '</div>' : '')
+      + '<div data-pr-receipt="' + (receipt.ok ? 'ok' : 'failed') + '"'
+      + (receipt.ok ? '' : ' class="text-danger fw-semibold"') + '>receipt: '
+      + (receipt.ok ? esc(receipt.written) + ' row(s) written'
+                    : 'NOT WRITTEN: ' + esc(receipt.error || 'not reported')) + '</div></div>'
+      + '<div class="small">' + esc(rec.statement) + '</div>';
+    return '<div data-pr-result="' + esc(r.action) + '">' + head
+      + resultSection('happened', 'What happened', rows)
+      + resultSection('did_not', 'What did not happen', didNot) + cards
+      + resultSection('record', 'The record', record)
+      + resultSection('not_watched', 'What is not being watched', '<div class="small text-muted">'
+          + esc(r.not_watched) + '</div>') + '</div>';
+  }
+
+  /* The toast level for a result: from the server's level, never guessed. */
+  function previewConfirmResultLevel(r) {
+    return (LEVEL[(r || {}).level] || LEVEL.nothing)[1];
+  }
+
   root.previewConfirmHtml = previewConfirmHtml;
   root.previewConfirmButton = previewConfirmButton;
+  root.previewConfirmResultHtml = previewConfirmResultHtml;
+  root.previewConfirmResultLevel = previewConfirmResultLevel;
 })(typeof window !== 'undefined' ? window : this);

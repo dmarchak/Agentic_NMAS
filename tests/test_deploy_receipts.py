@@ -192,36 +192,26 @@ class TestTheResultScreenSaysWhatWasChecked:
     (a deployed row and a refusal, from `payload_providers.deploy_apply`)."""
 
     def _render(self, monkeypatch):
-        import json as _json
-
-        import dukpy
-
+        """7.1 step 2: the result is the component's, built from the receipt
+        rows the apply wrote."""
         from tests import payload_providers as P
-        from tests.payload_render import lift, shipped
+        from tests.payload_render import render_result
 
         report = P.deploy_apply(monkeypatch)
-        src = shipped("partials__deploy_wizard.1.js")
-        fn = "\n".join(lift(src, n) for n in ("_dEsc", "_checkedCell", "_receiptLine",
-                                              "_renderDeployResult"))
-        stub = """
-        var __html = '';
-        var document = { getElementById: function (id) { return {
-          set innerHTML(v) { __html += v; }, get innerHTML() { return __html; },
-          classList: { add: function () {} }, textContent: '' }; } };
-        function showToast() {}
-        var _OUTCOME_STYLE = {};
-        """
-        return report, dukpy.evaljs(stub + fn +
-                                    f"\n_renderDeployResult({_json.dumps(report)});\n__html;")
+        return report, render_result(report["result"], {"repreview": "openDeployPlan"})
 
     def test_each_row_names_its_checks_and_the_receipt_is_reported(self, monkeypatch):
         report, html = self._render(monkeypatch)
         assert {r["device"]: r["outcome"] for r in report["results"]} == \
             {"s3": "refused", "s4": "deployed"}, "the fixture must exhibit both"
-        cells = re.findall(r"data-checked>(.*?)</td>", html, re.S)
-        assert any("ospf" in c for c in cells) and any("nothing sent" in c for c in cells)
-        assert 'data-receipt="ok"' in html and "2 device row(s)" in html
-        assert "sent " in html and report["results"][1]["program_hash"][:8] in html
+        s4 = html[html.index('data-pr-target="s4"'):]
+        s3 = html[html.index('data-pr-target="s3"'):html.index('data-pr-target="s4"')]
+        assert 'data-pr-checked="' in s4 and "ospf" in s4.split("data-pr-checked=")[1][:80]
+        assert "Nothing was checked: refused before anything was sent" in s3
+        assert 'data-pr-receipt="ok"' in html and "2 row(s) written" in html
+        s4_hash = next(r for r in report["results"] if r["device"] == "s4")["program_hash"]
+        assert "line(s) sent, program" in s4 and s4_hash[:12] in s4
+        assert "matches the program you confirmed" in s4
 
 
 class TestTheRestorePathWritesThemToo:
@@ -237,3 +227,72 @@ class TestTheRestorePathWritesThemToo:
         body = ast.unparse(fn)
         assert "_write_receipts(" in body and "'restore'" in body
         assert body.index("_commit_batch_golden(") < body.index("_write_receipts(")
+
+
+class TestTheReceiptsReadBack:
+    """7.1 step 3: the result can be read again LATER, from the receipt
+    store, drawn by the same component as at apply. None of the 41 gated
+    actions had that (the result survey, 2026-09-27)."""
+
+    def _draw(self, payload):
+        import json as _json
+
+        import dukpy
+
+        from tests.payload_render import shipped
+
+        component = shipped("nmas_preview_confirm.js")
+        page = shipped("partials__device_changes.1.js")
+        return dukpy.evaljs(
+            "var window = {}; var document = {addEventListener: function () {}};\n"
+            + component + "\nvar previewConfirmResultHtml = window.previewConfirmResultHtml;\n"
+            + page + f"\ndeviceChangesHtml({_json.dumps(payload)})")
+
+    def test_a_deploy_reads_back_as_that_devices_row(self, monkeypatch):
+        from tests import payload_providers as P
+
+        P.deploy_apply(monkeypatch)
+        d = P._ok(P._client().get("/deploy/receipts?device=s4"))
+        assert d["state"] == "ok" and len(d["changes"]) == 1
+        result = d["changes"][0]["result"]
+        # One device's row: never "every device in the batch appears here".
+        assert result["happened"]["summary"].startswith("s4: done. One row of batch")
+        assert "every device in the batch" not in result["happened"]["summary"]
+        assert result["record"]["statement"].startswith("Read back from the receipt recorded")
+        html = self._draw(d)
+        assert 'data-pr-target="s4"' in html and "matches the program you confirmed" in html
+        assert "s3" not in html.split("data-pr-result")[1], "filtered to the device"
+
+    def test_a_secret_in_the_store_is_masked_on_the_way_out(self, monkeypatch, tmp_path):
+        """A row written before masking, or by hand: the reader is the second
+        layer, so a planted community never leaves."""
+        import json as _json
+
+        from modules.nsot import receipts
+        from tests import payload_providers as P
+
+        path = tmp_path / "planted.jsonl"
+        monkeypatch.setattr(receipts, "path_for", lambda list_name: str(path))
+        row = {"device": "s4", "action": "deploy", "batch_id": "b1", "at": "t", "actor": "a",
+               "outcome": "deployed", "sent": True, "program_hash": "x", "matches_confirmed": None,
+               "program": ["snmp-server community PLANTEDREC99 RO"],
+               "checks": {"ran": False, "why": "planted"}, "rollback": {}}
+        path.write_text(_json.dumps(row) + "\n", encoding="utf-8")
+        body = P._client().get("/deploy/receipts?device=s4").get_data(as_text=True)
+        assert "PLANTEDREC99" not in body and "snmp-server community <redacted" in body
+
+    def test_absent_and_unreadable_are_different_sentences(self, monkeypatch, tmp_path):
+        from modules.nsot import receipts
+        from tests import payload_providers as P
+
+        path = tmp_path / "r.jsonl"
+        monkeypatch.setattr(receipts, "path_for", lambda list_name: str(path))
+        absent = P._client().get("/deploy/receipts?device=s4").get_json()
+        assert absent["ok"] is True and absent["state"] == "absent"
+        assert 'data-changes-state="none"' in self._draw(absent)
+        path.write_text("{not json\n", encoding="utf-8")
+        resp = P._client().get("/deploy/receipts?device=s4")
+        bad = resp.get_json()
+        assert resp.status_code == 500 and bad["ok"] is False and bad["state"] == "unreadable"
+        html = self._draw(bad)
+        assert 'data-changes-state="unreadable"' in html and "not the same as no change" in html

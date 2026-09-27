@@ -297,13 +297,15 @@ async function previewBaselineRestore(tag, unOnboard, from) {
                             approval_id: from.approvalId || ''}),
     });
     const ad = await ar.json();
-    const done = (ad.deployed || []).length;
-    const intent = (ad.golden || {}).intent || {};
-    const extra = (intent.restored || []).length
-      ? `, intent restored for ${(intent.restored || []).length}` : '';
-    showToast(ad.ok ? `Re-applied to ${done} device(s)${extra}`
-                    : `Re-apply failed: ${ad.error || ''}`,
-              ad.ok ? 'success' : 'danger');
+    if (!ad.ok) {
+      showToast(`Re-apply failed: ${ad.error || ''}`, 'danger');
+    } else {
+      // THE RESULT, drawn by the component (7.1 step 2), from the receipt
+      // rows the apply wrote. It was a toast (C84): the program sent, its
+      // hash against the confirmed one, and what verify checked were
+      // carried and drawn nowhere.
+      _showRestoreResult(`Re-applied ${tag}`, ad.result);
+    }
     loadGoldenRepoPanel();
   } catch (e) { showToast(e.message, 'danger'); }
 }
@@ -415,6 +417,29 @@ function _confirmRestorePreview(title, d, from) {
     const modal = new bootstrap.Modal(el);
     modal.show();
   });
+}
+
+// The result of a restore, in a modal, drawn by the shared component. The
+// toast's colour is the server's level (a partial restore is never green).
+function _showRestoreResult(title, result) {
+  const el = document.createElement('div');
+  el.className = 'modal fade';
+  el.tabIndex = -1;
+  el.innerHTML =
+    '<div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">'
+    + '<div class="modal-header"><h5 class="modal-title"></h5>'
+    + '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'
+    + '<div class="modal-body" data-restore-result></div>'
+    + '<div class="modal-footer"><button type="button" class="btn btn-secondary" '
+    + 'data-bs-dismiss="modal">Close</button></div></div></div>';
+  el.querySelector('.modal-title').textContent = title;
+  // The component escapes every value it draws.
+  el.querySelector('[data-restore-result]').innerHTML = previewConfirmResultHtml(result, {});
+  el.addEventListener('hidden.bs.modal', () => el.remove());
+  document.body.appendChild(el);
+  new bootstrap.Modal(el).show();
+  showToast(((result || {}).happened || {}).summary || 'Re-apply finished',
+            previewConfirmResultLevel(result));
 }
 
 // The devices this confirm covers: exactly the targets the preview marks

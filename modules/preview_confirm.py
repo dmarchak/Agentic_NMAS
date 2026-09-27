@@ -420,3 +420,205 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
                                  "device marked deployable. If a device's stored capture "
                                  "moves before you apply, it is skipped and nothing is "
                                  "sent to it."}]})
+
+
+# ---------------------------------------------------------------------------
+# The RESULT half (7.1 step 2): what happened, drawn the way what-will-happen
+# already is.
+# ---------------------------------------------------------------------------
+
+#: The parts of a result, mirroring the preview's.
+RESULT_PARTS = ("happened", "did_not", "sent", "checks", "record", "not_watched")
+
+#: The level is COMPUTED here and only drawn by the renderer, because colour is
+#: part of the result (the operator, 2026-09-27): a green result on a partial
+#: success is a false statement in a different medium. ``success`` needs every
+#: target done, every sent program matching its confirmed hash, every check
+#: that ran passing, and the record written.
+RESULT_LEVELS = ("success", "partial", "failed", "nothing")
+
+OUTCOME_WORDS = {
+    "deployed": "done",
+    "refused": "refused: nothing was sent",
+    "skipped_drifted": "skipped: its capture moved since the preview, nothing was sent",
+    "failed": "failed",
+    "unattempted": "not attempted",
+    "skipped_not_selected": "not selected",
+}
+
+
+class ResultIncomplete(ValueError):
+    """A result part is missing, or empty without saying so."""
+
+
+def build_result(*, action: str, level: str, summary: str, targets: list,
+                 did_not: list, nothing_left_out: str, record: dict,
+                 not_watched: str) -> dict:
+    """The result. Floors, as the preview's: a part with nothing to say states
+    it, because an empty section and a missing one read the same."""
+    if level not in RESULT_LEVELS:
+        raise ResultIncomplete(f"unknown level {level!r}")
+    if not summary:
+        raise ResultIncomplete("part 1 (happened) has no summary")
+    if not did_not and not nothing_left_out:
+        raise ResultIncomplete("part 2 (did_not) is empty and does not say so")
+    for t in targets:
+        sent = t.get("sent") or {}
+        if not sent.get("lines") and not sent.get("none"):
+            raise ResultIncomplete(f"part 3 (sent) for {t.get('name')} is empty and does not say so")
+        checks = t.get("checks") or {}
+        if not checks.get("ran") and not checks.get("why"):
+            raise ResultIncomplete(f"part 4 (checks) for {t.get('name')} neither ran nor says why")
+    if not (record or {}).get("statement"):
+        raise ResultIncomplete("part 5 (record) has no statement")
+    if not not_watched:
+        raise ResultIncomplete("part 6 (not_watched) is empty")
+    return {"action": action, "parts": list(RESULT_PARTS), "level": level,
+            "happened": {"summary": summary,
+                         "targets": [{"name": t["name"], "outcome": t.get("outcome", ""),
+                                      "words": t.get("words", "")} for t in targets]},
+            "did_not": {"items": did_not, "none": "" if did_not else nothing_left_out},
+            "targets": [{"name": t["name"], "sent": t["sent"], "checks": t["checks"],
+                         "rollback": t.get("rollback") or {}, "stage": t.get("stage", ""),
+                         "reason": t.get("reason", ""), "outcome": t.get("outcome", "")}
+                        for t in targets],
+            "record": record, "not_watched": not_watched}
+
+
+def result_level(rows: list, receipt_ok: bool, breaker_tripped: bool = False) -> str:
+    """``success`` only when nothing is left to qualify it."""
+    if not rows:
+        return "nothing"
+    done = [r for r in rows if r.get("outcome") == "deployed"]
+    if not done:
+        return "failed"
+    clean = (len(done) == len(rows) and receipt_ok and not breaker_tripped
+             and all(r.get("matches_confirmed") is True for r in done if r.get("sent"))
+             and all((r.get("checks") or {}).get("ok") is True
+                     for r in done if (r.get("checks") or {}).get("ran")))
+    return "success" if clean else "partial"
+
+
+def operation_result(rows: list, report: dict, receipt_status: dict, action: str,
+                     from_receipt: dict = None) -> dict:
+    """A deploy's or restore's result, built FROM THE RECEIPT ROWS the apply
+    has just written, so the screen and the record are one computation.
+    Every field is already masked in the rows (`receipts.rows_for`)."""
+    from modules.nsot.receipts import FOLLOW_UP_NOT_BUILT
+
+    verb = {"deploy": "deployed"}.get(action, "re-applied")
+    receipt_ok = bool((receipt_status or {}).get("ok"))
+    targets, did_not = [], []
+    for r in rows:
+        name = r.get("device", "?")
+        outcome = r.get("outcome", "")
+        words = OUTCOME_WORDS.get(outcome, outcome.replace("_", " "))
+        sent = r.get("sent")
+        matches = r.get("matches_confirmed")
+        targets.append({
+            "name": name, "outcome": outcome, "words": words,
+            "stage": r.get("stage", ""), "reason": r.get("reason", ""),
+            "sent": {"lines": r.get("program") if sent else [],
+                     "program_hash": r.get("program_hash", ""),
+                     "confirmed_hash": r.get("confirmed_hash") or "",
+                     "matches": matches,
+                     "match_words": ("matches the program you confirmed" if matches is True
+                                     else "DOES NOT MATCH the program you confirmed"
+                                     if matches is False
+                                     else "no confirmed program to compare with"),
+                     "none": "" if sent else (r.get("reason") or "Nothing was sent.")},
+            "checks": r.get("checks") or {"ran": False, "why": "no check was recorded"},
+            "rollback": r.get("rollback") or {},
+        })
+        if outcome != "deployed":
+            did_not.append({"target": name, "kind": outcome,
+                            "text": f"{words}" + (f": {r['reason']}" if r.get("reason") else ""),
+                            "lines": []})
+        not_undone = (r.get("rollback") or {}).get("not_undone") or []
+        if not_undone:
+            did_not.append({"target": name, "kind": "not_undone",
+                            "text": "Rejected by the device when pushed, so not undone by the "
+                                    "rollback: never applied.", "lines": list(not_undone)})
+    if report.get("breaker_tripped"):
+        did_not.append({"target": "this batch", "kind": "breaker",
+                        "text": f"Stopped early: {report.get('breaker_reason', '')}", "lines": []})
+    for s in report.get("skipped") or []:
+        did_not.append({"target": s.get("hostname") or "(the ref)", "kind": "skipped",
+                        "text": "Not touched: " + (s.get("reason") or "skipped"), "lines": []})
+
+    golden = report.get("golden") or {}
+    tags = list(golden.get("tags") or [])
+    baseline = next((t for t in tags if t.startswith("baseline/")), "")
+    commit = golden.get("commit", "")
+    statement = (f"Golden commit {commit[:12]} records the captures of "
+                 f"{', '.join(golden.get('devices') or []) or 'no device'}."
+                 if commit else "No golden commit: nothing succeeded, or no capture changed.")
+    statement += (f" Baseline {baseline} was tagged." if baseline else
+                  " No baseline tag: " + "; ".join(golden.get("baseline_reasons") or
+                                                   ["not earned"]) + ".")
+    if receipt_ok:
+        statement += (f" Receipt: {receipt_status.get('written', 0)} device row(s) recorded, "
+                      "each with the program sent and the checks that ran.")
+    else:
+        statement += (" RECEIPT NOT WRITTEN: " + str((receipt_status or {}).get("error") or
+                                                     "no receipt was reported")
+                      + ". The change happened and its record did not.")
+    if from_receipt:
+        # Read back LATER from the receipt store (step 3): the receipt names
+        # the commit and not its tags, so the record says where it was read
+        # from rather than claiming no baseline was taken.
+        statement = (f"Read back from the receipt recorded {from_receipt.get('at', '?')} by "
+                     f"{from_receipt.get('actor') or 'an unrecorded actor'}"
+                     + (f", golden commit {commit[:12]}" if commit else ", no golden commit")
+                     + ". Its tags are in the golden history.")
+    record = {"commit": commit, "tags": tags, "baseline": baseline,
+              "receipt": {"ok": receipt_ok, "written": (receipt_status or {}).get("written", 0),
+                          "error": (receipt_status or {}).get("error", "")},
+              "statement": statement}
+
+    done = sum(1 for r in rows if r.get("outcome") == "deployed")
+    if from_receipt and from_receipt.get("device"):
+        # One device's row of a batch: never "every device appears here".
+        summary = (f"{from_receipt['device']}: "
+                   + (OUTCOME_WORDS.get(rows[0].get("outcome", ""), "") if rows else "no row")
+                   + f". One row of batch {from_receipt.get('batch_id') or '?'}; the other "
+                     "devices in it are in their own histories.")
+    else:
+        summary = (f"{done} of {len(rows)} device(s) {verb}. {len(rows)} device(s) accounted "
+                   "for: every device in the batch appears here.")
+    return build_result(
+        action=action,
+        level=result_level(rows, receipt_ok, bool(report.get("breaker_tripped"))),
+        summary=summary,
+        targets=targets, did_not=did_not,
+        nothing_left_out="Nothing: every device was done, and the rollback had nothing to leave.",
+        record=record, not_watched=FOLLOW_UP_NOT_BUILT["why"])
+
+
+def receipt_history(rows: list, device: str = "") -> list:
+    """The receipt store read back as results (7.1 step 3): one per batch,
+    newest first, each drawn by the same component as the result shown at
+    apply. ``rows`` come from `receipts.read()` and are already masked."""
+    batches, order = {}, []
+    for r in rows:
+        key = r.get("batch_id") or f"{r.get('at', '')}|{r.get('action', '')}"
+        if key not in batches:
+            batches[key] = []
+            order.append(key)
+        batches[key].append(r)
+    out = []
+    for key in order:
+        group = batches[key]
+        first = group[0]
+        commit = next((r.get("golden_commit") for r in group if r.get("golden_commit")), "")
+        report = {"golden": {"commit": commit,
+                             "devices": [r.get("device") for r in group if r.get("golden_commit")]}}
+        meta = {"at": first.get("at", ""), "actor": first.get("actor", ""),
+                "batch_id": first.get("batch_id", ""), "device": device}
+        out.append({"batch_id": first.get("batch_id", ""), "at": first.get("at", ""),
+                    "action": first.get("action", ""), "actor": first.get("actor", ""),
+                    "source_ref": first.get("source_ref", ""),
+                    "result": operation_result(group, report, {"ok": True, "written": len(group)},
+                                               "deploy" if first.get("action") == "deploy"
+                                               else "restore", from_receipt=meta)})
+    return out

@@ -78,8 +78,11 @@ def _post(path, body):
 
 
 PC = "nmas_preview_confirm.js"
+PC_RESULT_FNS = ("previewConfirmResultHtml", "sentHtml", "checksHtml", "resultSection",
+                 "pair", "previewConfirmResultLevel")
 PC_FNS = ("previewConfirmHtml", "whatHtml", "whatNotHtml", "programHtml", "operandsHtml",
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
+DC = "partials__device_changes.1.js"
 DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js",
                      "partials__golden_repo.2.js", "partials__golden_repo.3.js")
 I1, I4 = "index.1.js", "index.4.js"
@@ -98,8 +101,18 @@ RENDERS = {
         adapters={"modules/preview_confirm.py": ("deploy_preview", "_deploy_gates")}),
     "POST /deploy/apply": Render(
         lambda mp, tmp: P.deploy_apply(mp),
-        {DW: ("applyDeploy", "_renderDeployResult", "_receiptLine", "_checkedCell")},
-        ((DW, "_renderDeployResult", "report"),), maps=("by_outcome", "routing_protocols")),
+        {DW: ("applyDeploy", "_renderDeployResult"), PC: PC_RESULT_FNS},
+        ((DW, "_renderDeployResult", "report"),),
+        maps=("by_outcome", "routing_protocols", "neighbours"),
+        adapters={"modules/preview_confirm.py": ("operation_result", "build_result",
+                                                 "result_level"),
+                  "modules/nsot/receipts.py": ("rows_for", "_checks")}),
+    "GET /deploy/receipts": Render(
+        lambda mp, tmp: P.deploy_receipts(mp),
+        {DC: ("deviceChangesHtml", "loadDeviceChanges"), PC: PC_RESULT_FNS},
+        ((DC, "deviceChangesHtml", "d"),), maps=("neighbours",),
+        adapters={"modules/preview_confirm.py": ("receipt_history", "operation_result",
+                                                 "build_result", "result_level")}),
     "POST /golden/restore/preview": Render(
         lambda mp, tmp: P.restore_preview(mp),
         {GR3: ("previewBaselineRestore", "_authoriseDangerous", "_confirmRestorePreview",
@@ -305,16 +318,19 @@ UNDRAWN = {
         ("type url", "the service's type and address; the panel draws its state"),
         ("ok", OK)],
     "POST /deploy/apply": [
-        ("capture_confirmed capture_current confirmed_hash current_hash moved",
+        ("capture_confirmed capture_current current_hash moved",
          "a refusal's operands: its `reason` sentence names them and which "
          "side moved, and that IS drawn (test_deploy_plan_apply_seam)"),
-        ("by_outcome refused workers", "counts and groupings of the rows, "
-                                       "which are drawn one by one with the total"),
-        ("commit golden", "the batch's golden commit; 7.5 links it"),
-        ("interfaces_up post pre routes routing_neighbors routing_protocol routing_protocols",
-         "verify's before/after counts per device, held in the deploy receipt "
-         "(C60) and drawn by 7.3's device History; the result screen names the "
-         "protocols checked and any failure"),
+        ("by_outcome refused workers deployed total",
+         "counts and groupings of the rows; the result's summary sentence counts "
+         "the receipt rows it draws one by one (7.1 step 2)"),
+        ("routing_neighbors routing_protocol",
+         "verify's single-protocol summary, superseded by `routing_protocols`, "
+         "which the result draws per protocol, before and after"),
+        ("golden_commit", "each device's copy of the batch commit, which the "
+                          "result's record part draws once"),
+        ("receipts", "the receipt write status, drawn as the record part's "
+                     "receipt line (`record.receipt`)"),
         ("list", LIST)],
     "POST /deploy/plan": [
         ("complete", "the conjunction of two gates drawn by name (template "
@@ -418,6 +434,16 @@ EMPTY_IN_FIXTURE = {
                                                      "drawn in test_preview_confirm "
                                                      "(deploy_plan_with_residue)"),
     "POST /golden/restore/preview devices[].blocking_reasons": (S_, _STRINGS),
+    "GET /deploy/receipts changes[].result.record.tags": (S_, "a receipt names the golden commit and not its tags, and the history's record statement says so"),
+    "GET /deploy/receipts changes[].result.targets[].checks.issues": (S_, "the fixture's verify is clean; a failing check is drawn in test_preview_confirm (TestTheResultHalf)"),
+    "GET /deploy/receipts changes[].result.targets[].checks.pending_convergence": (S_, "the fixture's verify converged; the renderer draws a pending line when one exists"),
+    "GET /deploy/receipts changes[].result.targets[].rollback.commands": (S_, "no device in the fixture was rolled back"),
+    "GET /deploy/receipts changes[].result.targets[].rollback.not_undone": (S_, "no device in the fixture was rolled back"),
+    "GET /deploy/receipts changes[].result.did_not.items[].lines": (S_, "the did-not items here are a refusal, which carries no lines"),
+    "POST /deploy/apply result.did_not.items[].lines": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
+    "POST /deploy/apply result.targets[].rollback.commands": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
+    "POST /deploy/apply result.targets[].rollback.not_undone": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
+    "POST /deploy/apply result.targets[].sent.lines": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
     "POST /golden/restore/preview devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /golden/restore/preview intent_restored": (S_, _STRINGS),
     "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
@@ -455,8 +481,11 @@ def _flat(table):
 # deployed row always carried and nothing had examined. A ceiling rises only
 # for that reason, stated here. 106 -> 105: the restore preview moved onto
 # the component (7.1), and its adapter now reads three keys it carried
-# undrawn.
-UNDRAWN_CEILING = 105
+# undrawn. 105 -> 102: the deploy result moved onto the component's result
+# half (7.1 step 2), which draws eight keys the old renderer did not and
+# carries four of the old renderer's in another form (each declared);
+# a protocol name is a map key under `neighbours`, not an exemption.
+UNDRAWN_CEILING = 101
 PHANTOM_CEILING = 18
 
 

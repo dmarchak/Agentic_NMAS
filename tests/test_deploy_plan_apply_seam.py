@@ -477,26 +477,10 @@ class TestTheSpecificReasonReachesTheSCREEN:
                 i += 1
             return source[start:i + 1]
 
-        # `_dEsc` too: the renderer escapes every field through it, so a
-        # harness that lifts only the renderer tests a function that cannot
-        # run. The shipped escaper is also the thing that would silently
-        # mangle a message, so it belongs in the execution rather than stubbed.
-        fn = "\n".join(_lift(n) for n in ("_dEsc", "_checkedCell", "_receiptLine",
-                                           "_renderDeployResult"))
-        # A stub DOM: duktape has no document, and the renderer writes into one.
-        stub = """
-        var __html = '';
-        var __els = {};
-        function __el(id) { return {
-          set innerHTML(v) { __html += v; }, get innerHTML() { return __html; },
-          classList: { add: function () {} }, textContent: '' }; }
-        var document = { getElementById: function (id) {
-          if (!__els[id]) __els[id] = __el(id); return __els[id]; } };
-        function showToast() {}
-        var _OUTCOME_STYLE = {};
-        """
-        return dukpy.evaljs(
-            stub + fn + f"\n_renderDeployResult({_json.dumps(report)});\n__html;")
+        # 7.1 step 2: the result is the shared component's, built from the
+        # receipt rows the apply wrote, and escaped by it.
+        from tests.payload_render import render_result
+        return render_result(report["result"])
 
     def test_the_reason_is_drawn(self, report):
         html = self._render(report)

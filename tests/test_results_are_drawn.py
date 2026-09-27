@@ -51,8 +51,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KINDS = ("confirm", "approve", "publish_remote")
 
 #: Drawn by the result component (7.1 step 2), with its record re-readable
-#: (step 3). {endpoint: "file:function"}.
-RESULT_COMPONENT = {}
+#: (step 3): {endpoint: (the shipped file, the function that draws the
+#: result, the route that reads the record back)}. Checked from source.
+RESULT_COMPONENT = {
+    "deploy.apply": ("static/js/gen/partials__deploy_wizard.1.js", "_renderDeployResult",
+                     "deploy.receipts_read"),
+    "golden.restore_apply": ("static/js/gen/partials__golden_repo.3.js", "_showRestoreResult",
+                             "deploy.receipts_read"),
+}
 
 #: The bar: changes nothing durable AND has no operands worth re-reading.
 TOAST_ENOUGH = {}
@@ -60,7 +66,6 @@ TOAST_ENOUGH = {}
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.
 PENDING = {
     # -- drawn in place, gone when the window closes or the page moves on --
-    "deploy.apply": "the result modal (_renderDeployResult), until closed",
     "bulk_execute": "the bulk results modal, until closed",
     "bulk_delete_file": "the bulk results modal, until closed",
     "bulk_tftp_upload": "the bulk results modal, until closed",
@@ -77,7 +82,6 @@ PENDING = {
     "remote.auto_push": "the remote panel's output box",
     "remote.acknowledge": "the remote panel's output box",
     # -- a toast, gone in seconds --
-    "golden.restore_apply": "a toast; the per-device result is drawn nowhere (C84)",
     "onboard.verify": "a toast on success (the failure IS drawn)",
     "onboard.abandon": "a toast; what it removed is not shown",
     "onboard.create": "a toast, and a false one: 'Device onboarded.' after phase 1 (C86)",
@@ -127,7 +131,7 @@ UNESCAPED = {
         "Auto-Create's result: hostnames and failure reasons into HTML",
 }
 
-CEILINGS = {"PENDING": 33, "FALSE_GREEN": 3, "UNESCAPED": 2}
+CEILINGS = {"PENDING": 31, "FALSE_GREEN": 3, "UNESCAPED": 2}
 
 
 def _population():
@@ -218,3 +222,25 @@ class TestColourAndEscaping:
     @pytest.mark.parametrize("rel,literal", sorted(UNESCAPED))
     def test_each_unescaped_interpolation_is_still_there(self, rel, literal):
         assert literal in _read(rel), f"fixed? remove it from UNESCAPED: {literal}"
+
+
+class TestTheComponentDrawsTheseResults:
+    """Evidence, from source, for each RESULT_COMPONENT entry: the function
+    draws the component's result, and the record has a reader."""
+
+    def test_each_entry_draws_the_component_and_can_be_read_again(self):
+        import app as A
+        from tests.payload_render import lift
+
+        endpoints = {r.endpoint for r in A.app.url_map.iter_rules()}
+        assert len(RESULT_COMPONENT) >= 2
+        for ep, (rel, fn, reader) in RESULT_COMPONENT.items():
+            body = lift(_read(rel), fn)
+            assert "previewConfirmResultHtml(" in body, (ep, fn)
+            assert reader in endpoints, (ep, reader)
+
+    def test_the_restore_flow_draws_its_apply_result(self):
+        from tests.payload_render import lift
+
+        flow = lift(_read("static/js/gen/partials__golden_repo.3.js"), "previewBaselineRestore")
+        assert "_showRestoreResult(" in flow and "ad.result" in flow

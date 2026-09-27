@@ -1,0 +1,15 @@
+<!-- Changes: every deploy and restore that reached this device, read back
+     from the receipt store (7.1 step 3) and drawn by the SAME result
+     component as the result shown at apply, so what a person reads later is
+     what was recorded then. None of the 41 gated actions had a screen where
+     its result could be read again (the result survey, 2026-09-27). -->
+<div class="tab-pane fade {% if tab == 'changes' %}show active{% endif %}"
+     id="changes" role="tabpanel" aria-labelledby="changes-tab">
+  <p class="small text-muted">
+    What each deploy and restore sent to this device, whether it matched the
+    program that was confirmed, and what verify checked, from the receipt
+    recorded at the time. Newest first.
+  </p>
+  <div id="deviceChangesBody" data-hostname="{{ device['hostname'] }}"></div>
+</div>
+<script src="{{ url_for('static', filename='js/gen/partials__device_changes.1.js') }}"></script>

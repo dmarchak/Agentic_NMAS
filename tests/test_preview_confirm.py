@@ -22,7 +22,7 @@ import pytest
 
 from modules import preview_confirm as pc
 from tests import payload_providers as P
-from tests.payload_render import render_preview, shipped
+from tests.payload_render import render_preview, render_result, shipped
 
 pytest.importorskip("dukpy")
 
@@ -314,3 +314,94 @@ class TestResidueIsDrawnInItsSection:
         part = re.search(r'data-pc-part="what_not"(.*?)</section>', html, re.S).group(1)
         assert "interface GigabitEthernet0/3" in part and "retired uplink" in part
         assert 'data-concept="merge-only"' in part
+
+
+class TestTheResultHalf:
+    """7.1 step 2: what happened, drawn the way what-will-happen is, built
+    from the receipt rows the apply wrote. Colour is the server's `level`
+    only, and every field is escaped by the one renderer (C88's class)."""
+
+    def _row(self, **over):
+        row = {"device": "s4", "outcome": "deployed", "sent": True,
+               "program": ["interface Gi0/2", " shutdown", "exit"],
+               "program_hash": "a" * 16, "confirmed_hash": "a" * 16,
+               "matches_confirmed": True, "reason": "", "stage": "",
+               "checks": {"ran": True, "ok": True, "issues": [], "checked_protocols": ["ospf"],
+                          "neighbours": {"ospf": [5, 5]}, "routes": [13, 13],
+                          "interfaces_up": [7, 7], "pending_convergence": []},
+               "rollback": {"performed": False, "commands": [], "not_undone": []}}
+        row.update(over)
+        return row
+
+    def _result(self, rows, receipt_ok=True, **report):
+        return pc.operation_result(rows, report, {"ok": receipt_ok, "written": len(rows),
+                                                  "error": "" if receipt_ok else "disk full"},
+                                   "deploy")
+
+    def test_green_only_when_nothing_qualifies_it(self):
+        assert self._result([self._row()])["level"] == "success"
+
+    @pytest.mark.parametrize("change,level", [
+        ({"matches_confirmed": False}, "partial"),
+        ({"matches_confirmed": None}, "partial"),
+        ({"checks": {"ran": True, "ok": False, "issues": ["ospf 5 -> 3"],
+                     "checked_protocols": ["ospf"]}}, "partial"),
+        ({"outcome": "failed"}, "failed"),
+    ])
+    def test_each_qualification_takes_the_green_away(self, change, level):
+        assert self._result([self._row(**change)])["level"] == level
+
+    def test_an_unwritten_receipt_is_not_success(self):
+        """The change happened and its record did not."""
+        r = self._result([self._row()], receipt_ok=False)
+        assert r["level"] == "partial" and "RECEIPT NOT WRITTEN" in r["record"]["statement"]
+
+    def test_one_refused_among_done_is_partial(self):
+        rows = [self._row(), self._row(device="s3", outcome="refused", sent=False,
+                                       reason="the exact command list changed")]
+        r = self._result(rows)
+        assert r["level"] == "partial"
+        assert [i["target"] for i in r["did_not"]["items"]] == ["s3"]
+
+    def test_the_renderer_draws_six_parts_and_the_level(self):
+        html = render_result(self._result([self._row()]))
+        parts = re.findall(r'data-pr-part="([a-z_]+)"', html)
+        assert parts == ["happened", "did_not", "sent", "checks", "record", "not_watched"]
+        assert 'data-pr-level="success"' in html and "alert-success" in html
+
+    def test_a_partial_result_is_never_drawn_green(self):
+        html = render_result(self._result([self._row(matches_confirmed=False)]))
+        assert "alert-success" not in html and "alert-warning" in html
+        assert "DOES NOT MATCH the program you confirmed" in html
+
+    def test_device_text_is_escaped(self):
+        """C88's class: markup in a device name or a reason is drawn as text."""
+        evil = '<img src=x onerror="alert(1)">'
+        rows = [self._row(device=evil, outcome="failed", sent=False, reason=evil)]
+        html = render_result(self._result(rows))
+        assert evil not in html and "&lt;img src=x onerror=" in html
+
+    def test_a_result_with_other_parts_is_refused_on_screen(self):
+        r = self._result([self._row()])
+        r["parts"] = r["parts"][:-1]
+        html = render_result(r)
+        assert "data-pr-mismatch" in html and "data-pr-part" not in html
+
+    def test_the_builder_refuses_a_silent_part(self):
+        with pytest.raises(pc.ResultIncomplete, match="part 4"):
+            pc.build_result(action="deploy", level="success", summary="x",
+                            targets=[{"name": "s4", "sent": {"none": "nothing"},
+                                      "checks": {"ran": False}}],
+                            did_not=[], nothing_left_out="none", record={"statement": "s"},
+                            not_watched="w")
+
+    def test_the_level_is_the_toast_level(self):
+        import json
+
+        import dukpy
+
+        src = shipped("nmas_preview_confirm.js")
+        for level, toast in (("success", "success"), ("partial", "warning"), ("failed", "danger")):
+            got = dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmResultLevel("
+                               + json.dumps({"level": level}) + ")")
+            assert got == toast, (level, got)

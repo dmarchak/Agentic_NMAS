@@ -132,80 +132,15 @@ async function applyDeploy() {
   }
 }
 
-const _OUTCOME_STYLE = {
-  deployed: 'success', skipped_drifted: 'warning', refused: 'warning',
-  failed: 'danger', unattempted: 'secondary', skipped_not_selected: 'secondary',
-};
-
-// What was SENT is recorded per device (C60). A receipt that could not be
-// written is drawn in red, because the deploy happened and its record did not:
-// a silent failure here is a deploy nobody can later account for.
-function _receiptLine(receipts) {
-  if (!receipts) {
-    return '<p class="small text-warning mb-0" data-receipt="absent">No receipt was reported for this deploy.</p>';
-  }
-  if (!receipts.ok) {
-    return `<p class="small text-danger mb-0" data-receipt="failed"><strong>Receipt not written:</strong> ${_dEsc(receipts.error)}</p>`;
-  }
-  return `<p class="small text-muted mb-0" data-receipt="ok">Receipt: ${receipts.written} device row(s) recorded, each with the program sent and the checks that ran.</p>`;
-}
-
-// Which checks RAN on this device, from verify's own record (C62): a device
-// with no routing protocol is a real state, and a device verify never
-// reached says so, so neither can read as "checked and fine".
-function _checkedCell(r) {
-  const v = r.verify;
-  if (!v || !Object.keys(v).length) {
-    return r.outcome === 'refused' ? '<span class="text-muted">nothing sent</span>'
-                                   : '<span class="text-warning">not verified</span>';
-  }
-  const names = v.checked_protocols || [];
-  const what = names.length ? names.map(_dEsc).join(', ')
-                            : 'no routing protocol on this device';
-  const issues = (v.issues || []).map(i => `<div class="text-danger">${_dEsc(i)}</div>`).join('');
-  return `${v.ok ? '' : '<span class="badge bg-danger me-1">failed</span>'}${what}${issues}`;
-}
-
+// Drawn by THE result half of the preview-then-confirm component (7.1 step
+// 2): the server builds `report.result` from the receipt rows it wrote, and
+// `previewConfirmResultHtml` draws it. This wizard supplies only wiring (a
+// skipped device's "Preview again" reopens the plan for it), and the toast's
+// colour is the server's level, never a guess made here.
 function _renderDeployResult(report) {
   const body = document.getElementById('deployPlanBody');
   document.getElementById('deployApplyBtn').classList.add('d-none');
-
-  body.innerHTML = `
-    ${report.breaker_tripped ? `
-      <div class="alert alert-danger py-2 px-3">
-        <strong>Stopped early.</strong> ${_dEsc(report.breaker_reason)}
-        Repeated verify failures suggest something systemic rather than one
-        device having been touched.
-      </div>` : ''}
-    <div class="table-responsive"><table class="table table-sm align-middle">
-      <thead><tr><th>Device</th><th>Outcome</th><th>Detail</th><th>Checked</th><th>Golden</th></tr></thead>
-      <tbody>${report.results.map(r => `
-        <tr>
-          <td class="fw-semibold">${_dEsc(r.device)}</td>
-          <td><span class="badge bg-${_OUTCOME_STYLE[r.outcome] || 'secondary'}">
-            ${_dEsc(r.outcome.replace(/_/g, ' '))}</span></td>
-          <td class="small">
-            ${_dEsc(r.reason || '')}
-            ${r.stage ? `<div class="text-muted">stopped at: ${_dEsc(r.stage)}</div>` : ''}
-            ${(r.commands || []).length
-              ? `<div class="text-muted" data-sent>sent ${r.commands.length} line(s), program ${_dEsc((r.program_hash || '').slice(0, 8))}</div>` : ''}
-            ${r.rolled_back ? '<span class="badge bg-info text-dark ms-1">rolled back</span>' : ''}
-            ${(r.pending_convergence || []).length
-              ? `<div class="text-muted">${r.pending_convergence.map(_dEsc).join('<br>')}</div>` : ''}
-            ${r.outcome === 'skipped_drifted'
-              ? `<button class="btn btn-outline-primary btn-sm mt-1"
-                         onclick="openDeployPlan(['${_dEsc(r.device)}'])">Re-preview</button>` : ''}
-          </td>
-          <td class="small" data-checked>${_checkedCell(r)}</td>
-          <td class="font-monospace small">${_dEsc((r.golden_commit || '').slice(0, 8))}</td>
-        </tr>`).join('')}</tbody>
-    </table></div>
-    <p class="small text-muted mb-0">
-      ${report.total} device(s) accounted for. Every device in a batch appears here.
-    </p>
-    ${_receiptLine(report.receipts)}`;
-
-  const deployed = (report.deployed || []).length;
-  showToast(`${deployed} deployed, ${report.total - deployed} not`,
-            deployed ? 'success' : 'warning');
+  body.innerHTML = previewConfirmResultHtml(report.result, {repreview: 'openDeployPlan'});
+  showToast((report.result && report.result.happened && report.result.happened.summary) || 'Deploy finished',
+            previewConfirmResultLevel(report.result));
 }

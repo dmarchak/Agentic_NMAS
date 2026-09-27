@@ -433,13 +433,42 @@ def apply():
     return jsonify(mask_payload({"ok": True, "list": list_name, **report}))
 
 
+@bp.route("/receipts", methods=["GET"])
+def receipts_read():
+    """The receipt store, read back (7.1 step 3): what each deploy and restore
+    sent, whether it matched what was confirmed, and what verify checked,
+    drawn by the same result component as at apply. Masked on the way out
+    (the rows are masked at write; this is the second layer). A READ, so it
+    may derive the active list."""
+    from modules.nsot import receipts
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import receipt_history
+
+    list_name = _active_list({"list_name": request.args.get("list_name", "")})
+    device = (request.args.get("device") or "").strip()
+    try:
+        limit = max(1, min(int(request.args.get("limit", 20)), 200))
+    except ValueError:
+        limit = 20
+    got = receipts.read(list_name, device=device, limit=limit)
+    body = {"ok": got["state"] != "unreadable", "list": list_name, "device": device,
+            "state": got["state"], "error": got.get("error", ""),
+            "changes": receipt_history(got["rows"], device) if got["state"] == "ok" else []}
+    return jsonify(mask_payload(body)), (200 if body["ok"] else 500)
+
+
 def _write_receipts(list_name: str, report: dict, action: str, confirmations: dict,
                     command_hashes: dict, source_ref: str = "") -> dict:
     """Record what was sent, after the commit it names (C60). A failure is
     loud in the response and the log, and never turns a deploy that happened
-    into one that reads as failed."""
+    into one that reads as failed.
+
+    It also draws the RESULT (7.1 step 2) into ``report["result"]``, from the
+    SAME rows it writes: the screen and the record are one computation, so
+    the result cannot claim something the receipt does not."""
     from modules import identity
     from modules.nsot import receipts
+    from modules.preview_confirm import operation_result
 
     ident = identity.identify(request)
     rows = receipts.rows_for(report, list_name=list_name, action=action,
@@ -447,7 +476,10 @@ def _write_receipts(list_name: str, report: dict, action: str, confirmations: di
                              actor_kind=getattr(ident, "kind", ""),
                              confirmations=confirmations,
                              command_hashes=command_hashes, source_ref=source_ref)
-    return receipts.write(list_name, rows)
+    status = receipts.write(list_name, rows)
+    report["result"] = operation_result(rows, report, status,
+                                        "deploy" if action == "deploy" else "restore")
+    return status
 
 
 def _merge_refusals(report: dict, refused: list) -> None:
@@ -477,7 +509,7 @@ def _merge_refusals(report: dict, refused: list) -> None:
 
 
 def run_targets(list_name: str, targets: list, data: dict,
-                label: str = "", source_ref: str = "") -> dict:
+                label: str = "", source_ref: str = "", skipped: list = None) -> dict:
     """Run a batch of already-built targets. Shared by deploy and re-apply.
 
     Everything below the intent layer is the same operation whether the target
@@ -545,6 +577,9 @@ def run_targets(list_name: str, targets: list, data: dict,
         _merge_refusals(report, refused)
     report["golden"] = _commit_batch_golden(list_name, report, label=label,
                                             source_ref=source_ref)
+    # Before the result is drawn, so it names the devices the ref did not
+    # touch (the restore's own skip list) as well as the ones it did.
+    report["skipped"] = list(skipped or [])
     report["receipts"] = _write_receipts(
         list_name, report, "restore" if source_ref else "reapply",
         confirmations, command_hashes, source_ref=source_ref)

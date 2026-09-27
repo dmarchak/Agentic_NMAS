@@ -374,7 +374,7 @@ def restore_apply():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
     report = run_targets(list_name, targets, data,
-                         label=f"re-apply {ref}", source_ref=ref)
+                         label=f"re-apply {ref}", source_ref=ref, skipped=skipped)
     report.update({"ref": ref, "mode": "re-apply", "skipped": skipped,
                    "invalidated_queue_items": invalidated["rejected"]})
 
