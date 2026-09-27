@@ -680,8 +680,20 @@ def sync_owner_rows(run=None, get=None) -> list:
 OK_STATES = ("ok", "not_applicable")
 
 
+def ztp_rows() -> list:
+    """D4, checked where it could otherwise silently stop holding (P.6)."""
+    from modules.nsot import ztp
+
+    try:
+        return ztp.posture_rows()
+    except Exception as exc:                       # noqa: BLE001
+        return [{"unit": "ztp-posture", "state": "unknown", "max_age_minutes": 0,
+                 "what": "D4: a ZTP reservation gets no route or resolver",
+                 "detail": f"the check raised {type(exc).__name__}: {exc}"}]
+
+
 def health(now: float = None, run=None, images=None, settings=None,
-           rotations=None, owner=None) -> dict:
+           rotations=None, owner=None, ztp=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -689,6 +701,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += settings_rows() if settings is None else list(settings)
     jobs += rotation_rows() if rotations is None else list(rotations)
     jobs += sync_owner_rows(run) if owner is None else list(owner)
+    jobs += ztp_rows() if ztp is None else list(ztp)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     return {"ok": True, "jobs": jobs, "not_ok": bad,

@@ -317,6 +317,14 @@ DEFAULTS: dict = {
     #: nothing here to set" used to report identically, as `unset_guard`.
     #: Written only by `declare_not_applicable()` (`nmas-setting-not-applicable`).
     "settings_not_applicable": {},
+    #: P.6 D1: the reservation fragment the tool owns, included into one Kea
+    #: subnet by `<?include?>`. EMPTY BY DEFAULT and ZTP refuses while it is:
+    #: a reservation written anywhere else lives in Kea's memory until the
+    #: next restart (register C49, demonstrated by M5).
+    "kea_ztp_fragment": "",
+    #: The kea-dhcp4 config that includes the fragment. The writer tests a
+    #: candidate against a copy of it before the fragment is replaced.
+    "kea_dhcp4_config": "/etc/kea/kea-dhcp4.conf",
     "syslog_host": "",
     "syslog_trap_level": "notifications",
     #: Puts the hostname in every line; the Grafana heartbeat rules key on it.
@@ -509,6 +517,7 @@ GUARD_GATING_EMPTY_DEFAULTS = (
     # list that keeps ghosts stops meaning what it says.
     "oxidized_url",       # oxidized_client() -> reload_oxidized, confirm_fetch
     "syslog_host",        # onboard.syslog_baseline -> build_plan's refusal
+    "kea_ztp_fragment",   # ztp.write_reservations, ztp.posture -> a ztp plan
 )
 
 #: The refusal these guards write, as a **shape** rather than a list.
@@ -691,6 +700,8 @@ SCHEMA: dict = {
             "additionalProperties": {
                 "type": "object", "required": ["by", "at", "reason"],
                 "properties": {"by": _STR, "at": _STR, "reason": _STR}}},
+        "kea_ztp_fragment": _STR,
+        "kea_dhcp4_config": _STR,
         "syslog_host": _STR,
         "syslog_trap_level": {"enum": ["emergencies", "alerts", "critical",
                                        "errors", "warnings", "notifications",

@@ -103,6 +103,11 @@ tracked in git.
 - **[modules/nsot/freshness.py](modules/nsot/freshness.py)** — is Oxidized's
   copy of a device the approved one; the gate, the signal, and the
   authorisation path
+- **[modules/nsot/ztp.py](modules/nsot/ztp.py)** — P.6: the Kea reservation
+  writer (a candidate tested with `kea-dhcp4 -t` before the live fragment is
+  touched, then reload and read-back naming both operands) and D4's posture
+  (no route or resolver option at any level; nothing on the segment answers
+  broadcast DNS), at plan time and as a job-health row
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
@@ -970,6 +975,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_configless_patch.py` | P.6 M1: the configless launch patch checked by AST against the REAL adopted script (a hash-pinned fixture): the base disk booted and the install overlay (which holds a saved startup config) removed, shown by EXECUTING the constructor on a fake root; no config ISO at run time, the console prompt marks the VM running, the watchdog never restarts it; refuses a missing or duplicated anchor, a re-patch, and a production lab's own file |
+| `test_ztp_reservations.py` | P.6 step 1: against a fake Kea that re-reads the fragment only on reload (as M5 measured): written, unchanged, removed, absent; per-device refusals (MAC or address reserved, address leased, no subnet); D4 at every level and on the entry; a refused candidate never touches the live fragment; a failed reload restores it; a server that did not take the write is named with both operands; 0644 whatever the umask; the DNS condition (broadcast, `.invalid`, unknown is never silent); the job-health row finds the ZTP subnet from Kea's listening interface; the probe helper and the module agree on D4 |
 | `test_kea_m5_helper.py` | P.6 M5: the helper reads subnet 255 from kea-dhcp4's control socket and adds the config-set control reservation, against a fake Kea socket; refuses a MAC or address already reserved; never calls config-write; D4's refusal of route and resolver options (3, 6, 33, 121) at global, shared-network, subnet and reservation level, with client classes reported as not ruled out |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
