@@ -251,3 +251,40 @@ class TestNoSecondImplementation:
         for gone in ("function _programHtml", "function _attributionHtml",
                      "function _deviceCard"):
             assert gone not in src, gone
+
+
+class TestResidueIsDrawnInItsSection:
+    """A residue line alone names nothing ("description retired uplink will
+    NOT be removed", on which interface?). Found by the first real residue
+    fixture, 2026-09-27: each line now carries its section."""
+
+    R3 = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r3.cfg")
+
+    def test_a_nested_line_gets_every_header(self):
+        from modules.nsot.deploy import residue_in_context
+
+        running = open(self.R3, encoding="utf-8").read()
+        got = residue_in_context(["  neighbor 198.51.100.1 prefix-list NO-PRIVATE out"],
+                                 running)
+        assert got == ["router bgp 65001", " address-family ipv4",
+                       "  neighbor 198.51.100.1 prefix-list NO-PRIVATE out"]
+
+    def test_two_lines_in_one_section_share_their_headers(self):
+        from modules.nsot.deploy import residue_in_context
+
+        running = open(self.R3, encoding="utf-8").read()
+        got = residue_in_context(["  neighbor 198.51.100.1 activate",
+                                  "  neighbor 198.51.100.1 prefix-list NO-PRIVATE out"], running)
+        assert got.count("router bgp 65001") == 1 and len(got) == 4
+
+    def test_a_line_it_cannot_place_is_reported_not_dropped(self):
+        from modules.nsot.deploy import residue_in_context
+
+        assert residue_in_context([" no such line"], "hostname x\n") == [" no such line"]
+
+    def test_the_real_plan_draws_the_interface_with_its_line(self, monkeypatch):
+        plan = P.deploy_plan_with_residue(monkeypatch)
+        html = render_preview(plan["preview"])
+        part = re.search(r'data-pc-part="what_not"(.*?)</section>', html, re.S).group(1)
+        assert "interface GigabitEthernet0/3" in part and "retired uplink" in part
+        assert 'data-concept="merge-only"' in part

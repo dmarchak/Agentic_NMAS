@@ -202,7 +202,8 @@ def deploy_preview(devices: list, request) -> dict:
                              "text": "On the device but not in intent: will NOT be "
                                      "removed (merge-only). Remove them by hand, or "
                                      "adopt them into the template.",
-                             "lines": list(d["removal_warnings"])})
+                             "lines": list(d.get("residue_in_context")
+                                           or d["removal_warnings"])})
         if blocked:
             reasons = "; ".join(d.get("blocking_reasons") or []) or "not deployable"
             what_not.append({"target": name, "kind": "blocked",

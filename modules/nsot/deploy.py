@@ -374,6 +374,43 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
 CONTROL_WORDS = ("exit",)
 
 
+def residue_in_context(residue: list, running_config: str) -> list:
+    """Residue lines WITH the section each lives in, as config reads.
+
+    ``classify_diff`` reports residue as leaf lines, so a stanza the device
+    carries and intent lacks came through as its children alone: "
+    description retired uplink will NOT be removed", on a device with many
+    interfaces, names no interface. Measured on the deploy preview's first
+    real residue fixture (2026-09-27). Each residue line is preceded by its
+    ancestor chain from the running config, once per contiguous group, the
+    way `merge_commands` gives an added line its headers. Nothing here is
+    sent; it is what a person reads.
+    """
+    wanted = {r.rstrip() for r in residue or []}
+    if not wanted:
+        return []
+    from modules.nsot import ifnames
+
+    wanted_canonical = {ifnames.canonicalise_line(r) for r in wanted} | wanted
+    out, open_chain = [], []
+    for line, ancestors in _section_chains(running_config or ""):
+        if line not in wanted_canonical:
+            continue
+        for depth, header in enumerate(ancestors):
+            if len(open_chain) > depth and open_chain[depth] == header:
+                continue
+            open_chain = open_chain[:depth]
+            out.append(header)
+            open_chain.append(header)
+        open_chain = open_chain[:len(ancestors)]
+        out.append(line)
+    found = {l for l in out}
+    # A line that could not be placed is still reported, never dropped.
+    out += [r for r in residue if r.rstrip() not in found
+            and ifnames.canonicalise_line(r.rstrip()) not in found]
+    return out
+
+
 def _section_chains(config_text: str) -> list:
     """``[(line, [ancestors, outermost first]), …]`` for a config.
 

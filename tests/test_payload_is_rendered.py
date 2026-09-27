@@ -358,6 +358,88 @@ PHANTOM = {
 }
 
 
+S_ = "strings"
+R_ = "records"
+_STRINGS = "items are strings: an empty list hides no field"
+
+#: EVERY collection a provider's payload holds EMPTY, declared (the operator's
+#: rule, 2026-09-27: A CHECK IS ONLY AS GOOD AS THE STATE ITS FIXTURE CAN
+#: REACH). An empty list of RECORDS hides every field its items carry from
+#: BOTH directions: the forward check sees only the keys present, and the
+#: reverse check reads depth one. That is how a deployed row's seven fields
+#: went unexamined until the /deploy/apply provider could produce one.
+#: "strings" hides nothing. "records" is a state the fixture does not reach,
+#: a finding, and that list only shrinks. Measured 2026-09-27.
+EMPTY_IN_FIXTURE = {
+    "GET /ai/agent_log entries": (R_, "no agent run in the fixture; the entry "
+                                     "fields the panel draws were never examined"),
+    "GET /ai/approvals entries": (R_, "no queued item in the fixture; the approval "
+                                      "card has never been drawn from a real item"),
+    "GET /golden/baselines baselines": (R_, "no baseline tag in the fixture's repo; "
+                                            "E7 and 7.5 draw baselines, so reach it there"),
+    "GET /golden/history/<host> history": (R_, "no golden commit for the device in "
+                                               "the fixture; 7.3's History draws it"),
+    "GET /golden/legacy_store only_legacy": (R_, "no legacy-only golden; each entry is "
+                                                 "{hostname, file}"),
+    "GET /golden/migrate/plan devices": (R_, "nothing to migrate in the fixture"),
+    "GET /golden/migrate/plan merges": (R_, "no duplicate to merge in the fixture"),
+    "GET /golden/migrate/plan staged_files": (S_, _STRINGS),
+    "GET /golden/renames pending": (R_, "no pending rename in the fixture's manifest"),
+    "GET /identity/posture service_allowed_operations": (S_, _STRINGS),
+    "GET /identity/posture settings_read_failure": (R_, "the settings file reads; the "
+                                                        "failure record is never exhibited"),
+    "GET /inventory/source/<list> config.device_order": (S_, _STRINGS),
+    "GET /inventory/source/<list> stale_devices": (R_, "a local list has no stale "
+                                                       "NetBox devices; a map of records"),
+    "GET /netbox/status status": (R_, "NetBox is not configured in the fixture"),
+    "GET /templates bindings.overrides": (R_, "no binding override in the fixture"),
+    "GET /templates templates[].bound_devices": (S_, _STRINGS),
+    "GET /templates/approval/<path> changes": (S_, _STRINGS),
+    "POST /deploy/plan devices[].authorised": (S_, _STRINGS),
+    "POST /deploy/plan devices[].blocking_reasons": (S_, _STRINGS),
+    "POST /deploy/plan devices[].excluded_unrenderable": (S_, _STRINGS),
+    "POST /deploy/plan devices[].masked_refs": (S_, _STRINGS),
+    "POST /deploy/plan devices[].removal_warnings": (S_, _STRINGS),
+    "POST /deploy/plan devices[].residue_in_context": (S_, _STRINGS),
+    "POST /deploy/plan devices[].stale_acknowledgements": (S_, _STRINGS),
+    "POST /deploy/plan devices[].unacknowledged": (S_, _STRINGS),
+    "POST /deploy/plan devices[].unmodeled": (S_, _STRINGS),
+    "POST /deploy/plan devices[].unsendable": (S_, _STRINGS),
+    "POST /deploy/plan preview.targets[].program.authorised": (S_, _STRINGS),
+    "POST /deploy/plan preview.what_not.items": (R_, "the base plan has no residue, by "
+                                                     "design (the 'nothing left out' "
+                                                     "sentence); a real residue plan is "
+                                                     "drawn in test_preview_confirm "
+                                                     "(deploy_plan_with_residue)"),
+    "POST /golden/restore/preview devices[].authorised": (S_, _STRINGS),
+    "POST /golden/restore/preview devices[].blocking_reasons": (S_, _STRINGS),
+    "POST /golden/restore/preview devices[].dangerous": (S_, _STRINGS),
+    "POST /golden/restore/preview devices[].excluded_unrenderable": (S_, _STRINGS),
+    "POST /golden/restore/preview intent_restored": (S_, _STRINGS),
+    "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
+    "POST /onboard/plan host_vars": (R_, "the plan carries no intent for a device "
+                                         "not yet onboarded; drawn in 7.4"),
+}
+EMPTY_RECORDS_CEILING = 14
+
+
+def _empty_paths(obj, path=""):
+    """Every empty list or object in a payload, as a dotted path; a list's
+    items are walked through its first item, written `name[]`."""
+    out = []
+    if isinstance(obj, dict):
+        if not obj and path:
+            out.append(path)
+        for k, v in obj.items():
+            out += _empty_paths(v, f"{path}.{k}" if path else k)
+    elif isinstance(obj, list):
+        if not obj:
+            out.append(path)
+        for v in obj[:1]:
+            out += _empty_paths(v, path + "[]")
+    return out
+
+
 def _flat(table):
     return {f"{route} {key}": reason for route, groups in table.items()
             for keys, reason in groups for key in keys.split()}
@@ -534,3 +616,30 @@ class TestBothDirections:
         for key, reason in (list(EXEMPT.items()) + list(_flat(UNDRAWN).items())
                             + list(_flat(PHANTOM).items())):
             assert len(reason) >= 30, key
+
+
+class TestTheFixturesReachTheState:
+    """A check is only as good as the state its fixture can reach (the
+    operator's rule, 2026-09-27)."""
+
+    def _found(self, measured):
+        return {f"{route} {p}" for route, (payload, _n, _r) in measured.items()
+                for p in _empty_paths(payload)}
+
+    def test_every_empty_collection_is_declared(self, measured):
+        new = sorted(self._found(measured) - set(EMPTY_IN_FIXTURE))
+        assert new == [], (f"empty in its fixture and undeclared: {new}. Reach the "
+                           "state, or declare it as strings or records, with the reason.")
+
+    def test_no_ghosts(self, measured):
+        ghosts = sorted(set(EMPTY_IN_FIXTURE) - self._found(measured))
+        assert ghosts == [], f"not empty now: remove from EMPTY_IN_FIXTURE: {ghosts}"
+
+    def test_the_records_list_only_shrinks(self):
+        records = [k for k, (kind, _r) in EMPTY_IN_FIXTURE.items() if kind == R_]
+        assert len(records) == EMPTY_RECORDS_CEILING, len(records)
+        assert all(len(r) >= 20 for _k, (_kind, r) in EMPTY_IN_FIXTURE.items())
+
+    def test_the_scan_finds_something(self, measured):
+        """The floor: a walker that saw nothing would satisfy both directions."""
+        assert len(self._found(measured)) >= 20

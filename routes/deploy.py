@@ -219,7 +219,7 @@ def plan():
     from modules.nsot.deploy import (DeployRefused, NotAuthorised,
                                      assert_authorised, command_fingerprint,
                                      dangerous_in, merge_commands, merge_diff,
-                                     prepare_device)
+                                     prepare_device, residue_in_context)
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
@@ -248,6 +248,10 @@ def plan():
             diff = merge_diff(prepared["config"], captured)
             entry["to_add"] = diff["to_add"]
             entry["removal_warnings"] = diff["removal_warnings"]
+            # The same residue as a person reads it: each line under its
+            # section, since a leaf alone names no interface.
+            entry["residue_in_context"] = residue_in_context(
+                diff["removal_warnings"], captured)
             entry["unchanged_count"] = diff["unchanged_count"]
             # The exact program, not a description of it. What the operator
             # confirms is this list, byte for byte.

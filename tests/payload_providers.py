@@ -44,6 +44,29 @@ def deploy_plan(mp):
     return _ok(_client().post("/deploy/plan", json={"devices": ["s4"]}))
 
 
+def deploy_plan_with_residue(mp):
+    """The same device, carrying a stanza its intent does not have: merge-only
+    will NOT remove it, so the plan's `what_not` holds a real residue item.
+    The provider above has none, which is right for the "nothing is left out"
+    sentence and left the items' fields unexamined (EMPTY_IN_FIXTURE)."""
+    import routes.deploy as rd
+    from modules.nsot.render_artifact import build_artifact
+    from tests import test_p3_wizard_draws_the_program as w
+
+    capture = w.CAPTURE.replace("end\n", "interface GigabitEthernet0/3\n"
+                                          " description retired uplink\nend\n")
+    assert capture != w.CAPTURE
+
+    def _fake(list_name, hostname, cache=None):
+        artifact = build_artifact(hostname, capture, "cisco_ios", template_approved=True)
+        return (artifact, capture, {"hostname": hostname, "ip": "203.0.113.24"}), ""
+
+    mp.setattr(rd, "_artifact_for", _fake)
+    mp.setattr("modules.nsot.deploy.prepare_device", lambda a: {"config": w.INTENT})
+    mp.setattr(rd, "_attribute_additions", lambda *a, **k: dict(w.ATTRIBUTION))
+    return _ok(_client().post("/deploy/plan", json={"devices": ["s4"]}))
+
+
 def deploy_apply(mp):
     """A plan, then its apply, authorised: one deployed row and its report.
 

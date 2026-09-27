@@ -1009,7 +1009,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_route_reachability.py` | 7.0 (1): every (method, route) pair is reachable from a rendered page (both pages, with a device; `url_for` in template source counted), non-GUI with a consumer shown to reference it, or allowlisted with its group and home; per METHOD where a PATH mixes a read and a write (decided per path: `/drift/settings` is two rules); exact both ways, ceiling pinned at the measured 54; anchors each way. `tests/route_references.py` is the shared reader |
 | `test_invalidation_map.py` | 7.0 (2): every mutating route (115, from `url_map`) declares the data it changes or `Nothing` with a reason, and an undeclared one is found (a throwaway app is the built-in control); the response carries the keys (header always, `invalidates` in a JSON body) and is otherwise unchanged; subscriptions both directions with floors, and a shrinking list of declared keys nobody subscribes to yet; the shipped client EXECUTED in duktape against a real response's header, a failed re-fetch marking the panel with the time of the value shown; the device list redrawn from the index's own templates (the 0-to-1 case) |
 | `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 99, PHANTOM 18) compared exactly; since 7.1 a server-side adapter's reads count, because it decides what reaches the screen; anchors `commands`/`dangerous`/`attribution` (read by the adapter) and `preview`/`lines`/`from_this_edit` (drawn) on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
-| `test_preview_confirm.py` | 7.1: the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
+| `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
@@ -4859,6 +4859,23 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   pipeline's own read and was corrected. The sweep for the shape
   found one more of the family (C63): the deploy's dangerous check is a list
   of forms, and misses `no router rip` on a fleet running RIP.
+- **A CHECK IS ONLY AS GOOD AS THE STATE ITS FIXTURE CAN REACH** (the
+  operator's rule, 2026-09-27). Three times in one day the check's own INPUT
+  was the defect:
+  - the RIP sample started at the RIP header;
+  - the BGP summary written from memory had eight columns;
+  - the payload check's `/deploy/apply` provider planned without the
+    authorisation it applied with, so its "deployed row" was always a
+    refusal. The not-drawn list rose 99 to 106 the moment it produced a real
+    one: seven fields nobody had examined.
+
+  A fixture that can produce only one outcome tests nothing about the other.
+  The detection method is "build the test input from the route", pointed at
+  the fixture. It is now mechanical: every empty collection in a provider's
+  real payload is declared as strings or records (`EMPTY_IN_FIXTURE`, C72),
+  and its first run caught a new field the moment it appeared. Its first
+  reach, a real residue plan, found a defect at once (C73): residue drawn
+  with no section.
 - **When two places answer the same question about a device, one of them is
   wrong, and you will not know which until both meet real output** (the
   operator's, 2026-09-27). Three drift checkers, two golden enumerators, and
@@ -4908,7 +4925,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **44 open at 2026-09-27**, counted from the rows: 37 recorded only in
+present when each was recorded. **45 open at 2026-09-27**, counted from the rows: 38 recorded only in
 prose, 7 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
