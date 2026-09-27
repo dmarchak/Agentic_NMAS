@@ -174,3 +174,14 @@ class TestD4ForbiddenOptions:
         monkeypatch.setattr(h, "SOCKET", path)
         assert h.main(["show"]) == 1
         assert "D4 REFUSED: domain-name-servers at subnet 255" in capsys.readouterr().out
+
+
+def test_show_prints_the_reservation_hostname(fake_kea, monkeypatch, capsys):
+    """M4: the writer sets `hostname` (option 12, which AutoInstall applies),
+    and show did not print it, so "it is there" was not visible."""
+    path, state = fake_kea
+    state["config"]["Dhcp4"]["subnet4"][1]["reservations"][0]["hostname"] = "bp-ztp-a"
+    h = _helper()
+    monkeypatch.setattr(h, "SOCKET", path)
+    assert h.main(["show"]) == 0
+    assert "aa:bb:cc:00:02:50 -> 10.255.0.50  hostname=bp-ztp-a" in capsys.readouterr().out

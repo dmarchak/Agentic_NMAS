@@ -211,10 +211,37 @@ def transfer(sock, client, data: bytes, timeout: float = 2.0, retries: int = 5) 
     return True, f"{len(blocks)} block(s), {len(data)} bytes"
 
 
+def normalise_peer(peer: tuple) -> tuple:
+    """``(host, reply_address, family)`` for a `recvfrom` peer.
+
+    systemd's `ListenDatagram=69` is a DUAL-STACK IPv6 socket (measured on the
+    host: `Listen=[::]:69`), so an IPv4 device arrives as the 4-tuple
+    ``("::ffff:192.0.2.50", port, flowinfo, scope_id)``. M4 found both halves
+    of what that breaks: the v4-mapped host matched no reservation (so the
+    device was refused as ``?``), and the 4-tuple could not be handed to an
+    AF_INET socket (so the refusal itself crashed, and the device heard
+    silence). One normalisation, used for BOTH the identity and the reply.
+    """
+    import ipaddress
+
+    host, port = peer[0], peer[1]
+    try:
+        ip = ipaddress.ip_address(str(host).split("%", 1)[0])
+    except ValueError:
+        return str(host), (host, port), socket.AF_INET
+    if ip.version == 6 and ip.ipv4_mapped is not None:
+        v4 = str(ip.ipv4_mapped)
+        return v4, (v4, port), socket.AF_INET
+    if ip.version == 6:
+        return str(host), (host, port, 0, peer[3] if len(peer) > 3 else 0), socket.AF_INET6
+    return str(host), (str(host), port), socket.AF_INET
+
+
 def handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decide,
            audit=None) -> dict:
     """One request, start to finish. Returns what happened, for the log."""
-    make = transfer_socket or (lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+    host, peer, family = normalise_peer(peer)
+    make = transfer_socket or (lambda: socket.socket(family, socket.SOCK_DGRAM))
     sock = make()
     try:
         sock.bind(("", 0))
@@ -222,18 +249,18 @@ def handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decide
             op, filename, mode = parse_request(packet)
         except BadRequest as exc:
             sock.sendto(error_packet(ERR_ILLEGAL, REFUSAL_TEXT), peer)
-            record(peer[0], "", {"reason": f"malformed request: {exc}"}, audit)
+            record(host, "", {"reason": f"malformed request: {exc}"}, audit)
             return {"served": False, "reason": str(exc)}
         if op == OP_WRQ:
             sock.sendto(error_packet(ERR_ACCESS, REFUSAL_TEXT), peer)
-            record(peer[0], filename, {"reason": "a write request; this server has no write path"}, audit)
+            record(host, filename, {"reason": "a write request; this server has no write path"}, audit)
             return {"served": False, "reason": "write request"}
         if mode != "octet":
             sock.sendto(error_packet(ERR_ILLEGAL, REFUSAL_TEXT), peer)
-            record(peer[0], filename, {"reason": f"mode {mode!r}; only octet is served"}, audit)
+            record(host, filename, {"reason": f"mode {mode!r}; only octet is served"}, audit)
             return {"served": False, "reason": f"mode {mode}"}
-        decision = decide_fn(peer[0], filename)
-        row = record(peer[0], filename, decision, audit)
+        decision = decide_fn(host, filename)
+        row = record(host, filename, decision, audit)
         if not decision["serve"]:
             sock.sendto(error_packet(ERR_ACCESS, REFUSAL_TEXT), peer)
             return {"served": False, "reason": decision["reason"]}
@@ -242,11 +269,11 @@ def handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decide
             # credential, and no person is watching this path.
             sock.sendto(error_packet(ERR_ACCESS, REFUSAL_TEXT), peer)
             log.error("ztp responder: NOT serving %s to %s: the audit row could not be written",
-                      decision["device"], peer[0])
+                      decision["device"], host)
             return {"served": False, "reason": "the audit row could not be written"}
         ok, detail = transfer(sock, peer, decision["config"])
         log.info("ztp responder: %s %s to %s: %s", "served" if ok else "FAILED to serve",
-                 decision["device"], peer[0], detail)
+                 decision["device"], host, detail)
         return {"served": ok, "reason": detail, "device": decision["device"]}
     finally:
         sock.close()

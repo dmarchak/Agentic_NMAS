@@ -263,3 +263,60 @@ def test_pending_ztp_devices_reads_the_real_manifest(tmp_path, monkeypatch):
     assert not (lists / "ghost").exists(), "reading must never create a list"
     manifest.mark_verified(str(repo), "uid:1")
     assert r._pending_ztp_devices() == [], "a verified device is no longer pending"
+
+
+# ── M4's defect: systemd hands over a DUAL-STACK IPv6 socket ────────────────
+
+class TestTheSocketSystemdActuallyHandsOver:
+    """`ListenDatagram=69` is `Listen=[::]:69` (measured on the host), so an
+    IPv4 device arrives as ("::ffff:<v4>", port, flowinfo, scope_id). Every
+    protocol test above used an AF_INET listener, so none could see that the
+    v4-mapped host matched no reservation (refused as "?") and that the
+    4-tuple crashed the AF_INET reply (the device heard silence)."""
+
+    @pytest.mark.parametrize("peer,host,family", [
+        (("::ffff:192.0.2.50", 1234, 0, 0), "192.0.2.50", socket.AF_INET),
+        (("192.0.2.50", 1234), "192.0.2.50", socket.AF_INET),
+        (("2001:db8::50", 1234, 0, 0), "2001:db8::50", socket.AF_INET6),
+    ])
+    def test_the_peer_is_normalised_once(self, peer, host, family):
+        got_host, reply, got_family = r.normalise_peer(peer)
+        assert got_host == host and got_family == family
+        assert reply[0] == host and reply[1] == 1234
+
+    @pytest.fixture
+    def dual_stack(self):
+        audit, seen = _Audit(), []
+        state = {"serve": True}
+
+        def decide_fn(peer, filename):
+            seen.append(peer)
+            return {"serve": state["serve"], "config": CONFIG.encode(), "device": "bp-ztp-a",
+                    "list": "Lab", "reason": "" if state["serve"] else "refused for the test"}
+
+        listener = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        listener.bind(("::", 0))
+        port = listener.getsockname()[1]
+        stop = threading.Event()
+        t = threading.Thread(target=r.serve, args=(listener,), daemon=True,
+                             kwargs={"stop": stop, "handle_fn": lambda p, peer: r.handle(
+                                 p, peer, decide_fn=decide_fn, audit=audit)})
+        t.start()
+        yield ("127.0.0.1", port), state, audit, seen
+        stop.set()
+        t.join(2)
+        listener.close()
+
+    def test_an_ipv4_device_is_identified_by_its_ipv4_address(self, dual_stack):
+        addr, _state, audit, seen = dual_stack
+        out = _fetch(addr)
+        assert seen == ["127.0.0.1"], f"identified as {seen}, not the v4 address"
+        assert out["data"] == CONFIG.encode()
+        assert audit.rows[-1]["actor"] == "ztp:127.0.0.1"
+
+    def test_a_refusal_reaches_the_device_instead_of_silence(self, dual_stack):
+        addr, state, _audit, _seen = dual_stack
+        state["serve"] = False
+        out = _fetch(addr)
+        assert out["error"] == r.ERR_ACCESS and out["text"] == r.REFUSAL_TEXT

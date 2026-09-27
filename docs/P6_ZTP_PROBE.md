@@ -834,6 +834,61 @@ after it.
 | P-M4f | After promotion | A second request for the file (a node reload, or a TFTP client on the segment) is REFUSED and recorded: a promoted device is not served |
 | P-M4g | Two subsystems | While the console is open, `show call-home profile all \| include tools` says which subsystem queried `tools.cisco.com` in M3 |
 
+### Observed: M4's first run (2026-09-27): the fetch failed, two defects, the second hidden by the first
+
+Up to the fetch every prediction held:
+- **P-M0:** fresh base, new serial `9ZO4MOABRCW`, `% Failed to initialize nvram`,
+  `No startup-config`.
+- **P-M2d:** Gi1's DISCOVERs unanswered on the probe's bridge.
+- **P-M4a:** `Acquired IPv4 address 10.255.0.50 on Interface GigabitEthernet2`
+  with `tftp-server-name: 10.255.0.10`, `bootfile: bp-ztp-a.cfg` and
+  **`hostname: bp-ztp-a`**, now the reservation's option 12 and not an echo.
+
+**P-M4b failed.** Nine RRQs from 02:48:23 got no reply and, unlike M3, no
+ICMP unreachable: the socket accepted them and the handler died. The
+responder's journal read:
+
+```text
+reveal_audit: ztp:::ffff:10.255.0.50 revealed bootstrap_config_refused for ?
+TypeError: AF_INET address must be a pair (host, port)
+```
+
+- **Defect 1, the crash.** systemd's `ListenDatagram=69` is a dual-stack IPv6
+  socket (`Listen=[::]:69`), so `recvfrom` gives a 4-tuple with the v4-mapped
+  host `::ffff:10.255.0.50`. Handing that to an AF_INET reply socket raised, so
+  the refusal could not be sent and the device heard silence. **Silence from a
+  listening responder is worse than the ICMP it replaced.**
+- **Defect 2, which the crash hid (the operator's reading).** The device was
+  being REFUSED anyway, as `?`: the v4-mapped host matched no reservation. A
+  fix to the reply alone would have produced a correctly transmitted WRONG
+  refusal.
+- **The audit held even in failure.** The refusal was recorded before the
+  crash, naming `?` rather than inventing a device.
+
+**The fix:** `normalise_peer()`, one normalisation used for BOTH the identity
+and the reply. A v4-mapped host becomes its IPv4 address with an AF_INET
+reply socket. A real IPv6 peer stays IPv6 with an AF_INET6 one, so a refusal
+to it cannot crash the same way.
+
+**The instrument gap:** every protocol test used an AF_INET listener, so the
+unit tests and the deployed socket were different socket families.
+`TestTheSocketSystemdActuallyHandsOver` runs the responder on a real
+dual-stack listener with an IPv4 client. Its control restores the old
+handling: the two dual-stack tests fail and the 24 AF_INET tests PASS, which
+is the gap measured.
+
+`kea-m5.py show` now prints the reservation's `hostname`: it was present and
+not displayed. The NMAS-side capture (terminal C) wrote nothing again, which
+the operator attributes to tcpdump's AppArmor profile. Recorded, not
+diagnosed. `dmesg | grep DENIED` beside the capture path would settle it.
+
+**Redeploying mid-run:** the responder is a long-running process, and it
+holds the code it started with. After deploying the fix,
+`sudo systemctl restart nmas-ztp-responder.service` (the socket stays bound,
+held by systemd). Confirm with a new `MainPID` and the journal's `serving ZTP
+bootstrap configs` line. The node retries about every 8 s, so the next
+request is the test.
+
 **Teardown:** as Phase 2's ([PHASE2_DHCP.md](PHASE2_DHCP.md)), whose census
 `--compare` against the step-5 baseline is the acceptance, plus the
 containerlab teardown as in step 7 above. Abandon is NOT the path for a

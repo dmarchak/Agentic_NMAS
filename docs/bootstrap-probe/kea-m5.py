@@ -145,8 +145,11 @@ def main(argv=None):
             for r in s.get("reservations") or []:
                 opts = ", ".join(f"{o.get('name') or o.get('code')}={o.get('data')}"
                                  for o in r.get("option-data") or [])
+                # The hostname too: it is sent as option 12 and AutoInstall
+                # APPLIES it (M3, M4), and M4 found it present and not shown.
+                name = f"  hostname={r.get('hostname')}" if r.get("hostname") else ""
                 print(f"  reservation {r.get('hw-address')} -> {r.get('ip-address')}"
-                      + (f"  [{opts}]" if opts else ""))
+                      + name + (f"  [{opts}]" if opts else ""))
             print(f"  {len(rows)} reservation(s); subnet option-data: "
                   f"{[o.get('name') or o.get('code') for o in s.get('option-data') or []]}")
             bad = forbidden_options(got)
