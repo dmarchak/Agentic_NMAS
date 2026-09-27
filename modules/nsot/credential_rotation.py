@@ -1065,12 +1065,27 @@ def live_user_line(device: dict, username: str) -> dict:
             except Exception:                  # noqa: BLE001
                 pass
 
-    for line in out.splitlines():
-        if line.strip().startswith(f"username {username}"):
-            return {"ok": True, "line": line.strip(),
-                    "kind": entry_kind(line.strip())}
+    line = users_line(out, username)
+    if line:
+        return {"ok": True, "line": line, "kind": entry_kind(line)}
     return {"ok": False, "line": "", "kind": "",
             "error": f"no 'username {username}' line on the device"}
+
+
+def users_line(output: str, username: str) -> str:
+    """PURE: the line for exactly *username*, or "".
+
+    A whole-word match. `startswith("username admin")` is also true of
+    `username admin2 …`, and `include ^username admin` returns both lines, so
+    the prefix form could read ANOTHER account's line and pick the rotation
+    program for its form (found by the device-text sweep, 2026-09-27; the
+    fleet holds one account, so it was latent here).
+    """
+    for raw in (output or "").splitlines():
+        fields = raw.split()
+        if fields[:2] == ["username", username]:
+            return raw.strip()
+    return ""
 
 
 def platform_of(list_name: str, hostname: str) -> str:

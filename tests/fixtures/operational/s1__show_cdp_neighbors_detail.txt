@@ -1,0 +1,25 @@
+-------------------------
+Device ID: s2.rcn.lab
+Entry address(es): 
+  IP address: 10.10.10.3
+  IPv6 address: 2001:DB8:10::3  (global unicast)
+  IPv6 address: FE80::E00:66FF:FE09:800A  (link-local)
+Platform: Cisco ,  Capabilities: Router Switch IGMP 
+Interface: GigabitEthernet0/3,  Port ID (outgoing port): GigabitEthernet0/3
+Holdtime : 127 sec
+
+Version :
+Cisco IOS Software, vios_l2 Software (vios_l2-ADVENTERPRISEK9-M), Version 15.2(CML_NIGHTLY_20180619)FLO_DSGS7, EARLY DEPLOYMENT DEVELOPMENT BUILD, synced to  V152_6_0_81_E
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2018 by Cisco Systems, Inc.
+Compiled Tue 19-Jun-18 06:06 by mmen
+
+advertisement version: 2
+VTP Management Domain: ''
+Native VLAN: 1
+Duplex: full
+Management address(es): 
+  IP address: 10.10.10.3
+
+
+Total cdp entries displayed : 1

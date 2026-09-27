@@ -1,0 +1,62 @@
+ Neighbor 10.255.1.11, interface address 10.255.3.11
+    In the area 0 via interface Vlan100
+    Neighbor priority is 100, State is 2WAY, 4 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:35
+    Neighbor is up for 03:03:11
+    Index 0/0/0, retransmission queue length 0, number of retransmission 0
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 0, maximum is 0
+    Last retransmission scan time is 0 msec, maximum is 0 msec
+ Neighbor 10.255.1.12, interface address 10.255.3.12
+    In the area 0 via interface Vlan100
+    Neighbor priority is 100, State is 2WAY, 15 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:38
+    Neighbor is up for 03:03:11
+    Index 0/0/0, retransmission queue length 0, number of retransmission 0
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 0, maximum is 0
+    Last retransmission scan time is 0 msec, maximum is 0 msec
+ Neighbor 10.255.1.13, interface address 10.255.3.13
+    In the area 0 via interface Vlan100
+    Neighbor priority is 255, State is FULL, 26 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    Options is 0x52 in DBD (E-bit, L-bit, O-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:35
+    Neighbor is up for 03:03:12
+    Index 1/1/1, retransmission queue length 0, number of retransmission 1
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 1, maximum is 1
+    Last retransmission scan time is 4 msec, maximum is 4 msec
+ Neighbor 10.255.1.14, interface address 10.255.3.14
+    In the area 0 via interface Vlan100
+    Neighbor priority is 200, State is FULL, 35 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    Options is 0x52 in DBD (E-bit, L-bit, O-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:35
+    Neighbor is up for 03:03:12
+    Index 2/2/2, retransmission queue length 0, number of retransmission 6
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 1, maximum is 2
+    Last retransmission scan time is 5 msec, maximum is 5 msec
+ Neighbor 10.255.1.24, interface address 10.255.3.24
+    In the area 0 via interface Vlan100
+    Neighbor priority is 0, State is 2WAY, 2 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:34
+    Neighbor is up for 2d16h   
+    Index 0/0/0, retransmission queue length 0, number of retransmission 0
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 0, maximum is 0
+    Last retransmission scan time is 0 msec, maximum is 0 msec

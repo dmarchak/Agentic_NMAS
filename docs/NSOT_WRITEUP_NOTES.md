@@ -10531,3 +10531,27 @@ invisible". Its sample began at `Routing Protocol is "rip"`, the one line a
 person writing the output from memory starts with. A fixture that cannot
 exhibit the case passes whatever the code does. Now a parser's test is
 built from a capture, never a typed sample.
+
+**The sweep's second half, and what it found by NOT finding much.** The
+same method, run on every other module that reads device text: topology,
+NetBox's cable import, the rotation's live read, drift's comparison and the
+NSoT round trip. Each module's own parser ran on the host against the live
+fleet, and only redacted captures and results left it.
+- **Right on real output:** topology's readers (OSPF detail, BGP, CDP, LLDP,
+  interfaces, router ID), NetBox's cable readers, and the connected-route
+  read.
+- **Drift clean on all nine devices**, and the round trip 100% on today's
+  goldens with nothing unmodelled. The fleet fixtures predate P.1, and the
+  claim holds on the current configs.
+
+The two defects it did find were found by READING while the captures were
+in hand:
+- **Two BGP summary readers in one codebase.** Topology's was right and the
+  deploy's was wrong, on the same output. That is the two-owners rule in its
+  plainest form, and there is one reader now.
+- **The rotation matched `username <name>` as a prefix.** Latent, since
+  every device holds one account.
+
+A sweep that comes back mostly clean is still a result: it moves those
+readers from "never compared with a device" to "compared, on this date,
+against these captures".

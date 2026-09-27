@@ -1,0 +1,5 @@
+Interface              IP-Address      OK? Method Status                Protocol
+GigabitEthernet1       10.0.0.15       YES TFTP   up                    up      
+GigabitEthernet2       10.255.3.11     YES TFTP   up                    up      
+GigabitEthernet3       10.255.2.10     YES TFTP   up                    up      
+Loopback0              10.255.1.11     YES TFTP   up                    up      

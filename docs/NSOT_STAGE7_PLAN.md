@@ -281,7 +281,7 @@ that can appear in English needs an anchor*).
 | `provenance-limits-remove` | NetBox remove preview | what will be skipped, and *"NMAS did not create it"* |
 | `pending-vs-promoted` | Fleet, and the device header | *"Created, not yet reached: not managed until verified"* |
 | `revert-is-forward` | revert-intent preview | what the revert will NOT undo, and that removal needs Mode B |
-| `baseline-is-earned` | Versions, Baselines | why a baseline was or was not earned, per device |
+| `baseline-is-earned` | Versions, Baselines | why a baseline was or was not earned, per device, and WHICH CLAIM it makes (the operator, 2026-09-27): *configured* (every device's config captured or measured, today's only kind) or *configured and working* (E7: the fleet's operational snapshot in the tag, every protocol intent declares up). The eleven baselines on the host can only make the first claim, and are drawn as that kind, never implying the second |
 
 **Floor:** nine concepts, nine screens, and the test counts them.
 **Control:** remove one marker, and the test fails.

@@ -468,39 +468,55 @@ def parse_ospf_neighbors(output):
 
 def parse_bgp_summary(output):
     """
-    Parse 'show ip bgp summary' output.
+    Parse 'show ip bgp summary' output: THE one BGP summary reader.
 
-    Returns dict with 'local_as' and 'peers' list.
-    Each peer: neighbor, remote_as, state, established (bool).
+    Returns ``{"local_as", "peers"}``; each peer is ``{neighbor, remote_as,
+    up_down, state, established}``.
+
+    A real row has TEN fields (measured on r3, 2026-09-27;
+    tests/fixtures/operational/r3__show_ip_bgp_summary.txt)::
+
+        198.51.100.1    4  65002  7255  7244   4   0   0 4d13h      3
+
+    The last is the PREFIX COUNT when established, and a state word (Idle,
+    Active, Connect, OpenSent, OpenConfirm, "Idle (Admin)") when not. A long
+    neighbour address (IPv6) wraps the rest of its row onto the next line,
+    and the two are joined. The deploy's verify had its own copy, which
+    expected eight fields and counted nothing (C64); one reader is how two
+    cannot come to disagree again.
     """
     local_as = ''
     peers    = []
 
-    m = re.search(r'local AS number (\d+)', output, re.IGNORECASE)
+    m = re.search(r'local AS number (\d+)', output or '', re.IGNORECASE)
     if m:
         local_as = m.group(1)
 
-    in_table = False
-    for line in output.splitlines():
+    in_table, pending = False, None
+    for line in (output or '').splitlines():
         if re.match(r'\s*Neighbor\s+V\b', line):
             in_table = True
             continue
         if not in_table:
             continue
-        # Neighbor V AS MsgRcvd MsgSent TblVer InQ OutQ Up/Down State/PfxRcd
-        m = re.match(
-            r'\s*(\d+\.\d+\.\d+\.\d+)\s+\d+\s+(\d+)'
-            r'\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\S+\s+(\S+)',
-            line
-        )
-        if m:
-            state = m.group(3)
-            peers.append({
-                'neighbor':    m.group(1),
-                'remote_as':   m.group(2),
-                'state':       state,
-                'established': state.replace(',', '').isdigit(),
-            })
+        fields = line.split()
+        if not fields:
+            continue
+        if pending is not None:
+            fields, pending = [pending] + fields, None
+        elif len(fields) == 1 and re.match(r'^[0-9a-fA-F:.]+$', fields[0]):
+            pending = fields[0]         # a wrapped row: the address alone
+            continue
+        if not re.match(r'^[0-9a-fA-F:.]+$', fields[0]) or len(fields) < 10:
+            continue
+        state = ' '.join(fields[9:])
+        peers.append({
+            'neighbor':    fields[0],
+            'remote_as':   fields[2],
+            'up_down':     fields[8],
+            'state':       state,
+            'established': len(fields) == 10 and fields[9].replace(',', '').isdigit(),
+        })
 
     return {'local_as': local_as, 'peers': peers}
 

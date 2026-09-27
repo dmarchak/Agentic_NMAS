@@ -1715,47 +1715,20 @@ def _parse_rip_sources(show_ip_protocols: str):
 
 
 def _parse_bgp_summary(out: str) -> Optional[dict]:
-    """Established and configured BGP peers from ``show ip bgp summary``.
+    """Established and configured BGP peers, from THE one reader.
 
-    A real row has TEN fields (C64, measured on r3, 2026-09-27)::
-
-        198.51.100.1    4  65002  7255  7244   4   0   0 4d13h      3
-
-    Neighbor, V, AS, MsgRcvd, MsgSent, TblVer, InQ, OutQ, Up/Down, and
-    State/PfxRcd. The last field is the PREFIX COUNT when the session is
-    established, and a state word (Idle, Active, Connect, OpenSent,
-    OpenConfirm, "Idle (Admin)") when it is not. The first version counted
-    rows matching eight fields and so matched no real row in either state.
-    A long neighbour address (IPv6) wraps the rest of its row onto the next
-    line, and the two are joined.
-
-    Returns None when BGP is not running, else ``{"established",
-    "configured", "peers"}``.
+    ``modules.topology.parse_bgp_summary`` reads the rows. This copy of the
+    job used to have its own pattern, which expected eight fields where the
+    device prints ten and so counted nothing (C64), while topology's read the
+    same output correctly: two readers of one output disagreeing. Returns
+    None when BGP is not running, else ``{"established", "configured",
+    "peers"}``.
     """
     if "BGP router identifier" not in (out or ""):
         return None
-    lines = out.splitlines()
-    try:
-        start = next(i for i, line in enumerate(lines)
-                     if line.startswith("Neighbor") and "State/PfxRcd" in line) + 1
-    except StopIteration:
-        return {"established": 0, "configured": 0, "peers": []}
-    peers, pending = [], None
-    for line in lines[start:]:
-        fields = line.split()
-        if not fields:
-            continue
-        if pending is not None:
-            fields, pending = [pending] + fields, None
-        elif len(fields) == 1 and re.match(r"^[0-9a-fA-F:.]+$", fields[0]):
-            pending = fields[0]         # a wrapped row: the address alone
-            continue
-        if not re.match(r"^[0-9a-fA-F:.]+$", fields[0]) or len(fields) < 10:
-            continue
-        state = " ".join(fields[9:])
-        peers.append({"neighbor": fields[0], "remote_as": fields[2],
-                      "up_down": fields[8], "state": state,
-                      "established": fields[9].isdigit() and len(fields) == 10})
+    from modules.topology import parse_bgp_summary
+
+    peers = parse_bgp_summary(out)["peers"]
     return {"established": sum(1 for p in peers if p["established"]),
             "configured": len(peers), "peers": peers}
 

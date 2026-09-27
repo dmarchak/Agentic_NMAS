@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""What does the device ACTUALLY print? Capture it, read-only.
+
+    nmas-capture-output --device r3 --command "show ip bgp summary"
+    nmas-capture-output --device r3 --device s1 \\
+        --command "show ip protocols" --out /tmp/captures
+    nmas-capture-output --list Lab --device r1 --command "show ip ospf neighbor"
+
+**Why this exists.** On 2026-09-27 the deploy's verify was found to check
+nothing on four of nine devices (C62, C64-C68). Every reader of device text
+had been written against IMAGINED output: a `show ip bgp summary` typed from
+memory has eight columns and the device prints ten; a `show ip protocols`
+typed from memory starts at the RIP header, and the device prints an empty
+`"application"` table first. Nothing had ever compared a pattern with what a
+device prints. This is how that question is answered, and its captures are
+the fixtures a parser's test is built from (`tests/fixtures/operational/`).
+
+**What it guarantees, and how:**
+- **Reads only.** Every command goes through the shared read-only allowlist
+  (`modules/readonly_commands.py`) and is refused BEFORE any connection
+  opens: show, ping, traceroute, dir, more, filtered only by include,
+  exclude, begin, section or count.
+- **Writes nothing but what you ask for.** No bytecode (set before any
+  import), a fresh session per device and closed after it (the app's pooled
+  sessions are not touched), and output files only under `--out`, which may
+  not be inside the store (`config.DATA_DIR`).
+- **No secret leaves in a capture.** Output passes through `redact_text()`.
+  When redaction CHANGED an output, the capture is marked as masked (in the
+  printout, and as a `.masked.txt` file), because a masked capture is not
+  byte for byte what the device printed and must not pose as a faithful
+  fixture.
+
+**Probing code that is not deployed yet** (what the 2026-09-27 sweeps did):
+run this from a `git archive` copy of the code in a scratch directory on the
+host, never from the live checkout, with `NMAS_DATA_DIR` pointing at the
+live store (which is only read), then check the checkout and `data/` are
+unchanged and delete the scratch copy. See `tests/fixtures/operational/`.
+
+Exit: 0 every capture taken; 1 a command refused or a device not in the
+inventory (nothing connected); 2 a device could not be reached.
+"""
+
+import sys
+
+sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def slug(command: str) -> str:
+    """The fixture file's name for a command (tests read it the same way)."""
+    return re.sub(r"[^a-z0-9]+", "_", command.lower()).strip("_")
+
+
+def plan(commands: list) -> list:
+    """Refusals for *commands*, decided before anything connects."""
+    from modules.readonly_commands import refusal
+
+    return [(c, r) for c in commands for r in [refusal(c)] if r]
+
+
+def out_dir_refusal(out: str) -> str:
+    """An --out inside the store is refused: captures are not state."""
+    if not out:
+        return ""
+    from modules import config
+
+    store = os.path.realpath(config.DATA_DIR)
+    target = os.path.realpath(out)
+    if target == store or target.startswith(store + os.sep):
+        return f"--out {out} is inside the store ({store}); captures go elsewhere"
+    return ""
+
+
+def capture(dev: dict, commands: list, connect=None) -> dict:
+    """``{command: {"text", "masked"}}`` for one device, on a fresh session."""
+    from modules.commands import run_device_command
+    from modules.redact import redact_text
+
+    if connect is None:
+        from modules.connection import with_temp_connection as connect
+
+    def work(conn):
+        out = {}
+        for command in commands:
+            raw = run_device_command(conn, command)
+            text = redact_text(raw)
+            out[command] = {"text": text, "masked": text != raw}
+        return out
+
+    return connect(dev, work)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--device", action="append", required=True, help="hostname (repeatable)")
+    ap.add_argument("--command", action="append", required=True, help="a read (repeatable)")
+    ap.add_argument("--list", default="", help="device list (default: the active one)")
+    ap.add_argument("--out", default="", help="write <host>__<command>.txt files here")
+    args = ap.parse_args(argv)
+
+    refused = plan(args.command)
+    for command, reason in refused:
+        print(f"REFUSED {command!r}: {reason}")
+    why = out_dir_refusal(args.out)
+    if why:
+        print(f"REFUSED: {why}")
+    if refused or why:
+        print("Nothing connected.")
+        return 1
+
+    from modules.device import get_current_device_list, get_device_lists, load_saved_devices
+    from modules.config import LISTS_DIR
+
+    if args.list:
+        match = [l for l in get_device_lists() if l["name"] == args.list]
+        if not match:
+            print(f"REFUSED: no device list named {args.list!r}. Nothing connected.")
+            return 1
+        csv = os.path.join(LISTS_DIR, match[0]["filename"], "devices.csv")
+    else:
+        _name, csv = get_current_device_list()
+    inventory = {d.get("hostname"): d for d in load_saved_devices(csv)}
+    missing = [h for h in args.device if h not in inventory]
+    if missing:
+        print(f"REFUSED: not in the inventory ({csv}): {missing}. Nothing connected.")
+        return 1
+
+    code = 0
+    for host in args.device:
+        try:
+            got = capture(inventory[host], args.command)
+        except Exception as exc:  # noqa: BLE001
+            print(f"== {host}: could not capture: {type(exc).__name__}: {exc}")
+            code = 2
+            continue
+        for command, r in got.items():
+            mark = " (MASKED: redaction changed this output; not a faithful fixture)" \
+                if r["masked"] else ""
+            print(f"== {host} :: {command}{mark}\n{r['text']}")
+            if args.out:
+                os.makedirs(args.out, exist_ok=True)
+                suffix = ".masked.txt" if r["masked"] else ".txt"
+                path = os.path.join(args.out, f"{host}__{slug(command)}{suffix}")
+                with open(path, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(r["text"])
+                print(f"   -> {path}")
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -27,3 +27,9 @@ Measured with them, beyond the parsers:
   regular expression.
 - **`% Invalid input detected at '^' marker.`** is what both platforms
   print for an unknown command (`show foobar`).
+
+**Taking more:** `scripts/nmas-capture-output` is this probe as a tool
+(its docstring states what it guarantees). Captures of the second sweep
+(OSPF detail, CDP, LLDP, `show ip ospf`, connected routes, `show ip
+interface`) were added the same day by a probe that also ran each module's
+own parser on the host.

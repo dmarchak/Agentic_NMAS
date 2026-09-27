@@ -1,0 +1,62 @@
+ Neighbor 10.255.1.12, interface address 10.255.3.12, interface-id 8
+    In the area 0 via interface GigabitEthernet2
+    Neighbor priority is 100, State is 2WAY, 8 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:33
+    Neighbor is up for 05:16:21
+    Index 0/0/0, retransmission queue length 0, number of retransmission 0
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 0, maximum is 0
+    Last retransmission scan time is 0 msec, maximum is 0 msec
+ Neighbor 10.255.1.13, interface address 10.255.3.13, interface-id 9
+    In the area 0 via interface GigabitEthernet2
+    Neighbor priority is 255, State is FULL, 9 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    Options is 0x52 in DBD (E-bit, L-bit, O-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:36
+    Neighbor is up for 05:16:20
+    Index 3/3/3, retransmission queue length 0, number of retransmission 0
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 0, maximum is 0
+    Last retransmission scan time is 0 msec, maximum is 0 msec
+ Neighbor 10.255.1.14, interface address 10.255.3.14, interface-id 9
+    In the area 0 via interface GigabitEthernet2
+    Neighbor priority is 200, State is FULL, 9 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    Options is 0x52 in DBD (E-bit, L-bit, O-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:39
+    Neighbor is up for 05:16:21
+    Index 1/1/1, retransmission queue length 0, number of retransmission 1
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 1, maximum is 1
+    Last retransmission scan time is 0 msec, maximum is 0 msec
+ Neighbor 10.255.1.23, interface address 10.255.3.23
+    In the area 0 via interface GigabitEthernet2
+    Neighbor priority is 0, State is 2WAY, 2 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:28
+    Neighbor is up for 05:08:13
+    Index 0/0/0, retransmission queue length 0, number of retransmission 0
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 0, maximum is 0
+    Last retransmission scan time is 0 msec, maximum is 0 msec
+ Neighbor 10.255.1.24, interface address 10.255.3.24
+    In the area 0 via interface GigabitEthernet2
+    Neighbor priority is 0, State is 2WAY, 7 state changes
+    DR is 10.255.3.13 BDR is 10.255.3.14
+    Options is 0x12 in Hello (E-bit, L-bit)
+    LLS Options is 0x1 (LR)
+    Dead timer due in 00:00:30
+    Neighbor is up for 05:16:20
+    Index 0/0/0, retransmission queue length 0, number of retransmission 0
+    First 0x0(0)/0x0(0)/0x0(0) Next 0x0(0)/0x0(0)/0x0(0)
+    Last retransmission scan length is 0, maximum is 0
+    Last retransmission scan time is 0 msec, maximum is 0 msec

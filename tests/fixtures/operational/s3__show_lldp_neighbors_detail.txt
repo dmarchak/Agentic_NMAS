@@ -1,0 +1,72 @@
+------------------------------------------------
+Local Intf: Gi0/3
+Chassis id: 0c00.8585.fe00
+Port id: Gi0/3
+Port Description: trunk to s3 Gi0/3 - carries VLAN 100
+System Name: s4.rcn.lab
+
+System Description: 
+Cisco IOS Software, vios_l2 Software (vios_l2-ADVENTERPRISEK9-M), Version 15.2(CML_NIGHTLY_20180619)FLO_DSGS7, EARLY DEPLOYMENT DEVELOPMENT BUILD, synced to  V152_6_0_81_E
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2018 by Cisc
+
+Time remaining: 116 seconds
+System Capabilities: B,R
+Enabled Capabilities: R
+Management Addresses:
+    IP: 10.0.0.15
+Auto Negotiation - not supported
+Physical media capabilities - not advertised
+Media Attachment Unit type - not advertised
+Vlan ID: - not advertised
+
+------------------------------------------------
+Local Intf: Gi1/0
+Chassis id: 001e.e55d.3f00
+Port id: Gi2
+Port Description: s3 Gi1/0 - VLAN 100 CORE
+System Name: r1.example.com
+
+System Description: 
+Cisco IOS Software [Bengaluru], Virtual XE Software (X86_64_LINUX_IOSD-UNIVERSALK9-M), Version 17.6.1a, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2021 by Cisco Systems, Inc.
+Compiled Sat 21-Aug-21 03:20 
+
+Time remaining: 119 seconds
+System Capabilities: B,R
+Enabled Capabilities: R
+Management Addresses:
+    IP: 10.255.3.11
+    IPV6: 2001:DB8:3::11
+Auto Negotiation - not supported
+Physical media capabilities - not advertised
+Media Attachment Unit type - not advertised
+Vlan ID: - not advertised
+
+------------------------------------------------
+Local Intf: Gi0/2
+Chassis id: 001e.e55d.3f00
+Port id: Gi3
+Port Description: s3 Gi0/2 - VLAN 100 CORE
+System Name: r3.example.com
+
+System Description: 
+Cisco IOS Software [Bengaluru], Virtual XE Software (X86_64_LINUX_IOSD-UNIVERSALK9-M), Version 17.6.1a, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2021 by Cisco Systems, Inc.
+Compiled Sat 21-Aug-21 03:20 
+
+Time remaining: 115 seconds
+System Capabilities: B,R
+Enabled Capabilities: R
+Management Addresses:
+    IP: 10.255.3.13
+    IPV6: 2001:DB8:3::13
+Auto Negotiation - not supported
+Physical media capabilities - not advertised
+Media Attachment Unit type - not advertised
+Vlan ID: - not advertised
+
+
+Total entries displayed: 3

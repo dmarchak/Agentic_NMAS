@@ -1011,6 +1011,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
+| `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
+| `test_capture_output.py` | `nmas-capture-output`, the probe kept as a tool: a refused command connects to nothing; captures never land in the store; a capture redaction changed is marked and written `.masked.txt`; its names are the fixtures'; bytecode off before any import |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |
@@ -4850,6 +4852,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   pipeline's own read and was corrected. The sweep for the shape
   found one more of the family (C63): the deploy's dangerous check is a list
   of forms, and misses `no router rip` on a fleet running RIP.
+- **A fixture that starts where the parser is supposed to end has assumed
+  the thing under test** (the operator's wording, 2026-09-27). The RIP
+  sample began at `Routing Protocol is "rip"`, so it could not exhibit a
+  parser that never reaches that header (C65). Its test asserted "a
+  RIP-only device is no longer invisible" and passed while every RIP device
+  read 0. It is the second time in a day: the BGP sample from memory had
+  eight columns.
 - **A parser written against imagined output passes every test written the
   same way** (C64-C67, the operator's sweep of `pipeline.py`, 2026-09-27).
   Four readers of device text were wrong on the real fleet, and the suite
@@ -4884,7 +4893,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **42 open at 2026-09-27**, counted from the rows: 35 recorded only in
+present when each was recorded. **43 open at 2026-09-27**, counted from the rows: 36 recorded only in
 prose, 7 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
