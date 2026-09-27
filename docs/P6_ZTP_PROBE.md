@@ -1031,6 +1031,87 @@ held by systemd). Confirm with a new `MainPID` and the journal's `serving ZTP
 bootstrap configs` line. The node retries about every 8 s, so the next
 request is the test.
 
+### M4 complete (2026-09-27): Lab 8 end to end, and it survives a reboot
+
+After the persist fix, `nmas-persist-native` read **PERSISTED** and
+`nmas-check-credential` **ACCEPTED**, both exit 0. After a reload:
+- `Configured from memory`, `PnP Discovery stopped (Startup Config
+  Present)`;
+- `Gi2 assigned 10.255.0.50, hostname bp-ztp-a`, `SSH 2.0 has been
+  enabled`.
+- **The responder's journal shows NO new fetch**: a persisted device does
+  not ask.
+- **P-M4g answered: Call Home, not PnP.** `show call-home profile all`
+  names `https://tools.cisco.com/its/service/oddce/services/DDCEService`, and
+  `%CALL_HOME-6-CALL_HOME_ENABLED: Call-home is enabled by Smart Agent for
+  Licensing`. So two subsystems reach for Cisco on a configless IOS-XE node:
+  PnP to `devicehelper.cisco.com` (the redirect, carrying the UDI) and Call
+  Home to `tools.cisco.com` (Smart Licensing, enabled automatically). D4's
+  posture blocks both, and the write-up names both.
+
+**What M4 proves, for Lab 8 (the operator's summary):**
+1. A device with no configuration got its address from a reservation THE
+   TOOL WROTE into Kea.
+2. It fetched its bootstrap config from THE TOOL over TFTP, with every
+   fetch a reveal row, and applied it.
+3. It was reached over SSH with the staged credential.
+4. Its credential was rotated, saved and read back.
+5. It was captured, recorded in NetBox and promoted.
+6. It rebooted into its own saved config and stayed reachable.
+
+**The honest caveat stands:** the node had to be persuaded to ask, because
+vrnetlab always injects a day-0 config.
+
+**P-M4f is still open, and its premise is not its claim.** "A persisted
+device never asks" is confirmed. "The responder would refuse it" is a
+different claim. It is measured from the DEVICE, so the address, the
+deployed socket and the request-time decision are all real. The reservation
+still exists and the filename matches, so only the pending check can refuse
+it:
+
+```text
+bp-ztp-a# copy tftp://10.255.0.10/bp-ztp-a.cfg null:
+```
+
+**Predicted:** the copy fails on the device, and the responder's journal has
+no `served` line. `data/reveal_audit.jsonl` gains at least one
+`bootstrap_config_refused` row: target `?`, peer `10.255.0.50`, detail `no
+pending ZTP device holds the reservation aa:bb:cc:00:02:50 -> 10.255.0.50
+(promoted, abandoned, or never onboarded as ztp)`. It is at least one because
+IOS may retry the request.
+
+**Teardown, in this order** (Phase 2's step 12, with ZTP's additions):
+
+1. **P-M4f**, above: it needs the node and the reservation, so it goes first.
+2. The baseline exists BEFORE anything is removed:
+   `test -s /tmp/census-ztp-a.json || echo "NO BASELINE -- do not Remove"`.
+3. `cd /home/dmarchak/labs/ztp-a && sudo containerlab destroy -t
+   nmas-ztp-a.clab.yml --cleanup` (lab host).
+4. **NetBox Remove through the GUI** for list `ztp-a`: provenance governs,
+   and the cascade preview names every foreign object.
+5. `python3 /home/dmarchak/python/Agentic_NMAS/scripts/nmas-netbox-census
+   --compare /tmp/census-ztp-a.json` must give **exit 0**. Exit 1 means
+   objects were left behind; exit 2 is UNPROVEN, and is not a pass.
+6. **The reservation, removed by the TOOL's writer** (it reads back):
+   `cd /home/dmarchak/python/Agentic_NMAS && python3 -c 'from
+   modules.nsot.ztp import write_reservations as w; print(w(removes=["aa:bb:cc:00:02:50"]))'`.
+   Expect `removed` and `ok: True`. Then `kea-m5.py show` must read 0
+   reservations, the D4 line, and still no pool.
+7. Delete the temporary list `ztp-a` (GUI). Leave `netbox_allow_writes` ON
+   (PHASE2_DHCP.md §11).
+8. `python3 /home/dmarchak/python/Agentic_NMAS/scripts/nmas-credential-overrides`:
+   `10.255.0.50` should be flagged ORPHAN, a rotated credential for a device
+   that no longer exists. Clear it (Settings → Credentials), because a
+   secret with no owner is exactly what the survey exists to find.
+9. `ip -br link show master br-mgmt` holds `enp6s19`, `s3-mgmt` and
+   `r6-mgmt` only, and no `ztp-probe` docker network remains (lab host).
+10. **Step 5b again:** `r1# show ip route 10.255.1.16` still reads extern 2,
+    metric 20, from `10.255.1.23`.
+
+**Kept, deliberately:** the responder's socket and service, the ufw rule, the
+fragment file (now `[]`) and `kea_ztp_fragment`. They are the host's ZTP
+capability, not the probe's.
+
 **Teardown:** as Phase 2's ([PHASE2_DHCP.md](PHASE2_DHCP.md)), whose census
 `--compare` against the step-5 baseline is the acceptance, plus the
 containerlab teardown as in step 7 above. Abandon is NOT the path for a
