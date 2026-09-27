@@ -2463,6 +2463,7 @@ class TestTheOnboardingParameterisationGoesBothWays:
         monkeypatch.setattr("modules.device.load_saved_devices",
                             lambda p: [])          # nothing in the inventory
         monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
+        monkeypatch.setattr(cr, "helper_sudo_status", lambda: {"ok": True, "reason": ""})
         monkeypatch.setattr(cr, "live_user_line",
                             lambda dev, user: {"ok": False, "line": "",
                                                "kind": ""})
@@ -2496,6 +2497,7 @@ class TestARotatedDeviceCanBeRotatedAgain:
         monkeypatch.setattr("modules.config.LISTS_DIR", "/tmp/nmas-nonexistent")
         monkeypatch.setattr("modules.device.load_saved_devices", lambda p: [])
         monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
+        monkeypatch.setattr(cr, "helper_sudo_status", lambda: {"ok": True, "reason": ""})
         monkeypatch.setattr(cr, "live_user_line",
                             lambda dev, user: {"ok": True, "line": kind_line,
                                                "kind": cr.entry_kind(kind_line)})
@@ -2870,3 +2872,50 @@ class TestAFailedRecordKeepsTheOnlyCopy:
                                           "at": "2026-09-27T23:00:00Z"}])
         assert rows[0]["state"] == "not_recorded"
         assert "not_recorded" not in job_health.OK_STATES
+
+
+
+class TestSudoIsAskedBeforeTheDeviceChanges:
+    """C106 (1b): the persist chain runs the helper through `sudo -n`, and
+    nothing asked first. A refusal failed the chain AFTER the device was
+    rotated and committed, with no reason: a refused `sudo -n` prints nothing
+    on stdout, so the stage parsed `{}`."""
+
+    def _proc(self, rc, out="", err=""):
+        return type("P", (), {"returncode": rc, "stdout": out, "stderr": err})()
+
+    def test_a_passwordless_rule_passes(self):
+        st = cr.helper_sudo_status(run=lambda *a, **k: self._proc(0, cr.HELPER_INSTALLED))
+        assert st["ok"] is True
+
+    def test_no_rule_is_refused_naming_the_exact_entry(self):
+        st = cr.helper_sudo_status(
+            run=lambda *a, **k: self._proc(1, err="sudo: a password is required"))
+        assert st["ok"] is False
+        assert "NOPASSWD: " + cr.HELPER_INSTALLED in st["reason"]
+        assert "refused before anything changes" in st["reason"]
+        assert "a password is required" in st["reason"]
+
+    def test_preflight_refuses_on_it(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path))
+        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
+        monkeypatch.setattr(cr, "helper_sudo_status",
+                            lambda: {"ok": False, "reason": "no rule"})
+        out = cr.preflight("Lab", "nope")
+        checks = {c["name"]: c for c in out["checks"]}
+        assert checks["helper_runs_without_a_password"]["ok"] is False
+        assert out["ok"] is False
+
+    def test_a_refused_run_is_named_never_an_empty_stage(self, monkeypatch):
+        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
+        monkeypatch.setattr("subprocess.run", lambda *a, **k: self._proc(
+            1, "", "sudo: a password is required"))
+        out = cr.update_oxidized_row("192.0.2.1", "admin", "x" * 12, router_db="/r.db")
+        assert out["ok"] is False and "a password is required" in out["error"]
+        assert "sudoers entry is missing" in out["error"]
+
+    def test_an_answer_without_ok_is_not_success(self, monkeypatch):
+        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
+        monkeypatch.setattr("subprocess.run", lambda *a, **k: self._proc(0, "{}"))
+        out = cr.update_oxidized_row("192.0.2.1", "admin", "x" * 12, router_db="/r.db")
+        assert out["ok"] is False

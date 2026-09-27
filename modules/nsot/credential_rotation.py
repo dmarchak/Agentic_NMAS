@@ -197,6 +197,48 @@ def helper_status() -> dict:
     return {**out, "ok": True, "state": "ok"}
 
 
+def helper_sudo_status(run=None) -> dict:
+    """Will sudo run the helper WITHOUT a password, for this user, now?
+
+    Asked in PREFLIGHT, before anything changes the device (register C106).
+    The persist chain's `oxidized_row` stage runs `sudo -n <helper>`, and
+    nothing asked first: a rule removed or changed, or the rotation run as
+    another user, meant the device was rotated and committed and THEN the
+    chain failed at that stage, with no reason (the refused `sudo -n` printed
+    nothing on stdout, so the stage returned `{}`). The fourth way for a
+    rotation to leave a device half-done would have been this one.
+    `sudo -n -l <command>` exits 0 exactly when that command may run with no
+    password (measured on the host, 2026-09-27: the narrow rule for this one
+    helper exists, and the service runs as the user it covers)."""
+    import subprocess
+
+    run = run or subprocess.run
+    try:
+        proc = run(["sudo", "-n", "-l", HELPER_INSTALLED],
+                   capture_output=True, text=True, timeout=10)
+    except Exception as exc:                   # noqa: BLE001
+        return {"ok": False, "reason": f"could not ask sudo: {type(exc).__name__}: {exc}"}
+    if proc.returncode == 0:
+        return {"ok": True, "reason": ""}
+    said = (proc.stderr or proc.stdout or "").strip()[:160]
+    return {"ok": False, "reason": (
+        f"sudo will not run {HELPER_INSTALLED} without a password for this user "
+        f"(sudo -n -l exited {proc.returncode}{': ' + said if said else ''}). The "
+        "rotation would change the device and then fail to record it in Oxidized, "
+        "so it is refused before anything changes. The helper needs exactly this "
+        f"sudoers entry: `{_user()} ALL=(root) NOPASSWD: {HELPER_INSTALLED}` "
+        "(the helper's own header, scripts/nmas-oxidized-cred).")}
+
+
+def _user() -> str:
+    import getpass
+
+    try:
+        return getpass.getuser()
+    except Exception:                          # noqa: BLE001
+        return "<user>"
+
+
 def generate_password(hostname: str = "device", length: int = LENGTH) -> str:
     """A fresh random password. ``secrets``, never ``random``.
 
@@ -951,6 +993,10 @@ def preflight(list_name: str, hostname: str, *, device: dict = None,
     helper = helper_status()
     _check("helper_installed_and_matching", helper["ok"],
            helper.get("reason") or f"sha {helper.get('installed_sha','')}")
+    # The persist chain runs the helper through `sudo -n`: can it, NOW,
+    # before the device changes? (C106: asked only after, it failed silently.)
+    sudo = helper_sudo_status()
+    _check("helper_runs_without_a_password", sudo["ok"], sudo["reason"])
 
     if device is None:
         _name, csv_path = get_current_device_list()
@@ -1755,10 +1801,21 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
             capture_output=True, text=True, timeout=30)
     except Exception as exc:                   # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
+    if proc.returncode != 0 and not (proc.stdout or "").strip():
+        # A refused `sudo -n` (or a helper that died) prints nothing on stdout,
+        # and "{}" parsed to a stage with no ok and no reason (C106).
+        return {"ok": False, "error": (
+            f"the helper did not run (exit {proc.returncode}): "
+            + ((proc.stderr or "").strip()[:200] or "no output")
+            + ". If sudo asked for a password, the helper's sudoers entry is "
+              "missing for this user.")}
     try:
         body = json.loads(proc.stdout or "{}")
     except ValueError:
         body = {"ok": False, "error": (proc.stderr or proc.stdout)[:200]}
+    if "ok" not in body:
+        body = {"ok": False, "error": "the helper answered without saying ok or not: "
+                                      + json.dumps(body)[:160]}
     return body
 
 
