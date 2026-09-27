@@ -55,6 +55,39 @@ pinned version, and says which it did.
 `pip install -r requirements.txt`, or the lock WITHOUT `--no-deps`, gives a
 third environment that has never been tested against this code.
 
+### Kea: the reservation fragment NMAS owns (P.6 D1, 2026-09-26)
+
+A rebuild must reproduce this host change, or every reservation the tool
+writes lives only in Kea's memory until the next restart (register C49).
+`kea-dhcp4.conf` stays `root:root 0644` and the tool never writes it. The
+tool owns one directory, and subnet 255 includes one file from it:
+
+```bash
+sudo install -d -o dmarchak -g _kea -m 0755 /etc/kea/nmas
+sudo install -o dmarchak -g _kea -m 0644 /dev/null /etc/kea/nmas/reservations-255.json
+printf '[]\n' > /etc/kea/nmas/reservations-255.json
+```
+
+In subnet `id: 255`, `"reservations": []` becomes
+`"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>`. Then
+`sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf` and a restart. Replace
+`dmarchak` with the service user on a host where NMAS runs as `nmas`.
+
+Three constraints decide the shape, each measured:
+
+- **Under `/etc/kea`, because of AppArmor.** Kea's profiles allow reads of
+  `/etc/kea/**` only; a fragment anywhere else is refused whatever its mode.
+- **A directory the tool owns, because the tool writes by
+  temp-then-rename.** `/etc/kea` is `root 755`, so a fragment directly in
+  it would force truncate-in-place, the mechanism that erased
+  `user_settings.json` on 2026-09-23.
+- **`0755`/`0644`, not `0750`/`0640`, because a confined root is not root
+  for file modes.** The profile withholds `dac_override` and
+  `dac_read_search`, so `kea-dhcp4 -t` run as root is held to the mode bits
+  and could not read `0640`. The daemon runs as `_kea` and could have, so
+  `0640` works in production and breaks the offline syntax check. The file
+  holds MAC-to-address reservations (inventory, not secrets).
+
 Create `.env` with the Anthropic API key (mode `600`, owned by `nmas`):
 
 ```bash

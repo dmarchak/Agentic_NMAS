@@ -320,9 +320,10 @@ writes by temp-then-rename, and that needs write permission on the directory.
 tool to truncate the file in place, which is the mechanism that erased
 `user_settings.json` on 2026-09-23.
 
-- directory `/etc/kea/nmas/`, owned `dmarchak:_kea`, mode `0750`;
+- directory `/etc/kea/nmas/`, owned `dmarchak:_kea`, mode `0755` (first
+  specified `0750`; see "As run" below for why it changed);
 - file `/etc/kea/nmas/reservations-255.json`, owned `dmarchak:_kea`, mode
-  `0640`, holding `[]`;
+  `0644` (first specified `0640`), holding `[]`;
 - subnet `id: 255` (`10.255.0.0/24`) in `kea-dhcp4.conf` gets
   `"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>`.
 
@@ -338,24 +339,54 @@ tool to truncate the file in place, which is the mechanism that erased
   subnet 255 shows `reservations: []` and no option data, and
   `reservation_for('aa:bb:cc:00:02:50')` answers `not_reserved`.
 
-**The commands (NMAS host, as the operator).** Each writes, then shows what
-it wrote.
+**As run (2026-09-26), and why the modes are not the ones first specified.**
+D1 is in place: `kea-dhcp4 -t` exit 0, Kea restarted clean (`NRestarts=0`,
+no journal errors), and through the Control Agent subnet 255 reads
+`reservations: []` and `option-data: []` from the RUNNING server, so D4's
+posture holds in memory as well as in the file. The include syntax was
+accepted at once. The first `-t` failed on ACCESS, with this in the kernel
+log:
+
+```text
+apparmor="DENIED" operation="capable" profile="kea-dhcp4" capability=2 capname="dac_read_search"
+apparmor="DENIED" operation="capable" profile="kea-dhcp4" capability=1 capname="dac_override"
+```
+
+**Kea's AppArmor profile withholds the two capabilities that let root ignore
+file modes**, so `kea-dhcp4` run as root under `sudo` is held to the mode
+bits. Root is neither `dmarchak` nor in `_kea`, so `0750`/`0640` shut it
+out. The path was never the problem: the profile does allow `/etc/kea/**`,
+which is why it would have read as a path problem indefinitely. The same log
+holds an older instance, `/tmp/kea-broken.conf`, denied on 2026-09-25 during
+the operator's config-test control.
+
+**The modes are `0755` on the directory and `0644` on the file** (the
+operator's decision). The asymmetry decided it: the RUNNING daemon executes
+as `_kea` and could read `0640`. Only the offline `kea-dhcp4 -t`, as root,
+could not. So `0640` would have worked in production and made the syntax
+check unusable, and a config that cannot be validated offline is found out
+at restart. The fragment holds MAC-to-address reservations: inventory, not
+secrets, already in NetBox and the manifest. The tool still has what the
+design needs: it owns the directory and writes by temp-then-rename.
+
+The commands below are the ones that were run, with the measured modes.
 
 ```bash
 sudo cp -a /etc/kea/kea-dhcp4.conf /etc/kea/kea-dhcp4.conf.bak-pre-d1
 ls -l /etc/kea/kea-dhcp4.conf.bak-pre-d1
 
-sudo install -d -o dmarchak -g _kea -m 0750 /etc/kea/nmas
-sudo install -o dmarchak -g _kea -m 0640 /dev/null /etc/kea/nmas/reservations-255.json
+sudo install -d -o dmarchak -g _kea -m 0755 /etc/kea/nmas
+sudo install -o dmarchak -g _kea -m 0644 /dev/null /etc/kea/nmas/reservations-255.json
 printf '[]\n' > /etc/kea/nmas/reservations-255.json
 ls -ld /etc/kea/nmas && ls -l /etc/kea/nmas/reservations-255.json
 sudo -u _kea cat /etc/kea/nmas/reservations-255.json
 ```
 
-Expect `drwxr-x--- dmarchak _kea`, `-rw-r----- dmarchak _kea`, and `[]` read
-back AS `_kea`. That last line is the check that Kea's own user can read
-it. The `printf` runs as `dmarchak` and writes into an existing file, so its
-owner, group and mode stay as `install` set them.
+Expect `drwxr-xr-x dmarchak _kea`, `-rw-r--r-- dmarchak _kea`, and `[]` read
+back AS `_kea`. Reading it as `_kea` covers the daemon; the `kea-dhcp4 -t`
+below, as a confined root, is the reader that decided the mode. The `printf`
+runs as `dmarchak` and writes into an existing file, so owner, group and
+mode stay as `install` set them.
 
 Then the one-line edit. Line 91 changes from `"reservations": []` to
 `"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>`:
@@ -386,21 +417,86 @@ then the restart above.
 
 ### M5 — does a reservation survive a reload AND a restart (the operator's first requirement)
 
-This is the measurement that catches D1 being wrong.
+This is the measurement that catches D1 being wrong, and the first one that
+can show the include is LIVE: an empty list reads the same either way.
 
-1. Write the `10.255.0.50` reservation into the fragment by hand. The writer
-   is not built yet, and this measures the mechanism, not the code.
-2. Run `config-test`, then `config-reload` through the Control Agent.
-3. Read it back from `config-get` and through the tool's
-   `reservation_for('aa:bb:cc:00:02:50')`.
-4. `sudo systemctl restart kea-dhcp4-server`.
-5. Read it back again, both ways.
+**The instrument:** `docs/bootstrap-probe/kea-m5.py`. It talks to
+kea-dhcp4's own control socket, so it needs no API credential and no
+netcat. The socket is `srwxr-xr-x _kea`, and connecting to a unix socket
+needs write permission, hence `sudo`. It never writes a file and never
+calls `config-write`. `tests/test_kea_m5_helper.py` drives it against a fake
+Kea socket, and three controls each failed their targets.
 
-**Prediction:** present at step 3 and at step 5.
+**The control is a SECOND reservation, `aa:bb:cc:00:02:51 -> 10.255.0.51`**,
+not the same one. Both then read back side by side, and the restart
+separates them in one step: the file's survives and memory's does not.
 
-**Control:** the same reservation added by `config-set` alone (memory
-only), and the same restart. Predicted ABSENT after the restart, which is the
-failure D1 exists to prevent, shown happening.
+Run from the deployed checkout (`H=` is not used; every line names the
+path in full):
+
+```bash
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+```
+
+Step 1. Expect `0 reservation(s); option-data: []`, the baseline.
+
+Step 2, the fragment, written the way the tool will write it
+(temp-then-rename, mode set explicitly, never inherited from the umask, which
+is `0002` in this shell):
+
+```bash
+install -m 0644 /dev/null /etc/kea/nmas/.reservations-255.json.tmp
+printf '[ { "hw-address": "aa:bb:cc:00:02:50", "ip-address": "10.255.0.50" } ]\n' > /etc/kea/nmas/.reservations-255.json.tmp
+mv -f /etc/kea/nmas/.reservations-255.json.tmp /etc/kea/nmas/reservations-255.json
+ls -l /etc/kea/nmas/reservations-255.json && cat /etc/kea/nmas/reservations-255.json
+sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf; echo "config-test exit=$?"
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+```
+
+The rename leaves the file `dmarchak:dmarchak 0644`, because a rename brings
+the new inode's owner. With `0644` the group no longer decides anything, which
+is the D1 mode doing its job. The last `show` is a control of its own:
+**predicted 0 reservations**. The file has changed and the running server has
+not re-read it, so a 1 here would mean the reading does not come from where it
+claims.
+
+Step 3, reload, then read:
+
+```bash
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+```
+
+**Predicted: 1 reservation, `aa:bb:cc:00:02:50 -> 10.255.0.50`.** This is the
+line that shows the include is live. Tell me when it is there, and I read it
+through the tool's `reservation_for()` as well (the Control Agent path, the
+one the build uses).
+
+Step 4, the control, in memory only:
+
+```bash
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py control-set aa:bb:cc:00:02:51 10.255.0.51
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+```
+
+**Predicted: 2 reservations**, `.50` and `.51`.
+
+Step 5, the restart that separates them:
+
+```bash
+sudo systemctl restart kea-dhcp4-server
+systemctl show -p ActiveState,SubState,MainPID,NRestarts kea-dhcp4-server
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+```
+
+**Predicted: 1 reservation, `.50` only.** `.51` gone is C49's failure shown
+happening, and `.50` present is D1 preventing it. A reload is deliberately
+NOT run between steps 4 and 5: a reload also re-reads the file and would drop
+`.51` too, so a reload could not tell the file from a restart.
+
+**What M5 leaves behind is what M3 needs:** `.50` reserved for the probe's
+pinned MAC, address only. M3 adds its config-source options. To clear it
+later, write `[]` the same way and reload.
 
 ### M3 — which transport and filename the node asks for
 

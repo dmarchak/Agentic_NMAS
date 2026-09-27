@@ -970,6 +970,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_configless_patch.py` | P.6 M1: the configless launch patch checked by AST against the REAL adopted script (a hash-pinned fixture): the base disk booted and the install overlay (which holds a saved startup config) removed, shown by EXECUTING the constructor on a fake root; no config ISO at run time, the console prompt marks the VM running, the watchdog never restarts it; refuses a missing or duplicated anchor, a re-patch, and a production lab's own file |
+| `test_kea_m5_helper.py` | P.6 M5: the helper reads subnet 255 from kea-dhcp4's control socket and adds the config-set control reservation, against a fake Kea socket; refuses a MAC or address already reserved; never calls config-write |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -4597,6 +4598,21 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   resolver (options 3, 6, 33, 121), and that is a CHECK over the EFFECTIVE
   options (global, shared-network, subnet, reservation), not a fact about
   subnet 255 that holds because nobody has touched it.
+- **A CONFINED ROOT PROCESS IS NOT ROOT FOR FILE PERMISSIONS** (the
+  operator, P.6 D1, 2026-09-26). `sudo kea-dhcp4 -t` could not read a
+  `0640 dmarchak:_kea` fragment: Kea's AppArmor profile withholds
+  `dac_override` and `dac_read_search`, so the process is held to the mode
+  bits, and root is neither the owner nor in the group. The profile DID
+  allow the path (`/etc/kea/**`), which is why it would have read as a path
+  problem indefinitely. Any design assuming "root can read it" about a
+  service under AppArmor is wrong. The kernel log carries
+  `apparmor="DENIED" operation="capable"`, and the same log held an older
+  instance nobody had read (`/tmp/kea-broken.conf`, 2026-09-25). **Ask which
+  reader a mode is for, and list every one**: the running daemon as `_kea`
+  could read `0640`; only the offline check could not. So `0640` would have
+  worked in production and made the config unvalidatable before a restart.
+  `0644` was chosen because the file is inventory, not secrets. The recipe
+  is in `docs/DEPLOY_LINUX.md` so a rebuild reproduces it.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every

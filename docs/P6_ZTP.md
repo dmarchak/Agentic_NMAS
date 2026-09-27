@@ -107,7 +107,7 @@ later; P.6 only produces them).
 
 | Option | What it takes | Blast radius | Survives a restart |
 |---|---|---|---|
-| **(B) An include fragment the tool owns** (recommended) | The management subnet's `reservations` come from a separate file via Kea's `<?include?>`; the file is owned by the NMAS service user, group `_kea`, mode `0640` (a handoff names its reader); the tool writes it, then `config-test`, then `config-reload` | Reservations for that subnet only: the tool cannot touch any other part of Kea's config | Yes: it is a file |
+| **(B) An include fragment the tool owns** (recommended) | The management subnet's `reservations` come from a separate file via Kea's `<?include?>`; the directory `/etc/kea/nmas/` is owned by the NMAS service user, mode `0755`, and the file is `0644`: measured at D1, since Kea's AppArmor profile withholds `dac_override`, so the offline `kea-dhcp4 -t` as root is held to the mode bits and `0640` shut it out (P6_ZTP_PROBE.md, D1 "As run"); the tool writes it, then `config-test`, then `config-reload` | Reservations for that subnet only: the tool cannot touch any other part of Kea's config | Yes: it is a file |
 | (A) `config-get` / `config-set` / `config-write` | `_kea` write access to `kea-dhcp4.conf` | The whole DHCP config, every subnet, on every write | Only if `config-write` works, which today it cannot |
 | (C) The `host_cmds` hook | ISC's own package, not Ubuntu's | Reservations only | Depends on the host backend |
 | (D) Manual, as Phase 2 | Nothing | None | Yes |
