@@ -203,6 +203,7 @@ class TestTheSharedPaths:
         hostvars.write_committed(repo, {"hostname": "bp-ztp-a", "bootstrap": {
             "source": "ztp", "interface": "GigabitEthernet2", "mac": MAC,
             "domain": "rcn.lab", "platform": "cisco_iosxe", "address": "", "mask": ""}})
+        from tests.intent_fixture import commit_intent; commit_intent(repo)  # read from HEAD (C104)
         onboard.stage_bootstrap_credential(repo, "bp-ztp-a", "Secret123")
         out = onboard.bootstrap_artifact(repo, "bp-ztp-a")
         assert out["ok"], out["reason"]
@@ -570,6 +571,7 @@ class TestAZtpDeviceGeneratesItsOwnSshKey:
         hostvars.write_committed(repo, {"hostname": "bp-ztp-a", "bootstrap": {
             "source": "ztp", "interface": "GigabitEthernet2", "mac": MAC,
             "domain": "rcn.lab", "platform": "cisco_iosxe", "address": "", "mask": ""}})
+        from tests.intent_fixture import commit_intent; commit_intent(repo)  # read from HEAD (C104)
         onboard.stage_bootstrap_credential(repo, "bp-ztp-a", "Secret123")
         out = onboard.bootstrap_artifact(repo, "bp-ztp-a")
         assert out["ok"], out["reason"]

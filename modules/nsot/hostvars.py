@@ -164,11 +164,30 @@ def read_committed(repo: str, hostname: str):
     ``None`` is meaningful and must not be papered over: it means nobody has
     said what this device is supposed to look like.
     """
-    path = committed_path(repo, hostname)
-    if not os.path.exists(path):
+    # From GIT, never from disk (C104, 2026-09-27). This used to open the
+    # working file, and the deploy plan, the baseline's intent comparison,
+    # rotation and onboarding all read intent through here: so a hand edit
+    # to host_vars/ that nobody committed was what got DEPLOYED, while
+    # everything that says "committed" claimed otherwise. A working file
+    # that differs is ignored and named in the log, once per path.
+    raw, _state = committed_at_head(repo, hostname)
+    if raw is None:
         return None
-    with open(path, encoding="utf-8") as fh:
-        return from_yaml(fh.read())
+    path = committed_path(repo, hostname)
+    try:
+        with open(path, encoding="utf-8", newline="") as fh:
+            on_disk = fh.read()
+    except OSError:
+        on_disk = None
+    if on_disk != raw and path not in _INTENT_WORKTREE_WARNED:
+        _INTENT_WORKTREE_WARNED.add(path)
+        log.warning("hostvars: %s differs from its commit on disk; committed "
+                    "intent is what every reader uses", os.path.relpath(path, repo))
+    return from_yaml(raw)
+
+
+#: Paths already warned about in this process (see read_committed).
+_INTENT_WORKTREE_WARNED: set = set()
 
 
 def list_committed(repo: str) -> list:
@@ -379,8 +398,9 @@ COMMITTED = "committed"
 def committed_at_head(repo: str, hostname: str) -> tuple:
     """``(text | None, state)`` — committed intent read from **git**, not disk.
 
-    `read_committed()` opens the working file, which is correct for *"what
-    would deploy"* and wrong for *"what is committed"*. The two are the same
+    `read_committed()` used to open the working file (it reads this now,
+    C104), which was called correct for *"what would deploy"*: it was not,
+    since a hand edit nobody committed was then deployed. The two are the same
     bytes only while nobody edits the file directly — and editing it directly
     is how a person actually works. Measured: with the file edited in place,
     the editor's `vs_intent` compared the edit against itself and was empty by

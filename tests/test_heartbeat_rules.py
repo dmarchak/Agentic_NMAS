@@ -254,6 +254,9 @@ class TestThePopulationIsWhoIsToldToHeartbeat:
         (repo / ".nsot" / "manifest.json").write_text(json.dumps({
             "devices": {f"uid:{n}": {"name": n, "platform": p}
                         for n, p in platforms.items()}}))
+        # Committed, not only written: intent is read from HEAD (C104).
+        from tests.intent_fixture import commit_intent
+        commit_intent(str(repo))
         monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
         monkeypatch.setattr("modules.device.get_device_lists",
                             lambda: [{"name": "Lab", "filename": "lab"}])

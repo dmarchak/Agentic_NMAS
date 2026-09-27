@@ -59,6 +59,9 @@ def lab(tmp_path, monkeypatch):
                         lambda key, default=None: {
                             "nsot_git_author_name": "NMAS",
                             "nsot_git_author_email": "nmas@localhost"}.get(key, default))
+    # Committed, not only written: intent is read from HEAD (C104).
+    from tests.intent_fixture import commit_intent
+    commit_intent(repo)
     return repo, captured
 
 

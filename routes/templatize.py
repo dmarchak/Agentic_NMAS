@@ -203,14 +203,14 @@ def read_committed(hostname):
     from modules.nsot import hostvars
 
     repo = _repo_for(_active_list())
-    path = hostvars.committed_path(repo, hostname)
-    if not os.path.exists(path):
+    # What is COMMITTED, from git (C104): the editor opens what deploy reads.
+    text, _state = hostvars.committed_at_head(repo, hostname)
+    if text is None:
         return jsonify({"ok": False, "committed": False, "error": (
             f"'{hostname}' has no committed intent. Extract it, review the "
             "diff, and commit before it can be deployed.")}), 404
-    with open(path, encoding="utf-8") as fh:
-        return jsonify({"ok": True, "hostname": hostname, "committed": True,
-                        "yaml": fh.read()})
+    return jsonify({"ok": True, "hostname": hostname, "committed": True,
+                    "yaml": text})
 
 
 @bp.route("/commit/<path:hostname>", methods=["POST"])
@@ -489,7 +489,7 @@ def edit_committed(hostname):
         return jsonify({"ok": False, "error": (
             "A one-line summary is required — it becomes the commit subject, "
             "and 'host_vars: s4' on its own says nothing in a log.")}), 400
-    if not os.path.exists(hostvars.committed_path(repo, hostname)):
+    if hostvars.committed_at_head(repo, hostname)[0] is None:
         return jsonify({"ok": False, "error": (
             f"'{hostname}' has no committed intent yet. Commit the extraction "
             "first, so the edit has a reviewed baseline to diff against.")}), 404
@@ -547,7 +547,11 @@ def revert_committed(hostname):
     result = repo_service.save_host_vars(
         list_name, [hostname], actor=request_actor(),
         message=f"host_vars: {hostname} revert {target[:8]}")
-    cleared = hostvars.clear_rolled_back(repo, hostname)
+    # Only once the revert is COMMITTED: a failed commit leaves the reverted
+    # intent uncommitted, so the block must stand, or the next plan offers
+    # the failed change again with nothing recorded (found C104).
+    cleared = (hostvars.clear_rolled_back(repo, hostname)
+               if result.get("ok") else False)
 
     return jsonify({"ok": result.get("ok", False), "hostname": hostname,
                     "reverted": target,

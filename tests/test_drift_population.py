@@ -41,8 +41,11 @@ def fleet(monkeypatch):
                         lambda: ("lab", "lab.csv"))
     monkeypatch.setattr("modules.device.load_saved_devices",
                         lambda path: list(devices))
-    monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
-                        lambda ip: golden.get(ip))
+    # Drift reads the golden through _golden_record (C104: as committed,
+    # with a refusal distinct from "no golden").
+    monkeypatch.setattr("modules.ai_assistant._golden_record",
+                        lambda ip: {"text": golden.get(ip), "path": "", "commit": "",
+                                    "source": "", "refused": ""})
     monkeypatch.setattr("modules.connection.get_persistent_connection",
                         lambda dev, pool, lock: dev["ip"])
     monkeypatch.setattr("modules.commands.run_device_command",

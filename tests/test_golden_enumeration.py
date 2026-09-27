@@ -98,13 +98,28 @@ class TestTheRepoIsThePopulation:
         by_name = {e["hostname"]: e for e in _list_golden_configs()}
         assert by_name["r2"]["device_ip"] == "203.0.113.2"
 
-    def test_a_manifest_entry_whose_file_is_gone_is_not_listed(self, lab):
-        """`list_goldens` answers "has a golden", not "is known"."""
+    def test_a_file_nothing_committed_is_not_listed(self, lab):
+        """`list_goldens` answers "has a golden", not "is known", and a golden
+        is a COMMITTED file (C104): one on disk that no save committed, the
+        state a failed save used to leave, is not one."""
+        from modules.ai_assistant import _list_golden_configs
+        from modules.nsot import manifest as M
+
+        with open(os.path.join(lab["repo"], "golden", "r9.cfg"), "w") as fh:
+            fh.write("hostname r9\n")
+        M.upsert_device(lab["repo"], "uid:r9", "r9", "203.0.113.9",
+                        golden="golden/r9.cfg")
+        names = {e["hostname"] for e in _list_golden_configs()}
+        assert names == {"r1", "r2"}
+
+    def test_a_committed_golden_deleted_only_from_disk_is_still_listed(self, lab):
+        """HEAD is the golden; the working tree is ignored (C104). This test
+        used to assert the opposite, which made a file on disk the authority."""
         from modules.ai_assistant import _list_golden_configs
 
         os.remove(os.path.join(lab["repo"], "golden", "r2.cfg"))
         names = {e["hostname"] for e in _list_golden_configs()}
-        assert names == {"r1"}
+        assert names == {"r1", "r2"}
 
 
 class TestSavedAtIsTheCommitNotTheMtime:

@@ -1132,9 +1132,16 @@ def golden_history(repo: str, hostname: str, limit: int = 50) -> list:
         parts = record.split("\x1f")
         if len(parts) < 5:
             continue
-        entries.append({"sha": parts[0], "timestamp": parts[1],
-                        "source": parts[2].strip(), "actor": parts[3].strip(),
-                        "subject": parts[4]})
+        entry = {"sha": parts[0], "timestamp": parts[1],
+                 "source": parts[2].strip(), "actor": parts[3].strip(),
+                 "subject": parts[4]}
+        # `source` stays what the RECORD says; a known misstatement rides
+        # beside it (record_exceptions), never over it.
+        from modules.nsot.record_exceptions import exception_for
+        known = exception_for(parts[0])
+        if known:
+            entry["exception"] = dict(known)
+        entries.append(entry)
     return entries
 
 
@@ -1320,12 +1327,21 @@ def list_goldens(list_name: str) -> list:
 
     times = golden_commit_times(repo)
     results, seen_names = [], set()
+    # What HEAD holds, with sizes: a golden is a COMMITTED file (C104), so a
+    # file on disk that no save committed is not enumerated as one.
+    _rc, tree, _err = git(repo, "ls-tree", "-r", "-l", "HEAD", "--", "golden")
+    committed = {}
+    for line in (tree or "").splitlines():
+        meta, _tab, name = line.partition("\t")
+        parts = meta.split()
+        if len(parts) >= 4 and parts[3].isdigit():
+            committed[name] = int(parts[3])
 
     for identity, entry in sorted(_m.load(repo)["devices"].items(),
                                   key=lambda kv: (kv[1].get("name") or "").lower()):
         rel = entry.get("golden") or ""
         path = os.path.join(repo, rel)
-        if not rel or not os.path.exists(path):
+        if not rel or rel.replace(os.sep, "/") not in committed:
             continue
         name = entry.get("name") or ""
         seen_names.add(name.lower())
@@ -1335,8 +1351,9 @@ def list_goldens(list_name: str) -> list:
             "device_ip":  entry.get("mgmt_ip", "") or name,
             "path":       path,
             "file":       os.path.basename(rel),
+            "rel":        rel.replace(os.sep, "/"),
             "saved_at":   times.get(rel.replace(os.sep, "/"), ""),
-            "size_bytes": os.path.getsize(path),
+            "size_bytes": committed[rel.replace(os.sep, "/")],
             "legacy":     False,
         })
 
@@ -1398,6 +1415,68 @@ def legacy_only_goldens(list_dir: str, known_names: set = None) -> list:
             "legacy":     True,
         })
     return out
+
+
+#: Paths already warned about in this process, so a reader on a schedule (the
+#: drift check, the agent's context) names a divergence once, not every pass.
+_WORKTREE_WARNED: set = set()
+
+
+def committed_golden(repo: str, rel: str) -> dict:
+    """A golden AS COMMITTED, never as it sits on disk (C104's consumers).
+
+    ``{"text", "commit", "source", "refused"}``. Every reader used to open the
+    working-tree file, so a golden a failed or interrupted save had written,
+    or one edited by hand on the host, was read as the approved golden by the
+    drift check, the NetBox import, onboarding, the freshness gate and the
+    agent. Now:
+
+    * the text is ``HEAD:<rel>``, byte for byte (``git_raw``);
+    * a working file that differs from it is IGNORED and named in the log,
+      once per path per process, and the Git tab's status names it too;
+    * a file on disk with no commit is refused, naming the path: a file
+      nothing committed is not a golden;
+    * the commit that last touched it must carry ``Source:``, the save path's
+      trailer. Measured on the host 2026-09-27: all nine goldens' latest
+      commits carry it (and ``Device-Id:``), so this refuses only a golden
+      committed some other way, such as a hand ``git commit`` on the host.
+    """
+    rel = rel.replace(os.sep, "/")
+    rc, text, _ = git_raw(repo, "show", f"HEAD:{rel}")
+    if rc != 0:
+        on_disk = os.path.exists(os.path.join(repo, rel))
+        return {"text": None, "commit": "", "source": "",
+                "refused": (f"{rel} is on disk and has never been committed; a "
+                            f"file no save committed is not a golden. Capture "
+                            f"the device to record it through the save path."
+                            if on_disk else "")}
+    rc, meta, _ = git(repo, "log", "-1",
+                      "--format=%H%x1f%(trailers:key=Source,valueonly,separator=%x2C)",
+                      "--", rel)
+    sha, _sep, source = (meta or "").partition("\x1f")
+    source = source.strip()
+    _warn_if_worktree_differs(repo, rel, text)
+    if not source:
+        return {"text": None, "commit": sha, "source": "",
+                "refused": (f"the last commit touching {rel} ({sha[:8]}) carries "
+                            f"no Source: trailer, so it did not come through the "
+                            f"save path. Capture the device to record it through "
+                            f"that path.")}
+    return {"text": text, "commit": sha, "source": source, "refused": ""}
+
+
+def _warn_if_worktree_differs(repo: str, rel: str, committed_text: str) -> None:
+    path = os.path.join(repo, rel)
+    try:
+        with open(path, encoding="utf-8", newline="") as fh:
+            on_disk = fh.read()
+    except OSError:
+        on_disk = None
+    key = os.path.join(repo, rel)
+    if on_disk != committed_text and key not in _WORKTREE_WARNED:
+        _WORKTREE_WARNED.add(key)
+        log.warning("repo: %s differs from its commit on disk; the committed "
+                    "version is what every reader uses", rel)
 
 
 def golden_at(repo: str, hostname: str, ref: str):

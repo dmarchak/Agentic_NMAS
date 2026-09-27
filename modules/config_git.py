@@ -13,7 +13,10 @@ manual commit was REMOVED (2026-09-27): it committed whatever the index held,
 and the only thing that could be in the index was what a FAILED operation
 left staged, so a golden nobody had saved successfully could be committed
 under any message, without its Intent-Match trailer. Measured on the
-deployment host: never used, in 100 commits. What this module keeps is
+deployment host: used three times (30 Aug, 1 Sep, 15 Sep), before saves
+committed in their own call, and since then it had nothing to commit but
+residue. (First recorded as "never used": the search looked for a trailer
+the tab wrote only from D10.) What this module keeps is
 reading: the log, a commit's diff, and the status, which names anything left
 uncommitted and what to do about it.
 

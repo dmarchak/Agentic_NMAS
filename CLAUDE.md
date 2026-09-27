@@ -137,6 +137,10 @@ tracked in git.
   hash against the confirmed one, the actor, the checks that RAN (or why
   none did), rollback, and the commit. The follow-up window is not built,
   and each row says so
+- **[modules/nsot/record_exceptions.py](modules/nsot/record_exceptions.py)** —
+  commits whose record is known to be wrong, by full hash (the eleven
+  rotation commits recorded `Source: manual`, C104). History is not
+  rewritten; a reader draws the exception beside the record
 - **[modules/nsot/golden_state.py](modules/nsot/golden_state.py)** — E7:
   a baseline that is CONFIGURED AND WORKING. Every routing protocol a
   device's committed intent declares is judged up from real output (OSPF and
@@ -349,17 +353,37 @@ tools refuse to act on it, and its pooled SSH session is closed.
 `data/lists/{slug}/config_repo/` is the NSoT repo: `golden/<device>.cfg`,
 `.nsot/manifest.json`, `infra/`, `.gitattributes`.
 
-- **A failed commit leaves nothing behind, and nothing else commits into the
-  repository** (C104, 2026-09-27). Measured: a `save_golden()` whose commit
-  failed returned `changed: []` with the golden still written AND staged, so
-  the drift checker, the NetBox import, onboarding and the agent (which read
-  the golden from the WORKING TREE) treated uncommitted content as the
-  approved golden, and the Git tab's manual commit offered to commit it
-  under any message, with no `Intent-Match:`. The manual commit is removed
-  (never used on the host, in 100 commits); `save_golden`, the rename, the
-  template/intent commit and onboarding's abandon each undo what they
-  staged; and the Git tab's status names every uncommitted path with what it
-  means (it said "working tree clean" whenever nothing was STAGED).
+- **Every reader takes what is COMMITTED, never the working tree** (C104,
+  2026-09-27; the operator's reframing: "one write path, committed
+  immediately" made the COMMIT atomic and said nothing about what the
+  READERS take, and the store the readers used and the store the writer
+  commits to were one directory with rules on only one side). Measured: a
+  `save_golden()` whose commit failed left the golden written and staged,
+  and the drift checker, the NetBox import, onboarding, the freshness gate
+  and the agent read goldens from disk, so a file no save had committed
+  already governed the tool. Intent was worse: `read_committed()` opened the
+  working file, so a hand edit to `host_vars/` nobody committed was what the
+  deploy plan DEPLOYED, and what the baseline's intent comparison, bulk
+  intent's compare-and-set, rotation and the editor read.
+  **Structural now, not incidental:** goldens are read as `HEAD:<rel>`
+  through `repo.committed_golden()` (one resolver, `_golden_record()`),
+  intent through `committed_at_head()`, and goldens are enumerated from
+  `git ls-tree HEAD`. A working file that differs is ignored and named in
+  the log; a file nothing committed is refused by path; a golden whose last
+  commit carries no `Source:` (the save path's trailer, on all nine on the
+  host) is refused naming the path and the commit. So the next writer that
+  fails in a new way cannot make its file authoritative.
+  **Visible too:** the Git tab's status lists every uncommitted path with
+  what it means (it said "working tree clean" whenever nothing was STAGED),
+  and each writer that stages undoes it when its commit fails. The manual
+  commit is removed: it was used three times on the host (30 Aug, 1 Sep,
+  15 Sep, before saves committed in their own call), and since then it had
+  nothing to commit but residue. (First recorded as "never used, in 100
+  commits": the search looked for `Source: manual`, a trailer the tab wrote
+  only from D10. A lookup that misses is a fact about the query.)
+  `tests/test_readers_use_what_is_committed.py` hand-writes an uncommitted
+  change and drives each consumer; its first drift control passed because
+  the test computed its expected value with the reader under test.
 - **One write path.** Everything that promotes a golden config goes through
   `nsot.repo.save_golden()`. **One call is one commit**, even for a nine-device
   Save All. An unchanged device creates no commit but is still reported.
@@ -1068,8 +1092,11 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens and the legacy `golden_configs/`, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
 | `test_device_ops.py` | C98: a second operation on a held device is refused naming the holder, operation and start time, never queued; free again after, re-entrant for the holding thread, other devices unaffected; asking who holds it creates nothing; a CHILD PROCESS holding it refuses the app and its death releases it; deploy, restore, capture, rotation, onboarding phase two and retirement each refuse a held device before anything runs; the lock released when the batch raises; the list of holding paths pinned (a pin: a new path not added is not caught) |
 | `test_session_write_guard.py` | C101: at the one opener, a write (config set, save, `write memory`, `reload`, `clear`) with no hold is refused and nothing is sent, a read needs none, holding the device allows it and holding ANOTHER does not, and the refusal names the verb, never the command; Save Device Config, `/run_command` and bulk exec each hold the device, refused BY THE LOCK with the holder named (asserted, since the guard would also stop the send), a read never waits; the refusal says how long, the last progress step and, past ten minutes, "may be stuck" with no force; progress reaches another process's view; the long holders note their steps |
-| `test_one_home_per_action.py` | Minimalism at the effect level (section 6a): every device-changing command (C101's scan, a local variable resolved to its text, operands keyed by KIND so `delete {fs}{f}` and `delete flash:{f}` are one effect) has one implementation; the measured duplicates (`write memory` twice, and the page's and the selection's file upload, download, delete and typed command) in a list that only shrinks; an unresolvable send is a prompt's answer or DECLARED; anchors and a ghost check |
+| `test_one_home_per_action.py` | Minimalism at the effect level (section 6a): every device-changing command (C101's scan, a local variable resolved to its text, keyed by EFFECT as IOS reads it: operand kinds, unique-prefix abbreviation, so `delete {fs}{f}` and `delete flash:{f}` are one effect and `write memory`, `wr` and `copy run start` are one save) has one implementation; the measured duplicates (`write memory` twice, and the page's and the selection's file upload, download, delete and typed command) in a list that only shrinks; an unresolvable send is a prompt's answer or DECLARED; anchors and a ghost check |
 | `test_no_second_commit_path.py` | C104: a save whose commit fails puts each golden back (or removes a new one) and stages nothing; a failed rename stays pending with its file and manifest back; the manual commit's route and request are gone; the Git tab's status names an uncommitted golden with its remedy, and the SHIPPED bar (with its own escaper) never says clean over one; `Source:` recorded as given (rotation), a malformed one refused before writing, every literal source a slug (AST, floor); abandon stages only its path |
+| `test_readers_use_what_is_committed.py` | C104's consumers: an uncommitted hand edit to a golden is ignored and named by the resolver, drift, the NetBox import, the agent's tool (through the real `run_chat()` loop) and the freshness gate; a file nothing committed is refused by path and not enumerated; a golden committed without `Source:` is refused naming path and commit; committed intent is read from HEAD by `read_committed()` and the editor; every direct use of the intent path outside `hostvars.py` is named; `_find_golden_config_file` has one caller. Expected values come from git directly, never from the reader under test |
+| `test_page_requests_resolve.py` | The reverse of reachability: every literal request the rendered pages and their scripts make (143) reaches a route with its method; a `${}` placeholder is one segment and a concatenated string a prefix; the resolver shown saying no to two removed routes. A `fetch('/git/commit')` left behind was caught before only by a pin naming that route |
+| `test_record_exceptions.py` | C104: the eleven rotation commits recorded `Source: manual`, by full hash; a prefix is not a commit; golden history keeps the recorded source and draws the exception beside it |
 | `test_ssh_sessions.py` | C97: every NETMIKO session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers; the break-glass terminal's raw paramiko sessions are outside it, C101); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
@@ -5188,7 +5215,11 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
     command string the program sends, asked of the allowlist.
 
   C103 is a fifth, found by the same question: the template preview picks
-  a backup by a file-name prefix, so `r1` takes `r10`'s. It is the proxy
+  a backup by a file-name prefix, so `r1` takes `r10`'s. A sixth came the
+  same day, in the check built to find duplicates: `test_one_home_per_action`
+  keyed a command on its SPELLING, so `copy run start`, a third save,
+  passed beside `write memory` until the effect was keyed the way IOS reads
+  it (unique-prefix abbreviation, `wr`, `copy running startup`). It is the proxy
   rule at the level of a single comparison: ask what the match stands in
   for, and break the property on purpose to see whether the check notices.
 - **MINIMALISM: everything serves a purpose, and no function appears in two
@@ -5306,7 +5337,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **57 open at 2026-09-27**, counted from the rows: 51 recorded only in
+present when each was recorded. **59 open at 2026-09-27**, counted from the rows: 53 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.

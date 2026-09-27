@@ -408,6 +408,16 @@ def _read_golden(entry) -> tuple:
     """``(text, saved_at)``; ``text`` is None when it could not be read."""
     if not entry:
         return None, ""
+    if not entry.get("legacy") and entry.get("rel"):
+        # As COMMITTED (C104): the file on disk may hold what a failed save
+        # wrote or a hand edit, and the gate's whole question is whether
+        # Oxidized's copy is the APPROVED one.
+        from modules.nsot import repo as _repo
+        repo = entry["path"][: -len(entry["rel"])].rstrip("/" + os.sep)
+        record = _repo.committed_golden(repo, entry["rel"])
+        if record["refused"]:
+            log.warning("freshness: golden refused: %s", record["refused"])
+        return record["text"], entry.get("saved_at") or ""
     try:
         with open(entry["path"], encoding="utf-8", errors="replace") as fh:
             return fh.read(), entry.get("saved_at") or ""

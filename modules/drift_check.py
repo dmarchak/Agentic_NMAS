@@ -217,7 +217,7 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
 
     Returns ``{ok, inventory, checked, drifted, clean, skipped, errors, ...}``.
     """
-    from modules.ai_assistant import _load_golden_config_file
+    from modules.ai_assistant import _golden_record
     from modules.approval_queue import add_approval
     from modules.device import get_current_device_list, load_saved_devices
     from modules.connection import get_persistent_connection
@@ -265,7 +265,13 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
         except ImportError:
             pass
 
-        golden_text = _load_golden_config_file(device_ip)
+        record = _golden_record(device_ip)
+        golden_text = record["text"]
+        if golden_text is None and record["refused"]:
+            # A golden this tool will not use is not "no golden": saying so
+            # would send the reader to save one that is already there.
+            skip_list.append((hostname, f"golden refused: {record['refused']}"))
+            return
         if golden_text is None:
             # Previously a bare `return` — the device left no trace at all.
             # "Has no baseline" is the single most actionable thing a drift

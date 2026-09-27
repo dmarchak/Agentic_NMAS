@@ -40,7 +40,7 @@ DECLARED_DYNAMIC = {
 #: than one implementation, and exactly which. This list only SHRINKS: 7.3
 #: merges each into one.
 KNOWN_DUPLICATES = {
-    ("write", "memory"): {"app.py:save_config", "modules/backups.py:save_running_to_startup"},
+    ("save_startup",): {"app.py:save_config", "modules/backups.py:save_running_to_startup"},
     ("delete", "file"): {"app.py:delete_file", "modules/bulk_ops.py:_execute_delete_file"},
     ("copy", "file", "tftp"): {"app.py:download_device_file",
                                "modules/bulk_ops.py:_execute_tftp_download"},
@@ -65,26 +65,61 @@ def _text(arg, func):
     return None
 
 
+#: Verbs IOS accepts by unique prefix; `wr` is write and `w` alone is not.
+_VERBS = ("copy", "delete", "erase", "reload", "write", "clear", "configure")
+
+
+def _verb(word: str) -> str:
+    hits = [v for v in _VERBS if v.startswith(word)] if len(word) >= 2 else []
+    return hits[0] if len(hits) == 1 else word
+
+
+def _abbrev_of(word: str, full: str, floor: int = 3) -> bool:
+    return len(word) >= floor and full.startswith(word)
+
+
 def _kind(word: str) -> str:
-    if word.startswith("tftp:"):
+    """An operand's KIND, as IOS reads it: `run`, `running-config` and
+    `system:running-config` are one place; `start` and `nvram:startup-config`
+    another. Keyed on spelling, `copy run start` read as a file-to-file copy
+    and a third save went unseen (item 3, 2026-09-27)."""
+    w = word.lower()
+    if w.startswith("tftp:"):
         return "tftp"
-    if word.startswith(("running-config", "system:running-config")):
+    bare = w.split(":", 1)[1] if w.startswith(("system:", "nvram:")) else w
+    if _abbrev_of(bare, "running-config"):
         return "running"
-    if word.startswith(("startup-config", "nvram:startup-config")):
+    if _abbrev_of(bare, "startup-config"):
         return "startup"
     return "file"
 
 
 def effect(text: str) -> tuple:
-    """A command's effect: its verb and the kind of each operand."""
+    """A command's effect: what it does to the device, whatever the spelling.
+    Saving the running config to startup is ONE effect however it is typed:
+    `write memory`, `write`, `wr`, `write mem`, `copy running-config
+    startup-config`, `copy run start`, `copy system:running-config
+    nvram:startup-config`."""
     words = text.split()
-    if words[0] == "copy":
-        return ("copy",) + tuple(_kind(w) for w in words[1:3])
-    if words[0] == "delete":
+    verb = _verb(words[0].lower())
+    rest = [w.lower() for w in words[1:]]
+    if verb == "write":
+        if not rest or _abbrev_of(rest[0], "memory", 1):
+            return ("save_startup",)
+        if _abbrev_of(rest[0], "erase", 1):
+            return ("erase_startup",)
+        return ("write", rest[0])
+    if verb == "copy":
+        kinds = tuple(_kind(w) for w in rest[:2])
+        if kinds == ("running", "startup"):
+            return ("save_startup",)
+        return ("copy",) + kinds
+    if verb == "erase" and rest and (_kind(rest[0]) == "startup"
+                                     or rest[0].startswith("nvram")):
+        return ("erase_startup",)
+    if verb == "delete":
         return ("delete", "file")
-    if words[0] == "write":
-        return tuple(words[:2])
-    return (words[0],)
+    return (verb,)
 
 
 def implementations() -> dict:
@@ -119,7 +154,7 @@ def test_the_scan_finds_something():
     assert len(found) >= 8, sorted(found)
     # Positive anchors: a single implementation, and the known duplicate.
     assert found[("reload",)] == {"app.py:bulk_reload"}
-    assert found[("write", "memory")] == KNOWN_DUPLICATES[("write", "memory")]
+    assert found[("save_startup",)] == KNOWN_DUPLICATES[("save_startup",)]
 
 
 def test_every_device_changing_effect_has_one_implementation():
@@ -152,3 +187,17 @@ def test_operands_are_keyed_by_kind_not_by_spelling():
     assert effect("copy XX tftp:") == effect("copy flash: tftp:")
     assert effect("copy tftp: X") == effect("copy tftp: flash:")
     assert effect("copy running-config tftp:") != effect("copy startup-config tftp:")
+
+
+def test_one_save_however_it_is_spelled():
+    """Item 3 (2026-09-27): `copy run start` was keyed as a file copy, and a
+    third save written that way passed. Every spelling IOS accepts is one."""
+    spellings = ["write memory", "write", "wr", "write mem", "wr mem",
+                 "copy running-config startup-config", "copy run start",
+                 "copy system:running-config nvram:startup-config",
+                 "cop run sta"]
+    assert {effect(s) for s in spellings} == {("save_startup",)}
+    # And the distinctions stay: a reverse copy, an erase, a file copy.
+    assert effect("copy start run") == ("copy", "startup", "running")
+    assert effect("write erase") == effect("erase startup-config") == ("erase_startup",)
+    assert effect("copy flash:x tftp:") == ("copy", "file", "tftp")

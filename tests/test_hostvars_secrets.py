@@ -191,6 +191,8 @@ class TestCommittedIntentNeverHoldsASecretValue:
             "hostname": "s1",
             "secrets": {"user_admin_secret": store["lab:s1:user_admin_secret"]},
         })
+        from tests.intent_fixture import commit_intent
+        commit_intent(repo)
         committed = hostvars.read_committed(repo, "s1")
         assert "secrets" not in committed
 
@@ -340,9 +342,12 @@ class TestToYamlIsAFixedPointOverItsOwnOutput:
     def test_round_tripping_through_the_committed_store_keeps_refs(self, tmp_path):
         from modules.nsot import hostvars
         repo = str(tmp_path)
+        from tests.intent_fixture import commit_intent
         hostvars.write_committed(repo, self._doc())
+        commit_intent(repo)
         first = hostvars.read_committed(repo, "s4")
         hostvars.write_committed(repo, first)
+        commit_intent(repo, "fixture: re-commit")
         second = hostvars.read_committed(repo, "s4")
         assert second["secret_refs"] == ["snmp_community_ro", "user_admin_secret"]
 

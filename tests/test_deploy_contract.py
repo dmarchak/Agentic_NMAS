@@ -561,6 +561,7 @@ class TestARequestReachesTheWire:
         # deploy time; here the capture's own parsed values stand in for it.
         secrets = dict(intent.get("secrets") or {})
         hostvars.write_committed(repo, intent)
+        from tests.intent_fixture import commit_intent; commit_intent(repo)  # read from HEAD (C104)
 
         row = {"hostname": self.DEVICE, "ip": self.IP,
                "device_type": "cisco_ios", "username": "u", "password": "p",

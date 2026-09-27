@@ -55,8 +55,17 @@ def build_capture_lab(monkeypatch, tmp_path):
     intent = get_parser("cisco_iosxe").parse(captured)
     secrets = dict(intent.get("secrets") or {})
     hostvars.write_committed(repo, intent)
+    # COMMITTED, not only written: intent is read from HEAD (C104), so a
+    # fixture that writes and never commits is testing a device with none.
+    from modules.nsot.repo import save_host_vars
+    assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
     monkeypatch.setattr("modules.nsot.hostvars.hydrate_secrets",
                         lambda hv, host, ln="": {**hv, "secrets": dict(secrets)})
+    # The credential store holds them, as it does on a real install: a ref's
+    # committed intent names these refs, and the restore's intent guard asks
+    # the store for each (a fixture with no committed intent never reached it).
+    monkeypatch.setattr("modules.credentials.get_template_secret",
+                        lambda key: secrets.get(key.rsplit(":", 1)[-1]))
     device = {"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
               "platform": "cisco_iosxe"}
     monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(device)])

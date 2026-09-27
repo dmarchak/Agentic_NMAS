@@ -661,6 +661,7 @@ class TestTheArtefactSurvivesTheRun:
             "bootstrap": {"address": "203.0.113.31", "mask": "255.255.255.0",
                           "interface": "GigabitEthernet2", "gateway": "",
                           "domain": "rcn.lab", "platform": "cisco_iosxe"}})
+        from tests.intent_fixture import commit_intent; commit_intent(repo)  # read from HEAD (C104)
         return secret
 
     def test_it_is_re_renderable_after_the_run(self, repo):

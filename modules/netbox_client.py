@@ -2733,7 +2733,7 @@ def _scan_device_from_golden(dev: dict) -> dict:
     This is the only scanner; the SSH one was removed in Stage 3.3 because
     nothing called it.
     """
-    from modules.ai_assistant import _load_golden_config_file
+    from modules.ai_assistant import _golden_record
 
     ip       = dev.get("ip", "")
     # CSV hostname is authoritative — it reflects the current name (manually set
@@ -2746,13 +2746,15 @@ def _scan_device_from_golden(dev: dict) -> dict:
     # role for everything.
     app_role = (dev.get("role") or "router").strip().lower()
 
-    golden = _load_golden_config_file(ip)
+    record = _golden_record(ip)
+    golden = record["text"]
     if not golden:
         return {
             "ip":       ip,
             "hostname": csv_hostname or ip,
             "app_role": app_role,
-            "error":    "No golden config saved — run 'Save Golden Config' first",
+            "error":    (f"golden refused: {record['refused']}" if record["refused"]
+                         else "No golden config saved: capture the device first"),
         }
 
     facts           = _parse_facts_from_config(golden)

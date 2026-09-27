@@ -183,12 +183,12 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
         if why:
             refuse(why)
             continue
-        path = hostvars.committed_path(repo, host)
-        if not os.path.exists(path):
+        # The BEFORE-state is what is COMMITTED (C104): compare-and-set against
+        # a working file would let an uncommitted hand edit decide the check.
+        text, _state = hostvars.committed_at_head(repo, host)
+        if text is None:
             refuse("no committed intent -- commit an extraction first")
             continue
-        with open(path, encoding="utf-8") as fh:
-            text = fh.read()
         doc = hostvars.from_yaml(text)
         if not isinstance(doc, dict):
             refuse("committed intent is not a YAML mapping")

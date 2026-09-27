@@ -524,11 +524,8 @@ def _intent_preview(list_name: str, target) -> dict:
     if not text:
         return {"action": "none", "detail": "no committed intent at this ref"}
 
-    path = hostvars.committed_path(repo, target.device)
-    current = ""
-    if _os.path.exists(path):
-        with open(path, encoding="utf-8") as fh:
-            current = fh.read()
+    # Committed intent is what is at HEAD (C104), not the working file.
+    current = hostvars.committed_at_head(repo, target.device)[0] or ""
     if current == text:
         return {"action": "unchanged",
                 "detail": "committed intent already matches this ref"}

@@ -379,6 +379,7 @@ class TestADhcpDeviceHasCompleteBootstrapParameters:
         _repo.init_repo(repo)
         hostvars.write_committed(repo, {"hostname": "bp-dhcp-a",
                                         "bootstrap": bootstrap})
+        from tests.intent_fixture import commit_intent; commit_intent(repo)  # read from HEAD (C104)
         from modules.nsot.onboard import stage_bootstrap_credential
 
         stage_bootstrap_credential(repo, "bp-dhcp-a", "Secret123")

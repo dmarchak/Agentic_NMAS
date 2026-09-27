@@ -417,23 +417,6 @@ def _identity_for_ip(device_ip: str) -> str:
     return ""
 
 
-def _golden_config_path(device_ip: str, hostname: str = "") -> str:
-    """
-    Return the path for a device's golden config file.
-    If hostname is provided, use it for the filename.
-    Otherwise fall back to scanning existing files by IP, then IP-based name.
-    """
-    gdir = _get_golden_configs_dir()
-    if hostname:
-        return os.path.join(gdir, f"{_safe_device_name(hostname)}.cfg")
-    existing = _find_golden_config_file(device_ip)
-    if existing:
-        return existing
-    # Fallback: IP-based name (legacy or first-save with no hostname)
-    safe = device_ip.replace(".", "_").replace(":", "_")
-    return os.path.join(gdir, f"{safe}.cfg")
-
-
 def _save_golden_config_file(device_ip: str, hostname: str, config_text: str,
                              source: str = "ai", actor: str = "ai-agent") -> None:
     """Promote a golden config for one device. Signature unchanged.
@@ -482,17 +465,59 @@ def _identity_parts_for_ip(device_ip: str) -> tuple:
     return None, ""
 
 
-def _load_golden_config_file(device_ip: str) -> Optional[str]:
-    """Load the golden config for a device by IP (scans headers)."""
+def _golden_record(device_ip: str) -> dict:
+    """The golden for a device AS COMMITTED (C104's consumers), with why not.
+
+    ``{"text", "path", "commit", "source", "refused"}``. ``text`` is None both
+    when the device has no golden (``refused`` empty) and when one exists and
+    is refused (``refused`` names the path and the reason), so a consumer can
+    tell "no golden" from "a golden this tool will not use".
+
+    A device the manifest knows is read from ``HEAD`` through
+    :func:`repo.committed_golden`: a working-tree edit is ignored and logged,
+    and a golden whose last commit did not come through the save path is
+    refused. A legacy-only device (``golden_configs/``, outside git, never
+    written since the migration) is still read from its file: it has no
+    commit to read, and ``legacy_only_goldens()`` is that store's exit.
+    """
     _migrate_golden_configs()
-    fpath = _find_golden_config_file(device_ip)
-    if fpath is None:
-        return None
+    repo = _nsot_repo_dir()
+    entry = None
     try:
-        with open(fpath, encoding="utf-8") as fh:
-            return fh.read()
-    except FileNotFoundError:
-        return None
+        from modules.nsot import manifest as _m
+
+        identity = _identity_for_ip(device_ip)
+        if identity:
+            entry = _m.find_by_identity(repo, identity)
+        if not entry:
+            _ident, entry = _m.find_by_ip(repo, device_ip)
+        if entry:
+            from modules.nsot import repo as _repo
+            rel = os.path.relpath(_m.golden_path_for(repo, entry), repo)
+            record = _repo.committed_golden(repo, rel)
+            record["path"] = rel.replace(os.sep, "/")
+            if record["text"] is not None or record["refused"]:
+                if record["refused"]:
+                    logger.warning("golden: %s refused: %s", device_ip, record["refused"])
+                return record
+    except Exception as exc:                   # noqa: BLE001
+        logger.debug("golden: manifest lookup failed for %s: %s", device_ip, exc)
+
+    legacy = _find_golden_config_file(device_ip)
+    if legacy and not legacy.startswith(repo):
+        try:
+            with open(legacy, encoding="utf-8") as fh:
+                return {"text": fh.read(), "path": legacy, "commit": "",
+                        "source": "legacy", "refused": ""}
+        except OSError:
+            pass
+    return {"text": None, "path": "", "commit": "", "source": "", "refused": ""}
+
+
+def _load_golden_config_file(device_ip: str) -> Optional[str]:
+    """The committed golden for a device, or None (no golden, or refused:
+    :func:`_golden_record` says which, and a refusal is logged by path)."""
+    return _golden_record(device_ip)["text"]
 
 
 def _list_golden_configs() -> list:
@@ -3498,7 +3523,10 @@ def run_chat(
 
             elif name == "read_golden_config":
                 dip  = args.get("device_ip", "").strip()
-                cfg  = _load_golden_config_file(dip)
+                rec  = _golden_record(dip)
+                cfg  = rec["text"]
+                if cfg is None and rec["refused"]:
+                    return f"The golden for {dip} is refused: {rec['refused']}"
                 if cfg is None:
                     saved = [f"{e['hostname']} ({e['device_ip']})" for e in _list_golden_configs()]
                     return (

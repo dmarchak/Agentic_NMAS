@@ -193,3 +193,63 @@ def reachability(app_module, monkeypatch) -> dict:
             out[f"{method} {rule.rule}"] = (method in seen) if mixed else bool(seen)
     out["_corpus_size"] = len(text)
     return out
+
+
+#: A request a page makes: the first argument of `fetch(`, or an `href`,
+#: `action` or `data-url` attribute, when it is a literal path. What this
+#: cannot see, stated: a URL held in a variable and fetched elsewhere (only
+#: its literal is found, where it is written), and `url_for()`, which Flask
+#: resolves at render and which fails the render when its endpoint is gone.
+_REQUEST = re.compile(r"""(?:fetch\(\s*|(?:href|action|data-url)\s*=\s*)(['"`])(/[^'"`\s?#]*)""")
+
+
+def page_requests(text: str) -> dict:
+    """{(literal path, method): True} for every literal request in *text*.
+    The method is read the way `classify` reads it; unreadable is GET."""
+    out = {}
+    for m in _REQUEST.finditer(text):
+        raw = m.group(2)
+        if raw == "/" or raw.startswith("/static/"):
+            continue
+        concatenated = (m.group(1) in "'\""
+                        and text[m.end(2) + 1:m.end(2) + 8].lstrip().startswith("+"))
+        method = classify(text, m.start(2) - 1) or "GET"
+        out[(raw + ("+" if concatenated else ""), method)] = True
+    return out
+
+
+def resolves(app_module, request: str, method: str) -> bool:
+    """Does *request* (a literal path; `${...}` is one segment; a trailing `+`
+    marks a string the page concatenates onto) reach a route with *method*?"""
+    concatenated = request.endswith("+")
+    path = request.rstrip("+")
+    segs = [s for s in re.sub(r"\$\{[^}]*\}", "\x00", path).split("/")]
+    for rule in app_module.app.url_map.iter_rules():
+        if method not in (rule.methods or set()):
+            continue
+        rsegs = rule.rule.split("/")
+        if concatenated:
+            # Only its literal prefix is known: some rule must extend it.
+            if rule.rule.startswith(path) and (path.endswith("/") or
+                                               rule.rule[len(path):][:1] in ("/", "<")):
+                return True
+            continue
+        if len(rsegs) != len(segs):
+            # A `<path:x>` converter takes the rest.
+            if not any(s.startswith("<path:") for s in rsegs):
+                continue
+        ok = True
+        for i, s in enumerate(segs):
+            if i >= len(rsegs):
+                ok = False
+                break
+            r = rsegs[i]
+            if r.startswith("<path:"):
+                break
+            if s == r or r.startswith("<") or "\x00" in s:
+                continue
+            ok = False
+            break
+        if ok:
+            return True
+    return False

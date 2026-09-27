@@ -624,6 +624,9 @@ class TestRevertUndoesOneCommitNotASnapshot:
 
         outcome = hv.revert_intent_change(repo, "s4")
         assert outcome["ok"] is True
+        # The function writes; its route commits, and intent is read from
+        # HEAD (C104), so the test commits the way the route does.
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert")
 
         current = hv.read_committed(repo, "s4")
         gi01 = next(i for i in current["interfaces"] if i["name"].endswith("0/1"))
@@ -642,6 +645,7 @@ class TestRevertUndoesOneCommitNotASnapshot:
 
         outcome = hv.revert_intent_change(repo, "s4", sha=a_sha)
         assert outcome["ok"] is True
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert")
 
         current = hv.read_committed(repo, "s4")
         gi01 = next(i for i in current["interfaces"] if i["name"].endswith("0/1"))

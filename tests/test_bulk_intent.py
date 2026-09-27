@@ -150,6 +150,9 @@ class TestRefusals:
         path = hostvars.committed_path(repo, "s1")
         with open(path, "a", encoding="utf-8") as fh:
             fh.write("# a note somebody left\n")
+        # COMMITTED: the before-state is HEAD (C104), and an uncommitted
+        # append is ignored (tests/test_readers_use_what_is_committed.py).
+        assert _R.save_host_vars("Lab", ["s1"], message="host_vars: s1 note")["ok"]
         r = _plan(repo, ["s1", "s2"])
         assert [x["device"] for x in r["refused"]] == ["s1"]
         assert "hand-formatted" in r["refused"][0]["reason"]
@@ -239,6 +242,8 @@ class TestApplyIsOneShotAndOneCommit:
                         actor="t")["ok"]
         out = hostvars.revert_intent_change(repo, "s1")
         assert out["ok"], out
+        # The function writes; its route commits (intent is read from HEAD).
+        assert R.save_host_vars("Lab", ["s1"], message="host_vars: s1 revert")["ok"]
         assert hostvars.read_committed(repo, "s1")["logging"]["settings"] == OLD_SETTINGS
         assert hostvars.read_committed(repo, "s2")["logging"]["syslog"] == BLOCK
 
