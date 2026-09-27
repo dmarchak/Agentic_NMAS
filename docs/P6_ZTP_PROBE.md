@@ -921,8 +921,9 @@ which AutoInstall would then defer to.
 **P-M4b and P-M4c held.**
 - Served: 12 complete transfers between 03:10:54 and 03:11:00, each one
   382-byte block, ACKed, and the same sha256 `9c8314cc81e0`. The responder's
-  journal and its audit rows agree on 12. The operator counted 18 elsewhere;
-  where the other six come from is open.
+  journal and its audit rows agree on 12. The operator's first count of 18 was
+  a miscount, and the operator says so: it counted journal LINES, and each
+  fetch logs two (the reveal row and the served line). No row is missing.
 - `%SCRIPT_INSTALL-3-SCRPT_TYPE_NOT_MATCHED` came first: IOS-XE tried the
   file as a script. Then `%SYS-5-CONFIG_I: Configured from
   tftp://10.255.0.10/bp-ztp-a.cfg` and `AUTOINSTALL: script execution

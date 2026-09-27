@@ -4673,6 +4673,27 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   same element, and phase 2 logged nothing, so the 409's reason existed for
   a moment on one screen. The operator had to infer the cause from another
   panel, and inferred the wrong one.
+- **A RULE KEYED ON THE PLATFORM WHEN IT WAS REALLY ABOUT THE DEPLOYMENT**
+  (the operator's name for it, P.6, 2026-09-27). Each was true of every
+  device that existed when it was written, and each becomes false the first
+  time a device arrives by a different route. ZTP is the first route to
+  break all of them. The proxy-population rule, with "platform" standing in
+  for "deployment":
+  - `RESERVED_INTERFACES` refuses Gi1 for `cisco_iosxe` because vrnetlab owns
+    it: false on a Proxmox VM or hardware (P6_ZTP_PROBE section 11, Q2);
+  - `clab_target_for()` resolves an unknown lab to rcn-lab1's paths, because
+    every device was a containerlab device (C50);
+  - the generator skipped the SSH key for `cisco_iosxe` because "vrnetlab's
+    own bootstrap config sets it up", and ZTP removes exactly that config
+    (M4; fixed for `ztp`);
+  - `VRNETLAB_INJECTS_USER = {"cisco_iosxe"}` gives a ZTP render the weaker
+    `password 0` form, while nothing injects a user on a configless node
+    (C52, found by the survey the pattern suggested).
+  **Where to look for the next: anywhere the code asks WHAT a device is to
+  answer HOW it got here.** Grepping the justifications for "vrnetlab" found
+  the fourth in minutes. A member handled correctly shows the other shape:
+  RW-community removal treats "nothing to remove" as success, because a real
+  device may not arrive with one.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
@@ -4686,7 +4707,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **37 open at 2026-09-27**, counted from the rows: 32 recorded only in
+present when each was recorded. **38 open at 2026-09-27**, counted from the rows: 33 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
