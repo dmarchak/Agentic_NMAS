@@ -73,6 +73,12 @@ class TestTheGitTabDescribesWhatSaveAllDoes:
         assert "commits once you confirm" in git_tab
         assert "commits by itself" not in git_tab
 
+    def test_the_tab_says_a_baseline_needs_intent_too(self, git_tab):
+        """C89 (c): coverage alone no longer earns one. The operator found the
+        tab still saying "when it covers the inventory" after step 4."""
+        assert "every capture" in git_tab and "matches its committed intent" in git_tab
+        assert "Intent-Match: no" in git_tab
+
     def test_the_tab_says_what_the_manual_commit_is_for(self, git_tab):
         """Otherwise the button looks redundant and gets used wrongly."""
         assert "infra/" in git_tab

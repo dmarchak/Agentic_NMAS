@@ -448,6 +448,7 @@ OUTCOME_WORDS = {
     "moved": "refused: it changed since the preview, nothing was recorded",
     "unread": "could not be read, nothing was recorded",
     "refused": "refused: nothing was sent",
+    "busy": "refused: another operation holds this device (C98), nothing was recorded",
     "skipped_drifted": "skipped: its capture moved since the preview, nothing was sent",
     "failed": "failed",
     "unattempted": "not attempted",

@@ -1985,7 +1985,9 @@
   <strong>Save All Configs reads every device, shows what each golden would become and how it
   compares with its committed intent, and commits once you confirm</strong> — one commit for the whole batch,
   with per-device <code>golden/&lt;device&gt;/&lt;timestamp&gt;</code> tags and a
-  <code>baseline/&lt;timestamp&gt;</code> when it covers the inventory. Nothing is left
+  <code>baseline/&lt;timestamp&gt;</code> only when it covers the inventory AND every capture
+  matches its committed intent (a capture that departs is recorded, marked
+  <code>Intent-Match: no</code>, and earns no baseline). Nothing is left
   staged, and a device whose config has not changed produces no commit but is still
   reported.
   Commit <em>here</em> for <code>infra/</code> files and anything else you version by

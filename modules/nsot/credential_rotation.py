@@ -2854,8 +2854,25 @@ import functools as _functools
 
 @_functools.wraps(_rotate)
 def rotate(list_name: str, hostname: str, **kw) -> dict:
-    """Rotate one device (see :func:`_rotate`), and RECORD the outcome (B2)."""
-    result = _rotate(list_name, hostname, **kw)
+    """Rotate one device (see :func:`_rotate`), and RECORD the outcome (B2).
+
+    Holding the device (C98): one operation per device at a time, across
+    processes, since `nmas-rotate-credential` rotates from the host shell
+    while the app may be deploying to the same device. A busy device is
+    refused before anything is read or sent, naming the holder."""
+    import getpass
+
+    from modules.nsot import device_ops
+
+    actor = kw.get("actor") or f"{getpass.getuser()} (host shell)"
+    try:
+        with device_ops.hold(list_name, hostname, "rotate", actor):
+            result = _rotate(list_name, hostname, **kw)
+    except device_ops.DeviceBusy as exc:
+        result = {"device": hostname, "state": NOT_STARTED,
+                  "actor": kw.get("actor", ""), "actor_kind": kw.get("actor_kind", ""),
+                  "steps": [{"name": "device free", "ok": False, "detail": str(exc)}],
+                  "preflight_checks": [], "reason": str(exc)}
     result.setdefault("device", hostname)
     record_outcome("rotate", result)
     return result

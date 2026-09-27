@@ -413,18 +413,30 @@ def apply():
         # change committed between plan and apply is caught before connecting.
         fresh_captures[hostname] = captured
 
-    batch = plan_batch(artifacts, confirmations, fresh_captures)
+    # One operation per device (C98): each device is held from here to its
+    # commit and receipt. A device another operation holds is refused alone,
+    # by name, and the rest proceed.
+    from modules import identity
+    from modules.nsot import device_ops
+    held, busy = device_ops.acquire_many(
+        list_name, [a.device for a in artifacts], "deploy", identity.request_actor())
+    artifacts = [a for a in artifacts if a.device in held]
+    refused += busy
+    try:
+        batch = plan_batch(artifacts, confirmations, fresh_captures)
 
-    report = run_batch(batch,
-                       lambda entry: _deploy_one(entry, list_name, device_rows,
-                                                 authorise),
-                       CircuitBreaker())
-    if refused:
-        _merge_refusals(report, refused)
+        report = run_batch(batch,
+                           lambda entry: _deploy_one(entry, list_name, device_rows,
+                                                     authorise),
+                           CircuitBreaker())
+        if refused:
+            _merge_refusals(report, refused)
 
-    report["golden"] = _commit_batch_golden(list_name, report)
-    report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
-                                         command_hashes)
+        report["golden"] = _commit_batch_golden(list_name, report)
+        report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
+                                             command_hashes)
+    finally:
+        device_ops.release_many(list_name, held)
     # Masked on the way out (C77's apply side, measured 2026-09-27: a planted
     # community came back in `results[].commands`). The receipts and the
     # golden commit are written above from the truthful report; nothing
@@ -565,24 +577,36 @@ def run_targets(list_name: str, targets: list, data: dict,
         device_rows[hostname] = getattr(target, "device_row", {}) or {}
         fresh_captures[hostname] = captured
 
-    batch = plan_batch(accepted, confirmations, fresh_captures)
-    report = run_batch(batch,
-                       lambda entry: _deploy_one(entry, list_name, device_rows,
-                                                 authorise, source_ref),
-                       CircuitBreaker())
-    if refused:
-        # Same helper as the deploy path: the restore path merged refusals the
-        # same way and had the same disagreement between its count and its
-        # rows. Two copies of a fold is how they come to differ.
-        _merge_refusals(report, refused)
-    report["golden"] = _commit_batch_golden(list_name, report, label=label,
-                                            source_ref=source_ref)
-    # Before the result is drawn, so it names the devices the ref did not
-    # touch (the restore's own skip list) as well as the ones it did.
-    report["skipped"] = list(skipped or [])
-    report["receipts"] = _write_receipts(
-        list_name, report, "restore" if source_ref else "reapply",
-        confirmations, command_hashes, source_ref=source_ref)
+    # One operation per device (C98), held from here to the commit and the
+    # receipt; a device another operation holds is refused alone, by name.
+    from modules import identity
+    from modules.nsot import device_ops
+    held, busy = device_ops.acquire_many(
+        list_name, [t.device for t in accepted], "restore", identity.request_actor(),
+        detail=label or (f"re-apply {source_ref}" if source_ref else ""))
+    accepted = [t for t in accepted if t.device in held]
+    refused += busy
+    try:
+        batch = plan_batch(accepted, confirmations, fresh_captures)
+        report = run_batch(batch,
+                           lambda entry: _deploy_one(entry, list_name, device_rows,
+                                                     authorise, source_ref),
+                           CircuitBreaker())
+        if refused:
+            # Same helper as the deploy path: the restore path merged refusals
+            # the same way and had the same disagreement between its count
+            # and its rows. Two copies of a fold is how they come to differ.
+            _merge_refusals(report, refused)
+        report["golden"] = _commit_batch_golden(list_name, report, label=label,
+                                                source_ref=source_ref)
+        # Before the result is drawn, so it names the devices the ref did not
+        # touch (the restore's own skip list) as well as the ones it did.
+        report["skipped"] = list(skipped or [])
+        report["receipts"] = _write_receipts(
+            list_name, report, "restore" if source_ref else "reapply",
+            confirmations, command_hashes, source_ref=source_ref)
+    finally:
+        device_ops.release_many(list_name, held)
     return report
 
 

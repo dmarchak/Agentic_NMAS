@@ -2617,6 +2617,32 @@ def remove_rw_communities(mgmt_ip: str, username: str, password: str,
     return out
 
 
+def _holds_the_device(func):
+    """Phase two holds its device for the whole phase (C98): it reaches,
+    rotates, removes a community and saves, so a deploy or a rotation from
+    the host shell must not run beside it. Refused before any step, naming
+    the holder, in phase two's own shape."""
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(repo, hostname, list_name, *args, actor="", **kw):
+        from modules.nsot import device_ops
+
+        try:
+            with device_ops.hold(list_name, hostname, "onboard", actor or "unknown",
+                                 detail="phase two"):
+                return func(repo, hostname, list_name, *args, actor=actor, **kw)
+        except device_ops.DeviceBusy as exc:
+            reason = str(exc)
+            log.warning("onboard: phase 2 for %s refused: %s", hostname, reason)
+            return {"ok": False, "reason": reason,
+                    "steps": [{"step": s, "ok": False, "detail": "did not run"}
+                              for s in PHASE_TWO_STEPS],
+                    "remaining": [{"step": s, "why": reason} for s in PHASE_TWO_STEPS]}
+    return wrapper
+
+
+@_holds_the_device
 def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
                   actor_kind: str = "", online=None, reach=None,
                   capture=None, rotate=None, remove_rw=None, persist=None,

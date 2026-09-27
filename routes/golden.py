@@ -286,52 +286,66 @@ def capture_apply():
     fleet = bool(data.get("fleet"))
     inventory = _devices_of(list_name)
     repo = _repo_for(list_name)
-    outcomes, items, skipped, texts = [], [], [], {}
-    for device in inventory:
-        host = device.get("hostname", "")
-        if host not in confirmations:
-            skipped.append({"hostname": host, "reason": "not confirmed"})
-            continue
-        entry, text = _capture_entry(list_name, repo, device)
-        if not entry["read"]:
-            outcomes.append({"device": host, "outcome": "unread", "reason": entry["error"]})
-            skipped.append({"hostname": host, "reason": "could not be read"})
-            continue
-        if entry["capture_hash"] != confirmations[host]:
-            outcomes.append({"device": host, "outcome": "moved",
-                             "reason": f"its running config moved since the preview "
-                                       f"({confirmations[host]} -> {entry['capture_hash']})"})
-            skipped.append({"hostname": host, "reason": "moved since the preview"})
-            continue
-        outcomes.append({"device": host, "outcome": "pending", "diff": entry["diff"],
-                         "intent": entry["intent"], "platform": entry["platform"]})
-        texts[host] = text
-    # The configs to record are the ones just read and matched to the confirmed
-    # hash; read once more would be a third read with no one to confirm it.
-    pending = [o for o in outcomes if o["outcome"] == "pending"]
-    save = {}
-    if pending:
-        by_host = {d.get("hostname"): d for d in inventory}
-        for o in pending:
-            d = by_host[o["device"]]
-            items.append(GoldenItem(o["device"], texts[o["device"]], d.get("ip", ""),
-                                    netbox_id=d.get("_netbox_id"),
-                                    device_uid=d.get("device_uid", ""),
-                                    platform=o["platform"]))
-        save = save_golden(list_name, items, source="save_all" if fleet else "capture",
-                           actor=request_actor(), allow_new=False,
-                           inventory_size=len(inventory) if fleet else 0,
-                           skipped=skipped, baseline=None if fleet else False)
-        for o in pending:
-            if not save.get("ok"):
-                o.update(outcome="unread", reason=save.get("error") or "the save failed")
-            else:
-                o["outcome"] = ("captured" if o["device"] in (save.get("changed") or [])
-                                else "unchanged")
-                o["intent"] = (save.get("intent") or {}).get(o["device"], o["intent"])
-    result = capture_result(outcomes, save, fleet=fleet)
-    return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
-                                 "result": result}))
+    # One operation per device (C98): a capture recording a device while a
+    # deploy or restore changes it would record a half-made state.
+    from modules.nsot import device_ops
+    held, refused_busy = device_ops.acquire_many(
+        list_name, [d.get("hostname", "") for d in inventory
+                    if d.get("hostname", "") in confirmations], "capture", request_actor())
+    busy = {r["device"]: r["reason"] for r in refused_busy}
+    try:
+        outcomes, items, skipped, texts = [], [], [], {}
+        for device in inventory:
+            host = device.get("hostname", "")
+            if host not in confirmations:
+                skipped.append({"hostname": host, "reason": "not confirmed"})
+                continue
+            if host in busy:
+                outcomes.append({"device": host, "outcome": "busy", "reason": busy[host]})
+                skipped.append({"hostname": host, "reason": "another operation holds it"})
+                continue
+            entry, text = _capture_entry(list_name, repo, device)
+            if not entry["read"]:
+                outcomes.append({"device": host, "outcome": "unread", "reason": entry["error"]})
+                skipped.append({"hostname": host, "reason": "could not be read"})
+                continue
+            if entry["capture_hash"] != confirmations[host]:
+                outcomes.append({"device": host, "outcome": "moved",
+                                 "reason": f"its running config moved since the preview "
+                                           f"({confirmations[host]} -> {entry['capture_hash']})"})
+                skipped.append({"hostname": host, "reason": "moved since the preview"})
+                continue
+            outcomes.append({"device": host, "outcome": "pending", "diff": entry["diff"],
+                             "intent": entry["intent"], "platform": entry["platform"]})
+            texts[host] = text
+        # The configs to record are the ones just read and matched to the confirmed
+        # hash; read once more would be a third read with no one to confirm it.
+        pending = [o for o in outcomes if o["outcome"] == "pending"]
+        save = {}
+        if pending:
+            by_host = {d.get("hostname"): d for d in inventory}
+            for o in pending:
+                d = by_host[o["device"]]
+                items.append(GoldenItem(o["device"], texts[o["device"]], d.get("ip", ""),
+                                        netbox_id=d.get("_netbox_id"),
+                                        device_uid=d.get("device_uid", ""),
+                                        platform=o["platform"]))
+            save = save_golden(list_name, items, source="save_all" if fleet else "capture",
+                               actor=request_actor(), allow_new=False,
+                               inventory_size=len(inventory) if fleet else 0,
+                               skipped=skipped, baseline=None if fleet else False)
+            for o in pending:
+                if not save.get("ok"):
+                    o.update(outcome="unread", reason=save.get("error") or "the save failed")
+                else:
+                    o["outcome"] = ("captured" if o["device"] in (save.get("changed") or [])
+                                    else "unchanged")
+                    o["intent"] = (save.get("intent") or {}).get(o["device"], o["intent"])
+        result = capture_result(outcomes, save, fleet=fleet)
+        return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
+                                     "result": result}))
+    finally:
+        device_ops.release_many(list_name, held)
 
 
 @bp.route("/restore/preview", methods=["POST"])

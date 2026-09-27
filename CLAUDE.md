@@ -1043,6 +1043,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens and the legacy `golden_configs/`, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
+| `test_device_ops.py` | C98: a second operation on a held device is refused naming the holder, operation and start time, never queued; free again after, re-entrant for the holding thread, other devices unaffected; asking who holds it creates nothing; a CHILD PROCESS holding it refuses the app and its death releases it; deploy, restore, capture, rotation, onboarding phase two and retirement each refuse a held device before anything runs; the lock released when the batch raises; the list of holding paths pinned (a pin: a new path not added is not caught) |
 | `test_ssh_sessions.py` | C97: every session opened through `connection.open_ssh()` (AST, one named exemption, a floor on callers); counted per device with its owner, logged open and close by device and owner; a five-line device allows four and refuses the fifth naming every holder, keeping one for a person; vty counts from real configs (r2 5, s1 16); the capture reader, `verify_device_connection` on a failed enable, and a pipeline run (completing or raising) close what they open; an idle pooled session is reaped and leaves its pool, a used one is not idle, one in use is skipped, an operation's own is never reaped; job-health rows at budget, leaked, and a zero stated |
 | `test_no_post_returns_a_stored_secret.py` | C77's sweep: every `not_device` POST (34, from the gate table and `url_map`) declares a body and the status it answers with; B11's planting shared (`planted_stores`) plus what a POST reads (a device read NOW, a second backup, supplied configs, a FakeNetBox, a list with templates, committed intent, an approval, a differing template secret and a second golden); no planted value comes back, anonymous or as a person; every response that draws stored config shows the masked slot (either mask); every integration's connection test driven or named; the sweep gets its own drift checker |
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
@@ -5127,6 +5128,22 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   was right for a reason nobody predicted (C92), and a result that arrived
   after the operator had concluded there was none (C99). None was the thing
   under test. The rule is no longer only for paths that have never run.
+- **In this project building is how surveying happens, so every operation
+  gets a real run on the host, and that run's findings are budgeted as part
+  of its cost** (the operator's scheduling principle, 2026-09-27). The
+  finding rate did not fall (39 new on 09-26, 43 on 09-27), and almost every
+  new finding came out of building and running, not out of an old survey.
+  Waiting for the rate to fall before building would wait for ever. Measured:
+  7.1 took 13 hours and 32 commits.
+- **The confirm-by-hash guarantee assumed ONE mover** (C98, fixed). A
+  restore and a deploy ran on r2 at once, both confirmed, and the deploy's
+  check passed against a stored config the restore was mid-way through
+  rewriting. Every path that changes a device or its record now holds the
+  device from apply to commit, across processes (`device_ops`, a `flock`
+  the kernel releases when its holder dies), and refuses a second
+  operation by name, never queues it. The lock's first version deadlocked
+  on a device another process held, and the test HUNG rather than failed:
+  run a new concurrency test under a hard timeout.
 - **A baseline asserts the network is at its committed INTENT, and every
   capture path now says whether it is** (C89 (c) and (d), decided
   2026-09-27). `save_golden()` is the one place every capture commits

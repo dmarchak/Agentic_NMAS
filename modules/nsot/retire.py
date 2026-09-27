@@ -257,6 +257,26 @@ def breakglass_covers(payload: dict, list_name: str, row: dict) -> str:
     return ""
 
 
+def _holds_the_device(func):
+    """Retirement changes the record of a device (its row, its bindings, its
+    map entry), so it holds the device like any other change (C98): a
+    retirement beside a deploy would remove what the deploy is recording."""
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(list_name, hostname, *args, **kw):
+        from modules.nsot import device_ops
+
+        try:
+            with device_ops.hold(list_name, hostname, "retire",
+                                 kw.get("actor") or "unknown"):
+                return func(list_name, hostname, *args, **kw)
+        except device_ops.DeviceBusy as exc:
+            return {"ok": False, "error": str(exc)}
+    return wrapper
+
+
+@_holds_the_device
 def apply(list_name: str, hostname: str, *, reason: str, actor: str,
           confirmed_hash: str, breakglass: dict = None) -> dict:
     """Run the plan's pending steps, in order. Refuses unless the plan is the
