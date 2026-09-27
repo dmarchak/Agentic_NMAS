@@ -1,0 +1,26 @@
+{#- The device list's toolbar, rendered by the index AND by GET /devices/regions
+    (routes/devices_view.py), so the list can be re-drawn in place when a
+    response invalidates `inventory` (Stage 7.0). One template, two callers:
+    a second copy is how the two come to disagree. -#}
+  {% if devices %}
+  <div class="d-flex gap-2 align-items-center">
+    <button class="btn btn-success btn-sm" onclick="saveAllConfigs()" id="saveAllBtn">
+      <span class="btn-text">Save All Configs</span>
+      <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+    </button>
+    <button class="btn btn-warning btn-sm" onclick="reloadSelectedDevices()" id="reloadDevicesBtn">
+      <span class="btn-text">Reload Devices</span>
+      <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+    </button>
+    <button class="btn btn-info btn-sm" onclick="refreshHostnames()" id="refreshHostnamesBtn">
+      <span class="btn-text">Refresh Hostnames</span>
+      <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+    </button>
+    <span class="badge bg-secondary" id="deviceCount">{{ devices|length }} device(s)</span>
+    <input type="text"
+           class="form-control form-control-sm"
+           id="deviceSearch"
+           placeholder="Search devices..."
+           style="width: 250px;">
+  </div>
+  {% endif %}

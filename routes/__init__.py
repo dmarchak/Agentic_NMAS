@@ -34,6 +34,11 @@ def register_blueprints(app) -> list:
     from routes import list_param
     list_param.install(app)
 
+    # Every mutating route's response names the data it changed, so the
+    # panels showing that data re-fetch (Stage 7.0, NSOT_STAGE7_GUI 6b).
+    from modules import invalidation
+    invalidation.install(app)
+
     from routes.settings_integrations import bp as integrations_bp
     from routes.netbox_safety import bp as netbox_safety_bp
     from routes.inventory import bp as inventory_bp
@@ -50,11 +55,13 @@ def register_blueprints(app) -> list:
     from routes.freshness import bp as freshness_bp
     from routes.jobs import bp as jobs_bp
     from routes.health import bp as health_bp
+    from routes.devices_view import bp as devices_view_bp
 
     for bp in (integrations_bp, netbox_safety_bp, inventory_bp, golden_bp,
                templatize_bp, templates_bp, deploy_bp, identity_bp,
                remote_bp, monitoring_stack_bp, topology_view_bp,
-               onboard_bp, clab_bp, freshness_bp, jobs_bp, health_bp):
+               onboard_bp, clab_bp, freshness_bp, jobs_bp, health_bp,
+               devices_view_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

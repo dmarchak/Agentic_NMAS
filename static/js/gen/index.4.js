@@ -1451,8 +1451,19 @@ async function loadDriftStatus() {
     } else if (detail) {
       detail.style.display = 'none';
     }
-  } catch (_) {}
+    return r.ok;
+  } catch (e) {
+    // It swallowed this silently, so a failed read left the last badge on
+    // screen looking current. Now it reports, and a re-fetch the
+    // invalidation registry started marks the card stale (Stage 7.0).
+    console.error('loadDriftStatus', e);
+    return false;
+  }
 }
+
+/* The third measured case (Stage 7.0): after a run, the badge showed the
+   previous one. Any response naming `drift` redraws it. */
+NMAS.subscribe('drift', 'driftBadge', loadDriftStatus, {panel: 'driftPanel'});
 
 async function runDriftCheck() {
   const btn     = document.getElementById('driftCheckBtn');

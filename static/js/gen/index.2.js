@@ -1,4 +1,10 @@
-const deviceIps = JSON.parse(document.getElementById("device-data").textContent);
+/* Which devices to poll, read from the ROWS each time (Stage 7.0). It was
+   parsed once from the page's JSON block, so a device promoted after the
+   page loaded was drawn by the in-place redraw and never polled. */
+function deviceIps() {
+  return Array.from(document.querySelectorAll('.device-row'))
+    .map(row => row.dataset.ip).filter(Boolean);
+}
 
 /* Seed the AI device cache from server-rendered data on page load. */
 (function seedDeviceCache() {
@@ -57,5 +63,5 @@ function updateStatus(ip) {
     .catch(err => console.error("Status update failed:", err));
 }
 setInterval(() => {
-  deviceIps.forEach(ip => updateStatus(ip));
+  deviceIps().forEach(ip => updateStatus(ip));
 }, 5000);

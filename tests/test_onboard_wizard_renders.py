@@ -231,11 +231,25 @@ class TestItIsAToolbarActionNotATab:
             encoding="utf-8").read()
 
         button = re.search(r'^\s*<button[^>]*openOnboardWizard\(\)', src, re.M)
+        assert button
+        # Stage 7.0 moved both `if devices` blocks into partials, so the list
+        # can be redrawn in place. The guard is followed to where it lives:
+        # in index.html the button must precede any guard left there, and the
+        # guards must still EXIST (in the partials), or this passes by
+        # finding none.
         guard = re.search(r"^\s*\{% if devices %\}", src, re.M)
-        assert button and guard
-        assert button.start() < guard.start(), (
+        assert guard is None or button.start() < guard.start(), (
             "the onboard button is inside the `if devices` block — it would "
             "be absent from an empty list")
+        partials = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "templates", "partials")
+        guards = [n for n in ("device_toolbar.html", "device_table.html")
+                  if re.search(r"^\s*\{% if devices %\}", io.open(
+                      os.path.join(partials, n), encoding="utf-8").read(), re.M)]
+        assert guards == ["device_toolbar.html", "device_table.html"]
+        assert "openOnboardWizard" not in "".join(
+            io.open(os.path.join(partials, n), encoding="utf-8").read()
+            for n in guards)
 
 
 class TestTheRoutes:

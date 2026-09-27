@@ -124,62 +124,74 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Device search/filter functionality
-  const searchInput = document.getElementById('deviceSearch');
-  const deviceRows = document.querySelectorAll('.device-row');
-  const deviceCount = document.getElementById('deviceCount');
+  // Device search/filter functionality.
+  //
+  // DELEGATED, and every lookup LIVE (Stage 7.0). The device list's rows,
+  // checkboxes and search box are redrawn in place when a response
+  // invalidates `inventory` (refreshDeviceRegions below). They were captured
+  // once at load, so a redrawn list kept these handlers pointed at rows that
+  // no longer existed: the newly promoted device could not be searched or
+  // selected, and "Select all" missed it.
+  const deviceRowsNow = () => document.querySelectorAll('.device-row');
 
-  if (searchInput && deviceRows.length > 0) {
-    searchInput.addEventListener('input', function() {
-      const searchTerm = this.value.toLowerCase().trim();
-      let visibleCount = 0;
+  document.addEventListener('input', function(e) {
+    if (!e.target || e.target.id !== 'deviceSearch') return;
+    const searchTerm = e.target.value.toLowerCase().trim();
+    const deviceRows = deviceRowsNow();
+    const deviceCount = document.getElementById('deviceCount');
+    let visibleCount = 0;
 
-      deviceRows.forEach(row => {
-        const hostname = row.querySelector('.device-hostname').textContent.toLowerCase();
-        const ip = row.querySelector('.device-ip').textContent.toLowerCase();
-        const matches = hostname.includes(searchTerm) || ip.includes(searchTerm);
+    deviceRows.forEach(row => {
+      const hostname = row.querySelector('.device-hostname').textContent.toLowerCase();
+      const ip = row.querySelector('.device-ip').textContent.toLowerCase();
+      const matches = hostname.includes(searchTerm) || ip.includes(searchTerm);
 
-        if (matches) {
-          row.style.display = '';
-          visibleCount++;
-        } else {
-          row.style.display = 'none';
-        }
-      });
-
-      if (deviceCount) {
-        if (searchTerm) {
-          deviceCount.textContent = `${visibleCount} of ${deviceRows.length} device(s)`;
-        } else {
-          deviceCount.textContent = `${deviceRows.length} device(s)`;
-        }
+      if (matches) {
+        row.style.display = '';
+        visibleCount++;
+      } else {
+        row.style.display = 'none';
       }
     });
 
-    searchInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        this.value = '';
-        this.dispatchEvent(new Event('input'));
-        this.blur();
+    if (deviceCount) {
+      if (searchTerm) {
+        deviceCount.textContent = `${visibleCount} of ${deviceRows.length} device(s)`;
+      } else {
+        deviceCount.textContent = `${deviceRows.length} device(s)`;
       }
-    });
-  }
+    }
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (!e.target || e.target.id !== 'deviceSearch') return;
+    if (e.key === 'Escape') {
+      e.target.value = '';
+      e.target.dispatchEvent(new Event('input', {bubbles: true}));
+      e.target.blur();
+    }
+  });
 
   // ========================================================================
   // Bulk Operations
   // ========================================================================
 
-  const deviceCheckboxes = document.querySelectorAll('.device-checkbox');
-  const selectAll = document.getElementById('selectAll');
-  const bulkOpsPanel = document.getElementById('bulkOpsPanel');
   const selectedCountSpan = document.getElementById('selectedCount');
 
-  function updateSelection() {
-    const selected = Array.from(deviceCheckboxes).filter(cb => cb.checked && !cb.disabled);
-    const count = selected.length;
+  // A function, not a captured NodeList: the rows are redrawn in place.
+  function deviceCheckboxes() {
+    return document.querySelectorAll('.device-checkbox');
+  }
 
-    if (selectedCountSpan) {
-      selectedCountSpan.textContent = count;
+  function updateSelection() {
+    const selected = Array.from(deviceCheckboxes()).filter(cb => cb.checked && !cb.disabled);
+    const count = selected.length;
+    const countSpan = document.getElementById('selectedCount') || selectedCountSpan;
+    const bulkOpsPanel = document.getElementById('bulkOpsPanel');
+    const selectAll = document.getElementById('selectAll');
+
+    if (countSpan) {
+      countSpan.textContent = count;
     }
 
     if (bulkOpsPanel) {
@@ -187,34 +199,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (selectAll) {
-      const enabledCheckboxes = Array.from(deviceCheckboxes).filter(cb => !cb.disabled);
+      const enabledCheckboxes = Array.from(deviceCheckboxes()).filter(cb => !cb.disabled);
       selectAll.checked = enabledCheckboxes.length > 0 && selected.length === enabledCheckboxes.length;
     }
   }
 
-  if (selectAll) {
-    selectAll.addEventListener('change', function() {
-      deviceCheckboxes.forEach(cb => {
+  document.addEventListener('change', function(e) {
+    const t = e.target;
+    if (!t) return;
+    if (t.id === 'selectAll') {
+      deviceCheckboxes().forEach(cb => {
         if (!cb.disabled) {
-          cb.checked = this.checked;
+          cb.checked = t.checked;
         }
       });
       updateSelection();
-    });
-  }
-
-  deviceCheckboxes.forEach(cb => {
-    cb.addEventListener('change', updateSelection);
+    } else if (t.classList && t.classList.contains('device-checkbox')) {
+      updateSelection();
+    }
   });
 
   window.clearSelection = function() {
-    deviceCheckboxes.forEach(cb => cb.checked = false);
+    deviceCheckboxes().forEach(cb => cb.checked = false);
+    const selectAll = document.getElementById('selectAll');
     if (selectAll) selectAll.checked = false;
     updateSelection();
   };
 
   window.saveAllConfigs = function() {
-    const onlineDeviceIps = Array.from(deviceCheckboxes)
+    const onlineDeviceIps = Array.from(deviceCheckboxes())
       .filter(cb => !cb.disabled)
       .map(cb => cb.value);
 
@@ -292,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   window.reloadSelectedDevices = function() {
-    const selectedIps = Array.from(deviceCheckboxes)
+    const selectedIps = Array.from(deviceCheckboxes())
       .filter(cb => cb.checked && !cb.disabled)
       .map(cb => cb.value);
 
@@ -409,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const selectedIps = Array.from(deviceCheckboxes)
+    const selectedIps = Array.from(deviceCheckboxes())
       .filter(cb => cb.checked && !cb.disabled)
       .map(cb => cb.value);
 
@@ -454,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const selectedIps = Array.from(deviceCheckboxes)
+    const selectedIps = Array.from(deviceCheckboxes())
       .filter(cb => cb.checked && !cb.disabled)
       .map(cb => cb.value);
 
@@ -492,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   window.bulkDownloadConfig = function(configType) {
-    const selectedIps = Array.from(deviceCheckboxes)
+    const selectedIps = Array.from(deviceCheckboxes())
       .filter(cb => cb.checked && !cb.disabled)
       .map(cb => cb.value);
 
@@ -538,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const selectedIps = Array.from(deviceCheckboxes)
+    const selectedIps = Array.from(deviceCheckboxes())
       .filter(cb => cb.checked && !cb.disabled)
       .map(cb => cb.value);
 
@@ -578,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // selected devices. It used to POST to an unguarded replay that pushed the
   // whole golden line by line: no plan, no hash, no rollback.
   window.bulkRestoreGoldenConfig = function() {
-    const hosts = Array.from(deviceCheckboxes)
+    const hosts = Array.from(deviceCheckboxes())
       .filter(cb => cb.checked && !cb.disabled)
       .map(cb => { const tr = cb.closest('tr'); return tr ? tr.dataset.hostname : ''; })
       .filter(Boolean);
@@ -589,9 +602,11 @@ document.addEventListener('DOMContentLoaded', () => {
     previewBaselineRestore('HEAD', null, {devices: hosts});
   };
 
-  // Update hint when command mode changes
-  document.querySelectorAll('input[name="commandMode"]').forEach(radio => {
-    radio.addEventListener('change', function() {
+  // Update hint when command mode changes. Delegated: the radios are inside
+  // the bulk panel, which is redrawn in place (Stage 7.0).
+  document.addEventListener('change', function(e) {
+    if (!e.target || e.target.name !== 'commandMode') return;
+    (function() {
       const modeHint = document.getElementById('modeHint');
       const configHint = document.getElementById('configHint');
       const commandInput = document.getElementById('bulkCommand');
@@ -605,7 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
         configHint.style.display = 'none';
         commandInput.placeholder = 'Enter command(s) - use semicolons for multiple';
       }
-    });
+    }).call(e.target);
   });
 
   window.executeBulkCommand = function() {
@@ -615,7 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const selectedIps = Array.from(deviceCheckboxes)
+    const selectedIps = Array.from(deviceCheckboxes())
       .filter(cb => cb.checked && !cb.disabled)
       .map(cb => cb.value);
 
@@ -721,3 +736,63 @@ document.addEventListener('DOMContentLoaded', () => {
     return div.innerHTML;
   }
 });
+
+// ========================================================================
+// The device list, redrawn in place (Stage 7.0; NSOT_STAGE7_GUI.md 6b)
+// ========================================================================
+//
+// The first of the three measured cases: onboarding's Verify promoted a
+// device and the list still read "0 devices" until a manual reload. The
+// list is server-rendered, and an empty list renders no table at all, so it
+// is redrawn from the SAME templates the index uses (GET /devices/regions).
+
+/* The payload in, the two regions and the list selector's count updated.
+   Returns false when there is nothing to apply, so the registry marks the
+   panel stale instead of leaving a stale list looking current. */
+function applyDeviceRegions(data, doc) {
+  doc = doc || document;
+  if (!data || data.ok !== true) return false;
+  const toolbar = doc.getElementById('deviceToolbarRegion');
+  const table = doc.getElementById('deviceTableRegion');
+  if (!toolbar || !table) return false;
+  toolbar.innerHTML = data.toolbar_html;
+  table.innerHTML = data.table_html;
+  const select = doc.getElementById('deviceListSelect');
+  if (select && select.options) {
+    for (let i = 0; i < select.options.length; i++) {
+      const opt = select.options[i];
+      if (opt.value === data.list) opt.textContent = `${data.list} (${data.count} devices)`;
+    }
+  }
+  return true;
+}
+
+async function refreshDeviceRegions() {
+  // The operator's place survives the redraw: the search text and the
+  // devices they had ticked. A redraw that clears a half-made selection is
+  // a panel that punishes the action it is reporting on.
+  const search = document.getElementById('deviceSearch');
+  const term = search ? search.value : '';
+  const ticked = Array.from(document.querySelectorAll('.device-checkbox:checked'))
+    .map(cb => cb.value);
+  const r = await fetch('/devices/regions');
+  if (!r.ok) return false;
+  if (!applyDeviceRegions(await r.json())) return false;
+  let first = null;
+  document.querySelectorAll('.device-checkbox').forEach(cb => {
+    if (ticked.indexOf(cb.value) !== -1 && !cb.disabled) {
+      cb.checked = true;
+      first = first || cb;
+    }
+  });
+  if (first) first.dispatchEvent(new Event('change', {bubbles: true}));
+  const newSearch = document.getElementById('deviceSearch');
+  if (newSearch && term) {
+    newSearch.value = term;
+    newSearch.dispatchEvent(new Event('input', {bubbles: true}));
+  }
+  if (typeof window.bindDeviceTableSortable === 'function') window.bindDeviceTableSortable();
+  return true;
+}
+
+NMAS.subscribe('inventory', 'deviceList', refreshDeviceRegions, {panel: 'deviceTableRegion'});

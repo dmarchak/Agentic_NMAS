@@ -23,7 +23,7 @@ async function loadRemotePanel() {
     // Nothing to render into is a defect, not a state. Saying so beats
     // returning quietly, which is how this failed the first time.
     console.error('remotePanel container missing — the card cannot render');
-    return;
+    return false;
   }
   try {
     const s = await (await fetch('/remote/status')).json();
@@ -33,7 +33,7 @@ async function loadRemotePanel() {
           <strong>No remote for this list.</strong>
           Its history is on this host only.
         </div>`;
-      return;
+      return true;
     }
     const ack = s.acknowledged;
     const covers = s.acknowledgement_covers || {};
@@ -77,12 +77,18 @@ async function loadRemotePanel() {
         </div>
       </div></div>`;
     _remoteRestore();
+    return true;
   } catch (e) {
     console.error('loadRemotePanel', e);
     host.innerHTML = `<div class="alert alert-danger py-2 px-3 small mb-0">
       Remote card failed to load: ${_gEsc(String(e && e.message || e))}</div>`;
+    return false;
   }
 }
+
+/* The second measured case (Stage 7.0): after a commit, the card showed a
+   last push that predated it. Any response naming `remote` redraws it. */
+NMAS.subscribe('remote', 'remoteCard', loadRemotePanel, {panel: 'remotePanel'});
 
 /* The last result, kept so it survives anything that re-renders. Held in
    state as well as in the DOM: the DOM copy is what the operator reads, and

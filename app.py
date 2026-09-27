@@ -259,6 +259,12 @@ def _cache_policy(resp):
 
 # New routes live in Flask blueprints under routes/ rather than growing this
 # file further. Registered here, immediately after the app exists.
+# The ping cache, for a blueprint that redraws the device list (Stage 7.0).
+# A registration, not a route: importing `app` from a blueprint would load a
+# second copy when this file runs as __main__.
+app.extensions["nmas_device_status"] = device_status_cache
+# A getter, not the value: save_tftp_server rebinds the global at run time.
+app.extensions["nmas_tftp_server"] = lambda: TFTP_SERVER_IP
 try:
     from routes import register_blueprints
     register_blueprints(app)

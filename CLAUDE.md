@@ -116,9 +116,15 @@ tracked in git.
 - **[modules/integrations/](modules/integrations/)** — one client per external
   tool (NetBox, Prometheus, Grafana, Loki, Oxidized, Kea, topology service, NSoT
   git, S3). Phase 0 ships `test_connection()` only; Phase 5 adds read clients.
+- **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
+  each mutating route invalidates, in a finite vocabulary of data keys; the
+  response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
+  (panels subscribe; a failed re-fetch marks the panel stale with a time)
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
   `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`,
-  `templates.py`, `deploy.py`, `freshness.py`
+  `templates.py`, `deploy.py`, `freshness.py`, `devices_view.py` (the device
+  list's regions, redrawn in place), `list_param.py` (a read of an unknown
+  list refused, C51)
 
 ### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
@@ -973,6 +979,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_harness_isolation.py` | C32/C36/C42/C43: the suite runs on a temporary store, initialised once before any test (a file that errored alone passes alone); a write into the checkout's `data/` is attributed (the test process by an audit hook, a child by its sitecustomize) and a change no test made is the running app's only when `/proc` shows it; children get the test store; the store guard's controls hold on this machine's clock and on a simulated ext4 at 1 ms (the host) and 1 s; every module derives its data path from `config.DATA_DIR` (AST, floor); the session guard sees a change; importing `app` starts no thread, and `__main__` still starts them |
 | `test_reads_write_nothing.py` | C33: the GET routes that write, pinned against an initialized store; the list must not grow and keeps no ghosts; a floor that the sweep can see a known writer |
 | `test_route_reachability.py` | 7.0 (1): every (method, route) pair is reachable from a rendered page (both pages, with a device; `url_for` in template source counted), non-GUI with a consumer shown to reference it, or allowlisted with its group and home; per METHOD where a PATH mixes a read and a write (decided per path: `/drift/settings` is two rules); exact both ways, ceiling pinned at the measured 54; anchors each way. `tests/route_references.py` is the shared reader |
+| `test_invalidation_map.py` | 7.0 (2): every mutating route (115, from `url_map`) declares the data it changes or `Nothing` with a reason, and an undeclared one is found (a throwaway app is the built-in control); the response carries the keys (header always, `invalidates` in a JSON body) and is otherwise unchanged; subscriptions both directions with floors, and a shrinking list of declared keys nobody subscribes to yet; the shipped client EXECUTED in duktape against a real response's header, a failed re-fetch marking the panel with the time of the value shown; the device list redrawn from the index's own templates (the 0-to-1 case) |
 | `test_reads_create_no_list.py` | C51 (7.0): EVERY GET, with an unknown list name in each place a list arrives, creates no list (24 did; floors on the sweep); the refusal is a named 404 that says it is not an empty list; a real list by name and by slug still reads |
 | `test_requirements_lock.py` | C37: every third-party import is mapped and pinned exactly in the host-generated lock; the lock names its producer; the C35 pair is not what CI installs |
 | `test_network_guard.py` | C46: the test process refuses non-loopback connects and loopback is still the kernel's answer; a child with a bare env, a DNS name, ssh/curl/rsync and a remote git are each refused and recorded; a fake the test built runs and one outside pytest's tree does not; C46's exact case cannot reach the live NMAS; an attempt fails the test that made it, observed from a nested run; the confinement measurement's three answers; what a run reports is what a CHILD process gets; a required run that is not confined stops; the runner requires what it creates and never runs as root |

@@ -1,0 +1,187 @@
+{#- The device list's bulk panel and table, rendered by the index AND by GET /devices/regions
+    (routes/devices_view.py), so the list can be re-drawn in place when a
+    response invalidates `inventory` (Stage 7.0). One template, two callers:
+    a second copy is how the two come to disagree. -#}
+{% if devices %}
+<!-- Bulk Operations Panel -->
+<div class="card mb-3" id="bulkOpsPanel" style="display: none;">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <h5 class="card-title mb-0">Bulk Operations</h5>
+      <button class="btn btn-sm btn-outline-primary" id="askAiAboutSelectionBtn"
+              onclick="askAiAboutSelection()" title="Open AI Assistant focused on selected devices">
+        ✦ Ask AI about selection
+      </button>
+    </div>
+    <p class="text-muted mb-2">Execute commands on <span id="selectedCount">0</span> selected device(s)</p>
+    <div class="mb-3">
+      <div class="btn-group" role="group" aria-label="Command mode">
+        <input type="radio" class="btn-check" name="commandMode" id="modeEnable" value="enable" checked>
+        <label class="btn btn-outline-primary" for="modeEnable">Enable Mode</label>
+      </div>
+      <small class="text-muted ms-2" id="modeHint">Run show/exec commands (e.g., show ip int brief) — separate multiple with semicolons</small>
+    </div>
+    <div class="input-group">
+      <input type="text" class="form-control" id="bulkCommand" placeholder="Enter command(s) - use semicolons for multiple">
+      <button class="btn btn-primary" onclick="executeBulkCommand()">Execute</button>
+      <button class="btn btn-outline-secondary" onclick="clearSelection()">Clear Selection</button>
+    </div>
+    <small class="text-muted mt-2 d-block" id="configHint" style="display: none;">For multiple config commands, separate with semicolons (e.g., hostname R1; interface gi0/0; description WAN)</small>
+
+    <!-- Bulk File Transfer Section -->
+    <hr class="my-3">
+    <h6 class="mb-2">File Transfer (TFTP)</h6>
+    <div class="row g-2 mb-3">
+      <div class="col-md-6">
+        <label class="form-label mb-1 small fw-bold">TFTP Server Address</label>
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control" id="bulkTftpServer" value="{{ tftp_server }}" placeholder="TFTP Server IP">
+          <button class="btn btn-outline-success" type="button" onclick="saveTftpServer()" title="Save as default">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="row g-2 mb-2">
+      <!-- Upload file to devices -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Upload file to selected devices</label>
+            <div class="input-group input-group-sm">
+              <input type="file" class="form-control" id="bulkUploadFile">
+              <button class="btn btn-success" onclick="bulkUploadFile()">Upload</button>
+            </div>
+            <small class="text-muted">Uploads to flash: on each device</small>
+          </div>
+        </div>
+      </div>
+      <!-- Download file from devices -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Download file from selected devices</label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="bulkDownloadFilename" placeholder="e.g., vlan.dat">
+              <button class="btn btn-info" onclick="bulkDownloadFile()">Download</button>
+            </div>
+            <small class="text-muted">Downloads from flash: to TFTP server</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-2 mb-2">
+      <!-- Quick config downloads -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Quick Config Download</label>
+            <div class="btn-group btn-group-sm w-100">
+              <button class="btn btn-outline-info" onclick="bulkDownloadConfig('startup')">Download Startup Configs</button>
+              <button class="btn btn-outline-info" onclick="bulkDownloadConfig('running')">Download Running Configs</button>
+            </div>
+            <small class="text-muted">Downloads configs to TFTP server with device hostname prefix</small>
+          </div>
+        </div>
+      </div>
+      <!-- Delete file from devices -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Delete file from selected devices</label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="bulkDeleteFilename" placeholder="e.g., old-config.bak">
+              <button class="btn btn-danger" onclick="bulkDeleteFile()">Delete</button>
+            </div>
+            <small class="text-muted">Deletes file from flash: on each device</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-2">
+      <!-- Restore Golden Config -->
+      <div class="col-md-6">
+        <div class="card border-warning">
+          <div class="card-body p-2">
+            <label class="form-label mb-1 small fw-bold">Restore Golden Config</label>
+            <button class="btn btn-warning btn-sm w-100" onclick="bulkRestoreGoldenConfig()">
+              Restore Golden Config
+            </button>
+            <small class="text-muted">Previews re-applying each device's golden at HEAD: the exact program, what stays behind, then a confirm</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Table of saved devices -->
+<table class="table table-bordered table-hover align-middle">
+  <thead class="table-dark">
+    <tr>
+      <th style="width: 40px;">
+        <input type="checkbox" id="selectAll" title="Select All">
+      </th>
+      <th>Status</th>
+      <th>Hostname</th>
+      <th>IP Address</th>
+      <th>Actions</th>
+      <th>Delete</th>
+    </tr>
+  </thead>
+  <tbody id="deviceTableBody">
+    {% for d in devices %}
+    <tr data-ip="{{ d['ip'] }}" data-hostname="{{ d['hostname'] }}" class="device-row">
+      <td>
+        <input type="checkbox" class="device-checkbox" value="{{ d['ip'] }}"
+               {% if not d['online'] %}disabled{% endif %}>
+      </td>
+      <td>
+        <span id="status-{{ d['ip'] }}"
+              class="btn btn-sm {% if d['online'] %}btn-success{% else %}btn-danger{% endif %}">
+          {% if d['online'] %}Online{% else %}Offline{% endif %}
+        </span>
+      </td>
+      <td class="device-hostname">{{ d["hostname"] }}</td>
+      <td class="device-ip">{{ d["ip"] }}</td>
+      <td>
+        <div class="d-flex flex-wrap gap-1">
+        {% if d["online"] %}
+          <a id="btn-{{ d['ip'] }}" href="{{ url_for('manage_device', ip=d['ip']) }}"
+             class="btn btn-sm btn-primary" target="_blank" rel="noopener">Manage</a>
+        {% else %}
+          <button id="btn-{{ d['ip'] }}" class="btn btn-sm btn-secondary" disabled>Offline</button>
+        {% endif %}
+        {# NSoT actions. NOT gated on `online`: all three read captured
+           artifacts -- a golden config, a stored backup, committed intent --
+           and open no socket, so an unreachable device is exactly when its
+           history is most worth looking at. #}
+          <button class="btn btn-sm btn-outline-info"
+                  title="Render from committed intent; round-trip coverage and host_vars"
+                  onclick="nsotAction('showRenderPreview', '{{ d['hostname'] }}')">Template preview</button>
+          <button class="btn btn-sm btn-outline-warning"
+                  title="Build the deploy plan for this device. Shows the exact commands; sends nothing."
+                  onclick="nsotAction('openDeployPlan', '{{ d['hostname'] }}', true)">Deploy plan</button>
+          <button class="btn btn-sm btn-outline-success"
+                  title="Edit what this device is SUPPOSED to look like, and commit it"
+                  onclick="nsotAction('showIntentEditor', '{{ d['hostname'] }}')">Edit intent</button>
+          <button class="btn btn-sm btn-outline-secondary"
+                  title="Every golden commit for this device"
+                  onclick="nsotAction('showGoldenHistory', '{{ d['hostname'] }}')">Golden history</button>
+        </div>
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('delete_device', ip=d['ip']) }}">
+          <button class="btn btn-sm btn-danger"
+                  onclick="return confirm(`Are you sure you want to delete {{ d['hostname'] }} ({{ d['ip'] }})?`);">
+            Delete
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No devices saved yet. Add one below.</p>
+{% endif %}
