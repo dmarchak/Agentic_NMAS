@@ -3928,6 +3928,68 @@ that queried "now" would describe the recovery and call it the incident.
   instance of the same rule, it would be a correct report about a different
   event: wrong, and looking right.
 
+**What triage reads when an instance lands: an immediate drift measurement,
+and who is working on the device** (the operator's refinement, 2026-09-27).
+The drift check does not wait for its schedule. When an instance lands,
+triage measures drift on the affected device and its neighbours at once:
+seconds after the alert, not up to 30 minutes. That turns "something is
+wrong with s3" into "here is exactly what changed on s3, against what a
+person approved". It needs no authority: it is a read, and it passes the
+autonomy test literally, since it is the scheduled check happening earlier
+than scheduled.
+- **Against BOTH references, named separately.** Against intent (the plan
+  computed on a fresh capture: what a person approved as the target), and
+  against the golden (the last record: what the device was). The drift
+  checker compares only against the golden, so triage uses the plan's
+  comparison for the first.
+- **The capture is NOW, and the report says so.** A device can only be read
+  in the present, which is the exception to anchoring at the onset. So the
+  capture carries its time. The BEFORE comes from history: the golden, and
+  Oxidized's copies with their times. Together they bracket the change:
+  "landed between Oxidized's 03:00 poll and this 03:14 capture".
+- **Neighbours come from stored adjacency, computed in code, one hop.** A
+  burst whose subject is the pipeline (Loki or Alloy down: every heartbeat
+  fires) runs no per-device drift at all. The fleet did not change, and
+  reading nine devices to learn that would be triage's own storm.
+- **Who is working on the device is an INPUT, read three ways, because no
+  single source can say "nobody":**
+  - **`show users`, in the same read session.** Who is logged in now, on
+    which line, from where. It is live and positive. NMAS's own pooled
+    session appears in it too, and is recognised by line and address.
+  - **The terminal audit.** A break-glass session opened or closed in the
+    window, with the verified actor. It covers only sessions through NMAS's
+    terminal, and it appears in `show users` as NMAS's address, which is
+    why both are read.
+  - **The device's own log in Loki**: `%SYS-5-CONFIG_I` (and login events,
+    if the device logs them) at `notifications` since P.1. Whether these
+    reach Loki from every device is to be MEASURED before anything relies
+    on it.
+
+  A console session, a laptop's SSH before the window, or a log that did
+  not arrive is not "nobody". So the absence of all three is reported as
+  "no activity FOUND", never "no activity".
+- **Recent human activity changes the row's ACTION, never what is reported.**
+  Recent means a session present now, or any of the three within the window
+  (proposed: from 60 minutes before the onset until now; set from real
+  runs). Then triage proposes NO revert, and the row says why: *"A person is
+  working on s3 (session from <addr> since 03:12). The difference is
+  reported; no revert is proposed."* The person can ask for the plan from
+  the row. This is not suppression, which 8.6 forbids: the event and the
+  difference are both shown. What is withheld is the one-click restore,
+  because a revert offered while somebody is mid-repair is still the wrong
+  action, just slower, and the person most likely to click it at 3am is the
+  one doing the repair.
+
+**The report states what it could NOT establish, always.** Beside what it
+READ and what it CONCLUDES (below), a third part is required: what it could
+not establish. It is never omitted and never empty without saying so. The
+operator's example is the shape: *"s3 differs from intent by these lines;
+the terminal was opened at 03:12 by <person>; I cannot tell whether that
+change was deliberate."* Every source that could not be read is a line in
+it ("could not read s3's log from Loki: cannot tell who changed it"). A
+confident wrong conclusion and an unexplained diff are both worse at 3am
+than a report that names its own limit.
+
 **A burst: grouping is code, conclusions are the model's, and suppression
 is nobody's.**
 - **Grouping is deterministic, on the ONSET, never on `startsAt`.** This was
@@ -4002,10 +4064,12 @@ is nobody's.**
 - **The report separates what it READ from what it CONCLUDES.**
   - Each claim cites its query and time range.
   - Each conclusion is labelled a hypothesis.
+  - What it could NOT establish is its own part (above), required.
 
   A guess that reads as a finding is the agent's version of *a message
   whose first words are good news*.
-- **The action stays a person's.** If the agent proposed a fix, the row's
+- **The action stays a person's**, and recent human activity on the device
+  means no revert is proposed at all (above). If the agent proposed a fix, the row's
   action is *"Review the proposed plan"*: an ordinary plan in 7.1's
   preview-confirm component. The agent never confirms it, and that is
   structural, not a prompt instruction. The agent's actor is `ai-agent`, and
@@ -4025,10 +4089,320 @@ is nobody's.**
 - **Needs attention rows are per incident, with a member list**, even while
   every incident has one member.
 - **A row has a slot for an attached triage**, empty until Stage 8.
+- **A row's action can be "a person is working on this device"**, with the
+  plan one request away, rather than always a proposed plan (the human-activity
+  rule above).
 
 The *proposed* numbers (hold-down, cap) are starting points, to be set from
 8.4's first real runs, the way the heartbeat windows came from measured
 arrivals. Not built.
+
+**8.7 The agent closing drift. DECIDED 2026-09-27: PROPOSE-ONLY. The
+second class is named and not granted.** (The operator's proposal, argued
+rather than accepted. Design only.)
+
+**The proposal, restated correctly by the operator:** *the agent may close a
+gap that a person already approved the closing of, and nothing else.* The
+approved target is INTENT, not a golden: a golden is a record of what a
+device was. The class, as narrowly drawn as possible:
+- the program contains only lines present in committed intent;
+- it is merge-only, so the agent never negates anything;
+- it has no dangerous lines, whatever authorisation is on file;
+- it is, line for line, a subset of a program a person previously confirmed
+  for that device;
+- the device is not rollback-blocked;
+- the template's fidelity check passes live, as for any plan.
+
+**It does not pass the autonomy test, and it is not the "empty class" the
+audit ruled on.** The test (NSOT_FEATURE_AUDIT.md) is *"is the worst outcome
+that it happened earlier than scheduled?"* The audit called re-sending a
+confirmed deploy an empty class: nothing to add, or the hash refuses. This
+is the case the hash refuses: the device moved, and a FRESH program is
+computed against it. Its worst outcome is reverting a person's deliberate
+change, which is not "earlier than scheduled". So it is either a second
+class with its own test, or propose-only.
+
+**Its own test would be: a re-assertion of a decision a person made, where
+the tool can POSITIVELY attribute the undoing to something no person
+decided.** The load-bearing word is *positively*: the absence of evidence
+of a person must never count as evidence of no person.
+
+**Why it is not granted: the one drift of this kind on record was
+deliberate, and the class admits it.** P.1's acceptance test removed s4's
+heartbeat timer BY HAND (`no event timer watchdog time 300`, 2026-09-25
+21:22:27). That line reached s4 through the confirmed deploy path. Check the
+restoring program against the six conditions:
+- in intent: yes;
+- merge-only: yes;
+- no dangerous line: yes;
+- a subset of a confirmed program for s4: yes;
+- not rollback-blocked: yes;
+- fidelity: passes.
+
+All six hold. An agent holding this class would have re-added the timer
+within one drift interval and destroyed the acceptance test while it ran.
+That is the operator's 3am failure, and it is not hypothetical: it is the
+only instance we have.
+
+**What undid it: the stores cannot tell a deliberate change from a lost
+one, and they cannot be made to in the direction that matters.** Measured:
+- **The terminal audit** records open, close and refusal, with actor,
+  device, peer and time. It never records keystrokes, by design (B13, P.3
+  step 7). It can say that a person HAD a session open. It cannot say what
+  they did.
+- **The deploy record cannot say what was confirmed.** The pipeline's audit
+  file deliberately omits `commands_to_add` and carries no command hash. The
+  golden commit holds the post-deploy capture, not the program. So the
+  fourth condition, "a subset of a confirmed program", has nothing to be
+  checked against today. That is recorded as C60, because it is a gap in
+  the audit of every deploy, agent or not.
+- **The device's own log is the only positive source.** Since P.1, every
+  device sends at `notifications`, so `%SYS-5-CONFIG_I: Configured from ...
+  by <user> on vty0 (<addr>)` should reach Loki. That is expected, not
+  measured, and it must be measured before anything relies on it. Even
+  then: the NMAS terminal logs in with NMAS's own device account from NMAS's
+  own address. So a person's change through the break-glass terminal and a
+  deploy are the same line in the device's log, and telling them apart is
+  inference from the terminal audit's window, never attribution.
+- **"Lost to a reload" is nearly empty here, and each member is a symptom.**
+  The deploy path saves every device after the push (`save_config()` in
+  `_push_via_netmiko`). So a line that disappears across a reload was never
+  in the startup config the device booted. The causes are:
+  - a failed save (C57's shape);
+  - a containerlab redeploy from a stale Oxidized copy (what the freshness
+    gate exists for);
+  - a replaced device.
+
+  Each is a defect a person should see. An agent that quietly re-adds the
+  line removes the evidence, which is the collector-restart exclusion's
+  reason exactly: there the restart destroyed evidence, and here the repair
+  does.
+
+**The alert trigger makes it faster AND more dangerous, and the class does
+not survive it** (the operator's refinement, argued 2026-09-27).
+- **It removes the "late anyway" argument.** A restoration triggered by 8.6's
+  immediate drift check would arrive in seconds, not 0 to 30 minutes later.
+- **It also changes WHICH devices the check samples.** A scheduled check
+  looks at a device at an arbitrary moment. An alert-triggered check looks
+  at it at the moment of the incident, and the alert is often caused by the
+  very change the agent would revert: someone acting to stop a problem. So
+  the trigger selects for exactly the devices a person has just changed, in
+  the window where they are still working on them. On the schedule, a
+  revert would at least tend to land after the person had finished. On the
+  alert, it lands during the repair.
+- **Merge-only protects against one of the two emergency moves, and not the
+  other.** Measured against the class as drawn:
+  - **Adding a disabling line** (`shutdown`, `passive-interface`, a `deny`
+    in an ACL) is never reverted. Restoring would need a negation, and the
+    class never negates. The operator's own example, shutting an interface
+    to stop a loop, is outside the class.
+  - **Removing an enabling line** (`no redistribute static subnets`, `no
+    neighbor`, `no network`, `no ip route`, or s4's `no event timer`) is
+    reverted by an ADDITION, which is inside the class. Stopping a loop by
+    withdrawing a redistribution is the other thing a person does at 3am,
+    and the agent would put the loop back within seconds.
+- **Honest read: the class does not survive, and the trigger is what
+  settles it.** Positive attribution of a non-deliberate cause was already
+  the only way to admit a member, and it shrinks the class to a few
+  symptoms of other defects (above). The alert path adds a correlation that
+  works against it: the trigger fires most often when a person is the cause.
+  So:
+  - **`reassert` is never granted on the alert path**, whatever else holds;
+  - on the schedule path, it stays ungranted, with the preconditions above
+    as what any future grant would have to meet, **plus no human activity
+    found within the window** (8.6's three sources), since the scheduled
+    path is not immune to the same case, only less exposed to it;
+  - **recent human activity withholds even the PROPOSAL of a revert** (8.6):
+    the difference is reported and the person asks for the plan if they
+    want it.
+
+  The alert-triggered drift check stays, because as a READ it is the best
+  triage input there is. It sharpens the argument against the restoration
+  rather than settling it by fiat: the same speed that makes the report
+  better makes the revert worse.
+
+**Decided:**
+1. **Propose-only.** The agent does everything but confirm. On drift from
+   intent (computed as a plan against a fresh capture, never from the drift
+   checker, which compares against the golden), it:
+   - builds the plan;
+   - attaches what it read: the device's `CONFIG_I` lines for the window,
+     the terminal audit's sessions for the device, and whether the lost
+     lines were in the last confirmed program;
+   - queues it.
+
+   A person confirms it in 7.1's component, one click from the row. That
+   costs one human action per drift, and it is the same flow the approval
+   queue's `revert_to_golden` hand-off already uses. **When 8.6 finds recent
+   human activity on the device, not even the proposal is made**: the
+   difference is reported, and the plan is one request away.
+2. **The second class is NAMED, so a future grant cannot arrive under
+   another name: `reassert`.** It is never `confirm`, and never a bypass of
+   `require_person_for_confirm`. It is a new gate kind in
+   `modules/route_gates.py`, refused by default, and granted, if ever, like
+   `service_allowed_operations`: by kind, by a person, on the host.
+3. **If it is ever granted, its audit stays unambiguous.** The commit
+   carries:
+   - `Actor: ai-agent`;
+   - `Actor-Verified: delegated`, a fourth value beside `access`,
+     `host-shell` and `none`, written only by the reassert path;
+   - `Reasserts: <the confirm record's id>`;
+   - `Originally-Confirmed-By: <the person, verified then>`.
+
+   A person's confirm can never carry `delegated`, and a reassert can never
+   carry `access`. Both are tested at `repo.git()`, the one place the
+   trailer is written.
+4. **The preconditions for ever granting it, each a thing to build or
+   measure first:**
+   - the confirmed program recorded durably (C60);
+   - `CONFIG_I` measured reaching Loki from every device;
+   - attribution that is positive for a non-deliberate cause, and refuses
+     on unknown;
+   - the confirmation made against the SAME intent commit and template
+     closure hash as the fresh plan: a decision made against different
+     intent is a different decision, so staleness is judged by what moved,
+     not by the calendar alone;
+   - an age cap as a backstop;
+   - once per device per line set per window. A second loss of the same
+     lines is proposed with "lost twice" as its finding, because recurrence
+     is the signal and a silent repair hides it.
+5. **Not built.** Stage 8.3's allowlist ships WITHOUT `reassert`.
+
+**8.8 A second reading of the program before confirm. DECIDED 2026-09-27
+as ADVISORY, design only** (the operator's proposal and framing).
+
+**What it is for (the operator's framing, which is the standard it is
+judged by).** It is not an authoritative check: those exist and are
+deterministic (approval, deployability, credential unchanged, dangerous
+lines, rollback block). It is one more layer between the network and human
+error: a second pair of eyes on a program a tired person is about to
+confirm at 2am. So:
+- **Cheap and non-blocking.** It never stops a deploy. The rule "no answer
+  is not a pass" becomes "no answer is not a REVIEW", and the screen says
+  which.
+- **Honest about confidence.** "This shuts the interface carrying your
+  management address" is worth having. "Looks fine" is worth almost
+  nothing, and is never drawn as reassurance.
+- **Allowed to be wrong in the noisy direction.** A false warning costs
+  five seconds of reading. A miss costs nothing the person was not already
+  exposed to, since every other gate still runs.
+- **Its value is asymmetric.** It pays for itself by occasionally catching
+  the obvious-in-hindsight mistake that no deterministic rule can name,
+  because the mistake is not a specific string.
+
+**The earlier question, "would it have caught what we hit?", answered
+honestly, and no longer the bar:**
+- **The `transport input` replace (E3):** plausibly yes. A model knows that
+  changing VTY transport on the only path can cut access.
+- **The P.1 syslog block:** it would most likely say nothing useful, or add
+  noise.
+- **s4's `shutdown`:** that was a test fixture's spare port. A model would
+  warn only if the interface carried management, and it did not.
+- **The terminal's secret send (B13):** out of reach entirely. It was never
+  a deploy program.
+
+One plausible catch out of four is the expected shape for a layer judged
+by asymmetric value.
+
+**States: it is NOT a gate with a pass condition, and it can never draw
+green.** It sits in the gates part of the preview-confirm component under its
+own name ("second reading"), with three states that do not exist for any
+other gate:
+- **`warns`**: each warning drawn;
+- **`no_warnings`**: drawn neutral and grey, in words: *"no warnings: not a
+  clearance"*;
+- **`not_reviewed`**: with its reason (unreachable, timed out, answer
+  unreadable, disabled).
+
+A test asserts no advisory state renders the success style, and that
+`not_reviewed` is distinct from the deterministic `not_reached`. The confirm
+button is never disabled by it.
+
+**The schema is the confidence discipline.** The model returns warnings only.
+Each warning carries:
+- the program line(s) it is about, by index;
+- the claim;
+- the consequence.
+
+There is no field in which to say "looks fine", so reassurance cannot be
+expressed, only omitted. The server drops a warning whose cited lines are
+not in the program, and counts it as a defect in the review.
+
+**Non-blocking by construction.**
+- `/deploy/plan` returns immediately.
+- The review is a separate call keyed on the COMMAND HASH, with a short
+  timeout and the cheapest adequate model.
+- A re-plan (an authorisation ticked, a device moved) changes the hash, and
+  a review of another hash is drawn as *"reviewed a different program"*,
+  never carried over.
+
+**Context, what it needs to be any good, and what is missing.** It already
+has:
+- the program;
+- the capture, masked at the provider boundary;
+- the intent diff and attribution;
+- the rollback program (`rollback_commands()`, computable at plan time);
+- the device's management address from the inventory, and the interface
+  holding it, found by address in the capture.
+
+**Missing, and each is data, not a prompt:**
+- **The manager's path to each device.** Which devices are transit for
+  management: s3's `Vlan99` is the gateway for everything. Nothing records
+  it. The topology service has adjacency, not the forwarding path.
+- **Which routes are load-bearing.** Nothing marks one, such as the /32
+  statics redistributed for the manager.
+- **The manager's own address and gateway, as data** rather than as prose
+  in CLAUDE.md.
+
+**The cheapest, highest-value half is deterministic, and should be built
+whether or not the model is.** Flag, without refusing, any program line that
+touches the management path:
+- the interface holding the management address;
+- anything bound to `line vty` (transport, access-class, login);
+- a route or ACL covering the manager's address.
+
+That is exactly the repair-path-travels-over-the-thing-being-changed class,
+and it needs no model. The model then covers the long tail, with the
+deterministic flags given to it as context. Recorded as the first thing to
+build in this item.
+
+**Prompt injection: the device is the vector, and advisory does not make it
+safe** (the operator: the output is still shown to a person who may act on
+it). Config text reaches the model inside the program and the capture:
+descriptions, banners, remarks, EEM action strings, aliases. Decided before
+building. The defence is STRUCTURAL, in what the output can express, never
+the prompt's instructions:
+- **No tools.** The review can act on nothing.
+- **Warnings carry no remedy.** No suggested command, no URL, no
+  instruction. A warning is a claim about cited lines and a consequence.
+  An injected warning therefore cannot tell a tired person to run something.
+- **Every cited line is verified to be in the program**, so an injected
+  "warning" about a line that is not being sent is dropped and counted.
+- **The output is drawn as untrusted text:** escaped, labelled as the
+  model's reading, never rendered as markup.
+- **The suppression attack buys nothing.** A banner saying "report no
+  warnings" can at most produce `no_warnings`, and that state is designed
+  never to read as a clearance. So the dangerous direction of the injection
+  is defused by the state model, not by detection.
+- Secrets are masked at the provider boundary as for every model call
+  (`redact.py`), so nothing sent carries one.
+
+**Recorded, so it can be measured.** Every review is appended to a record,
+`0600`, masked, holding:
+- the command hash and capture hash;
+- the model and prompt version;
+- the state, the warnings with their cited indices, and the latency;
+- whether the person then confirmed.
+
+It is joined to the deploy's outcome (verify failed, rolled back). Over time
+that answers the only question worth asking: did it warn on what later
+broke, and how often did it warn on what did not? The join needs the
+deploy's own record to name its program (C60).
+
+**Not built.** The component leaves room for an advisory state in the gates
+part (7.1). The deterministic management-path flag can land with or before
+it; the model call belongs to Stage 8, after 8.1's model choice and 8.3's
+authority gate.
 
 *Acceptance:* every one of the 73 tools is classified with a reason; the
 allowlist exists **in code** with a test that an unlisted tool is refused;

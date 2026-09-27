@@ -508,6 +508,12 @@ result, 18 keys left UNDRAWN (117 to 99).
 
 Each failed the tests aimed at it, and nothing else.
 
+**Room left for Stage 8.8** (decided 2026-09-27, not built): the
+second reading is drawn in the gates part with advisory states that never
+render the success style (`warns`, `no_warnings`, `not_reviewed`). When it
+lands, those states join `GATE_STATES` with a test that none draws green.
+Nothing in 7.1 draws them yet.
+
 **Next, in the approved order:** restore, onboarding, NetBox import/remove,
 then bulk intent. `test_preview_confirm.py`'s `RETROFIT_PENDING` lists them
 and only shrinks. Bulk intent has **no screen**: its routes are reached by

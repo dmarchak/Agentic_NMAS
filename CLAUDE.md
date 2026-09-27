@@ -4795,6 +4795,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   source too, and a control that nulls the attribution in the adapter fails
   the anchor. Wherever a transformation sits between a payload and its
   renderer, the check has to cover the transformation.
+- **A trigger that fires on an incident samples the moment a person
+  intervened** (8.7, the operator's case, 2026-09-27). A scheduled check
+  looks at a device at an arbitrary time; an alert-triggered one looks at it
+  when the alert fired, and the alert is often caused by somebody's fix. So
+  the faster trigger that makes a READ better makes an ACTION worse, and
+  "seconds instead of 30 minutes" moves an automated revert from after the
+  repair into the middle of it. Before wiring an action to an event, ask what
+  else the event correlates with.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
@@ -4808,7 +4816,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **38 open at 2026-09-27**, counted from the rows: 33 recorded only in
+present when each was recorded. **39 open at 2026-09-27**, counted from the rows: 34 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
@@ -4871,6 +4879,21 @@ Stage 8's triage trigger is decided as a READ, never an inbound push
 page and the agent both consume it; grouping is on the ONSET
 (`startsAt` minus the rule's window), because per-device windows fire one
 Loki outage up to 536 s apart.
+**Two agent designs argued and recorded 2026-09-27, neither built**
+(NSOT_PLAN 8.7, 8.8):
+- **8.7, the agent closing drift: PROPOSE-ONLY.** The class ("re-apply a
+  program a person already confirmed") fails the autonomy test. The one
+  instance on record, s4's timer removed by hand for P.1's acceptance, passes
+  all six of its conditions. The alert-triggered drift check (now in 8.6)
+  makes a revert arrive in seconds, during the repair that caused the alert.
+  `reassert` is named, with `Actor-Verified: delegated`, so a grant cannot
+  arrive under another name. It is never granted on the alert path, and
+  recent human activity withholds even the proposal.
+- **8.8, a second reading before confirm: ADVISORY.** It is cheap and never
+  blocks. Its states can never draw green (`warns`, `no_warnings: not a
+  clearance`, `not_reviewed`). Its warnings cite program lines and carry no
+  remedy, which is the structural answer to injection through device text.
+  The deterministic management-path flag is built first.
 Stage 6 does not close first. 6.1, a live exposure, is fixed on its own
 schedule, and 6.2 comes before Stage 8. NSOT_STAGE7_PLAN.md's numbering
 holds.
