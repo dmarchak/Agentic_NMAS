@@ -76,17 +76,45 @@ def stem(rule: str) -> str:
     return re.split(r"<", rule)[0].rstrip("/")
 
 
+def tail_words(rule: str) -> list:
+    """The literal path words after a route's first converter
+    (``/templatize/committed/<h>/revert`` -> ``["revert"]``)."""
+    if "<" not in rule:
+        return []
+    tail = rule[rule.index("<"):]
+    return [w for w in re.split(r"<[^>]+>|/", tail) if w]
+
+
+#: How near a tail word must be to count: an assembled URL names its
+#: action close by. `resolveApproval` builds `/ai/approvals/${id}/${action}`
+#: with `'approve'` a few lines above, and `'reject'` in the card's onclick
+#: about 2,500 characters away (measured: 1,500 lost reject, 4,000 keeps it
+#: and still finds no `revert` near the intent editor's fetches).
+TAIL_WINDOW = 4000
+
+
 def path_references(corpus: str, rule: str, has_args: bool) -> set:
     """The methods with which *corpus* references *rule*'s path (``None``
-    for a reference whose method cannot be read)."""
+    for a reference whose method cannot be read).
+
+    A route with literal words AFTER its converter needs those words near
+    the reference too. The stem alone made `'/templatize/committed/' + host`
+    (the editor's own route) a reference to
+    `/templatize/committed/<host>/revert`, which no page sends: intent revert
+    counted as reachable with no GUI at all (found 2026-09-27 by the result
+    survey, which needed this list to be true)."""
     s = stem(rule) if has_args else rule
     if not s or s == "/":
         return set()
+    words = tail_words(rule) if has_args else []
     found = set()
     for m in re.finditer(re.escape(s), corpus):
         after = corpus[m.end():m.end() + 1]
         if has_args:
             if after != "/":
+                continue
+            near = corpus[max(0, m.start() - TAIL_WINDOW):m.end() + TAIL_WINDOW]
+            if any(not re.search(rf"\b{re.escape(w)}\b", near) for w in words):
                 continue
         elif after and (after.isalnum() or after in "_-/"):
             continue

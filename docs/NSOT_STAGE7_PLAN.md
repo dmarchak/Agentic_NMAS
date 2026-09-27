@@ -657,6 +657,8 @@ exercises what a person actually does. After it: onboarding, whose result
 half then comes with the component and ends the false toast; NetBox
 import/remove, whose import outcome draws C8's fields; bulk intent.
 
+**Step 1 BUILT (2026-09-27):** `tests/test_results_are_drawn.py`, with the survey as its measured list (33 pending, 8 with no GUI, 0 drawn by the component), `FALSE_GREEN` (3) and `UNESCAPED` (2). Writing it found C87: the reachability check had counted intent revert reachable because the editor's own fetch shared its prefix.
+
 **The overlap with 7.3, stated:** capture and scoped restore are the first
 Device-page ACTIONS. 7.3 builds the rest of that page around them rather
 than beside them.

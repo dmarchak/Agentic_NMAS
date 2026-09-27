@@ -68,6 +68,7 @@ KNOWN_UNREACHABLE = {
     "GET /templatize/rolled-back": (A, "rollback-blocked devices; a Needs attention row (7.2)"),
     "GET /templatize/rolled-back/retries": (A, "the retry record; Device, History (7.3)"),
     "POST /templatize/rolled-back/<path:hostname>/retry": (A, "the ONLY way out of a rollback block; Device, Actions (7.3)"),
+    "POST /templatize/committed/<path:hostname>/revert": (A, "revert one intent commit (the documented way out of a rollback's intent); Device, Actions (7.3). Counted reachable until 2026-09-27 because the editor's own fetch shared its prefix"),
     "POST /templatize/bulk/preview": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
     "POST /templatize/bulk/apply": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
     "POST /templates/revoke/<path:rel_path>": (A, "withdraw an approval with a reason; Source of truth, Templates (7.6)"),
@@ -125,7 +126,11 @@ KNOWN_UNREACHABLE = {
 #: the first ceiling at 54 by a coarser method (per path, not per method);
 #: this is the measurement, and it lands on 54 by a different route: the
 #: per-method split found three halves the path check counted as reached.
-CEILING = 54
+# 54 -> 55 on 2026-09-27, and a CORRECTION rather than a loosening: intent
+# revert never had an entry point, and was counted as reached because the
+# editor's `'/templatize/committed/' + host` matched its stem. A route's
+# words after its converter must now appear near the reference.
+CEILING = 55
 
 
 @pytest.fixture(scope="module")
@@ -214,3 +219,20 @@ class TestNonGuiConsumers:
 
     def test_only_one_consumer_cannot_be_checked(self):
         assert sum(1 for c, _ in NON_GUI.values() if c is None) <= 1
+
+
+class TestTailWordsAfterAConverter:
+    """A reference to a route's STEM is not a reference to every route under
+    it: `/templatize/committed/<h>/revert` was counted reached by the
+    editor's `'/templatize/committed/' + host` (found by the result survey,
+    2026-09-27). Anchored both ways, from the shipped pages."""
+
+    def test_intent_revert_is_not_reached(self, reach):
+        assert reach["POST /templatize/committed/<path:hostname>/revert"] is False
+
+    def test_an_assembled_url_still_reaches_its_route(self, reach):
+        """Control: `/ai/approvals/${id}/${action}` reaches both actions."""
+        for pair in ("POST /ai/approvals/<entry_id>/approve",
+                     "POST /ai/approvals/<entry_id>/reject",
+                     "POST /templatize/committed/<path:hostname>"):
+            assert reach[pair] is True, pair

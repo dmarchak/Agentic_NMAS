@@ -1018,6 +1018,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_route_reachability.py` | 7.0 (1): every (method, route) pair is reachable from a rendered page (both pages, with a device; `url_for` in template source counted), non-GUI with a consumer shown to reference it, or allowlisted with its group and home; per METHOD where a PATH mixes a read and a write (decided per path: `/drift/settings` is two rules); exact both ways, ceiling pinned at the measured 54; anchors each way. `tests/route_references.py` is the shared reader |
 | `test_invalidation_map.py` | 7.0 (2): every mutating route (115, from `url_map`) declares the data it changes or `Nothing` with a reason, and an undeclared one is found (a throwaway app is the built-in control); the response carries the keys (header always, `invalidates` in a JSON body) and is otherwise unchanged; subscriptions both directions with floors, and a shrinking list of declared keys nobody subscribes to yet; the shipped client EXECUTED in duktape against a real response's header, a failed re-fetch marking the panel with the time of the value shown; the device list redrawn from the index's own templates (the 0-to-1 case) |
 | `test_payload_is_rendered.py` | 7.0 (3): 27 declared renderers, each against a REAL response (`tests/payload_providers.py`; a refusal is a broken fixture, never a payload); forward, every carried key is read by a declared function (comments stripped, lookup tables counted); reverse, a depth-one read on the payload names a carried key; exemptions capped at ten; two shrinking lists (UNDRAWN 99, PHANTOM 18) compared exactly; since 7.1 a server-side adapter's reads count, because it decides what reaches the screen; anchors `commands`/`dangerous`/`attribution` (read by the adapter) and `preview`/`lines`/`from_this_edit` (drawn) on `/deploy/plan`, `list` on `/onboard/pending`, `commands` on the restore preview. Found C55 |
+| `test_results_are_drawn.py` | 7.1 step 1: every action gated confirm, approve or publish_remote (41, the gate table) shows its result where it can be read again, or is placed: pending (33, measured, only shrinks) or no GUI (tied to the reachability list); a toast is never enough for this population, and the bar is shown refusing; colour is part of the result (`FALSE_GREEN`: Save All, the NetBox sync card, onboarding Create) and the first XSS-shaped finding is pinned (`UNESCAPED`) |
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
 | `test_no_get_returns_a_stored_secret.py` | B11 over the SURVEYED population (C55): a distinct value planted in every store (settings, credentials, device passwords, the collector config, goldens, backups, the queue, chat histories, the config cache, variables, `.env`); EVERY GET swept with its arguments filled by the planted objects' names, anonymous and as a person; its secret classes matched to the checker's; four known leaks (C56) in a list that only shrinks |
@@ -5020,6 +5021,23 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   can prepare, preview, confirm, read the result and find the record again,
   all from the interface. 7.1 is reshaped to that
   ([NSOT_STAGE7_PLAN.md](docs/NSOT_STAGE7_PLAN.md), "7.1 reshaped").
+- **A check that verifies drawn fields are correct cannot see a field
+  nobody draws** (the operator, 2026-09-27, C85). C8 was fixed so that a
+  partial NetBox import could not read as clean. The fix landed in the DATA
+  (`write_failures`, `partial` and `complete` in the stored summary) and
+  never reached the SCREEN: the sync card reads `failed` and draws green.
+  The payload-to-render check could not see it, because the fields are
+  drawn nowhere rather than drawn wrongly. `test_results_are_drawn.py`
+  (7.1 step 1) asks the complementary question of a population that is
+  the gate table itself: every action that changes a device or the record
+  shows its result where it can be read again. A toast is enough only when
+  the action changes nothing durable and has no operands worth re-reading,
+  and every gated kind fails that by construction. **Colour is part of the
+  result.** A green toast on a partial success is a false statement in a
+  different medium, and three places were making one: Save All's toast,
+  the NetBox sync card, and onboarding's Create. With C83 (every golden
+  commit's subject says "baseline"), that is the word or the colour
+  asserting more than the operation earned.
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
   The list covers a stored config at the ref, printable ASCII, and
@@ -5059,7 +5077,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **49 open at 2026-09-27**, counted from the rows: 43 recorded only in
+present when each was recorded. **50 open at 2026-09-27**, counted from the rows: 44 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
