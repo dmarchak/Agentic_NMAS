@@ -657,6 +657,8 @@ exercises what a person actually does. After it: onboarding, whose result
 half then comes with the component and ends the false toast; NetBox
 import/remove, whose import outcome draws C8's fields; bulk intent.
 
+**Capture must ask what the rest of the tool asks** (C89, the operator, 2026-09-27): a terminal change plus Save All became a golden, a baseline tag and a pushed commit in four minutes, and capture silences the drift checker. Proposed for step 4, awaiting the operator's decision: capture previews each device's diff against its golden and against committed intent, and is confirmed per device (Save All joins it); a baseline tag needs every capture to match its committed intent (measured: this denies exactly `baseline/20260927T154517Z` today); and every golden commit carries a computed `Intent-Match:` trailer.
+
 **Step 1 BUILT (2026-09-27):** `tests/test_results_are_drawn.py`, with the survey as its measured list (33 pending, 8 with no GUI, 0 drawn by the component), `FALSE_GREEN` (3) and `UNESCAPED` (2). Writing it found C87: the reachability check had counted intent revert reachable because the editor's own fetch shared its prefix.
 
 **The overlap with 7.3, stated:** capture and scoped restore are the first
