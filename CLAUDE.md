@@ -4597,7 +4597,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   third party during onboarding. So a ZTP reservation carries no route and no
   resolver (options 3, 6, 33, 121), and that is a CHECK over the EFFECTIVE
   options (global, shared-network, subnet, reservation), not a fact about
-  subnet 255 that holds because nobody has touched it.
+  subnet 255 that holds because nobody has touched it. **M3 sharpened it:
+  withholding stops the CALL, not the ATTEMPT.** With no resolver the node
+  broadcast `A? tools.cisco.com` to `255.255.255.255:53` (8 queries, 0
+  replies), so the segment sees it reach for Cisco, and anything answering
+  broadcast DNS there would hand it a resolver with no DHCP option at all.
+  So D4 has a second condition: nothing on the ZTP segment answers DNS. The
+  node's parameter request list asks for 3, 6 and 33, which is the measured
+  reason D4 is a check and not a default.
 - **A CONFINED ROOT PROCESS IS NOT ROOT FOR FILE PERMISSIONS** (the
   operator, P.6 D1, 2026-09-26). `sudo kea-dhcp4 -t` could not read a
   `0640 dmarchak:_kea` fragment: Kea's AppArmor profile withholds

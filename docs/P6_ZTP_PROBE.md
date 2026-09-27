@@ -688,6 +688,50 @@ for instead), and whether M4 needs udp/69 opened in ufw with TFTP's
 connection tracking, or a different transport. Teardown is step 7, as in
 M1. Leave `.50`'s reservation in place for M4.
 
+### Observed: M3, second run (2026-09-27): every prediction held but one
+
+Before the console, `/launch.py` in the container hashed to `972a0f72…` and
+the log carried the three lines in order, so the instrument was the one
+intended this time.
+
+| # | Observed |
+|---|---|
+| P-M0 | **Passed on a fresh node, with no hand erase:** `% Failed to initialize nvram`, then `No startup-config, starting autoinstall/pnp/ztp...`. The chassis serial changed too (`9ZPRULBCRA3`, not `9V5EGCL4W1N`), so this is the pristine base, not the install overlay |
+| P-M2d | **Passed:** three DISCOVERs from Gi1 (`0c:00:03:50:8d:00`) on the probe's docker bridge, unanswered, and `SETUP: new interface GigabitEthernet1 placed in shutdown state` |
+| P-M3a | **Passed:** `Acquired IPv4 address 10.255.0.50 on Interface GigabitEthernet2`, with the full DORA on `br-mgmt` (01:29:48–01:30:18). **The reservation the tool's mechanism wrote answered a device that asked** |
+| P-M3b | **Passed:** `RRQ "bp-ztp-a.cfg" octet` (21 bytes, so no TFTP options) to `10.255.0.10:69`, retried for two minutes with backoff, each answered `ICMP udp port 69 unreachable`. **D2's transport is decided by measurement: TFTP, port 69, the filename from option 67** |
+| P-M3c | **Refuted, and the refutation sharpens D4:** 8 DNS queries for `tools.cisco.com` (A and AAAA) sent to `255.255.255.255:53`, broadcast because the node has no resolver, and 0 replies. D4's posture stopped the node REACHING Cisco; it did not stop it TRYING, in the open, on the segment |
+
+**Read from the capture (read-only, on the lab host), beyond the operator's
+report:**
+
+- **Kea's ACK carried exactly** mask, hostname, lease times (51, 58, 59),
+  server ID, client ID, 66 (`10.255.0.10`) and 67 (`bp-ztp-a.cfg`). **No 3
+  and no 6: D4's posture is shown on the wire**, not only in the config.
+- **`hostname: router` is an ECHO, not a configured level.** The node sent
+  `Hostname (12) "Router"` in its DISCOVER and REQUEST, and Kea returned it
+  lowercased. So it came from the request, and no level of Kea's config
+  held it. Kea echoes client-identity options (12, 61) and nothing else, so
+  no echo can deliver a route or a resolver. D4's enumeration of CONFIGURED
+  levels stays complete for its four codes.
+- **The node ASKS for what D4 withholds.** Its parameter request list is 1,
+  66, **6**, 15, 44, **3**, 67, 12, **33**, 150, 43, 125. Kea sends an
+  option the client requests, so a 3 or 6 at any level would have been
+  delivered. That is why D4 must be a check rather than a default. Its
+  vendor class is `ciscopnp`, and it asks for 43 (a PnP server).
+- **Nothing on the segment answers DNS:** the NMAS host listens on
+  `127.0.0.53`/`.54` only, and none of the nine fleet goldens carries
+  `ip dns server`. A host that answered broadcast DNS would hand the node a
+  resolver with no DHCP option at all. So "nothing answers DNS on the ZTP
+  segment" is D4's second condition (P6_ZTP.md).
+- **The name is not PnP's.** M1's re-run resolved `devicehelper.cisco.com`
+  (the PnP redirect); these ask for `tools.cisco.com`, Cisco's Call Home
+  endpoint (Smart Licensing's call-home transport). So a second subsystem
+  reaches for Cisco. Which one is not established by the capture. On the
+  console, `show call-home profile all | include tools`,
+  `show license status | include Transport|URL` and
+  `show logging | include CALLHOME|SMART_LIC` would say.
+
 ### M4 — does the fetched config apply, and is the staged credential then accepted
 
 Onboard `bp-ztp-a` through the wizard with source `ztp`, once the build exists

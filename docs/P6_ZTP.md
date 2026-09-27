@@ -140,12 +140,56 @@ writes nothing to disk. It serves:
 
 Anything else is refused and recorded.
 
-The transport is a measurement, not a choice (M3):
+**The transport is TFTP, decided by measurement (M3, 2026-09-27).** Offered
+66 and 67, the node sent `RRQ "bp-ztp-a.cfg" octet` to port 69: 21 bytes, so
+plain RFC 1350 with no TFTP options (no `blksize`), 512-byte blocks, and a
+bootstrap config of a few blocks.
 
-- **TFTP** needs port 69, which is privileged. The unit would need
-  `CAP_NET_BIND_SERVICE`, which belongs with the unit hardening in 6.5.
-- **HTTP** on the app's own port needs nothing new, if the platform accepts an
-  HTTP URL in option 67.
+**What that costs on the host (measured):**
+- the app's unit (`flask-app.service`) runs as `dmarchak` with no ambient
+  capabilities;
+- `ip_unprivileged_port_start` is 1024;
+- no TFTP library is installed.
+
+Two decisions follow, both the operator's:
+
+**D5. How port 69 is bound** (proposed: (a)).
+
+- **(a) A systemd socket unit** (`ListenDatagram=69`, `BindToDevice=enp6s19`)
+  activating a small `nmas-ztp-responder.service` as `dmarchak`. systemd
+  binds the privileged port, so the process holds no capability at all.
+  `BindToDevice` names the interface, not an address, so it follows D3
+  (derived, never a literal). The responder is its own process, so a fault
+  in it cannot take the app down, and the app's unit is untouched until
+  6.5.
+- (b) `AmbientCapabilities=CAP_NET_BIND_SERVICE` on `flask-app.service`.
+  One line, but it hands the whole web application the right to bind any
+  privileged port, for the sake of one responder.
+- (c) An nftables redirect of udp/69 to a high port the app binds. No
+  capability, but a NAT rule a rebuild must reproduce, and a second place
+  the port lives.
+
+In every case ufw needs `allow in on enp6s19 proto udp from 10.255.0.0/24
+to any port 69`. Only the inbound request needs the rule: the server's DATA
+leaves from a new port and the client's ACKs return on that flow, which
+conntrack already tracks as established. The rule is the second layer; the
+responder's "only the reserved address" is the first.
+
+**D6. The TFTP implementation** (proposed: (a)).
+
+- **(a) A minimal responder in the tool: read requests only, octet mode, no
+  options, retransmit on timeout.** There is no write path to guard because
+  none exists. A write request is answered with a TFTP error and recorded.
+  It is testable over loopback under the network guard.
+- (b) `tftpy`: a new dependency, so the host lock is regenerated (C37), and
+  a library whose server also implements writes, which then has to be shown
+  unreachable.
+
+**The filename is a second operand, not the key.** The requester's address
+selects the device (only the reserved address is served). The RRQ's filename
+must then equal that reservation's option 67. A mismatch is refused and
+recorded with both names, because a device asking for a file it was not told
+about is a device that is not in the state the tool thinks it is.
 
 ### D3. Where the destination lives
 
@@ -169,6 +213,26 @@ discovery was not measured.
 is the reason: every greenfield device on a network with a way out does this,
 so a deployment that has not thought about it announces its inventory to a
 third party during onboarding.
+
+**Refined by M3 (2026-09-27): withholding stops the CALL, not the
+ATTEMPT.** With no resolver the node broadcast DNS queries for
+`tools.cisco.com` to `255.255.255.255:53`: 8 queries, 0 replies. So anyone on
+the segment can see that it wanted to phone home, and anything on the
+segment that answers broadcast DNS would give it a resolver with no DHCP
+option at all. That is a property of ZTP, recorded as such (the operator's
+framing). D4 therefore has TWO conditions:
+
+1. **no route or resolver OPTION reaches the reservation** (the check
+   above);
+2. **nothing on the ZTP segment answers DNS.** Measured 2026-09-27: the NMAS
+   host listens on loopback only, and no fleet golden carries
+   `ip dns server`. The build's job-health row asks both.
+
+The node REQUESTS 3, 6 and 33 (its parameter request list, read from the
+capture), and Kea sends a requested option wherever it is configured. That
+is the measured reason D4 is a check and not a default. The name it asked
+for is Cisco's Call Home endpoint, not PnP's redirect (M1's re-run), so two
+subsystems reach for Cisco.
 
 **Decided:** a reservation the tool writes carries the address and the
 config-source options it needs (option 67, and 150 or 66 as M3 decides) and
