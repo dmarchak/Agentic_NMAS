@@ -70,6 +70,36 @@ def reservations_of(config_args, subnet_id=SUBNET_ID):
             for r in subnet(config_args, subnet_id).get("reservations") or []]
 
 
+#: D4 (decided 2026-09-26): what gives a configless node a route or a
+#: resolver, and so a path to Cisco's PnP service. By name and by code.
+FORBIDDEN_OPTIONS = {"routers": 3, "domain-name-servers": 6,
+                     "static-routes": 33, "classless-static-route": 121}
+
+
+def forbidden_options(config_args, subnet_id=SUBNET_ID):
+    """D4: every route or resolver option a reservation in the subnet would
+    EFFECTIVELY receive, from global, shared-network, subnet and reservation
+    option-data, as (level, name-or-code). Client classes are reported as a
+    level that could not be ruled out, never as clean."""
+    codes = set(FORBIDDEN_OPTIONS.values())
+    names = set(FORBIDDEN_OPTIONS)
+    dhcp4 = config_args.get("Dhcp4") or {}
+    levels = [("global", dhcp4.get("option-data") or [])]
+    for net in dhcp4.get("shared-networks") or []:
+        if any(s.get("id") == subnet_id for s in net.get("subnet4") or []):
+            levels.append((f"shared-network {net.get('name')}", net.get("option-data") or []))
+            dhcp4 = dict(dhcp4, subnet4=list(dhcp4.get("subnet4") or []) + list(net.get("subnet4") or []))
+    s = subnet(dict(config_args, Dhcp4=dhcp4), subnet_id)
+    levels.append((f"subnet {subnet_id}", s.get("option-data") or []))
+    for r in s.get("reservations") or []:
+        levels.append((f"reservation {r.get('hw-address')}", r.get("option-data") or []))
+    found = [(level, o.get("name") or o.get("code")) for level, opts in levels for o in opts
+             if o.get("name") in names or o.get("code") in codes]
+    if dhcp4.get("client-classes"):
+        found.append(("client-classes", "defined: could not be ruled out"))
+    return found
+
+
 def with_reservation(config_args, mac, ip, subnet_id=SUBNET_ID):
     """A copy of config-get's arguments with one reservation added to one
     subnet, ready for config-set. Refuses a MAC or an address already
@@ -112,10 +142,20 @@ def main(argv=None):
             s = subnet(got)
             print(f"subnet {SUBNET_ID} {s.get('subnet')} as the RUNNING server holds it:")
             rows = reservations_of(got)
-            for mac, ip in rows:
-                print(f"  reservation {mac} -> {ip}")
-            print(f"  {len(rows)} reservation(s); option-data: "
+            for r in s.get("reservations") or []:
+                opts = ", ".join(f"{o.get('name') or o.get('code')}={o.get('data')}"
+                                 for o in r.get("option-data") or [])
+                print(f"  reservation {r.get('hw-address')} -> {r.get('ip-address')}"
+                      + (f"  [{opts}]" if opts else ""))
+            print(f"  {len(rows)} reservation(s); subnet option-data: "
                   f"{[o.get('name') or o.get('code') for o in s.get('option-data') or []]}")
+            bad = forbidden_options(got)
+            if bad:
+                for level, what in bad:
+                    print(f"  D4 REFUSED: {what} at {level}: a configless node would get a "
+                          "route or a resolver, and a path to Cisco's PnP service")
+                return 1
+            print("  D4: no route or resolver option reaches a reservation here")
             return 0
         new = with_reservation(got, args.mac, args.ip)
         resp = _ok(request("config-set", new), "config-set")

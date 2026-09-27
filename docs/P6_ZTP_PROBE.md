@@ -500,15 +500,129 @@ later, write `[]` the same way and reload.
 
 ### M3 — which transport and filename the node asks for
 
-Boot `bp-ztp-a` again with the reservation carrying option 67 (a filename)
-and a server address. Record, from the wire and the console:
+**M5's result (2026-09-26), which M3 builds on.** Every prediction held. The
+show before any write read 0; after the file was written and config-test
+passed it STILL read 0, so the helper reads the daemon and not the file.
+After the reload, `.50` was present: the include is live. After the
+config-set control, `.50` and `.51`. After the restart, `.50` only (MainPID
+773857, `NRestarts=0`). The tool's `reservation_for()` reads `.50` as
+`reserved` through the Control Agent, so both paths agree. **D1 and C49 are
+closed on measurement.** One precision for the record: `.51` was not put
+through a reload. A reload re-reads the file, so it would have dropped `.51`
+too. A config-set-only reservation vanishes at a reload AND at a restart,
+which is why the step order kept the reload out.
 
-- TFTP or HTTP;
-- the filename requested;
-- the source address.
+**Measured for M3 before writing it (2026-09-26):**
 
-This decides D2's transport. Whether Kea 2.4.1 needs an option definition
-for 150 is recorded here too.
+- Kea 2.4.1 names `tftp-server-name` (66) and `boot-file-name` (67). It has
+  no name for 150, which would need an option definition. So M3 offers 66
+  and 67, the standard pair, and 66 carries an ADDRESS so no resolver is
+  needed (D4).
+- Nothing listens on udp/69 on the NMAS host, and ufw is active. That is
+  fine for M3, which asks only WHAT the node requests: the request is on the
+  wire whatever answers it. Serving it is M4.
+- containerlab's docker bridge for a network is `br-` plus the first 12
+  characters of the network ID (`clab-r6` is `br-2ffe86702089`).
+
+**The reservation M3 adds to.** Both options are `always-send`, so what the
+node is offered does not depend on what it requests, and the wire shows
+exactly that. The filename is the device's name. Only the requesting
+address will decide what M4's responder serves (section 10), so the name is
+for the reader:
+
+```bash
+install -m 0644 /dev/null /etc/kea/nmas/.reservations-255.json.tmp
+printf '[ { "hw-address": "aa:bb:cc:00:02:50", "ip-address": "10.255.0.50", "option-data": [ { "name": "tftp-server-name", "data": "10.255.0.10", "always-send": true }, { "name": "boot-file-name", "data": "bp-ztp-a.cfg", "always-send": true } ] } ]\n' > /etc/kea/nmas/.reservations-255.json.tmp
+mv -f /etc/kea/nmas/.reservations-255.json.tmp /etc/kea/nmas/reservations-255.json
+cat /etc/kea/nmas/reservations-255.json
+sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf; echo "config-test exit=$?"
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
+sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+```
+
+Expect `aa:bb:cc:00:02:50 -> 10.255.0.50  [tftp-server-name=10.255.0.10,
+boot-file-name=bp-ztp-a.cfg]` and `D4: no route or resolver option reaches a
+reservation here`. `show` now applies D4's refusal list over global,
+shared-network, subnet and reservation option data, and exits 1 on a hit. It
+is the preview of the check the build will carry, so M3 cannot start with
+the posture broken.
+
+**The captures, all started BEFORE the deploy** (the Gi1 one right after it,
+because the deploy creates its bridge; the VM takes minutes to reach
+AutoInstall, so it is still before the boot):
+
+Lab host, terminal A (the lab segment, as in M1):
+
+```bash
+sudo tcpdump -ni br-mgmt -e -w /tmp/ztp-a-m3.pcap ether host aa:bb:cc:00:02:50
+```
+
+Lab host, terminal B, live:
+
+```bash
+sudo tcpdump -ni br-mgmt -e -l ether host aa:bb:cc:00:02:50
+```
+
+NMAS host, terminal C (what reaches the host, before its firewall decides):
+
+```bash
+sudo tcpdump -ni enp6s19 -w /tmp/ztp-a-m3-nmas.pcap host 10.255.0.50 or ether host aa:bb:cc:00:02:50
+```
+
+Deploy (lab host), then at once terminal D on the probe's own docker bridge
+(Gi1 under passthrough):
+
+```bash
+cd /home/dmarchak/labs/ztp-a && sudo containerlab deploy -t nmas-ztp-a.clab.yml
+sudo tcpdump -ni "br-$(docker network inspect -f '{{.Id}}' clab-ztp-probe | cut -c1-12)" -e -l port 67 or port 68
+```
+
+If the bridge name comes out as bare `br-`, the network does not exist and
+tcpdump says so: stop there. Then watch the container log (terminal E):
+
+```bash
+docker logs -f clab-nmas-ztp-a-bp-ztp-a
+```
+
+Then the console, answering NOTHING for 15 minutes, as in M1 step 5.
+
+**Predictions, recorded before the boot:**
+
+| # | What will be seen | Prediction |
+|---|---|---|
+| P-M0 | The disk fix, on a FRESH node | The container log says `CONFIGLESS: removing /c8000v-universalk9_8G_serial.17.06.01a-overlay.qcow2`; the console says `No startup-config, starting autoinstall/pnp/ztp`; `show startup-config` reports none. No hand erase this time |
+| P-M2d | Passthrough | DISCOVERs from Gi1's MAC on the docker bridge (terminal D), none answered; no `Acquired IPv4 address … GigabitEthernet1` |
+| P-M3a | Gi2 is answered by Kea | DISCOVER, OFFER, REQUEST, ACK on `br-mgmt`; `Acquired IPv4 address 10.255.0.50 on Interface GigabitEthernet2` |
+| P-M3b | What it asks for, and how | A TFTP read request for `bp-ztp-a.cfg` to `10.255.0.10:69`, seen on terminals A and C. Nothing answers it. Whether AutoInstall then tries its default names (`network-confg`, `cisconet.cfg`, `router-confg`, `ciscortr.cfg`) is recorded, not predicted |
+| P-M3c | D4 on the device | No `PNP_CCO_SERVER_IP_RESOLVED`, no `HTTP_CONNECTED`: without a resolver or a route there is no path to Cisco |
+
+After 15 minutes, answer `no`, press RETURN, and record:
+
+```text
+show startup-config
+show ip interface brief
+show interfaces GigabitEthernet2 | include bia
+show logging | include PNP|DHCP|AUTOINSTALL|Autoinstall|TFTP|Acquired
+```
+
+Stop the captures and read them:
+
+```bash
+sudo tcpdump -nr /tmp/ztp-a-m3.pcap -e | head -60
+```
+
+and on the NMAS host:
+
+```bash
+sudo tcpdump -nr /tmp/ztp-a-m3-nmas.pcap | head -60
+```
+
+Tell me when the node has its lease and I will read it through the tool's
+`lease_for()`, the call phase 2's discovery uses. **What M3 decides:** D2's
+transport (TFTP by option 66/67 as offered, or something the node reaches
+for instead), and whether M4 needs udp/69 opened in ufw with TFTP's
+connection tracking, or a different transport. Teardown is step 7, as in
+M1. Leave `.50`'s reservation in place for M4.
 
 ### M4 — does the fetched config apply, and is the staged credential then accepted
 

@@ -128,3 +128,49 @@ class TestAgainstAFakeKea:
         monkeypatch.setattr(h, "request", lambda c, a=None: {"result": 1, "text": "bad"})
         assert h.main(["reload"]) == 1
         assert "result 1: bad" in capsys.readouterr().err
+
+
+class TestD4ForbiddenOptions:
+    """D4: a ZTP reservation must not effectively receive a route or a
+    resolver. Each level is checked, with a floor that a clean config passes."""
+
+    def test_a_clean_config_passes_and_the_other_subnets_do_not_count(self):
+        # Floor: subnet 10 carries routers, and it is not the ZTP subnet.
+        assert _helper().forbidden_options(_config([FRAGMENT_ONE])) == []
+
+    @pytest.mark.parametrize("where", ["global", "subnet", "reservation", "shared"])
+    @pytest.mark.parametrize("opt", [{"name": "routers"}, {"name": "domain-name-servers"},
+                                     {"code": 33}, {"code": 121}])
+    def test_each_option_is_found_at_each_level(self, where, opt):
+        h = _helper()
+        cfg = _config([dict(FRAGMENT_ONE)])
+        if where == "global":
+            cfg["Dhcp4"]["option-data"] = [opt]
+        elif where == "subnet":
+            cfg["Dhcp4"]["subnet4"][1]["option-data"] = [opt]
+        elif where == "reservation":
+            cfg["Dhcp4"]["subnet4"][1]["reservations"][0]["option-data"] = [opt]
+        else:
+            ztp = cfg["Dhcp4"]["subnet4"].pop(1)
+            cfg["Dhcp4"]["shared-networks"] = [{"name": "mgmt", "option-data": [opt],
+                                                "subnet4": [ztp]}]
+        assert h.forbidden_options(cfg), (where, opt)
+
+    def test_the_config_source_options_are_allowed(self):
+        cfg = _config([dict(FRAGMENT_ONE, **{"option-data": [
+            {"name": "tftp-server-name", "data": "10.255.0.10"},
+            {"name": "boot-file-name", "data": "bp-ztp-a.cfg"}]})])
+        assert _helper().forbidden_options(cfg) == []
+
+    def test_client_classes_are_not_ruled_out(self):
+        cfg = _config([FRAGMENT_ONE])
+        cfg["Dhcp4"]["client-classes"] = [{"name": "x"}]
+        assert _helper().forbidden_options(cfg) == [("client-classes", "defined: could not be ruled out")]
+
+    def test_show_exits_nonzero_on_a_forbidden_option(self, fake_kea, monkeypatch, capsys):
+        path, state = fake_kea
+        state["config"]["Dhcp4"]["subnet4"][1]["option-data"] = [{"name": "domain-name-servers"}]
+        h = _helper()
+        monkeypatch.setattr(h, "SOCKET", path)
+        assert h.main(["show"]) == 1
+        assert "D4 REFUSED: domain-name-servers at subnet 255" in capsys.readouterr().out

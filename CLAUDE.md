@@ -970,7 +970,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_settings_concurrency.py` | C20: concurrent writers (threads AND processes) lose nothing; every read-modify-write holds `settings_lock()` (AST scan with a floor); the file order that failed now passes |
 | `test_proxmox_integration.py` | B6: read-only, token-authenticated, exactly four paths read; the settings card carries every key the client reads |
 | `test_configless_patch.py` | P.6 M1: the configless launch patch checked by AST against the REAL adopted script (a hash-pinned fixture): the base disk booted and the install overlay (which holds a saved startup config) removed, shown by EXECUTING the constructor on a fake root; no config ISO at run time, the console prompt marks the VM running, the watchdog never restarts it; refuses a missing or duplicated anchor, a re-patch, and a production lab's own file |
-| `test_kea_m5_helper.py` | P.6 M5: the helper reads subnet 255 from kea-dhcp4's control socket and adds the config-set control reservation, against a fake Kea socket; refuses a MAC or address already reserved; never calls config-write |
+| `test_kea_m5_helper.py` | P.6 M5: the helper reads subnet 255 from kea-dhcp4's control socket and adds the config-set control reservation, against a fake Kea socket; refuses a MAC or address already reserved; never calls config-write; D4's refusal of route and resolver options (3, 6, 33, 121) at global, shared-network, subnet and reservation level, with client classes reported as not ruled out |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
@@ -4626,7 +4626,7 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **37 open at 2026-09-26**, counted from the rows: 32 recorded only in
+present when each was recorded. **36 open at 2026-09-26**, counted from the rows: 31 recorded only in
 prose, 5 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
