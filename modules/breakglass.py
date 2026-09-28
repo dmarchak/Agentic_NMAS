@@ -384,3 +384,86 @@ def write_record(path: str, payload: dict, passphrase: str) -> dict:
 def read_record(path: str, passphrase: str) -> dict:
     with open(path, "rb") as handle:
         return unseal(handle.read(), passphrase)
+
+
+# ---------------------------------------------------------------------------
+# Currency: does the record hold the credential NMAS holds NOW? (C182)
+# ---------------------------------------------------------------------------
+#
+# The record lives on the operator's laptop and the credentials NMAS holds live
+# on the host, encrypted with the host's key. `describe()` proves the record
+# opens; nothing compared it with the credentials in use, and nothing noticed
+# a rotation making it stale. Both sides compute the SAME salted digest, so
+# the comparison moves no credential between machines, prints no value, and
+# connects to no device.
+
+#: The export log: one row per export made on this host, the per-device
+#: digests and no value (0600). Job health compares its newest row per list
+#: with the credentials held now.
+EXPORT_LOG = "breakglass_exports.jsonl"
+
+
+def currency_digest(hostname: str, username: str, password: str) -> str:
+    """A salted digest of one device's login credential. A GUESSING ORACLE
+    for a weak password, stated so it is not mistaken for nothing: the value
+    goes only to the laptop that already holds the record, and into a 0600
+    log beside the store that holds the credential itself."""
+    material = "\x00".join(("nmas-breakglass-currency", hostname or "",
+                            username or "", password or "")).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()[:16]
+
+
+def digests_of(devices: list) -> dict:
+    """{hostname: digest} for device dicts carrying plaintext credentials."""
+    return {d.get("hostname", ""): currency_digest(d.get("hostname", ""),
+                                                   d.get("username", ""),
+                                                   d.get("password", ""))
+            for d in devices if d.get("hostname")}
+
+
+def compare(record: dict, current: dict) -> list:
+    """Per device: ``current`` (the record holds what NMAS holds), ``differs``
+    (it holds another credential: exported before a rotation), ``left`` (in
+    the record, not managed now: its entry is history) or ``missing`` (managed,
+    not in the record). Sorted by name. Values never enter it: digests only."""
+    out = []
+    for host in sorted(set(record) | set(current)):
+        if host not in current:
+            state = "left"
+        elif host not in record:
+            state = "missing"
+        else:
+            state = "current" if record[host] == current[host] else "differs"
+        out.append({"device": host, "state": state})
+    return out
+
+
+def record_export(data_dir: str, *, list_name: str, devices: list, path: str,
+                  key_fingerprint: str, actor: str, at: float = None) -> dict:
+    """Append this export to the log: when, which list, where it was written,
+    the key's fingerprint and each device's digest. Never a value."""
+    from modules.config import open_secure
+
+    row = {"at": at if at is not None else time.time(), "list": list_name,
+           "path": path, "key_fingerprint": key_fingerprint, "actor": actor,
+           "devices": digests_of(devices)}
+    with open_secure(os.path.join(data_dir, EXPORT_LOG), "a") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return row
+
+
+def last_exports(data_dir: str) -> dict:
+    """``{"state": absent|unreadable|ok, "by_list": {list: newest row}}``.
+    Absent and unreadable are different answers (the settings erasure)."""
+    path = os.path.join(data_dir, EXPORT_LOG)
+    if not os.path.exists(path):
+        return {"state": "absent", "by_list": {}}
+    try:
+        rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "by_list": {}, "error": str(exc)}
+    newest = {}
+    for r in rows:
+        if r.get("list") and r.get("at", 0) >= newest.get(r["list"], {}).get("at", 0):
+            newest[r["list"]] = r
+    return {"state": "ok", "by_list": newest}

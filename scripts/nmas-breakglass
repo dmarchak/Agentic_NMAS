@@ -14,6 +14,17 @@ which otherwise exists only inside `devices.csv`, encrypted with
     python3 scripts/nmas-breakglass verify /media/usb/rcn.bg --live      # on the NMAS host
     python3 scripts/nmas-breakglass restore-key /media/usb/rcn.bg --out data/key.key
 
+Is the record CURRENT (C182)? The record is on one machine and the credentials
+NMAS holds are on the NMAS host, so each side computes the same salted digest
+and only the digests travel. Nothing is printed but states, and no device is
+contacted:
+
+    ssh <nmas-host> 'cd <checkout> && python3 scripts/nmas-breakglass digests --list default' > digests.json
+    python3 scripts/nmas-breakglass verify rcn.bg --against digests.json      # beside the record
+
+Every `export` is logged on the host (digests only), and job health names a
+device whose entry a later rotation has made stale.
+
 `export` and `verify` never print a credential. `reveal` is the only command
 that does, it takes one device at a time, and it says so before it does.
 
@@ -116,6 +127,18 @@ def _export(args):
         return 1
 
     print(f"\nwritten : {out['path']}  mode {out['mode']}")
+    # C182: the export is logged with each device's digest (never a value),
+    # so job health can say when a rotation has made this record stale.
+    try:
+        bg.record_export(_data_dir(), list_name=list_name, devices=devices,
+                         path=os.path.abspath(args.out),
+                         key_fingerprint=bg.key_fingerprint(key),
+                         actor=getpass.getuser())
+        print(f"logged  : {bg.EXPORT_LOG} (digests only), so job health tracks "
+              "whether this record stays current")
+    except OSError as exc:
+        print(f"WARNING : the export was not logged ({exc}); job health cannot "
+              "tell when this record goes stale")
     print("\nVerify it now, from the file, before it leaves this host "
           "(this reads the record back and tests the key it CARRIES):")
     print(f"    python3 scripts/nmas-breakglass verify {out['path']} --live")
@@ -160,6 +183,8 @@ def _verify(args):
           "token -- it proves the record opened, not what is in it.")
 
     rc = 0 if report["complete"] and report["has_fernet_key"] else 1
+    if getattr(args, "against", ""):
+        rc = max(rc, _compare(payload, args.against))
     if not args.live:
         if report["has_fernet_key"]:
             print("\nThis proves the record opens and carries A key. Whether "
@@ -183,6 +208,58 @@ def _verify(args):
     if check["verdict"] == "opens":
         return rc
     return 2 if check["verdict"] == "unproven" else 1
+
+
+def _digests(args):
+    """On the NMAS host: each device's currency digest from the credentials
+    it holds NOW, as JSON on stdout and nothing else, for `verify --against`
+    on the machine holding the record. No value, and no device is contacted."""
+    import json
+    import time
+
+    import modules.breakglass as bg
+
+    list_name = args.list_name or _current_list()
+    devices = _devices(list_name)
+    if not devices:
+        print(f"REFUSED: list {list_name!r} has no devices.", file=sys.stderr)
+        return 1
+    print(json.dumps({"list": list_name, "taken_at": time.time(),
+                      "devices": bg.digests_of(devices)}, sort_keys=True))
+    return 0
+
+
+def _compare(payload, against_path):
+    """The record against the host's digests: per device, whether the record
+    holds what NMAS holds now. Prints no value; contacts no device."""
+    import json
+
+    import modules.breakglass as bg
+
+    try:
+        with open(against_path, encoding="utf-8") as fh:
+            host = json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"\ncompare : FAILED to read {against_path}: {exc}")
+        return 1
+    record = {e.get("hostname", ""): bg.currency_digest(e.get("hostname", ""),
+                                                        e.get("username", ""),
+                                                        e.get("password", ""))
+              for e in payload.get("devices", []) if e.get("hostname")}
+    rows = bg.compare(record, host.get("devices") or {})
+    words = {"current": "current: the record holds the credential NMAS holds now",
+             "differs": "DIFFERS: the record holds an older credential (a rotation since)",
+             "left": "left management: its entry is history",
+             "missing": "MISSING: NMAS manages it and the record has no entry"}
+    print(f"\ncompare : the record against list {host.get('list', '?')} as the NMAS host "
+          f"holds it now (no value printed, no device contacted)")
+    for r in rows:
+        print(f"  {r['device']:<12}{words[r['state']]}")
+    bad = [r for r in rows if r["state"] in ("differs", "missing")]
+    print(f"\n{len(rows) - len([r for r in rows if r['state'] == 'left']) - len(bad)} "
+          f"current, {len(bad)} not: " + ("export the record again on the NMAS host "
+                                          "(nmas-breakglass export)" if bad else "nothing to do"))
+    return 1 if bad else 0
 
 
 def _reveal(args):
@@ -300,9 +377,17 @@ def main() -> int:
     verify.add_argument("--live", action="store_true",
                         help="on the NMAS host: decrypt the stored values "
                              "with the escrowed key and count them")
+    verify.add_argument("--against", default="",
+                        help="a digests file from `nmas-breakglass digests` on the NMAS "
+                             "host: say per device whether the record is current")
     verify.add_argument("--data-dir", default="",
                         help="the application's data directory (default: this checkout's)")
     verify.set_defaults(run=_verify)
+
+    digests = sub.add_parser("digests", help="on the NMAS host: current digests, as "
+                                             "JSON, for verify --against; prints no value")
+    digests.add_argument("--list", dest="list_name", default="")
+    digests.set_defaults(run=_digests)
 
     reveal = sub.add_parser("reveal", help="print ONE device's credential")
     reveal.add_argument("path")

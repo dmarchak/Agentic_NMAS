@@ -496,7 +496,19 @@ def _failed_stage(result: dict) -> str:
 
 
 def summarise(result: dict) -> str:
-    """One honest sentence. The states are not interchangeable."""
+    """One honest sentence. The states are not interchangeable. A device that
+    now holds a new credential also makes every break-glass record exported
+    before it stale (C182), and the message says so: a rotation never
+    mentioned the record, so the recovery path decayed with nothing saying it."""
+    message = _summary(result)
+    if result.get("state") in (ROTATED_PERSISTED, ROTATED_PENDING_PERSIST,
+                               ROTATED_UNVERIFIED, ROTATED_NOT_RECORDED):
+        message += (" The break-glass record now holds its OLD credential: export it "
+                    "again (nmas-breakglass export); job health names it until then.")
+    return message
+
+
+def _summary(result: dict) -> str:
     device = result.get("device", "the device")
     return {
         ROTATED_PERSISTED: (

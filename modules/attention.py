@@ -147,6 +147,8 @@ _JOB_STATES = {
     "socket_down": ("is not listening", "danger"),
     "mismatch": ("does not match what was declared", "warning"),
     "not_run": ("has never run on this host", "warning"),
+    "breakglass_stale": ("is not recoverable from the break-glass record: it holds an "
+                         "older credential", "danger"),
 }
 
 

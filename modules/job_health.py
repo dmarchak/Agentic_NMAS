@@ -934,6 +934,88 @@ def startup_rows(read=None, now: float = None) -> list:
     return rows
 
 
+def breakglass_rows(exports=None, current=None) -> list:
+    """C182: does the break-glass record hold the credential NMAS holds NOW?
+
+    The record lives off the host, so this compares the newest EXPORT this
+    host logged (digests only) with the credentials held now, per list. A
+    rotation since the export makes that device's entry stale, and this row
+    says so until the record is exported again. It claims what was exported
+    FROM THIS HOST; a record replaced elsewhere is not visible here, and a
+    person checks one by hand with `nmas-breakglass verify <record> --against`.
+    Nothing when no list holds a device (nothing to recover)."""
+    import modules.breakglass as bg
+    from modules.config import DATA_DIR
+
+    what = "the break-glass record holds each device's current credential (C182)"
+    export_cmd = "python3 scripts/nmas-breakglass export --list <list> --out <path off this host>"
+    try:
+        current = _current_credential_digests() if current is None else current
+        exports = bg.last_exports(DATA_DIR) if exports is None else exports
+    except Exception as exc:                          # noqa: BLE001
+        return [{"unit": "breakglass", "what": what, "state": "unknown", "max_age_minutes": 0,
+                 "detail": f"could not be checked: {type(exc).__name__}: {exc}"}]
+    current = {ln: d for ln, d in current.items() if d}
+    if not current:
+        return []
+    if exports.get("state") == "unreadable":
+        return [{"unit": "breakglass", "what": what, "state": "unknown", "max_age_minutes": 0,
+                 "detail": f"{bg.EXPORT_LOG} is unreadable ({exports.get('error')}); not the "
+                           "same as current"}]
+    rows = []
+    for list_name, now_digests in sorted(current.items()):
+        last = (exports.get("by_list") or {}).get(list_name)
+        if not last:
+            rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "unknown",
+                         "max_age_minutes": 0,
+                         "action": {"label": "Export the record again on this host, so its "
+                                             "currency is tracked from now on",
+                                    "command": export_cmd.replace("<list>", list_name)},
+                         "detail": (f"no break-glass export of {list_name} is logged on this "
+                                    f"host ({bg.EXPORT_LOG} began 2026-09-28), so nothing says "
+                                    "whether the record holds the credentials in use; compare "
+                                    "one by hand with `nmas-breakglass verify <record> --against "
+                                    "<digests>`, or export again")})
+            continue
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("at", 0)))
+        stale = [r for r in bg.compare(last.get("devices") or {}, now_digests)
+                 if r["state"] in ("differs", "missing")]
+        for r in stale:
+            rows.append({"unit": f"breakglass:{list_name}/{r['device']}", "what": what,
+                         "device": r["device"], "list": list_name, "state": "breakglass_stale",
+                         "max_age_minutes": 0,
+                         "action": {"label": "Export the break-glass record again: it cannot "
+                                             "recover this device as it stands",
+                                    "command": export_cmd.replace("<list>", list_name)},
+                         "detail": (f"the record exported {when} "
+                                    + ("holds an older credential: rotated since"
+                                       if r["state"] == "differs" else "has no entry for it")
+                                    + f" (written to {last.get('path', '?')})")})
+        if not stale:
+            rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "ok",
+                         "max_age_minutes": 0,
+                         "detail": (f"{len(now_digests)} of {len(now_digests)} device(s) current "
+                                    f"in the record exported {when}, as exported from this host")})
+    return rows
+
+
+def _current_credential_digests() -> dict:
+    """{list: {hostname: digest}} of the credentials each list holds now."""
+    import modules.breakglass as bg
+    from modules.config import get_list_data_dir
+    from modules.device import decrypt_field, get_device_lists, load_saved_devices
+
+    out = {}
+    for entry in get_device_lists():
+        name = entry.get("name", "")
+        rows = load_saved_devices(os.path.join(get_list_data_dir(name), "devices.csv"))
+        out[name] = bg.digests_of([{"hostname": d.get("hostname", ""),
+                                    "username": d.get("username", ""),
+                                    "password": decrypt_field(d.get("password", ""))
+                                    if d.get("password") else ""} for d in rows])
+    return out
+
+
 #: An operation's own session (not a long-lived pool's) held this long is
 #: named: a pipeline's longest settle window is 90 s, and the device ends an
 #: idle session at ten minutes, so an operation still holding one after that
@@ -1062,7 +1144,8 @@ def reader_rows() -> list:
 
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
-           startup=None, sessions=None, version=None, readers=None) -> dict:
+           startup=None, sessions=None, version=None, readers=None,
+           breakglass=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1076,6 +1159,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += ssh_session_rows() if sessions is None else list(sessions)
     jobs += version_rows() if version is None else list(version)
     jobs += reader_rows() if readers is None else list(readers)
+    jobs += breakglass_rows() if breakglass is None else list(breakglass)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     gone = sum(1 for j in jobs if j["state"] == "departed")
