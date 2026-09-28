@@ -886,6 +886,7 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
                  "the modification record. A device's `tags` update carries only its routing-"
                  "protocol tags (bgp, ospf, rip, cdp), merged with what it holds."},
     ]
+    what_not += _nb_skipped(d.get("skipped"))
     target = {
         "name": name, "state": "ready" if n else "unchanged", "selectable": True,
         "program": {"lines": lines, "dangerous": [], "authorised": [],
@@ -1310,6 +1311,21 @@ def receipt_history(rows: list, device: str = "") -> list:
     return out
 
 
+def _nb_skipped(groups) -> list:
+    """What an import deliberately did not model (a default route as a
+    prefix, the addresses in an excluded VRF), as what-did-not-happen items:
+    named per class with its devices and its reason, never a failure and
+    never a refusal, and never silent (the operator, 2026-09-28: "5 fewer
+    writes" must be explained)."""
+    out = []
+    for g in groups or []:
+        devices = ", ".join(g.get("devices") or []) or "no device named"
+        out.append({"target": "this import", "kind": "not_modelled", "lines": [],
+                    "text": f"Not imported, on purpose: {g.get('what', '?')} on {devices} "
+                            f"({g.get('count', 0)}), because {g.get('why', 'no reason recorded')}."})
+    return out
+
+
 def netbox_sync_result(summary: dict) -> dict:
     """A NetBox import's outcome as a result (C85, 7.1 step 2).
 
@@ -1355,6 +1371,7 @@ def netbox_sync_result(summary: dict) -> dict:
     for note in s.get("notes") or []:
         did_not.append({"target": "this import", "kind": "declined", "text": str(note),
                         "lines": []})
+    did_not += _nb_skipped(s.get("skipped"))
     if not counted:
         did_not.append({"target": "this import", "kind": "uncounted",
                         "text": "This summary predates the counting of individual writes (C8), so "

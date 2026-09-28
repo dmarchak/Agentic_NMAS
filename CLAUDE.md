@@ -1174,6 +1174,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
 | `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
 | `test_netbox_mask_context.py` | C139: r5's REAL config in the stored-context shape the live NetBox holds is flagged by the checker's scan; masked with the import's own `masked_context()` it passes that INDEPENDENT scan with every other key unchanged; no record of NMAS writing the context, a record of other fields, or another device's record is refused by name; a partly masked context is refused, not masked twice; the dry run writes nothing; apply reads NetBox back, and a write NetBox did not keep is named; no device is UNPROVEN |
+| `test_import_skips_are_named.py` | What the NetBox import deliberately does not model, on r3's REAL config: the excluded VRF's default route (the five /0 refusals of (b)'s import) skipped under the exclusion rule and named, the global static route still imported; the excluded addresses named, not only counted; a /0 outside an excluded VRF skipped as a route; skips merged across devices and lists; the preview and the stored result name each, and a skip is never a failure (`not_modelled`, level unchanged) |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C108: verify checks what the TARGET intent declares (from r1's real captures, OSPFv3 absent before: checked and passes once up; still absent is not a pass and not a rollback; no intent known checks the before-state and says so; the receipt and the shipped renderer draw it; `_deploy_one` carries the ref's intent for a restore and the committed intent for a deploy). C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
@@ -2741,8 +2742,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   `config.get_user_setting()` (which reads only the file, so a key no
   install has written excludes nothing, silently). **The interface is still
   modelled** — `vrf forwarding clab-mgmt` really is on the device; it is the
-  addresses inside it that describe the emulator — and the skip is counted
-  in `ipam_stats`, never silent.
+  addresses inside it that describe the emulator. The skip was "counted in
+  `ipam_stats`, never silent" here until 2026-09-28, and the count reached
+  nothing a person reads; its ROUTES were still imported, so the emulator's
+  `ip route vrf clab-mgmt 0.0.0.0 0.0.0.0` was attempted as a /0 prefix on
+  five routers and refused. Addresses and routes now follow one rule, and
+  every deliberate skip is named per class and device in the summary, the
+  preview and the stored result (`summary["skipped"]`).
 - **Residue in an excluded scope is removed, not left**, because the
   exclusion makes it unreachable: nothing will ever update, correct or
   remove it again, and it claims one device has an address all five have —

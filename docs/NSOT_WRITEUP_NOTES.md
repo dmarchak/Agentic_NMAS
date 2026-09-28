@@ -10555,3 +10555,26 @@ in hand:
 A sweep that comes back mostly clean is still a result: it moves those
 readers from "never compared with a device" to "compared, on this date,
 against these captures".
+
+## Five findings from one question about where a file lives (2026-09-28)
+
+The operator's observation. The branch started with a clarifying question:
+are the templates stored in NetBox? Answering it meant reading the import
+preview, and then running it for R2:
+
+- **C134**: a preview wrote to the live store. It overwrote the record of
+  the last real import with a claim that an import had happened.
+- **C135**: the preview listed 25 phantom writes. A dry-run PATCH returned
+  only its payload, so the next step planned updates the real import skips.
+- **C136**: the masking masked its own one-shot confirmation. A mask keyed
+  on the field name `token` made the import unconfirmable for 9 h 40 min.
+- **C138**: the import's failures were drawn in full and could not be read
+  (light text on a near-white block), with every check passing.
+- **C139**: a retired device held the fleet's live SNMP community in NetBox,
+  after the fix had masked every device a list claims.
+
+None was the thing the question asked about. Each came from running the
+real operation on the real system and reading what it did, the same method
+as C70's restore. The last one was found by the checker built for C95 on
+its first real use: it read what NetBox STORES rather than what the import
+sends, and so it reached the one device no import reaches.

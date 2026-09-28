@@ -686,6 +686,53 @@ _write_failures = threading.local()
 _current_device = threading.local()
 
 
+# WHAT THE IMPORT DELIBERATELY DOES NOT MODEL, per sync (the operator,
+# 2026-09-28). Not a failure and not a refusal: a decision, so the summary
+# carries it in its own key and the result draws it as "not imported, on
+# purpose", beside the reason. "5 fewer writes" must be explained, never
+# silent. `ips_excluded` was counted into `ipam_stats` since the
+# excluded-VRF rule and carried into nothing a person reads.
+def _skip(ipam_stats: dict, what: str, why: str, device: str, count: int = 1) -> None:
+    ipam_stats.setdefault("skipped", []).append(
+        {"what": what, "why": why, "device": device, "count": count})
+
+
+#: Why a default route is not imported as a prefix. NetBox refuses a /0
+#: ("Cannot create prefix with /0 mask", measured in (b)'s import on five
+#: routers), and it is right to: a default route is a ROUTE, not a block of
+#: address space, and NetBox has no object for a route.
+DEFAULT_ROUTE_SKIP = ("a default route is a route, not a block of address space, and NetBox "
+                      "holds no /0 prefix; the route stays in the golden and in NetBox's "
+                      "masked config text")
+
+
+def merge_skipped(reports) -> list:
+    """Several syncs' grouped skips as one: devices united, counts summed."""
+    groups: dict = {}
+    for report in reports:
+        for g in report or []:
+            m = groups.setdefault((g["what"], g["why"]),
+                                  {"what": g["what"], "why": g["why"], "devices": [], "count": 0})
+            m["devices"] = sorted(set(m["devices"]) | set(g.get("devices") or []))
+            m["count"] += int(g.get("count") or 0)
+    return sorted(groups.values(), key=lambda g: g["what"])
+
+
+def skipped_report(skipped: list) -> list:
+    """Group the skips of one sync by (what, why): ``[{what, why, devices,
+    count}]``, devices sorted, so a summary names each class once."""
+    groups: dict = {}
+    for s in skipped or []:
+        g = groups.setdefault((s["what"], s["why"]),
+                              {"what": s["what"], "why": s["why"], "devices": [], "count": 0})
+        if s.get("device") and s["device"] not in g["devices"]:
+            g["devices"].append(s["device"])
+        g["count"] += int(s.get("count") or 1)
+    for g in groups.values():
+        g["devices"].sort()
+    return sorted(groups.values(), key=lambda g: g["what"])
+
+
 def _write_failed(what: str, exc, device: str = "") -> None:
     """Record a NetBox write that did not land. *device* defaults to the
     device the sync is upserting (`_attributed_to`). The error text is
@@ -2106,6 +2153,14 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 ipam_stats.setdefault("excluded_vrfs", [])
                 if vrf_name not in ipam_stats["excluded_vrfs"]:
                     ipam_stats["excluded_vrfs"].append(vrf_name)
+                _skip(ipam_stats, f"addresses in VRF {vrf_name}",
+                      "the VRF is excluded (netbox_excluded_vrfs): its addresses describe the "
+                      "emulator's plumbing, not the network, and NetBox refuses the duplicates; "
+                      "the interface is still modelled",
+                      hostname, count=len([c for c in ([intf.get("cidr")]
+                                                       + list(intf.get("secondary_ips") or [])
+                                                       + list(intf.get("ipv6_addresses") or []))
+                                           if c]))
                 log.info("netbox: %s %s — addresses not modelled, VRF %r is "
                          "excluded", hostname, intf.get("name"), vrf_name)
                 continue
@@ -2253,6 +2308,22 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             _ensure_failed("tag 'static-route'", exc)
 
         for route in static_routes:
+            # ONE exclusion rule for addresses and routes (2026-09-28). The
+            # excluded VRF's addresses were skipped and its static routes were
+            # not, so every router's `ip route vrf clab-mgmt 0.0.0.0 0.0.0.0`
+            # (the emulator's own default route) was attempted as a /0 prefix
+            # and refused on all five: two readers of one rule, disagreeing.
+            rvrf = route.get("vrf") or ""
+            if rvrf and rvrf.lower() in excluded_vrfs():
+                _skip(ipam_stats, f"static routes in VRF {rvrf}",
+                      "the VRF is excluded (netbox_excluded_vrfs): its routes, like its "
+                      "addresses, describe the emulator's plumbing, not the network",
+                      hostname)
+                continue
+            if str(route.get("prefix", "")).endswith("/0"):
+                _skip(ipam_stats, f"static route {route['prefix']} as a prefix",
+                      DEFAULT_ROUTE_SKIP, hostname)
+                continue
             try:
                 route_vrf_id = vrf_id_map.get(route.get("vrf", "")) if route.get("vrf") else None
                 params: dict = {"prefix": route["prefix"]}
@@ -2969,6 +3040,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         "ips_synced": 0,
         "vrfs_synced": 1 if list_vrf_id else 0,  # count the list-level VRF
         "vlans_synced": 0, "cables_synced": 0, "tunnels_synced": 0,
+        "skipped": [],
     }
 
     # hostname → {device_id, nb_iface_map} for cable wiring pass
@@ -3067,6 +3139,8 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
             "cables":     ipam_stats.get("cables_synced", 0),
             "tunnels":    ipam_stats.get("tunnels_synced", 0),
         },
+        # What was deliberately not modelled, named per class and device.
+        "skipped":    skipped_report(ipam_stats.get("skipped")),
         "notes":      provisioning_notes + _drain_ensure_failures(),
         "timestamp":  time.strftime("%Y-%m-%d %H:%M:%S"),
         "netbox_url": f"{base}/dcim/sites/{site['id']}/",
@@ -3545,6 +3619,9 @@ def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
     if dry_run:
         out["dry_run"] = True
         out["plan"] = _merge_plans(r.get("plan") for r in results)
+        # Every list's deliberate skips, so the import-all preview names them
+        # as the single-list one does.
+        out["skipped"] = merge_skipped(r.get("skipped") for r in results)
     return out
 
 
