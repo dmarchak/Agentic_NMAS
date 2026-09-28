@@ -2581,23 +2581,31 @@ def bulk_reload():
                     conn = get_persistent_connection(dev, connections, lock)
                     if conn is None:
                         raise RuntimeError("Could not open SSH connection")
-                    # Hold the per-device lock for the reload+confirm sequence so
-                    # no concurrent command slips in between the two sends.
+                    # SEND, READ, DECIDE; success is the session DROPPING, which
+                    # every other command would call a failure (C153).
+                    from modules.device_reload import reload_device
                     with _device_lock(dev["ip"]):
-                        conn.send_command_timing("reload", delay_factor=2)
-                        conn.send_command_timing("\n", delay_factor=1)
-                # Drop the connection immediately — the device is rebooting.
+                        outcome = reload_device(conn)
                 try:
                     conn.disconnect()
                 except Exception:
                     pass
                 with lock:
                     connections.pop(dev["ip"], None)
-                result["status"] = "success"
-                result["output"] = ("reload sent and confirmed on the session; nothing here "
-                                    "checks that the device went down or came back")
-                with _bm.lock:
-                    _bm.active_operations[operation_id]["completed"] += 1
+                result["outcome"] = outcome["outcome"]
+                result["dropped_after"] = outcome["dropped_after"]
+                if outcome["ok"]:
+                    result["status"] = "success"
+                    result["output"] = outcome["detail"]
+                    with _bm.lock:
+                        _bm.active_operations[operation_id]["completed"] += 1
+                else:
+                    result["status"] = "failed"
+                    result["error"] = outcome["detail"]
+                    app.logger.warning("bulk_reload: %s (%s): %s", dev.get("hostname"),
+                                       dev.get("ip"), outcome["detail"])
+                    with _bm.lock:
+                        _bm.active_operations[operation_id]["failed"] += 1
             except Exception as exc:
                 from modules.utils import error_text as _error_text
                 result["status"] = "failed"
