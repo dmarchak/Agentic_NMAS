@@ -150,11 +150,16 @@ def preview_import():
     if not devices:
         return jsonify({"ok": False, "error": f"List '{list_name}' has no devices"}), 400
 
+    from modules import op_progress
+
+    pid = _progress_start(data, "previewed for import", list_name)
     try:
-        result = sync_list_to_netbox(list_name, devices, dry_run=True)
+        result = sync_list_to_netbox(list_name, devices, dry_run=True, progress_id=pid)
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: import preview failed for '%s'", list_name)
+        op_progress.finish(pid, "failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
+    op_progress.finish(pid)
 
     plan = result.get("plan", {})
     # Masked on the way out, AFTER the authorisation is bound to the truthful
@@ -191,21 +196,32 @@ def apply_import():
 
     _maybe_permit_writes(data)
 
+    from modules import op_progress
+
+    pid = _progress_start(data, "re-checked, then imported", list_name)
     authorized, err, status = _authorize(
         data, "import", list_name,
-        recompute=lambda: sync_list_to_netbox(list_name, devices, dry_run=True).get("plan", {}),
+        recompute=lambda: sync_list_to_netbox(list_name, devices, dry_run=True,
+                                              progress_id=pid).get("plan", {}),
     )
     if not authorized:
+        op_progress.finish(pid, "refused")
         return jsonify(err), status
 
     def _run(name=list_name, devs=devices):
+        # The import runs on after the response: it keeps reporting under the
+        # same id, so the in-flight panel shows it until it ends.
+        outcome = "done"
         try:
             set_sync_running(name, True)
-            sync_list_to_netbox(name, devs)
+            op_progress.update(pid, phase="importing", devices_done=0)
+            sync_list_to_netbox(name, devs, progress_id=pid)
         except Exception as exc:              # noqa: BLE001
+            outcome = "failed"
             log.error("netbox_safety: import thread failed: %s", exc, exc_info=True)
         finally:
             set_sync_running(name, False)
+            op_progress.finish(pid, outcome)
 
     threading.Thread(target=_run, daemon=True, name=f"netbox-import-{list_name}").start()
     set_sync_running(list_name, True)
@@ -242,11 +258,17 @@ def preview_import_all():
     if not payload:
         return jsonify({"ok": False, "error": "No device lists have any devices"}), 400
 
+    from modules import op_progress
+
+    data = request.get_json(silent=True) or {}
+    pid = _progress_start(data, "previewed for import", "every list")
     try:
-        result = sync_all_lists_to_netbox(payload, dry_run=True)
+        result = sync_all_lists_to_netbox(payload, dry_run=True, progress_id=pid)
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: import-all preview failed")
+        op_progress.finish(pid, "failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
+    op_progress.finish(pid)
 
     plan = result.get("plan", {})
     # Masked after the authorisation is bound to the truthful plan (C77's
@@ -276,24 +298,33 @@ def apply_import_all():
 
     _maybe_permit_writes(data)
 
+    from modules import op_progress
+
+    pid = _progress_start(data, "re-checked, then imported", "every list")
     authorized, err, status = _authorize(
         data, "import_all", _ALL_LISTS,
-        recompute=lambda: sync_all_lists_to_netbox(payload, dry_run=True).get("plan", {}),
+        recompute=lambda: sync_all_lists_to_netbox(payload, dry_run=True,
+                                                   progress_id=pid).get("plan", {}),
     )
     if not authorized:
+        op_progress.finish(pid, "refused")
         return jsonify(err), status
 
     def _run(items=payload):
         names = [n for n, _ in items]
+        outcome = "done"
         try:
             for n in names:
                 set_sync_running(n, True)
-            sync_all_lists_to_netbox(items)
+            op_progress.update(pid, phase="importing", devices_done=0)
+            sync_all_lists_to_netbox(items, progress_id=pid)
         except Exception as exc:              # noqa: BLE001
+            outcome = "failed"
             log.error("netbox_safety: import-all thread failed: %s", exc, exc_info=True)
         finally:
             for n in names:
                 set_sync_running(n, False)
+            op_progress.finish(pid, outcome)
 
     threading.Thread(target=_run, daemon=True, name="netbox-import-all").start()
     return jsonify({"ok": True, "status": "started",
@@ -374,6 +405,20 @@ def _recorded_removal(list_name: str, result: dict, forget_only: bool = False) -
     return {**result, "result": netbox_removal_result(status["row"], status)}
 
 
+@bp.route("/progress/<op_id>", methods=["GET"])
+def progress(op_id):
+    """What a NetBox preview or import is doing now: ``{"ok", "state",
+    "progress"}``. A READ. `unknown` is its own state (never started here, or
+    the server restarted since), never "not running"."""
+    from modules import op_progress
+
+    got = op_progress.get(op_id) if op_progress.valid_id(op_id) else None
+    if got is None:
+        return jsonify({"ok": True, "state": "unknown", "progress": None})
+    return jsonify({"ok": True, "state": "finished" if got["finished_at"] else "running",
+                    "progress": got})
+
+
 @bp.route("/removals", methods=["GET"])
 def removals():
     """Every recorded removal for a list, newest first, each drawn by the
@@ -413,6 +458,20 @@ def _drawn(d: dict, preview: dict) -> dict:
             "writes_allowed": d.get("writes_allowed", False),
             "token": d.get("token", ""), "expires_in": d.get("expires_in", 0),
             "plan_hash": d.get("plan_hash", "")}
+
+
+def _progress_start(data: dict, kind: str, list_name: str) -> str:
+    """Start reporting under the page's `progress_id` (modules.op_progress):
+    the modal polls it and the in-flight panel lists it, so a ~54 s preview
+    says what it is doing instead of a bare spinner (the operator, 2026-09-28).
+    Returns the id, or "" when the page sent none (then nothing is recorded)."""
+    from modules import identity, op_progress
+
+    pid = str((data or {}).get("progress_id") or "")
+    who = identity.identify(request)
+    op_progress.start(pid, kind, f"NetBox ({list_name})",
+                      actor=who.actor if who.is_identified else "an unidentified viewer")
+    return pid if op_progress.valid_id(pid) else ""
 
 
 def _preview(operation: str, d: dict) -> dict:

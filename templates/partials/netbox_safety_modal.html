@@ -21,6 +21,7 @@
         <div id="netboxSafetyLoading" class="text-center py-4">
           <div class="spinner-border text-primary" role="status"></div>
           <div class="small text-muted mt-2">Running a read-only preview against NetBox…</div>
+          <div class="small mt-1" id="netboxSafetyProgress" data-nb-progress></div>
         </div>
         <div id="netboxSafetyBody" class="d-none"></div>
       </div>
@@ -38,6 +39,7 @@
             Confirm below authorizes only the changes listed above, once.
           </div>
         </div>
+        <div class="small mb-2" id="netboxSafetyApplyProgress" data-nb-apply-progress></div>
         <div class="text-end">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-outline-secondary d-none"

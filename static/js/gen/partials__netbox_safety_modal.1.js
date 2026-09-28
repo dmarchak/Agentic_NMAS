@@ -14,6 +14,54 @@ function _nbEscape(s) {
     ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 }
 
+/* WHAT IT IS DOING WHILE IT RUNS (the operator, 2026-09-28). A 9-device
+ * import preview makes ~300 requests to NetBox (measured: 54 s) behind a bare
+ * spinner. The page gives each request an id, the server reports under it
+ * (modules/op_progress.py), and this polls it once a second. PURE, so it is
+ * executed in a test against the route's real payload. */
+function nbProgressText(d) {
+  if (!d || d.ok !== true) {
+    return 'Could not read its progress (the operation itself may still be running).';
+  }
+  if (d.state === 'unknown' || !d.progress) {
+    return 'Waiting for the server to start it...';
+  }
+  const p = d.progress;
+  const secs = Math.round(Number(p.elapsed_s) || 0);
+  return (d.state === 'finished'
+    ? 'Done in ' + secs + ' s (' + p.step_words + '). Drawing it...'
+    : p.step_words + ' (' + secs + ' s so far)');
+}
+
+function _nbNewProgressId() {
+  const bytes = new Uint8Array(12);
+  if (window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    bytes.forEach((_b, i) => { bytes[i] = Math.floor(Math.random() * 256); });
+  }
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function _nbWatch(pid, elementId) {
+  const el = document.getElementById(elementId);
+  let stopped = false;
+  const tick = async () => {
+    if (stopped || !el) { return; }
+    let d;
+    try {
+      const r = await fetch(`/netbox/safety/progress/${encodeURIComponent(pid)}`);
+      d = await r.json();
+    } catch (e) {
+      d = {ok: false};
+    }
+    if (!stopped) { el.textContent = nbProgressText(d); setTimeout(tick, 1000); }
+  };
+  if (el) { el.textContent = nbProgressText({ok: true, state: 'unknown'}); }
+  setTimeout(tick, 500);
+  return () => { stopped = true; if (el) { el.textContent = ''; } };
+}
+
 /* The preview, drawn by the shared component (7.1): the server builds it
  * (modules/preview_confirm.py netbox_import_preview / netbox_removal_preview),
  * including what the database takes with a delete, so this modal draws
@@ -49,14 +97,17 @@ async function netboxPreviewImport(listName, allLists) {
   document.getElementById('netboxSafetyConsent').classList.add('d-none');
   _nbSafetyModal().show();
 
+  const pid = _nbNewProgressId();
+  const stopWatch = _nbWatch(pid, 'netboxSafetyProgress');
   try {
     const previewUrl = allLists
       ? '/netbox/safety/import_all/preview'
       : '/netbox/safety/import/preview';
     const r = await fetch(previewUrl, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({list_name: listName || ''}),
+      body: JSON.stringify({list_name: listName || '', progress_id: pid}),
     });
+    stopWatch();
     const d = await r.json();
     const body = document.getElementById('netboxSafetyBody');
     document.getElementById('netboxSafetyLoading').classList.add('d-none');
@@ -73,6 +124,7 @@ async function netboxPreviewImport(listName, allLists) {
     _netboxSafetyState.expiresIn = d.expires_in || 0;
     _nbShowPreview(d);
   } catch (e) {
+    stopWatch();
     document.getElementById('netboxSafetyLoading').classList.add('d-none');
     const body = document.getElementById('netboxSafetyBody');
     body.classList.remove('d-none');
@@ -135,12 +187,17 @@ async function netboxSafetyApply(forgetOnly) {
   const payload = {list_name: list, permit_writes: enable,
                    token: _netboxSafetyState.token};
   if (forgetOnly) payload.forget_only = true;
+  // The apply re-checks the whole plan before it answers (about the preview's
+  // time again), then imports in the background: say what it is doing.
+  payload.progress_id = _nbNewProgressId();
+  const stopWatch = _nbWatch(payload.progress_id, 'netboxSafetyApplyProgress');
 
   try {
     const r = await fetch(url, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
     });
+    stopWatch();
     const d = await r.json();
     _nbSafetyModal().hide();
     if (mode === 'remove' && d.result) {
@@ -163,6 +220,7 @@ async function netboxSafetyApply(forgetOnly) {
     }
     if (typeof loadNetboxTab === 'function') loadNetboxTab();
   } catch (e) {
+    stopWatch();
     showToast('Error: ' + e.message, 'danger');
   } finally {
     btn.disabled = false;

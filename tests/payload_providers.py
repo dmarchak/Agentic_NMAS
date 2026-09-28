@@ -290,7 +290,7 @@ def netbox_import_preview(mp, tmp):
     devices = [{"hostname": "r1", "ip": "203.0.113.1"}, {"hostname": "r2", "ip": "203.0.113.2"}]
     mp.setattr(ns, "_load_list_devices", lambda name: ("Default", devices))
     mp.setattr(nbc, "sync_list_to_netbox",
-               lambda name, devs, dry_run=False: _import_dry_run(nb, ["r1", "r2"]))
+               lambda name, devs, dry_run=False, **k: _import_dry_run(nb, ["r1", "r2"]))
     return _ok(_client().post("/netbox/safety/import/preview", json={"list_name": "Default"}))
 
 
@@ -302,7 +302,7 @@ def netbox_import_all_preview(mp, tmp):
     mp.setattr(ns, "_all_lists_with_devices",
                lambda: [("Default", [{"hostname": "r1"}, {"hostname": "r2"}])])
     mp.setattr(nbc, "sync_all_lists_to_netbox",
-               lambda items, dry_run=False: _import_dry_run(nb, ["r1", "r2"]))
+               lambda items, dry_run=False, **k: _import_dry_run(nb, ["r1", "r2"]))
     return _ok(_client().post("/netbox/safety/import_all/preview", json={}))
 
 

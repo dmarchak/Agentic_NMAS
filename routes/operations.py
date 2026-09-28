@@ -61,7 +61,11 @@ def in_flight():
     list_name = named_list(request) or get_current_list_name()
     now = time.time()
     try:
-        running = device_ops.in_flight(list_name, now)
+        from modules import op_progress
+
+        # An operation that holds no device (a NetBox preview or import) is
+        # running too, and says so here in the same row shape.
+        running = device_ops.in_flight(list_name, now) + op_progress.running(now)
         recent, state = _recent(list_name, now)
     except Exception as exc:                  # noqa: BLE001
         log.exception("operations: in-flight read failed for %s", list_name)

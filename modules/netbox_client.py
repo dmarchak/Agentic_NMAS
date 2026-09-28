@@ -2811,8 +2811,12 @@ def _scan_device_from_golden(dev: dict) -> dict:
 def sync_list_to_netbox(list_name: str, devices: list[dict],
                         status_cache: Optional[dict] = None,
                         max_workers: int = 6,
-                        dry_run: bool = False) -> dict:
+                        dry_run: bool = False, progress_id: str = "") -> dict:
     """Import a device list into NetBox. Returns a summary dict.
+
+    *progress_id*, when the page supplied one, is where this reports what it
+    is doing while it runs (`modules.op_progress`): the requests it has made
+    and the device it is on. A 9-device preview makes ~300 requests.
 
     With ``dry_run=True`` no write is issued: reads still hit NetBox, so the
     same code path runs and reports exactly what it *would* create and update.
@@ -2826,7 +2830,8 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
 
     if dry_run:
         with _guard.dry_run() as plan, _guard.for_list(list_name):
-            result = _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers)
+            result = _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
+                                               progress_id)
         result["dry_run"] = True
         result["plan"] = plan.summary()
         return result
@@ -2837,12 +2842,24 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
                          "confirm, or enable writes in Settings → Integrations."}
 
     with _guard.for_list(list_name):
-        return _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers)
+        return _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
+                                         progress_id)
+
+
+def _count_requests(session, progress_id: str) -> None:
+    """Count every request this session makes toward *progress_id*: a
+    response hook sees each one, whichever helper made it."""
+    hooks = getattr(session, "hooks", None)
+    if progress_id and isinstance(hooks, dict):
+        from modules import op_progress
+
+        hooks.setdefault("response", []).append(
+            lambda r, *a, **k: op_progress.tick(progress_id))
 
 
 def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
                               status_cache: Optional[dict] = None,
-                              max_workers: int = 6) -> dict:
+                              max_workers: int = 6, progress_id: str = "") -> dict:
     """The sync itself. Always call through :func:`sync_list_to_netbox`."""
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
@@ -2850,6 +2867,10 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
 
     session = _session_from_config(cfg)
     base    = cfg["url"]
+    from modules import op_progress
+    _count_requests(session, progress_id)
+    op_progress.update(progress_id, phase="setting up the region, site and template",
+                       devices_total=len(devices), devices_done=0)
 
     log.info("netbox: starting sync for list '%s' (%d device(s))", list_name, len(devices))
 
@@ -2932,7 +2953,9 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
     # hostname → {device_id, nb_iface_map} for cable wiring pass
     device_registry: dict = {}
 
-    for result in scanned:
+    for n_done, result in enumerate(scanned):
+        op_progress.update(progress_id, phase="reading and planning each device",
+                           devices_done=n_done, current=result.get("hostname", ""))
         if result.get("error"):
             failed.append({"hostname": result["hostname"], "ip": result["ip"], "error": result["error"]})
             continue
@@ -2970,6 +2993,8 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
             log.exception("netbox: upsert failed for %s", result["hostname"])
             failed.append({"hostname": result["hostname"], "ip": result["ip"], "error": str(exc)})
 
+    op_progress.update(progress_id, phase="cables between devices", devices_done=len(scanned),
+                       current="")
     # ── CDP/LLDP → cables (second pass so both endpoints exist) ───────────
     for local_hostname, reg in device_registry.items():
         for cdp in reg.get("neighbors", []):
@@ -3481,7 +3506,7 @@ def _clear_sync_status(list_name: str) -> None:
 
 def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
                              status_cache: Optional[dict] = None,
-                             dry_run: bool = False) -> dict:
+                             dry_run: bool = False, progress_id: str = "") -> dict:
     """Import multiple device lists sequentially. Each list becomes its own region.
 
     Inherits the write gate and dry-run behaviour of :func:`sync_list_to_netbox`.
@@ -3489,7 +3514,8 @@ def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
     results = []
     overall_ok = True
     for name, devs in lists_with_devices:
-        res = sync_list_to_netbox(name, devs, status_cache=status_cache, dry_run=dry_run)
+        res = sync_list_to_netbox(name, devs, status_cache=status_cache, dry_run=dry_run,
+                                  progress_id=progress_id)
         results.append(res)
         if not res.get("ok"):
             overall_ok = False

@@ -33,9 +33,9 @@ def client(monkeypatch):
     monkeypatch.setattr(ns, "_all_lists_with_devices", lambda: [("Default", devices)])
     ran = []
     monkeypatch.setattr(nbc, "sync_list_to_netbox",
-                        lambda name, devs, dry_run=False: (ran.append(dry_run), {"plan": PLAN})[1])
+                        lambda name, devs, dry_run=False, **k: (ran.append(dry_run), {"plan": PLAN})[1])
     monkeypatch.setattr(nbc, "sync_all_lists_to_netbox",
-                        lambda items, dry_run=False: (ran.append(dry_run), {"plan": PLAN})[1])
+                        lambda items, dry_run=False, **k: (ran.append(dry_run), {"plan": PLAN})[1])
     monkeypatch.setattr(nbc, "set_sync_running", lambda *a, **k: None)
     import app as A
 
