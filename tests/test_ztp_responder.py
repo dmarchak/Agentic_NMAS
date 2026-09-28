@@ -200,6 +200,25 @@ class TestTheProtocol:
         addr, _state, _ = server
         assert _fetch(addr, drop_first_ack=True)["data"] == CONFIG.encode()
 
+    def test_a_refusal_is_recorded_before_it_is_sent(self, server, monkeypatch):
+        """C169: the refusal was SENT, then recorded, so a client (and this
+        suite, under load) could hold the refusal before its row existed. A
+        slow recorder makes the order deterministic: sent first, the client
+        gets the error while the row is still being written."""
+        import time as _time
+        addr, _state, audit = server
+        real = _Audit.__call__
+
+        def slow(self, **row):
+            _time.sleep(0.5)
+            return real(self, **row)
+        monkeypatch.setattr(_Audit, "__call__", slow)
+        for packet in (_rrq(op=r.OP_WRQ), _rrq(mode="netascii"), b"\x00\x01junk"):
+            before = len(audit.rows)
+            out = _fetch(addr, packet)
+            assert "error" in out, out
+            assert len(audit.rows) == before + 1, "the refusal arrived before its row"
+
     def test_a_write_request_is_refused_and_recorded(self, server):
         addr, _state, audit = server
         out = _fetch(addr, _rrq(op=r.OP_WRQ))

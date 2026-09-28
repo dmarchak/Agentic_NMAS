@@ -5166,6 +5166,10 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   what it measures: the window is part of what a measurement measures. And the rule it described works BY
   ACCIDENT (it matched mnemonics whose NAME contains CRIT), which is harder to find than a rule that never
   fires: "it has alerted 9 times" satisfies anyone checking.
+  **The third instance was mine, the same day:** the rules' state history was read as one page of 100 rows,
+  and "Device unreachable never alerted" was reported from it; read a day at a time, it had alerted 38
+  times in 30 days, and `Interface output discards` 229 where the page showed 10. **A read that returns
+  exactly its page size is truncated, not complete**: split the window until no answer is full.
 - **A CLASS CLOSED AGAINST A LIST IS CLOSED AGAINST THE SURVEY, NOT THE
   CODE** (the operator, 2026-09-27, C121). When `FALSE_GREEN` emptied, "the
   false-green class is zero" was said and repeated back. It was true of the

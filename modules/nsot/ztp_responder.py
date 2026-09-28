@@ -263,17 +263,21 @@ def _handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decid
         sock.bind(("", 0))
         try:
             op, filename, mode = parse_request(packet)
+        # Every refusal is RECORDED, THEN SENT (C169): the serve path writes its
+        # reveal row before it serves, and a refusal sent first was a claim
+        # ("every refusal is recorded") that held only if the process
+        # survived the gap between the two lines.
         except BadRequest as exc:
-            sock.sendto(error_packet(ERR_ILLEGAL, REFUSAL_TEXT), peer)
             record(host, "", {"reason": f"malformed request: {exc}"}, audit)
+            sock.sendto(error_packet(ERR_ILLEGAL, REFUSAL_TEXT), peer)
             return {"served": False, "reason": str(exc)}
         if op == OP_WRQ:
-            sock.sendto(error_packet(ERR_ACCESS, REFUSAL_TEXT), peer)
             record(host, filename, {"reason": "a write request; this server has no write path"}, audit)
+            sock.sendto(error_packet(ERR_ACCESS, REFUSAL_TEXT), peer)
             return {"served": False, "reason": "write request"}
         if mode != "octet":
-            sock.sendto(error_packet(ERR_ILLEGAL, REFUSAL_TEXT), peer)
             record(host, filename, {"reason": f"mode {mode!r}; only octet is served"}, audit)
+            sock.sendto(error_packet(ERR_ILLEGAL, REFUSAL_TEXT), peer)
             return {"served": False, "reason": f"mode {mode}"}
         decision = decide_fn(host, filename)
         row = record(host, filename, decision, audit)

@@ -3636,6 +3636,13 @@ than one that never fires**: "it has alerted 9 times" would have satisfied anyon
   telemetry source silent for about 20 minutes; 09-28 08:51, r1 and r3), each rule's history read
   uncapped (a capped read made "never alerted" out of a rule that had).
 
+**The rule P.7 exists to enforce (the operator): A RULE IS NOT VERIFIED BY EVALUATING WITHOUT ERROR.** Six of
+the seven evaluated cleanly for weeks and three were wrong; the only thing that told them apart was asking
+each rule's own question of its own datasource and comparing it with its own threshold. Its history is read
+uncapped: a page that comes back full is truncated, and a capped read made `Device unreachable` (38 alerts
+in 30 days) look silent and `Interface output discards` (229) look quiet. A rule that alerts about eight
+times a day is a defect of its own, found only once the history was read whole.
+
 **Placement:** before 8.6, whose triage reader consumes these rules and is only as good as they are. Where it
 falls against 7.2 and 7.3 is the operator's to decide; nothing in 7.2 depends on it.
 
