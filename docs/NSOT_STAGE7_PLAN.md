@@ -643,6 +643,12 @@ render the success style (`warns`, `no_warnings`, `not_reviewed`). When it
 lands, those states join `GATE_STATES` with a test that none draws green.
 Nothing in 7.1 draws them yet.
 
+**Bulk intent is DEFERRED to Fleet (7.4)** (the operator, 2026-09-27): by the
+minimalism rule it is fleet-shaped (it changes intent on many devices in one
+commit), and a device-list button now would be the same action in two places
+once 7.4 builds it; its CLI works and is the path in use, so nothing is
+blocked. 7.1's acceptance states it as deferred, not done.
+
 **Next, in the approved order:** restore, onboarding, NetBox import/remove,
 then bulk intent. `test_preview_confirm.py`'s `RETROFIT_PENDING` lists them
 and only shrinks. Bulk intent has **no screen**: its routes are reached by

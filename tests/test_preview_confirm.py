@@ -234,8 +234,9 @@ RETROFIT_PENDING = {
     "onboarding": "partials__onboard_wizard.1.js",
     "netbox import/remove": "partials__netbox_safety_modal.1.js",
     # No screen: the routes (/templatize/bulk/preview, /apply) are reached by
-    # curl today, measured 2026-09-27. Its retrofit is the preview, and the
-    # screen that draws it.
+    # curl today, measured 2026-09-27. DEFERRED to Fleet (7.4) by the
+    # operator: a fleet-shaped operation, and a button now would be the same
+    # action in two places once 7.4 builds it. Its CLI is the path in use.
     "bulk intent": None,
 }
 

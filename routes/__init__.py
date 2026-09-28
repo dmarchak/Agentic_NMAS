@@ -39,6 +39,12 @@ def register_blueprints(app) -> list:
     from modules import invalidation
     invalidation.install(app)
 
+    # A Content-Security-Policy on every HTML page (C88 (c)): the belt to
+    # escaping's braces, bounding where injected script can send data and
+    # what it can load; it cannot stop inline script running.
+    from modules import csp
+    csp.install(app)
+
     from routes.settings_integrations import bp as integrations_bp
     from routes.netbox_safety import bp as netbox_safety_bp
     from routes.inventory import bp as inventory_bp
