@@ -825,3 +825,37 @@ class TestJobHealthFromTheReader:
         assert [x["state"] for x in live] == ["ok"]
         res = A.job_health_source(readers_now=live)
         assert res["rows"] == [], res["rows"]
+
+
+class TestTheHealthyPageIsOneLine:
+    """The operator's (a), with (c)'s forcing (2026-09-28): nothing needs
+    attention is ONE line that still makes the positive claim, and any
+    source that did not answer forces the full list open."""
+
+    def _page(self, monkeypatch, *extra):
+        live = lambda: A.job_health_source(_health(_ok(NOW - 60)))  # noqa: E731
+        monkeypatch.setattr(A, "SOURCES", (live,) + extra)
+        return A.needs_attention()
+
+    def test_collapsed_names_the_count_the_read_and_the_oldest_value(self, monkeypatch):
+        old = lambda: A.source_result("drift", "Drift", read_at=NOW, took_ms=0,  # noqa: E731
+                                      value_at=NOW - 900, checked="checked 9 of 9")
+        page = self._page(monkeypatch, old)
+        html = _panel(page)
+        assert html.startswith('<details') and "<details open" not in html
+        summary = html[html.index("<summary>"):html.index("</summary>")]
+        assert "Nothing needs attention" in summary
+        assert "2 of 2 sources answered" in summary
+        assert "oldest value: Drift, from " + A._iso(NOW - 900).replace("T", " ").replace(
+            "Z", " UTC") in summary
+        # The full list is still in the page, one click away.
+        assert "checked 9 of 9" in html[html.index("</summary>"):]
+
+    def test_a_source_that_did_not_answer_forces_the_full_list(self, monkeypatch):
+        """Even with no row (a source that forgot to make one), the claim is
+        never collapsed over a source that did not answer."""
+        page = self._page(monkeypatch)
+        page["sources"].append({"label": "Drift", "state": "unreadable",
+                                "read_at": A._iso(NOW), "rows": []})
+        html = _panel(page)
+        assert "<details" not in html and "could not be read" in html

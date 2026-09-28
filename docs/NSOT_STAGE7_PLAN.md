@@ -1283,8 +1283,22 @@ live elsewhere). Needs attention reads the stored value, dated by it.
 time. Otherwise a stopped job-health reader would freeze a cache whose own
 row said ok for ever. A cache that holds no value yet is an unknown row
 ("not read yet"), never "nothing needs attention". `/jobs/health` stays the
-live, ask-now read. Grafana's reader is next, then the empty state collapsed
-to one line (the operator's (a), with (c)'s forcing: decided 2026-09-28).
+live, ask-now read.
+
+**7.2 step 12 BUILT (2026-09-28): the healthy page is one line.** The
+operator's objection: eight lines of read times and provenance at the top of
+the landing view, in the common case, and a line more with every source to
+come. Decided as (a) with (c)'s forcing. With no rows and every source
+answered, the panel is one line that still makes the positive claim:
+*Nothing needs attention · 8 of 8 sources answered, read <time> · oldest
+value: <source>, from <time>*. The full list is one click away, and a person
+who opened it keeps it open across the minute's redraw. The OLDEST value is
+named, with its source, because a summary is only as fresh as its weakest
+source, and one old for a reason (a baseline decided days ago) reads as that
+source's age. Any source that did not answer forces the full list open, even
+with no row (an unreadable source is already a row; the guard holds if one
+forgets). Stale sources are rows of their own, so a zero-row page already
+means none is past its own bound. Grafana's reader is next.
 
 
 ## 9. Deferred, recorded rather than scoped
