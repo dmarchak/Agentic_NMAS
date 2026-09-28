@@ -231,8 +231,11 @@ def current_plan():
 
 
 def record_intent(kind: str, endpoint: str, payload: dict = None,
-                  obj_id=None, name: str = "") -> None:
-    """Record an operation a dry run would have performed."""
+                  obj_id=None, name: str = "", changed=False) -> None:
+    """Record an operation a dry run would have performed. For an update,
+    *changed* is `changed_fields()`'s answer: ``{field: {before, after}}``,
+    ``{}`` for a PATCH that changes nothing, ``None`` when the object could
+    not be read (unknown, which is not nothing)."""
     plan = current_plan()
     if plan is None:
         return
@@ -240,6 +243,8 @@ def record_intent(kind: str, endpoint: str, payload: dict = None,
         return
     entry = {"endpoint": endpoint.strip("/"), "name": name, "id": obj_id,
              "payload": payload or {}}
+    if changed is not False:
+        entry["changed"] = changed
     getattr(plan, kind).append(entry)
 
 

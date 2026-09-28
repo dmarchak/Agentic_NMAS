@@ -393,14 +393,15 @@ class TestTheOperatorCanSEEIt:
 
         assert "ALSO DELETED" not in html and "further" not in html.split("Gates")[0]
         assert 'data-pc-not="unproven"' not in html
-        assert "asked: nothing further goes with them" in html
+        assert "asked: nothing beyond the list above goes with them" in html
 
     def test_NMAS_owned_collateral_is_stated_without_alarm(self):
         own = dict(self.FOREIGN, id=99, name="x", foreign=False)
         html = self._render({"taken": [own], "foreign": [], "unproven": [], "proven": True})
 
         assert "ALSO DELETED" not in html
-        assert "1 further object(s), all of them NMAS&#39;s own" in html
+        assert ("1 further object(s) NOT in the list above, all of them NMAS&#39;s own"
+                in html)
 
     def test_a_missing_cascade_is_not_asked_rather_than_nothing(self):
         """Absent is not empty: with no cascade the gate says it was NOT

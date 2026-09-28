@@ -541,22 +541,41 @@ class TestTheWriteSurfaceIsStillThree:
     def test_a_dry_run_records_nothing(self, record):
         """A preview must leave no trail — it changed nothing.
 
-        Driven through the real chokepoint with a session whose verbs all
-        raise: a dry run must reach neither the network nor the record.
+        Driven through the real chokepoint with a session whose WRITE verbs
+        raise: a dry run must never write to NetBox nor to the record. It
+        READS (C135, 2026-09-28): the object as NetBox holds it, so the
+        preview can say what a PATCH changes and so callers see the object a
+        real PATCH returns (a payload-only return planned `tags` writes the
+        real import never makes). A read that fails is survived, not raised.
         """
+        from tests.fake_netbox import FakeResponse
         from modules import netbox_client
         from modules.netbox_guard import dry_run
 
-        class Exploding:
+        class WritesExplode:
+            def __init__(self, get_ok=True):
+                self.get_ok = get_ok
+
+            def get(self, *a, **k):
+                if not self.get_ok:
+                    raise OSError("NetBox is down")
+                return FakeResponse({"id": 5, "name": "lab", "region": {"id": 1},
+                                     "tags": [{"id": 3, "slug": "ospf"}]})
+
             def _boom(self, *a, **k):
-                raise AssertionError("a dry run reached the network")
-            get = patch = post = delete = _boom
+                raise AssertionError("a dry run WROTE to NetBox")
+            patch = post = delete = _boom
 
         with dry_run():
-            out = netbox_client._nb_patch(Exploding(), "http://nb",
+            out = netbox_client._nb_patch(WritesExplode(), "http://nb",
                                           "dcim/sites/5/", {"region": 9})
+            down = netbox_client._nb_patch(WritesExplode(get_ok=False), "http://nb",
+                                           "dcim/sites/5/", {"region": 9})
 
         assert out["_dry_run"] is True
+        assert out["tags"] == [{"id": 3, "slug": "ospf"}], \
+            "the object as NetBox holds it, with the payload over it"
+        assert out["region"] == 9 and down["region"] == 9
         assert netbox_guard.modified_since()["count"] == 0
         assert not os.path.exists(netbox_guard._MODIFIED_FILE)
 

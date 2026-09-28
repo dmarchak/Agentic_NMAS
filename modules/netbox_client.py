@@ -319,13 +319,28 @@ def _nb_patch(session: requests.Session, base: str, path: str, payload: dict) ->
     endpoint = "/".join(parts[:-1]) if obj_id is not None else path.strip("/")
 
     if _guard.is_dry_run():
+        # READ THE OBJECT, as the real path does (C135). A dry-run PATCH
+        # returned only its payload, so a caller that read the returned object
+        # next saw fields the payload did not carry as EMPTY: the protocol-tag
+        # step then found an untagged device and planned `tags` on eight
+        # devices whose tags were already exactly those (measured on the host,
+        # every one SETS == HOLDS), a write the real import never makes. The
+        # object as NetBox holds it, with the payload over it, is what the
+        # real PATCH returns. And the intent records what the payload
+        # CHANGES, so the preview can say "changes nothing" for a no-op.
+        state, current = (_nb_read_by_id(session, base, endpoint, obj_id)
+                          if obj_id else ("unreadable", None))
+        changed = _guard.changed_fields(current if state == "ok" else None, payload)
         _guard.record_intent("updates", endpoint, payload, obj_id=obj_id,
-                             name=_object_label(payload))
+                             name=_object_label(payload)
+                             or _object_label(current if state == "ok" else {}),
+                             changed=changed)
         # Return the object's REAL id, not a synthetic one. An update targets
         # something that already exists, and callers chain child objects off the
         # returned id — handing back a placeholder would orphan them and make the
         # preview plan creates that execution would not perform.
-        return {**payload, "id": obj_id, "_dry_run": True}
+        base_obj = current if state == "ok" else {}
+        return {**base_obj, **payload, "id": obj_id, "_dry_run": True}
 
     _guard.assert_writes_allowed(f"PATCH {endpoint}")
 
@@ -3020,7 +3035,16 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         "ipam_url":   f"{base}/ipam/prefixes/",
     }
 
-    _record_sync_status(list_name, summary)
+    # A PREVIEW RECORDS NOTHING (C134). This summary is the RECORD of an
+    # import, the one the NetBox tab's sync card draws as its result and reads
+    # back later. The dry run ran this same function, so every import preview
+    # overwrote the last real import's record with a claim that an import had
+    # happened: measured on the host 2026-09-28, `ok: True, updated 9` stamped
+    # at the second of a preview, while nothing was written to NetBox.
+    from modules import netbox_guard as _guard
+
+    if not _guard.is_dry_run():
+        _record_sync_status(list_name, summary)
     log.info(
         "netbox: sync complete for '%s' — devices created=%d updated=%d failed=%d; "
         "IPAM interfaces=%d prefixes=%d ips=%d vrfs=%d vlans=%d cables=%d tunnels=%d",

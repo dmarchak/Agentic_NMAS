@@ -848,12 +848,29 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
     plan = d.get("plan") or {}
     name = "every device list" if all_lists else (d.get("list") or "the list")
     creates, updates = plan.get("creates") or [], plan.get("updates") or []
-    n = len(creates) + len(updates)
-    lines = ([_nb_line("create", o) for o in creates]
-             + [_nb_line("update", o) + (": sets " + ", ".join(sorted(o.get("payload") or {}))
-                                         if o.get("payload") else "") for o in updates])
+
+    def _update_line(o):
+        # What the PATCH CHANGES, from the object as NetBox holds it (C135):
+        # "sets tags" over tags the device already had read as a change, and
+        # the operator could not tell a real one from a re-send.
+        ch = o.get("changed", False)
+        if ch == {}:
+            return _nb_line("update", o) + ": changes nothing (sent; every value already held)"
+        if isinstance(ch, dict):
+            return _nb_line("update", o) + ": changes " + ", ".join(sorted(ch))
+        keys = ", ".join(sorted(o.get("payload") or {}))
+        return (_nb_line("update", o) + ": sets " + keys
+                + (" (what it changes is UNKNOWN: the object could not be read)"
+                   if ch is None else ""))
+
+    real = [o for o in updates if o.get("changed", False) != {}]
+    noop = len(updates) - len(real)
+    n = len(creates) + len(real)
+    lines = [_nb_line("create", o) for o in creates] + [_update_line(o) for o in updates]
     summary = (f"Import {name} ({d.get('device_count', 0)} device(s)) into NetBox: create "
-               f"{len(creates)} object(s) and update {len(updates)}." if n else
+               f"{len(creates)} object(s) and change {len(real)}"
+               + (f"; {noop} more update(s) are sent and change nothing" if noop else "")
+               + "." if n else
                f"Import {name} ({d.get('device_count', 0)} device(s)): nothing to create or "
                "update. NetBox already matches.")
     what_not = [
@@ -866,7 +883,8 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
         {"target": name, "kind": "provenance", "lines": [],
          "text": "An object it UPDATES is not tagged nmas-managed and is never made removable: "
                  "the tag marks only what NMAS creates. Each update's before and after goes to "
-                 "the modification record."},
+                 "the modification record. A device's `tags` update carries only its routing-"
+                 "protocol tags (bgp, ospf, rip, cdp), merged with what it holds."},
     ]
     target = {
         "name": name, "state": "ready" if n else "unchanged", "selectable": True,
@@ -905,7 +923,13 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
     cascade = d.get("cascade") or {}
     foreign, taken = cascade.get("foreign") or [], cascade.get("taken") or []
     unproven = cascade.get("unproven") or []
+    # What the database takes that is ALREADY in the delete list is not more
+    # (the operator, R2a: "5 further object(s)" read as five MORE when all five
+    # were interfaces and addresses listed above).
+    listed = {(o.get("endpoint"), o.get("id")) for o in deleted}
     own = [o for o in taken if not o.get("foreign")]
+    own_new = [o for o in own if (o.get("endpoint"), o.get("id")) not in listed]
+    own_listed = len(own) - len(own_new)
 
     def _via(o):
         return f"{o.get('endpoint', '')} {o.get('name') or o.get('id')} (via {o.get('via', '?')})"
@@ -929,10 +953,10 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
                                "would leave them alone; it protects an object, and this travels "
                                "a relationship.",
                       "lines": [_via(o) for o in foreign]})
-    if own:
-        notes.append({"title": f"Also removed by NetBox with these: {len(own)} further "
-                               "object(s), all of them NMAS's own.",
-                      "lines": [_via(o) for o in own]})
+    if own_new:
+        notes.append({"title": f"Also removed by NetBox with these: {len(own_new)} further "
+                               "object(s) NOT in the list above, all of them NMAS's own.",
+                      "lines": [_via(o) for o in own_new]})
     what_not = []
     if not deleted:
         what_not.append({"target": name, "kind": "nothing", "lines": [],
@@ -989,8 +1013,11 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
                                            "not happen")
     else:
         cascade_gate = gate("what the database takes with each delete, asked of NetBox",
-                            "pass", f"asked: {len(taken)} further object(s) go with them"
-                            if taken else "asked: nothing further goes with them")
+                            "pass", (f"asked: {len(taken) - own_listed} further object(s) go "
+                                     "with them" if len(taken) > own_listed else
+                                     "asked: nothing beyond the list above goes with them")
+                            + (f"; {own_listed} of what NetBox takes with them is already "
+                               "listed above" if own_listed else ""))
     gates.insert(1, cascade_gate)
     gates.insert(1, gate("every recorded object read from NetBox", "fail" if unreadable else "pass",
                          f"{len(unreadable)} could not be read: not gone, and not forgotten"
