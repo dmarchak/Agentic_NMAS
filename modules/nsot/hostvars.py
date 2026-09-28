@@ -999,3 +999,24 @@ def _looks_hashed(value: str) -> bool:
         return True
     parts = text.split(None, 1)
     return len(parts) == 2 and parts[0] in ("5", "7", "8", "9")
+
+
+#: Why a device whose committed intent is only onboarding's bootstrap cannot be
+#: planned (C148, C154): said by the plan in place of rendering it.
+BOOTSTRAP_ONLY_REASON = (
+    "its committed intent is only the bootstrap onboarding wrote (no interfaces, "
+    "routing or users), so there is nothing to render toward. Seeding full intent "
+    "from its golden (extract, review, commit) has no screen yet: it is 7.3's "
+    "first item (register C148)")
+
+
+def is_bootstrap_only(doc) -> bool:
+    """True for the intent onboarding commits before any full intent exists.
+
+    Measured on the host 2026-09-28: every full intent carries `interfaces`
+    and no `bootstrap` key; probe-r1a's carries `bootstrap`, `hostname`,
+    `logging`, `secret_refs` and `unmodeled` only. The plan rendered it and
+    raised an UndefinedError, drawn as "An unexpected error occurred" (C154).
+    """
+    return isinstance(doc, dict) and ("bootstrap" in doc or "interfaces" not in doc)
+

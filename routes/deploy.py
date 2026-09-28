@@ -110,7 +110,10 @@ def _artifact_for(list_name: str, hostname: str):
     template = templates_repo.template_for_device(repo, hostname, platform)
 
     committed = hostvars.read_committed(repo, hostname)
-    bootstrap = committed is None
+    # A committed intent that is only onboarding's bootstrap is bootstrap too,
+    # refused with its reason, never rendered (C154: it raised in the template).
+    seed_only = committed is not None and hostvars.is_bootstrap_only(committed)
+    bootstrap = committed is None or seed_only
     # Names become values here and only here, in memory, as late as possible.
     intent = (None if bootstrap else
               hostvars.hydrate_secrets(committed, hostname, list_name))
@@ -123,6 +126,7 @@ def _artifact_for(list_name: str, hostname: str):
 
     common = dict(template=template, template_approved=approved,
                   host_vars=intent, bootstrap=bootstrap,
+                  bootstrap_reason=hostvars.BOOTSTRAP_ONLY_REASON if seed_only else "",
                   template_root=templates_repo.templates_dir(repo))
     artifact = build_artifact(hostname, captured, platform, **common)
 

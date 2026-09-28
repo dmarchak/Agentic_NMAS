@@ -178,6 +178,9 @@ class RenderArtifact:
     #: device's own capture. Always blocking: a device whose intent is its
     #: current state has nothing to deploy toward.
     bootstrap: bool = False
+    #: WHY it is bootstrap, when the plain reason ("no committed intent") is not
+    #: true: a committed intent that is only onboarding's bootstrap (C154).
+    bootstrap_reason: str = ""
     #: Template fidelity, measured from the capture's own parse. ``report`` is
     #: measured from committed intent and therefore moves when intent changes;
     #: this one does not, so it is the half that can gate.
@@ -219,6 +222,7 @@ class RenderArtifact:
         reasons = []
         if self.bootstrap:
             reasons.append(
+                self.bootstrap_reason or
                 "no committed intent for this device — review and commit "
                 "extracted host_vars first")
         report = self.template_report or self.report or {}
@@ -352,8 +356,8 @@ def _unsendable_lines(rendered: str) -> tuple:
 def build_artifact(device: str, running_config: str, platform: str,
                    template: str = "", template_approved: bool = False,
                    host_vars: dict = None, bootstrap: bool = False,
-                   template_root: str = "", rolled_back: dict = None
-                   ) -> RenderArtifact:
+                   template_root: str = "", rolled_back: dict = None,
+                   bootstrap_reason: str = "") -> RenderArtifact:
     """The only constructor. Always validates; always renders masked.
 
     *running_config* is a **captured** config — a golden file or a stored
@@ -431,6 +435,7 @@ def build_artifact(device: str, running_config: str, platform: str,
         template_approved=bool(template_approved),
         masked_refs=masked_refs,
         bootstrap=bool(bootstrap),
+        bootstrap_reason=bootstrap_reason or "",
         template_report=template_report,
         template_root=template_root or "",
         unsendable=unsendable,

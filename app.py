@@ -385,7 +385,7 @@ def _client_wants_html() -> bool:
     return "text/html" in (request.headers.get("Accept", "") or "")
 
 
-def _error_response(error, status: int, message: str):
+def _error_response(error, status: int, message):
     """Redirect a navigation; answer a fetch() with JSON and a real status.
 
     **An unhandled exception must never present as a successful redirect.**
@@ -402,17 +402,24 @@ def _error_response(error, status: int, message: str):
     The message is redacted: it can quote a config line or an exception
     carrying a credential, and unlike the log this goes out over HTTP.
     """
-    if _client_wants_html():
-        flash(message, 'warning' if status == 404 else 'danger')
-        return redirect(url_for('index'))
-
     from modules import redact
+    from modules.utils import error_text
 
-    detail = str(error)
+    detail = error_text(error)
     try:
         detail = redact.redact_text(detail)
     except Exception:                          # noqa: BLE001
         detail = error.__class__.__name__      # never the raw text on failure
+    if message is None:
+        # WHAT was being done and WHAT failed, in the sentence the screen
+        # draws (C154). "An unexpected error occurred. Please check the logs"
+        # named neither, and the log is not something the interface can open:
+        # the reason was carried as `detail` and drawn by nothing.
+        message = (f"{request.method} {request.path} failed with an unexpected "
+                   f"error: {detail}")
+    if _client_wants_html():
+        flash(message, 'warning' if status == 404 else 'danger')
+        return redirect(url_for('index'))
     return jsonify({"ok": False, "error": message, "detail": detail,
                     "status": status}), status
 
@@ -427,8 +434,7 @@ def not_found_error(error):
 def internal_error(error):
     """Handle 500 Internal Server errors."""
     app.logger.error(f'Server Error: {error}', exc_info=True)
-    return _error_response(error, 500,
-                           'An unexpected error occurred. Please try again.')
+    return _error_response(error, 500, None)
 
 @app.errorhandler(Exception)
 def handle_exception(error):
@@ -449,8 +455,7 @@ def handle_exception(error):
         return _error_response(error, error.code or 500,
                                error.description or error.name)
     app.logger.error(f'Unhandled Exception: {error}', exc_info=True)
-    return _error_response(error, 500,
-                           'An unexpected error occurred. Please check the logs.')
+    return _error_response(error, 500, None)
 
 # Reintroduce persistent connections container for status checks
 # QUICK_ACTIONS_FILE provided by modules.config
