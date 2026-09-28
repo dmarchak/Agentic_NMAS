@@ -99,7 +99,9 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
             return 0, None, "URLError: timed out"
         if "head_sha=" in path:
             sha = path.split("head_sha=")[1].split("&")[0]
-            runs = runs_by_sha.get(sha, [])
+            # A SHA listed as `passed` answers its own query with a passing
+            # run: the gate asks about each ancestor by SHA (2026-09-28).
+            runs = runs_by_sha.get(sha, _run_entry(sha) if sha in passed else [])
             # A function of how many times CI was asked: a run that MOVES
             # while --wait follows it.
             runs = runs(sum(1 for c in calls if "head_sha=" in c)) if callable(runs) else runs
@@ -262,6 +264,83 @@ class TestNoRunFound:
         code, _, _ = _run(world, {}, passed=[world.base])
         assert code == 0 and _head(world) == sha
         assert "paths-ignore" in capsys.readouterr().out
+
+
+class TestTheWalkAsksEachAncestor:
+    """The operator's finding, 2026-09-28: 4ec7ffb (docs only) on 6991b32
+    (#148 passed) was refused with "no passing ancestor within 100 commits".
+    The old walk tested ancestors against ONE filtered listing of passing
+    runs, and that message described a search it never made. Each ancestor
+    is now asked about by SHA, named with what was found, and the walk stops
+    at the first commit that HAS runs."""
+
+    def test_the_operators_shape_deploys_and_names_what_it_asked(self, world, capsys):
+        """green, docs, green, docs: the target's parent passed."""
+        world.advance({"app.py": "v = 2\n"}, "e986e66: green")
+        world.advance({"docs/NOTE.md": "x\n"}, "6fc7b59: docs")
+        green = world.advance({"app.py": "v = 3\n"}, "6991b32: green")
+        sha = world.advance({"docs/OPEN.md": "y\n"}, "4ec7ffb: docs")
+        code, _, calls = _run(world, {}, passed=[green, world.base])
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert f"Asked: {sha[:10]}: no run; {green[:10]}: run #? passed." in out
+        assert not any("status=success" in c for c in calls), "the filtered listing is not asked"
+
+    def test_two_docs_only_commits_in_a_row_deploy(self, world, capsys):
+        green = world.advance({"app.py": "v = 2\n"}, "green")
+        d1 = world.advance({"docs/A.md": "a\n"}, "docs 1")
+        d2 = world.advance({"docs/B.md": "b\n"}, "docs 2")
+        code, _, _ = _run(world, {}, passed=[green])
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == d2, out
+        assert f"{d2[:10]}: no run; {d1[:10]}: no run; {green[:10]}: run #? passed" in out
+
+    def test_a_failed_code_commit_stops_the_walk_before_an_older_pass(self, world, capsys):
+        """The dangerous direction: never walk past a failure to an older pass."""
+        world.advance({"app.py": "v = 2\n"}, "green")
+        bad = world.advance({"app.py": "v = 666\n"}, "failing code")
+        world.advance({"docs/X.md": "x\n"}, "docs on top")
+        code, _, calls = _run(world, {bad: _run_entry(bad, "failure")},
+                              passed=[world.base])
+        err = capsys.readouterr().err
+        assert code == 2 and _head(world) == world.base
+        assert f"{bad[:10]}, did not pass (run #? failed)" in err
+        assert not any(world.base in c for c in calls), "it never asked past the failure"
+
+    def test_a_cancelled_code_commit_stops_the_walk_too(self, world, capsys):
+        bad = world.advance({"app.py": "v = 2\n"}, "superseded")
+        world.advance({"docs/X.md": "x\n"}, "docs")
+        code, _, _ = _run(world, {bad: _run_entry(bad, "cancelled")}, passed=[world.base])
+        assert code == 2 and "did not pass (run #? cancelled)" in capsys.readouterr().err
+
+    def test_a_running_code_commit_is_pending_so_wait_can_follow_it(self, world, capsys):
+        running = world.advance({"app.py": "v = 2\n"}, "still running")
+        world.advance({"docs/X.md": "x\n"}, "docs")
+        code, _, _ = _run(world, {running: _run_entry(running, None, "in_progress")})
+        assert code == 7 and "is still running" in capsys.readouterr().err
+
+    def test_a_code_commit_with_no_run_is_passed_over_and_its_change_refuses(self, world, capsys):
+        """No run is only expected for ignored paths: the diff from the pass
+        names the code change the walk passed over."""
+        world.advance({"app.py": "v = 2\n"}, "code, no run")
+        world.advance({"docs/X.md": "x\n"}, "docs")
+        code, _, _ = _run(world, {}, passed=[world.base])
+        err = capsys.readouterr().err
+        assert code == 2 and "app.py" in err and "Asked:" in err
+
+    def test_past_the_bound_it_refuses_naming_every_commit_it_asked(self, world, capsys):
+        mod = _script()
+        for n in range(mod.WALK_BOUND + 1):
+            world.advance({f"docs/N{n}.md": "x\n"}, f"docs {n}")
+        code, _, calls = _run(world, {}, passed=[world.base])
+        err = capsys.readouterr().err
+        asked = sum(1 for c in calls if "head_sha=" in c)
+        assert code == 2 and asked == mod.WALK_BOUND + 1
+        assert f"none of the {mod.WALK_BOUND + 1} commit(s) asked about has one" in err
+        assert err.count(": no run") == mod.WALK_BOUND + 1
+
+    def test_the_bound_comes_from_the_measured_streak(self):
+        assert _script().WALK_BOUND == 10       # 2.5x the longest streak, 4 (2026-09-28)
 
 
 class TestNothingChanged:
@@ -557,7 +636,7 @@ class TestIgnoredPaths:
 
     def test_the_patterns_are_read_from_the_workflow_not_copied(self):
         src = open(os.path.join(ROOT, "scripts", "nmas-deploy")).read()
-        assert "ignored_patterns(repo, ancestor)" in src
+        assert "ignored_patterns(repo, base)" in src   # the GREEN base the walk found
         assert "ignored_patterns(repo, target)" not in src
         assert '"docs/**"' not in src
 

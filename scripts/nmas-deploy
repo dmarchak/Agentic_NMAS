@@ -189,6 +189,13 @@ def only_ignored(paths, patterns):
 # The gate
 # ---------------------------------------------------------------------------
 
+#: How many ancestors a commit with no run may be judged back through. The
+#: walk asks GitHub about each by SHA and stops at the first that HAS runs.
+#: Measured 2026-09-28: the longest streak of consecutive commits with no run
+#: on main is 4 (204 commits since the first run), so 10 is 2.5x that; past
+#: it the gate refuses, naming every commit it asked about.
+WALK_BOUND = 10
+
 #: Conclusions that are an ABANDONED attempt, not a verdict (C124).
 ABANDONED = ("cancelled", "skipped")
 
@@ -261,45 +268,80 @@ def ci_verdict(repo, target, get=github_get):
         return CI_REFUSED, (f"FAILED: CI's latest conclusive run for {short}, #{num}, concluded "
                             f"{run.get('conclusion')}: {url}{others}. Do not deploy this commit.")
 
-    # No run for the target. Legitimate ONLY for a docs-only push.
-    status, body, reason = get(f"/repos/{slug}/actions/runs?branch=main&status=success"
-                               f"&event=push&per_page=50")
-    if body is None:
-        return COULD_NOT_ASK, f"no CI run for {short}, and could not list passing runs ({reason}). Refused."
-    passed = {r["head_sha"] for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH}
-    for ancestor in git(repo, "rev-list", "--max-count=100", target).split():
-        if ancestor in passed:
-            # NOTHING CHANGED is decided on its own, by tree IDENTITY (the
-            # operator's finding, 2026-09-28). An empty commit carrying a
-            # corrected message (41a4149) changes no file, GitHub starts no
-            # run for it, and the ignore rule, written for a NON-empty change
-            # set, answered "changes more than ignored paths: []": the empty
-            # case inherited, and the message printing the evidence against
-            # its own verdict. The same tree as a commit CI passed is exactly
-            # the code CI verified. Decided on the two tree hashes, which
-            # `git()` reads or raises, never on an empty list, which is also
-            # what a failed read could look like.
-            tree = git(repo, "rev-parse", f"{target}^{{tree}}")
-            if tree == git(repo, "rev-parse", f"{ancestor}^{{tree}}"):
-                return OK, (f"no CI run for {short}, which is expected: its tree is IDENTICAL "
-                            f"to {ancestor[:10]}'s, which CI passed (tree {tree[:10]}), so what "
-                            "is deployed is exactly what CI verified")
-            changed = git(repo, "diff", "--name-only", ancestor, target).split()
-            if not changed:
-                # The trees differ and git names no changed file: the two facts
-                # disagree, so nothing can be concluded. Never a pass.
-                return COULD_NOT_ASK, (f"no CI run for {short}: its tree differs from "
-                                       f"{ancestor[:10]}'s (CI passed) and git named no changed "
-                                       "file. The two disagree, so what changed is unknown. Refused.")
-            patterns = ignored_patterns(repo, ancestor)   # the GREEN commit's rule
-            if only_ignored(changed, patterns):
-                return OK, (f"no CI run for {short}, which is expected: every file changed "
-                            f"since {ancestor[:10]} (CI passed) matches that commit's "
-                            f"paths-ignore {patterns}: {changed}")
-            return COULD_NOT_ASK, (f"no CI run for {short}, and it changes more than ignored "
-                                   f"paths since {ancestor[:10]}, the last commit CI passed: "
-                                   f"{[p for p in changed if not only_ignored([p], patterns)][:5]}. Refused.")
-    return COULD_NOT_ASK, f"no CI run for {short} and no passing ancestor within 100 commits. Refused."
+    # No run for the target. Legitimate ONLY for a docs-only push, judged
+    # against the NEAREST ANCESTOR THAT HAS A RUN, asked about by SHA like the
+    # target itself (the operator's finding, 2026-09-28: the old walk tested
+    # each ancestor against ONE filtered listing of passing runs, and a listing
+    # that came back without the recent passes produced "no passing ancestor
+    # within 100 commits", which described a search it never made). Each
+    # commit asked about is named with what was found, and the walk stops at
+    # the first commit that HAS runs: it never walks past a failed, cancelled
+    # or running commit to an older pass.
+    asked = [f"{short}: no run"]
+    base = None
+    for ancestor in git(repo, "rev-list", f"--max-count={WALK_BOUND + 1}", target).split()[1:]:
+        a = ancestor[:10]
+        status, body, reason = get(f"/repos/{slug}/actions/runs?head_sha={ancestor}"
+                                   f"&event=push&per_page=20")
+        if body is None:
+            return COULD_NOT_ASK, (f"no CI run for {short}, and asking about its ancestor {a} "
+                                   f"failed ({reason}). Asked: {'; '.join(asked)}. Refused.")
+        aruns = [r for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
+        if not aruns:
+            asked.append(f"{a}: no run")
+            continue
+        state, run, _all = verdict_of_runs(aruns)
+        num = run.get("run_number", "?")
+        asked.append(f"{a}: run #{num} {state.lower()}")
+        if state == "PENDING":
+            return CI_PENDING, (f"PENDING: {short} has no run of its own, and the nearest ancestor "
+                                f"with one, {a}, is still running (#{num}). Asked: "
+                                f"{'; '.join(asked)}. Wait, or run `nmas-deploy --wait`.")
+        if state != "PASSED":
+            return COULD_NOT_ASK, (f"no CI run for {short}, and the nearest ancestor with a run, "
+                                   f"{a}, did not pass (run #{num} {state.lower()}): its code is "
+                                   f"unverified, so nothing after it is deployed. Asked: "
+                                   f"{'; '.join(asked)}. Refused.")
+        base = ancestor
+        break
+    if base is None:
+        return COULD_NOT_ASK, (f"no CI run for {short}, and none of the {len(asked)} commit(s) "
+                               f"asked about has one (the walk stops after {WALK_BOUND} "
+                               "ancestors: 2.5x the longest measured streak of commits "
+                               f"without a run, 4): {'; '.join(asked)}. Refused.")
+    seen = f" Asked: {'; '.join(asked)}."
+    # NOTHING CHANGED is decided on its own, by tree IDENTITY (the
+    # operator's finding, 2026-09-28). An empty commit carrying a
+    # corrected message (41a4149) changes no file, GitHub starts no
+    # run for it, and the ignore rule, written for a NON-empty change
+    # set, answered "changes more than ignored paths: []": the empty
+    # case inherited, and the message printing the evidence against
+    # its own verdict. The same tree as a commit CI passed is exactly
+    # the code CI verified. Decided on the two tree hashes, which
+    # `git()` reads or raises, never on an empty list, which is also
+    # what a failed read could look like.
+    tree = git(repo, "rev-parse", f"{target}^{{tree}}")
+    if tree == git(repo, "rev-parse", f"{base}^{{tree}}"):
+        return OK, (f"no CI run for {short}, which is expected: its tree is IDENTICAL "
+                    f"to {base[:10]}'s, which CI passed (tree {tree[:10]}), so what "
+                    "is deployed is exactly what CI verified." + seen)
+    changed = git(repo, "diff", "--name-only", base, target).split()
+    if not changed:
+        # The trees differ and git names no changed file: the two facts
+        # disagree, so nothing can be concluded. Never a pass.
+        return COULD_NOT_ASK, (f"no CI run for {short}: its tree differs from "
+                               f"{base[:10]}'s (CI passed) and git named no changed "
+                               "file. The two disagree, so what changed is unknown." + seen
+                               + " Refused.")
+    patterns = ignored_patterns(repo, base)   # the GREEN commit's rule
+    if only_ignored(changed, patterns):
+        return OK, (f"no CI run for {short}, which is expected: every file changed "
+                    f"since {base[:10]} (CI passed) matches that commit's "
+                    f"paths-ignore {patterns}: {changed}." + seen)
+    return COULD_NOT_ASK, (f"no CI run for {short}, and it changes more than ignored "
+                           f"paths since {base[:10]}, the last commit CI passed: "
+                           f"{[p for p in changed if not only_ignored([p], patterns)][:5]}."
+                       + seen + " Refused.")
 
 
 def parallel_available(tree=None):
