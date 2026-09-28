@@ -2000,6 +2000,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the runner writes no bytecode. Past instances are unknowable (the timing
   was never recorded) and bounded: control verdicts and CI verdicts hold,
   and only a laptop run right after a restore could be wrong.
+  **Third instance, in the triage itself** (C106, the operator,
+  2026-09-28): the register was sorted from a dump that cut every cell at
+  420 characters, and C106's row, 7,228 long, already held both of the
+  answers its UNKNOWN bucket asked for. An UNKNOWN created by the tool that
+  read the register, not by the world, in the survey used to decide what
+  matters. **A survey is only as complete as its reader, and a truncating
+  reader produces CONFIDENT gaps.** The response that bounds it: re-read
+  every row in full for a deciding word past the cut. C106 was the only one.
 - **A document asserting a property the code does not have is worse than no
   document, because it stops the next person looking.** CLAUDE.md said
   `write_settings()` was "the one path into `user_settings.json`". There was
