@@ -1,0 +1,69 @@
+name: nmas-r1-probe
+
+# ---------------------------------------------------------------------------
+# R1 - onboarding through the 7.1 interface, on a throwaway, into a throwaway
+# list (NSOT_STAGE7_PLAN.md, "7.1's stated limit, and the two runs that close
+# it"). The shape is STAGE 4C's probe (nmas-onboard-c.clab.yml), which proved
+# it on 2026-09-23: read that file's header for the full reasoning behind
+# each choice below. What differs is stated here.
+#
+# THE NODE BOOTS THE CONFIG CREATE GENERATED, so this file is deployed AFTER
+# Create and after R1 step 3 (Verify before the node has booted: a real "did
+# not answer"). Deploying earlier leaves `startup-config` pointing at a file
+# that does not exist yet.
+#
+# Chosen and measured 2026-09-28, read-only:
+#   - device `probe-r1a`, list `probe-r1`: NetBox holds no device of that name
+#     (control: s3's 10.255.0.1 is found), and no list's manifest names it.
+#     `probe-r1b` is the second device R1 creates and ABANDONS; it needs no
+#     node and has no line here.
+#   - management address 10.255.0.33 on Gi2 (and .34 for probe-r1b): NetBox
+#     holds neither, neither answers ping from the NMAS, and the NMAS's
+#     neighbour table shows both INCOMPLETE. Never used by any earlier probe
+#     (.31 was bp-onboard-c, .32 is r6, .40 bp-dhcp-a).
+#   - `br-mgmt` holds the host uplink, s3-mgmt and r6-mgmt; `probe-mgmt` is
+#     free, so this node becomes the fourth port on the manager's wire.
+#   - the containerlab network `clab-onboard-probe` on 172.30.40.0/24 is not
+#     present on the clab host now. Sharing the NAME with nmas-onboard-c is
+#     deliberate (sequential throwaways that never run together keep one
+#     name -> subnet mapping; test_probe_topologies.py checks it both ways).
+#   - the launch patch: the probe's OWN copy of the adopted script, never
+#     ~/labs/lab/patches/ itself. Measured: ~/labs/lab/patches/c8000v-launch.py
+#     hashes e483dd2475b505bd, equal to tests/fixtures/launch/
+#     c8000v-launch-adopted.py (smp=2 AND the user-skip; without the skip the
+#     node boots on admin/admin reporting healthy).
+#   - the clab host's load was 15.8 on 24 CPUs. A C8000v adds about two
+#     cores. C93 measured s3, the manager's gateway, missing probes under that
+#     load: a "did not answer" during R1 can be the host, and says so.
+#
+# Teardown: `sudo containerlab destroy -t nmas-r1-probe.clab.yml`, WITHOUT
+# `--cleanup` (STAGE4C_PROBE step 3c measured what it does to a bridge node
+# it did not create). Then R2b removes what phase 2 put in NetBox.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-onboard-probe
+  ipv4-subnet: 172.30.40.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a      # identical to r1-r5
+
+  nodes:
+    probe-r1a:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.40.11
+      # Written from Create's artefact, exactly as downloaded, BEFORE deploy.
+      startup-config: configs/probe-r1a.cfg
+      binds:
+        - patches/c8000v-launch-adopted.py:/launch.py   # smp=2 AND user-skip
+
+    br-mgmt:
+      kind: bridge
+
+  links:
+    # Gi2 is the interface Create's config addresses (10.255.0.33); Gi1 is
+    # vrnetlab's. The two must agree or the node boots addressed on a wire it
+    # is not cabled to.
+    - endpoints: ["probe-r1a:Gi2", "br-mgmt:probe-mgmt"]
