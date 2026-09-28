@@ -72,11 +72,17 @@ def row(*, source: str, key: str, what: str, cause: str, action: dict,
 
 
 def source_result(source: str, label: str, *, read_at: float, took_ms: int,
-                  rows=None, checked: str = "", error: str = "") -> dict:
-    """One source, read. *error* makes the source a row of its own."""
+                  rows=None, checked: str = "", error: str = "",
+                  value_at: float = None) -> dict:
+    """One source, read. *error* makes the source a row of its own.
+
+    *read_at* is when this request read the source; *value_at* is the time of
+    the VALUE it shows (section 1a), which for a stored result (the last drift
+    run) is earlier, and for a live read (job health) is the same. Collapsing
+    them would draw a day-old drift run as read "just now"."""
     if error:
         return {"source": source, "label": label, "state": "unreadable",
-                "read_at": _iso(read_at), "took_ms": took_ms,
+                "read_at": _iso(read_at), "value_at": None, "took_ms": took_ms,
                 "checked": "nothing: the read failed",
                 "rows": [row(source=source, key="unreadable", level="unknown",
                              what=f"{label} could not be read",
@@ -90,8 +96,9 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
         raise RowRefused(f"source {source!r} read without saying what it looked at: "
                          "an empty result must say what was checked")
     return {"source": source, "label": label, "state": "read",
-            "read_at": _iso(read_at), "took_ms": took_ms, "checked": checked,
-            "rows": list(rows or [])}
+            "read_at": _iso(read_at),
+            "value_at": _iso(read_at if value_at is None else value_at),
+            "took_ms": took_ms, "checked": checked, "rows": list(rows or [])}
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +182,118 @@ def job_health_source(health=None, now=None) -> dict:
                          checked=f"{len(jobs)} job-health row(s), {n_ok} ok")
 
 
+# ---------------------------------------------------------------------------
+# Source: drift, with coverage (C96: the checker ran, found drift, and the
+# panel drew none of it)
+# ---------------------------------------------------------------------------
+
+#: A stored run older than this many intervals is itself a row: the value on
+#: the page is from a run that should have been superseded.
+DRIFT_STALE_INTERVALS = 2
+
+_REACH_APPROVALS = {"label": "Review the queued drift item in Approvals: capture the "
+                             "running config as the golden, or re-apply the golden"}
+
+
+def drift_source(status=None, now=None) -> dict:
+    """The LAST drift run for the list on screen, from its stored record
+    (section 0a: nothing re-checks a device to draw this page). Every device
+    the run did not clear is a row, and so is the checker's own state: off,
+    never run, a failed run, or a stored run too old to describe the network
+    now."""
+    from modules import drift_check as D
+
+    started = time.time()
+    now = now or started
+    try:
+        st = status() if status else D.get_checker().status()
+        interval = D._get_interval()
+    except Exception as exc:                       # noqa: BLE001
+        log.error("attention: drift status could not be read: %s", exc)
+        return source_result("drift", "Drift", read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"it raised {type(exc).__name__}: {exc}")
+    took = int((time.time() - started) * 1000)
+    lst = st.get("list") or "?"
+    last, last_ts = st.get("last_run"), st.get("last_ts") or None
+    rows = []
+
+    def add(key, what, cause, action, level, devices=(), since=None, operands=None):
+        rows.append(row(source="drift", key=f"{lst}:{key}", what=what, cause=cause,
+                        action=action, level=level, devices=devices, since=since,
+                        operands={"list": lst, **(operands or {})}))
+
+    if st.get("disabled"):
+        by = st.get("disabled_by") or "nobody recorded"
+        add("disabled", f"Drift checking is switched off for {lst}",
+            f"switched off by {by}; nothing compares the devices with their "
+            "goldens until it is switched back on",
+            {"label": "Switch drift checking back on in the Drift panel"},
+            "warning", since=_ts(st.get("disabled_at")))
+    if not last:
+        add("never", f"Drift has never been checked for {lst}",
+            "no drift run is recorded for this list, so whether any device has "
+            "drifted is unknown",
+            {"label": "Run a drift check from the Drift panel"}, "unknown")
+        return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
+                             checked=f"list {lst}: no drift run recorded")
+    if last.get("ok") is False:
+        add("failed", f"The last drift check for {lst} failed",
+            last.get("summary") or last.get("error") or "no reason recorded",
+            {"label": "Run a drift check from the Drift panel and read its reason"},
+            "unknown", since=last_ts)
+    elif last_ts and now - last_ts > DRIFT_STALE_INTERVALS * interval:
+        add("stale", f"The last drift check for {lst} is old",
+            f"it ran {int((now - last_ts) // 3600)} h ago, over "
+            f"{DRIFT_STALE_INTERVALS} intervals of {int(interval // 60)} min: "
+            "what it found describes the network as it was then",
+            {"label": "Run a drift check from the Drift panel"}, "warning",
+            since=last_ts + DRIFT_STALE_INTERVALS * interval)
+    coverage = f"checked {last.get('checked', 0)} of {last.get('inventory', 0)}"
+    for d in last.get("drifted_devices") or []:
+        add(f"drifted:{d['hostname']}", f"{d['hostname']} has drifted from its golden",
+            f"the running config differs from the committed golden by "
+            f"{d.get('diff_lines', '?')} diff line(s), seen by the drift check at "
+            f"{_iso(last_ts) or 'an unrecorded time'}; since when it has differed "
+            "is not recorded", _REACH_APPROVALS, "danger", devices=[d["hostname"]],
+            operands={"diff_lines": d.get("diff_lines"), "coverage": coverage})
+    for d in last.get("skipped") or []:
+        no_golden = d.get("reason") == "no golden config saved"
+        add(f"skipped:{d['hostname']}", f"{d['hostname']} was not checked for drift",
+            d.get("reason") or "no reason recorded",
+            {"label": "Capture its golden from its Device page, or with Save All's "
+                      "no-golden scope"} if no_golden else
+            {"label": "The reason above is all that is recorded", "known": False},
+            "warning", devices=[d["hostname"]], operands={"coverage": coverage})
+    for d in last.get("errors") or []:
+        add(f"unreachable:{d['hostname']}", f"{d['hostname']} could not be checked for drift",
+            d.get("reason") or "no reason recorded",
+            {"label": "The reason above is all that is recorded", "known": False},
+            "unknown", devices=[d["hostname"]], operands={"coverage": coverage})
+    return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
+                         value_at=last_ts,
+                         checked=f"list {lst}, the run of {_iso(last_ts) or 'an unrecorded time'}: "
+                                 f"{coverage}, triggered by {last.get('triggered_by') or 'unrecorded'}")
+
+
+def _ts(value):
+    """An epoch from a stored time that may be epoch or ISO text; None if neither."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        import calendar
+        return float(calendar.timegm(time.strptime(str(value)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except ValueError:
+        return None
+
+
 #: Every source, in the order a person reads them. Section 1a's other
-#: sources (drift with coverage, freshness, Grafana alerts, approvals,
-#: pending onboardings, rollback blocks, failed deploys, unearned baselines)
-#: join HERE, each through `source_result`.
-SOURCES = (job_health_source,)
+#: sources (freshness, Grafana alerts, approvals, pending onboardings,
+#: rollback blocks, failed deploys, unearned baselines) join HERE, each
+#: through `source_result`.
+SOURCES = (job_health_source, drift_source)
 
 
 def needs_attention(sources=None) -> dict:
@@ -205,5 +319,5 @@ def needs_attention(sources=None) -> dict:
     return {"ok": True, "headline": headline, "rows": rows,
             "unreadable": unreadable,
             "sources": [{k: res[k] for k in ("source", "label", "state", "read_at",
-                                             "took_ms", "checked")}
+                                             "value_at", "took_ms", "checked")}
                         | {"count": len(res["rows"])} for res in results]}

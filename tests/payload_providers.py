@@ -364,5 +364,58 @@ def needs_attention(mp, tmp):
     def unreadable():
         raise OSError("the store could not be opened")
 
-    mp.setattr(A, "SOURCES", (lambda: A.job_health_source(health), unreadable))
+    _drift_run(mp, tmp)
+    mp.setattr(A, "SOURCES", (lambda: A.job_health_source(health), A.drift_source,
+                              unreadable))
     return _ok(_client().get("/attention"))
+
+
+def _drift_run(mp, tmp):
+    """A REAL drift run through `run_drift_check()` (C96: the fixture never
+    reached one): r1 clean, r2 drifted, r3 with no golden, r4 unreachable.
+    Device I/O is faked as the population test fakes it; the run's result is
+    stored the way the scheduler stores it."""
+    import time as _time
+
+    from modules import drift_check as D
+    from modules.config import get_current_list_name
+
+    def dev(name, ip):
+        return {"hostname": name, "ip": ip, "username": "u", "password": "p",
+                "device_type": "cisco_ios"}
+
+    devices = [dev("r1", "203.0.113.1"), dev("r2", "203.0.113.2"),
+               dev("r3", "203.0.113.3"), dev("r4", "203.0.113.4")]
+    golden = {"203.0.113.1": "hostname r1\n!\nend\n",
+              "203.0.113.2": "hostname r2\n!\nend\n",
+              "203.0.113.4": "hostname r4\n!\nend\n"}
+    running = {"203.0.113.1": "hostname r1\n!\nend\n",
+               "203.0.113.2": "hostname r2\n!\nip route 0.0.0.0 0.0.0.0 Null0\nend\n"}
+
+    def connect(d, pool, lock):
+        if d["ip"] == "203.0.113.4":
+            raise OSError("timed out")
+        return d["ip"]
+
+    csv_path = str(tmp / "drift-devices.csv")
+    mp.setattr("modules.device.get_current_device_list", lambda: ("lab", csv_path))
+    mp.setattr("modules.device.load_saved_devices", lambda path=None: list(devices))
+    mp.setattr("modules.ai_assistant._golden_record",
+               lambda ip: {"text": golden.get(ip), "path": "", "commit": "",
+                           "source": "", "refused": ""})
+    mp.setattr("modules.connection.get_persistent_connection", connect)
+    mp.setattr("modules.commands.run_device_command", lambda conn, cmd: running[conn])
+    mp.setattr("modules.approval_queue.add_approval", lambda **kw: {"ok": True})
+    # The run's record goes to THIS provider's directory, never the shared
+    # test store (whose guard refuses a file a test left there).
+    state = str(tmp / "drift_state.json")
+    mp.setattr(D, "_state_file", lambda list_name="": state)
+    result = D.run_drift_check(triggered_by="manual")
+    D._save_state({"last_check_ts": _time.time(), "last_result": result},
+                  get_current_list_name())
+    return result
+
+
+def drift_status(mp, tmp):
+    _drift_run(mp, tmp)
+    return _ok(_client().get("/drift/status"))

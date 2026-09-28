@@ -245,3 +245,87 @@ class TestThePageAndThePanel:
         part = open(os.path.join(ROOT, "templates", "partials", "needs_attention.html")).read()
         assert "{% include 'partials/needs_attention.html' %}" in index
         assert 'id="needsAttentionPanel"' in part and "js/nmas_attention.js" in part
+
+
+# ---------------------------------------------------------------------------
+# Source: drift, with coverage (C96)
+# ---------------------------------------------------------------------------
+
+from tests import payload_providers as P  # noqa: E402
+
+
+def _status(**kw):
+    base = {"list": "lab", "state": "idle", "disabled": False, "last_run": None,
+            "last_ts": 0}
+    base.update(kw)
+    return lambda: base
+
+
+class TestDriftAsASource:
+    def test_a_real_run_gives_a_row_per_device_it_did_not_clear(self, monkeypatch, tmp_path):
+        """Through run_drift_check(): r1 clean, r2 drifted, r3 no golden, r4
+        unreachable. Every device but the clean one is a row, each naming it."""
+        P._drift_run(monkeypatch, tmp_path)
+        res = A.drift_source()
+        rows = {r["id"].split(":", 2)[2]: r for r in res["rows"]}
+        drifted = rows["drifted:r2"]
+        assert drifted["level"] == "danger" and drifted["devices"] == ["r2"]
+        assert drifted["operands"]["diff_lines"] > 0
+        assert drifted["operands"]["coverage"] == "checked 2 of 4"
+        assert "Approvals" in drifted["action"]["label"]
+        # The check saw drift at a time; since when it has differed is not
+        # recorded, so since stays empty rather than claiming the run time.
+        assert drifted["since"] is None and "not recorded" in drifted["cause"]
+        assert rows["skipped:r3"]["action"]["label"].startswith("Capture")
+        assert rows["unreachable:r4"]["level"] == "unknown"
+        assert not any("r1" in r["devices"] for r in res["rows"])
+        assert "checked 2 of 4" in res["checked"] and "manual" in res["checked"]
+
+    def test_the_value_is_dated_by_the_run_not_by_the_read(self):
+        last = {"ok": True, "inventory": 1, "checked": 1, "clean": 1,
+                "drifted_devices": [], "skipped": [], "errors": [],
+                "triggered_by": "scheduled"}
+        res = A.drift_source(_status(last_run=last, last_ts=NOW - 600), now=NOW)
+        assert res["value_at"] == A._iso(NOW - 600) and res["value_at"] != res["read_at"]
+        assert res["rows"] == []
+
+    def test_switched_off_is_a_row_naming_who_and_since(self):
+        res = A.drift_source(_status(disabled=True, disabled_by="ops@example.com",
+                                     disabled_at="2026-08-30T10:03:00Z"), now=NOW)
+        r = res["rows"][0]
+        assert r["what"] == "Drift checking is switched off for lab"
+        assert "ops@example.com" in r["cause"] and r["since"] == "2026-08-30T10:03:00Z"
+
+    def test_never_run_is_unknown_not_clean(self):
+        res = A.drift_source(_status(), now=NOW)
+        assert [r["level"] for r in res["rows"]] == ["unknown"]
+        assert "unknown" in res["rows"][0]["cause"]
+
+    def test_a_failed_run_is_a_row_with_its_reason(self):
+        res = A.drift_source(_status(last_run={"ok": False, "summary": "Drift check failed: boom"},
+                                     last_ts=NOW - 60), now=NOW)
+        assert res["rows"][0]["cause"] == "Drift check failed: boom"
+
+    def test_an_old_run_is_a_row_and_its_findings_still_stand(self):
+        from modules import drift_check as D
+        last = {"ok": True, "inventory": 2, "checked": 2, "drifted_devices":
+                [{"hostname": "r2", "diff_lines": 4}], "skipped": [], "errors": []}
+        old = NOW - (A.DRIFT_STALE_INTERVALS + 1) * D._get_interval()
+        res = A.drift_source(_status(last_run=last, last_ts=old), now=NOW)
+        keys = [r["id"] for r in res["rows"]]
+        assert keys == ["drift:lab:stale", "drift:lab:drifted:r2"]
+
+    def test_the_drift_panel_draws_what_the_run_found(self, monkeypatch, tmp_path):
+        """C96: after a run the panel said there was one and not what it found."""
+        import app as nmas
+        from tests.js_source import with_loaded_scripts
+        from tests.payload_render import lift
+
+        # /drift/status counts the approval queue, which resolves a list path.
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+        status = P.drift_status(monkeypatch, tmp_path)
+        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
+        js = lift(page, "driftDetailHtml")
+        html = dukpy.evaljs(js + f"\ndriftDetailHtml({json.dumps(status)});")
+        assert "Drifted: r2" in html and "diff line(s)" in html
+        assert "triggered by manual" in html and status["last_run"]["timestamp"] in html

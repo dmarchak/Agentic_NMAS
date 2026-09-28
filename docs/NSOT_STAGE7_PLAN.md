@@ -1113,6 +1113,19 @@ have no separate action: the row says so (`known: false`) rather than
 inventing one, and that set is pinned to shrink. Next: the other section 1a
 sources, each through `source_result`.
 
+**7.2 step 2 BUILT (2026-09-28): drift, with coverage (C96 closed).** The last
+stored run, never a re-check: a row per device it did not clear (drifted, not
+checked, unreachable) naming the device and the coverage, and rows for the
+checker's own state (off, never run, failed, a stored run older than two
+intervals). The contract gained `value_at`: a stored source is dated by its
+VALUE (the run), a live one by its read, and the page draws both when they
+differ. The drift panel draws what a run found. **When approvals join as a
+source, a queued drift item ATTACHES to its drift row**, never a second row:
+drift queues one item per drifted device, and two rows about one event is the
+three-reports problem (NSOT_PLAN 8.6). **The actions:** 7.3 as scoped closes
+none of the nine families without one (C164); persist is the remedy two of
+them name and no stage puts it on a screen, a decision for 7.3's scope.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's

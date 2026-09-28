@@ -1162,6 +1162,17 @@ function driftDetailHtml(data) {
          +  ` accounting; run a check to get coverage.</div>`;
   }
 
+  /* WHEN and WHY the run happened, and WHAT it found (C96: after a run the
+     panel said there was one and not what it found). */
+  if (lr.timestamp || lr.triggered_by) {
+    html += `<div class="text-muted small">run ${esc(lr.timestamp || 'at an unrecorded time')}`
+         +  `, triggered by ${esc(lr.triggered_by || 'unrecorded')}</div>`;
+  }
+  (lr.drifted_devices || []).forEach(x => {
+    html += `<div class="text-danger small mt-1">Drifted: ${esc(x.hostname)} — `
+         +  `${esc(x.diff_lines)} diff line(s) from its golden</div>`;
+  });
+
   if (pending > 0) {
     html += `<span class="badge bg-warning text-dark mt-1">${pending} pending `
          +  `approval${pending !== 1 ? 's' : ''}</span>`;

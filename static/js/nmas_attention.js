@@ -26,7 +26,9 @@
   function sourcesLine(sources) {
     return (sources || []).map(function (s) {
       return esc(s.label) + ': ' + (s.state === 'read'
-        ? 'read ' + when(s.read_at) + ' in ' + esc(s.took_ms) + ' ms, ' + esc(s.checked)
+        ? (s.value_at && s.value_at !== s.read_at
+           ? 'value from ' + when(s.value_at) + ', read ' : 'read ')
+          + when(s.read_at) + ' in ' + esc(s.took_ms) + ' ms, ' + esc(s.checked)
           + ', ' + esc(s.count) + ' row(s) here'
         : '<strong>could not be read</strong> (' + when(s.read_at) + ')');
     }).join('; ');

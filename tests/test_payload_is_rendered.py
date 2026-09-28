@@ -98,7 +98,8 @@ RENDERS = {
         (("nmas_attention.js", "attentionPanelHtml", "d"),),
         maps=("operands",),
         adapters={"modules/attention.py": ("needs_attention", "source_result", "row",
-                                           "job_health_source", "_job_action")}),
+                                           "job_health_source", "_job_action",
+                                           "drift_source")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,
@@ -153,7 +154,8 @@ RENDERS = {
         maps=("select_data",),
         adapters={"modules/preview_confirm.py": ("restore_preview", "_restore_gates")}),
     "GET /drift/status": Render(
-        _get("/drift/status"),
+        # C96: through a REAL drift run, so the fields a run carries are seen.
+        lambda mp, tmp: P.drift_status(mp, tmp),
         {I4: ("loadDriftStatus", "driftDetailHtml")},
         ((I4, "loadDriftStatus", "data"), (I4, "driftDetailHtml", "data"))),
     "GET /remote/status": Render(
@@ -470,9 +472,6 @@ _STRINGS = "items are strings: an empty list hides no field"
 #: "strings" hides nothing. "records" is a state the fixture does not reach,
 #: a finding, and that list only shrinks. Measured 2026-09-27.
 EMPTY_IN_FIXTURE = {
-    # A job has no device; the fixture's rotation row does carry one (r2),
-    # and this collection holds names, never records.
-    "GET /attention rows[].devices": (S_, _STRINGS),
     "GET /ai/agent_log entries": (R_, "no agent run in the fixture; the entry "
                                      "fields the panel draws were never examined"),
     "GET /ai/approvals entries": (R_, "no queued item in the fixture; the approval "
