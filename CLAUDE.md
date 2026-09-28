@@ -1986,6 +1986,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   happened again while recording it:** the correction said `migrate()`
   "writes on every GET", and the code writes only when there is something to
   migrate. Read the function before writing the sentence about it.
+  **Again on 2026-09-28** (the operator's naming): the excluded-VRF skip was
+  "counted in `ipam_stats`, never silent", and the count reached nothing a
+  person reads. A claim of visibility satisfied by a number nobody sees:
+  C8's `failed=0` and the sync card's green badge, in a document rather than
+  a screen. The same day's C79 design assumed the dangerous-line
+  authorisation "records why"; measured, it records which lines and who,
+  never why (C140).
 
 - **The interface is for an enterprise network, not for nine devices**
   ([docs/NSOT_STAGE7_GUI.md](docs/NSOT_STAGE7_GUI.md) §0a) — a constraint on
