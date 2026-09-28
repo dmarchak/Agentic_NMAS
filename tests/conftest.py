@@ -136,8 +136,38 @@ def pytest_sessionfinish(session, exitstatus):
         lambda: store_guard.processes_running_from(os.path.dirname(_CHECKOUT_DATA_DIR)))
     if message:
         sys.stderr.write("\n" + message + "\n")
+        if fail:
+            _ci_annotate("error", "the session guard failed the run", message)
     if fail:
         session.exitstatus = 1
+
+
+def _ci_annotate(level: str, title: str, message: str) -> None:
+    """A GitHub Actions workflow command, so a failure is readable from the
+    public API. The job log needs authentication and the annotations do not:
+    a red run whose reason only the log holds cannot be diagnosed from here
+    (232d001, 2026-09-27: 'Process completed with exit code 1', nothing
+    else). Inert outside Actions."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    esc = lambda t: str(t).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::{level} title={esc(title).replace(',', '%2C').replace(':', '%3A')}::"
+          f"{esc(message)[:4000]}", flush=True)
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """One annotation per failed or erroring test (GitHub keeps ten per
+    step, so the first ten), naming the test and its first error line. Runs
+    in the controller under xdist, which receives every worker's reports."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    bad = (terminalreporter.stats.get("failed", []) + terminalreporter.stats.get("error", []))
+    for report in bad[:10]:
+        text = str(getattr(report, "longreprtext", "") or report.longrepr or "")
+        first = next((l for l in text.splitlines() if l.startswith("E ")), text[-600:])
+        _ci_annotate("error", report.nodeid, first)
+    if len(bad) > 10:
+        _ci_annotate("error", "more failures", f"{len(bad) - 10} more not annotated")
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -117,3 +117,25 @@ def test_it_installs_the_test_tools_the_host_installs(path):
     raw = open(path, encoding="utf-8").read()
     assert "pip install --no-deps -r requirements-test.txt" in raw
     assert "-n auto" in raw
+
+
+def test_a_failed_test_is_annotated_under_actions(tmp_path):
+    """A red run must say WHICH test from the public API (annotations), not
+    only in the log, which needs authentication. Driven as a real nested
+    pytest run under GITHUB_ACTIONS=true with one failing test."""
+    import os
+    import subprocess
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    t = tmp_path / "test_x_fails.py"
+    t.write_text("def test_it_fails():\n    assert 1 == 2, 'the planted failure'\n")
+    env = dict(os.environ, GITHUB_ACTIONS="true")
+    # The planted file lives outside tests/, so the suite's conftest is loaded
+    # as a plugin: the hook under test is the shipped one, in its own process.
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                          "-p", "tests.conftest", "--rootdir", root,
+                          "-c", os.path.join(root, "pytest.ini"), str(t)],
+                         cwd=root, env=env, capture_output=True, text=True, timeout=120)
+    lines = [l for l in out.stdout.splitlines() if l.startswith("::error title=")]
+    assert any("test_it_fails" in l and "planted failure" in l for l in lines), out.stdout[-2000:]
