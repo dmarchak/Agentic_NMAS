@@ -45,7 +45,6 @@ NOT_YET_SUBSCRIBED = {
     "device_files": "the device page's file list; 7.3 (Device)",
     "device_state": "the device page; 7.3 (Device)",
     "files": "transferred files; 7.3 (Device)",
-    "freshness": "the freshness signal; 7.6 (Source of truth)",
     "intent": "the intent editor and device Overview; 7.3 (Device)",
     "lists": "the list selector; 7.4 (Fleet, Networks)",
     "monitoring": "the collectors' cards; 7.3 (Device, Monitoring)",
@@ -59,7 +58,7 @@ NOT_YET_SUBSCRIBED = {
     "topology": "the topology layout is drawn by its own editor",
     "variables": "the CSV-era variable store; cut in 7.8",
 }
-NOT_YET_CEILING = 22  # Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
+NOT_YET_CEILING = 21  # the freshness panel and Needs attention subscribe to `freshness` (7.2 step 15); Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
 
 _SUB = re.compile(r"^\s*NMAS\.subscribe\(\s*'([a-z_]+)'\s*,\s*'(\w+)'\s*,\s*(\w+)", re.M)
 

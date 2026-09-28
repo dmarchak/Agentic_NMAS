@@ -73,7 +73,7 @@ VOCABULARY = {
     "netbox": "the NetBox objects NMAS shows or counts",
     "settings": "settings and integrations",
     "posture": "the identity gates' recorded posture",
-    "freshness": "Oxidized freshness authorisations",
+    "freshness": "Oxidized freshness: the stored comparison and its authorisations",
     "backups": "stored backups of device configs",
     "device_state": "what a device runs: anything read live from it",
     "device_files": "a device's filesystem listing",

@@ -101,19 +101,38 @@ def report():
     A **report**, not a gate. Its value is timing — the gate discovers
     divergence when somebody is already preparing a redeploy; this discovers
     it while the person who caused it still remembers what they did.
+
+    **It reads the freshness READER's stored value, never Oxidized**
+    (modules/readers/freshness_reader.py, 7.2): computed per request it was
+    one Oxidized fetch and one golden read per device on every page load.
+    The value carries its own time and promise, so the page can say how old
+    it is (the live-data contract).
     """
-    from modules.nsot import freshness
+    from modules import reader_job
+    from modules.readers import freshness_reader
 
     list_name = _list_name()
-    try:
-        result = freshness.check(list_name)
-    except Exception as exc:                   # noqa: BLE001
-        log.exception("freshness: report failed for %r", list_name)
-        return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
-
-    if not result.get("ok"):
-        return jsonify(_redacted(result)), 500
-    result["summary"] = freshness.gate_summary(result)
+    got = reader_job.read_cached(freshness_reader.READER.name)
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return jsonify({"ok": False, "list": list_name,
+                        "error": f"not compared yet: {why}. This is not the same as "
+                                 "nothing having diverged"}), 503
+    lists = (good.get("value") or {}).get("lists") or {}
+    if list_name not in lists:
+        return jsonify({"ok": False, "list": list_name,
+                        "error": f"the stored comparison holds no answer for list {list_name!r} "
+                                 f"(it compared: {', '.join(sorted(lists)) or 'none'})"}), 404
+    result = dict(lists[list_name])
+    attempt = doc.get("last_attempt") or {}
+    result.update({"value_at": good.get("value_at"),
+                   "stale_after_seconds": doc.get("stale_after_seconds"),
+                   "endpoints": doc.get("endpoints") or [],
+                   "last_attempt_error": "" if attempt.get("ok") else attempt.get("error", "")})
     return jsonify(_redacted(result))
 
 

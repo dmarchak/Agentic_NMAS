@@ -1377,6 +1377,34 @@ Needs attention draws each incident's members with where each device came
 from and the onset's basis, subscribes to `alerts`, and judges the value
 against the reader's promise (180 s) under the live-data contract.
 
+**7.2 step 15 BUILT (2026-09-28): freshness, the pattern's third instance**
+(`modules/readers/freshness_reader.py`, every 300 s). The signal (is what
+Oxidized holds the approved state?) ran `freshness.check()` on EVERY index
+page load: one Oxidized fetch and one committed-golden read per device, per
+request, and its stamp was the fetch time, so an hour-old comparison looked
+current. Now the reader compares every registered list and stores each
+list's report (a list it could not answer about is stored with its reason,
+never absent); `GET /freshness/report` serves the stored value with its time
+and promise, 503 when nothing is stored ("not the same as nothing having
+diverged"); the panel stamps the VALUE's age under the live-data contract and
+hears the reader's announcement. Needs attention gains a Freshness source:
+UNAPPROVED is a row (a redeploy would boot it), INCONCLUSIVE is a row, a poll
+race and an authorised divergence are counted. The sanitiser's GATE stays a
+live read on purpose: it compares the bytes its caller is about to write.
+Measured for the interval: Oxidized's index 16 ms, a config about 4 ms per
+device; the ten nodes' last polls spread over 44 min at one read, and
+Oxidized's own interval is not served by its API.
+
+**Integration health is its own reader, consumed by both the status bar and
+Needs attention** (the operator's question, decided 2026-09-28, for the next
+step). One producer, two consumers: "Prometheus is unreachable" is a Needs
+attention row with a cause and an action, and the status bar is a colour
+drawn from the same stored value. A tenth source would read integrations per
+page load (the section 0a shape job health just left) and make the bar and
+the list two answers to one question. An integration left unconfigured is a
+state, not a row: where the emptiness switches a guard off, job health's
+`unset_guard` row already says so.
+
 
 ## 9. Deferred, recorded rather than scoped
 

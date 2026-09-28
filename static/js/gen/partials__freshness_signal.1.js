@@ -73,12 +73,15 @@ function freshnessSignalHtml(data) {
   return html;
 }
 
+let _freshLast = null;
+
 async function loadFreshnessSignal() {
   const body = document.getElementById('freshnessBody');
   if (!body) { console.error('freshness: no container'); return; }
-  body.innerHTML = '<span class="text-muted small">checking…</span>';
   let data;
   try {
+    // The STORED comparison (the freshness reader, 7.2), never Oxidized: this
+    // was one Oxidized fetch per device on every page load.
     const resp = await fetch('/freshness/report');
     data = await resp.json();
   } catch (err) {
@@ -86,12 +89,27 @@ async function loadFreshnessSignal() {
     // "nothing has diverged".
     data = { ok: false, error: String(err) };
   }
+  _freshLast = data;
   body.innerHTML = freshnessSignalHtml(data);
-  const stamp = document.getElementById('freshnessStamp');
-  if (stamp) stamp.textContent = new Date().toLocaleTimeString();
+  // The live-data contract: the age of the VALUE against the reader's own
+  // promise, redrawn on the page's tick. The old stamp was the fetch time,
+  // which made an hour-old comparison look current.
+  if (window.NMAS && window.NMAS.stamp) {
+    const at = data && data.value_at ? Date.parse(data.value_at) : null;
+    window.NMAS.stamp('freshnessBody', isNaN(at) ? null : at,
+                      data && data.stale_after_seconds, 'Freshness', function () {
+      body.innerHTML = freshnessSignalHtml(_freshLast);
+    });
+  }
 }
 
 // Registers its own initialiser. `loadOnboardPending` shipped with its only
 // callers inside the banner it drew, so the banner could appear only after
 // using a control that appeared only once it had.
-document.addEventListener('DOMContentLoaded', loadFreshnessSignal);
+document.addEventListener('DOMContentLoaded', function () {
+  loadFreshnessSignal();
+  // The reader announces when it finishes (C58): redraw from the new value.
+  if (window.NMAS && window.NMAS.subscribe) {
+    NMAS.subscribe('freshness', 'freshnessSignal', loadFreshnessSignal, {panel: 'freshnessBody'});
+  }
+});

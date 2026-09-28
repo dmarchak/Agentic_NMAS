@@ -227,6 +227,7 @@
         NMAS.subscribe('baselines', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('job_health', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('alerts', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('freshness', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
       }
     });
   }
