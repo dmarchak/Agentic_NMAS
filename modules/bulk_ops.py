@@ -10,11 +10,14 @@ by a unique ID so the UI can poll for per-device progress and results.
 A module-level singleton `bulk_manager` is imported by app.py.
 """
 
+import logging
 import re
 import threading
 from typing import List, Dict, Callable
 from queue import Queue
 import time
+
+log = logging.getLogger(__name__)
 
 # Commands that show interactive confirmation/filename prompts.
 # Each entry: (regex, number of extra "\n" replies to send after the command)
@@ -247,7 +250,10 @@ class BulkOperationManager:
 
                 except Exception as e:
                     result["status"] = "failed"
-                    result["error"] = str(e)
+                    from modules.utils import error_text
+                    result["error"] = error_text(e)
+                    log.warning("bulk (%s) failed on %s: %s", command_mode,
+                                device.get("hostname", device.get("ip")), result["error"])
 
                     with self.lock:
                         self.active_operations[operation_id]["failed"] += 1

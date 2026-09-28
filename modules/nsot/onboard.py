@@ -1975,10 +1975,12 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
                     "ip": entry.get("mgmt_ip", ""),
                     "device_type": device_type or "cisco_xe",
                     "username": username or "admin",
-                    "password": (fernet.encrypt(password.encode()).decode()
-                                 if password else ""),
-                    "secret": (fernet.encrypt(secret.encode()).decode()
-                               if secret else ""),
+                    # ALWAYS a token, even for an empty value (B14's rule: every
+                    # reader decrypts these columns, and decrypting "" raises).
+                    # An empty `secret` here made every pooled session to an
+                    # onboarded device fail before connecting (C152, R1).
+                    "password": fernet.encrypt((password or "").encode()).decode(),
+                    "secret": fernet.encrypt((secret or "").encode()).decode(),
                     "device_uid": identity,
                     "platform": entry.get("platform", ""),
                 })

@@ -251,7 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
       spinner.classList.add('d-none');
       btn.disabled = false;
       if (data.status === 'success') {
-        showToast(data.message, 'warning');
+        // The response comes back BEFORE any device is contacted, so it can
+        // say only that the reload was requested. Each device's real outcome
+        // is polled and drawn, as bulk execute's is (C152: probe-r1a's reload
+        // failed before connecting while this said "sent").
+        showBulkResults(data.operation_id);
       } else {
         showToast(data.message || 'Reload failed', 'danger');
       }

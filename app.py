@@ -2594,12 +2594,18 @@ def bulk_reload():
                 with lock:
                     connections.pop(dev["ip"], None)
                 result["status"] = "success"
-                result["output"] = "Reload command sent — device is rebooting."
+                result["output"] = ("reload sent and confirmed on the session; nothing here "
+                                    "checks that the device went down or came back")
                 with _bm.lock:
                     _bm.active_operations[operation_id]["completed"] += 1
             except Exception as exc:
+                from modules.utils import error_text as _error_text
                 result["status"] = "failed"
-                result["error"]  = str(exc)
+                result["error"]  = _error_text(exc)
+                # In the log as well as in memory: the in-memory result is read
+                # only by a poll nobody may make (C152).
+                app.logger.warning("bulk_reload: %s (%s) failed: %s", dev.get("hostname"),
+                                   dev.get("ip"), result["error"])
                 with _bm.lock:
                     _bm.active_operations[operation_id]["failed"] += 1
             finally:
@@ -2625,7 +2631,9 @@ def bulk_reload():
         return jsonify({
             "status": "success",
             "operation_id": operation_id,
-            "message": f"Reload sent to {len(selected)} device(s)",
+            # Requested, not sent: no device has been contacted yet (C152).
+            "message": f"Reload requested for {len(selected)} device(s); "
+                       "each device's result follows",
         })
 
     except Exception as exc:
