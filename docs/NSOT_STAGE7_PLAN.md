@@ -1176,8 +1176,15 @@ feature after). Freshness, the status bar's integration health, and C92's
 reachability reader reuse it. **A reader names its endpoint and its time** (the
 operator, C165): Grafana's rules view and its alertmanager disagreed on what
 was firing (0 against 2), so a row says "read from alertmanager at T", never
-"2 alerts firing". Precondition, the operator's to run: which
-Grafana role can read alert state (8.6: measured, not assumed). Simple
+"2 alerts firing". **And it tells three states apart** (C165, C166): the
+condition fired, the datasource returned nothing (`DatasourceNoData`), and
+the rule errored; the alertmanager presents all three as active instances. A
+rule in no-data is itself a Needs attention row, since a monitor that is blind
+(or whose quiet cannot be told from blindness) is what the page exists to
+show. Precondition MEASURED 2026-09-28: NMAS's token holds
+`alert.instances:read`, `alert.rules:read` and the full `alert.*` set; the
+instances carry `fingerprint`, `labels` and `startsAt` (the precondition was
+which Grafana role can read alert state, 8.6: measured, not assumed). Simple
 sources on stored data: a failed or partial deploy (receipts), an unearned
 baseline, a line authorised again and again (C140 (1)). The action work:
 C164's host commands lifted into the action field, and C151's (generate the
