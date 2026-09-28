@@ -81,11 +81,18 @@ class TestTokenLifecycle:
         assert consume_token(token, "import", "Lab")[0] is True
         ok, err, _ = consume_token(token, "import", "Lab")
         assert ok is False
-        assert "expired or was already used" in err
+        # WHICH state, with its operand (2026-09-28): "expired or already
+        # used" named neither, and hid a third.
+        assert err.startswith("This confirmation was already used, ")
+        assert "expired" not in err
 
     def test_unknown_token_refused(self):
-        ok, err, _ = consume_token("not-a-real-token", "import", "Lab")
+        """The third state, the one that happened: a token this server never
+        issued (the import preview had masked it on its way out)."""
+        ok, err, _ = consume_token("<redacted:token>", "import", "Lab")
         assert ok is False
+        assert "not one this server issued" in err and "did not arrive intact" in err
+        assert "expired" not in err and "already used" not in err
 
     def test_token_expires(self, monkeypatch):
         """A confirmation left open in a browser tab must not stay valid."""
@@ -94,7 +101,9 @@ class TestTokenLifecycle:
         monkeypatch.setattr(netbox_authz.time, "time", lambda: later)
         ok, err, _ = consume_token(token, "import", "Lab")
         assert ok is False
-        assert "expired" in err
+        # Both operands: how long ago it expired, and the window.
+        assert err.startswith("This confirmation expired 3540 s ago. The window is 60 s")
+        assert "computed 3600 s ago" in err
 
     def test_token_bound_to_operation(self):
         """A remove token must not authorize an import."""

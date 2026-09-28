@@ -35,6 +35,20 @@ DEFAULT_TTL_SECONDS = 300
 _tokens: dict = {}
 _lock = threading.Lock()
 
+#: Tokens that were USED or EXPIRED, remembered (bounded) so a refusal can say
+#: WHICH, with its times. "Expired or already used" named neither and hid a
+#: third state, the one that happened (2026-09-28): a token this server never
+#: issued, because the preview's response had masked it on the way out.
+_spent: dict = {}
+_expired: dict = {}
+_REMEMBER = 256
+
+
+def _remember(store: dict, token: str, entry: dict) -> None:
+    store[token] = entry
+    while len(store) > _REMEMBER:
+        store.pop(next(iter(store)))
+
 
 # ---------------------------------------------------------------------------
 # Plan hashing
@@ -88,7 +102,7 @@ def compute_plan_hash(plan: dict) -> str:
 
 def _purge_expired_locked(now: float) -> None:
     for token in [t for t, e in _tokens.items() if e["expires_at"] <= now]:
-        del _tokens[token]
+        _remember(_expired, token, _tokens.pop(token))
 
 
 def issue_token(operation: str, list_name: str, plan_hash: str,
@@ -103,6 +117,8 @@ def issue_token(operation: str, list_name: str, plan_hash: str,
             "list_name":  list_name,
             "plan_hash":  plan_hash,
             "expires_at": now + ttl,
+            "issued_at":  now,
+            "ttl":        ttl,
         }
     log.info("netbox_authz: issued token for %s on '%s' (ttl %ds)",
              operation, list_name, ttl)
@@ -119,15 +135,33 @@ def consume_token(token: str, operation: str, list_name: str) -> tuple:
     with _lock:
         _purge_expired_locked(now)
         entry = _tokens.pop(token, None)
+        if entry is not None:
+            _remember(_spent, token, dict(entry, used_at=now))
+        spent, expired = _spent.get(token), _expired.get(token)
 
     if entry is None:
-        return False, ("This confirmation has expired or was already used. "
-                       "Run the preview again."), ""
+        return False, _refusal(now, spent, expired), ""
     if entry["operation"] != operation:
         return False, "This confirmation was issued for a different operation.", ""
     if entry["list_name"] != list_name:
         return False, "This confirmation was issued for a different device list.", ""
     return True, "", entry["plan_hash"]
+
+
+def _refusal(now: float, spent, expired) -> str:
+    """Which of three states, with its operands. Never "expired or used"."""
+    if spent is not None:
+        return (f"This confirmation was already used, {now - spent['used_at']:.0f} s ago: "
+                "each preview confirms once. Run the preview again.")
+    if expired is not None:
+        ttl = expired.get("ttl", DEFAULT_TTL_SECONDS)
+        return (f"This confirmation expired {now - expired['expires_at']:.0f} s ago. The window "
+                f"is {ttl} s from when the preview was computed, and it was computed "
+                f"{now - expired.get('issued_at', expired['expires_at'] - ttl):.0f} s ago. "
+                "Run the preview again.")
+    return ("This confirmation is not one this server issued: the server may have restarted "
+            "since the preview (confirmations live in memory), or the confirmation did not "
+            "arrive intact. Run the preview again.")
 
 
 def verify_plan_unchanged(expected_hash: str, current_plan: dict) -> tuple:
@@ -147,6 +181,12 @@ def active_token_count() -> int:
 
 
 def clear_tokens() -> None:
+    _spent.clear()
+    _expired.clear()
+    _clear_live()
+
+
+def _clear_live() -> None:
     """Drop every outstanding token. Used by tests."""
     with _lock:
         _tokens.clear()

@@ -164,7 +164,7 @@ def preview_import():
     from modules.outbound import mask_payload
     out = {"ok": True, "list": list_name, "device_count": len(devices), "plan": plan,
            **_authorization_for("import", list_name, plan)}
-    return jsonify(mask_payload(_drawn(out, _preview("import", out))))
+    return jsonify(_drawn(out, mask_payload(_preview("import", out))))
 
 
 @bp.route("/import/apply", methods=["POST"])
@@ -254,7 +254,7 @@ def preview_import_all():
     from modules.outbound import mask_payload
     out = {"ok": True, "list": _ALL_LISTS, "device_count": sum(len(d) for _, d in payload),
            "plan": plan, **_authorization_for("import_all", _ALL_LISTS, plan)}
-    return jsonify(mask_payload(_drawn(out, _preview("import_all", out))))
+    return jsonify(_drawn(out, mask_payload(_preview("import_all", out))))
 
 
 @bp.route("/import_all/apply", methods=["POST"])
@@ -394,6 +394,14 @@ def removals():
 
 
 def _drawn(d: dict, preview: dict) -> dict:
+    # THE TOKEN IS NOT MASKED, AND THAT IS DELIBERATE (2026-09-28). The import
+    # previews used to wrap this whole response in `mask_payload`, which masks
+    # by KEY, and `token` is a secret key name: every import preview since
+    # C77's sweep sent `<redacted:token>` where the one-shot confirmation
+    # belongs, so Confirm could never succeed ("expired or already used", 5
+    # seconds after a preview, measured on the host). The token is a
+    # capability THIS server issued for the browser to hand back, not a stored
+    # secret; the preview, which is built from stored config, is what is masked.
     """What a preview response carries: the preview, and what the modal needs
     to confirm it (7.1). The raw dry run stays on the server. It had carried
     every object's payload, a device's `local_context_data` config among them,
