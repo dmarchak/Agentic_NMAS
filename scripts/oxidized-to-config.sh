@@ -628,12 +628,20 @@ fi
 # list this loop is reading from, and the loop runs once.
 # ---------------------------------------------------------------------------
 ts=$(date +%Y%m%d-%H%M%S)
-copy_failed=0
-copied_dests=0
+tried_dests=0
 total_dests=$(destinations | wc -l)
+# Each lab ends in exactly one of these. A lab is copied only after its own
+# backup SUCCEEDED (C106 (2)): the backup was `cp -r ... 2>/dev/null; rsync`,
+# and the `;` let a failed backup go on to overwrite the configs it existed
+# to protect. And a failed step is named for the step: a skipped lab used to
+# reach the count check as "the loop ran fewer times", and the read-back as
+# "the copy reported success", both false.
+COPIED_DIRS=()
+FAILED_DIRS=()
 
 while read -r dir; do
   [ -n "$dir" ] || continue
+  tried_dests=$((tried_dests+1))
   list=""
   for n in "${DEVICES[@]}"; do
     [ "${CFGDIR[$n]}" = "$dir" ] && list="${list}${n}.cfg"$'\n'
@@ -642,15 +650,19 @@ while read -r dir; do
 
   # FED BY A PIPE, so this one must NOT take -n: its stdin is the file list,
   # not the loop's input, and -n would send the remote `cat` nothing.
-  printf '%s' "$list" | ssh "$CLAB" "cat > '$STAGE/.files'" || { copy_failed=1; continue; }
-
-  if ssh -n "$CLAB" "cp -r '$dir' '${dir}.bak-${ts}' 2>/dev/null; \
-                     rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/'"; then
+  if ! printf '%s' "$list" | ssh "$CLAB" "cat > '$STAGE/.files'"; then
+    FAILED_DIRS+=("$dir: the file list could not be staged; NOTHING was copied, its configs are untouched")
+    continue
+  fi
+  if ! err="$(ssh -n "$CLAB" "cp -r '$dir' '${dir}.bak-${ts}'" 2>&1)"; then
+    FAILED_DIRS+=("$dir: BACKUP FAILED (${err%%$'\n'*}); NOTHING was copied, its configs are untouched")
+    continue
+  fi
+  if ssh -n "$CLAB" "rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/'"; then
     echo "Copied $count file(s) to $dir   (backup ${dir}.bak-${ts})"
-    copied_dests=$((copied_dests+1))
+    COPIED_DIRS+=("$dir")
   else
-    echo "Copy FAILED for $dir - staged files left at ${CLAB}:${STAGE}"
-    copy_failed=1
+    FAILED_DIRS+=("$dir: COPY FAILED after its backup ${dir}.bak-${ts} was taken; its configs may be PARTLY overwritten (restore from that backup)")
   fi
 done < <(destinations)
 
@@ -659,45 +671,51 @@ done < <(destinations)
 #
 # The count catches a loop that ran fewer times than there are destinations -
 # the 2026-09-24 failure, where every command returned 0 and there was
-# nothing for error handling to catch.
+# nothing for error handling to catch. It counts ATTEMPTS: a lab that was
+# tried and failed is named below, not blamed on the loop.
 #
 # The read-back is the one that matters: it asks the clab VM what is actually
 # in each destination rather than trusting what the transport reported. Same
 # rule as "a failed push reports what LANDED, not what was pushed", and as
 # verify_startup_carries_current() reading the file rather than the report.
+# It reads the labs that were COPIED; a lab that failed was never written.
 # ---------------------------------------------------------------------------
-if [ "$copied_dests" -ne "$total_dests" ]; then
+if [ "$tried_dests" -ne "$total_dests" ]; then
   echo
-  echo "REFUSED - copied $copied_dests of $total_dests destination(s)."
+  echo "REFUSED - tried $tried_dests of $total_dests destination(s)."
   echo "The loop ran fewer times than there are destinations. Staged files"
   echo "left at ${CLAB}:${STAGE} - do not re-run until this is understood."
   exit 1
 fi
 
 verify=""
+verified=0
 for n in "${DEVICES[@]}"; do
-  verify="${verify}cmp -s '$STAGE/${n}.cfg' '${CFGDIR[$n]}/${n}.cfg' || echo '${n} ${CFGDIR[$n]}'"$'\n'
+  for d in "${COPIED_DIRS[@]}"; do
+    if [ "${CFGDIR[$n]}" = "$d" ]; then
+      verify="${verify}cmp -s '$STAGE/${n}.cfg' '${CFGDIR[$n]}/${n}.cfg' || echo '${n} ${CFGDIR[$n]}'"$'\n'
+      verified=$((verified+1))
+    fi
+  done
 done
-mismatched="$(ssh -n "$CLAB" "$verify")"
+mismatched=""
+[ -n "$verify" ] && mismatched="$(ssh -n "$CLAB" "$verify")"
 
 if [ -n "$mismatched" ]; then
   echo
   echo "REFUSED - these devices are NOT what was staged:"
   printf '%s\n' "$mismatched" | sed 's/^/    /'
   echo
-  echo "The copy reported success for every destination and the files do not"
-  echo "match. Staged files left at ${CLAB}:${STAGE}."
+  echo "The copy reported success for their lab and the files do not match."
+  echo "Staged files left at ${CLAB}:${STAGE}."
   exit 1
 fi
 
-echo "Verified: all ${#DEVICES[@]} file(s) match the staged copy at their destination."
+[ "$verified" -gt 0 ] && echo "Verified: all $verified file(s) in the ${#COPIED_DIRS[@]} copied lab(s) match the staged copy."
 
-if [ "$copy_failed" -ne 0 ]; then
-  echo "One or more labs were not updated. Staged files left at ${CLAB}:${STAGE}"
-  exit 1
-fi
-
-ssh -n "$CLAB" "rm -rf $STAGE"
+# The staged files are kept while any lab failed: they are what a re-run or a
+# hand copy of the failed lab would use.
+[ ${#FAILED_DIRS[@]} -eq 0 ] && ssh -n "$CLAB" "rm -rf $STAGE"
 
 # THREE OUTCOMES, NOT ONE SENTENCE.
 #
@@ -771,7 +789,9 @@ while read -r dir; do
     *)            echo "  $dir: UNKNOWN OUTCOME ($outcome) - treat as not committed"
                   failed+=("$dir") ;;
   esac
-done < <(destinations)
+# Only the labs COPIED: a lab whose backup or copy failed was never written
+# by this run, so there is nothing of it to commit (C106 (2)).
+done < <(printf '%s\n' "${COPIED_DIRS[@]}")
 
 # A failure in an EXISTING repository is not "not versioned": the repository
 # is there and the fix is git's own message, not `git init`. Reported apart,
@@ -810,9 +830,16 @@ if [ ${#unversioned[@]} -gt 0 ]; then
 fi
 
 echo
-echo "Startup-configs updated. They take effect on the next destroy/deploy of"
+# THE STATE FIRST (C106): a run that updated some labs and not others says
+# so before anything that reads as success.
+if [ ${#FAILED_DIRS[@]} -gt 0 ]; then
+  echo "NOT ALL LABS UPDATED: ${#COPIED_DIRS[@]} of $total_dests updated. Staged files left at ${CLAB}:${STAGE}."
+  printf '    %s\n' "${FAILED_DIRS[@]}"
+fi
+echo "Startup-configs updated for ${#COPIED_DIRS[@]} of $total_dests lab(s). They take effect on the next destroy/deploy of"
 echo "each affected lab."
 # Exit 3 when a destination did not commit, so a timer running this reports
 # the failure rather than succeeding around it.
+[ ${#FAILED_DIRS[@]} -eq 0 ] || exit 3
 [ ${#failed[@]} -eq 0 ] || exit 3
 [ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3

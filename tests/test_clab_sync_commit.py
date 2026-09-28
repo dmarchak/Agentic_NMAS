@@ -66,6 +66,7 @@ GIT=(git -C {oxidized!r})
 {_function("sanitise")}
 {_function("render_device")}
 destinations() {{ for n in "${{DEVICES[@]}}"; do echo "${{CFGDIR[$n]}}"; done | sort -u; }}
+mapfile -t COPIED_DIRS < <(destinations)
 {body}
 """
     return subprocess.run(["bash", "-c", script], capture_output=True,
@@ -296,3 +297,62 @@ class TestHelpersResolveBesideTheScriptNotThroughPath:
         # the override is lost, on either machine.
         assert "Connection refused" in r.stderr, r.stderr   # the helper's own reason
         assert r.returncode == 2
+
+
+class TestAFailedBackupStopsItsCopy:
+    """C106 (2): the backup ran as `cp -r ... 2>/dev/null; rsync`, so a failed
+    backup went on to overwrite the configs it protected. And a lab that
+    failed was then blamed on the loop ("ran fewer times") and on the copy
+    ("reported success ... do not match"), both false. The SHIPPED region,
+    executed under bash against real directories, one lab's backup refused."""
+
+    REGION = _between("ts=$(date +%Y%m%d-%H%M%S)\ntried_dests=0",
+                      'match the staged copy."')
+
+    def _run(self, tmp_path, fail_backup_of):
+        stage = tmp_path / "stage"
+        stage.mkdir()
+        labs = {}
+        for name in ("a", "b"):
+            d = tmp_path / f"lab-{name}" / "configs"
+            d.mkdir(parents=True)
+            (d / f"{name}.cfg").write_text("OLD\n")
+            (stage / f"{name}.cfg").write_text("NEW\n")
+            labs[name] = d
+        refuse = str(labs[fail_backup_of])
+        script = f"""
+set -uo pipefail
+CLAB=clab; STAGE={str(stage)!r}
+ssh() {{ local cmd="${{@: -1}}"
+  if [[ "$cmd" == "cp -r '{refuse}'"* ]]; then echo "cp: Permission denied" >&2; return 1; fi
+  bash -c "$cmd"; }}
+# rsync is a network tool, refused under the harness (C46): a local copy of
+# exactly the --files-from list stands in for it.
+rsync() {{ local list src dst; list="${{2#--files-from=}}"; src="$3"; dst="$4"
+  while read -r f; do [ -n "$f" ] && cp "$src/$f" "$dst/$f" || true; done < "$list"; }}
+export -f rsync
+declare -A CFGDIR
+DEVICES=(a b)
+CFGDIR[a]={str(labs['a'])!r}; CFGDIR[b]={str(labs['b'])!r}
+destinations() {{ for n in "${{DEVICES[@]}}"; do echo "${{CFGDIR[$n]}}"; done | sort -u; }}
+{self.REGION}
+echo "COPIED=${{COPIED_DIRS[*]}}"
+printf 'FAILED=%s\\n' "${{FAILED_DIRS[@]}}"
+"""
+        out = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                             env=_env(tmp_path), cwd=str(tmp_path))
+        return out, labs
+
+    def test_the_lab_whose_backup_failed_is_not_overwritten(self, tmp_path):
+        out, labs = self._run(tmp_path, "b")
+        assert (labs["b"] / "b.cfg").read_text() == "OLD\n", out.stdout + out.stderr
+        assert (labs["a"] / "a.cfg").read_text() == "NEW\n"
+        assert "BACKUP FAILED (cp: Permission denied)" in out.stdout
+        assert "NOTHING was copied" in out.stdout
+
+    def test_it_is_not_blamed_on_the_loop_or_the_copy(self, tmp_path):
+        out, _labs = self._run(tmp_path, "b")
+        assert "ran fewer times" not in out.stdout
+        assert "NOT what was staged" not in out.stdout
+        assert "Verified: all 1 file(s) in the 1 copied lab(s)" in out.stdout
+        assert out.stdout.count("COPIED=") == 1 and "lab-a" in out.stdout.split("COPIED=")[1]
