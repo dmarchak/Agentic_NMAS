@@ -1074,3 +1074,22 @@ class TestABaselineNeedsNoCommit:
         count_after = len(git(lab, "log", "--format=%h")[1].splitlines())
         assert count_after == count_before
 
+
+
+def test_a_commit_subject_never_claims_a_baseline(tmp_path, monkeypatch):
+    """C83: every golden commit said "golden: baseline N device(s)", tagged
+    or not, and 15 of the host's last 20 were not. The subject names what
+    happened; only the `baseline/<ts>` tag claims a baseline. Both producers:
+    save_golden's own subject and the deploy batch's."""
+    import ast
+    import os
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for rel in ("modules/nsot/repo.py", "routes/deploy.py"):
+        tree = ast.parse(open(os.path.join(root, rel), encoding="utf-8").read())
+        literals = [n for n in ast.walk(tree) if isinstance(n, ast.JoinedStr)]
+        texts = ["".join(v.value for v in n.values if isinstance(v, ast.Constant)
+                         and isinstance(v.value, str)) for n in literals]
+        subjects = [t for t in texts if t.startswith("golden: ")]
+        assert subjects, f"{rel}: the subject producer was not found (floor)"
+        assert not [t for t in subjects if "baseline" in t], (rel, subjects)

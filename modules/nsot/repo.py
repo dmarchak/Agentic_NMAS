@@ -803,7 +803,12 @@ def save_golden(list_name: str, items: list, source: str = "manual",
 
         names = ", ".join(c["hostname"] for c in changed)
         subject = message or (
-            f"golden: baseline {len(changed)} device(s) via {source}"
+            # The subject names what HAPPENED. It said "golden: baseline N
+            # device(s)" on every commit, tagged or not (C83): 15 of the host's
+            # last 20 golden commits claimed a baseline none of them earned.
+            # A baseline is the `baseline/<ts>` tag, decided after this commit
+            # and able to be denied; the subject makes no claim about it.
+            f"golden: {len(changed)} device(s) via {source}"
             + (f" {pipeline_id}" if pipeline_id else "")
         )
         trailers = [f"Source: {source}", f"Actor: {actor}"]

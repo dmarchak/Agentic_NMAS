@@ -926,7 +926,9 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     batch_id = f"batch-{report.get('batch_id') or _os.urandom(3).hex()}"
     earned = _baseline_earned(report, pending, failed, source_ref=source_ref)
     what = label or f"via pipeline {batch_id}"
-    subject = f"golden: baseline {len(pending)} device(s) {what}"
+    # No "baseline" in the subject (C83): the tag is the claim, and it is
+    # decided by save_golden after this commit and may be denied.
+    subject = f"golden: {len(pending)} device(s) {what}"
     trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
     # The program each device was SENT, by hash (C60): the commit is the
     # capture after the push, and this names what produced it. The full

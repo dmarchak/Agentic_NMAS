@@ -4986,6 +4986,20 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   used hand-written output shapes, all in config syntax, so it could not
   exhibit the case. Its first control passed wrongly, served by the
   process-wide tool-result cache, which each drive now clears.
+- **A CLASS CLOSED AGAINST A LIST IS CLOSED AGAINST THE SURVEY, NOT THE
+  CODE** (the operator, 2026-09-27, C121). When `FALSE_GREEN` emptied, "the
+  false-green class is zero" was said and repeated back. It was true of the
+  list: three more greens sat outside it (NetBox Remove over a refusal, a
+  bulk run with failed devices, a refresh with skipped devices). The same
+  shape as the secret sweep planting only in stores it knew (C55) and as
+  `nmas-check-secret-storage`'s line about what it cannot see. The fix is
+  always the same, make the population structural, and it was done three
+  times in one day: the gate table for routes, the command-string scan for
+  writes, the declared-green scan for toasts. **"Completed" was TRUE**
+  (every device was tried) **and the colour was the lie**, which is harder
+  to spot than a wrong word. And the scan's first, line-based count missed
+  six calls that span lines: counting lines standing in for parsing calls,
+  the weaker-match family again, found by trying to make the check exact.
 - **Constrain the shape; do not only enumerate the instances** (the
   operator's naming, 2026-09-27). A survey finds what someone can see; a
   rule that every member of a CLASS must satisfy finds what nobody saw.
