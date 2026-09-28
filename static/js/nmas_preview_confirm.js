@@ -349,7 +349,11 @@
         + (c.intent_note ? '<div class="small text-muted" data-pr-intent-note>'
            + esc(c.intent_note) + '</div>' : '')
         + '</div><div class="small font-monospace">' + rows
-        + '<div>routes ' + pair(c.routes) + '</div><div>interfaces up '
+        + '<div data-pr-routes="' + esc(String(c.routes_compared)) + '">routes ' + pair(c.routes)
+        + (c.routes_compared === false ? ' <span class="text-muted">(read, NOT compared: '
+             + 'the route check is skipped for this deploy)</span>'
+           : c.routes_compared === true ? '' : ' <span class="text-muted">(whether it was '
+             + 'compared was not recorded)</span>') + '</div><div>interfaces up '
         + pair(c.interfaces_up) + '</div></div>'
         + (c.issues || []).map(function (i) {
             return '<div class="small text-danger">' + esc(i) + '</div>';

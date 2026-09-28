@@ -92,6 +92,9 @@ def _checks(result: dict) -> dict:
                            (post.get("routing_protocols") or {}).get(p)]
                        for p in protocols},
         "routes": [pre.get("routes"), post.get("routes")],
+        # False: read, and NOT compared (C115). Absent in rows written before
+        # this was recorded, which the renderer draws as unknown.
+        "routes_compared": verify.get("routes_compared"),
         "interfaces_up": [pre.get("interfaces_up"), post.get("interfaces_up")],
         "pending_convergence": list(result.get("pending_convergence") or []),
     }

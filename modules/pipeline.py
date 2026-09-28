@@ -1221,6 +1221,10 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # was rolled back (see above).
             "intent_unmet": unmet,
             "declared_protocols": declared,
+            # Whether the route counts were COMPARED (C115): every deploy and
+            # restore skips the retention check, and the counts were drawn as
+            # if they had been compared.
+            "routes_compared": not _skip_route,
             "from_intent": from_intent,
             "pre":  {
                 "routing_protocol": pre_nbr.get("protocol", "unknown"),
