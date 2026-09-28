@@ -1531,7 +1531,23 @@ def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
     # change to golden/, while the staged host_vars keep the commit alive, so
     # the intent and the credential still land.
     golden_config, capture_ok = post_config, True
-    if not looks_like_a_full_config(post_config):
+    if capture:
+        # THE ONBOARDING PATH WRITES NO GOLDEN HERE (R1, 2026-09-28). The
+        # caller supplied the capture because the device has no golden yet,
+        # and its first golden is written by phase 2's golden step, AFTER the
+        # RW community has been removed, so the repository's first record
+        # never holds one. Committing the post-rotation read here made that
+        # record BEFORE the removal, as `Source: rotation`: measured on
+        # probe-r1a, whose only golden commit was the rotation's, and whose
+        # own golden step then found nothing to commit. Preflight already
+        # said "no golden is written until the RW community has been
+        # removed"; this is where it was not true. The credential and the
+        # intent still land: `_commit` commits host_vars with no golden.
+        golden_config, capture_ok = "", False
+        _step("golden_capture", True,
+              "onboarding: no golden written by the rotation; the first "
+              "golden is recorded after the RW community is removed")
+    elif not looks_like_a_full_config(post_config):
         capture_ok = False
         # The existing golden, so save_golden sees identical content and
         # writes no change. Empty when the device has no golden yet, which

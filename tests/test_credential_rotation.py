@@ -592,6 +592,43 @@ def _fingerprint(state):
     return cr.fingerprint_for(cr.preflight("Lab", "r2"))
 
 
+class TestTheOnboardingRotationWritesNoGolden:
+    """R1, 2026-09-28, measured on the host: probe-r1a's only golden commit
+    was the ROTATION's (`Source: rotation`), made before phase 2 removed the
+    RW community, and phase 2's own golden step then had nothing to commit.
+    On a device arriving with an RW community, the repository's first record
+    would hold it, the state the onboarding order exists to keep out of
+    history. A caller supplying the capture is the onboarding path; there the
+    rotation records the credential and the intent, and no golden."""
+
+    def _spy(self, wired, monkeypatch):
+        seen = []
+
+        def commit(list_name, repo, hostname, device, username, privilege,
+                   password, new_hash, post_config, actor, **k):
+            seen.append(post_config)
+            return {"ok": True, "commit": "abc123"}
+        monkeypatch.setattr(cr, "_commit", commit)
+        return seen
+
+    def test_the_onboarding_path_commits_no_golden(self, wired, monkeypatch):
+        seen = self._spy(wired, monkeypatch)
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired),
+                           capture="hostname r2\n" + wired["golden_line"] + "\n")
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
+        assert seen == [""], "the rotation wrote the device's first golden"
+        assert any(s["name"] == "golden_capture" and "no golden written" in s["detail"]
+                   for s in result["steps"])
+
+    def test_the_inventory_path_still_records_the_golden(self, wired, monkeypatch):
+        """The floor: an inventory device's rotation still commits its
+        post-rotation capture, or the check above passes by writing nothing
+        anywhere."""
+        seen = self._spy(wired, monkeypatch)
+        cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert len(seen) == 1 and seen[0], seen
+
+
 class TestTheFiveStates:
     def test_success_is_pending_persist_until_persistence_runs(self, wired):
         """The commit does not claim redeploy survival — persist() does."""

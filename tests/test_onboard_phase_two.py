@@ -750,3 +750,38 @@ class TestARotationRecordNamesThePathThatWroteIt:
                         missing.append(f"{rel}:{node.lineno}")
         assert found >= 5, found
         assert missing == [], missing
+
+
+class TestTheRotateRowNamesWhoPersists:
+    """R1, 2026-09-28: the screen drew `rotate: done
+    (rotated_persistence_not_attempted)`, a value CLAUDE.md cites as naming a
+    danger nothing reads, beside "done". On this path persistence IS the
+    persist step, so the row says that. The harness's stub returned
+    `state: "rotated"`, a value the real rotate() never returns, which is why
+    no test could see it: this one feeds the REAL constant."""
+
+    def test_the_real_pending_persist_state_is_drawn_as_handed_to_persist(self, world):
+        from modules.nsot import credential_rotation as cr
+        from modules.nsot.onboard import run_phase_two
+
+        base = _steps()["rotate"]
+
+        def rotate(repo, hostname, list_name, **kw):
+            out = base(repo, hostname, list_name, **kw)
+            return {**out, "state": cr.ROTATED_PENDING_PERSIST}
+
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps(rotate=rotate))
+        row = next(r for r in out["steps"] if r["step"] == "rotate")
+        assert row["ok"] and "persist step" in row["detail"], row
+        assert cr.ROTATED_PENDING_PERSIST not in row["detail"]
+        persist = next(r for r in out["steps"] if r["step"] == "persist")
+        assert persist["ok"], "the step the row hands to must have run"
+
+    def test_any_other_state_is_drawn_as_it_is(self, world):
+        """The floor: only that one state is re-worded; a state that is not
+        the hand-off keeps its own name."""
+        from modules.nsot.onboard import run_phase_two
+
+        out = run_phase_two(world["repo"], "bp1", "probe", **_steps())
+        row = next(r for r in out["steps"] if r["step"] == "rotate")
+        assert row["detail"] == "rotated", row

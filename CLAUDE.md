@@ -2599,6 +2599,10 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   is not actionable, *"rotate failed and these four therefore did not run"*
   is. A control moves promotion earlier and the suite notices.
 - **The first golden is a true record, and the order is what makes it one.**
+  **This was false in effect until R1 (C147, 2026-09-28):** the rotation
+  committed its own post-rotation read as the golden, BEFORE the RW removal,
+  and the tests stubbed `rotate()`, so none could see it. A caller-supplied
+  capture now means the rotation writes no golden.
   The capture is held **in memory** until the RW community has been removed
   and the credential rotated, then the device is **re-read** and saved once.
   A golden written earlier and corrected later leaves the state we

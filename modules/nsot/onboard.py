@@ -2923,7 +2923,15 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     # list of fields cannot. Checks are still carried, for the detail they
     # add when it IS a preflight refusal.
     refused = _rotation_refusals(rot)
-    if not _step("rotate", rot.get("rotated"), rot.get("state", ""),
+    # The rotation's own state names what IT did not do. On this path
+    # persistence is the persist step below, so drawing the raw
+    # `rotated_persistence_not_attempted` beside "done" read as a danger
+    # nothing covered (the operator, R1, 2026-09-28).
+    rot_detail = rot.get("state", "")
+    if rot.get("rotated") and rot_detail == "rotated_persistence_not_attempted":
+        rot_detail = ("rotated and recorded; saving it on the device is the "
+                      "persist step below")
+    if not _step("rotate", rot.get("rotated"), rot_detail,
                  failed_checks=[c for c in (rot.get("preflight_checks") or [])
                                 if not c["ok"]],
                  failed_steps=refused):

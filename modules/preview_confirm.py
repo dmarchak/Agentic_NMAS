@@ -1224,10 +1224,19 @@ def onboard_verify_result(row: dict, record_status: dict = None) -> dict:
                                   + (f" with the {v['credential_source']} credential"
                                      if v.get("credential_source") else "")]},
     }
-    tail = (f"Its first golden is commit {row['golden_commit'][:12]}; its history is the "
-            "golden history, and it is in the inventory." if row.get("ok") and
-            row.get("golden_commit") else
-            "The device's pending row shows it until the next run.")
+    # A promoted device with no golden commit of this run's own is not
+    # "pending": its golden step found the golden already committed (R1,
+    # 2026-09-28: the rotation had committed it first, C147). Said as that,
+    # never as the pending sentence, which contradicted the summary above it.
+    if row.get("ok") and row.get("golden_commit"):
+        tail = (f"Its first golden is commit {row['golden_commit'][:12]}; its history is "
+                "the golden history, and it is in the inventory.")
+    elif row.get("ok"):
+        tail = ("Its golden step made no commit: the repository already held that "
+                "golden, committed earlier. Its history is the golden history, and it is "
+                "in the inventory.")
+    else:
+        tail = "The device's pending row shows it until the next run."
     return build_result(
         action="onboard_verify", level=level, summary=summary, targets=[target],
         did_not=did_not, nothing_left_out="Nothing: every step of phase 2 ran.",

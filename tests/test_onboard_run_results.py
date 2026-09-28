@@ -192,3 +192,40 @@ class TestThePendingBannerReadsItBack:
         """The floor: an empty banner stays empty."""
         assert self._banner({"ok": True, "list": "probe", "pending": [],
                              "runs": {"state": "absent", "finished": []}}) == ""
+
+
+class TestAPromotedDeviceIsNeverDrawnAsPending:
+    """R1, 2026-09-28: probe-r1a's Verify ran all eight steps and promoted
+    it, and the result's record read "The device's pending row shows it until
+    the next run", because this run made no golden commit of its own (the
+    rotation had made it first, C147). The row below is the host's recorded
+    row, reduced to what the result reads."""
+
+    ROW = {"at": "2026-09-28T07:02:50Z", "kind": "verify", "list": "probe-r1",
+           "device": "probe-r1a", "actor": "p@example.invalid", "ok": True,
+           "reason": "", "error": "", "remaining": [], "released": "",
+           "mgmt_ip": "10.255.0.33", "promoted": True,
+           "steps": [{"step": s, "ok": True, "detail": d} for s, d in (
+               ("verify", "answered"), ("capture", "264 lines"),
+               ("rotate", "rotated and recorded"), ("remove_rw", "0 removed, 0 kept"),
+               ("persist", "the startup config carries it"),
+               ("golden", "re-read after the removal"), ("netbox", "8 object(s)"),
+               ("promote", ""))],
+           "verify": {"state": "answered", "error": "", "credential_source": "override",
+                      "causes": [], "recovery": {"available": False, "note": "", "command": ""}}}
+
+    def _statement(self, row):
+        from modules.preview_confirm import onboard_verify_result
+        return onboard_verify_result(row, {"ok": True})["record"]["statement"]
+
+    def test_no_commit_of_its_own_is_said_as_that(self):
+        text = self._statement({**self.ROW, "golden_commit": ""})
+        assert "pending row" not in text, text
+        assert "already held" in text and "in the inventory" in text, text
+
+    def test_a_commit_is_named_and_a_failure_is_still_pending(self):
+        """The floors: the commit case names the commit, and a run that
+        stopped still points at the pending row."""
+        assert "abcdef123456" in self._statement({**self.ROW, "golden_commit": "abcdef1234567890"})
+        stopped = {**self.ROW, "ok": False, "promoted": False, "golden_commit": ""}
+        assert "pending row" in self._statement(stopped)
