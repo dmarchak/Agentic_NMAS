@@ -382,7 +382,15 @@ def needs_attention(mp, tmp):
     assert lst                                   # the rows are keyed on the active list
     mp.setattr(A, "SOURCES", (lambda: A.job_health_source(health), A.drift_source,
                               lambda: A.approvals_source(queue),
-                              lambda: A.pending_onboarding_source(pending), unreadable))
+                              lambda: A.pending_onboarding_source(pending),
+                              lambda: A.rollback_source(lambda: {
+                                  "applies": {"r5": {"at": "2026-09-28T09:00:00Z",
+                                                     "reason": "verify failed",
+                                                     "commands": [" shutdown"],
+                                                     "intent_commit": "abc1234def",
+                                                     "applicability": "blocking"}},
+                                  "stale": {}, "unreadable": ""}),
+                              unreadable))
     return _ok(_client().get("/attention"))
 
 

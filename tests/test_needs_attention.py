@@ -453,3 +453,53 @@ class TestPendingOnboardingsAsASource:
             raise ValueError("manifest damaged")
         res = A.pending_onboarding_source(boom)
         assert res["state"] == "unreadable" and "manifest damaged" in res["rows"][0]["cause"]
+
+
+# ---------------------------------------------------------------------------
+# Source: rollback blocks, through the ONE classifier and a REAL plan
+# ---------------------------------------------------------------------------
+
+class TestRollbackBlocksAsASource:
+    @pytest.fixture
+    def blocked(self, monkeypatch, tmp_path):
+        """test_rollback_block_enforced's lab: r2's real config and committed
+        intent, a block planted with the real record_rolled_back() on the
+        program the real plan computes."""
+        from tests.test_rollback_block_enforced import _plant, _program, _set_description
+        from tests.test_capture import build_capture_lab
+
+        lab = build_capture_lab(monkeypatch, tmp_path)
+        _set_description(lab["repo"], "GigabitEthernet2", "C118-FAILED-CHANGE")
+        _artifact, failed = _program(lab["repo"])
+        _plant(lab["repo"], failed)
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        return lab
+
+    def test_a_standing_block_is_a_row_naming_the_device(self, blocked):
+        res = A.rollback_source()
+        assert [r["id"] for r in res["rows"]] == ["rollback:Lab:r2"], res
+        r = res["rows"][0]
+        assert r["level"] == "warning" and r["devices"] == ["r2"]
+        assert "C118 measurement" in r["cause"] and r["since"]
+        assert r["action"]["known"] is False and "7.3" in r["action"]["label"]
+        assert res["checked"] == "list Lab: 1 standing, 0 no longer blocking"
+
+    def test_a_block_whose_change_is_gone_is_counted_not_listed(self, blocked):
+        from tests.test_rollback_block_enforced import _set_description
+        _set_description(blocked["repo"], "GigabitEthernet2", "something else entirely")
+        res = A.rollback_source()
+        assert res["rows"] == []
+        assert res["checked"] == "list Lab: 0 standing, 1 no longer blocking"
+
+    def test_an_unreadable_record_is_ONE_row_and_plans_nothing(self, blocked, monkeypatch):
+        """C158: the record blocks every plan; asked per device it would plan
+        the whole fleet to say one thing."""
+        import routes.deploy as rd
+        path = os.path.join(blocked["repo"], ".nsot", "rolled_back.json")
+        with open(path, "w") as fh:
+            fh.write('{"r2": {"commands": [" shut')                  # torn
+        monkeypatch.setattr(rd, "_artifact_for", lambda *a: pytest.fail("planned a device"))
+        res = A.rollback_source()
+        assert [r["id"] for r in res["rows"]] == ["rollback:Lab:record"]
+        assert res["rows"][0]["level"] == "danger"
+        assert "could not be read" in res["rows"][0]["cause"]

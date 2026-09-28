@@ -599,7 +599,16 @@ def rolled_back_retries():
 
 @bp.route("/rolled-back", methods=["GET"])
 def rolled_back():
-    """Rolled-back notes, split by whether they still apply.
+    """Rolled-back notes, split by whether they still apply (see
+    `rolled_back_notes`, which Needs attention reads too: one classifier)."""
+    got = rolled_back_notes(_active_list())
+    return jsonify({"ok": True, "rolled_back": got["applies"], "stale": got["stale"],
+                    "unreadable": got["unreadable"],
+                    "blocking_count": len(got["applies"])})
+
+
+def rolled_back_notes(list_name: str) -> dict:
+    """``{applies, stale, unreadable}`` for *list_name*'s rolled-back notes.
 
     The listing used to report every stored record, because
     ``rolled_back_note()`` without a program returns the raw note — which is
@@ -609,19 +618,31 @@ def rolled_back():
     A note applies while the program a fresh plan would send still contains the
     lines that failed. Evaluating that means computing each device's program,
     which is why this is done here rather than in the store: the store should
-    not need a renderer to answer a question about its own contents.
+    not need a renderer to answer a question about its own contents. The work
+    is per NOTED device, bounded by the rollbacks on record, never by the
+    inventory.
+
+    An UNREADABLE record (C158) blocks every plan, and is answered ONCE here,
+    before any device is planned: asked per device, it would return the same
+    blocking note for each and plan the whole fleet to say one thing.
     """
     from modules.nsot import hostvars
     from routes.deploy import _artifact_for, _current_program
 
-    list_name = _active_list()
     repo = _repo_for(list_name)
+    record = hostvars._load_rolled_back(repo)
+    if "__unreadable__" in record:
+        return {"applies": {}, "stale": {},
+                "unreadable": hostvars._unreadable_note(repo, record["__unreadable__"])["reason"]}
     applies, stale = {}, {}
 
-    for hostname in hostvars.list_committed(repo):
-        raw = hostvars.rolled_back_note(repo, hostname)
-        if not raw:
+    for hostname in sorted(record):
+        if hostname not in set(hostvars.list_committed(repo)):
+            # A note for a device with no committed intent is planned by
+            # nothing; it is history, not a block.
+            stale[hostname] = {**record[hostname], "applicability": "no committed intent"}
             continue
+        raw = record[hostname]
         try:
             built, error = _artifact_for(list_name, hostname)
             program = _current_program(built[0], built[1]) if built else None
@@ -638,9 +659,7 @@ def rolled_back():
             applies[hostname] = {**raw, "applicability": "blocking"}
         else:
             stale[hostname] = {**raw, "applicability": "no longer applies"}
-
-    return jsonify({"ok": True, "rolled_back": applies, "stale": stale,
-                    "blocking_count": len(applies)})
+    return {"applies": applies, "stale": stale, "unreadable": ""}
 
 
 def _public(result: dict) -> dict:

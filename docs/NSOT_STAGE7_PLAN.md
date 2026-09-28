@@ -1152,6 +1152,17 @@ in its first day is counted, not listed, and ZTP progress is not asked (it
 asks Kea per device). The response is masked on the way out, since rows quote
 their stores.
 
+**7.2 step 4 BUILT (2026-09-28): rollback blocks.** Through the ONE
+classifier the listing uses (`routes.templatize.rolled_back_notes`, extracted
+from the route): a note is a row only while the program a fresh plan would
+send still contains what failed; a stale note is counted. Its work is per
+NOTED device, bounded by the rollbacks on record. An unreadable record (C158)
+is ONE row for the list and plans no device: asked per device it returned the
+same blocking note for each and planned the whole fleet to say one thing.
+Revert and retry have no screen (7.3), and each row says so. Remaining from
+section 1a: freshness, Grafana alerts (C17: `grafana_url` empty on the host),
+a failed deploy, an unearned baseline.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's

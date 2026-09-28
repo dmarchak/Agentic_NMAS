@@ -400,10 +400,77 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
                                  "first day")
 
 
+# ---------------------------------------------------------------------------
+# Source: rollback blocks
+# ---------------------------------------------------------------------------
+
+#: Revert intent and retry are the remedies, and both are routes with no
+#: page yet; 7.3's Device actions are their home (C164). Stated, not hidden.
+_ROLLBACK_ACTION = {"label": "Revert the intent that failed, or authorise a retry: "
+                             "neither has a screen yet (7.3's Device actions)",
+                    "known": False}
+
+
+def rollback_source(notes=None) -> dict:
+    """Devices whose rolled-back change still blocks their next plan. Uses
+    the ONE classifier the listing uses (`rolled_back_notes`): a note blocks
+    only while the program a fresh plan would send still contains what failed,
+    so a stale note is counted, never listed as needing attention. Its work
+    is per NOTED device, bounded by the rollbacks on record."""
+    from modules.config import get_current_list_name
+
+    started = time.time()
+    try:
+        lst = get_current_list_name()
+        if notes is None:
+            from routes.templatize import rolled_back_notes
+            got = rolled_back_notes(lst)
+        else:
+            got = notes()
+    except Exception as exc:                       # noqa: BLE001
+        return source_result("rollback", "Rollback blocks", read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"it raised {type(exc).__name__}: {exc}")
+    took = int((time.time() - started) * 1000)
+    rows = []
+    if got.get("unreadable"):
+        # One row for the list: the record blocks EVERY plan, and a row per
+        # device would be one event counted N times.
+        rows.append(row(source="rollback", key=f"{lst}:record", level="danger",
+                        what=f"Every plan on {lst} is blocked: the rolled-back record "
+                             "cannot be read",
+                        cause=got["unreadable"],
+                        action={"label": "Repair the record from its preserved copy; "
+                                         "nothing here can rewrite it", "known": False},
+                        operands={"list": lst}))
+    for host, note in sorted((got.get("applies") or {}).items()):
+        unknown = note.get("applicability") == "unknown"
+        rows.append(row(
+            source="rollback", key=f"{lst}:{host}", level="unknown" if unknown else "warning",
+            what=(f"{host}'s rolled-back change may still block its next plan" if unknown
+                  else f"{host}'s next plan is blocked: its intent still sends what was "
+                       "rolled back"),
+            cause=(f"rolled back at {note.get('at') or 'an unrecorded time'}"
+                   + (f" ({note['reason']})" if note.get("reason") else "")
+                   + ("; whether the note still applies could not be computed"
+                      if unknown else "")),
+            action=_ROLLBACK_ACTION, devices=[host], since=_ts(note.get("at")),
+            operands={"list": lst, "failed_lines": len(note.get("commands") or []),
+                      "intent_commit": (note.get("intent_commit") or "")[:10]}))
+    n_stale = len(got.get("stale") or {})
+    return source_result("rollback", "Rollback blocks", read_at=started, took_ms=took,
+                         rows=rows,
+                         checked=(f"list {lst}: the rolled-back record could not be read"
+                                  if got.get("unreadable") else
+                                  f"list {lst}: {len(got.get('applies') or {})} standing, "
+                                  f"{n_stale} no longer blocking"))
+
+
 #: Every source, in the order a person reads them. Section 1a's other
-#: sources (freshness, Grafana alerts, rollback blocks, failed deploys,
-#: unearned baselines) join HERE, each through `source_result`.
-SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source)
+#: sources (freshness, Grafana alerts, failed deploys, unearned baselines)
+#: join HERE, each through `source_result`.
+SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
+           rollback_source)
 
 
 def _attach(rows: list) -> list:
