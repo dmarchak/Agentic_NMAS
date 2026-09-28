@@ -795,7 +795,7 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
 - **The terminal is REMOVED, not split** (the operator, the same day, superseding "the split stays in 7.3"; NSOT_FEATURE_AUDIT 3b): a source of truth has no pane that goes to the device directly, and even read-only the affordance teaches the wrong habit. 7.3 loses the split, the FIRST reduction in scope found on 2026-09-27; 7.8 removes the terminal with its routes, socket events, session code and tab; 7.3's command box absorbs history, rendering, a running state for long reads and completion built from the allowlist. The `break_glass` gate kind retires with it.
 - **7.10 is opened for what defers cleanly** (moved, not cut): Stage 5's in-app monitoring views (Grafana is their home meanwhile, by a link), adopt (A3, which C100 now also blocks), the 900-device list and selection screens (the architecture rule, no per-device work per request, stays in force), switching a network's inventory source, with 7.9's Configure forms already a parallel track and 7.8's removals last as before.
 - **7.5 gains two blocking items** (C70's final step could not be completed in the interface): the commit detail view shows the TRAILERS (Source, Actor, Actor-Verified, Intent-Match), which with D10's attribution are the answer to "who changed it and can I trust that", and it lands with the planned "N of M commits carry a verified identity" line, which cannot be drawn from a screen that reads no trailers; and C83, every golden subject saying what happened (captured, restored, re-applied), with "baseline" only when a tag was taken. Measured in the list itself: `ed6548e golden: baseline 1 device(s) re-apply …` took NO baseline, two rows below `e63b2e6 golden: baseline 1 device(s) via save_all`, which DID, of the deliberately broken r2. Same words, opposite truth, adjacent rows.
-- **The scheduling principle** (the operator): in this project building is how surveying happens, so every operation gets a real run on the host, and that run's findings are part of the operation's cost, budgeted rather than discovered. Estimate as measured: 7.1 took 13 hours and 32 commits; Stage 7 to a usable, console-free interface is about three to four more efforts that size, and 7.10 one to one and a half.
+- **The scheduling principle** (the operator): in this project building is how surveying happens, so every operation gets a real run on the host, and that run's findings are part of the operation's cost, budgeted rather than discovered. Estimate as first written, KEPT as a record: "7.1 took 13 hours and 32 commits; Stage 7 to a usable, console-free interface is about three to four more efforts that size, and 7.10 one to one and a half." **It was wrong by about half; see "The forecast, corrected" below.**
 
 **C98 BUILT (2026-09-27):** one operation per device at a time, across processes, refused by name and never queued (register C98, closed). The preview does not yet say a device is busy before the confirm: that is C99's in-flight state, next with the standing rule's mechanisation.
 
@@ -930,6 +930,85 @@ these operations run for real on the host since its retrofit. Onboarding's
 review, Verify and Abandon, and the NetBox modal have been driven through their
 REAL routes in the suite and not yet clicked on the host. Walking each once is
 the next thing, by the rule that a path never run fails on first use.
+
+### 7.1's stated limit, and the two runs that close it (before 7.2)
+
+**The limit, stated as part of the acceptance** (the operator, 2026-09-28):
+only RESTORE has been run for real on the host since its retrofit (C70's
+re-run). Onboarding's review, Create, Verify and Abandon, and the NetBox
+window (import, import-all, remove) have been driven through their REAL
+routes in the suite and clicked by nobody. C70's lesson is why that is a gap
+and not a formality: the operation was correct, and everything AROUND it
+failed (C92, C97, C98, C99). A suite that drives the route cannot see a
+session pool, a second mover, a status dot or a result that arrives late.
+
+**Scheduled BEFORE 7.2**, because 7.2's landing page reads the stores these
+operations write (the onboarding run record, the removal record, the sync
+card's stored summary, the pending rows), so a defect in the writer surfaces
+as a wrong row in the reader, one layer from its cause. Each run's findings
+are budgeted as part of its cost (the scheduling principle), and each is
+recorded the turn it is raised, after searching the register.
+
+- **R1, onboarding, on a throwaway device** (a probe lab, never a fleet
+  device: a lost device must cost a `containerlab destroy`).
+  1. The review: the preview component draws the plan, the bootstrap config
+     under its caption ("sent to no device"), every refusal first.
+  2. Create: the result reads "Partly done" and PENDING, never onboarded.
+  3. Verify BEFORE the node has booted: a real "did not answer" result, its
+     causes in order, left on screen; after a reload, the pending row's last
+     run reads it back.
+  4. Boot it, Verify again: onboarded; the row leaves the list, and
+     "Finished recently" reads the run back after a reload.
+  5. A second device created and ABANDONED without booting (it needs no
+     node): the result names every step and "the name is free", and it is
+     read back under "Finished recently".
+  The acceptance: each of the five results drawn by the component and read
+  back after a reload, and the in-flight panel naming Verify while it runs.
+- **R2, the NetBox window**, against the ztp-a list's leftovers (or, if they
+  are not NMAS's own, as a dry run only).
+  0. Take the census baseline FIRST (the step-0a rule: a baseline taken
+     after the first write measures the probe's own objects as clean).
+  1. Import preview on a real list: each object by name, each update's
+     fields, "nothing is deleted"; confirm nothing if nothing is meant to
+     change.
+  2. Remove preview on the ztp-a leftovers: every delete named, what NetBox
+     takes with them asked (not NOT asked), what is left alone and why.
+  3. Only if the preview lists nothing but the probe's own objects: confirm,
+     read the result, re-read it on the NetBox tab's Removals panel, and run
+     the census `--compare` against the step-0 baseline.
+  The acceptance: the preview's count is the executed count, the result
+  matches the census, and nothing a person curated moved.
+
+### The forecast, corrected (2026-09-28)
+
+**The estimate was about half the real number.** Measured partway through 7.1:
+"13 hours and 32 commits", with the rest of Stage 7 "three to four more
+efforts that size", which implied about 110 more commits. 7.1 finished at
+**69 commits over 20 h 41 min of wall time** (ff6fc24 to 763649e): 2.2x the
+commits and 1.6x the hours it was forecast from. So the rest of Stage 7 is
+**about 200 to 280 commits**, not about 110.
+
+**Why it was wrong, which is the useful part** (the operator's reading): an
+estimate made from an unfinished stage is made from the part that went to
+plan, because the findings that triple a stage have not happened yet. It is
+the same shape as every measurement this week taken before the thing it
+measures is complete. Estimates here are made from FINISHED stages only, and
+say which stage they were made from.
+
+**Roughly one new finding per commit, stated as measured, not softened.** The
+register went from 97 rows to 168 across 7.1's 69 commits: 69 C-rows (C60 to
+C128) and 2 E-rows. At least six came from side work rather than 7.1's own
+screens (C119, C120, C123, C124, C125, C126). At 763649e about 47 were
+closed, 8 decided and about 14 open (a text classification, so approximate).
+The rate did not fall as the stage went on.
+
+**7.2, predicted from the finished 7.1, to be checked when it closes:** 40 to
+70 commits over about a day, and 30 to 50 findings, most of them in the
+SOURCES rather than the screen. 7.2 changes no device, so the confirm-hash and
+concurrency findings that drove 7.1 should mostly be absent. It reads every
+source, which is where the absent-versus-unreadable and wrong-thing-looks-right
+families live, and four of those were found this week in stores 7.2 draws
+from. R1 and R2 above are extra, and precede it.
 
 ## 9. Deferred, recorded rather than scoped
 

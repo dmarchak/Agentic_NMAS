@@ -1707,6 +1707,11 @@ of an existing one.
       `not_installed` when 7.2 draws the page, the landing view shows a
       check that is not running: C14's shape, the row's reason for
       existing. The same argument as C54's.
+    - **and 7.1's two real runs, R1 (onboarding on a throwaway) and R2 (the
+      NetBox window)** (the operator, 2026-09-28; NSOT_STAGE7_PLAN "7.1's
+      stated limit"). Only restore has been clicked on the host since its
+      retrofit, and 7.2 reads the stores these operations write, so a defect
+      in a writer would surface as a wrong row in 7.2's reader.
   - **Before 7.3: C50, fixed as the map's `kind:` entry, not a narrower
     patch** (the operator's strengthening). The Device page offers Rotate
     as a button, so the wrong-lab write becomes a ONE-CLICK action rather

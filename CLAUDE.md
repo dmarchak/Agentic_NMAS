@@ -5413,8 +5413,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   of its cost** (the operator's scheduling principle, 2026-09-27). The
   finding rate did not fall (39 new on 09-26, 43 on 09-27), and almost every
   new finding came out of building and running, not out of an old survey.
-  Waiting for the rate to fall before building would wait for ever. Measured:
-  7.1 took 13 hours and 32 commits.
+  Waiting for the rate to fall before building would wait for ever.
+  **Measured when 7.1 FINISHED: 69 commits over 20 h 41 min, and about one
+  new register row per commit** (97 rows to 168). The figure first written
+  here, "13 hours and 32 commits", was taken partway through, and the
+  forecast built on it was about half the real one. **An estimate made from
+  an unfinished stage is made from the part that went to plan** (the
+  operator, 2026-09-28): the findings that triple a stage have not happened
+  yet. Estimate from finished stages only, and name the stage
+  (NSOT_STAGE7_PLAN, "The forecast, corrected").
 - **The confirm-by-hash guarantee assumed ONE mover** (C98, fixed). A
   restore and a deploy ran on r2 at once, both confirmed, and the deploy's
   check passed against a stored config the restore was mid-way through
@@ -5588,7 +5595,9 @@ next. The gate list is **CONFIRMED 2026-09-27**
 ([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md), the Stage 7 dependency notes):
 - B1 before 7.0, with C51 inside 7.0's harness;
 - C8 before 7.1;
-- C17, E4, C54 and C53's check RUNNING before 7.2;
+- C17, E4, C54 and C53's check RUNNING before 7.2, and 7.1's two real
+  runs (R1 onboarding on a throwaway, R2 the NetBox window), since only
+  restore has been clicked on the host since its retrofit;
 - C50 before 7.3, as the lab map's `kind:` entry;
 - C10 before 7.4;
 - C2 and B3 within 7.6;
