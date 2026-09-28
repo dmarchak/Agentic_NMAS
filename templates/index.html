@@ -2444,8 +2444,6 @@ window.openSettingsModal = function() {
       document.getElementById('settingsNetboxVerifyTls').checked = s.netbox_verify_tls !== false;
       const nbAllow = document.getElementById('settingsNetboxAllowWrites');
       if (nbAllow) nbAllow.checked = s.netbox_allow_writes === true;
-      const nbRemove = document.getElementById('settingsNetboxRemoveOnListDelete');
-      if (nbRemove) nbRemove.checked = s.netbox_remove_on_list_delete === true;
       const nbStatus = document.getElementById('settingsNetboxTestStatus');
       if (nbStatus) {
         if (s.netbox_url && s.netbox_token_set) {
@@ -2551,8 +2549,6 @@ window.saveSettings = function() {
   if (nbTokVal) payload.netbox_token = nbTokVal;
   const nbAllowEl = document.getElementById('settingsNetboxAllowWrites');
   if (nbAllowEl) payload.netbox_allow_writes = nbAllowEl.checked;
-  const nbRemoveEl = document.getElementById('settingsNetboxRemoveOnListDelete');
-  if (nbRemoveEl) payload.netbox_remove_on_list_delete = nbRemoveEl.checked;
 
   // Server / collector / monitoring settings have their own blueprint endpoint.
   if (typeof saveGeneralIntegrationSettings === 'function') saveGeneralIntegrationSettings();

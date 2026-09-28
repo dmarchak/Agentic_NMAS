@@ -301,14 +301,34 @@ class TestEverySchemaKeyHasADecision:
         # `static/js/gen` too: Stage 7 0b moved the script that
         # names these keys out of the templates, and a scan of
         # templates alone would report every one as unsurfaced.
-        for base in ("templates", "docs", "static/js/gen"):
+        # A DECISION lives in a UI control or in docs/SETTINGS.md, and nowhere
+        # else: the corpus was all of `docs/`, so a key named in a register
+        # row or a plan counted as its "stated reason" (C155: the removed
+        # `netbox_remove_on_list_delete` passed on its own finding's row, and
+        # `clab_labs` had never been decided at all).
+        for base in ("templates", "static/js/gen"):
             for root, _d, files in os.walk(base):
                 for f in files:
-                    if f.endswith((".html", ".md", ".js")):
+                    if f.endswith((".html", ".js")):
                         parts.append(io.open(os.path.join(root, f),
                                              encoding="utf-8",
                                              errors="replace").read())
+        parts.append(io.open(os.path.join("docs", "SETTINGS.md"),
+                             encoding="utf-8").read())
         return "\n".join(parts)
+
+    def test_a_mention_elsewhere_in_docs_is_not_a_decision(self):
+        """The control: a key named only in another document is not in the
+        corpus, however often the register mentions it."""
+        import io
+
+        corpus = self._corpus()
+        register = io.open("docs/OPEN_FINDINGS.md", encoding="utf-8").read()
+        # A word the register really contains and no control or SETTINGS.md
+        # does: present there, absent here. (A made-up string absent from both
+        # would pass whatever the corpus held.)
+        assert "nmas-netbox-mask-context" in register, "the control's word left the register"
+        assert "nmas-netbox-mask-context" not in corpus
 
     def test_every_key_is_surfaced_or_documented(self):
         import re

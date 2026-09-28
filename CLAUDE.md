@@ -332,8 +332,13 @@ any write" until then:
 - **Removal deletes only the intersection** of those two: tagged *and* in NMAS's
   own record. A region, site, VRF, or device a human curated is reported as
   skipped. Removal previously deleted everything in the site regardless of origin.
-- Deleting a device list **no longer cascades into NetBox** unless
-  `netbox_remove_on_list_delete` is on or the request opts in.
+- Deleting a device list **never deletes NetBox objects** (C155, the
+  operator's decision, 2026-09-28): removal has one home, the NetBox tab's
+  previewed and confirmed Remove. A list that still owns recorded objects is
+  REFUSED, naming them, because forgetting the record while the objects stay
+  leaves them tagged and unrecorded, out of Remove's reach for good. Until
+  then an opt-in setting deleted them with no preview and no token, and its
+  switch is gone.
 
 ### Inventory sources (Phase 1)
 
@@ -1210,6 +1215,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_promoted_row_is_usable.py` | C152: the row `promote_device()` writes, with what phase 2 really passes (no separate secret), opens through the real `stored_connection_params()`; a failure is never recorded as "" (`error_text`, used by both per-device recorders); the reload screen draws each device's polled result, not the route's answer |
 | `test_bootstrap_intent_is_not_planned.py` | C154: a committed intent that is only onboarding's bootstrap is refused by the plan with its reason, never rendered (the real `_artifact_for` through the real template; the old rule reproduces the host's `UndefinedError`); the shared exception handler says what was attempted and what failed, redacted, never empty and never "check the logs" |
 | `test_device_reload.py` | C153: reload is send, read, decide: `[confirm]` then the session dropping is success, `Save? [yes/no]` and any other prompt refused and abandoned, a session that never drops is unknown; what reached the device asserted line by line |
+| `test_list_delete_never_touches_netbox.py` | C155: a list that still owns recorded NetBox objects is refused naming them and keeps its record; one with nothing recorded is deleted and no NetBox writer is called; an unreadable record is refused, never read as owning nothing; nothing but the schema names the retired setting |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C108: verify checks what the TARGET intent declares (from r1's real captures, OSPFv3 absent before: checked and passes once up; still absent is not a pass and not a rollback; no intent known checks the before-state and says so; the receipt and the shipped renderer draw it; `_deploy_one` carries the ref's intent for a restore and the committed intent for a deploy). C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
@@ -5293,8 +5299,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   assumes the same missing control ("captured into intent", and extraction
   reads the golden). Before running a written procedure, resolve each step
   to a control that exists: a route in `url_map` and a caller a person can
-  reach. A step with neither is a finding, not a wording problem. Asking the
-  question found three more things in one pass:
+  reach. A step with neither is a finding, not a wording problem.
+  **The mechanism, named by the operator (2026-09-28, the third instance in a
+  week): reading the SERVER and describing the CLIENT.** Save Golden on the
+  device row, "curl-only" for intent extraction, and a "Remove from NetBox"
+  checkbox on list deletion, described from the route's own log message.
+  And the correction repeated the error the other way: "it is on no screen",
+  from what the delete button SENDS, while the switch sat on the Settings
+  page. A plan comes to assume capabilities the product lacks this way.
+  Resolve a control from the rendered page, never from the route that would
+  answer it. Asking the question found three more things in one pass:
   - the only per-device capture, a drift item's approval, committed as
     `ai-agent` (C81, fixed);
   - every golden commit's subject claims "baseline", tagged or not (C83);

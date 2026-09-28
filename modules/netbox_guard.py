@@ -717,6 +717,25 @@ def was_created_by_nmas(list_name: str, endpoint: str, obj_id: int) -> bool:
     return any(e.get("id") == obj_id for e in entries)
 
 
+def recorded_objects(list_name: str) -> tuple:
+    """``(entries, reason)``: every object NMAS's created-object record holds
+    for *list_name*, as ``[(endpoint, id, name), ...]``. *reason* is non-empty
+    when the record exists and cannot be read, which is NOT "owns nothing":
+    `_load_created()` collapses the two, and list deletion must not (C155)."""
+    if not os.path.exists(_CREATED_IDS_FILE):
+        return [], ""
+    try:
+        with open(_CREATED_IDS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        return [], f"the created-object record could not be read ({type(exc).__name__})"
+    held = []
+    for endpoint, rows in (data.get(list_slug(list_name)) or {}).items():
+        for row in rows or []:
+            held.append((endpoint, row.get("id"), row.get("name", "")))
+    return held, ""
+
+
 def forget_created(list_name: str, endpoint: str = "", obj_id: int = None) -> None:
     """Drop entries from the created-id record.
 

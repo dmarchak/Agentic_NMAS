@@ -45,14 +45,10 @@
     </div>
   </div>
   <div class="col-md-6">
-    <div class="form-check form-switch">
-      <input class="form-check-input" type="checkbox" id="settingsNetboxRemoveOnListDelete" role="switch">
-      <label class="form-check-label fw-semibold" for="settingsNetboxRemoveOnListDelete">
-        Remove from NetBox when a device list is deleted
-      </label>
-    </div>
     <div class="form-text">
-      Off by default. When off, deleting a list leaves every NetBox object in place.
+      Deleting a device list never deletes NetBox objects. A list that still owns
+      objects NMAS created is refused until they are removed from the NetBox tab
+      (previewed and confirmed): removal has one home (C155).
     </div>
   </div>
 </div>

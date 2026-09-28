@@ -1152,8 +1152,8 @@ def create_device_list_route():
 def delete_device_list_route(list_name):
     """Delete a device list and all associated external data."""
     cleanup_log = []
-    # Optional body: {"remove_from_netbox": true} opts into the NetBox cascade,
-    # which is off by default (see step 2).
+    # Optional body: {"acknowledge_credential_dependents": true} (step 0). The
+    # NetBox cascade and its `remove_from_netbox` flag are gone (C155, step 2).
     data = request.get_json(silent=True) or {}
 
     # ── 0. Warn if NetBox lists inherit credentials from this one ──────────
@@ -1181,45 +1181,34 @@ def delete_device_list_route(list_name):
     except Exception as exc:
         app.logger.warning("list delete: dependent check failed: %s", exc)
 
-    # ── 2. Remove from NetBox (opt-in) ─────────────────────────────────────
-    # This cascade used to run silently on every list delete and removed the
-    # site, region, VRF and every device in the site — including records NMAS
-    # never created. It is now off by default and requires either the
-    # `remove_from_netbox` flag on this request or the
-    # `netbox_remove_on_list_delete` setting. Even then it only deletes objects
-    # NMAS created and tagged; see modules/netbox_guard.py.
-    try:
-        from modules.netbox_client import remove_list_from_netbox, get_netbox_config
-        from modules.settings_schema import get_setting
-
-        requested = bool(data.get("remove_from_netbox"))
-        opt_in    = requested or bool(get_setting("netbox_remove_on_list_delete", False))
-        nbcfg     = get_netbox_config()
-
-        if not nbcfg.get("url") or not nbcfg.get("token"):
-            cleanup_log.append("NetBox: not configured — skipped")
-        elif not opt_in:
-            # Stop claiming ownership, but leave every NetBox object in place.
-            remove_list_from_netbox(list_name, forget_only=True,
-                                    actor=request_actor() or "")
-            cleanup_log.append(
-                "NetBox: objects left in place (enable 'Remove from NetBox when a "
-                "device list is deleted' in Settings, or use Remove on the NetBox tab)"
-            )
-        else:
-            nb_result = remove_list_from_netbox(list_name,
-                                                actor=request_actor() or "")
-            if nb_result.get("ok"):
-                cleanup_log.append(
-                    f"NetBox: deleted {len(nb_result.get('deleted', []))} NMAS-created "
-                    f"object(s), skipped {len(nb_result.get('skipped', []))} "
-                    f"operator-owned object(s)"
-                )
-            else:
-                cleanup_log.append(f"NetBox removal partial: {nb_result.get('error', 'unknown')}")
-    except Exception as exc:
-        app.logger.warning("list delete: NetBox cleanup failed: %s", exc)
-        cleanup_log.append(f"NetBox cleanup skipped: {exc}")
+    # ── 2. NetBox: NEVER touched from here (C155, the operator's decision) ──
+    # This branch deleted NMAS-created objects with no preview and no
+    # confirmation when a setting was on (the one-shot token is consumed by
+    # the NetBox tab's routes, not at the write), and its "forget" branch
+    # dropped the record while the objects stayed, leaving them tagged but
+    # unrecorded, out of Remove's reach for good (C59's class). Removal has
+    # ONE home: the NetBox tab's previewed, confirmed Remove. So a list that
+    # still owns recorded objects is refused, naming them; nothing here writes
+    # to NetBox, and the record is dropped only when it holds nothing.
+    from modules import netbox_guard as _nbg
+    held, why = _nbg.recorded_objects(list_name)
+    if why:
+        return jsonify({"status": "error", "message": (
+            f"'{list_name}' was not deleted: {why}, so whether it still owns "
+            "NetBox objects is unknown. Nothing was changed.")}), 409
+    if held:
+        named = ", ".join(f"{ep}/{oid} {name}".strip() for ep, oid, name in held[:8])
+        more = f" and {len(held) - 8} more" if len(held) > 8 else ""
+        return jsonify({"status": "error", "held": [
+            {"endpoint": ep, "id": oid, "name": name} for ep, oid, name in held],
+            "message": (
+                f"'{list_name}' was not deleted: NMAS's record says it created "
+                f"{len(held)} NetBox object(s) for this list ({named}{more}). Deleting a "
+                "list never deletes NetBox objects, and forgetting them would leave them "
+                "out of Remove's reach. Remove them first from the NetBox tab (previewed "
+                "and confirmed), then delete the list. Nothing was changed.")}), 409
+    _nbg.forget_created(list_name)          # an empty entry, if any
+    cleanup_log.append("NetBox: nothing recorded for this list; NetBox not touched")
 
     # ── 3. Delete the list directory and config entry ──────────────────────
     try:
@@ -1364,8 +1353,6 @@ def get_settings():
         "netbox_verify_tls":  bool(nbcfg.get("verify_tls", True)),
         "netbox_auth_scheme": nbcfg.get("auth_scheme", "Bearer"),
         "netbox_allow_writes": bool(nbcfg.get("allow_writes", False)),
-        "netbox_remove_on_list_delete": bool(
-            get_user_setting("netbox_remove_on_list_delete", False)),
         "ai_enabled":              _ai_enabled(),
         "background_agent_enabled": bool(load_user_settings().get("background_agent_enabled", True)),
     }
@@ -1449,9 +1436,6 @@ def save_settings():
             verify_tls = data.get("netbox_verify_tls", existing.get("verify_tls", True))
             # Fail-closed write gate; absent from the payload means "leave as is".
             allow_writes = data.get("netbox_allow_writes")
-            if "netbox_remove_on_list_delete" in data:
-                set_user_setting("netbox_remove_on_list_delete",
-                                 bool(data["netbox_remove_on_list_delete"]))
             if url and not token:
                 errors.append("NetBox token is required the first time you save a URL.")
             else:

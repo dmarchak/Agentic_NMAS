@@ -15,8 +15,7 @@ class NetBoxIntegration(IntegrationClient):
     label = "NetBox"
     url_key = "netbox_url"
     secret_keys = ("netbox_token",)
-    plain_keys = ("netbox_auth_scheme", "netbox_verify_tls", "netbox_allow_writes",
-                  "netbox_remove_on_list_delete")
+    plain_keys = ("netbox_auth_scheme", "netbox_verify_tls", "netbox_allow_writes")
 
     def is_configured(self) -> bool:
         return bool(self.url and get_secret("netbox_token"))

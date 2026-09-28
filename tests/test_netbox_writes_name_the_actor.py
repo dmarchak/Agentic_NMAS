@@ -74,7 +74,8 @@ def test_every_guard_context_carries_the_actor():
 
 def test_every_call_of_a_netbox_writer_passes_the_actor():
     found, missing = _scan(WRITERS)
-    assert found >= 14, found
+    # 12 since C155 removed list deletion's two NetBox calls (was 14).
+    assert found >= 12, found
     assert missing == [], missing
 
 
