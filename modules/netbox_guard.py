@@ -34,6 +34,8 @@ import os
 import stat
 import threading
 
+from modules import filestore as _filestore
+
 from modules.config import DATA_DIR, list_slug
 
 log = logging.getLogger(__name__)
@@ -83,7 +85,12 @@ UNKNOWN_BEFORE = "<unknown>"
 #: Anything larger is recorded as *changed, this big, this hash* -- which is
 #: the finding. The bytes are not.
 _MAX_VALUE_BYTES = 200
-_file_lock = threading.Lock()
+#: One lock per record, across PROCESSES (C158): the host's scripts
+#: (`nmas-netbox-status-reset`, `-mask-context`, `-repair-addresses`) write
+#: these records while the app runs, and a `threading.Lock` serialised one
+#: process only. Callables, so a test that re-points a path locks that file.
+_created_lock = _filestore.PathLock(lambda: _CREATED_IDS_FILE)
+_modified_lock = _filestore.PathLock(lambda: _MODIFIED_FILE)
 
 # Per-thread dry-run state: sync runs on a background thread, so this must not
 # be global. None = writes execute normally.
@@ -269,7 +276,13 @@ def record_intent(kind: str, endpoint: str, payload: dict = None,
 # Provenance — what NMAS created
 # ---------------------------------------------------------------------------
 
+class CreatedRecordUnreadable(_filestore.StoreUnreadable):
+    """The created-object record exists and cannot be read, on a write path."""
+
+
 def _load_created() -> dict:
+    """The record for a READ: ``{}`` when absent or unreadable. A reader that
+    must tell those apart uses :func:`recorded_objects`."""
     if not os.path.exists(_CREATED_IDS_FILE):
         return {}
     try:
@@ -278,6 +291,20 @@ def _load_created() -> dict:
     except (json.JSONDecodeError, OSError) as exc:
         log.warning("netbox_guard: could not read created-id record: %s", exc)
         return {}
+
+
+def _load_created_for_write() -> dict:
+    """The record for a read-modify-write (C158). Unreadable is NOT empty:
+    appending one entry to ``{}`` and saving it would replace every list's
+    provenance, leaving each object NMAS made *tagged and unrecorded*, the
+    one combination Remove cannot act on. Refuses, keeps the damaged file as
+    ``.corrupt-<ts>`` and counts it."""
+    try:
+        return _filestore.read_json_for_write(_CREATED_IDS_FILE)
+    except _filestore.StoreUnreadable as exc:
+        _FAILURES["unreadable"] += 1
+        _FAILURES["last_error"] = str(exc)
+        raise CreatedRecordUnreadable(str(exc)) from exc
 
 
 def _save_created(data: dict) -> None:
@@ -295,16 +322,11 @@ def _write_json_atomic(path: str, data: dict) -> bool:
     changed nothing"*. That is how `user_settings.json` erased itself: a
     partial read returned ``{}``, the next write persisted it.
     """
+    # A temp file PER WRITE (C158): the shared ``<path>.tmp`` let two writers
+    # land two documents in one inode (C20's corruption). mkstemp creates it
+    # 0600, and the replace carries that mode.
     try:
-        from modules.config import open_secure
-
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = f"{path}.tmp"
-        # 0600 at CREATION, and the temp file carries it so the replace
-        # cannot leave a world-readable window.
-        with open_secure(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2)
-        os.replace(tmp, path)
+        _filestore.write_atomic(path, json.dumps(data, indent=2))
         return True
     except OSError as exc:
         log.error("netbox_guard: could not persist %s: %s",
@@ -521,7 +543,7 @@ def record_modified(list_name: str, endpoint: str, obj_id: int, fields,
                          "what changed is unknown")
     else:
         entry["fields"] = fields
-    with _file_lock:
+    with _modified_lock:
         data, reason = read_modified()
         if reason:
             # ABSENT IS FINE; UNREADABLE IS NOT.
@@ -686,7 +708,7 @@ def sanitise_modified() -> dict:
     #
     # The write is what tightens the mode, because `os.replace` swaps in the
     # temp file's 0600 inode.
-    with _file_lock:
+    with _modified_lock:
         wrote = _write_json_atomic(_MODIFIED_FILE, data)
 
     mode = ""
@@ -713,8 +735,8 @@ def record_created(list_name: str, endpoint: str, obj_id: int, name: str = "") -
     if not list_name or obj_id is None or obj_id < 0:
         return
     endpoint = endpoint.strip("/")
-    with _file_lock:
-        data = _load_created()
+    with _created_lock:
+        data = _load_created_for_write()
         slug = list_slug(list_name)
         bucket = data.setdefault(slug, {}).setdefault(endpoint, [])
         if not any(e.get("id") == obj_id for e in bucket):
@@ -764,8 +786,8 @@ def forget_created(list_name: str, endpoint: str = "", obj_id: int = None) -> No
     With no endpoint, forgets the whole list — this is what "remove from NMAS's
     records without deleting anything in NetBox" does.
     """
-    with _file_lock:
-        data = _load_created()
+    with _created_lock:
+        data = _load_created_for_write()
         slug = list_slug(list_name)
         if slug not in data:
             return

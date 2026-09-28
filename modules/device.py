@@ -219,32 +219,55 @@ def save_device(device: dict, filename: str | None = None) -> None:
     encrypted["secret"] = fernet.encrypt(device["secret"].encode()).decode()
     encrypted.setdefault("role", "router")
 
-    devices: list[dict] = []
-    if os.path.exists(filename):
-        with open(filename, mode="r", newline="") as f:
-            devices = [row for row in csv.DictReader(f)]
-            # replace if exists
-            devices = [
-                encrypted if row.get("ip") == device.get("ip") else row
-                for row in devices
-            ]
-    if not any(row.get("ip") == device.get("ip") for row in devices):
-        devices.append(encrypted)
-
-    with _open_csv_secure(filename) as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(devices)
+    with devices_csv_lock(filename):
+        devices: list[dict] = []
+        if os.path.exists(filename):
+            with open(filename, mode="r", newline="") as f:
+                devices = [row for row in csv.DictReader(f)]
+                # replace if exists
+                devices = [
+                    encrypted if row.get("ip") == device.get("ip") else row
+                    for row in devices
+                ]
+        if not any(row.get("ip") == device.get("ip") for row in devices):
+            devices.append(encrypted)
+        _write_csv_atomic(filename, devices, fieldnames, extrasaction="raise")
 
 
-def _open_csv_secure(path: str):
-    """A devices.csv holds every device's Fernet-encrypted credentials, so it
-    is written owner-only. Measured 2026-09-25: the live file (and two older
-    copies) were 0664 from plain open() writes, and the secret-storage check
-    did not know the file existed. open_secure also tightens an existing
-    file, so the next write heals it."""
-    from modules.config import open_secure
-    return open_secure(path, "w", newline="")
+def devices_csv_lock(path: str | None = None):
+    """``with devices_csv_lock(path):`` around every read-modify-write of a
+    list's devices.csv (C160), across processes.
+
+    The file is the inventory AND the only store of each device's encrypted
+    credential, and five paths read it, change a row and write it back: the
+    rotation's record, onboarding's promotion, Reorder, Refresh Hostnames
+    (with an SSH session per device in between) and the uid reconciler. None
+    held a lock, so two of them at once kept one's rows and lost the other's:
+    a rotation's new credential could be written over by a reorder holding
+    the old one, which is a device the tool can no longer log in to."""
+    from modules.filestore import PathLock
+    return PathLock(os.path.abspath(path or DEVICES_FILE))
+
+
+def _write_csv_atomic(path: str, rows: list, fieldnames: list,
+                      extrasaction: str = "ignore") -> None:
+    """The one way a devices.csv is written (C160): a temp file per write,
+    0600 (the file holds every device's encrypted credential; measured
+    2026-09-25 at 0664), fsynced, then ``os.replace``.
+
+    It was ``open(path, "w")``, a truncate in place, so a reader during a
+    write saw a FRAGMENT, and ``csv.DictReader`` over a fragment raises
+    nothing: it returns the rows that happened to be there. Every writer
+    saved what it read, so a torn read became a smaller inventory, with the
+    missing devices' credentials gone from the only store holding them."""
+    import io
+    from modules.filestore import write_atomic
+    buf = io.StringIO(newline="")
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction=extrasaction)
+    writer.writeheader()
+    writer.writerows(rows)
+    with devices_csv_lock(path):
+        write_atomic(path, buf.getvalue(), newline="")
 
 
 def delete_device(ip: str, filename: str | None = None) -> None:
@@ -252,12 +275,9 @@ def delete_device(ip: str, filename: str | None = None) -> None:
     #Delete a device by IP from the CSV file.
     if not filename:
         filename = DEVICES_FILE
-    devices = [d for d in load_saved_devices(filename) if d.get("ip") != ip]
-    fieldnames = DEVICE_CSV_FIELDS
-    with _open_csv_secure(filename) as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(devices)
+    with devices_csv_lock(filename):
+        devices = [d for d in load_saved_devices(filename) if d.get("ip") != ip]
+        _write_csv_atomic(filename, devices, DEVICE_CSV_FIELDS)
     _sync_manifest_platforms(filename)
 
 
@@ -364,11 +384,7 @@ def write_devices_csv(devices: list[dict], filename: str | None = None) -> None:
         pass
     if not filename:
         filename = DEVICES_FILE
-    fieldnames = DEVICE_CSV_FIELDS
-    with _open_csv_secure(filename) as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(devices)
+    _write_csv_atomic(filename, devices, DEVICE_CSV_FIELDS)
 
 
 # ---------------------------------------------------------------------------
@@ -450,9 +466,9 @@ def _move_if_absent(src: str, dst: str) -> None:
 def _ensure_devices_csv(list_dir: str) -> None:
     """Create an empty devices.csv with headers if it doesn't exist."""
     csv_path = os.path.join(list_dir, "devices.csv")
-    if not os.path.exists(csv_path):
-        with _open_csv_secure(csv_path) as f:
-            csv.DictWriter(f, fieldnames=DEVICE_CSV_FIELDS).writeheader()
+    with devices_csv_lock(csv_path):
+        if not os.path.exists(csv_path):
+            _write_csv_atomic(csv_path, [], DEVICE_CSV_FIELDS)
 
 
 def _save_device_lists_config(config: dict) -> None:

@@ -25,15 +25,17 @@ as the hook for Part 2's automatic rotation.
 import json
 import logging
 import os
-import threading
 import time
 
+from modules import filestore as _filestore
 from modules.config import DATA_DIR
 from modules.secrets_store import decrypt_value, encrypt_value
 
 log = logging.getLogger(__name__)
 
 _FILE = os.path.join(DATA_DIR, "credential_profiles.json")
+
+
 class CredentialStoreUnreadable(RuntimeError):
     """The credential store exists and could not be read, on a WRITE path.
 
@@ -45,63 +47,15 @@ class CredentialStoreUnreadable(RuntimeError):
     break-glass record and a visit to every device)."""
 
 
-class _StoreLock:
-    """Hold across every READ-MODIFY-WRITE of the store (C157, C20's fix).
-
-    In-process an RLock; across processes an exclusive ``flock`` on
-    ``credential_profiles.json.lock``, taken only at the outermost level (a
-    second flock from this process would block on itself). The host's CLIs
-    (rotation, retire, persist, an operator's snippet) write this file while
-    the app runs, and a `threading.Lock` let one process's save put back a
-    stale copy over another's change: a lost update, with no trace (C156's
-    leading candidate). `fcntl` is absent on Windows; there it is in-process.
-    """
-
-    def __init__(self):
-        self._rlock = threading.RLock()
-        self._local = threading.local()
-
-    def depth(self) -> int:
-        return getattr(self._local, "depth", 0)
-
-    def __enter__(self):
-        self._rlock.acquire()
-        d = self.depth()
-        self._local.depth = d + 1
-        if d == 0:
-            self._local.fd = None
-            try:
-                import fcntl
-                path = _FILE + ".lock"
-                os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-                fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-                fcntl.flock(fd, fcntl.LOCK_EX)
-                self._local.fd = fd
-            except ImportError:
-                pass
-            except Exception:
-                self._local.depth = d
-                self._rlock.release()
-                raise
-        return self
-
-    def __exit__(self, *exc):
-        d = self.depth() - 1
-        self._local.depth = d
-        try:
-            if d == 0 and getattr(self._local, "fd", None) is not None:
-                import fcntl
-                try:
-                    fcntl.flock(self._local.fd, fcntl.LOCK_UN)
-                finally:
-                    os.close(self._local.fd)
-                    self._local.fd = None
-        finally:
-            self._rlock.release()
-        return False
-
-
-_lock = _StoreLock()
+#: Held across every READ-MODIFY-WRITE of the store (C157, C20's fix): an
+#: RLock in-process and an exclusive ``flock`` on
+#: ``credential_profiles.json.lock`` across processes, outermost level only.
+#: The host's CLIs (rotation, retire, persist, an operator's snippet) write
+#: this file while the app runs, and a `threading.Lock` let one process's
+#: save put back a stale copy over another's change: a lost update, with no
+#: trace (C156's leading candidate). One implementation, shared with every
+#: other store the program read-modify-writes (`modules/filestore.py`, C158).
+_lock = _filestore.PathLock(lambda: _FILE)
 
 DEFAULT_PROFILE = "default"
 
@@ -113,18 +67,7 @@ DEFAULT_PROFILE = "default"
 def _preserve_corrupt(reason: str) -> None:
     """Copy the damaged store aside, owner-only, before anything can
     overwrite it (the settings file's `_preserve_corrupt`)."""
-    import time
-
-    target = f"{_FILE}.corrupt-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
-    try:
-        if not os.path.exists(target):
-            from modules.config import open_secure
-            with open(_FILE, "rb") as src, open_secure(target, "wb") as dst:
-                dst.write(src.read())
-        log.error("credentials: %s; preserved the damaged store as %s",
-                  reason, os.path.basename(target))
-    except OSError as exc:
-        log.error("credentials: %s; and it could not be preserved: %s", reason, exc)
+    _filestore.preserve_corrupt(_FILE, reason)
 
 
 def _load() -> dict:
@@ -177,8 +120,6 @@ def _writer_label() -> str:
 
 
 def _save(data: dict) -> None:
-    import tempfile
-
     if not _lock.depth():
         # A save outside the lock is a read-modify-write that nothing
         # serialised (C157): refuse, never race.
@@ -193,23 +134,9 @@ def _save(data: dict) -> None:
     log.info("credentials: write by pid %d (%s): %s", os.getpid(), _writer_label(),
              _key_changes(before, data))
     # OWNER-ONLY, and a temp file PER WRITE (C157, C20): a shared `.tmp` let
-    # two writers share one inode and install a mixture. `mkstemp` creates it
-    # 0600, in the same directory so `os.replace` stays a rename; the name
-    # matches the checker's `credential_profiles.json.*` pattern.
-    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(_FILE) + ".tmp-",
-                               dir=os.path.dirname(_FILE))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, _FILE)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    # two writers share one inode and install a mixture. The name matches the
+    # checker's `credential_profiles.json.*` pattern.
+    _filestore.write_atomic(_FILE, json.dumps(data, indent=2))
 
     # EVERY write to the credential store, not just template secrets. Profiles,
     # device overrides, deletions and the scope migration all change what

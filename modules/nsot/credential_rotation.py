@@ -1728,16 +1728,20 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
             out["device_override"] = mgmt_ip
         else:
             csv_path = _csv_path_for(list_name)
-            rows = load_saved_devices(csv_path)
-            from modules.device import fernet
-            for row in rows:
-                if row.get("hostname") == hostname:
-                    row["password"] = fernet.encrypt(password.encode()).decode()
-                    # NOT a second copy of the password (B14). An encrypted
-                    # empty string, because every reader decrypts the column
-                    # and decrypting "" raises.
-                    row["secret"] = fernet.encrypt(b"").decode()
-            write_devices_csv(rows, csv_path)
+            from modules.device import devices_csv_lock, fernet
+            # Read and write under ONE lock (C160): the new password is the
+            # only copy the tool will hold, and a concurrent rewrite holding
+            # the old row would put the old credential back.
+            with devices_csv_lock(csv_path):
+                rows = load_saved_devices(csv_path)
+                for row in rows:
+                    if row.get("hostname") == hostname:
+                        row["password"] = fernet.encrypt(password.encode()).decode()
+                        # NOT a second copy of the password (B14). An encrypted
+                        # empty string, because every reader decrypts the column
+                        # and decrypting "" raises.
+                        row["secret"] = fernet.encrypt(b"").decode()
+                write_devices_csv(rows, csv_path)
             out["devices_csv"] = "this row only"
 
         # 3. Intent: the keyword changes password -> secret, and so does the

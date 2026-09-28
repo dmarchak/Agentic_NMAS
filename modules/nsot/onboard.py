@@ -1962,31 +1962,35 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
             import os
 
             csv_path = os.path.join(get_list_data_dir(list_name), "devices.csv")
-            rows = load_saved_devices(csv_path) if os.path.exists(csv_path) else []
-            if any((r.get("hostname") or "").lower() == hostname.lower()
-                   for r in rows):
-                result["csv_row"] = False
-                result["note"] = "already in the inventory"
-            else:
-                from modules.device import fernet
+            from modules.device import devices_csv_lock
+            # The existence check and the append under one lock (C160), or
+            # a rotation or reorder in between is written over.
+            with devices_csv_lock(csv_path):
+                rows = load_saved_devices(csv_path) if os.path.exists(csv_path) else []
+                if any((r.get("hostname") or "").lower() == hostname.lower()
+                       for r in rows):
+                    result["csv_row"] = False
+                    result["note"] = "already in the inventory"
+                else:
+                    from modules.device import fernet
 
-                row = {f: "" for f in DEVICE_CSV_FIELDS}
-                row.update({
-                    "hostname": hostname,
-                    "ip": entry.get("mgmt_ip", ""),
-                    "device_type": device_type or "cisco_xe",
-                    "username": username or "admin",
-                    # ALWAYS a token, even for an empty value (B14's rule: every
-                    # reader decrypts these columns, and decrypting "" raises).
-                    # An empty `secret` here made every pooled session to an
-                    # onboarded device fail before connecting (C152, R1).
-                    "password": fernet.encrypt((password or "").encode()).decode(),
-                    "secret": fernet.encrypt((secret or "").encode()).decode(),
-                    "device_uid": identity,
-                    "platform": entry.get("platform", ""),
-                })
-                write_devices_csv(rows + [row], csv_path)
-                result["csv_row"] = True
+                    row = {f: "" for f in DEVICE_CSV_FIELDS}
+                    row.update({
+                        "hostname": hostname,
+                        "ip": entry.get("mgmt_ip", ""),
+                        "device_type": device_type or "cisco_xe",
+                        "username": username or "admin",
+                        # ALWAYS a token, even for an empty value (B14's rule: every
+                        # reader decrypts these columns, and decrypting "" raises).
+                        # An empty `secret` here made every pooled session to an
+                        # onboarded device fail before connecting (C152, R1).
+                        "password": fernet.encrypt((password or "").encode()).decode(),
+                        "secret": fernet.encrypt((secret or "").encode()).decode(),
+                        "device_uid": identity,
+                        "platform": entry.get("platform", ""),
+                    })
+                    write_devices_csv(rows + [row], csv_path)
+                    result["csv_row"] = True
     except Exception as exc:                   # noqa: BLE001
         log.exception("promote: inventory write failed for %r", hostname)
         result["error"] = f"could not add to the inventory: {exc}"

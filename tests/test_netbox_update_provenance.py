@@ -690,7 +690,9 @@ class TestEnsureSiteDoesNotEditWhatItDoesNotOwn:
 class TestNeitherRecordIsTruncatedInPlace:
     def test_both_go_through_the_atomic_writer(self):
         src = open("modules/netbox_guard.py", encoding="utf-8").read()
-        assert "os.replace(tmp, path)" in src
+        # The atomic write lives in ONE place now (C158, modules/filestore.py).
+        assert "_filestore.write_atomic(path," in src
+        assert "os.replace(tmp, path)" in open("modules/filestore.py", encoding="utf-8").read()
         # No open-for-write on either record outside the atomic writer.
         body = src.split("def _write_json_atomic(")[1].split("\ndef ")[0]
         others = [ln for ln in src.splitlines()
@@ -702,6 +704,9 @@ class TestNeitherRecordIsTruncatedInPlace:
             "default", "dcim/sites", 7, {"region": {"before": 1, "after": 2}})
         assert os.path.exists(netbox_guard._MODIFIED_FILE)
         assert not os.path.exists(netbox_guard._MODIFIED_FILE + ".tmp")
+        leftover = [n for n in os.listdir(os.path.dirname(netbox_guard._MODIFIED_FILE))
+                    if ".tmp" in n]
+        assert leftover == [], leftover
         with open(netbox_guard._MODIFIED_FILE, encoding="utf-8") as fh:
             json.load(fh)
 

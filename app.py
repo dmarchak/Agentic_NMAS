@@ -1096,12 +1096,20 @@ def reorder_devices():
     if not new_order:
         return {"status": "error", "message": "No order received"}, 400
 
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    ip_to_device = {d["ip"]: d for d in devices}
-    reordered = [ip_to_device[ip] for ip in new_order if ip in ip_to_device]
+    from modules.device import devices_csv_lock
 
-    write_devices_csv(reordered, current_list_file)
+    _, current_list_file = get_current_device_list()
+    with devices_csv_lock(current_list_file):
+        devices = load_saved_devices(current_list_file)
+        ip_to_device = {d["ip"]: d for d in devices}
+        reordered = [ip_to_device[ip] for ip in new_order if ip in ip_to_device]
+        # A device the order does not name is KEPT, at the end (C160). The
+        # order is the browser's view from when the page loaded; a device
+        # added since (onboarding's promotion, another tab) was DROPPED, and
+        # with it the only stored copy of its credential.
+        named = set(new_order)
+        reordered += [d for d in devices if d["ip"] not in named]
+        write_devices_csv(reordered, current_list_file)
     return {"status": "success"}
 
 
@@ -1557,7 +1565,19 @@ def refresh_hostnames():
 
         # Save updated devices back to CSV if any changes
         if updated_count > 0:
-            write_devices_csv(devices, current_list_file)
+            # RE-READ under the lock and apply only the renames, by address
+            # (C160). The list read above is minutes old by now (a session per
+            # device), and writing it back erased whatever changed meanwhile: a
+            # rotation's new credential, a promoted device, a reorder.
+            from modules.device import devices_csv_lock
+            renamed = {r["ip"]: r["new_hostname"] for r in results
+                       if r["status"] == "updated"}
+            with devices_csv_lock(current_list_file):
+                fresh = load_saved_devices(current_list_file)
+                for row in fresh:
+                    if row.get("ip") in renamed:
+                        row["hostname"] = renamed[row["ip"]]
+                write_devices_csv(fresh, current_list_file)
 
             # Propagate hostname changes everywhere else the old name is stored.
             changed = [(r["ip"], r["old_hostname"], r["new_hostname"])

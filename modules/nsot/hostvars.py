@@ -585,14 +585,66 @@ def _rolled_back_path(repo: str) -> str:
     return os.path.join(repo, ROLLED_BACK_REL)
 
 
-def _load_rolled_back(repo: str) -> dict:
-    try:
-        import json
-        with open(_rolled_back_path(repo), encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, ValueError):
+def _rolled_back_lock(repo: str):
+    """Serialises every read-modify-write of *repo*'s record, across processes
+    (C158): the pipeline records a rollback on its own thread while a person
+    authorises a retry, and a CLI can run beside the app."""
+    from modules.filestore import PathLock
+    return PathLock(_rolled_back_path(repo))
+
+
+class RolledBackRecordUnreadable(RuntimeError):
+    """``.nsot/rolled_back.json`` exists and cannot be read."""
+
+
+def _unreadable_note(repo: str, why: str) -> dict:
+    return {"unreadable": True, "intent_commit": "", "commands": [],
+            "reason": (f"the record of rolled-back changes ({ROLLED_BACK_REL}) "
+                       f"could not be read ({why}), so whether this device's "
+                       "program is one that was rolled back is unknown; every "
+                       "plan on this list is blocked until the file is repaired "
+                       "(its damaged copy is kept beside it)")}
+
+
+def _load_rolled_back(repo: str, for_write: bool = False) -> dict:
+    """The record. ABSENT is ``{}``; UNREADABLE is not (C158).
+
+    It returned ``{}`` for both, and every writer saved what it loaded, so one
+    torn read followed by any rollback or retry erased every block; and the
+    plan's reader lifted every block while the file was a fragment. That
+    erases a SAFETY MECHANISM rather than data anybody would miss: the next
+    plan offers exactly the program that failed. For a write it raises (and
+    keeps the damaged file); for a read it returns ``{"__unreadable__": why}``,
+    which :func:`rolled_back_note` turns into a block on every device."""
+    import json
+    path = _rolled_back_path(repo)
+    if not os.path.exists(path):
         return {}
-    return data if isinstance(data, dict) else {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if not isinstance(data, dict):
+            raise ValueError("not a mapping")
+    except (OSError, ValueError) as exc:
+        why = type(exc).__name__
+        if for_write:
+            from modules.filestore import preserve_corrupt
+            preserve_corrupt(path, f"unreadable ({why})")
+            raise RolledBackRecordUnreadable(
+                f"{ROLLED_BACK_REL} could not be read ({why}), so nothing was "
+                "written: saving would have lifted every rollback block on this "
+                "list. The damaged file is preserved beside it.") from exc
+        log.error("hostvars: %s is unreadable (%s): every plan is blocked "
+                  "until it is repaired", ROLLED_BACK_REL, why)
+        return {"__unreadable__": why}
+    return data
+
+
+def _save_rolled_back(repo: str, data: dict) -> None:
+    import json
+    from modules.filestore import write_atomic
+    write_atomic(_rolled_back_path(repo),
+                 json.dumps(data, indent=2, sort_keys=True) + "\n", newline="\n")
 
 
 def record_rolled_back(repo: str, hostname: str, intent_commit: str,
@@ -633,7 +685,6 @@ def record_rolled_back(repo: str, hostname: str, intent_commit: str,
     from modules.nsot.deploy import command_fingerprint
 
     commands = list(commands or [])
-    data = _load_rolled_back(repo)
     entry = {
         "intent_commit": intent_commit,
         "commands": commands,
@@ -642,11 +693,10 @@ def record_rolled_back(repo: str, hostname: str, intent_commit: str,
         "reason": reason,
         "pipeline_id": pipeline_id,
     }
-    data[hostname] = entry
-    os.makedirs(os.path.dirname(_rolled_back_path(repo)), exist_ok=True)
-    with open(_rolled_back_path(repo), "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, indent=2, sort_keys=True)
-        fh.write("\n")
+    with _rolled_back_lock(repo):
+        data = _load_rolled_back(repo, for_write=True)
+        data[hostname] = entry
+        _save_rolled_back(repo, data)
     log.warning("hostvars: %s intent %s is marked rolled back — %s",
                 hostname, intent_commit[:8], reason or "no reason given")
     return entry
@@ -664,7 +714,12 @@ def rolled_back_note(repo: str, hostname: str, current_commands: list = None):
     A note with no recorded program falls back to the commit sha rather than
     being silently ignored.
     """
-    entry = _load_rolled_back(repo).get(hostname)
+    data = _load_rolled_back(repo)
+    if "__unreadable__" in data:
+        # Fail CLOSED: an unreadable record blocks every device, with or
+        # without a program, because the question it answers cannot be.
+        return _unreadable_note(repo, data["__unreadable__"])
+    entry = data.get(hostname)
     if not entry:
         return None
     if current_commands is None:
@@ -834,7 +889,10 @@ def authorise_retry(repo: str, hostname: str, actor: str = "user",
     import json
     import time as _time
 
-    note = _load_rolled_back(repo).get(hostname)
+    data = _load_rolled_back(repo)
+    if "__unreadable__" in data:
+        return {"ok": False, "error": _unreadable_note(repo, data["__unreadable__"])["reason"]}
+    note = data.get(hostname)
     if not note:
         return {"ok": False, "error": f"'{hostname}' has no rolled-back note"}
 
@@ -876,15 +934,12 @@ def retry_log(repo: str) -> list:
 
 def clear_rolled_back(repo: str, hostname: str) -> bool:
     """Drop the note — used when the intent is reverted or overridden."""
-    import json
-
-    data = _load_rolled_back(repo)
-    if hostname not in data:
-        return False
-    data.pop(hostname)
-    with open(_rolled_back_path(repo), "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, indent=2, sort_keys=True)
-        fh.write("\n")
+    with _rolled_back_lock(repo):
+        data = _load_rolled_back(repo, for_write=True)
+        if hostname not in data:
+            return False
+        data.pop(hostname)
+        _save_rolled_back(repo, data)
     return True
 
 

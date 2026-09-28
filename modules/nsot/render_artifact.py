@@ -251,7 +251,12 @@ class RenderArtifact:
                            "order is significant here")
         if not self.template_approved:
             reasons.append(f"template '{self.template}' is not approved for this device")
-        if self.rolled_back:
+        if self.rolled_back and self.rolled_back.get("unreadable"):
+            # C158: the record of what was rolled back could not be read, so
+            # whether THIS program is the one that failed is unknown. Blocked,
+            # and the reason names the record, never a rollback nobody saw.
+            reasons.append(self.rolled_back["reason"])
+        elif self.rolled_back:
             reasons.append(
                 "deploying this intent was rolled back at "
                 f"{self.rolled_back.get('at', 'an earlier time')}"

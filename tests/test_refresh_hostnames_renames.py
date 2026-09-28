@@ -38,7 +38,10 @@ def lab(tmp_path, monkeypatch, intent_matches):
     repo = str(list_dir / "config_repo")
     devices = [{"hostname": "r1", "ip": IP, "device_type": "cisco_ios",
                 "username": "u", "password": "p"}]
-    monkeypatch.setattr(A, "get_current_device_list", lambda: ("lab", "lab.csv"))
+    # The list's path is THIS test's: the route takes the inventory lock on it
+    # (C160), and a relative "lab.csv" put `lab.csv.lock` in the checkout.
+    csv_path = str(tmp_path / "lab.csv")
+    monkeypatch.setattr(A, "get_current_device_list", lambda: ("lab", csv_path))
     monkeypatch.setattr(A, "load_saved_devices", lambda path=None: devices)
     monkeypatch.setattr(A, "write_devices_csv", lambda rows, path: None)
     monkeypatch.setattr(A, "with_temp_connection", lambda dev, fn: "r1-renamed")

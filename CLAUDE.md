@@ -141,6 +141,12 @@ tracked in git.
   hash against the confirmed one, the actor, the checks that RAN (or why
   none did), rollback, and the commit. The follow-up window is not built,
   and each row says so
+- **[modules/filestore.py](modules/filestore.py)** — C158: the ONE fix for a
+  store the program read-modify-writes: `PathLock` (an RLock plus a
+  cross-process `flock`, re-entrant per thread and PATH), `write_atomic` (a
+  temp per write, `os.replace`), `read_json_for_write` (unreadable refuses,
+  kept as `.corrupt-<ts>`). The credential store, both NetBox provenance
+  records, `rolled_back.json` and devices.csv use it
 - **[modules/nsot/record_exceptions.py](modules/nsot/record_exceptions.py)** —
   commits whose record is known to be wrong, by full hash (the eleven
   rotation commits recorded `Source: manual`, C104). History is not
@@ -1224,6 +1230,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_list_delete_never_touches_netbox.py` | C155: a list that still owns recorded NetBox objects is refused naming them and keeps its record; one with nothing recorded is deleted and no NetBox writer is called; an unreadable record is refused, never read as owning nothing; nothing but the schema names the retired setting |
 | `test_netbox_write_authority.py` | C155: a real NetBox write with no declared authority is refused at the chokepoint (the switch still refuses first, and a dry run needs none); both records store the authority beside the actor; every `for_list()` in the program and its scripts declares one (AST, floor) |
 | `test_credential_store_integrity.py` | C157: the credential store gets the settings file's C20 fixes: two PROCESSES writing at once lose nothing (without the flock, 37-47% of writes were lost, measured), an unreadable store refuses every write and keeps the file byte-identical with a `0600` `.corrupt-` copy while a read survives on empty, every write is logged with its process and the key names it changes (never a value), and a save outside the lock is refused |
+| `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C108: verify checks what the TARGET intent declares (from r1's real captures, OSPFv3 absent before: checked and passes once up; still absent is not a pass and not a rollback; no intent known checks the before-state and says so; the receipt and the shipped renderer draw it; `_deploy_one` carries the ref's intent for a restore and the committed intent for a deploy). C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
@@ -5097,6 +5104,22 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   used hand-written output shapes, all in config syntax, so it could not
   exhibit the case. Its first control passed wrongly, served by the
   process-wide tool-result cache, which each drive now clears.
+- **A SWEEP MAY REGISTER WHATEVER IT FINDS; ONLY THE A ITEMS IT FINDS ARE FIXED
+  IN THE SAME PASS** (the operator's stopping rule, 2026-09-28, applied by
+  default). Everything else waits, however cheap and however near the code
+  being edited. A items found by fixing A items had begun to feed themselves
+  (C155, C157, C158, C160), and "we are already in the file" is how a fix
+  grows a second fix nobody triaged. The bound is the SURVEY, never a
+  judgement: C160 was missed by the first sweep because its population was
+  JSON loaders (a proxy), and found by listing every write site (85), which is
+  the population the property defines. C161 was the rule's first
+  application: a real defect in the function C160's fix was editing, left.
+- **A lock's re-entrancy belongs to what it LOCKS, not to the object that
+  represents it** (C158, 2026-09-28). `PathLock` tracked depth per instance,
+  callers build one where they need it (`devices_csv_lock(path)`), and a
+  nested acquire therefore took a second `flock` on a new descriptor, which
+  blocks on the process's own lock: the first test run hung. `flock` is per
+  open file description, so depth is per (thread, path) now.
 - **A finding is recorded the turn it is raised, AFTER searching the register for it** (the
   operator, 2026-09-27 and 2026-09-28). C108 lived only in conversation until the
   re-run found it again, and C123 was registered as new two days after D8 had

@@ -487,25 +487,25 @@ def backfill_device_uids() -> dict:
         if not os.path.exists(path):
             continue
         try:
-            with open(path, newline="", encoding="utf-8") as fh:
-                rows = list(csv.DictReader(fh))
-            if not rows:
-                continue
-            changed = False
-            for row in rows:
-                if not row.get("device_uid"):
-                    row["device_uid"] = _manifest.new_device_uid()
-                    changed = True
-                    updated += 1
-            if changed:
-                fields = ["hostname", "device_type", "ip", "username",
-                          "password", "secret", "role", "device_uid"]
-                tmp = path + ".tmp"
-                with open(tmp, "w", newline="", encoding="utf-8") as fh:
-                    writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
-                    writer.writeheader()
-                    writer.writerows(rows)
-                os.replace(tmp, path)
+            # Read to write under the inventory's lock, through its one
+            # writer (C160). The `fields` list omits `platform`, which is
+            # C161, registered and not fixed here.
+            from modules.device import _write_csv_atomic, devices_csv_lock
+            with devices_csv_lock(path):
+                with open(path, newline="", encoding="utf-8") as fh:
+                    rows = list(csv.DictReader(fh))
+                if not rows:
+                    continue
+                changed = False
+                for row in rows:
+                    if not row.get("device_uid"):
+                        row["device_uid"] = _manifest.new_device_uid()
+                        changed = True
+                        updated += 1
+                if changed:
+                    fields = ["hostname", "device_type", "ip", "username",
+                              "password", "secret", "role", "device_uid"]
+                    _write_csv_atomic(path, rows, fields)
         except Exception as exc:              # noqa: BLE001
             log.warning("migrate: device_uid backfill failed for '%s': %s", name, exc)
 

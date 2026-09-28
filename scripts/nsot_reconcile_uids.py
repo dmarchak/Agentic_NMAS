@@ -44,6 +44,14 @@ def main() -> int:
     repo = os.path.join(list_dir, "config_repo")
     csv_path = os.path.join(list_dir, "devices.csv")
 
+    # From the read to the write under the inventory's lock (C160): the app
+    # rewrites this file (rotation, promotion, reorder) while this runs.
+    from modules.device import devices_csv_lock
+    with devices_csv_lock(csv_path):
+        return _reconcile(args, repo, csv_path, load_saved_devices, write_devices_csv)
+
+
+def _reconcile(args, repo, csv_path, load_saved_devices, write_devices_csv) -> int:
     devices = load_saved_devices(csv_path)
     entries = M.load(repo)["devices"]
 
