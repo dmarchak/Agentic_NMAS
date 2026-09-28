@@ -153,7 +153,8 @@ def test_the_scan_finds_something():
     found = implementations()
     assert len(found) >= 8, sorted(found)
     # Positive anchors: a single implementation, and the known duplicate.
-    assert found[("reload",)] == {"app.py:bulk_reload"}
+    # Moved, still ONE home: bulk reload calls it (C153).
+    assert found[("reload",)] == {"modules/device_reload.py:reload_device"}
     assert found[("save_startup",)] == KNOWN_DUPLICATES[("save_startup",)]
 
 

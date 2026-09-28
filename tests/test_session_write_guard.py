@@ -282,6 +282,7 @@ HELD_BY_CALLER = {
     "modules/backups.py:save_running_to_startup": "app.save_to_startup",
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
     "modules/commands.py:run_device_command": "its callers: /run_command holds a non-read",
+    "modules/device_reload.py:reload_device": "app.bulk_reload's per-device thread (C153)",
 }
 
 
