@@ -17,7 +17,12 @@ HEAD moves. HEAD never reaches a commit that has not passed.
 Exit codes. Each means one thing; none is "probably fine":
   0  deployed (or already at the target) AND confirmed running: /health
      reports the target commit from a process started after the restart
-  1  CI FAILED, was cancelled, or is still running for the target: refused
+  1  CI FAILED for the target: its LATEST CONCLUSIVE run did not pass.
+     Do not deploy it
+  7  CI is PENDING for the target: a run is still queued or in progress,
+     whatever an earlier run concluded. Wait, then run again
+  8  every CI run for the target was CANCELLED (superseded by a newer push,
+     or stopped): no verdict exists. Deploy the newer commit, or re-run CI
   2  COULD NOT ASK: GitHub unreachable, timed out, rate-limited, answered an
      error, or has NO run for the target. Refused. There is no flag that
      deploys an unverified commit; --offline verifies it here instead.
@@ -63,6 +68,7 @@ WORKFLOW_PATH = ".github/workflows/ci.yml"
 
 OK, CI_REFUSED, COULD_NOT_ASK, OFFLINE_FAILED, LOCAL_REFUSED, UNHEALTHY = 0, 1, 2, 3, 4, 5
 CANNOT_RESTART = 6
+CI_PENDING, CI_CANCELLED = 7, 8
 
 
 def can_restart(run=subprocess.run, isatty=None):
@@ -172,6 +178,47 @@ def only_ignored(paths, patterns):
 # The gate
 # ---------------------------------------------------------------------------
 
+#: Conclusions that are an ABANDONED attempt, not a verdict (C124).
+ABANDONED = ("cancelled", "skipped")
+
+
+def _run_order(run):
+    """Run number, then attempt, then id: never `created_at`, which has one
+    second of resolution. Two runs for one SHA created in the same second
+    (d7efb9d's #92 and #93) tied, and `max` took the first in the API's
+    list, the cancelled one, every time (C124)."""
+    return (run.get("run_number") or 0, run.get("run_attempt") or 0, run.get("id") or 0)
+
+
+def verdict_of_runs(runs):
+    """``(state, run, others)`` for a SHA's SET of runs (C124): the question
+    is "what is the verdict for this SHA", not "is there a run".
+
+    * any run not completed: PENDING, whatever an earlier run concluded;
+    * cancelled and skipped runs are abandoned attempts, never verdicts;
+    * otherwise the LATEST CONCLUSIVE run wins, so a re-run that FAILED
+      after an earlier pass refuses (the dangerous direction);
+    * no conclusive run at all: CANCELLED.
+    """
+    live = [r for r in runs if r.get("status") != "completed"]
+    if live:
+        return "PENDING", max(live, key=_run_order), runs
+    conclusive = [r for r in runs if r.get("conclusion") not in ABANDONED + (None, "")]
+    if not conclusive:
+        return "CANCELLED", max(runs, key=_run_order), runs
+    latest = max(conclusive, key=_run_order)
+    return ("PASSED" if latest.get("conclusion") == "success" else "FAILED"), latest, runs
+
+
+def _others(runs, chosen):
+    rest = [r for r in runs if r is not chosen]
+    if not rest:
+        return ""
+    words = ", ".join(f"#{r.get('run_number', '?')} {r.get('conclusion') or r.get('status')}"
+                      for r in sorted(rest, key=_run_order))
+    return f" (other runs for this commit: {words})"
+
+
 def ci_verdict(repo, target, get=github_get):
     """(exit code, sentence naming the SHA and what was found)."""
     short = target[:10]
@@ -187,13 +234,20 @@ def ci_verdict(repo, target, get=github_get):
                                "`nmas-deploy --offline` to run the suite here.")
     runs = [r for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
     if runs:
-        run = max(runs, key=lambda r: r.get("created_at", ""))
-        url = run.get("html_url", "")
-        if run.get("status") != "completed":
-            return CI_REFUSED, f"CI is still {run.get('status')} for {short}: {url}. Run again when it completes."
-        if run.get("conclusion") == "success":
-            return OK, f"CI passed for {short}: {url}"
-        return CI_REFUSED, f"CI {run.get('conclusion')} for {short}: {url}. Refused."
+        state, run, _all = verdict_of_runs(runs)
+        url, num = run.get("html_url", ""), run.get("run_number", "?")
+        others = _others(runs, run)
+        if state == "PENDING":
+            return CI_PENDING, (f"PENDING: CI run #{num} is still {run.get('status')} for {short}: "
+                                f"{url}{others}. Wait, and run nmas-deploy again when it completes.")
+        if state == "CANCELLED":
+            return CI_CANCELLED, (f"CANCELLED: every CI run for {short} was cancelled (superseded by a "
+                                  f"newer push, or stopped), so no verdict exists: {url}{others}. "
+                                  "Deploy the newer commit, or re-run CI for this one.")
+        if state == "PASSED":
+            return OK, f"CI passed for {short}: run #{num}, {url}{others}"
+        return CI_REFUSED, (f"FAILED: CI's latest conclusive run for {short}, #{num}, concluded "
+                            f"{run.get('conclusion')}: {url}{others}. Do not deploy this commit.")
 
     # No run for the target. Legitimate ONLY for a docs-only push.
     status, body, reason = get(f"/repos/{slug}/actions/runs?branch=main&status=success"

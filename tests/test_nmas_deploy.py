@@ -185,12 +185,12 @@ class TestTheGate:
     def test_a_running_run_refuses(self, world):
         sha = world.advance({"app.py": "v = 2\n"})
         code, _, _ = _run(world, {sha: _run_entry(sha, None, "in_progress")})
-        assert code == 1 and _head(world) == world.base
+        assert code == 7 and _head(world) == world.base      # PENDING (C124)
 
     def test_a_cancelled_run_is_not_a_pass(self, world):
         sha = world.advance({"app.py": "v = 2\n"})
         code, _, _ = _run(world, {sha: _run_entry(sha, "cancelled")})
-        assert code == 1 and _head(world) == world.base
+        assert code == 8 and _head(world) == world.base      # CANCELLED (C124)
 
     def test_github_unreachable_is_could_not_ask_and_refuses(self, world, capsys):
         world.advance({"app.py": "v = 2\n"})
@@ -575,3 +575,83 @@ class TestCanRestart:
         run, calls = self._runner({("sudo", "-v"): 0})
         assert mod.can_restart(run=run, isatty=lambda: True)[0] is True
         assert calls[-1] == ["sudo", "-v"]
+
+
+
+def _runs(*spec):
+    """(run_number, conclusion, status) -> run dicts, all created in ONE
+    second, as d7efb9d's #92 and #93 were."""
+    return [{"run_number": n, "run_attempt": 1, "id": 36367580000 + n,
+             "status": status, "conclusion": c, "created_at": "2026-09-28T01:51:33Z",
+             "path": ".github/workflows/ci.yml",
+             "html_url": f"https://github.com/owner/repo/actions/runs/{n}"}
+            for n, c, status in spec]
+
+
+class TestTheVerdictIsOfTheSetOfRuns:
+    """C124: the gate read a CANCELLED run as the verdict for a commit that
+    PASSED, because both runs were created in the same second and `max` by
+    `created_at` took the first in the API's list. It caused the operator's
+    first bypass of the gate (C44)."""
+
+    def test_d7efb9d_exactly_a_cancelled_run_beside_a_pass_is_a_pass(self):
+        mod = _script()
+        state, run, _ = mod.verdict_of_runs(_runs((92, "cancelled", "completed"),
+                                                  (93, "success", "completed")))
+        assert state == "PASSED" and run["run_number"] == 93
+
+    def test_a_later_re_run_that_failed_refuses_the_dangerous_direction(self):
+        """The same selection that refused a good commit would ACCEPT one
+        whose later re-run failed after an earlier pass. List order must not
+        decide: the failure is listed LAST and FIRST in turn."""
+        mod = _script()
+        for order in ((1, 2), (2, 1)):
+            runs = _runs((10, "success", "completed"), (11, "failure", "completed"))
+            runs = [runs[i - 1] for i in order]
+            state, run, _ = mod.verdict_of_runs(runs)
+            assert state == "FAILED" and run["run_number"] == 11, order
+
+    def test_a_later_pass_after_a_failure_passes(self):
+        mod = _script()
+        state, _run, _ = mod.verdict_of_runs(_runs((10, "failure", "completed"),
+                                                   (11, "success", "completed")))
+        assert state == "PASSED"
+
+    def test_a_run_in_progress_is_pending_whatever_an_earlier_one_said(self):
+        mod = _script()
+        state, _run, _ = mod.verdict_of_runs(_runs((10, "success", "completed"),
+                                                   (11, None, "in_progress")))
+        assert state == "PENDING"
+
+    def test_only_cancelled_runs_are_cancelled_not_failed(self):
+        mod = _script()
+        state, _run, _ = mod.verdict_of_runs(_runs((10, "cancelled", "completed"),
+                                                   (11, "cancelled", "completed")))
+        assert state == "CANCELLED"
+
+    def test_through_the_gate_the_exact_host_case_deploys(self, world):
+        sha = _git(world.origin, "rev-parse", "HEAD")
+        code, _, _ = _run(world, {sha: [dict(r, head_sha=sha) for r in
+                                        _runs((92, "cancelled", "completed"),
+                                              (93, "success", "completed"))]})
+        assert code == 0 and _head(world) == sha
+
+    def test_the_three_refusals_say_different_things(self):
+        mod = _script()
+
+        def say(*spec):
+            runs = [dict(r, head_sha="a" * 40) for r in _runs(*spec)]
+            return mod.ci_verdict("/nonexistent", "a" * 40,
+                                  get=lambda path: (200, {"workflow_runs": runs}, ""))
+        original = mod.git
+        mod.git = lambda repo, *a, check=True: "github-nmas:owner/repo.git"
+        try:
+            failed = say((1, "failure", "completed"))
+            pending = say((1, None, "queued"))
+            cancelled = say((1, "cancelled", "completed"))
+        finally:
+            mod.git = original
+        assert failed[0] == 1 and failed[1].startswith("FAILED") and "Do not deploy" in failed[1]
+        assert pending[0] == 7 and pending[1].startswith("PENDING") and "Wait" in pending[1]
+        assert cancelled[0] == 8 and cancelled[1].startswith("CANCELLED")
+        assert "newer commit" in cancelled[1]

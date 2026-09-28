@@ -160,6 +160,17 @@ machine that cannot reach GitHub, `nmas-deploy --offline` runs the whole suite
 here against the target instead. There is no flag that deploys an unverified
 commit.
 
+**The verdict is of the SET of runs for the commit** (C124). A commit can have
+several runs (a push can start two in the same second, and the workflow
+cancels superseded runs). Cancelled runs are abandoned attempts, not verdicts;
+any run still going means **PENDING (exit 7, wait)**; otherwise the latest
+conclusive run by run number decides: **FAILED (exit 1, do not deploy)**, or a
+pass. A commit whose every run was cancelled is **CANCELLED (exit 8, deploy the
+newer commit or re-run CI)**. Until 2026-09-28 it took the run with the latest
+`created_at`, a one-second timestamp: a cancelled run and a passing one from
+the same second tied, the cancelled one won, and a good commit was refused
+until it was deployed around the gate (C44's first instance).
+
 **Run it in a terminal on the host.** The restart needs `sudo`, and the
 restart is deliberately a person's step (a passwordless rule was declined:
 CI gates what deploys, a person gates when). Before moving anything it checks
