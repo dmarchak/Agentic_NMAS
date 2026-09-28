@@ -3650,6 +3650,157 @@ and the host check reads its real one from uncapped history.
 **Placement:** before 8.6, whose triage reader consumes these rules and is only as good as they are. Where it
 falls against 7.2 and 7.3 is the operator's to decide; nothing in 7.2 depends on it.
 
+### P.8 — Per-list settings: two lists are two networks (SCOPED 2026-09-28, not built; placement after 7.2, before P.7's generators and 7.3)
+
+**The gap (the operator, 2026-09-28): lists separate devices, and settings are
+global.** Every list is meant to be its own network, and the settings that
+describe a network and the systems watching it are one flat store. It already
+shows: the readers built in 7.2 store per-list values (freshness, drift) while
+reading global settings for the services they talk to. Only one list exists, so
+nothing is broken; two labs on one NMAS would share one Grafana view, one
+scrape list and one Oxidized. Register C173.
+
+**1. Every schema key classified, from what READS it** (129 keys, measured
+2026-09-28 by listing each key's readers, not by its name):
+
+- **Global, 32: NMAS itself and who may use it.**
+  - The process: `flask_host`, `flask_port`, `auto_open_browser`.
+  - Identity and authority: `cf_access_*` (5), `require_identity_for_*` (6),
+    `require_person_for_*` (6), `service_allowed_operations`.
+  - The agent: `ai_enabled`, `background_agent_enabled`, and `wf_*` (5 live).
+  - The repositories' commit identity: `nsot_git_author_name`,
+    `nsot_git_author_email`.
+  - The host path `tftp_root`, and the store's own `settings_schema_version`.
+- **Per network, 61: a network or a system watching it.**
+  - Grafana (5), Prometheus (6), Loki (7), Oxidized (6 live), the topology
+    service (4), Kea (7, including the ZTP fragment), the clab target (6).
+  - The onboarding syslog block (`syslog_*`, 5): where a device sends its log
+    and heartbeat.
+  - The device to monitoring identity mapping (`monitoring_*`, 4; `promql_*`, 3).
+  - `tftp_server_ip`: the address a network's devices fetch from; `tftp_root`
+    is the host's directory, global.
+  - The S3 archive (7): each list's repository already has its own remote, so
+    its archive is its own too.
+- **Ambiguous, 25, each with the question that decides it.**
+  - **NetBox (6).** One NetBox holding every network as sites, or one per
+    network? The inventory adapter, the import and `netbox_allow_writes` (a
+    master switch, a safety decision about the instance, which argues global)
+    all hang on it.
+  - **`platform_map`, `platform_default_netmiko_type`, `role_map` (3).** Mapping
+    NetBox's names to NMAS's: per NetBox, so they follow NetBox's answer.
+  - **Proxmox (7).** The host the lab and NMAS run on: global today, per
+    network if a second lab runs on a second Proxmox.
+  - **Deploy tuning (5)**: `deploy_max_workers`, `deploy_verify_failure_limit`,
+    `nsot_config_read_timeout`, `verify_settle_windows`,
+    `nsot_device_tag_retention`. A property of the tool, or of the network's
+    size and protocols? Settle windows are measured per protocol on THIS
+    fleet, which argues per network.
+  - **The collectors (3)**, `collector_*_enabled`. NMAS's own listeners, one
+    process on one host (global), while the ports already live per list in
+    `collector_config.json`: a split that exists and is half-done.
+  - **`settings_not_applicable` (1).** A declaration about a key. If keys are
+    per list, so are declarations (question 4 below).
+- **Read by nothing, 11**: `jenkins_step_shell`, `wf_run_jenkins`,
+  `netbox_remove_on_list_delete` (retired, C155), `oxidized_rest_url`
+  (deprecated), `yang_push_script` (C31), and the six Phase 0 `nsot_git_*`
+  location keys (C171). They need no split, only retirement (C171, 7.7).
+
+**2. What already assumes global** (measured):
+
+- **Readers.**
+  - Grafana alerts: global Grafana, an unscoped value, and Needs attention
+    resolves each alert against the ACTIVE list. With two lists, an alert for
+    the other list's device would read "NOT in the inventory (a rule left
+    behind by a device that left)". That is a false claim, latent today.
+  - Freshness: per-list reports from one global Oxidized.
+  - Integration health: global probes, one status bar for every list.
+  - Job health and the CI verdict: genuinely global (the host and NMAS).
+- **Needs attention sources.** Drift and freshness take the active list;
+  Grafana and integrations are unscoped.
+- **Integration clients.** All ten read the global store (the base class reads
+  the URL and keys itself), and none can be given a list.
+- **Call sites.** 69 name a per-network key, in 24 files; that undercounts,
+  because the base class reads its keys generically.
+- **Outside NMAS.**
+  - Prometheus's scrape targets: hand-kept, C168.
+  - The Grafana heartbeat rules: generated from NetBox for every device, with
+    no list label.
+  - The SNMP exporter's auths and `snmptrapd`: C139's consumers.
+  - Oxidized's one `router.db`.
+  - The Kea ZTP fragment and responder: one subnet for every list's ZTP
+    devices.
+- **Per-list configuration that already exists**, each file its own mechanism:
+  - `source.json`;
+  - `remote.json`, with C172's defects;
+  - `collector_config.json`;
+  - `drift_state.json`;
+  - the clab lab through the manifest.
+
+  A second store needs a second mechanism, and this is five. P.8's store should
+  be the ONE per-list mechanism, and absorb them rather than add a sixth.
+
+**3. Blocking, or can it follow?** Not blocking: one list exists and nothing
+is wrong today. The honest costs:
+
+- **Now.** The mechanism, before any more consumers are built on the global
+  store:
+  - a resolver `list_setting(list_name, key)` and a per-list store (filestore,
+    0600, secrets through the secrets store per list);
+  - inheritance and its states (question 4), and the origin drawn beside every
+    value, as the posture panel already does;
+  - integration clients constructed FOR a list (the base class takes one), and
+    the 69 call sites carrying their list ("carried, never derived" on a WRITE;
+    a read may derive the active list);
+  - three readers looping lists, the unscoped sources scoped, and the status
+    bar drawing the active list's integrations.
+
+  From finished items of similar shape (C104's readers, C158's write sites,
+  each a cross-cutting pass over one property), expect about 10 to 15 commits,
+  and about as many register rows as commits (7.1's measured rate).
+- **Later.** Every consumer built on the global store in the meantime is
+  revisited, and the cost grows with each screen. 7.3's Device page embeds
+  Grafana and Loki per device and is the largest single consumer of
+  per-network monitoring settings. P.7's generators would emit rules and
+  targets with no list label.
+
+  The worse cost is not the rework. **A screen built global shows list A's
+  Grafana beside list B's device with every check passing**: the wrong thing
+  looking like the working thing, which is what this project exists not to
+  build.
+
+**4. What inheritance means.** "Unset inherits Default" collides with the
+distinction C31 already made between nobody-decided and deliberately-none.
+Four states per (list, key):
+- **set here**: the list's own value;
+- **not applicable here**: declared, with who, when and why. It stops the
+  lookup: it NEVER inherits Default's value, because the list deliberately has
+  none;
+- **inherited**: unset here, so Default's value, drawn as inherited from
+  Default;
+- **unset everywhere**: the schema default, where an empty guard-gating value
+  is job health's `unset_guard` for that list.
+
+Two rules follow, and neither is the obvious one:
+- **A declaration never inherits.** Default saying "we deliberately have no
+  Grafana" is a fact about Default's network, not B's. B inheriting it would
+  turn nobody-decided into somebody-decided, the distinction C31 exists to
+  keep.
+- **An integration inherits as a GROUP, never key by key.** URL, auth mode,
+  credential and TLS belong together. A list that sets its own Grafana URL
+  must not silently inherit Default's token, or NMAS sends one service's
+  credential to another. Setting any key of a group here makes the group
+  local, and the rest of it reads unset here, never Default's.
+
+`settings_not_applicable` becomes per list with the store, and job health
+judges each list's guards against its own resolved values.
+
+**Where it goes (recommended): after 7.2 finishes (the "who you are" item and
+C92's reader, neither of which reads a per-network setting), and before P.7's
+generators and 7.3.** Both of those are built ON this split. P.7 generates
+per-list rules and targets, and 7.3 embeds per-list monitoring. The
+NetBox question in (1) is the operator's to answer first, because six keys and
+the inventory adapter move with it.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
