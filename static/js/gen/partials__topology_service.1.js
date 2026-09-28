@@ -1,13 +1,36 @@
 let _topoSvcTimer = null;
 
-function _topoSvcShowError(message) {
+function _topoSvcShowError(message, notConfigured) {
   const placeholder = document.getElementById('topoSvcPlaceholder');
   const frame = document.getElementById('topoSvcFrame');
   if (!placeholder) { console.error('topoSvc: no placeholder element'); return; }
   if (frame) frame.hidden = true;
   placeholder.hidden = false;
-  placeholder.classList.add('text-danger');
+  // An UNCONFIGURED integration is a state, not an error (the plan's
+  // constraint 4): muted, and saying where and what to set. It was drawn red
+  // and read as the topology having failed (2026-09-28, C126).
+  if (notConfigured) {
+    placeholder.classList.remove('text-danger');
+    placeholder.classList.add('text-muted');
+  } else {
+    placeholder.classList.remove('text-muted');
+    placeholder.classList.add('text-danger');
+  }
   placeholder.textContent = message;
+}
+
+/* Pure: what the panel says for one /topology/service/status payload.
+   `{kind: 'not_configured' | 'load', message}`. */
+function topoSvcStateFor(d) {
+  if (!d || !d.configured) {
+    return {kind: 'not_configured',
+            message: 'Not configured. This panel shows the rcn-topology service\'s '
+                     + 'rendered graph, and nothing has told the NMAS where that service '
+                     + 'is: set Settings \u2192 Integrations \u2192 Topology service \u2192 URL '
+                     + 'to its base URL (it fetches <base>/topology.svg). Nothing failed. '
+                     + 'The built-in discovery below does not need it.'};
+  }
+  return {kind: 'load', message: ''};
 }
 
 function topoSvcRefresh() {
@@ -26,9 +49,9 @@ function topoSvcRefresh() {
   fetch('/topology/service/status')
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      if (!d.configured) {
-        _topoSvcShowError('Topology service is not configured — set its URL '
-                          + 'in Settings → Topology service.');
+      const state = topoSvcStateFor(d);
+      if (state.kind === 'not_configured') {
+        _topoSvcShowError(state.message, true);
         return;
       }
       if (stamp) stamp.textContent = 'loading…';

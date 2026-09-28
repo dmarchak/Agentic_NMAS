@@ -208,8 +208,10 @@ RENDERS = {
         (("partials__monitoring_stack.1.js", "_stackRender", "data"),)),
     "GET /topology/service/status": Render(
         _get("/topology/service/status"),
-        {"partials__topology_service.1.js": ("topoSvcRefresh",)},
-        (("partials__topology_service.1.js", "topoSvcRefresh", "d"),)),
+        # topoSvcStateFor decides what an unconfigured service says (C126).
+        {"partials__topology_service.1.js": ("topoSvcRefresh", "topoSvcStateFor")},
+        (("partials__topology_service.1.js", "topoSvcRefresh", "d"),
+         ("partials__topology_service.1.js", "topoSvcStateFor", "d"))),
     "GET /settings/integrations/status": Render(
         _get("/settings/integrations/status"),
         {"partials__settings_integrations.1.js": ("loadIntegrationStatus",)},

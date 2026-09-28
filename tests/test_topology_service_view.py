@@ -256,3 +256,40 @@ class TestTheTabShowsTheServiceFirst:
         html = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
         for view in ("topoCdpView", "topoOspfView", "topoBgpView", "topoTunnelView"):
             assert view in html, view
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class TestNotConfiguredIsAStateNotAnError:
+    """C126 (2026-09-28): an unset topology_service_url was drawn in red and
+    read as the topology having failed. The plan's constraint 4: an
+    unconfigured integration shows "Not configured", not an error, and says
+    what to set. The shipped decision, executed."""
+
+    def _state(self, payload):
+        import json
+
+        import dukpy
+        src = open(os.path.join(ROOT, "static", "js", "gen",
+                                "partials__topology_service.1.js")).read()
+        return dukpy.evaljs("var document = {addEventListener: function(){}}; "
+                            "var window = {};\n" + src
+                            + f"\ntopoSvcStateFor({json.dumps(payload)});")
+
+    def test_unset_is_not_configured_and_says_where_and_what(self):
+        state = self._state({"ok": True, "configured": False})
+        assert state["kind"] == "not_configured"
+        msg = state["message"]
+        assert msg.startswith("Not configured") and "Nothing failed" in msg
+        assert "Integrations" in msg and "topology.svg" in msg and "failed to" not in msg
+
+    def test_configured_loads(self):
+        assert self._state({"ok": True, "configured": True})["kind"] == "load"
+
+    def test_not_configured_is_drawn_muted_never_red(self):
+        src = open(os.path.join(ROOT, "static", "js", "gen",
+                                "partials__topology_service.1.js")).read()
+        body = src[src.index("function _topoSvcShowError"):src.index("function topoSvcStateFor")]
+        branch = body[body.index("if (notConfigured)"):body.index("} else {")]
+        assert "text-muted" in branch and "remove('text-danger')" in branch
