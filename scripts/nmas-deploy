@@ -358,6 +358,16 @@ def offline_verdict(repo, target, run=subprocess.run):
                    "network: NOT CONFINED (the target has no scripts/nmas-test)").rstrip(".")
     if out.returncode == 0:
         return OK, f"the suite passed HERE against {target[:10]}: {tail[0]}; {network}"
+    if out.returncode in (124, 137):
+        # nmas-test's bound fired. Its report (the test each process was
+        # running, and their stacks) is on STDERR; the last stdout line would
+        # name neither, and "FAILED" would read as a test failing.
+        report = [ln.strip() for ln in (getattr(out, "stderr", "") or "").splitlines()
+                  if ln.startswith("  ") and ": " in ln and "started" in ln]
+        return OFFLINE_FAILED, (f"the suite TIMED OUT here against {target[:10]} (nmas-test's "
+                                f"bound): running when it stopped: "
+                                f"{'; '.join(report) or 'no test named (see nmas-test output)'}; "
+                                f"{network}. Refused.")
     return OFFLINE_FAILED, (f"the suite FAILED here against {target[:10]}: {tail[0]}; "
                             f"{network}. Refused.")
 

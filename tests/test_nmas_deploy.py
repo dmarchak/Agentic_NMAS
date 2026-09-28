@@ -315,6 +315,26 @@ class TestOffline:
         assert code == 3
         assert "NOT CONFINED (the target has no scripts/nmas-test)" in message
 
+    def test_a_timeout_names_what_was_running(self, world):
+        """nmas-test's bound firing is not "1 failed": the report of what each
+        process was running is on stderr, and the verdict carries it."""
+        sha = world.advance({"app.py": "v = 2\n", "scripts/nmas-test": "#!/bin/sh\n"})
+        _fetch_from_real_origin(world)
+        _git(world.host, "fetch", "-q", "origin")
+
+        def spy(argv, cwd=None, **_kw):
+            class Out:
+                returncode = 124
+                stdout = "nmas-test: network: CONFINED (x)\n...."
+                stderr = ("nmas-test: TIMED OUT after 300 s (NMAS_TEST_TIMEOUT). Running when "
+                          "it stopped:\n  gw3: tests/test_x.py::test_hangs (started 290 s "
+                          "before the report)\n--- stacks of gw3 at the SIGTERM ---\n")
+            return Out()
+        code, message = _script().offline_verdict(world.host, sha, run=spy)
+        assert code == 3
+        assert "TIMED OUT" in message and "gw3: tests/test_x.py::test_hangs" in message
+        assert "FAILED" not in message
+
     def test_it_says_what_it_will_cost_before_it_runs(self, world, capsys):
         """C45: the forecast is printed BEFORE the suite runs, from this
         machine's own last --offline row, never a constant."""

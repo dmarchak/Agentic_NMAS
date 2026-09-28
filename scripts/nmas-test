@@ -35,6 +35,49 @@ set -u
 # 2026-09-27: `_NEIGHBOR_DROP_TOLERANCE = 1` ran after the file said 0.
 export PYTHONDONTWRITEBYTECODE=1
 
+# THE BOUND COMES FROM A MEASUREMENT, not a round number chosen to be safe
+# (the operator, 2026-09-28): a timeout "to be safe" converts every hang into
+# its full length. The suite measured 121 s of tests, 125 s wall, serial on
+# the laptop (5025 tests), and ~78 s parallel on the host; 300 s is 2.5x the
+# serial figure. Re-derive it when the serial time moves, and say so here.
+TIMEOUT="${NMAS_TEST_TIMEOUT:-300}"
+
+# A TIMEOUT THAT FIRES SAYS WHAT WAS RUNNING. Each test process (the main one,
+# or each xdist worker) writes the test it has started into this directory
+# and clears it when the test finishes (tests/conftest.py), and dumps every
+# thread's stack here when the bound's SIGTERM arrives. A bare "timed out"
+# names nothing; the test and its stack are the start of a diagnosis.
+INFLIGHT="$(mktemp -d "${TMPDIR:-/tmp}/nmas-test-inflight.XXXXXX")"
+export NMAS_TEST_INFLIGHT="$INFLIGHT"
+trap 'rm -rf "$INFLIGHT"' EXIT
+
+report_timeout() {
+  echo "nmas-test: TIMED OUT after ${TIMEOUT} s (NMAS_TEST_TIMEOUT). Running when it stopped:" >&2
+  found=0
+  for f in "$INFLIGHT"/running-*; do
+    [ -s "$f" ] || continue
+    found=1
+    IFS=$'\t' read -r nodeid started < "$f"
+    echo "  ${f##*/running-}: $nodeid (started $(( $(date +%s) - ${started%.*} )) s before the report)" >&2
+  done
+  [ "$found" -eq 1 ] || echo "  no test was in progress: the hang is outside a test (collection, a fixture's teardown at session end, or the harness)" >&2
+  for f in "$INFLIGHT"/stack-*; do
+    [ -s "$f" ] || continue
+    echo "--- stacks of ${f##*/stack-} at the SIGTERM ---" >&2
+    cat "$f" >&2
+  done
+}
+
+# Run under the bound, then report. Not `exec`: the report runs after.
+# `timeout` signals its whole process group, so xdist workers get the SIGTERM
+# too, and --kill-after ends anything that ignores it.
+run() {
+  timeout --kill-after=15 "$TIMEOUT" "$@"
+  rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then report_timeout; fi
+  exit "$rc"
+}
+
 allow=0
 args=()
 for a in "$@"; do
@@ -48,7 +91,7 @@ PY="${PYTHON:-python3}"
 why="$(unshare -rn true 2>&1)"
 if [ $? -eq 0 ]; then
   echo "nmas-test: network: CONFINED (a loopback-only network namespace, as uid $(id -u))"
-  exec unshare -rn sh -c '
+  run unshare -rn sh -c '
     ip link set lo up || { echo "nmas-test: could not bring loopback up" >&2; exit 2; }
     uid="$1"; gid="$2"; py="$3"; shift 3
     exec unshare --map-user="$uid" --map-group="$gid" \
@@ -59,7 +102,7 @@ fi
 why="${why:-unshare failed with no message}"
 if [ "$allow" -eq 1 ]; then
   echo "nmas-test: network: NOT CONFINED: no network namespace here ($why). Processes the suite starts CAN reach the network; the test process itself still refuses non-loopback connects."
-  exec "$PY" -m pytest "${args[@]}"
+  run "$PY" -m pytest "${args[@]}"
 fi
 echo "nmas-test: REFUSED: no network namespace can be made here: $why" >&2
 echo "  Processes the suite starts could reach the network. To run anyway, and" >&2

@@ -1043,12 +1043,28 @@ pytest                    # unconfined; says so in its header
 pytest tests/test_netbox_write_gate.py -v
 ```
 
-**Where each way runs** (2026-09-27): pytest-xdist 3.8.0 is installed on the
-deployment host and in CI (to match CI), and is **not** installed on the
-development laptop, where `-n auto` is refused as an unknown argument. So a
-laptop run is serial and a host or CI run is parallel. They schedule tests
-differently, which is the C43 class (a test depending on what ran before
-it), and a result should say which machine it came from.
+**Where each way runs** (2026-09-28): pytest-xdist 3.8.0 (execnet 2.1.2) is
+installed on the deployment host, in CI, and now on the development laptop, so
+all three schedule tests the same way (C43's class is a test depending on what
+ran before it). **Why the laptop lacked it:** its Python is the system 3.14,
+marked `EXTERNALLY-MANAGED` (PEP 668), so `pip install` refuses. It went into
+the user site instead, where pytest itself already was
+(`pip install --user --break-system-packages --no-deps pytest-xdist==3.8.0
+execnet==2.1.2`: `~/.local` only, never the system). `apt install
+python3-pytest-xdist` (Ubuntu's 3.8.0) is the other route and needs sudo.
+Measured on the laptop: 5025 passed in **42 s** with `-n auto` (24 cores)
+against **121 s** serial.
+
+**The bounds come from measurements, and a bound that fires names what was
+running** (the operator, 2026-09-28). `scripts/nmas-test` stops the run at
+`NMAS_TEST_TIMEOUT` (300 s, 2.5x the serial run) and prints the test each
+process was running and every thread's stack (`tests/conftest.py` records it
+per process; `tests/test_suite_bound.py` drives a real hang).
+`faulthandler_timeout = 45` in `pytest.ini` (2.5x the slowest single item, a
+17.3 s module setup) dumps one slow test's stack without stopping the run. CI's
+job bound is 10 min (2.7x the slowest of the last seven jobs, 224 s).
+`nmas-deploy --offline` reports a timeout as TIMED OUT with the running test,
+never as a test failure.
 
 `pytest.ini` sets `pythonpath = .`, so both `pytest` and `python -m pytest` work
 from the repo root. (Before Phase 0 only the latter did.)
@@ -1129,6 +1145,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_restore_scope.py` | C80 (7.1 step 5), on a real repository (r2's real config, a baseline earned by a whole-fleet capture at intent): a device's restore points are its golden now, its own tags and the baselines that hold it, newest first, and a baseline without it is not one; a real rotation after the baseline reads `refused` and a renamed account `silent`, from the same real line, with no credential value in the response; the shipped chooser executed against the route (a row and a Preview per point, every value escaped, a failed read is not an empty list); the URL it builds reaches `previewBaselineRestore(ref, null, {devices})`; the Baselines scope offers every device with none ticked and the whole fleet as its own choice; re-apply asks the scope before the preview and names only the chosen devices |
 | `test_netbox_removal_result.py` | C121: a NetBox Remove drawn by the component from the row that records it; a partial removal is "Partly done" with each refusal named, never green; forget says nothing was deleted; the record read back on the NetBox tab is drawn the same way; the panel tells a failed read from none recorded, and escapes every value |
 | `test_onboard_run_results.py` | 7.1: Verify and Abandon recorded in `onboarding_runs.jsonl` (0600, masked on the way in, absent vs unreadable), each result drawn FROM the recorded row as the verified person; a record that could not be written is part of the result (planted as a directory: `open_secure` creates missing parents, so a missing one would be written); a dry-run abandon records nothing; the pending banner reads back each row's last run and, for a run that took its device off the list, "finished recently"; an unreadable record is drawn as that |
+| `test_suite_bound.py` | the suite's bound (NMAS_TEST_TIMEOUT, 300 s, from the measured serial time) through the REAL runner over a test that hangs: rc 124, the hanging test and its line named, a finished test not named; a run that finishes is never reported as a timeout |
+| `test_no_duplicate_definitions.py` | C90's sibling: no module or class body defines a name twice (a second `def` silently replaces the first; in a test class it drops a test), across the program, scripts and tests (floor 300 files); a property's setter is the one exemption, anchored on the real one |
 | `test_results_are_drawn.py` | C121: EVERY green toast in the shipped pages declared in `GREEN_TOASTS` with why green is earned, by a parsing scan, exact both ways (a planted multi-line call found). 7.1 step 1: every action gated confirm, approve or publish_remote (41, the gate table) shows its result where it can be read again, or is placed: drawn by the component with a reader (deploy, restore; evidence from source), pending (31, measured, only shrinks) or no GUI (tied to the reachability list); a toast is never enough for this population, and the bar is shown refusing; colour is part of the result (`FALSE_GREEN`: Save All, the NetBox sync card, onboarding Create) and the first XSS-shaped finding is pinned (`UNESCAPED`) |
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
@@ -5373,6 +5391,18 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   waits on in words, a stall named, and what finished in the last 30
   minutes, so a reload does not lose a result. Each preview gates on "no
   other operation holds this device" before the confirm.
+- **A BOUND CHOSEN "TO BE SAFE" CONVERTS EVERY HANG INTO ITS FULL LENGTH; the
+  safe value is the one derived from a measurement** (the operator,
+  2026-09-28, the second bound in a day larger than what it bounds). My suite
+  wrapper waited 1500 s on a run measured at 121 s, and CI's job 20 min on
+  jobs measured at 186-224 s. Derive the bound as a small multiple of the
+  measured time, write the measurement beside it, and re-derive it when the
+  time moves: the heartbeat windows' rule. **And a bound that fires must say
+  what was running**: a bare "timed out" is the difference between a
+  five-minute diagnosis and an hour. The same session's CI poll was the
+  mirror case: it swallowed `gh: command not found` into `2>/dev/null` and
+  would have looped for 30 minutes on a question it could never ask. A poll
+  reports "could not ask" at once, never retries silently.
 - **A concurrency test that HANGS rather than fails reports nothing; the
   hard timeout is what turns it back into a measurement** (the operator,
   2026-09-27). C98's lock first deadlocked on a device another process held,

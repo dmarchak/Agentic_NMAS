@@ -4,6 +4,8 @@
 # finding (C43) comes back. `nmas-deploy --offline` runs in parallel only when
 # the installed version is the one pinned here, and otherwise says why not.
 # Measured with pytest 9.1.1 (the lock's): 4 workers, 3,986 passed in 24.5 s
-# on the laptop against 64 s serial.
+# on the laptop against 64 s serial. Again 2026-09-28, -n auto on 24 cores:
+# 5,025 passed in 42 s against 121 s serial. The laptop's system Python is
+# PEP 668-managed, so these went into the user site (see CLAUDE.md).
 pytest-xdist==3.8.0
 execnet==2.1.2

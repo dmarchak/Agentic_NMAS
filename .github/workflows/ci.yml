@@ -28,7 +28,11 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # From a measurement, not a round number (the operator, 2026-09-28): the
+    # last seven jobs took 186-224 s end to end (#94-#100); 10 min is 2.7x the
+    # slowest. A hang costs ten minutes, not twenty. The tests step has its own
+    # 300 s bound inside scripts/nmas-test, which names what was running.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:

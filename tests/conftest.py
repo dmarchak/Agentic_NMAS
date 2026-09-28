@@ -116,6 +116,7 @@ def pytest_sessionstart(session):
         pytest.exit(f"{network_guard.REQUIRE_ENV}=1 and this run is not confined: "
                     f"{network_guard.report_line(_NETWORK_STATE)}", returncode=2)
     session.nmas_checkout_data_before = data_tree(_CHECKOUT_DATA_DIR)
+    _register_stack_dump(session)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -427,3 +428,61 @@ def intent_matches(monkeypatch):
                         lambda repo, list_name, hostname, config_text, platform="": {
                             "state": "match", "adds": 0, "removes": 0, "reordered": 0,
                             "lines": [], "why": ""})
+
+
+# ---------------------------------------------------------------------------
+# What was running when a bound fired (scripts/nmas-test)
+# ---------------------------------------------------------------------------
+#
+# A timeout that fires should say WHERE it hung (the operator, 2026-09-28):
+# the difference between a five-minute diagnosis and an hour. nmas-test sets
+# NMAS_TEST_INFLIGHT to a directory; each test process (the main one, or each
+# xdist worker) keeps the test it has started in `running-<process>` and
+# clears it when that test finishes, and dumps every thread's stack into
+# `stack-<process>` when the bound's SIGTERM arrives. A plain `pytest` run
+# sets nothing and this is inert.
+#
+# The per-TEST bound is pytest.ini's `faulthandler_timeout`, which dumps the
+# stack of a single test that runs too long without stopping the run.
+
+def _inflight_file(kind):
+    d = os.environ.get("NMAS_TEST_INFLIGHT", "")
+    if not d or not os.path.isdir(d):
+        return ""
+    return os.path.join(d, f"{kind}-{os.environ.get('PYTEST_XDIST_WORKER', 'main')}")
+
+
+def _register_stack_dump(session):
+    """Called from pytest_sessionstart above: a second hook of the same name
+    in this file would silently replace the first (C90's shape, a name for a
+    key), and with it the confinement check."""
+    path = _inflight_file("stack")
+    if path:
+        import faulthandler
+        import signal
+
+        # Kept open for the process's life: faulthandler writes from the
+        # signal handler to this descriptor. To a FILE, because pytest's fd
+        # capture owns stderr while a test runs, and a dump into the capture
+        # is lost with the process. chain=True: the SIGTERM still ends it.
+        fh = open(path, "w", encoding="utf-8")
+        session.config._nmas_stack_file = fh
+        faulthandler.register(signal.SIGTERM, file=fh, all_threads=True, chain=True)
+
+
+def pytest_runtest_logstart(nodeid, location):
+    path = _inflight_file("running")
+    if path:
+        import time
+
+        # A test outside the rootdir has a nodeid with no file ("::name"); the
+        # location's path names it, so the report never loses the file.
+        name = f"{location[0]}{nodeid}" if nodeid.startswith("::") else nodeid
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(f"{name}\t{time.time():.0f}\n")
+
+
+def pytest_runtest_logfinish(nodeid, location):
+    path = _inflight_file("running")
+    if path:
+        open(path, "w", encoding="utf-8").close()
